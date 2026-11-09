@@ -2377,6 +2377,37 @@ def test_stage_transform_counts_source_households_in_its_receipts(
     assert np.array_equal(seen["division_capture"], expected)
 
 
+def test_stage_stores_the_kwh_its_energy_spend_is_priced_from() -> None:
+    """The stage keeps the rake's kWh beside the spend, for the energy
+    dashboards: the local DESNZ targets' reading of the stored spend gives them
+    back for every household, so the exported kWh and the targets agree."""
+
+    from microcosm.build.uk_runtime.domestic_energy_targets import (
+        household_energy_kwh,
+        household_energy_prices,
+    )
+    from microcosm.build.uk_runtime.energy_pricing import ELECTRICITY_KWH, GAS_KWH
+
+    synthetic = _synthetic_lcfs_stage()
+    out = synthetic.transform(synthetic.frame).table("household")
+
+    expected = household_energy_kwh(
+        out["electricity_consumption"],
+        out["gas_consumption"],
+        region=out["region"].astype(str).to_numpy(),
+        prices=household_energy_prices(),
+    )
+    for column in (ELECTRICITY_KWH, GAS_KWH):
+        stored = out[column].to_numpy(dtype=float)
+        assert (stored >= 0.0).all()
+        np.testing.assert_allclose(stored, expected[column], rtol=1e-12, atol=1e-9)
+    # A household is gas-connected exactly when it pays for gas, and the
+    # synthetic frame has households on both sides.
+    gas_kwh = out[GAS_KWH].to_numpy(dtype=float)
+    assert np.array_equal(gas_kwh > 0, out["gas_consumption"].to_numpy() > 0)
+    assert (gas_kwh > 0).any() and (gas_kwh == 0).any()
+
+
 def test_division_capture_places_an_over_draw_in_the_tail() -> None:
     """The frame's top 10% hold far more of a division than the donor's do."""
 

@@ -873,10 +873,16 @@ UK_LCFS_EXCISE_DECLARED_OUTPUTS = (
     "other_tobacco_grams_per_week",
     *UK_LCFS_EXCISE_GAMBLING_OUTPUTS,
 )
+#: The kWh the energy rake prices the stored electricity and gas spend from,
+#: kept beside it for the energy dashboards: annual, calendar 2024. They are
+#: not policyengine-uk's monthly electricity_consumption_kwh and
+#: gas_consumption_kwh inputs, and the engine reads neither column.
+UK_LCFS_ENERGY_KWH_OUTPUTS = (ELECTRICITY_KWH, GAS_KWH)
 UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS = (
     *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
     "has_fuel_consumption",
     UK_LCFS_PREPAYMENT_METER_COLUMN,
+    *UK_LCFS_ENERGY_KWH_OUTPUTS,
     *UK_LCFS_EXCISE_DECLARED_OUTPUTS,
 )
 #: The person inputs the vehicle excise duty step writes (microcosm#1095 B3).
@@ -1120,6 +1126,7 @@ class UKLCFSConsumptionStageTransform:
         # recomposed totals (microcosm#1113).
         drawn_parts = household_draws[list(UK_LCFS_RECOMPOSED_DRAWN_COLUMNS)].copy()
         energy_rake_receipt = None
+        energy_kwh = None
         gas_payers = None
         if energy is not None and energy.connect_rule is not None:
             gas_payers = gas_payer_draws(
@@ -1140,6 +1147,12 @@ class UKLCFSConsumptionStageTransform:
                 iterations=_recipient_energy_rake_iterations(self.stage),
                 identity=frame.table("household")["household_id"].to_numpy(),
                 gas_payers=gas_payers,
+            )
+            # The kWh the stored spend is priced from; no later step moves
+            # either fuel's spend, so they are stored as the rake left them.
+            energy_kwh = household_draws[list(UK_LCFS_ENERGY_KWH_OUTPUTS)]
+            household_draws = household_draws.drop(
+                columns=list(UK_LCFS_ENERGY_KWH_OUTPUTS)
             )
         household_draws, bus_pricing_receipt = lcfs_bus_fare_pricing(
             self.stage, household_draws, frame
@@ -1240,6 +1253,9 @@ class UKLCFSConsumptionStageTransform:
         )
         if prepayment is not None:
             household[UK_LCFS_PREPAYMENT_METER_COLUMN] = prepayment.flags
+        if energy_kwh is not None:
+            for column in UK_LCFS_ENERGY_KWH_OUTPUTS:
+                household[column] = energy_kwh[column].to_numpy(dtype=float)
         if quantities is not None:
             # In the declared output order, which the stage's outputs and the
             # graph's typed cells follow; an undeclared input fails here.
@@ -3945,7 +3961,11 @@ def energy_spend_to_kwh(
 def energy_kwh_to_spend(
     table: pd.DataFrame, *, energy: LCFSEnergyPricing, region: np.ndarray
 ) -> pd.DataFrame:
-    """Price the kWh columns back to spend (gas fixed cost where connected) and drop them."""
+    """Price the kWh columns back to spend (gas fixed cost where connected).
+
+    The kWh stay beside the spend they price to, so the stage can store them;
+    :func:`~microcosm.build.uk_runtime.domestic_energy_targets.household_energy_kwh`
+    of that spend gives them back."""
 
     result = table.copy()
     gas_kwh = result[GAS_KWH].to_numpy(dtype=float)
@@ -3962,7 +3982,7 @@ def energy_kwh_to_spend(
         prices=energy.prices,
         connected=gas_kwh > 0,
     )
-    return result.drop(columns=[ELECTRICITY_KWH, GAS_KWH])
+    return result
 
 
 def rake_recipient_energy(
@@ -3980,7 +4000,8 @@ def rake_recipient_energy(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Price the drawn spend to kWh, impose the published gas connection, rake the
     NEED shape at each fuel's declared level (DESNZ volume, or for electricity
-    the kWh ONS household spending buys), price back.
+    the kWh ONS household spending buys), price back, keeping the kWh beside
+    the spend.
 
     ``identity`` (the household ids, row-aligned) keys the disconnection walk
     when the declared rule is ``identity_uniform_order``, and the connection

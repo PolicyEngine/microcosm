@@ -939,11 +939,18 @@ class TestE3ManifestLockstep:
             *UK_LCFS_EXCISE_SHARES,
         )
         assert not set(UK_LCFS_EXCISE_SHARES) & set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS)
+        # The rake's kWh are outputs the chain never draws: the stage keeps
+        # the kWh it priced the spend from.
         assert UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS == (
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
             "has_fuel_consumption",
             "uses_energy_prepayment_meter",
+            "electricity_kwh",
+            "gas_kwh",
             *UK_LCFS_EXCISE_DECLARED_OUTPUTS,
+        )
+        assert not {"electricity_kwh", "gas_kwh"} & set(
+            lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"]
         )
         # The declared excise step writes exactly those inputs: its quantity
         # outputs, its draught shares and every gambling base.

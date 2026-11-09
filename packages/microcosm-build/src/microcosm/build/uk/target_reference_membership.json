@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-6475380-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1620,
-  "contract_target_count": 464,
-  "active_reference_count": 1583,
+  "candidate_count": 1634,
+  "contract_target_count": 478,
+  "active_reference_count": 1597,
   "status_counts": {
-    "active": 1583,
+    "active": 1597,
     "signed_excluded": 37
   },
   "geography_pins": {
@@ -180,6 +180,14 @@
     "hmrc.spi.property_income.count_by_total_income_band": {
       "geography_level": "country",
       "geography_id": "K02000001"
+    },
+    "hmrc.pris.rental_income.scotland": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
+    "hmrc.pris.expenses.scotland": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
     },
     "hmrc.spi.private_pension_income.amount_by_total_income_band": {
       "geography_level": "country",
@@ -877,15 +885,39 @@
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "ons.population.female_16_17": {
+    "ons.population.female_16": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "ons.population.female_18_19": {
+    "ons.population.female_17": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "ons.population.female_20_24": {
+    "ons.population.female_18": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.female_19": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.female_20": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.female_21": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.female_22": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.female_23": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.female_24": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -961,15 +993,39 @@
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "ons.population.male_16_17": {
+    "ons.population.male_16": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "ons.population.male_18_19": {
+    "ons.population.male_17": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "ons.population.male_20_24": {
+    "ons.population.male_18": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.male_19": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.male_20": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.male_21": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.male_22": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.male_23": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.population.male_24": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -5355,6 +5411,7 @@
   "genuine_sum_residue": [
     "dfe.funded_childcare.working_parent_children_2_to_4",
     "dwp.workplace_pension.employer_contributions",
+    "hmrc.pris.expenses.scotland",
     "nithc.public_transport_support",
     "obr.beer_and_cider_duties",
     "obr.wine_duties",
@@ -5484,9 +5541,15 @@
     "ons.population.female_0_4",
     "ons.population.female_10_14",
     "ons.population.female_15",
-    "ons.population.female_16_17",
-    "ons.population.female_18_19",
-    "ons.population.female_20_24",
+    "ons.population.female_16",
+    "ons.population.female_17",
+    "ons.population.female_18",
+    "ons.population.female_19",
+    "ons.population.female_20",
+    "ons.population.female_21",
+    "ons.population.female_22",
+    "ons.population.female_23",
+    "ons.population.female_24",
     "ons.population.female_25_29",
     "ons.population.female_30_34",
     "ons.population.female_35_39",
@@ -5505,9 +5568,15 @@
     "ons.population.male_0_4",
     "ons.population.male_10_14",
     "ons.population.male_15",
-    "ons.population.male_16_17",
-    "ons.population.male_18_19",
-    "ons.population.male_20_24",
+    "ons.population.male_16",
+    "ons.population.male_17",
+    "ons.population.male_18",
+    "ons.population.male_19",
+    "ons.population.male_20",
+    "ons.population.male_21",
+    "ons.population.male_22",
+    "ons.population.male_23",
+    "ons.population.male_24",
     "ons.population.male_25_29",
     "ons.population.male_30_34",
     "ons.population.male_35_39",
@@ -6591,6 +6660,22 @@
       "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "factor": "1.21716287215412",
       "value_before_uprating": "226000.0"
+    },
+    {
+      "name": "hmrc.pris.rental_income.scotland",
+      "from": "2024",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.04619858745326",
+      "value_before_uprating": "2820000000.0"
+    },
+    {
+      "name": "hmrc.pris.expenses.scotland",
+      "from": "2024",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "factor": "1.04619858745326",
+      "value_before_uprating": "1290000000.0"
     },
     {
       "name": "hmrc/private_pension_income_income_band_100_000_to_150_000",
@@ -14821,6 +14906,46 @@
         }
       ]
     },
+    "hmrc.pris.rental_income.scotland": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.pris.rental_income.scotland",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2950280016.618197,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_96cf1ae9cbb2723ad971c5b0",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.04619858745326",
+            "value_before_uprating": "2820000000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.pris.expenses.scotland": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.pris.expenses.scotland",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1349596177.814707,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_698cce0ba3683d514d092e77",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "factor": "1.04619858745326",
+            "value_before_uprating": "1290000000.0"
+          }
+        }
+      ]
+    },
     "hmrc.spi.private_pension_income.amount_by_total_income_band": {
       "status": "active",
       "candidates": [
@@ -18728,46 +18853,136 @@
         }
       ]
     },
-    "ons.population.female_16_17": {
+    "ons.population.female_16": {
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.female_16_17",
+          "name": "ons.population.female_16",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 6,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 812522.0,
+          "resolved_value": 404224.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_02fcfbd81c5188d2bb5024f6"
+        }
+      ]
+    },
+    "ons.population.female_17": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.female_17",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 408298.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_04ff61d39ac01fc622589dbb"
         }
       ]
     },
-    "ons.population.female_18_19": {
+    "ons.population.female_18": {
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.female_18_19",
+          "name": "ons.population.female_18",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 6,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 781458.0,
+          "resolved_value": 391816.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_05db7085ea57cab32a14fcf6"
         }
       ]
     },
-    "ons.population.female_20_24": {
+    "ons.population.female_19": {
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.female_20_24",
+          "name": "ons.population.female_19",
           "status": "active",
-          "matched_fact_count_overall": 15,
-          "matched_fact_count_at_or_before_period": 15,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 2036764.0,
+          "resolved_value": 389642.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_01a2aac4f80e786e512c4134"
+        }
+      ]
+    },
+    "ons.population.female_20": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.female_20",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 394268.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_995240cc6f2f02bf11fcd70d"
+        }
+      ]
+    },
+    "ons.population.female_21": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.female_21",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 396247.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4f7a5079d1e2eaabfe09a5fa"
+        }
+      ]
+    },
+    "ons.population.female_22": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.female_22",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 405384.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1d55de205f22b0b4a325e0ec"
+        }
+      ]
+    },
+    "ons.population.female_23": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.female_23",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 418166.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4394c37cb11f22a160c5d14f"
+        }
+      ]
+    },
+    "ons.population.female_24": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.female_24",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 422699.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_e409529d9630a0cec74a0450"
         }
@@ -19043,48 +19258,138 @@
         }
       ]
     },
-    "ons.population.male_16_17": {
+    "ons.population.male_16": {
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.male_16_17",
+          "name": "ons.population.male_16",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 6,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 856296.0,
+          "resolved_value": 425827.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_888c3c10fc18dfe96e35faa9"
         }
       ]
     },
-    "ons.population.male_18_19": {
+    "ons.population.male_17": {
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.male_18_19",
+          "name": "ons.population.male_17",
           "status": "active",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 6,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 823183.0,
+          "resolved_value": 430469.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_69b3b884a2e5ca79772af2bb"
+        }
+      ]
+    },
+    "ons.population.male_18": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.male_18",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 413685.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_03a5d854cdb6a66c43cf0084"
+        }
+      ]
+    },
+    "ons.population.male_19": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.male_19",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 409498.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d4534116ee44f57db1120c83"
         }
       ]
     },
-    "ons.population.male_20_24": {
+    "ons.population.male_20": {
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.male_20_24",
+          "name": "ons.population.male_20",
           "status": "active",
-          "matched_fact_count_overall": 15,
-          "matched_fact_count_at_or_before_period": 15,
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
           "resolved_period": 2025,
-          "resolved_value": 2127062.0,
+          "resolved_value": 415442.0,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_db1d9a6c38202edb79d3c61d"
+        }
+      ]
+    },
+    "ons.population.male_21": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.male_21",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 419104.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_92fc0593cb38059f5fef26ba"
+        }
+      ]
+    },
+    "ons.population.male_22": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.male_22",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 423728.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_63e500aa8c9340edd8c125d0"
+        }
+      ]
+    },
+    "ons.population.male_23": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.male_23",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 432421.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a42e8253aa832b0aaa6a2d78"
+        }
+      ]
+    },
+    "ons.population.male_24": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.population.male_24",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 436367.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0401d3520f096dc572091bde"
         }
       ]
     },

@@ -44,6 +44,21 @@ NON_ADVANCED_EDUCATION_LEVELS = (
 #: dependant.
 FRS_TRAINEE_COLUMN = "trainee"
 FRS_TRAINEE_YES = 1
+#: FRS EDUCFT, "Whether presently in full time education" (1 yes, 2 no), on the
+#: adult and child tables of FRS 2024-25 (SN 9563); earlier vintages name it
+#: FTED. Its question, FtEd, is asked of everyone over 3 and under 75: a
+#: student registered full-time at an educational establishment answers yes,
+#: one registered part-time no, and an apprentice is never coded as in
+#: full-time education. A yes sets policyengine-uk's
+#: ``is_in_full_time_education``, which 2.174.1 reads only for Universal
+#: Credit's condition that a claimant is not receiving education (UC Regs 2013
+#: regs 12 and 13); the course's level comes from ``current_education``, which
+#: reads the same answer.
+FRS_FULL_TIME_EDUCATION_YES = 1
+#: The columns that carry that answer, in the order they are read: FTED where a
+#: row has one, else EDUCFT. A vintage may name it differently on its adult and
+#: child tables, so the answer is read row by row, never chosen once for both.
+FRS_FULL_TIME_EDUCATION_COLUMNS = ("fted", "educft")
 #: FRS SLOS, "Do you have an outstanding student loan?" (1 yes, 2 no), adult
 #: table of FRS 2024-25 (SN 9563). Adults who answer SLREPAY ("Whether making
 #: student loan repayments") no answer it, so it carries the borrowers below the
@@ -136,6 +151,7 @@ FRS_EDUCATION_OUTPUT_COLUMNS = (
     "receives_benefits_in_own_right",
     "reports_outstanding_student_loan",
     "age_left_full_time_education",
+    "is_in_full_time_education",
 )
 
 
@@ -174,6 +190,11 @@ def add_frs_education(
                 f"The FRS {table} tab has no TRAINEE column, so approved "
                 "training cannot be derived."
             )
+        if not set(FRS_FULL_TIME_EDUCATION_COLUMNS) & set(tab.columns):
+            raise KeyError(
+                f"The FRS {table} tab has neither FTED nor EDUCFT, so full-time "
+                "education cannot be derived."
+            )
     raw_person = pd.concat(
         [
             adult.assign(**{FRS_TABLE_COLUMN: "adult"}),
@@ -205,11 +226,13 @@ def derive_frs_education(
     raw = raw_person.set_index("person_id").reindex(person["person_id"])
     values = pd.DataFrame(index=person.index)
     age = pd.to_numeric(person["age"], errors="coerce").fillna(0).to_numpy()
-    fted_source = "fted" if "fted" in raw.columns else "educft"
-    fted = _num(raw, fted_source).to_numpy()
+    fted = _full_time_education_answer(raw).to_numpy()
     typeed2 = _num(raw, "typeed2").to_numpy()
     current = derive_current_education(fted=fted, typeed2=typeed2, age=age)
     values["current_education"] = current
+    # Only a yes counts: a no, a blank (nobody aged 75 or over is asked) and
+    # an absent record read as not in full-time education.
+    values["is_in_full_time_education"] = fted == FRS_FULL_TIME_EDUCATION_YES
     values["highest_education"] = (
         _num(raw, "educqual").astype(int).map(EDUCQUAL_MAP).fillna("UPPER_SECONDARY")
     ).to_numpy()
@@ -300,7 +323,13 @@ def derive_current_education(*, fted, typeed2, age) -> np.ndarray:
     typeed2 = np.asarray(typeed2)
     age = np.asarray(age)
     # The post-secondary branch is deliberately unreachable because the
-    # incumbent tests upper-secondary first for typeed2 7/8.
+    # incumbent tests upper-secondary first for typeed2 7/8. The same order
+    # leaves the TERTIARY fallback for a blank typeed2 unreachable: a full-time
+    # student aged 19 or over with no TYPEED2 code reads as UPPER_SECONDARY, as
+    # in the incumbent, so from 20, past the qualifying young person ages, they
+    # are not treated as receiving education for Universal Credit. On FRS
+    # 2024-25 they rest on fewer than three survey households, so the order
+    # stays (Vahid's review of microcosm#1535).
     return np.select(
         [
             np.isin(fted, (2, -1, 0)),
@@ -348,6 +377,30 @@ def _ema(raw: pd.DataFrame, *, code_column: str, amount_column: str) -> np.ndarr
     fill_mean = float(amount[donors].mean()) if bool(donors.any()) else 0.0
     filled = np.where(needs_fill, fill_mean, amount)
     return np.maximum(filled, 0.0) * WEEKS_IN_YEAR
+
+
+def _full_time_education_answer(raw: pd.DataFrame) -> pd.Series:
+    """The FRS full-time education answer: FTED where a row has one, else EDUCFT.
+
+    After the adult and child tabs are concatenated, a row from a tab without
+    one of the columns holds a blank there, so each row falls back to the
+    column its own tab carries. Rows with neither column refuse: reading nobody
+    as in full-time education would let every claimant meet Universal Credit's
+    condition of not receiving education.
+    """
+
+    present = [
+        column for column in FRS_FULL_TIME_EDUCATION_COLUMNS if column in raw.columns
+    ]
+    if not present:
+        raise KeyError(
+            "FRS person rows lack FTED and EDUCFT, so full-time education "
+            "cannot be derived."
+        )
+    answer = pd.to_numeric(raw[present[0]], errors="coerce")
+    for column in present[1:]:
+        answer = answer.fillna(pd.to_numeric(raw[column], errors="coerce"))
+    return answer.fillna(0)
 
 
 def _num(frame: pd.DataFrame, column: str) -> pd.Series:

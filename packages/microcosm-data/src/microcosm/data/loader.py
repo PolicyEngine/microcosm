@@ -1,7 +1,8 @@
 """Resolve, verify, download, and load a certified microcosm release.
 
-A registry entry that names a release whose builds can publish into their
-own folders (the UK 2025 national and dense entries) is read through the
+A registry entry that names a release (the UK 2025 national and dense
+entries, whose builds publish into their own folders, and the UK 2023 entry,
+whose one build the switch moved into a folder) is read through the
 repository's ``releases.json`` once the repository has one: the record names
 the release's current build (or ``build=`` pins a listed one), the loader
 reads ``releases/<release>/<build>/release_manifest.json``, downloads the

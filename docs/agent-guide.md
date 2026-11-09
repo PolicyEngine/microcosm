@@ -271,17 +271,32 @@ no secret. Green PR checks mean the code contracts hold — they do **not**
 certify data artifacts.
 Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
-deliberate human step (`tools/publish_release.sh` →
-`microcosm-publish-release`), gated by `tools/preflight_us_release_gates.py`;
-reviewed line promotion is a separate deliberate call to the same CLI with
-`--promote-line`. See README "Releasing & alerts". Before launching a US
+deliberate human step. A US release publishes with tags and `latest.json`
+(`tools/publish_release.sh` → `microcosm-publish-release`), checked by
+`tools/preflight_us_release_gates.py`. The UK repository's switch moved the
+June 2023 UK build into release `populace-uk-2023`, which takes no new builds,
+and `populace-uk-<year>-<tier>-k<N>` releases have no publication path there.
+The UK national, dense and
+local-area releases publish each build into its own folder through the
+emitter (`microcosm-publish-release-build`, from
+`microcosm.build.release_publication`), which records it in the repository's
+`releases.json`; making a published build current is a separate deliberate
+call to the same command with `--promote`. The emitter refuses that while any
+`latest*.json` pointer file exists; the UK repository's switch to
+`releases.json` deleted them. Tests hand release changes to the
+in-memory client (`client.release_requests`), which applies them to
+`hub_files` with the interface's shared `releases.json` checks. See README
+"Releasing & alerts". Before launching a US
 release, dry-run it with `tools/dry_run_us_release_gates.py` (or the release
 tool's `--dry-run-gates-report`). It replays the release's own input stages and
 grades every waiver register on the staged frame before the solve; see README
 "Dry-running the release's registers". Publication also refuses a
 release whose build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
-publishes without the flag. Never publish or promote artifacts as a side
+publishes without the flag. A UK national cut runs end to end with
+`tools/run_uk_cut.py` ([uk-cut-anyone.md](uk-cut-anyone.md)): inputs fetched
+by pin, a signing key registered in `microcosm.data.gate_signing_keys`, and
+an inspection-only `--publish`. Never publish or promote artifacts as a side
 effect of another task. A UK rowwise run's **staged** bundle
 (`staged/<run_id>/` in the private repository, written by the build itself)
 is inspection evidence, not a release: it never moves `releases/` or

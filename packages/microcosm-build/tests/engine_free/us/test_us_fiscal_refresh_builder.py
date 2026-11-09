@@ -2245,6 +2245,87 @@ def test_scf_education_debt_stage_runs_its_gate_and_writes_its_fit(
         )
 
 
+def test_scf_education_debt_fit_is_written_at_calibrated_weights_before_scoring(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1074: a --scf-education-debt build tabulates the stage's fit
+    on the frame it exports, at the weights it ships, before any scoring."""
+    import ast
+
+    builder = _load_builder_module()
+    frame = object()
+    seen: list[object] = []
+    fit = {"households": {"share_with_federal_education_debt": 0.3}}
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_fit_table",
+        lambda base_frame: seen.append(base_frame) or fit,
+    )
+    name = builder.US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME
+    path = tmp_path / "artifacts" / name
+    builder._write_us_scf_education_debt_fit(
+        path, frame, weights="calibrated_household_weights"
+    )
+    assert seen == [frame]
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "schema_version": 1,
+        "weights": "calibrated_household_weights",
+        "fit": fit,
+    }
+    assert name != builder.US_SCF_EDUCATION_DEBT_FIT_FILENAME
+
+    # The write is a statement of _main's own body, under the flag alone,
+    # after the export frame takes the calibrated weights and before the
+    # post-export scoring plan. The syntax tree tells a call from a comment.
+    tree = ast.parse(Path(builder.__file__).read_text(encoding="utf-8"))
+    main = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+
+    def calls(node: ast.AST, function: str) -> list[ast.Call]:
+        return [
+            call
+            for call in ast.walk(node)
+            if isinstance(call, ast.Call) and getattr(call.func, "id", "") == function
+        ]
+
+    def position(predicate) -> int:
+        (index,) = [i for i, stmt in enumerate(main.body) if predicate(stmt)]
+        return index
+
+    write = position(lambda stmt: calls(stmt, "_write_us_scf_education_debt_fit"))
+    statement = main.body[write]
+    assert isinstance(statement, ast.If)
+    assert ast.unparse(statement.test) == "args.scf_education_debt"
+    (call,) = calls(statement, "_write_us_scf_education_debt_fit")
+    assert [ast.unparse(arg) for arg in call.args] == [
+        "artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME",
+        "export_frame",
+    ]
+    assert {kw.arg: ast.unparse(kw.value) for kw in call.keywords} == {
+        "weights": "'calibrated_household_weights'"
+    }
+    export = position(
+        lambda stmt: (
+            calls(stmt, "_with_calibrated_weights")
+            and calls(stmt, "_with_l0_refit_weights")
+        )
+    )
+    scoring = position(lambda stmt: calls(stmt, "_record_post_export_scoring_plan"))
+    # test_us_post_export_scoring executes the export and cleanup statements
+    # on their own, without args, so the write follows the ladder cleanup.
+    cleanup = position(
+        lambda stmt: (
+            isinstance(stmt, ast.If)
+            and ast.unparse(stmt.test)
+            == "isinstance(ladder_outcome, ExactKLadderCalibration)"
+        )
+    )
+    assert export < cleanup < write < scoring
+
+
 def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
     builder = _load_builder_module()
 
@@ -4186,7 +4267,7 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
 
     Adding a concept to ``RESTATED_LEDGER_FILTER_CONCEPTS`` without a rule
     would raise at compile time on the first spec carrying it; this pins the
-    three rules that exist instead.
+    four rules that exist instead.
     """
 
     builder = _load_builder_module()
@@ -4195,7 +4276,12 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
         "agi_band",
         "eitc_child_count",
         "age_band",
+        "student_loan_balance_band",
     }
+    # The FSA debt-size band (microcosm#1074) reads the person's federal balance.
+    assert builder._restated_ledger_filter_concept(
+        "ledger_filter_federal_student_loan_balance_lower_bound"
+    ) == ("federal_student_loan_balance", "lower")
     assert builder._restated_ledger_filter_concept(_RESTATED_AGE_UPPER) == (
         "age",
         "upper",
