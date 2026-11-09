@@ -265,4 +265,113 @@ def test_switch_refuses_when_a_named_finished_branch_moves_while_it_reads(
 
     assert exit_code == 1
     assert FINISHED_STAGING_BRANCH in error_output
+    # The operator already named it, so the refusal says it moved instead of
+    # asking for --finished-branch again.
+    assert "moved" in error_output
+    assert "name the branch with --finished-branch" not in error_output
     assert "releases.json" not in hub.files_at()
+
+
+def watch_listings(hub, monkeypatch, after_first_listing):
+    """Run ``after_first_listing`` once, right after the switch's first
+    listing of the repository's tags and branches."""
+    list_repo_refs = hub.list_repo_refs
+    listings = []
+
+    def listing(*args, **kwargs):
+        refs = list_repo_refs(*args, **kwargs)
+        listings.append(refs)
+        if len(listings) == 1:
+            after_first_listing()
+        return refs
+
+    monkeypatch.setattr(hub, "list_repo_refs", listing)
+
+
+def test_switch_refuses_when_a_named_finished_branch_disappears_while_it_reads(
+    hub, capsys, monkeypatch
+):
+    run(hub, capsys, "copy", "--write", *INCLUDES)
+    # A retry of the build can make its branch only once the leftover one is
+    # gone, so a branch that disappears is a reason to read again.
+    watch_listings(hub, monkeypatch, lambda: hub.branches.pop(FINISHED_STAGING_BRANCH))
+
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *SWITCH_OPTIONS, *FINISHED
+    )
+
+    assert exit_code == 1
+    assert FINISHED_STAGING_BRANCH in error_output
+    assert "releases.json" not in hub.files_at()
+
+
+def test_switch_refuses_a_new_staging_branch_beside_an_accepted_one(
+    hub, capsys, monkeypatch
+):
+    run(hub, capsys, "copy", "--write", *INCLUDES)
+    other = "release-staging/populace-us-2024-spm-20261110"
+
+    def a_publication_starts():
+        hub.branches[other] = hub.main
+
+    watch_listings(hub, monkeypatch, a_publication_starts)
+
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *SWITCH_OPTIONS, *FINISHED
+    )
+
+    assert exit_code == 1
+    assert other in error_output
+    assert "releases.json" not in hub.files_at()
+
+
+def test_copy_refuses_a_ledger_entry_for_a_file_the_tagged_folder_lacks(hub, capsys):
+    del hub.commits[hub.tags[ACS_TAG]][f"releases/{ACS_TAG}/run_identity.json"]
+
+    exit_code, report, _ = run(hub, capsys, "copy", *INCLUDES)
+
+    assert exit_code == 1
+    assert any(
+        ACS_TAG in problem
+        and "run_identity.json" in problem
+        and "does not hold" in problem
+        for problem in report.get("problems", [])
+    )
+
+
+def test_copy_refuses_a_ledger_that_records_a_file_twice(hub, capsys):
+    tagged_files = hub.commits[hub.tags[ACS_TAG]]
+    ledger_path = f"releases/{ACS_TAG}/sha256sums.txt"
+    tagged_files[ledger_path] += (
+        f"{sha256(b'other bytes')}  consumer_export.json\n".encode()
+    )
+
+    exit_code, report, _ = run(hub, capsys, "copy", *INCLUDES)
+
+    assert exit_code == 1
+    assert any(
+        ACS_TAG in problem and "consumer_export.json twice" in problem
+        for problem in report.get("problems", [])
+    )
+
+
+def test_copy_refuses_a_declared_build_manifest_that_does_not_match(hub, capsys):
+    tagged_files = hub.commits[hub.tags[SPM_TAG]]
+    tagged_files[f"releases/{SPM_TAG}/build_manifest.json"] = b'{"changed": true}'
+
+    exit_code, report, _ = run(hub, capsys, "copy", *INCLUDES)
+
+    assert exit_code == 1
+    assert any(
+        SPM_TAG in problem and "build_manifest.json" in problem
+        for problem in report.get("problems", [])
+    )
+
+
+def test_the_copy_plan_lists_each_build_s_undeclared_files(hub, capsys):
+    exit_code, report, error_output = run(hub, capsys, "copy", *INCLUDES)
+
+    assert exit_code == 0, error_output
+    assert {
+        build["tag"]: build.get("undeclared") for build in report.get("builds", [])
+    } == {SPM_TAG: [], ACS_TAG: sorted(ACS_UNDECLARED_FILES)}
