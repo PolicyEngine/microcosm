@@ -22,8 +22,9 @@ has before its switch: every build is a release-per-build release in
 ``releases/<tag>/``. ``latest.json`` names an SPM build whose release
 manifest declares its own ``build_manifest.json`` as an artifact; a tag-only
 ACS local-area build has files its checksum ledger records but its release
-manifest doesn't declare; and an older national build's publication left its
-``release-staging/`` branch behind, pointing at a commit on ``main``.
+manifest doesn't declare; and an older national build has a leftover
+``release-staging/`` branch, pointing at a commit on ``main``, from a retry
+of its publication that stopped because its tag already existed.
 """
 
 from __future__ import annotations
@@ -57,8 +58,9 @@ US_NATIONAL = "microcosm-us-2024-national"
 US_LOCAL = "microcosm-us-2024-local"
 SPM_TAG = "populace-us-2024-spm-20260915"
 ACS_TAG = "populace-us-2024-buildo-acs-local-766b7c7-20261017T030317Z"
-#: A national build whose July publication tagged it and committed its files
-#: to ``main``, but never deleted its staging branch.
+#: A national build tagged and committed to ``main`` in July. A later retry,
+#: by the publisher of that time, made its staging branch from ``main``, found
+#: nothing to commit, and stopped when tagging failed, leaving the branch.
 FINISHED_TAG = "populace-us-2024-buildm-sparse-rmloss100-98bf731-20260717T075101Z"
 FINISHED_STAGING_BRANCH = f"release-staging/{FINISHED_TAG}"
 #: The ACS build's files that its checksum ledger records and its release
@@ -638,8 +640,8 @@ def us_repository(download_dir: Path) -> FakeDatasetRepository:
 
     ``main`` holds the leftover national build and the SPM build, which
     ``latest.json`` names; the ACS local-area build is only under its tag.
-    The leftover build's tag is on its own commit, and its staging branch
-    names the commit on ``main`` that repeated its files.
+    The leftover build's tag is on its own commit, and its staging branch, as
+    the retry left it, names the commit on ``main`` that repeated its files.
     """
     hub = FakeDatasetRepository(US_REPOSITORY, download_dir)
     hub.seed(

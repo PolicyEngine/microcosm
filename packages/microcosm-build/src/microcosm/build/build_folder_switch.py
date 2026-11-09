@@ -58,10 +58,12 @@ The switch is two steps, each a separate run of this tool:
     publication still running either has no tag yet, or has its branch on
     the tagged commit, which the publisher never puts on ``main`` (its commit
     to ``main`` is a new one, made after it deletes the branch). The branch
-    stays, and must neither move nor disappear before the commit. A retry of
-    the same build's
-    publication that has just made its branch from ``main``, and not yet
-    committed to it, meets both conditions too, so name a branch only while
+    stays, and must neither move nor disappear before the commit. The
+    publisher makes no branch for a build that is already tagged, so the one
+    running publication that also meets both conditions is a publisher older
+    than ``7053b9173`` (2026-09-23) retrying an already tagged build: it made
+    its branch from ``main`` and stopped when tagging failed, which is how
+    the US repository's leftover branch arose. So name a branch only while
     nobody publishes.
     The record lists every moved build, with the date of its tagged commit
     as ``published_at``. The build
@@ -162,7 +164,9 @@ __all__ = [
 
 _DATASET = "dataset"
 #: The branch the tagged publisher (``microcosm.data.release``) makes for each
-#: publication: from before it uploads the build until after it tags it.
+#: publication: from before it uploads the build until just after it tags it,
+#: before its commit to ``main``. Since ``7053b9173`` (2026-09-23) it makes
+#: none for a build that is already tagged.
 _STAGING_BRANCH_PREFIX = "release-staging/"
 _BUILD_MANIFEST_NAME = "build_manifest.json"
 #: A tag of a release that publishes into build folders: the release, then
@@ -334,8 +338,8 @@ class _Hub:
         The Hub lists an annotated tag with the ID of its tag object, not of
         its commit (:meth:`resolve` gives the commit); a tag that moves gets
         another ID either way. A staging branch means a tagged publication
-        has started and not yet tagged its build, or failed before deleting
-        the branch.
+        has started and not yet deleted it (it does so just after tagging its
+        build), or one stopped before deleting it.
         """
         refs = self.api.list_repo_refs(self.repository, repo_type=_DATASET)
         listed = {tag.name: str(tag.target_commit) for tag in refs.tags}
@@ -1174,10 +1178,11 @@ def _staging_branches(
     that commit, deletes the branch, and then, unless the publication is
     tag-only, commits the build to ``main`` in a new commit; so while a first
     publication runs, either its build has no tag or its branch names the
-    tagged commit, which is not on ``main``. A retry of an already tagged
-    build whose branch has just been made from ``main`` meets both, which is
-    why the module docstring says to name a branch only while nobody
-    publishes. Every other staging branch is a problem.
+    tagged commit, which is not on ``main``. Only a publisher older than
+    ``7053b9173`` retrying an already tagged build made a branch from
+    ``main`` for it, which meets both; the module docstring says to name a
+    branch only while nobody publishes. Every other staging branch is a
+    problem.
     """
     accepted: dict[str, str] = {}
     problems.extend(
@@ -1307,12 +1312,18 @@ def switch_repository(
         if accepted == now:
             continue
         if accepted is None:
-            changed.append(_publication_in_progress(branch))
+            changed.append(
+                f"branch {branch} appeared while the switch read the repository, so "
+                "a tagged publication has started: its build would be in neither "
+                "releases.json nor a build folder; run the step again once it has "
+                "finished"
+            )
         elif now is None:
             changed.append(
                 f"branch {branch}, which --finished-branch named, was deleted while "
                 "the switch read the repository, so a publication of its build may "
-                "be starting; run the step again once nobody is publishing"
+                f"be starting; run the step again without --finished-branch {branch} "
+                "once nobody is publishing"
             )
         else:
             changed.append(
