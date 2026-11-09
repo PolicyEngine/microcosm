@@ -42,11 +42,15 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
 from microcosm.build.us_runtime import (
     default_congressional_district_vintage_crosswalk_path,
     load_congressional_district_vintage_crosswalk,
 )
-from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+from microcosm.build.us_runtime.chronicle_feed import (
+    load_us_chronicle_feed,
+    require_us_chronicle_feed_row_contracts,
+)
 from microcosm.build.us_runtime.fiscal_targets import compile_us_fiscal_target_registry
 from microcosm.build.us_runtime.medicaid_take_up import (
     apply_us_medicaid_enrollment_substitutions,
@@ -135,18 +139,19 @@ _NAMESPACE_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
         ),
     ),
     # microcosm#1074: the six packages/ed_fsa packages (chronicle#347) enter
-    # the feed at 41b2fb2b. Their portfolio facts bind only in a build that
-    # carries the imputed federal student loan balances (microcosm#1357,
-    # ``--scf-education-debt``), so a default compile turns none into a target.
+    # the feed at 41b2fb2b. Their location, age and debt-size facts bind only
+    # in a build that carries the imputed federal student loan balances
+    # (microcosm#1357, ``--scf-education-debt``; the loan-type table stays
+    # diagnostic), so a default compile turns none into a target.
     "ed_fsa": (
         "off_by_default",
         "Federal Student Aid loan portfolio tables (chronicle#347). The "
-        "location, age, debt-size and loan-type tables bind only in a build "
-        "that carries the imputed federal student loan balance columns "
+        "location, age and debt-size tables bind only in a build that "
+        "carries the imputed federal student loan balance columns "
         "(microcosm#1357: student_loan_targets=True, set by the release "
-        "tool's --scf-education-debt), and the repayment-plan and summary "
-        "tables stay diagnostic there too; the default compile, which this "
-        "manifest describes, turns none of them into a target.",
+        "tool's --scf-education-debt), and the loan-type, repayment-plan and "
+        "summary tables stay diagnostic there too; the default compile, which "
+        "this manifest describes, turns none of them into a target.",
         "compile_us_fiscal_target_registry(age_targets=True) + "
         "apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: "
         "33,250 targets, none from the feed's 461 ed_fsa facts; sample fact "
@@ -910,6 +915,14 @@ def main() -> None:
             f"{EXPECTED_FEED_SHA256}; refusing to regenerate against an "
             "unexpected feed."
         )
+    # The digest says these are the committed feed's rows; their own
+    # schema_version values must also be exactly the pin's declared row
+    # contracts, as the release tool requires.
+    require_us_chronicle_feed_row_contracts(
+        consumer_fact_schema_versions_of(facts),
+        facts_sha256=feed_sha256,
+        pin=load_us_chronicle_feed(),
+    )
 
     manifest, feed_families = build_manifest(facts, feed_sha256, args.feed_name)
 

@@ -40,6 +40,9 @@ from microcosm.build.logbook_adoption import (
     role_pins_digest,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.chronicle_feed import (
+    require_uk_chronicle_feed_row_contracts,
+)
 from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.hmrc_uprating import assert_installed_engine_is_pinned
@@ -257,6 +260,11 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
         expected_manifest_sha256=args.ledger_manifest_sha256,
+    )
+    # The rows' row contracts: the committed pin's on the committed feed, and
+    # declared ones on any other.
+    require_uk_chronicle_feed_row_contracts(
+        artifact.fact_schema_versions, facts_sha256=artifact.facts_sha256
     )
     ledger_registries = {}
     # The compile's own report of the references that did not resolve at each

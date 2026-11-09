@@ -6,6 +6,14 @@ loads and maps the ACS spine, transfers model input leaves from the dense
 donor, assigns the PUMA-anchored state/CD/county geography ladder, audits every
 fit's resolved typed weight kind, and writes the combined base. Calibration is
 deliberately downstream.
+
+Telemetry: after parsing its arguments the builder starts the emitter
+(``microcosm.build.program_telemetry``, pipeline ``us_acs_multispine_staging``),
+records a stage change at each main phase (``load_donor``,
+``fetch_acs_sources``, ``build_multispine``, ``local_inputs``,
+``audit_inputs``, ``export``) and then completion, or failure with the error.
+With ``MICROCOSM_TELEMETRY_REQUIRED=1``, which the Modal stage runner sets, an
+emitter that cannot be used stops the builder before it reads any input.
 """
 
 from __future__ import annotations
@@ -28,6 +36,8 @@ from microcosm.build import (
     weights_audit_gate,
 )
 from microcosm.build.gates import GateResult
+from microcosm.build.program_telemetry import program_telemetry
+from microcosm.build.telemetry_emitter import LocalTelemetryEmitter
 from microcosm.build.us_runtime import acs_sources
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
 from microcosm.build.us_runtime.acs_local_hours import (
@@ -46,6 +56,10 @@ from microcosm.build.us_runtime.acs_local_income import (
     ACS_LOCAL_INCOME_TRANSFER_ISSUE,
     acs_local_income_transfer_signal_gate,
     require_acs_local_income_donor,
+)
+from microcosm.build.us_runtime.acs_local_receipt_anchors import (
+    ACS_LOCAL_RECEIPT_ANCHOR_ISSUE,
+    acs_local_receipt_anchor_signal_gate,
 )
 from microcosm.build.us_runtime.acs_local_ssi_disability import (
     ACS_LOCAL_SSI_DISABILITY_ISSUE,
@@ -282,8 +296,18 @@ def _donor_release_identity(
     }
 
 
+#: The telemetry pipeline this builder reports under.
+TELEMETRY_PIPELINE = "us_acs_multispine_staging"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    with program_telemetry(pipeline=TELEMETRY_PIPELINE) as telemetry:
+        return _build(args, telemetry)
+
+
+def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
+    telemetry.transition_stage("load_donor")
     summary_path = args.summary or args.out_h5.with_suffix(".summary.json")
     _validate_artifact_paths(args, summary_path=summary_path)
 
@@ -315,6 +339,7 @@ def main(argv: list[str] | None = None) -> int:
     puma_ladder_sha256 = _sha256(args.puma_ladder)
     puma_ladder = load_us_puma_ladder(args.puma_ladder)
 
+    telemetry.transition_stage("fetch_acs_sources")
     source = acs_sources.fetch_acs_pums_sources(
         args.inputs_dir,
         manifest=manifest,
@@ -323,6 +348,7 @@ def main(argv: list[str] | None = None) -> int:
         source = replace(source, max_households=args.max_households)
     drop_group_quarters_children = _drop_acs_group_quarters_children()
 
+    telemetry.transition_stage("build_multispine")
     result = build_optional_acs_multispine(
         base,
         source,
@@ -335,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
         hours_under15_policy=args.hours_under15_policy,
         work_disability_inputs=True,
         income_transfer=True,
+        native_receipt_anchors=True,
         donor_channel=args.donor_channel,
         seed=args.seed,
         n_estimators=args.n_estimators,
@@ -345,6 +372,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     _require_puma_ladder_assignment(result)
     _require_benefit_participation_transfer(result)
+    # microcosm#1022: the ACS rows' receives_snap is native household FS,
+    # written after the transfer and before pooling; gate the pooled frame.
+    receipt_anchors = _require_local_receipt_anchors(result)
     self_employment_gate = _require_acs_self_employment_identity(result.frame)
     _require_pooled_spm_independence_role(result)
     transfer_coverage = _require_default_transfer_coverage(
@@ -359,6 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     # writer scratch at once.
     del base
     gc.collect()
+    telemetry.transition_stage("local_inputs")
     # microcosm#1020: label the ACS rows' immigration status and fill every
     # person's years_since_us_entry BEFORE the input-null audit. Left missing,
     # they enter the reviewed-null register, whose fill is the engine default:
@@ -387,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     del ssi_disability_donor
     gc.collect()
+    telemetry.transition_stage("audit_inputs")
     input_null_audit = _engine_input_null_audit(result.frame)
     gc.collect()
     hours_gate = acs_local_hours_signal_gate(
@@ -397,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
             "Local staging hours gate failed: " + "; ".join(hours_gate.failures)
         )
 
+    telemetry.transition_stage("export")
     args.out_h5.parent.mkdir(parents=True, exist_ok=True)
     staging_export_peak_bytes = _preflight_staging_export(result.frame)
     _write_dataset(result.frame, args.out_h5, period=args.period)
@@ -432,6 +465,7 @@ def main(argv: list[str] | None = None) -> int:
         "failures": list(hours_gate.failures),
         "details": dict(hours_gate.details),
     }
+    summary.update(receipt_anchors)
     summary.update(immigration)
     summary.update(work_disability)
     summary.update(income)
@@ -559,6 +593,40 @@ def _require_local_work_disability(result: AcsMultispineResult) -> dict[str, obj
     return {
         "acs_local_work_disability": receipt,
         "acs_local_work_disability_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_local_receipt_anchors(result: AcsMultispineResult) -> dict[str, object]:
+    """Gate the ACS rows' native SNAP receipt anchor; return the summary entries.
+
+    ``build_optional_acs_multispine(native_receipt_anchors=True)`` replaces the
+    transferred ``receives_snap`` with household ``FS`` on every ACS SPM unit
+    and records the receipt in its provenance. The gate must pass before the
+    staging H5 is written, and the release tool refuses a staging summary
+    without both entries (``acs_local_receipt_anchors`` and
+    ``acs_local_receipt_anchors_gate``).
+    """
+
+    receipt = result.provenance.get("acs_local_receipt_anchors")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine recorded no receipt-anchor receipt "
+            f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}); the ACS rows' receives_snap "
+            "would be the QRF transfer, not the measured household FS."
+        )
+    gate = acs_local_receipt_anchor_signal_gate(result.frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging receipt-anchor gate failed: " + "; ".join(gate.failures)
+        )
+    return {
+        "acs_local_receipt_anchors": receipt,
+        "acs_local_receipt_anchors_gate": {
             "name": gate.name,
             "passed": gate.passed,
             "failures": list(gate.failures),

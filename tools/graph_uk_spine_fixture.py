@@ -28,6 +28,7 @@ import pandas as pd
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
+from microcosm.build.uk_runtime.aps_occupation import UKAPSOccupationStageTransform
 from microcosm.build.uk_runtime.carers_allowance_take_up import (
     UKCarersAllowanceTakeUpStageTransform,
 )
@@ -132,6 +133,9 @@ from microcosm.build.uk_runtime.legacy_closure_take_up import (
     UKLegacyClosureTakeUpStageTransform,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
+from microcosm.build.uk_runtime.occupation_constants import (
+    UK_SOC2020_SUB_MAJOR_GROUPS,
+)
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
@@ -165,6 +169,9 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 )
 from microcosm.build.uk_runtime.spi_benefit_coherence import (
     UKSPIBenefitCoherenceStageTransform,
+)
+from microcosm.build.uk_runtime.spi_employment_shell import (
+    UKSPIEmploymentShellStageTransform,
 )
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
@@ -212,7 +219,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 52
+UK_FIXTURE_STAGE_COUNT = 54
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -223,6 +230,10 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "marital_status",
         "employment_status",
         "employment_sector",
+        # The SOC 2020 major group of the main or last job, and the sub-major
+        # group drawn within it (microcosm#1490).
+        "soc2020_major_group",
+        "soc2020_sub_major_group",
         "aa_category",
         "dla_sc_category",
         "dla_m_category",
@@ -494,6 +505,8 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "RETIRE1": 1 + household_id % 12 if household_id % 13 == 0 else "",
             "MJOBSECT": 1 + household_id % 2,
             "SIC": 10 + household_id % 80,
+            # SOC 2020 major groups 1-9 as the FRS codes them, 1000-9000.
+            "SOC2020": 1000 * (1 + household_id % 9),
             "FTED": 2,
             "TYPEED2": 0,
             "EDUCQUAL": 1 + household_id % 18,
@@ -1427,6 +1440,42 @@ def _etb_donor() -> pd.DataFrame:
     )
 
 
+def _aps_donor() -> pd.DataFrame:
+    """APS person rows under the codebook's names: three per sub-major group.
+
+    Each sub-major group has an employee with pay, a self-employed worker and a
+    retired adult coded by the last job, so every major group has donors; an
+    under-16 and an employee without pay are there for the cleaning to drop.
+    """
+
+    rows: list[dict[str, float]] = []
+    for index, code in enumerate(UK_SOC2020_SUB_MAJOR_GROUPS):
+        minor = code * 10 + 1
+        for kind in range(3):
+            row = 3 * index + kind
+            employed = kind < 2
+            rows.append(
+                {
+                    "AGE": 20 + row % 60,
+                    "SEX": 1 + row % 2,
+                    "GOVTOF": 1 + row % 13,
+                    "ILODEFR": 1 if employed else 3,
+                    "INECAC05": (1, 2, 16)[kind],
+                    "SC20MMN": minor if employed else -9,
+                    "SC20LMN": -9 if employed else minor,
+                    "GRSSWK": 300.0 + 25.0 * row if kind == 0 else -9.0,
+                    "PWTA22": 500.0 + row,
+                    "PIWTA22": 900.0 + row if kind == 0 else -9.0,
+                    "INDS07M": 1 + row % 20 if employed else -9,
+                    "INDS07L": -9 if employed else 1 + row % 20,
+                }
+            )
+    dropped = dict(rows[0])
+    rows.append({**dropped, "AGE": 15, "INECAC05": 26})
+    rows.append({**dropped, "GRSSWK": -8.0, "PIWTA22": -9.0})
+    return pd.DataFrame(rows)
+
+
 def _spi_donor() -> pd.DataFrame:
     rows: list[dict[str, float]] = []
     for index in range(_DONOR_ROWS):
@@ -2122,8 +2171,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 29:
-        raise RuntimeError("The legacy normalization audit is not exactly 29 cells.")
+    if observed != expected_order or len(observed) != 31:
+        raise RuntimeError("The legacy normalization audit is not exactly 31 cells.")
     return Frame(
         tables,
         frame.schema,
@@ -2204,6 +2253,7 @@ def _build_implementations(
     lcfs_household: pd.DataFrame,
     lcfs_person: pd.DataFrame,
     etb: pd.DataFrame,
+    aps: pd.DataFrame,
     spi_donor: pd.DataFrame,
     income_targets: HMRCIncomeTargetSet,
     cgt_distribution: HMRCCapitalGainsJointDistribution,
@@ -2355,6 +2405,14 @@ def _build_implementations(
             sampled_rung=True,
             donor_table=spi_donor,
             source_targets=income_targets,
+        ),
+        "spi_employment_shell": UKSPIEmploymentShellStageTransform(
+            stage=stages["spi_employment_shell"], boosted_max_iter=_QRF_ESTIMATORS
+        ),
+        "aps_occupation": UKAPSOccupationStageTransform(
+            stage=stages["aps_occupation"],
+            donor=aps,
+            boosted_max_iter=_QRF_ESTIMATORS,
         ),
         "spi_housing_shell": UKSPIHousingShellStageTransform(
             stage=stages["spi_housing_shell"], n_estimators=_QRF_ESTIMATORS
@@ -2516,6 +2574,7 @@ def generate(output: Path) -> None:
     nts_vehicle = _nts_vehicles(nts_household)
     lcfs_household, lcfs_person = _lcfs_donors()
     etb = _etb_donor()
+    aps = _aps_donor()
     spi_donor = _spi_donor()
     _write_csv(sources / "was.csv", was)
     _write_csv(sources / "was_person.csv", was_person)
@@ -2528,6 +2587,7 @@ def generate(output: Path) -> None:
     _write_csv(sources / "lcfs_household.csv", lcfs_household)
     _write_csv(sources / "lcfs_person.csv", lcfs_person)
     _write_csv(sources / "etb.csv", etb)
+    _write_csv(sources / "aps.csv", aps)
     _write_csv(sources / "spi_donor.csv", spi_donor)
 
     income_targets = _hmrc_income_targets(Path("synthetic-hmrc.ods"))
@@ -2556,6 +2616,7 @@ def generate(output: Path) -> None:
         lcfs_household=lcfs_household,
         lcfs_person=lcfs_person,
         etb=etb,
+        aps=aps,
         spi_donor=spi_donor,
         income_targets=income_targets,
         cgt_distribution=cgt_distribution,
@@ -2644,6 +2705,7 @@ def generate(output: Path) -> None:
             "lcfs_household": "lcfs_household.csv",
             "lcfs_person": "lcfs_person.csv",
             "etb": "etb.csv",
+            "aps": "aps.csv",
             "spi_donor": "spi_donor.csv",
             "hmrc_income_targets": "hmrc_income_targets.json",
             "cgt_distribution": "cgt_distribution.json",

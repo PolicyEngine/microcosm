@@ -74,6 +74,14 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "cms_medicare": "Medicare",
             "part_b_premium_income": "Part B premium income",
         },
+        "ed_fsa": {
+            "federal_student_loan_balance": "Federal student loan balance",
+            "federal_student_loan_borrowers": "Federal student loan borrowers",
+            "loan_balance_excluding_parent_plus": (
+                "Federal student loan balance excluding Parent PLUS"
+            ),
+            "parent_plus_loan_balance": "Parent PLUS loan balance",
+        },
         "federal_reserve_z1": {
             "federal_reserve.z1.households_nonprofits_net_worth": (
                 "Households and nonprofit organizations net worth"

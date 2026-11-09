@@ -1077,6 +1077,49 @@
       "notes": "Stage-time rules of the company_cars receipt that hold for any population (PolicyEngine/uk-autumn-budget-dashboard-2026#316). It fails on any record the receipt counts against them (a non-finite or negative value; a holder without a list price; an input written for someone without a car; an unknown fuel type; a car that emits CO2 without a figure, or an electric car with one; private fuel on an electric car; contributions above the list price; an electric range on a car outside 1 to 50 g/km; an SPI benefit above its EPB; a tape row's employee pension contribution above its carved pay, which salary_sacrifice would refuse) and on any tape row whose pay plus the car and fuel benefits the engine computes again on the stage's output misses the pay the row brought in (the tape's PAY + EPB + TAXTERM) by more than maximum_pay_identity_error_gbp, rounded up to the penny: the carve-out of the benefits from pay assumes how the engine prices a car, and the engine computes in single precision (María's ruling of 30 October 2026). It is no population fact check, so the synthetic smoke build blocks on it as every licensed build does; how far the calibrated file sits from HMRC's company car tables is not gated (María's ruling of 28 October 2026 on the ISA facts), and no build step measures it yet: comparing the calibrated file with Tables 1, 3A and 4 is a manual step."
     },
     {
+      "id": "uk_stage_spi_employment_shell_fit",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "spi_employment_shell",
+        "check": "occupation_redraw",
+        "minimum_log_loss_gain": 0.2,
+        "calibration_slope_bounds": [
+          0.85,
+          1.15
+        ],
+        "maximum_pay_band_share_gap": 0.03,
+        "maximum_status_group_share_gap": 0.03,
+        "maximum_blend_log_loss_excess": 0.005
+      },
+      "notes": "Stage-time check of the spi_employment_shell receipt's held-out evidence (microcosm#1490): five folds dealing whole FRS households, scored on the FRS adults the occupation model trains on. It fails when the evidence was not measured; when the model's out-of-fold log loss is not at least minimum_log_loss_gain below the constant's (the training folds' class shares); when the blend's log loss exceeds its better learner's by more than maximum_blend_log_loss_excess; when the calibration slope (1 when the probabilities spread as much as the outcomes do) falls outside calibration_slope_bounds or the Platt fit fell back to class rates; when the weighted mean gap between predicted and observed occupation shares within the pay bands exceeds maximum_pay_band_share_gap; or when the largest gap within a status group exceeds maximum_status_group_share_gap. The bounds sit wide of the blend measured on FRS 2024-25 coded adults: a log-loss gain of 0.30, a slope of 1.01, a pay-band gap of 0.013, status-group gaps of at most 0.012, and a log loss 0.010 below its better learner. A population fact check: a synthetic smoke build records it without blocking, since a fixture of a few households cannot fit the population's occupation model."
+    },
+    {
+      "id": "uk_stage_aps_occupation_fit",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "aps_occupation",
+        "check": "sub_major_draw",
+        "minimum_log_loss_gain": 0.25,
+        "calibration_slope_bounds": [
+          0.85,
+          1.15
+        ],
+        "maximum_pay_band_share_gap": 0.02,
+        "maximum_region_share_gap": 0.02,
+        "maximum_blend_log_loss_excess": 0.005,
+        "maximum_frame_share_gap": 0.1
+      },
+      "notes": "Stage-time check of the aps_occupation receipt's held-out evidence (microcosm#1490): within each major group, five stratified folds by person (the APS End User Licence file has no household identifier), scored on the APS donors. It fails when the evidence was not measured; when the model's out-of-fold log loss, pooled over the major groups by donor weight, is not at least minimum_log_loss_gain below the constant's (each group's training folds' class shares); when the blend's pooled log loss exceeds its better learner's by more than maximum_blend_log_loss_excess; when a major group's calibration slope falls outside calibration_slope_bounds or its Platt fit fell back to class rates; when the pooled gap between predicted and observed sub-major shares within the pay bands exceeds maximum_pay_band_share_gap, or within the regions maximum_region_share_gap; or when, in a major group resting on at least three FRS households, the FRS rows' expected sub-major shares miss the donors' by more than maximum_frame_share_gap (total variation), which bounds how far the FRS's own mix of age, sex, region, status, pay and section within a group moves the draw from the APS. The bounds sit wide of the stage measured on the APS April 2024 - March 2025 donors and FRS 2024-25 adults: a pooled log-loss gain of 0.37 (0.553 against 0.927), slopes of 0.95 to 1.01, a pay-band gap of 0.003, a region gap of 0.005, a log loss 0.006 below its better learner, and FRS rows' expected shares within 0.060 of the donors' (professional occupations; the other groups within 0.047). A population fact check: a synthetic smoke build records it without blocking, since a fixture of a few donors cannot fit the population's model."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",
@@ -1288,7 +1331,9 @@
           "household.data_zone_code",
           "household.district_electoral_area_code",
           "household.electricity_consumption",
+          "household.electricity_kwh",
           "household.gas_consumption",
+          "household.gas_kwh",
           "household.geography_household_key",
           "household.has_fuel_consumption",
           "household.uses_energy_prepayment_meter",
@@ -1378,6 +1423,7 @@
           "person.is_claimant_or_partner",
           "person.is_engaged_in_owned_company_trade",
           "person.is_hbai_dependent_child",
+          "person.is_in_full_time_education",
           "person.is_in_non_advanced_education",
           "person.is_parent",
           "person.is_uc_claimant",
@@ -1426,6 +1472,8 @@
           "person.salary_sacrifice_asked",
           "person.salary_sacrifice_reported",
           "person.sic_industry_division",
+          "person.soc2020_major_group",
+          "person.soc2020_sub_major_group",
           "person.stands_as_sole_owner_or_partner_of_company",
           "person.statutory_paternity_pay",
           "person.student_loan_balance",
@@ -1628,6 +1676,30 @@
         ]
       },
       "notes": "The person student-loan plan assignment must remain inside the PolicyEngine-UK StudentLoanPlan enum domain."
+    },
+    {
+      "id": "uk_soc2020_major_group_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "soc2020_major_group"
+        ]
+      },
+      "notes": "The person SOC 2020 major group must remain inside the PolicyEngine-UK SOC2020MajorGroup enum domain. Checked on the frame the release ships, after every stage that writes the column: frs_employment carries the FRS code, and a later stage may redraw it (microcosm#1490)."
+    },
+    {
+      "id": "uk_soc2020_sub_major_group_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "soc2020_sub_major_group"
+        ]
+      },
+      "notes": "The person SOC 2020 sub-major group must remain inside the PolicyEngine-UK SOC2020SubMajorGroup enum domain. Checked on the frame the release ships, after aps_occupation draws it within each person's major group (microcosm#1490)."
     },
     {
       "id": "uk_council_tax_band_domain_terminal",

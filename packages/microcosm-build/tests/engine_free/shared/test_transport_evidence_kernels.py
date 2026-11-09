@@ -137,6 +137,15 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
     [
         "microcosm.calibrate.hierarchy_labels",
         "microcosm.diagnostics.catalogs",
+        # microcosm#1490: microcosm.fit exports its categorical classifier,
+        # held-out scores and keyed donors, so a binding that imports the
+        # package reaches them.
+        "microcosm.fit.categorical",
+        "microcosm.fit.donors",
+        "microcosm.fit.held_out",
+        # microcosm#1074: us_runtime.fiscal_targets imports the FSA student
+        # loan targets.
+        "microcosm.build.us_runtime.fsa_student_loan_targets",
     ]
 )
 BATTERY = "toy.gates.terminal"
@@ -539,6 +548,8 @@ class TestImplementationHashes:
         # At base 25c8cc14 the battery's binding identity held 197 modules;
         # w4 adds the leaf and exactly the modules it imports that the
         # bindings did not already reach (the graph package among them).
+        # microcosm#1073 adds us_runtime.scf_education_debt, which the
+        # us_runtime package imports, so the base now holds 198.
         # Modules the bindings later reach without the leaf are listed in
         # BINDING_MODULES_ADDED_AFTER_BASE.
         modules = set()
@@ -546,7 +557,7 @@ class TestImplementationHashes:
             _, digests = binding_identity.describe(binding, path=name)
             modules |= set(digests)
         assert len(modules) == (
-            197 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
+            198 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
         )
         assert BINDING_MODULES_ADDED_AFTER_BASE <= modules
         assert LEAF_ADDED_MODULES <= modules

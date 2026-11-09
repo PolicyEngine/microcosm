@@ -1,37 +1,40 @@
 """UK fiscal target coverage declarations.
 
-The UK national calibration surface is currently ingested from
-policyengine-uk-data via :func:`microcosm.calibrate.specs_from_pe_surface`, whose
-docstring calls that "the transitional path from harness-extracted surfaces to
-declared facts". This module starts the declared-fact side for the UK, following
-``us_runtime.fiscal_targets``.
+UK national targets compile at build time from ``uk/target_references.json``,
+the Ledger target references generated from the national rows of
+``uk/uk_population_targets.json``. This module holds no target values. It
+declares the coverage requirement for HMRC's three Table 1 capital gains
+totals, following ``us_runtime.fiscal_targets``, and the person columns that
+``uk_runtime.cgt_calibration`` prepares for its own capital gains frame.
 
-The first facts declared here are capital gains, because their absence is
+Capital gains get this requirement because their absence is
 measurable. The published ``populace-uk`` release (``populace-uk-2023-dd68c73``)
 carries 149 targets and none of them constrain capital gains, so the calibrated
 weights leave the gains distribution unanchored: reading ``capital_gains``
 weighted by ``household_weight`` straight out of ``populace_uk_2023.h5`` gives
 1.47m CGT taxpayers holding £96.0bn of gains at a £65,374 mean, against HMRC's
-378k, £65.9bn and ~£174,000. The taxpayer count is 3.9x the administrative
-figure and the mean gain is 62% below it — the imputation spreads gains across
-far too many households in amounts that are individually far too small.
+2023-24 figures of 378k, £65.9bn and ~£174,000. The taxpayer count is 3.9x the
+administrative figure and the mean gain is 62% below it — the imputation
+spreads gains across far too many households in amounts that are individually
+far too small.
 
 That is distributional error, not a level shift, so it survives any
 revenue-side correction. It matters for any CGT analysis: on an uncalibrated
 baseline the share of people affected by a rate reform comes out roughly three
 times too high.
 
-The CGT values no longer live in this module. They compile from
-``uk/target_references.json`` against HMRC ``cgt_statistics`` Ledger facts at
-build time. The measures remain person-entity, following the UK convention
-established by
-``uk_runtime.hmrc_calibration``: the measures are person-level, so the
-constraint rows live on the person table while the calibrated weights stay on
-the household table via the frame's household ``Weights``. Both therefore need
-prepared columns on the person frame — the registry refuses callables so that
-it can serialize, and count-like facts are documented to use prepared
-indicator/count columns. See ``UK_CGT_REQUIRED_COLUMNS``, and
-``uk_runtime.cgt_calibration`` for the materialization that prepares them.
+The capital gains values come from HMRC ``cgt_statistics`` Ledger facts. The
+three Table 1 totals measure the prepared person columns
+``hmrc/capital_gains_total``, ``hmrc/cgt_taxpayers`` and ``hmrc/cgt_liability``,
+which ``uk_runtime.ledger_targets.materialize_uk_ledger_targets`` builds from
+the bindings in ``uk/uk_population_targets.json``; the other capital gains
+facts measure columns of their own. All of them follow the UK convention of
+``uk_runtime.hmrc_calibration``: the constraint rows live on the person table
+while the calibrated weights stay on the household table through the frame's
+household ``Weights``. The registry refuses callables so that it can serialize,
+so each measure has to be a prepared column. No compiled fact measures
+``UK_CGT_REQUIRED_COLUMNS``, the two columns that ``uk_runtime.cgt_calibration``
+prepares for its own frame.
 """
 
 from __future__ import annotations
@@ -46,7 +49,8 @@ __all__ = [
     "UK_FISCAL_TARGET_REGISTRY",
 ]
 
-#: Prepared person columns the frame must expose for these facts to compile.
+#: Person columns that ``uk_runtime.cgt_calibration`` prepares for its own
+#: capital gains frame. No compiled target measures them.
 #:
 #: ``uk_cgt_measure_gains_amount`` is each person's chargeable gains, zeroed on
 #: people who are not CGT taxpayers.

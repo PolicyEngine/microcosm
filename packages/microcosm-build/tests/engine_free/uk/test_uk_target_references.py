@@ -131,8 +131,13 @@ _TEST_PATHS = paths_for("microcosm-build")
 # tax nation rows, pinned to the UK, and SLC's three nation repayment rows in
 # place of the devolved total; microcosm#1418: HMRC's five 2024-25 company
 # car rows; microcosm#1426: HMRC's two High Income Child Benefit Charge rows,
-# measured diagnostics
-ACTIVE_REFERENCE_COUNT = 1425
+# measured diagnostics; microcosm#1490: the APS's people in employment by SOC
+# 2020 major group, nine groups over the twelve region-tier areas, and by
+# sub-major group and sex, 50 UK rows; the November event data: PRIS 2026's
+# Scottish landlords' receipts and expenses, measured diagnostics, and ONS's
+# single years 16 to 24 by sex in place of the 16-17, 18-19 and 20-24 sex
+# bands (eighteen rows for six)
+ACTIVE_REFERENCE_COUNT = 1597
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -1966,8 +1971,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     # microcosm#1123 adds the LFS household estimates for England's regions
     # and ITL Table 2.2's higher and additional rate taxpayers; microcosm#1301
     # adds the three high-value homes region rows; microcosm#1069 adds Table
-    # 2.2's taxpayers of State Pension age and aged 65 and over.
-    assert len(two_level) == 60
+    # 2.2's taxpayers of State Pension age and aged 65 and over; microcosm#1490
+    # adds the APS's people in employment by SOC 2020 major group.
+    assert len(two_level) == 69
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
@@ -1976,7 +1982,8 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     spi_region = [
         target_id for target_id in two_level if target_id.startswith("hmrc.spi_region.")
     ]
-    assert len(ons) == 10 and len(mhclg) == 9 and len(hmrc) == 2
+    # The nine APS occupation rows (microcosm#1490) join the ten ONS ones.
+    assert len(ons) == 19 and len(mhclg) == 9 and len(hmrc) == 2
     assert len(spi_region) == 30
     itl_table_2_2 = [
         target_id for target_id in two_level if target_id.startswith("hmrc.itl.")
@@ -2091,9 +2098,11 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     # English-region household cells and 24 ITL Table 2.2 marginal-rate
     # cells (microcosm#1123), 28 high-value homes cells, three thresholds
     # over England's regions and Wales less the two signed out below the
-    # small-cell floor (microcosm#1301), and 24 ITL Table 2.2 cells of
-    # taxpayers of State Pension age and aged 65 and over (microcosm#1069).
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 676
+    # small-cell floor (microcosm#1301), 24 ITL Table 2.2 cells of
+    # taxpayers of State Pension age and aged 65 and over (microcosm#1069),
+    # and 108 APS cells, nine SOC 2020 major groups over the twelve
+    # region-tier areas (microcosm#1490).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 784
     # The twelve ONS cells of a band sum to the UK row of the same
     # publication (the 0-9 band: 7,364,365 at mid-2025, microcosm#1123).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]
