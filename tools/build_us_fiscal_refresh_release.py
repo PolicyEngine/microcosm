@@ -2055,11 +2055,16 @@ def _scf_wealth_gate_record(
     calibration and before any subset export. ``financial_asset_source_is_scf``
     draws one uniform per household in sorted order of the blend-stage
     household ids, so a household's draw depends on that whole id set. The
-    record pins the set (count and SHA-256 of the sorted unique household ids
-    as little-endian int64; every household has one head, so this is the set
-    the draw sorts): when a published H5's household ids hash to the same
-    value, the seed and period reproduce each household's source. A subset release (L0, exact-k) exports part of
-    the set and cannot be audited that way from the file alone.
+    record pins the set: its count and the SHA-256 of the sorted unique
+    household ids, as little-endian int64 when every id is integral (every
+    release so far) and as float64 otherwise. ``encoding`` names which, and
+    the two encodings share one digest space, so a verifier compares
+    ``encoding`` as well as ``sha256``. Every household has one head, so this
+    is the set the draw sorts: when a published H5's household ids give the
+    same encoding and digest, the seed and period reproduce each household's
+    source. A subset release (L0, exact-k) exports part of the set and cannot
+    be audited that way from the file alone. Ids that are neither integers
+    nor floats, and unsigned ids beyond int64, are refused.
 
     Unlike the sibling gate records, this one is scrubbed: its details carry
     floats that are NaN on a degenerate frame, and both artifacts serialize
@@ -2080,18 +2085,24 @@ def _scf_wealth_gate_record(
             return _finite_or_none(value)
         return value
 
-    ids = np.unique(
-        pd.to_numeric(pd.Series(list(household_ids)), errors="raise").to_numpy()
-    )
+    values = pd.to_numeric(pd.Series(list(household_ids)), errors="raise").to_numpy()
+    if values.size == 0:
+        values = values.astype(np.int64)
+    # Neither encoding holds booleans, complex values or unsigned ids beyond
+    # int64 without collisions, so those are refused rather than recorded.
+    if values.dtype.kind not in "iuf":
+        raise TypeError(
+            f"blend-stage household ids must be integers or floats, not {values.dtype}"
+        )
+    ids = np.unique(values)
+    if ids.dtype.kind == "u" and ids.size and int(ids.max()) > np.iinfo(np.int64).max:
+        raise ValueError("a blend-stage household id exceeds the int64 range")
     # Integral ids (every release so far) hash as int64; anything else keeps
     # its float64 value, so distinct ids never collapse into one digest.
-    integral = bool(
-        np.issubdtype(ids.dtype, np.integer)
-        or (
-            np.isfinite(ids).all()
-            and (ids == np.round(ids)).all()
-            and (np.abs(ids) < 2**63).all()
-        )
+    integral = ids.dtype.kind in "iu" or bool(
+        np.isfinite(ids).all()
+        and (ids == np.round(ids)).all()
+        and ((ids >= -(2**63)) & (ids < 2**63)).all()
     )
     id_bytes = (ids.astype("<i8") if integral else ids.astype("<f8")).tobytes()
     return {

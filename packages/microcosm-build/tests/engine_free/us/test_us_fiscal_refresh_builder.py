@@ -12773,22 +12773,42 @@ def test_asset_blend_gate_record_is_strict_json_and_pins_the_id_set() -> None:
         np.array([2, 1, 3, 1]),
     )
     assert shuffled["blend_household_ids"] == record["blend_household_ids"]
+
+    def blend_ids(household_ids):
+        return builder._scf_wealth_gate_record(
+            builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
+            household_ids,
+        )["blend_household_ids"]
+
     # Fractional ids keep their values: distinct sets never share a digest.
-    fractional = builder._scf_wealth_gate_record(
-        builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
-        [1.1, 1.2],
-    )["blend_household_ids"]
-    subset = builder._scf_wealth_gate_record(
-        builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
-        [1.2],
-    )["blend_household_ids"]
-    assert fractional["encoding"].endswith("float64")
-    assert fractional["sha256"] != subset["sha256"]
-    float_integral = builder._scf_wealth_gate_record(
-        builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
-        [3.0, 1.0, 2.0],
-    )["blend_household_ids"]
-    assert float_integral == record["blend_household_ids"]
+    fractional = blend_ids([1.2, 1.1])
+    assert fractional == {
+        "count": 2,
+        "sha256": hashlib.sha256(
+            np.array([1.1, 1.2], dtype="<f8").tobytes()
+        ).hexdigest(),
+        "encoding": "sorted unique household_id, little-endian float64",
+    }
+    subset = blend_ids([1.2])
+    assert subset["count"] == 1
+    assert subset["sha256"] != fractional["sha256"]
+    # Integral floats record as int64, down to the int64 floor.
+    assert blend_ids([3.0, 1.0, 2.0]) == record["blend_household_ids"]
+    assert blend_ids([float(-(2**63))]) == blend_ids([-(2**63)])
+    assert blend_ids([-(2**63)])["encoding"].endswith("int64")
+    assert blend_ids(np.array([5, 3], dtype=np.uint64)) == blend_ids([3, 5])
+    assert blend_ids([]) == {
+        "count": 0,
+        "sha256": hashlib.sha256(b"").hexdigest(),
+        "encoding": "sorted unique household_id, little-endian int64",
+    }
+    # No encoding holds these without collisions, so they are refused.
+    with pytest.raises(TypeError):
+        blend_ids([True, False])
+    with pytest.raises(TypeError):
+        blend_ids([1 + 1j])
+    with pytest.raises(ValueError):
+        blend_ids(np.array([2**63 + 5], dtype=np.uint64))
 
 
 def test_release_calibration_diagnostics_record_the_asset_blend_audit(
