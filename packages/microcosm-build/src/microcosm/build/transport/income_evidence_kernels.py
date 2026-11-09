@@ -27,12 +27,13 @@ refuses, or carries the run's own content, on its own:
 Each kernel emits one canonical JSON artifact whose header has the shape of
 :func:`~microcosm.build.transport.evidence_contract.evidence_header`. The
 producer hash is the kernel's own implementation hash, over the modules
-:data:`INCOME_EVIDENCE_KERNEL_MODULES` lists for it: this module and the other
-first-party modules whose source its ``run()`` executes, except the graph
-runtime's kernel protocol, ``microcosm.graph.kernel``. As in the evidence
-kernels' lists, ``microcosm.graph.decl`` stays out: the runs read its
-``ROWS_ALL`` and compare its ``ArtifactType`` values without executing its
-source. The trace test checks executed source and can't see a constant read.
+:data:`INCOME_EVIDENCE_KERNEL_MODULES` lists for it: this module, every other
+first-party module whose source its ``run()`` executes, and every first-party
+module outside ``microcosm.graph`` whose constants it reads.
+``microcosm.graph.kernel`` and ``microcosm.graph.decl`` stay out, as in the
+evidence kernels' lists. The trace test checks the executed modules and can't
+see a constant read, so a comment marks each entry whose module a run only
+reads constants from.
 ``evidence_contract`` hashes only the kernels it lists, and this module stays
 outside the gate battery's binding closure, so adding it re-keys no battery.
 
@@ -194,10 +195,12 @@ _CALIBRATION_DECODE = (
 )
 _SCHEMA = "microcosm.frame.schema"
 #: Each kernel's source modules, in ``source_hash`` order: this module first,
-#: then the other first-party modules whose source its ``run()`` executes,
-#: with ``microcosm.graph.canonical`` last. The module docstring names the two
-#: graph modules the lists leave out. An edit to any listed module changes the
-#: kernel's implementation hash, and so its node's key.
+#: then the modules the module docstring describes, with
+#: ``microcosm.graph.canonical`` last. "Constants only" marks an entry whose
+#: module the run never executes; keep it, or an edit there (to the
+#: preparation type the native report accepts, say) leaves the hash unchanged.
+#: An edit to any listed module changes the kernel's implementation hash, and
+#: so its node's key.
 INCOME_EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         INCOME_IDENTITY_REF: (
@@ -205,6 +208,7 @@ INCOME_EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType
             _GRAPH_INPUTS,
             _EVIDENCE_CONTRACT,
             _MEASURE_KERNELS,
+            # Constants only: UNIVERSE_STATES.
             _REFERENCE_INTERVALS,
             _CANONICAL,
         ),
@@ -226,7 +230,9 @@ INCOME_EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType
             "microcosm.build.ledger_artifact",
             "microcosm.build.ledger_targets",
             "microcosm.build.chronicle_epoch",
+            # Constants only: CALIBRATION_PREPARATION_TYPE.
             "microcosm.build.transport.artifact_types",
+            # Constants only: SOURCE_HOUSEHOLD_ID_COLUMN.
             "microcosm.frame.concepts",
             *_CALIBRATION_DECODE,
             _SCHEMA,
