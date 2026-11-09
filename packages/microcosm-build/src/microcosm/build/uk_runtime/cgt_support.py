@@ -27,7 +27,7 @@ The support masses are read from the vendored ``hmrc_cgt_conditioning_facts.json
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -120,6 +120,22 @@ CGT_SUPPORT_MASS_CHANGE_REASON = (
     "Capital-gains support split divides the wealthiest households of each "
     "HMRC Table 3 income band into light copies at equal weight; every "
     "household's mass and the total household mass are conserved."
+)
+#: The exact-total correction is tried on at most this many of the households
+#: a support split left whole, heaviest first, before spi_support's shared
+#: fallback (microcosm#931; :func:`_exact_support_weights`, which the
+#: high-value home support split shares). Each candidate that cannot carry the
+#: correction costs a few dozen sums of the frame's weights, so the cap bounds
+#: the search on a national frame.
+CGT_SUPPORT_CORRECTION_CANDIDATES = 64
+#: The one exception to "every copy carries weight / copies" that the
+#: ``copy_rule`` of both support splits declares, built on the cap so the
+#: declarations restate it (microcosm#931).
+CGT_SUPPORT_EXACT_TOTAL_EXCEPTION = (
+    f"except where none of the {CGT_SUPPORT_CORRECTION_CANDIDATES} heaviest "
+    "households left whole can carry the exact-total correction, when the "
+    "shared fallback can put it on a root or copy, off weight / copies by "
+    "about one ulp of the total weight"
 )
 _HOUSEHOLD_SUPPORT_CHANNEL_COLUMN = "household_support_channel"
 #: The geographic clone index the clone-first spine gives every household
@@ -583,12 +599,17 @@ def split_cgt_support_households(
     sit below it, and ``n`` is at most the field's bound of 10,000), records
     ``k`` in ``cgt_support_copy_index`` and carries a full copy of the
     household's person and benefit-unit rows. The exact-total correction
-    lands on the heaviest unselected incumbent so every copy weight stays
-    bitwise ``w / n``, unless that household cannot carry it: then
-    spi_support's shared fallback places it, and that row can be a root or
-    copy (:func:`_exact_support_weights`). Refuses a frame the incidence
-    clone stage (``cgt_incidence_clone``) has already seen or one this stage
-    has already split.
+    lands on a household the split left whole (an unselected one, or a
+    selected one left at one copy): the first of the
+    :data:`CGT_SUPPORT_CORRECTION_CANDIDATES` heaviest that can carry it, so
+    every root and copy weighs bitwise ``w / n``. A selected one carries it
+    only where its corrected weight leaves the walk's selection and its one
+    copy as they were, so the rule rerun on the output divides the same
+    households. Only where none of them can does spi_support's shared
+    fallback place it, and that row can be a root or copy, then off ``w /
+    n`` by about one ulp of the total (:func:`_exact_support_weights`).
+    Refuses a frame the incidence clone stage (``cgt_incidence_clone``) has
+    already seen or one this stage has already split.
     """
 
     validate_uk_national_frame(frame)
@@ -685,10 +706,38 @@ def split_cgt_support_households(
     final_benunit = pd.concat([benunit, *copy_benunit], ignore_index=True)
     final_household = pd.concat([household, *copy_household], ignore_index=True)
     final_weights = np.concatenate([incumbent_weights, *copy_weights])
+
+    def keeps_the_split(row: int, weight: float) -> bool:
+        """Whether whole household ``row`` at ``weight`` leaves the split as it was.
+
+        An unselected household sits past its band's crossing, so its weight
+        moves neither the walk nor its count of one. A selected household
+        left at one copy can move both, so it carries the correction only
+        where the walk rerun on its corrected weight selects the same
+        households and that weight still counts one copy: the rule rerun on
+        the stage's output then divides the same households the same way, as
+        the identity tool's recompute does.
+        """
+
+        if not selected[row]:
+            return True
+        counted = cgt_support_copy_counts(
+            [weight], CGT_SUPPORT_MAXIMUM_COPY_WEIGHT, clone_count=clone_count
+        )
+        if int(counted[0]) != 1:
+            return False
+        moved = weights.copy()
+        moved[row] = weight
+        reselected, _ = select_cgt_support_households(
+            household_ids, moved, income_band, wealth, support_by_band
+        )
+        return bool(np.array_equal(reselected, selected))
+
     exact = _exact_support_weights(
         final_weights,
         target=old_total,
-        unselected=np.flatnonzero(~selected & (incumbent_weights > 0.0)),
+        whole=np.flatnonzero((copies == 1) & (incumbent_weights > 0.0)),
+        keeps_the_split=keeps_the_split,
     )
     receipt = MassChangeRecord(
         entity="household",
@@ -763,24 +812,49 @@ def split_cgt_support_households(
 
 
 def _exact_support_weights(
-    values: np.ndarray, *, target: float, unselected: np.ndarray
+    values: np.ndarray,
+    *,
+    target: float,
+    whole: np.ndarray,
+    keeps_the_split: Callable[[int, float], bool] | None = None,
 ) -> Weights:
     """Importance weights summing bitwise to ``target``.
 
-    The correction lands on the heaviest unselected incumbent so every split
-    weight stays exactly ``w / n``. When that correction is not representable,
-    or no unselected incumbent is positive, it falls back to spi_support's
-    shared multi-candidate correction, whose candidates (the heaviest, last,
-    first, lightest and middle positive rows) can be a root or copy of a
-    split household.
+    ``whole`` gives the positions of the households a support split left
+    whole: the positive-weight rows it did not divide, whose weights it left
+    as they were (the unselected households, and at the CGT split the
+    selected ones left at one copy). The correction is tried on the
+    :data:`CGT_SUPPORT_CORRECTION_CANDIDATES` heaviest of them, heaviest
+    first and tied weights in row order, and lands on the first that can
+    carry it, so every root and copy of a divided household keeps bitwise
+    ``w / n`` (microcosm#931). A candidate carries it where the correction
+    is representable on it and ``keeps_the_split``, where given, accepts its
+    corrected weight: the CGT split refuses a selected household left at one
+    copy whose corrected weight would move the walk's selection or count a
+    second copy. The first candidate is the heaviest unselected household,
+    the one corrected before, wherever no selected household left at one
+    copy outweighs it or ties it from an earlier row; a total already exact
+    comes back unchanged.
+
+    Only where none of them can carry it, or there is none, does
+    spi_support's shared multi-candidate correction place it, unchanged: its
+    candidates (the heaviest, last, first, lightest and middle positive rows)
+    can be a root or copy of a divided household, which is then off ``w / n``
+    by about one ulp of the total. On the CGT nesting scenario at 7 and 13
+    clones, for one, every whole household sits in the half of NumPy's
+    pairwise sum whose other half carries exactly half an ulp of the total,
+    so no change to its weight rounds the total onto the target.
     """
 
-    if unselected.size:
-        heaviest = int(unselected[np.argmax(values[unselected])])
+    rows = np.asarray(whole, dtype=np.int64)
+    heaviest_first = rows[np.lexsort((rows, -values[rows]))]
+    for index in heaviest_first[:CGT_SUPPORT_CORRECTION_CANDIDATES].tolist():
         corrected = _exact_total_correction(
-            values, target=target, correction_index=heaviest
+            values, target=target, correction_index=index
         )
-        if corrected is not None:
+        if corrected is not None and (
+            keeps_the_split is None or keeps_the_split(index, float(corrected[index]))
+        ):
             return Weights(corrected, WeightKind.IMPORTANCE)
     return _importance_weights_with_exact_total(values, target)
 
@@ -841,7 +915,8 @@ def cgt_support_split_operation_parameters() -> tuple[
                     "copies = ceil(geographic clone count x household weight / "
                     "maximum_copy_weight), the quotient snapped to the nearest "
                     "integer within clone-count ulps when the clone count "
-                    "exceeds one; every copy carries weight / copies"
+                    "exceeds one; every copy carries weight / copies, "
+                    f"{CGT_SUPPORT_EXACT_TOTAL_EXCEPTION}"
                 ),
                 "id_remapping": (
                     "copy-id table field cgt_support_split; copy k takes every "
