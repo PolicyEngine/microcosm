@@ -21,7 +21,7 @@ from microcosm.build.transport.compose import (
     compose_transport_graph,
     validate_transport_activation,
 )
-from microcosm.build.transport.entitlement import entitlement_extension
+from microcosm.build.transport.entitlement import _gate_evidence, entitlement_extension
 from microcosm.build.transport.takeup_kernels import (
     decode_bands,
     decode_cell_diagnostics,
@@ -920,6 +920,16 @@ def test_no_gate_evidence_leaves_the_graph_unchanged(tmp_path):
     assert "gate_evidence" not in fixture.spec["resources"]["entitlement_graph"]
     empty = _with_gate_evidence(fixture, [])
     assert graph_to_json(empty.graph()) == graph_to_json(fixture.graph())
+
+
+def test_gate_evidence_without_rows_reads_no_other_resource():
+    """Only declared rows need the graph's batteries, so only they read it."""
+    spec = {"country": "xx", "resources": {}}
+    assert _gate_evidence(spec, {}, {}) == []
+    assert _gate_evidence(spec, {"gate_evidence": []}, {}) == []
+    row = {"name": "scenario_v1", "scenario": "V1", "phase": "terminal"}
+    with pytest.raises(ValueError, match="missing resource transport_graph"):
+        _gate_evidence(spec, {"gate_evidence": [row]}, {"V1": "nz.v.V1.gap"})
 
 
 @pytest.mark.parametrize(
