@@ -1771,3 +1771,65 @@ def test_the_scoring_plan_holds_each_consumers_reform_pass_count(
     assert planned("reform_validation") > 0
     # The diagnostics' record of the plan keeps its shape.
     assert "reform_passes" not in plan.record()["consumers"]["reform_coverage_smoke"]
+
+
+def test_the_release_s_reform_validation_reports_each_pass_of_its_count(
+    builder, fake_reforms, monkeypatch, tmp_path
+) -> None:
+    """``_main`` hands the writer the plan's count beside its baseline plan."""
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path / "h5")
+    fit = _calibration_result_with_in_sample_fit(builder.PERIOD)
+    plan = builder._record_post_export_scoring_plan(
+        _plan_args(), n_households=7, result=fit, release_id="fixture-release"
+    )
+    planned = getattr(plan, "planned_reform_passes", None)
+    assert planned is not None
+    passes = planned("reform_validation")
+    assert passes > 0
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+    builder._write_reform_validation(
+        release_dir=release_dir,
+        dataset_path=scorer.dataset_path,
+        result=fit,
+        registry=TargetRegistry((), country="us"),
+        release_id="fixture-release",
+        simulate_out_of_sample=True,
+        post_export_scorer=scorer,
+        baseline_plan=plan.baseline_plan("reform_validation"),
+        planned_reform_passes=passes,
+    )
+    outer = [entry["outer"] for entry in recorder.requests if entry["outer"]]
+    assert [counter.done for counter in outer[:: scorer.n_batches]] == list(
+        range(1, passes + 1)
+    )
+    assert {(counter.total, counter.unit) for counter in outer} == {
+        (passes, "reform_pass")
+    }
+
+
+def test_a_consumer_scored_without_a_recorded_plan_counts_its_own_passes(
+    builder, fake_reforms, monkeypatch, tmp_path
+) -> None:
+    """A direct caller's dry run records the pass count with the baseline plan."""
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path)
+    payload_for = builder._reform_validation_consumer(
+        result=_empty_calibration_result(), release_id="fixture-release"
+    )
+    builder._score_post_export_consumer(
+        "reform_validation",
+        payload_for,
+        dataset_path=scorer.dataset_path,
+        post_export_scorer=scorer,
+        baseline_plan=None,
+        maximum_microsim_batch_size=3,
+    )
+    passes = scorer.consumer_records["reform_validation"]["reform_passes"]
+    outer = [entry["outer"] for entry in recorder.requests if entry["outer"]]
+    assert outer
+    assert {counter.total for counter in outer} == {passes}
+    assert outer[-1].done == passes
