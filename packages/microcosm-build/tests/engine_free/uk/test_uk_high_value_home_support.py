@@ -229,6 +229,142 @@ def _identity_tool():
     return module
 
 
+#: Owner weights of the correction frame (synthetic), lowest value first.
+_CORRECTION_OWNERS = [
+    305.47,
+    148.26,
+    219.59,
+    328.65,
+    319.35,
+    254.19,
+    293.18,
+    154.34,
+    263.21,
+    108.39,
+    324.55,
+    358.98,
+    155.78,
+    332.99,
+]
+
+
+def _correction_frame():
+    """63 heavy renters, a zero-weight one, a light one, then 14 owners.
+
+    Renters are never in the stratum, so the stage leaves them whole; at
+    stratum 0.3 the ten most valuable owners become six rows each, and the
+    129-row vector the stage corrects is summed as two halves split at row
+    64. The 63 heavy renters sit in the first half, which sums inside the
+    total's binade, while the second, holding the light renter, the owners
+    and the copies, carries exactly half an ulp of the total: round half to
+    even keeps every change to a heavy renter's weight off the target, and
+    the light one, the 64th whole household by weight, can carry it.
+    """
+    weights = [*(1_101.0 + i for i in range(63)), 0.0, 1_000.0, *_CORRECTION_OWNERS]
+    n = len(weights)
+    owners = len(_CORRECTION_OWNERS)
+    base = _frame(n)
+    household = base.table("household").copy()
+    household["tenure_type"] = pd.array(
+        ["RENT_PRIVATELY"] * (n - owners) + ["OWNED_OUTRIGHT"] * owners,
+        dtype="string",
+    )
+    household["main_residence_value"] = [150_000.0] * (n - owners) + [
+        100_000.0 * (i + 1) for i in range(owners)
+    ]
+    return uk_national_frame(
+        person=base.table("person"),
+        benunit=base.table("benunit"),
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=np.asarray(weights),
+    )
+
+
+def test_the_correction_passes_over_whole_households_that_cannot_carry_it(
+    monkeypatch,
+) -> None:
+    # The stage corrects through the CGT split's helper (microcosm#931): the
+    # 64 heaviest households it leaves whole, its unselected ones, heaviest
+    # first. The rule before tried the heaviest only, and the shared fallback
+    # then corrected the last copy; now the light renter carries it and every
+    # root and copy stays bitwise w / 6.
+    from microcosm.build.uk_runtime.spi_support import (
+        _exact_total_correction,
+        _importance_weights_with_exact_total,
+    )
+
+    calls = []
+    correct = hv._exact_support_weights
+
+    def recording(values, *, target, whole, **keywords):
+        calls.append((np.array(values), target, np.array(whole)))
+        return correct(values, target=target, whole=whole, **keywords)
+
+    monkeypatch.setattr(hv, "_exact_support_weights", recording)
+    result = hv.split_high_value_support_households(
+        _correction_frame(), stratum_lower=0.3, copies=6
+    )
+    ((values, target, whole),) = calls
+
+    def carries(row: int) -> bool:
+        corrected = _exact_total_correction(values, target=target, correction_index=row)
+        return corrected is not None
+
+    assert result.households_selected == 10 and len(values) == 129
+    heaviest_first = whole[np.lexsort((whole, -values[whole]))]
+    assert heaviest_first[:64].tolist() == [*range(62, -1, -1), 64]
+    assert float(values.sum()) != target
+    assert not any(carries(row) for row in range(63))
+    assert carries(64)
+    fallback = np.asarray(_importance_weights_with_exact_total(values, target).values)
+    assert np.flatnonzero(fallback != values).tolist() == [128]
+
+    weights = np.asarray(result.frame.weights_for("household").values)
+    assert result.frame.weights_for("household").total == target
+    assert np.flatnonzero(weights != values).tolist() == [64]
+    assert weights[64] == pytest.approx(1_000.0, rel=1e-12)
+    household = result.frame.table("household")
+    copies = household[hv.HIGH_VALUE_SUPPORT_COPIES_COLUMN].to_numpy()
+    sources = household["household_id"].to_numpy() % 10**12
+    for source in np.unique(sources[copies == 6]):
+        family = weights[sources == source]
+        weight = _CORRECTION_OWNERS[int(source) - 66]
+        assert family.tolist() == [weight / 6] * 6
+
+
+def test_the_copy_rule_names_the_one_exception() -> None:
+    import json
+    from pathlib import Path
+
+    from microcosm.build.uk_runtime.cgt_support import (
+        CGT_SUPPORT_CORRECTION_CANDIDATES,
+        CGT_SUPPORT_EXACT_TOTAL_EXCEPTION,
+    )
+
+    ((_, payload),) = hv.high_value_support_operation_parameters()
+    expected = (
+        "every selected household becomes copies rows at weight / copies, "
+        "except where none of the 64 heaviest households left whole can carry "
+        "the exact-total correction, when the shared fallback can put it on a "
+        "root or copy, off weight / copies by about one ulp of the total weight"
+    )
+    assert CGT_SUPPORT_CORRECTION_CANDIDATES == 64
+    assert payload["copy_rule"] == expected
+    assert expected.endswith(CGT_SUPPORT_EXACT_TOTAL_EXCEPTION)
+    stage = load_country_spec("uk").sources.stage_map()[
+        hv.HIGH_VALUE_SUPPORT_STAGE_NAME
+    ]
+    (operation,) = stage.operations
+    assert operation.parameters["copy_rule"] == expected
+    packaged = json.loads(
+        (Path(hv.__file__).parents[1] / "uk" / "source_stages.json").read_text()
+    )
+    (entry,) = [row for row in packaged["stages"] if row["stage"] == stage.stage]
+    assert entry["operations"][0]["copy_rule"] == expected
+
+
 def test_the_split_refuses_incoming_ids_at_its_copy_id_radix() -> None:
     frame = _frame()
     household = frame.table("household").copy()

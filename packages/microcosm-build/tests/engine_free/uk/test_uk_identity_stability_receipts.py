@@ -1108,11 +1108,12 @@ _SPLIT_SCENARIO = {
 #: 7, 21 copies); band 0's pool is exhausted at every clone count, band
 #: 37,700 asks for nothing, so its household (9,000) is the first candidate
 #: for the exact-total correction, and the zero-weight household is outside
-#: every pool. At 7 and 13 clones that household's clone 0 has no
-#: representable correction, so the shared fallback puts it on the last copy
-#: of the 7,620 family's last clone, off w / n by about an ulp of the frame's
-#: total weight (a relative error below 1e-12, within the 1e-12 tolerances);
-#: at 1, 3, 11 and 15 clones no correction is needed.
+#: every pool. At 7 and 13 clones no household the split leaves whole (the
+#: 9,000 household's clones and the light one's) can carry the correction, so
+#: the shared fallback puts it on the last copy of the 7,620 family's last
+#: clone, off w / n by about an ulp of the frame's total weight (a relative
+#: error below 1e-12, within the 1e-12 tolerances); at 1, 3, 11 and 15 clones
+#: no correction is needed.
 _NESTING_SCENARIO = {
     "weights": [
         900.0,
@@ -1261,8 +1262,9 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         # to a weight whose K x w / 60 sits more ulps above 127 than the
         # count's snap absorbs, so an exact recount would count 128 in all 11
         # clones at 11 and in 12 of the 13 at 13 (the clone whose last copy
-        # took the exact-total correction re-sums to 127); the tolerance
-        # accepts the stage's 127.
+        # took the exact-total correction, which no household left whole
+        # could carry there, re-sums to 127); the tolerance accepts the
+        # stage's 127.
         one_split, one = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
         split, many = _clone_first_split_then_cloned(clone_count, _NESTING_SCENARIO)
 
@@ -1371,6 +1373,39 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         assert problems == {}
         assert receipt["copies"] == split.copies_created == 259
         assert receipt["copies_recomputed"] == 260
+
+    def test_a_household_the_correction_would_divide_keeps_the_receipt_green(
+        self, monkeypatch
+    ) -> None:
+        # Every household is selected, and the heaviest left at one copy
+        # weighs 60: the correction it could carry would lift it to a weight
+        # that counts two copies (test_uk_cgt_support.py). The split passes
+        # it over (microcosm#931), so the recompute divides the households
+        # the stage divided. Had the 60 household carried the correction, the
+        # recompute would find a family the stage never made.
+        from microcosm.build.uk_runtime import cgt_support
+
+        scenario = {
+            "weights": [400.0, 268.7, 60.0, 31.5],
+            "wealth": [5.0, 6.0, 7.0, 8.0],
+            "incomes": [BAND_INCOMES[0]] * 4,
+            "top_cells": {0: {250_000: 1_000.0}},
+        }
+        _, frame = _clone_first_split_then_cloned(1, scenario)
+        _, problems = _exhausting_receipt(frame, scenario)
+        assert problems == {}
+
+        correct = cgt_support._exact_support_weights
+
+        def without_the_check(values, *, target, whole, keeps_the_split=None):
+            return correct(values, target=target, whole=whole)
+
+        monkeypatch.setattr(cgt_support, "_exact_support_weights", without_the_check)
+        _, unchecked = _clone_first_split_then_cloned(1, scenario)
+        _, problems = _exhausting_receipt(unchecked, scenario)
+        assert problems == {
+            "support_split_selection_stored": {"missing": 0, "extra": 1}
+        }
 
 
 # --- copy ids at the copy-id table's declared radices (microcosm#931) ----------
