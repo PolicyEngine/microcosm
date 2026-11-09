@@ -13,6 +13,7 @@ none reaches the Hub.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 
@@ -40,6 +41,8 @@ INCLUDES = (
 #: No pointer file names a current ACS build, so the switch is told which.
 SWITCH_OPTIONS = (*INCLUDES, "--current", f"{US_LOCAL}={ACS_TAG}")
 FINISHED = ("--finished-branch", FINISHED_STAGING_BRANCH)
+#: When a test changes the repository after the copy step.
+LATER = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
 SPM_FOLDER = f"releases/{US_NATIONAL}/{SPM_TAG}"
 ACS_FOLDER = f"releases/{US_LOCAL}/{ACS_TAG}"
 
@@ -242,36 +245,6 @@ def test_switch_refuses_a_named_branch_that_does_not_exist(hub, capsys):
     )
 
 
-def test_switch_refuses_when_a_named_finished_branch_moves_while_it_reads(
-    hub, capsys, monkeypatch
-):
-    run(hub, capsys, "copy", "--write", *INCLUDES)
-    list_repo_refs = hub.list_repo_refs
-    listings = []
-
-    def the_branch_moves_after_the_first_listing(*args, **kwargs):
-        refs = list_repo_refs(*args, **kwargs)
-        listings.append(refs)
-        if len(listings) == 1:
-            # A new publication reuses the branch name while the switch reads.
-            hub.branches[FINISHED_STAGING_BRANCH] = hub.tags[FINISHED_TAG]
-        return refs
-
-    monkeypatch.setattr(hub, "list_repo_refs", the_branch_moves_after_the_first_listing)
-
-    exit_code, _, error_output = run(
-        hub, capsys, "switch", "--write", *SWITCH_OPTIONS, *FINISHED
-    )
-
-    assert exit_code == 1
-    assert FINISHED_STAGING_BRANCH in error_output
-    # The operator already named it, so the refusal says it moved instead of
-    # asking for --finished-branch again.
-    assert "moved" in error_output
-    assert "name the branch with --finished-branch" not in error_output
-    assert "releases.json" not in hub.files_at()
-
-
 def watch_listings(hub, monkeypatch, after_first_listing):
     """Run ``after_first_listing`` once, right after the switch's first
     listing of the repository's tags and branches."""
@@ -288,6 +261,29 @@ def watch_listings(hub, monkeypatch, after_first_listing):
     monkeypatch.setattr(hub, "list_repo_refs", listing)
 
 
+def test_switch_refuses_when_a_named_finished_branch_moves_while_it_reads(
+    hub, capsys, monkeypatch
+):
+    run(hub, capsys, "copy", "--write", *INCLUDES)
+
+    def a_publication_uses_the_branch():
+        hub.branches[FINISHED_STAGING_BRANCH] = hub.tags[FINISHED_TAG]
+
+    watch_listings(hub, monkeypatch, a_publication_uses_the_branch)
+
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *SWITCH_OPTIONS, *FINISHED
+    )
+
+    assert exit_code == 1
+    assert FINISHED_STAGING_BRANCH in error_output
+    # The operator already named it, so the refusal says it moved instead of
+    # asking for --finished-branch again.
+    assert "moved" in error_output
+    assert "name the branch with --finished-branch" not in error_output
+    assert "releases.json" not in hub.files_at()
+
+
 def test_switch_refuses_when_a_named_finished_branch_disappears_while_it_reads(
     hub, capsys, monkeypatch
 ):
@@ -302,6 +298,10 @@ def test_switch_refuses_when_a_named_finished_branch_disappears_while_it_reads(
 
     assert exit_code == 1
     assert FINISHED_STAGING_BRANCH in error_output
+    assert "was deleted" in error_output
+    # A run again must leave the option out, or the branch is refused as one
+    # that doesn't exist.
+    assert f"without --finished-branch {FINISHED_STAGING_BRANCH}" in error_output
     assert "releases.json" not in hub.files_at()
 
 
@@ -321,7 +321,9 @@ def test_switch_refuses_a_new_staging_branch_beside_an_accepted_one(
     )
 
     assert exit_code == 1
-    assert other in error_output
+    assert f"branch {other} appeared" in error_output
+    # It appeared during the switch, so it is no finished publication's.
+    assert f"--finished-branch {other}" not in error_output
     assert "releases.json" not in hub.files_at()
 
 
@@ -375,3 +377,35 @@ def test_the_copy_plan_lists_each_build_s_undeclared_files(hub, capsys):
     assert {
         build["tag"]: build.get("undeclared") for build in report.get("builds", [])
     } == {SPM_TAG: [], ACS_TAG: sorted(ACS_UNDECLARED_FILES)}
+
+
+def test_an_undeclared_file_changed_after_the_copy_makes_its_folder_occupied(
+    hub, capsys
+):
+    run(hub, capsys, "copy", "--write", *INCLUDES)
+    hub.seed({f"{ACS_FOLDER}/run_identity.json": b"changed on main"}, date=LATER)
+
+    exit_code, report, _ = run(hub, capsys, "copy", *INCLUDES)
+
+    assert exit_code == 1
+    assert build_status(report, ACS_TAG) == "occupied"
+    assert any(
+        "run_identity.json" in problem and "sha256sums.txt records" in problem
+        for problem in report.get("problems", [])
+    )
+
+
+def test_a_declared_build_manifest_changed_after_the_copy_makes_its_folder_occupied(
+    hub, capsys
+):
+    run(hub, capsys, "copy", "--write", *INCLUDES)
+    hub.seed({f"{SPM_FOLDER}/build_manifest.json": b'{"changed": true}'}, date=LATER)
+
+    exit_code, report, _ = run(hub, capsys, "copy", *INCLUDES)
+
+    assert exit_code == 1
+    assert build_status(report, SPM_TAG) == "occupied"
+    assert any(
+        "build_manifest.json" in problem and "its manifest records" in problem
+        for problem in report.get("problems", [])
+    )
