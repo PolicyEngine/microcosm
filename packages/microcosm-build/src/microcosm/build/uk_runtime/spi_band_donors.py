@@ -224,9 +224,10 @@ class UKSPIIncomeBandDonorResult:
     (clone 0's, which a one-clone spine counts alike), the funding rows'
     ``donor_households`` and ``carrier_region_counts``. A band row's
     ``carrier_mean_age`` is withheld below three carrier source households or
-    three seats per clone. The band rows' ``donor_households``, ``carriers``
-    and ``carrier_regions`` and ``donor_count`` stay exact row counts, which
-    the stage gate reads exactly; ``expected_donor_count`` is the plan's.
+    three seats per clone. The band rows' ``donor_households`` and
+    ``carriers``, and ``donor_count``, stay exact row counts, which the stage
+    gate reads exactly; a band row's ``carrier_regions`` is an exact count of
+    regions that no check reads. ``expected_donor_count`` is the plan's.
     """
 
     frame: Frame

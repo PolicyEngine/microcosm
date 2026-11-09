@@ -20,7 +20,8 @@ stratified by region. The module also holds the rung tokens and the default
 sampling seed that the UK builds share, and the spine build's root sampler:
 a spine built below f100 samples its FRS root household by household
 (:func:`sample_uk_spine_root`) through :class:`UKSampledSpineRootTransform`,
-which the root node hashes with this module and the shared core.
+which the root node hashes with this module, and below f100 with the shared
+core too.
 """
 
 from __future__ import annotations
@@ -330,7 +331,10 @@ class UKSampledSpineRootTransform:
 
     The spine build wraps the FRS root's transform in it. Its sampling code
     lives here and in the shared core, not in the root stage's module, so it
-    declares both for the root node to hash (microcosm#931).
+    declares them for the root node to hash (microcosm#931): this module at
+    every rung, since it resets the root's indexes at f100 too, and the shared
+    core only below f100, since :func:`sample_uk_spine_root` returns before
+    calling it at f100.
     """
 
     def __init__(
@@ -348,6 +352,8 @@ class UKSampledSpineRootTransform:
     def graph_implementation_dependencies(self) -> tuple[object, ...]:
         """The modules the root node hashes for this adapter's sampling."""
 
+        if self.fraction == 1.0:
+            return (sys.modules[__name__],)
         return (sys.modules[__name__], frame_sampling)
 
     def _sample(self, assembled):
