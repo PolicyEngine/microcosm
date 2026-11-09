@@ -93,7 +93,7 @@ from . import (
     national_doctrine,
 )
 from . import support_floor as support_floor_rules
-from .battery_bindings import UK_GATE_REGISTRY
+from .battery_bindings import UK_GATE_REGISTRY, uk_gate_registry_modules
 from .calibration_run import (
     UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS,
     uk_local_gate_scope_exclusions,
@@ -1023,16 +1023,17 @@ class UKNationalGateKernel(_NationalKernel):
             weighted_integrity,
         )
 
-        # Outside the gate registry's evaluators (held for a ruling; see
-        # test_uk_graph's _KERNEL_STOPS) the battery also computes through
-        # the shared gates' evaluators (gates), the solved result and
-        # registry it decodes (microcosm.calibrate's artifacts, matrix,
-        # registry, target and hierarchy, graph_targets), the frame it
-        # rebuilds (graph_population, national_frame), the manifest's
-        # effective sample size (calibrate.solve), the admin totals' derived
-        # anchors (etb_services), the CGT projection (cgt_projection,
-        # donor_uprating) and the canonical encoding of its artifacts
-        # (microcosm#931).
+        # The battery evaluates whichever gates its node's gate scope names,
+        # so it keys on everything the gate registry's bindings compute
+        # through (uk_gate_registry_modules; microcosm#931 ruling 6). Its own
+        # code also computes through the shared gates' evaluators (gates),
+        # the solved result and registry it decodes (microcosm.calibrate's
+        # artifacts, matrix, registry, target and hierarchy, graph_targets),
+        # the frame it rebuilds (graph_population, national_frame), the
+        # manifest's effective sample size (calibrate.solve), the admin
+        # totals' derived anchors (etb_services), the CGT projection
+        # (cgt_projection, donor_uprating) and the canonical encoding of its
+        # artifacts (microcosm#931).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -1060,6 +1061,7 @@ class UKNationalGateKernel(_NationalKernel):
                         cgt_projection,
                         donor_uprating,
                         canonical_json,
+                        *uk_gate_registry_modules(),
                     ),
                     "country_resources": load_country_spec("uk").fingerprint,
                 }

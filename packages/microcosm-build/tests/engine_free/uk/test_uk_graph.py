@@ -3,7 +3,7 @@
 # ruff: noqa: F403, F405
 import functools
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import NamedTuple
 
@@ -1197,6 +1197,15 @@ _KERNEL_CORE_NAMES: dict[tuple[str, str], str] = {
         "the executor fills, and every node's inputs pass through it, where "
         "H2 catches a changed value (graph.kernel's core reason)"
     ),
+    ("microcosm.graph.kernel", "source_hash"): (
+        "hashes the source files of the modules it is given. The full gates' "
+        "run recomputes its phase's own code through it only to refuse a node "
+        "whose <phase>_code parameter differs "
+        "(graph_terminal.UK_FULL_GATE_PHASE_CODE); that parameter is computed "
+        "through it too and node_key hashes it, so an edit that changes what "
+        "it returns changes the parameter and the check alike, and every key "
+        "(graph.kernel's core reason)"
+    ),
     ("microcosm.graph.kernel", "KernelResult"): (
         "the frozen record a kernel returns its outputs in, which holds what "
         "the kernel puts in it and computes nothing; the executor validates "
@@ -1274,12 +1283,23 @@ _STAGE_UNBOUND_NAMES: dict[tuple[str, str], str] = {
 #: The same for the UK graph kernels: names a kernel reads from a module its
 #: key does not hash, each with why.
 _KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
-    ("microcosm.build.uk_runtime.geography_sources", name): (
-        "the LAD23 names lookup's pinned URL and digest: local_authority_input "
-        "refuses an input whose declared source differs from them, and reads "
-        "nothing through them"
-    )
-    for name in ("LAD23_NAMES_SHA256", "LAD23_NAMES_URL")
+    **{
+        ("microcosm.build.uk_runtime.geography_sources", name): (
+            "the LAD23 names lookup's pinned URL and digest: "
+            "local_authority_input refuses an input whose declared source "
+            "differs from them, and reads nothing through them"
+        )
+        for name in ("LAD23_NAMES_SHA256", "LAD23_NAMES_URL")
+    },
+    ("microcosm.build.uk_runtime.rowwise_dataset", "ladder_clone_index_column"): (
+        "names the geographic clone index columns, which only the dense expand "
+        "writes, and uk.full.expand@1 hashes rowwise_dataset. The calibrated "
+        "gates' support-family fold reads the household's on the expanded "
+        "frame, so their key chains on the expand's; the national gates fold "
+        "the national frame, which no ladder expands, and the fold keys on the "
+        "column only where the table carries it "
+        "(diagnostics.uk_support_family_weights)"
+    ),
 }
 #: Where the kernel rule stops, each with why a kernel that names the
 #: definition need not hash what lies beyond it;
@@ -1310,36 +1330,87 @@ _KERNEL_STOPS: dict[tuple[str, str], str] = {
         "_minimal_frame rebuilds the SPI support allocation's mass record "
         "through it for the hmrc_spi_income_spine stage alone, inside the "
         "branch on that stage's name, and that stage's node hashes everything "
-        "it computes through"
+        "it computes through; the spine gates, which rebuild their frame "
+        "through _minimal_frame too, name no stage"
     ),
     ("microcosm.build.uk_runtime.battery_bindings", "UK_GATE_REGISTRY"): (
         "maps each UK gate to its evaluator. The bound spine builds a battery "
         "run through it only for the checkpoint's gate digests, which read the "
         "manifest, and the run reads the registry only to refuse a parameter "
-        "its binding does not declare. A kernel that evaluates gates through "
-        "it is held (_HELD_KERNELS, _HELD_KERNEL_STOPS)"
+        "its binding does not declare. The kernels that evaluate gates through "
+        "it are held past it (microcosm#931 ruling 6): each gate battery "
+        "phase to what the gates it declares compute through "
+        "(_GATE_BATTERY_KERNELS), and the national gates to its whole reach "
+        "(_WHOLE_REGISTRY_KERNELS)"
     ),
 }
-#: Kernels the rule holds at one listed stop only, for a ruling
-#: (microcosm#931), each with why. Past the stop the rule holds them as any
-#: other kernel. test_every_hold_still_guards_a_module_its_kernel_leaves_out
-#: checks that the walk past each stop still meets a module the kernel's hash
-#: leaves out.
-_HELD_KERNEL_STOPS: dict[tuple[str, tuple[str, str]], str] = {
-    (
-        "uk.full.national-gates@1",
-        ("microcosm.build.uk_runtime.battery_bindings", "UK_GATE_REGISTRY"),
-    ): (
-        "evaluates the gates its manifest declares through the registry, and "
-        "how a gate kernel's key binds what each evaluator computes through is "
-        "held with the gate batteries (_HELD_KERNELS)"
+#: The gate registry: every kernel's walk stops there (``_KERNEL_STOPS``) but
+#: the walks of the kernels that evaluate gates through it.
+_GATE_REGISTRY = ("microcosm.build.uk_runtime.battery_bindings", "UK_GATE_REGISTRY")
+#: The gate batteries' kernels, each with its battery (``_gate_batteries``).
+#: A battery's phases run one kernel's code, whose hash they share, and each
+#: evaluates the gates its manifest declares for it. The rule holds each phase
+#: to what it computes through (``_battery_phase_walk``): its key, that hash
+#: with the phase's own code, which its node carries as ``<phase>_code``,
+#: covers it and carries nothing only another phase computes through, so an
+#: edit only one phase computes through re-keys that phase alone
+#: (microcosm#931 ruling 6; test_each_gate_battery_phase_keys_on_its_own_reach).
+_GATE_BATTERY_KERNELS: dict[str, str] = {
+    "uk.spine-gates@1": "spine",
+    "uk.full-gates.preflight@1": "full",
+    "uk.full-gates@1": "full",
+}
+#: Kernels that can evaluate any gate the registry binds, each with why. The
+#: rule walks them past the registry's stop, so their keys bind everything
+#: its bindings compute through (microcosm#931 ruling 6).
+_WHOLE_REGISTRY_KERNELS: dict[str, str] = {
+    "uk.full.national-gates@1": (
+        "evaluates one phase, whose gates its node's gate_scope parameter "
+        "names, so no phase of its can be keyed on another's code; it hashes "
+        "every module the registry's bindings compute through "
+        "(battery_bindings.UK_GATE_REGISTRY_MODULES)"
+    ),
+}
+#: The stage-health dispatcher, which runs the one check its gate entry names
+#: in its ``check`` parameter, each in its own ``if check == ...`` branch. A
+#: battery phase follows only the branches of the checks it declares, and
+#: what the dispatcher runs outside them
+#: (test_the_battery_model_reads_the_declared_dispatch checks the shape).
+_STAGE_HEALTH_DISPATCH = (
+    "microcosm.build.uk_runtime.stage_health",
+    "uk_stage_health_gate",
+)
+#: Functions that hand a battery's phases evidence artifacts as one literal
+#: mapping by artifact name, each with why a phase computes through an entry
+#: only where one of its declared gates reads that artifact
+#: (``_artifacts_read``).
+_EVIDENCE_ARTIFACT_TABLES: dict[tuple[str, str], str] = {
+    ("microcosm.build.uk_runtime.graph_evidence", "uk_spine_gate_artifacts"): (
+        "hands every spine phase, and the calibrated gates' context, the rules "
+        "engine and two frame-only enum domains. An enum gate reads only the "
+        "domain its one declared column names, so the CGT asset type domain, "
+        "which only a transferred-phase gate checks, is the transferred "
+        "phase's alone, and the ONS household type domain the assembled "
+        "phase's; the rules engine is the kernel's own, no first-party code"
+    ),
+}
+#: Artifacts a gate's evaluator reads beyond those its binding declares
+#: (``required_artifacts``), by gate: what it reads, from an entry's
+#: parameters, and why.
+_UNDECLARED_ARTIFACT_READS: dict[str, tuple[Callable, str]] = {
+    "enum_domain": (
+        lambda parameters: frozenset(
+            {f"{tuple(parameters['columns'])[0]}_enum_domain", "rules_engine"}
+        ),
+        "battery_bindings._evaluate_enum_domain reads the domain its one "
+        "declared column names, and resolves it from the rules engine where "
+        "that artifact is absent",
     ),
 }
 #: Kernels the rule does not yet hold, each with why, all held for a ruling
-#: (microcosm#931): the gate batteries, whose phases share one key but declare
-#: different gates, and the target kernels, whose keys microcosm#1497's
-#: import record holds. Until the ruling, a held kernel can replay a stale
-#: output after an edit to a module it computes through but does not hash;
+#: (microcosm#931): the target kernels, whose keys microcosm#1497's import
+#: record holds. Until the ruling, a held kernel can replay a stale output
+#: after an edit to a module it computes through but does not hash;
 #: test_every_hold_still_guards_a_module_its_kernel_leaves_out checks that
 #: each still does, so a hold cannot outlive its need.
 _TARGET_RECORD_REASON = (
@@ -1350,37 +1421,15 @@ _TARGET_RECORD_REASON = (
     "import of each module bound"
 )
 _HELD_KERNELS: dict[str, str] = {
-    "uk.spine-gates@1": (
-        "the assembled and transferred spine phases share one key, and only "
-        "the transferred phase declares the gates that check the CGT asset "
-        "type domain and most of the stage-health checks. Binding what those "
-        "compute through into the shared key would re-key the assembled gate, "
-        "which every later spine stage waits on, as the re-review of "
-        "microcosm#1420 (E) kept the energy level out of it"
-    ),
-    "uk.full-gates.preflight@1": (
-        "runs the calibrated battery's code, one class body and one code "
-        "hash, for the preflight phase only. The dense solve keys on it, so "
-        "binding the terminal phase's modules into the shared hash would "
-        "re-solve on any terminal-gate edit, which microcosm#1301 and #1306 "
-        "keyed out"
-    ),
-    "uk.full-gates@1": (
-        "shares its code hash with the preflight, and its terminal-only "
-        "publication code keys it through its terminal_code parameter "
-        "(microcosm#1306)"
-    ),
-    **{
-        ref: _TARGET_RECORD_REASON
-        for ref in (
-            "uk.full.target_compilation@1",
-            "uk.full.target_selection@1",
-            "uk.full.measures@1",
-            "uk.full.problem@1",
-            "uk.full.national_targets@1",
-            "uk.full.national_problem@1",
-        )
-    },
+    ref: _TARGET_RECORD_REASON
+    for ref in (
+        "uk.full.target_compilation@1",
+        "uk.full.target_selection@1",
+        "uk.full.measures@1",
+        "uk.full.problem@1",
+        "uk.full.national_targets@1",
+        "uk.full.national_problem@1",
+    )
 }
 #: Packages that export names lazily, through a module ``__getattr__``, each
 #: with the table, of name to the submodule defining it, that ``__getattr__``
@@ -2500,10 +2549,13 @@ def _kernel_body(kernel_class: type) -> list[tuple[type, object, str]]:
     order that defines it, as Python resolves it, and a base's definition too
     where the one that wins calls ``super()``. ``implementation_hash`` is left
     out, since it computes the key: an edit to what it calls that changes what
-    it returns changes the key. So are the listed refusal-only methods."""
+    it returns changes the key. So is a method only the key computation calls
+    (``_key_only_methods``), such as the full gates' ``_country_resources``,
+    and so are the listed refusal-only methods."""
 
     chosen: dict[str, object | None] = {}
     body = []
+    keyed = []
     for cls in _kernel_classes(kernel_class):
         definitions = _module_definitions(cls.__module__, _HELPER_SCOPE).definitions
         for statement in definitions[cls.__name__].body:
@@ -2512,16 +2564,71 @@ def _kernel_body(kernel_class: type) -> list[tuple[type, object, str]]:
                     previous = chosen[name]
                     if previous is not None and _calls_super(previous):
                         chosen[name] = statement
-                        body.append((cls, statement, name))
+                        (keyed if name == "implementation_hash" else body).append(
+                            (cls, statement, name)
+                        )
                     continue
-                if name == "implementation_hash" or (
-                    (cls.__module__, f"{cls.__name__}.{name}") in _REFUSAL_ONLY_HELPERS
-                ):
+                if (cls.__module__, f"{cls.__name__}.{name}") in _REFUSAL_ONLY_HELPERS:
                     chosen[name] = None
                     continue
                 chosen[name] = statement
-                body.append((cls, statement, name))
-    return body
+                (keyed if name == "implementation_hash" else body).append(
+                    (cls, statement, name)
+                )
+    key_only = _key_only_methods(body, keyed)
+    return [item for item in body if item[2] not in key_only]
+
+
+def _self_attributes(statement) -> set[str]:
+    """The attributes ``statement`` reads on ``self``, ``cls`` or
+    ``type(self)``."""
+    import ast
+
+    found = set()
+    for sub in ast.walk(statement):
+        if not isinstance(sub, ast.Attribute):
+            continue
+        value = sub.value
+        if (isinstance(value, ast.Name) and value.id in {"self", "cls"}) or (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "type"
+        ):
+            found.add(sub.attr)
+    return found
+
+
+def _key_only_methods(body, keyed) -> frozenset[str]:
+    """The methods of a kernel's ``body`` that only its key computation calls:
+    named on ``self``, ``cls`` or ``type(self)`` by its ``keyed`` statements
+    (``implementation_hash``) or by another such method, and by nothing else
+    the kernel runs. They compute the key as the hash does."""
+    import ast
+
+    methods = {
+        name
+        for _, statement, name in body
+        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    reads: dict[str, set[str]] = {}
+    for _, statement, name in body:
+        reads.setdefault(name, set()).update(_self_attributes(statement))
+    key = set().union(*(_self_attributes(statement) for _, statement, _ in keyed))
+    key_only: set[str] = set()
+    while True:
+        found = {
+            method
+            for method in methods - key_only
+            if method in key.union(*(reads[item] for item in key_only))
+            and not any(
+                method in names
+                for other, names in reads.items()
+                if other != method and other not in key_only
+            )
+        }
+        if not found:
+            return frozenset(key_only)
+        key_only |= found
 
 
 def _kernel_walk(
@@ -2552,11 +2659,11 @@ def _kernel_walk(
     return _KernelWalk(walk.reach, walk.stops, walk.core, met, core_names)
 
 
-def _hashed_modules(kernel) -> frozenset[str]:
-    """Every module ``kernel.implementation_hash()`` hashes, recorded at each
-    ``source_hash`` it reaches, in whichever module calls it: every loaded
-    module's ``source_hash`` name stands in for the recorder during one call,
-    after a first call has imported what the hash imports."""
+def _hashed_by(compute: Callable[[], object]) -> frozenset[str]:
+    """Every module ``compute()`` hashes, recorded at each ``source_hash`` it
+    reaches, in whichever module calls it: every loaded module's
+    ``source_hash`` name stands in for the recorder during one call, after a
+    first call has imported what ``compute`` imports."""
 
     import inspect
     import sys
@@ -2571,7 +2678,7 @@ def _hashed_modules(kernel) -> frozenset[str]:
         recorded.extend(objects)
         return original(*objects, **dependencies)
 
-    kernel.implementation_hash()
+    compute()
     patched = [
         module
         for module in list(sys.modules.values())
@@ -2581,7 +2688,7 @@ def _hashed_modules(kernel) -> frozenset[str]:
     for module in patched:
         module.source_hash = record
     try:
-        kernel.implementation_hash()
+        compute()
     finally:
         for module in patched:
             module.source_hash = original
@@ -2589,6 +2696,12 @@ def _hashed_modules(kernel) -> frozenset[str]:
         (item if isinstance(item, ModuleType) else inspect.getmodule(item)).__name__
         for item in recorded
     )
+
+
+def _hashed_modules(kernel) -> frozenset[str]:
+    """Every module ``kernel.implementation_hash()`` hashes (``_hashed_by``)."""
+
+    return _hashed_by(kernel.implementation_hash)
 
 
 @functools.cache
@@ -2630,6 +2743,343 @@ def _uk_graph_kernels() -> MappingProxyType:
     return MappingProxyType({ref: registry.get(ref) for ref in registry.refs()})
 
 
+@functools.cache
+def _registry_bindings() -> MappingProxyType:
+    """Each gate the UK registry binds, to the module and the expression of
+    its binding, read from the registry's literal mapping as Python builds it:
+    a later key overrides an earlier one, and a ``**`` entry is the mapping it
+    unpacks."""
+    import ast
+
+    def entries(module: str, name: str) -> dict[str, tuple[str, object]]:
+        value = _module_definitions(module, _HELPER_SCOPE).definitions[name].value
+        assert isinstance(value, ast.Dict), (module, name)
+        found: dict[str, tuple[str, object]] = {}
+        for key, item in zip(value.keys, value.values, strict=True):
+            if key is None:
+                assert isinstance(item, ast.Name), (module, name)
+                found.update(entries(*_resolve(module, item.id, _HELPER_SCOPE)))
+            else:
+                assert isinstance(key, ast.Constant), (module, name)
+                found[key.value] = (module, item)
+        return found
+
+    return MappingProxyType(entries(*_GATE_REGISTRY))
+
+
+def _checked_name(statement) -> str | None:
+    """The check an ``if check == "<name>":`` statement with no ``else`` runs,
+    or None."""
+    import ast
+
+    test = getattr(statement, "test", None)
+    if (
+        isinstance(statement, ast.If)
+        and not statement.orelse
+        and isinstance(test, ast.Compare)
+        and isinstance(test.left, ast.Name)
+        and test.left.id == "check"
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Eq)
+        and isinstance(test.comparators[0], ast.Constant)
+        and isinstance(test.comparators[0].value, str)
+    ):
+        return test.comparators[0].value
+    return None
+
+
+@functools.cache
+def _stage_health_dispatch() -> tuple[MappingProxyType, tuple]:
+    """The stage-health dispatcher's branches, by the check each runs, and its
+    statements outside them (``_STAGE_HEALTH_DISPATCH``)."""
+
+    module, name = _STAGE_HEALTH_DISPATCH
+    node = _module_definitions(module, _HELPER_SCOPE).definitions[name]
+    branches: dict[str, tuple] = {}
+    common = []
+    for statement in node.body:
+        check = _checked_name(statement)
+        if check is None:
+            common.append(statement)
+        else:
+            assert check not in branches, check
+            branches[check] = tuple(statement.body)
+    return MappingProxyType(branches), tuple(common)
+
+
+def _phase_test(test) -> str | None:
+    """The phase an ``if`` test ``phase == "<name>"`` selects, or None."""
+    import ast
+
+    if (
+        isinstance(test, ast.Compare)
+        and isinstance(test.left, ast.Name)
+        and test.left.id == "phase"
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Eq)
+        and isinstance(test.comparators[0], ast.Constant)
+        and isinstance(test.comparators[0].value, str)
+    ):
+        return test.comparators[0].value
+    return None
+
+
+def _phase_branch(statement, phase: str):
+    """``statement`` as it runs for ``phase``: each ``if phase == "<name>"``
+    keeps only the branch ``phase`` takes, down its ``elif`` chain."""
+    import ast
+    import copy
+
+    class _Prune(ast.NodeTransformer):
+        def visit_If(self, node):
+            selected = _phase_test(node.test)
+            if selected is None:
+                self.generic_visit(node)
+                return node
+            kept = []
+            for item in node.body if selected == phase else node.orelse:
+                visited = self.visit(item)
+                kept.extend(visited if isinstance(visited, list) else [visited])
+            return kept or [ast.Pass()]
+
+    return _Prune().visit(copy.deepcopy(statement))
+
+
+@functools.cache
+def _artifact_table(table: tuple[str, str]) -> MappingProxyType:
+    """An evidence-artifact table's entries (``_EVIDENCE_ARTIFACT_TABLES``):
+    each artifact's name to the expression of its value. The function returns
+    one literal mapping with string keys, after at most a docstring."""
+    import ast
+
+    module, name = table
+    node = _module_definitions(module, _HELPER_SCOPE).definitions[name]
+    body = [
+        statement
+        for statement in node.body
+        if not (
+            isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Constant)
+        )
+    ]
+    assert len(body) == 1 and isinstance(body[0], ast.Return), table
+    mapping = body[0].value
+    assert isinstance(mapping, ast.Dict), table
+    entries = {}
+    for key, value in zip(mapping.keys, mapping.values, strict=True):
+        assert isinstance(key, ast.Constant) and isinstance(key.value, str), table
+        entries[key.value] = value
+    return MappingProxyType(entries)
+
+
+def _artifacts_read(entry) -> frozenset[str]:
+    """The evidence artifacts a gate entry reads: those its binding declares
+    for its parameters (``required_artifacts``, an absent one of which makes
+    it ``evidence_absent``), and those its evaluator reads beyond them
+    (``_UNDECLARED_ARTIFACT_READS``)."""
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+
+    read = set(UK_GATE_REGISTRY[entry.gate].required_artifacts(entry.parameters))
+    if entry.gate in _UNDECLARED_ARTIFACT_READS:
+        read |= _UNDECLARED_ARTIFACT_READS[entry.gate][0](entry.parameters)
+    return frozenset(read)
+
+
+def _battery_phase_walk(kernel_class: type, gates, phase: str) -> _KernelWalk:
+    """What one phase of a gate battery computes through (microcosm#931
+    ruling 6): the kernel rule's walk from what the kernel runs, each ``if
+    phase == ...`` taking the branch ``phase`` takes (``_phase_branch``), and
+    from the binding of each gate the manifest ``gates`` declares for
+    ``phase`` (``_registry_bindings``), the registry's stop aside. An entry
+    the manifest excuses as not applicable, or whose gate has no binding,
+    evaluates nothing. The stage-health
+    dispatcher is followed only into the branches of the checks the phase
+    declares (``_STAGE_HEALTH_DISPATCH``), and an evidence-artifact table the
+    walk meets only into the entries the phase's gates read
+    (``_EVIDENCE_ARTIFACT_TABLES``, ``_artifacts_read``). ``met`` holds the
+    listed kernel stops it meets."""
+
+    entries = [
+        entry
+        for entry in gates.gates
+        if entry.phase == phase and entry.not_applicable is None
+    ]
+    roots = {(cls.__module__, cls.__name__) for cls in _kernel_classes(kernel_class)}
+    seeds = [
+        (found, (cls.__module__, f"{cls.__name__}.{name}"))
+        for cls, statement, name in _kernel_body(kernel_class)
+        for found in _named(
+            cls.__module__, _phase_branch(statement, phase), _HELPER_SCOPE
+        )
+    ]
+    bindings = _registry_bindings()
+    # A gate with no binding evaluates nothing: its entry is evidence_absent.
+    for gate in sorted({entry.gate for entry in entries} & set(bindings)):
+        module, value = bindings[gate]
+        seeds.extend(
+            (found, (module, f"{_GATE_REGISTRY[1]}[{gate!r}]"))
+            for found in _named(module, value, _HELPER_SCOPE)
+        )
+    checks = sorted(
+        {
+            str(entry.parameters["check"])
+            for entry in entries
+            if entry.gate == "stage_health"
+        }
+    )
+    if checks:
+        branches, common = _stage_health_dispatch()
+        roots.add(_STAGE_HEALTH_DISPATCH)
+        seeds.extend(
+            (found, _STAGE_HEALTH_DISPATCH)
+            for statement in (
+                *common,
+                *(item for check in checks for item in branches.get(check, ())),
+            )
+            for found in _named(_STAGE_HEALTH_DISPATCH[0], statement, _HELPER_SCOPE)
+        )
+    read = frozenset().union(*map(_artifacts_read, entries))
+    halts = {
+        **_KERNEL_STOPS,
+        _STAGE_HEALTH_DISPATCH: "the stage-health dispatch",
+        **_EVIDENCE_ARTIFACT_TABLES,
+    }
+    followed: set[tuple[str, str]] = set()
+    while True:
+        walk, met, core_names = _walk(roots, seeds, _HELPER_SCOPE, halts=halts)
+        tables = (set(_EVIDENCE_ARTIFACT_TABLES) & set(met)) - followed
+        if not tables:
+            break
+        for table in sorted(tables):
+            roots.add(table)
+            seeds.extend(
+                (found, table)
+                for artifact, value in _artifact_table(table).items()
+                if artifact in read
+                for found in _named(table[0], value, _HELPER_SCOPE)
+            )
+        followed |= tables
+    return _KernelWalk(
+        walk.reach,
+        walk.stops,
+        walk.core,
+        {item: namers for item, namers in met.items() if item in _KERNEL_STOPS},
+        core_names,
+    )
+
+
+class _Battery(NamedTuple):
+    """A gate battery: the manifest its kernels evaluate, the kernel each
+    phase runs under, and the table of each phase's own code."""
+
+    gates: object
+    phases: Mapping[str, str]
+    codes: Mapping[str, Callable[[], str]]
+
+
+@functools.cache
+def _gate_batteries() -> MappingProxyType:
+    """The UK gate batteries (``_GATE_BATTERY_KERNELS``): the spine gates,
+    whose one kernel runs both spine phases of the manifest it is bound to,
+    and the full build's preflight and calibrated gates, each running the one
+    phase it declares of the full build's manifest."""
+    from microcosm.build.uk_runtime import graph_evidence, graph_terminal
+    from microcosm.build.uk_runtime.full_gates import uk_full_gate_manifest
+
+    kernels = _uk_graph_kernels()
+    spine = kernels["uk.spine-gates@1"]
+    full = ("uk.full-gates.preflight@1", "uk.full-gates@1")
+    return MappingProxyType(
+        {
+            "spine": _Battery(
+                spine.gates,
+                MappingProxyType({phase: spine.ref for phase in spine.gates.phases}),
+                graph_evidence.UK_SPINE_GATE_PHASE_CODE,
+            ),
+            "full": _Battery(
+                uk_full_gate_manifest(),
+                MappingProxyType(
+                    {phase: ref for ref in full for phase in kernels[ref].phases}
+                ),
+                graph_terminal.UK_FULL_GATE_PHASE_CODE,
+            ),
+        }
+    )
+
+
+def _phase_code_modules(battery: _Battery, phase: str) -> frozenset[str]:
+    """Every module a phase's own code hashes (``_hashed_by``), uncached."""
+
+    code = battery.codes.get(phase)
+    if code is None:
+        return frozenset()
+    return _hashed_by(getattr(code, "__wrapped__", code))
+
+
+class _KeyedWalk(NamedTuple):
+    """A walk the kernel rule holds a key to, and the modules that key
+    hashes."""
+
+    walk: _KernelWalk
+    key: frozenset[str]
+
+
+@functools.cache
+def _kernel_rule_walks() -> MappingProxyType:
+    """What the kernel rule holds each UK graph kernel to, by ref and label:
+    each walk with the modules its key hashes. An ordinary kernel has one, its
+    walk (``_kernel_walk``) against its implementation hash; one listed in
+    ``_WHOLE_REGISTRY_KERNELS`` walks past the gate registry's stop. A gate
+    battery's kernel has one per phase it runs, labelled ``"<ref> <phase>"``
+    (``_battery_phase_walk``), against its hash with the phase's own code. A
+    class with several kernels (the spine's stage kernels) is walked once.
+    The held kernels (``_HELD_KERNELS``) are left out."""
+
+    kernels = _uk_graph_kernels()
+    batteries = _gate_batteries()
+    by_class: dict[type, list[tuple[str, object]]] = {}
+    for ref, kernel in sorted(kernels.items()):
+        by_class.setdefault(type(kernel), []).append((ref, kernel))
+    rule = {}
+    for kernel_class, members in by_class.items():
+        refs = {ref for ref, _ in members}
+        held = {ref in _HELD_KERNELS for ref in refs}
+        assert len(held) == 1, kernel_class
+        if held == {True}:
+            continue
+        if refs & set(_GATE_BATTERY_KERNELS):
+            assert refs <= set(_GATE_BATTERY_KERNELS), kernel_class
+            for ref, kernel in members:
+                battery = batteries[_GATE_BATTERY_KERNELS[ref]]
+                shared = _hashed_modules(kernel)
+                rule[ref] = {
+                    f"{ref} {phase}": _KeyedWalk(
+                        _battery_phase_walk(kernel_class, battery.gates, phase),
+                        shared | _phase_code_modules(battery, phase),
+                    )
+                    for phase, runner in battery.phases.items()
+                    if runner == ref
+                }
+            continue
+        whole = {ref in _WHOLE_REGISTRY_KERNELS for ref in refs}
+        assert len(whole) == 1, kernel_class
+        walk = _kernel_walk(
+            kernel_class,
+            halts=(
+                {
+                    item: why
+                    for item, why in _KERNEL_STOPS.items()
+                    if item != _GATE_REGISTRY
+                }
+                if whole == {True}
+                else None
+            ),
+        )
+        for ref, kernel in members:
+            rule[ref] = {ref: _KeyedWalk(walk, _hashed_modules(kernel))}
+    return MappingProxyType(rule)
+
+
 def test_the_kernel_rule_sees_every_kernel_the_uk_runtime_defines() -> None:
     """The kernels the rule enumerates are every kernel class the UK runtime
     and the shared atomic geography define, so a new one cannot escape it,
@@ -2664,50 +3114,52 @@ def test_the_kernel_rule_sees_every_kernel_the_uk_runtime_defines() -> None:
                 defined.add(getattr(importlib.import_module(module), node.name))
     kernels = _uk_graph_kernels()
     assert {type(kernel) for kernel in kernels.values()} == defined
-    assert set(_HELD_KERNELS) <= set(kernels)
+    listed = (
+        set(_HELD_KERNELS),
+        set(_GATE_BATTERY_KERNELS),
+        set(_WHOLE_REGISTRY_KERNELS),
+    )
+    for table in listed:
+        assert table <= set(kernels)
+    assert sum(map(len, listed)) == len(set().union(*listed))
 
 
 def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     """The stage rule, for every other UK graph kernel (microcosm#931): each
     module holding code a kernel's own methods can run to compute a value is
-    in what its implementation hash really hashes, recorded at the
-    ``source_hash`` calls it makes, and every name the rule stops at outside
-    that hash is listed in ``_KERNEL_UNBOUND_NAMES`` with its reason.
+    in what its key really hashes, recorded at the ``source_hash`` calls it
+    makes, and every name the rule stops at outside that key is listed in
+    ``_KERNEL_UNBOUND_NAMES`` with its reason.
 
     The rule starts at what the kernel runs (``_kernel_body``: its methods by
-    method resolution order, without the hash itself and the listed
-    refusal-only methods), not at its class, and stops at the declaration,
-    refusal-only and core-module tables as for the stages, and at
-    ``_KERNEL_STOPS``. Where a class has several kernels (the spine's stage
-    kernels, one per stage), each one's key is held to it. The held kernels
-    (``_HELD_KERNELS``) are not. A name microcosm.graph exports lazily,
-    through its module ``__getattr__``, is followed to the runtime module
-    that defines it like any other (``_LAZY_EXPORT_TABLES``): the kernels'
-    capability and context records are listed core names, and the create
-    kernel's ``load_source``, which it calls only where no root transform is
-    bound, is a listed stop."""
+    method resolution order, without the hash itself, the methods only the
+    hash calls and the listed refusal-only methods), not at its class, and
+    stops at the declaration, refusal-only and core-module tables as for the
+    stages, and at ``_KERNEL_STOPS``. Where a class has several kernels (the
+    spine's stage kernels, one per stage), each one's key is held to it. A
+    gate battery is held to it one phase at a time, each phase's key being
+    the battery's hash with the phase's own code (``_battery_phase_walk``),
+    and the national gates past the gate registry's stop
+    (``_WHOLE_REGISTRY_KERNELS``; microcosm#931 ruling 6). The held kernels
+    (``_HELD_KERNELS``) are not held to it. A name microcosm.graph exports
+    lazily, through its module ``__getattr__``, is followed to the runtime
+    module that defines it like any other (``_LAZY_EXPORT_TABLES``): the
+    kernels' capability and context records are listed core names, and the
+    create kernel's ``load_source``, which it calls only where no root
+    transform is bound, is a listed stop."""
     from microcosm.build.uk_runtime import graph_population, rowwise_geography
 
     kernels = _uk_graph_kernels()
-    by_class: dict[type, list[tuple[str, object]]] = {}
-    for ref, kernel in sorted(kernels.items()):
-        by_class.setdefault(type(kernel), []).append((ref, kernel))
     unhashed: dict[str, list[str]] = {}
     unlisted: set[tuple[str, str]] = set()
     met: set[tuple[str, str]] = set()
-    for kernel_class, members in by_class.items():
-        held = {ref in _HELD_KERNELS for ref, _ in members}
-        assert len(held) == 1, kernel_class
-        if held == {True}:
-            continue
-        walk = _kernel_walk(kernel_class)
-        met |= set(walk.met)
-        for ref, kernel in members:
-            hashed = _hashed_modules(kernel)
-            missing = sorted(set(walk.reach) - hashed)
+    for walks in _kernel_rule_walks().values():
+        for label, (walk, key) in walks.items():
+            missing = sorted(set(walk.reach) - key)
             if missing:
-                unhashed[ref] = missing
-            unlisted.update(item for item in walk.stops if item[0] not in hashed)
+                unhashed[label] = missing
+            unlisted.update(item for item in walk.stops if item[0] not in key)
+            met |= set(walk.met)
     assert not unhashed, unhashed
     assert unlisted == set(_KERNEL_UNBOUND_NAMES), sorted(
         unlisted ^ set(_KERNEL_UNBOUND_NAMES)
@@ -2731,25 +3183,246 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
         assert rowwise_geography.__name__ in _hashed_modules(kernel), kernel.ref
 
 
+def test_each_gate_battery_phase_keys_on_its_own_reach() -> None:
+    """Each phase of a gate battery keys on what it computes through and on
+    nothing only another phase computes through (microcosm#931 ruling 6).
+
+    A battery's phases run one kernel's code, and that kernel's hash is the
+    code they share: it holds what every phase computes through and nothing
+    only some of them do. Each phase's own code, which its node carries as
+    ``<phase>_code``, holds exactly the rest of what that phase computes
+    through, and a phase that computes through nothing of its own carries
+    none. So an edit only the transferred spine phase computes through
+    re-keys neither the assembled gate nor the spine stages that wait on it,
+    and one only the terminal phase computes through re-keys neither the
+    preflight nor the dense solve keyed on it. What a phase computes through
+    is its walk (``_battery_phase_walk``), which the kernel rule's test holds
+    each phase's key to cover."""
+    from microcosm.build.uk_runtime.graph_evidence import (
+        UK_SPINE_GATE_PHASE_CODE,
+        add_uk_spine_gate_nodes,
+    )
+
+    kernels = _uk_graph_kernels()
+    rule = _kernel_rule_walks()
+    problems: dict[tuple[str, str], object] = {}
+    for name, battery in _gate_batteries().items():
+        reaches = {
+            phase: frozenset(rule[ref][f"{ref} {phase}"].walk.reach)
+            for phase, ref in battery.phases.items()
+        }
+        every = frozenset.intersection(*reaches.values())
+        some = frozenset.union(*reaches.values()) - every
+        (shared,) = {_hashed_modules(kernels[ref]) for ref in battery.phases.values()}
+        if every - shared:
+            problems[(name, "shared hash misses")] = sorted(every - shared)
+        if shared & some:
+            problems[(name, "shared hash holds a phase's own")] = sorted(shared & some)
+        assert set(battery.codes) <= set(battery.phases), name
+        for phase, reach in reaches.items():
+            own = _phase_code_modules(battery, phase)
+            if own != reach - shared:
+                problems[(name, phase)] = {
+                    "missing": sorted(reach - shared - own),
+                    "extra": sorted(own - (reach - shared)),
+                }
+            if (phase in battery.codes) != bool(reach - shared):
+                problems[(name, f"{phase} code")] = sorted(reach - shared)
+    assert not problems, problems
+    # The spine gate nodes carry each phase's own code, and only their own;
+    # the full gate nodes' are held in test_uk_graph_terminal.
+    gated = add_uk_spine_gate_nodes(
+        uk_spine_graph(), spec=load_country_spec("uk"), engine_identity="test"
+    )
+    for phase in _gate_batteries()["spine"].phases:
+        params = gated.node(f"spine.gates.{phase}").params
+        code = UK_SPINE_GATE_PHASE_CODE.get(phase)
+        assert {key for key in params if key.endswith("_code")} == (
+            {f"{phase}_code"} if code is not None else set()
+        ), phase
+        if code is not None:
+            assert params[f"{phase}_code"] == code(), phase
+
+
+def test_the_battery_model_reads_the_declared_dispatch() -> None:
+    """The per-phase walk models how a battery reaches each evaluator
+    (``_battery_phase_walk``), and each part of the model holds against the
+    code (microcosm#931 ruling 6):
+
+    - the registry's literal mapping is the registry Python builds: the same
+      gates, each binding's evaluator the function its expression names;
+    - the stage-health dispatcher runs each check in its own branch, which
+      every check the UK spec declares has, and outside them only fails a
+      receipt for another stage or an unknown check; in the registry's reach
+      and the batteries', only the stage-health binding's evaluator names it;
+    - every ``if`` on ``phase`` in a battery kernel's code is one the walk
+      prunes, or only refuses;
+    - an evidence-artifact table's entry the model can skip is a domain an
+      enum gate reads by its one declared column, which nothing else in those
+      reaches reads by its key, or names no first-party definition;
+    - each battery's kernels are the listed ones, and run its phases."""
+    import ast
+
+    from microcosm.build.uk_runtime import battery_bindings
+
+    # The registry.
+    bindings = _registry_bindings()
+    assert set(bindings) == set(battery_bindings.UK_GATE_REGISTRY)
+    for gate, (module, value) in bindings.items():
+        binding = battery_bindings.UK_GATE_REGISTRY[gate]
+        keyword = "evaluator" if hasattr(binding, "evaluator") else "gate"
+        function = getattr(binding, keyword)
+        assert isinstance(value, ast.Call), gate
+        (named,) = [item.value for item in value.keywords if item.arg == keyword]
+        assert _named(module, named, _HELPER_SCOPE) == {
+            (function.__module__, function.__name__)
+        }, gate
+    # The stage-health dispatch.
+    branches, common = _stage_health_dispatch()
+    declared = {
+        str(entry.parameters["check"])
+        for entry in load_country_spec("uk").gates.gates
+        if entry.gate == "stage_health"
+    }
+    assert declared <= set(branches), sorted(declared - set(branches))
+    for check, body in branches.items():
+        assert len(body) == 1 and isinstance(body[0], ast.Return), check
+    for statement in common:
+        if isinstance(statement, ast.Expr) and isinstance(
+            statement.value, ast.Constant
+        ):
+            continue
+        body = statement.body if isinstance(statement, ast.If) else [statement]
+        assert not getattr(statement, "orelse", None), ast.unparse(statement)
+        assert (
+            len(body) == 1
+            and isinstance(body[0], ast.Return)
+            and isinstance(body[0].value, ast.Call)
+            and ast.unparse(body[0].value.func) == "GateResult"
+        ), ast.unparse(statement)
+    # The registry's whole reach, with every battery phase's.
+    merged = _helper_walk(_GATE_REGISTRY)
+    for ref in _GATE_BATTERY_KERNELS:
+        for keyed in _kernel_rule_walks()[ref].values():
+            merged = _merged(merged, _Walk(keyed.walk.reach, frozenset(), frozenset()))
+    reach = merged.reach
+    dispatchers = set()
+    domain_reads: dict[tuple[str, str], set[str]] = {}
+    for module, names in reach.items():
+        definitions = _module_definitions(module, _HELPER_SCOPE).definitions
+        for name in names:
+            node = definitions[name]
+            if _STAGE_HEALTH_DISPATCH in _named(module, node, _HELPER_SCOPE):
+                dispatchers.add((module, name))
+            for sub in ast.walk(node):
+                key = None
+                if isinstance(sub, ast.Subscript) and ast.unparse(sub.value).endswith(
+                    "artifacts"
+                ):
+                    key = sub.slice
+                elif (
+                    isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Attribute)
+                    and sub.func.attr == "get"
+                    and ast.unparse(sub.func.value).endswith("artifacts")
+                    and sub.args
+                ):
+                    key = sub.args[0]
+                last = key.values[-1] if isinstance(key, ast.JoinedStr) else key
+                if isinstance(last, ast.Constant) and str(last.value).endswith(
+                    "_enum_domain"
+                ):
+                    domain_reads.setdefault((module, name), set()).add(ast.unparse(key))
+    assert dispatchers == {(battery_bindings.__name__, "_evaluate_stage_health")}
+    enum = (battery_bindings.__name__, "_evaluate_enum_domain")
+    assert domain_reads == {enum: {"f'{column}_enum_domain'"}}, domain_reads
+    assigned = {
+        ast.unparse(sub)
+        for sub in ast.walk(
+            _module_definitions(enum[0], _HELPER_SCOPE).definitions[enum[1]]
+        )
+        if isinstance(sub, ast.Assign)
+    }
+    assert {
+        "columns = tuple(parameters.get('columns', ()))",
+        "column = columns[0]",
+    } <= assigned
+    # The phase tests.
+    kernels = _uk_graph_kernels()
+    for ref in _GATE_BATTERY_KERNELS:
+        for _, statement, name in _kernel_body(type(kernels[ref])):
+            for sub in ast.walk(statement):
+                if not isinstance(sub, ast.If) or not any(
+                    isinstance(item, ast.Name) and item.id == "phase"
+                    for item in ast.walk(sub.test)
+                ):
+                    continue
+                assert _phase_test(sub.test) is not None or all(
+                    isinstance(item, ast.Raise) for item in sub.body
+                ), (ref, name, ast.unparse(sub.test))
+    # The evidence-artifact tables.
+    for table in _EVIDENCE_ARTIFACT_TABLES:
+        for artifact, value in _artifact_table(table).items():
+            if not artifact.endswith("_enum_domain"):
+                assert not _named(table[0], value, _HELPER_SCOPE), (table, artifact)
+    # The batteries and their phases.
+    batteries = _gate_batteries()
+    assert {
+        ref: name
+        for name, battery in batteries.items()
+        for ref in battery.phases.values()
+    } == _GATE_BATTERY_KERNELS
+    assert dict(batteries["spine"].phases) == {
+        "assembled": "uk.spine-gates@1",
+        "transferred": "uk.spine-gates@1",
+    }
+    assert dict(batteries["full"].phases) == {
+        "preflight": "uk.full-gates.preflight@1",
+        "terminal": "uk.full-gates@1",
+    }
+
+
+def test_the_national_gates_key_on_the_gate_registrys_whole_reach() -> None:
+    """The national gates evaluate whichever gates their node's gate scope
+    names, so they key on everything the gate registry's bindings compute
+    through (microcosm#931 ruling 6): battery_bindings lists exactly that,
+    and each such kernel's hash covers it."""
+    from microcosm.build.uk_runtime import battery_bindings
+
+    reach = set(_helper_walk(_GATE_REGISTRY).reach)
+    listed = set(battery_bindings.UK_GATE_REGISTRY_MODULES)
+    assert listed == reach, sorted(listed ^ reach)
+    assert len(listed) == len(battery_bindings.UK_GATE_REGISTRY_MODULES)
+    assert {
+        module.__name__ for module in battery_bindings.uk_gate_registry_modules()
+    } == listed
+    kernels = _uk_graph_kernels()
+    for ref in _WHOLE_REGISTRY_KERNELS:
+        assert reach <= _hashed_modules(kernels[ref]), ref
+
+
 def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
     """Each listed kernel stop is met only where its reason says
     (microcosm#931)."""
     import ast
 
     from microcosm.build.uk_runtime import (
-        battery_bindings,
+        graph_evidence,
         graph_kernels,
+        graph_national,
+        graph_terminal,
         release_certification,
         spi_spine,
     )
+    from microcosm.build.uk_runtime.graph_evidence import add_uk_spine_gate_nodes
 
     kernels = _uk_graph_kernels()
     namers: dict[tuple[str, str], dict[str, frozenset]] = {}
-    for ref, kernel in kernels.items():
-        if ref in _HELD_KERNELS:
-            continue
-        for stop, by in _kernel_walk(type(kernel)).met.items():
-            namers.setdefault(stop, {})[ref] = by
+    for ref, walks in _kernel_rule_walks().items():
+        for keyed in walks.values():
+            for stop, by in keyed.walk.met.items():
+                held = namers.setdefault(stop, {})
+                held[ref] = held.get(ref, frozenset()) | by
 
     # The fixture resolver resolves the stage's own transform: of what holds a
     # value, it names only the builder the stage rule starts from.
@@ -2799,6 +3472,16 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
     reach = _helper_walk(reason)
     hashed = _hashed_modules(kernels[f"uk.stage.{stage}@1"])
     assert set(reach.reach) | {module for module, _ in reach.stops} <= hashed
+    # The spine gates rebuild their frame through _minimal_frame too, and no
+    # spine gate node names a stage, so none takes that branch.
+    assert "uk.spine-gates@1" in namers[reason]
+    gated = add_uk_spine_gate_nodes(
+        uk_spine_graph(),
+        spec=load_country_spec("uk"),
+        engine_identity="declaration-only",
+    )
+    gate_nodes = [node for node in gated.nodes if node.kernel == "uk.spine-gates@1"]
+    assert gate_nodes and not any("stage" in node.params for node in gate_nodes)
 
     # The source codecs: only the create kernel's run loads a source through
     # them, and only inside its branch for an unbound root transform. The
@@ -2836,21 +3519,33 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
     )
 
     # The gate registry: the bound spine derives its gate digests through it,
-    # in _manifest_digests, which returns the battery run's digests alone;
-    # the national battery evaluates through it and is held there.
-    registry = (battery_bindings.__name__, "UK_GATE_REGISTRY")
-    held_there = {ref for ref, stop in _HELD_KERNEL_STOPS if stop == registry}
-    assert held_there == {"uk.full.national-gates@1"}
-    assert {
-        ref: by for ref, by in namers[registry].items() if ref not in held_there
-    } == {
+    # in _manifest_digests, which returns the battery run's digests alone.
+    # The gate batteries' runs evaluate through it, and each phase is held
+    # past it to the gates it declares; the national gates' run evaluates
+    # through it too, and they are walked past it to its whole reach.
+    registry = _GATE_REGISTRY
+    assert namers[registry] == {
         "uk.full.bound_spine@1": frozenset(
             {(release_certification.__name__, "_manifest_digests")}
         ),
+        "uk.spine-gates@1": frozenset(
+            {(graph_evidence.__name__, "UKSpineGateKernel.run")}
+        ),
+        "uk.full-gates.preflight@1": frozenset(
+            {(graph_terminal.__name__, "UKFullGateKernel.run")}
+        ),
+        "uk.full-gates@1": frozenset(
+            {(graph_terminal.__name__, "UKFullGateKernel.run")}
+        ),
     }
-    assert namers[registry]["uk.full.national-gates@1"] == frozenset(
-        {("microcosm.build.uk_runtime.graph_national", "UKNationalGateKernel.run")}
+    assert set(namers[registry]) - {"uk.full.bound_spine@1"} == set(
+        _GATE_BATTERY_KERNELS
     )
+    for ref in _WHOLE_REGISTRY_KERNELS:
+        assert registry not in _kernel_rule_walks()[ref][ref].walk.met, ref
+    assert _kernel_walk(type(kernels["uk.full.national-gates@1"])).met[
+        registry
+    ] == frozenset({(graph_national.__name__, "UKNationalGateKernel.run")})
     digests = _module_definitions(
         release_certification.__name__, _HELPER_SCOPE
     ).definitions["_manifest_digests"]
@@ -2864,27 +3559,16 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
 
 def test_every_hold_still_guards_a_module_its_kernel_leaves_out() -> None:
     """A hold lasts only while it is needed (microcosm#931 review): each held
-    kernel's walk still meets a module its hash leaves out, and so does the
-    walk past each held stop, so a hold that guards nothing fails here and
-    leaves its table. Until the ruling, such a kernel can replay a stale
-    output after an edit to one of those modules."""
+    kernel's walk still meets a module its hash leaves out, so a hold that
+    guards nothing fails here and leaves its table. Until the ruling, such a
+    kernel can replay a stale output after an edit to one of those
+    modules."""
     kernels = _uk_graph_kernels()
-    assert {ref for ref, _ in _HELD_KERNEL_STOPS} <= set(kernels)
-    assert not {ref for ref, _ in _HELD_KERNEL_STOPS} & set(_HELD_KERNELS)
     unneeded = []
     for ref in _HELD_KERNELS:
         kernel = kernels[ref]
         if not set(_kernel_walk(type(kernel)).reach) - _hashed_modules(kernel):
             unneeded.append(ref)
-    for ref, stop in _HELD_KERNEL_STOPS:
-        assert stop in _KERNEL_STOPS, (ref, stop)
-        kernel = kernels[ref]
-        past = _kernel_walk(
-            type(kernel),
-            halts={item: why for item, why in _KERNEL_STOPS.items() if item != stop},
-        )
-        if not set(past.reach) - _hashed_modules(kernel):
-            unneeded.append((ref, stop))
     assert not unneeded, unneeded
 
 
@@ -2894,15 +3578,13 @@ def test_the_core_definitions_the_kernels_name_are_listed() -> None:
     the UK graph kernels' own code names, outside the held kernels, are
     exactly ``_KERNEL_CORE_NAMES``, and the executor stores every node's
     owned cells through the dtype tokens' map, as that entry's reason says."""
-    kernels = _uk_graph_kernels()
-    named: set[tuple[str, str]] = set()
-    for ref, kernel in kernels.items():
-        if ref not in _HELD_KERNELS:
-            named |= {
-                item
-                for item in _kernel_walk(type(kernel)).core_names
-                if not item[0].startswith("microcosm.frame.")
-            }
+    named = {
+        item
+        for walks in _kernel_rule_walks().values()
+        for keyed in walks.values()
+        for item in keyed.walk.core_names
+        if not item[0].startswith("microcosm.frame.")
+    }
     assert named == set(_KERNEL_CORE_NAMES), sorted(named ^ set(_KERNEL_CORE_NAMES))
     patching = _helper_walk(("microcosm.graph.population", "patch"), follow_core=True)
     assert "dtype_for_token" in patching.reach["microcosm.graph.population"]
@@ -3014,10 +3696,12 @@ def test_the_kernel_rule_follows_what_a_kernel_runs(tmp_path, monkeypatch) -> No
     """Control: the kernel rule follows what a kernel's methods name,
     through its bases by method resolution order (a base method it inherits,
     and one it overrides only where it calls ``super()``), and leaves out its
-    implementation hash, a listed refusal-only method, a base method it
-    overrides without ``super()`` and what lies behind a listed kernel stop,
-    which it reports with what named it. The recorder sees each module the
-    hash passes to ``source_hash``, in whichever module calls it."""
+    implementation hash, a method only the hash calls, a listed refusal-only
+    method, a base method it overrides without ``super()`` and what lies
+    behind a listed kernel stop, which it reports with what named it. A
+    method the hash and the run both call stays. The recorder sees each
+    module the hash passes to ``source_hash``, in whichever module calls
+    it."""
     import importlib
     import uuid
 
@@ -3034,6 +3718,8 @@ def test_the_kernel_rule_follows_what_a_kernel_runs(tmp_path, monkeypatch) -> No
         "refused": "def check(x):\n    return x < 0\n",
         "keyonly": "def salt():\n    return 'salt'\n",
         "behind": "def beyond(x):\n    return x * 5\n",
+        "resourced": "def fingerprint(x):\n    return x * 7\n",
+        "shared": "def both(x):\n    return x * 11\n",
         "table": "from .behind import beyond\n\nTABLE = {'a': beyond}\n",
         "keyed": (
             "from microcosm.graph import source_hash\n\n"
@@ -3058,10 +3744,16 @@ def test_the_kernel_rule_follows_what_a_kernel_runs(tmp_path, monkeypatch) -> No
             "from .keyed import key\n"
             "from .keyonly import salt\n"
             "from .refused import check\n"
+            "from .resourced import fingerprint\n"
+            "from .shared import both\n"
             "from .table import TABLE\n\n"
             "class Kernel(Base):\n"
             "    def implementation_hash(self):\n"
-            "        return salt() + key()\n\n"
+            "        return salt() + key() + self._resources(1) + self._both(1)\n\n"
+            "    def _resources(self, x):\n"
+            "        return str(fingerprint(x))\n\n"
+            "    def _both(self, x):\n"
+            "        return str(both(x))\n\n"
             "    def _admit(self, x):\n"
             "        if check(x):\n"
             "            raise ValueError('refused')\n\n"
@@ -3069,6 +3761,7 @@ def test_the_kernel_rule_follows_what_a_kernel_runs(tmp_path, monkeypatch) -> No
             "        return x\n\n"
             "    def run(self, x):\n"
             "        self._admit(x)\n"
+            "        self._both(x)\n"
             "        return computed(x) + super().run(x) + TABLE['a'](x)\n"
         ),
     }
@@ -3089,6 +3782,7 @@ def test_the_kernel_rule_follows_what_a_kernel_runs(tmp_path, monkeypatch) -> No
         "computed": {"computed"},
         "inherited": {"base_only"},
         "assisted": {"kept"},
+        "shared": {"both"},
     }
     assert walk.met == {
         (f"{prefix}table", "TABLE"): frozenset({(f"{prefix}kernel", "Kernel.run")})

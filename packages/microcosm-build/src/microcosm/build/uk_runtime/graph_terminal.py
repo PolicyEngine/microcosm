@@ -12,12 +12,12 @@ import hashlib
 import io
 import json
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, replace
 from functools import cache
 from importlib import metadata
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -789,46 +789,162 @@ def _source_gate_evidence(context: KernelContext, engine):
 
 @cache
 def uk_terminal_only_code_hash() -> str:
-    """The source hash of the code only the calibrated gates run.
+    """The source hash of the code only the calibrated gates compute through.
 
-    The high-value homes evidence is computed on the calibrated pool alone.
     The source preflight runs the gate kernel's code and the dense solve keys
-    on the preflight, so this code keys the calibrated node through its
-    parameters, not the kernel's hash (microcosm#1306 review). An edit to
-    ``high_value_home_gates`` re-keys the calibrated gates and what follows
-    them, never the solve. ``high_value_homes`` also feeds the target
-    kernels, which hash it, so an edit to it still re-solves: a disclosure fix
-    between two builds that must reuse the solve belongs in
-    ``high_value_home_gates`` alone.
+    on the preflight, so the code only the terminal phase computes through
+    keys the calibrated node through its ``terminal_code`` parameter, not the
+    kernel's hash (microcosm#1306 review; microcosm#931 ruling 6): an edit to
+    it re-keys the calibrated gates and what follows them, never the solve.
+    That is the terminal branch of the kernel's run, and what the terminal
+    gates compute through beyond the preflight's:
 
-    The calibrated node (``uk.full.gates.calibrated``) also publishes its
-    ``calibration_diagnostics`` output as schema 9:
-    ``catalog_calibration_diagnostics`` with the UK label choices (which read
-    ``UK_GEOGRAPHY_ID_TO_LABEL``), dumped from ``CalibrationDiagnosticsV9``.
-    Those modules decide the published labels and bytes, so an edit to them
-    re-keys the calibrated node the same way. ``geography_constants``, like
-    ``high_value_homes``, also feeds the target kernels, which hash it
-    (microcosm#1492), so an edit to it still re-solves; an edit to the other
-    three never does.
+    - the high-value homes evidence, on the calibrated pool alone
+      (``high_value_home_gates``, with the disclosure floor it reads from
+      ``receipt_counts`` and the tenure categories behind its owner mask,
+      ``tenure_constants``). ``high_value_homes`` itself is in the kernel's
+      hash, since the preflight's target-surface evidence reads its metric
+      names, and the target kernels hash it too, so an edit to it re-solves:
+      a disclosure fix between two builds that must reuse the solve belongs
+      in ``high_value_home_gates`` alone. ``calibrate.geography_constants``,
+      which the preflight's ledger parity reads, is in the kernel's hash too;
+    - the calibration diagnostics the calibrated node publishes as schema 9:
+      ``uk_runtime.diagnostics``, with its consumption drift
+      (``domestic_energy_targets``, ``energy_pricing``, ``etb_vat``,
+      ``lcfs_consumption``) and label choices (``local_authority_input``,
+      ``calibrate.hierarchy_labels``); ``microcosm.calibrate``'s
+      diagnostics, target loss attribution and solve; and
+      ``microcosm.diagnostics``' catalogs and schema;
+    - the solved problem and result it decodes (``microcosm.calibrate``'s
+      artifacts, matrix and monetary binding), the frame it rebuilds
+      (``graph_population``), the area-support summary (``local_rowwise``),
+      the support floors, admin anchors and CGT projection it builds the
+      gate context with (``support_floor``, ``etb_services``,
+      ``cgt_projection``, ``donor_uprating``), the input-mass reference
+      (``weighted_integrity``) and the fit-weight records it rehydrates
+      (``release_certification``);
+    - the terminal gates' evaluators: the input-mass parity
+      (``input_mass``), the CGT projection fence's conditioning facts
+      (``hmrc_capital_gains``, read through the vendored-fact reader, the
+      chronicle feed and its schema epochs), the take-up signal
+      (``frs_take_up``, ``take_up_contract``, ``dfe_spring_term``), the
+      column implication's property shares (``uc_capital_coherence``), the
+      nonnegative columns (``source_runtime``) and the geography ladder
+      (``rowwise_geography``).
 
     Hashed once per process, as the code was imported: an edit to the files
     while a build runs cannot fail the calibrated gates after the solve.
     """
-    import microcosm.calibrate.geography_constants as geography_constants
+    import microcosm.calibrate._target_loss_attribution as target_loss_attribution
+    import microcosm.calibrate.artifacts as calibrate_artifacts
+    import microcosm.calibrate.diagnostics as calibrate_diagnostics
     import microcosm.calibrate.hierarchy_labels as hierarchy_labels
+    import microcosm.calibrate.matrix as calibrate_matrix
+    import microcosm.calibrate.monetary_binding as monetary_binding
+    import microcosm.calibrate.solve as calibrate_solve
     import microcosm.diagnostics.catalogs as diagnostics_catalogs
     import microcosm.diagnostics.schema as diagnostics_schema
 
-    from . import high_value_home_gates, high_value_homes
+    from .. import chronicle_epoch, input_mass
+    from . import (
+        cgt_projection,
+        chronicle_feed,
+        dfe_spring_term,
+        diagnostics,
+        domestic_energy_targets,
+        donor_uprating,
+        energy_pricing,
+        etb_services,
+        etb_vat,
+        frs_take_up,
+        graph_population,
+        high_value_home_gates,
+        hmrc_capital_gains,
+        lcfs_consumption,
+        ledger_fact_vendoring,
+        local_authority_input,
+        local_rowwise,
+        receipt_counts,
+        release_certification,
+        rowwise_geography,
+        source_runtime,
+        support_floor,
+        take_up_contract,
+        tenure_constants,
+        uc_capital_coherence,
+        weighted_integrity,
+    )
 
     return source_hash(
         high_value_home_gates,
-        high_value_homes,
         diagnostics_catalogs,
         diagnostics_schema,
         hierarchy_labels,
-        geography_constants,
+        diagnostics,
+        calibrate_diagnostics,
+        target_loss_attribution,
+        calibrate_artifacts,
+        calibrate_matrix,
+        monetary_binding,
+        calibrate_solve,
+        graph_population,
+        local_rowwise,
+        support_floor,
+        rowwise_geography,
+        release_certification,
+        weighted_integrity,
+        input_mass,
+        etb_services,
+        etb_vat,
+        domestic_energy_targets,
+        energy_pricing,
+        lcfs_consumption,
+        cgt_projection,
+        donor_uprating,
+        hmrc_capital_gains,
+        frs_take_up,
+        take_up_contract,
+        dfe_spring_term,
+        receipt_counts,
+        uc_capital_coherence,
+        tenure_constants,
+        source_runtime,
+        local_authority_input,
+        ledger_fact_vendoring,
+        chronicle_feed,
+        chronicle_epoch,
     )
+
+
+@cache
+def uk_preflight_only_code_hash() -> str:
+    """The source hash of the code only the source preflight computes
+    through: the shared ledger's registry parity report, behind the ledger
+    compile parity gates only the preflight declares
+    (``microcosm.build.ledger_targets``).
+
+    The preflight's node carries it as its ``preflight_code`` parameter, so
+    an edit to it re-keys the preflight and the solve after it, and the
+    calibrated gates only through them (microcosm#931 ruling 6). Hashed once
+    per process, as the calibrated gates' own code is.
+    """
+    from .. import ledger_targets as shared_ledger_targets
+
+    return source_hash(shared_ledger_targets)
+
+
+#: Each full gate phase's own code: the hash of what only that phase computes
+#: through, which its node carries as its ``<phase>_code`` parameter and the
+#: kernel checks before it evaluates anything. The code both phases compute
+#: through is the gate kernels' shared hash (microcosm#931 ruling 6);
+#: test_uk_graph derives each phase's share from the gates it declares and
+#: the branch of the kernel's run it takes.
+UK_FULL_GATE_PHASE_CODE: Mapping[str, Callable[[], str]] = MappingProxyType(
+    {
+        "preflight": uk_preflight_only_code_hash,
+        "terminal": uk_terminal_only_code_hash,
+    }
+)
 
 
 class UKFullGateKernel(KernelBase):
@@ -836,7 +952,10 @@ class UKFullGateKernel(KernelBase):
 
     Its terminal gates read the gate-only registers, so it keys on the full
     country fingerprint and a sign-off re-keys it. The source preflight runs
-    under :class:`UKFullPreflightGateKernel` (microcosm#1301).
+    under :class:`UKFullPreflightGateKernel` (microcosm#1301). Both phases
+    key on the code both compute through, this kernel's hash, and each on
+    its own, which its node carries as ``<phase>_code`` and the kernel
+    checks (:data:`UK_FULL_GATE_PHASE_CODE`; microcosm#931 ruling 6).
     """
 
     ref = "uk.full-gates@1"
@@ -861,17 +980,42 @@ class UKFullGateKernel(KernelBase):
         return load_country_spec("uk").fingerprint
 
     def implementation_hash(self) -> str:
-        # The gate evaluators (``gates``) and the register loaders
-        # (``terminal_gates``) decide the report as much as the bindings do,
-        # so an edit to either re-keys the gate nodes (microcosm#1301).
-        from .. import gate_battery, gates
+        # The code both phases compute through (microcosm#931 ruling 6), as
+        # test_uk_graph derives it from the gates each declares and the branch
+        # of run each takes: this kernel's run, with the manifests,
+        # enforcement and source registries it reads and the reports it
+        # encodes; the battery, the gate registry and the shared gates'
+        # evaluators; and what both phases' gates compute through, among it
+        # the release input coverage and the frame surface it reads, the
+        # target surfaces and their expected sets, and the register loaders
+        # (terminal_gates). What only one phase computes through is that
+        # phase's own code (UK_FULL_GATE_PHASE_CODE), so the preflight, and
+        # the dense solve keyed on it, re-key on none of the terminal phase's.
+        import microcosm.calibrate.geography_constants as geography_constants
+        import microcosm.calibrate.hierarchy as calibrate_hierarchy
+        import microcosm.calibrate.registry as calibrate_registry
+        import microcosm.calibrate.target as calibrate_target
+        import microcosm.frame.materialize as frame_materialize
+        import microcosm.graph.canonical as canonical_encoder
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+
+        from .. import gate_battery, gates, stage_evidence
         from . import (
             battery_bindings,
-            diagnostics,
+            calibration_run,
+            council_tax_constants,
             full_gates,
-            local_rowwise,
+            geography_ladder,
+            graph_evidence,
+            graph_targets,
+            high_value_homes,
+            ledger_targets,
+            local_targets,
+            national_frame,
+            parity_reference,
+            release_identity,
+            release_input_coverage,
             terminal_gates,
-            weighted_integrity,
         )
 
         return hashlib.sha256(
@@ -883,10 +1027,27 @@ class UKFullGateKernel(KernelBase):
                         gates,
                         battery_bindings,
                         full_gates,
-                        local_rowwise,
                         terminal_gates,
-                        weighted_integrity,
-                        diagnostics,
+                        stage_evidence,
+                        graph_evidence,
+                        graph_targets,
+                        calibration_run,
+                        release_input_coverage,
+                        national_frame,
+                        uk_engine_adapter,
+                        frame_materialize,
+                        release_identity,
+                        parity_reference,
+                        ledger_targets,
+                        local_targets,
+                        high_value_homes,
+                        geography_ladder,
+                        council_tax_constants,
+                        geography_constants,
+                        calibrate_registry,
+                        calibrate_target,
+                        calibrate_hierarchy,
+                        canonical_encoder,
                     ),
                     "country_resources": self._country_resources(),
                 }
@@ -926,12 +1087,9 @@ class UKFullGateKernel(KernelBase):
             raise ValueError(
                 "UK full gate engine identity differs from its declared binding."
             )
-        if (
-            context.params["phase"] == "terminal"
-            and context.params.get("terminal_code") != uk_terminal_only_code_hash()
-        ):
+        if context.params.get(f"{phase}_code") != UK_FULL_GATE_PHASE_CODE[phase]():
             raise ValueError(
-                "UK full gate terminal-only code differs from its declared binding."
+                f"UK full gate {phase}-only code differs from its declared binding."
             )
         selection = json.loads(context.artifacts["selection"].payload)["receipt"]
         gates = uk_full_gate_manifest(selection)
@@ -1159,7 +1317,9 @@ class UKFullPreflightGateKernel(UKFullGateKernel):
     preflight's key is part of the solve's. Its gates read no gate-only
     register (``solve_scope``), so it keys on the solve fingerprint: a
     sign-off between the two release builds leaves it, and so the solve, a
-    cache hit (microcosm#1301). The code it runs is the calibrated kernel's.
+    cache hit (microcosm#1301). The code it runs is the calibrated kernel's,
+    and it keys on that kernel's hash and on its own code, which its node
+    carries as ``preflight_code`` (microcosm#931 ruling 6).
     """
 
     ref = "uk.full-gates.preflight@1"
@@ -1268,7 +1428,14 @@ def append_uk_full_gate_nodes(
         "uk.full.gates.preflight",
         UKFullPreflightGateKernel.ref,
         population=input_population,
-        params={**params, "phase": "preflight"},
+        # The preflight keys on its own code, as the calibrated node keys on
+        # its own, so an edit to either phase's alone re-keys only that phase
+        # and what follows it (microcosm#931 ruling 6).
+        params={
+            **params,
+            "phase": "preflight",
+            "preflight_code": UK_FULL_GATE_PHASE_CODE["preflight"](),
+        },
         artifact_inputs=common,
         artifact_outputs=(ArtifactOutput("gate_report", FULL_GATE_REPORT_TYPE),),
         description="Validate complete source/reference registries and spine stage ownership before dense calibration.",
@@ -1318,7 +1485,7 @@ def append_uk_full_gate_nodes(
         params={
             **gate_params,
             "phase": "terminal",
-            "terminal_code": uk_terminal_only_code_hash(),
+            "terminal_code": UK_FULL_GATE_PHASE_CODE["terminal"](),
         },
         artifact_inputs=(
             *common,

@@ -28,12 +28,13 @@ reads the frame directly and skips it.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from importlib.resources import files
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType
 from typing import Any
 
 import numpy as np
@@ -132,7 +133,9 @@ from microcosm.frame import Frame
 
 __all__ = [
     "UK_GATE_REGISTRY",
+    "UK_GATE_REGISTRY_MODULES",
     "UKGateBinding",
+    "uk_gate_registry_modules",
 ]
 
 
@@ -2428,3 +2431,71 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evidence=_ledger_compile_parity_evidence,
     ),
 }
+
+#: Every first-party module the registry's bindings compute through: each
+#: binding's evaluator and hooks, what they call, to a fixed point, this module
+#: among them. A kernel that evaluates whichever gates its node names through
+#: the registry keys on them all: the national gates, whose node's gate scope
+#: names their gates (microcosm#931 ruling 6). The gate batteries, whose
+#: phases declare their gates, key each phase on its own gates' share of
+#: these instead. test_uk_graph derives the set from the registry and holds
+#: this list to it exactly.
+UK_GATE_REGISTRY_MODULES: tuple[str, ...] = (
+    "microcosm.build.chronicle_epoch",
+    "microcosm.build.gate_battery",
+    "microcosm.build.gates",
+    "microcosm.build.input_mass",
+    "microcosm.build.ledger_targets",
+    "microcosm.build.stochastic_assignment",
+    "microcosm.build.uk_runtime.battery_bindings",
+    "microcosm.build.uk_runtime.bus_fare_pricing",
+    "microcosm.build.uk_runtime.bus_support_pricing",
+    "microcosm.build.uk_runtime.bus_use_incidence",
+    "microcosm.build.uk_runtime.cgt_projection",
+    "microcosm.build.uk_runtime.chronicle_feed",
+    "microcosm.build.uk_runtime.council_tax_constants",
+    "microcosm.build.uk_runtime.dfe_spring_term",
+    "microcosm.build.uk_runtime.diagnostics",
+    "microcosm.build.uk_runtime.donor_uprating",
+    "microcosm.build.uk_runtime.energy_pricing",
+    "microcosm.build.uk_runtime.etb_services",
+    "microcosm.build.uk_runtime.frs_annual_income",
+    "microcosm.build.uk_runtime.frs_take_up",
+    "microcosm.build.uk_runtime.gambling_participation",
+    "microcosm.build.uk_runtime.geography_ladder",
+    "microcosm.build.uk_runtime.high_value_home_gates",
+    "microcosm.build.uk_runtime.high_value_homes",
+    "microcosm.build.uk_runtime.hmrc_capital_gains",
+    "microcosm.build.uk_runtime.lcfs_consumption",
+    "microcosm.build.uk_runtime.ledger_fact_vendoring",
+    "microcosm.build.uk_runtime.ledger_targets",
+    "microcosm.build.uk_runtime.local_authority_input",
+    "microcosm.build.uk_runtime.local_targets",
+    "microcosm.build.uk_runtime.national_frame",
+    "microcosm.build.uk_runtime.nts_bus_travel",
+    "microcosm.build.uk_runtime.parity_reference",
+    "microcosm.build.uk_runtime.receipt_counts",
+    "microcosm.build.uk_runtime.release_identity",
+    "microcosm.build.uk_runtime.release_input_coverage",
+    "microcosm.build.uk_runtime.rowwise_geography",
+    "microcosm.build.uk_runtime.source_runtime",
+    "microcosm.build.uk_runtime.stage_health",
+    "microcosm.build.uk_runtime.take_up_contract",
+    "microcosm.build.uk_runtime.terminal_gates",
+    "microcosm.build.uk_runtime.uc_capital_coherence",
+    "microcosm.build.uk_runtime.weighted_integrity",
+    "microcosm.calibrate.geography_constants",
+    "microcosm.calibrate.hierarchy",
+    "microcosm.calibrate.registry",
+    "microcosm.calibrate.solve",
+    "microcosm.calibrate.target",
+    "microcosm.frame.adapters.policyengine_uk",
+    "microcosm.frame.materialize",
+)
+
+
+def uk_gate_registry_modules() -> tuple[ModuleType, ...]:
+    """The modules :data:`UK_GATE_REGISTRY_MODULES` names, imported, for a
+    kernel's implementation hash."""
+
+    return tuple(importlib.import_module(name) for name in UK_GATE_REGISTRY_MODULES)
