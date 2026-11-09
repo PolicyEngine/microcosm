@@ -11,6 +11,7 @@ from microcosm.build.stochastic_assignment import (
     clipped_normal_from_uniforms,
     integer_record_keys,
     sample_categorical_from_counts,
+    stable_identity_uniform,
     stable_identity_uniforms,
     weight_balanced_uniforms,
 )
@@ -130,6 +131,30 @@ def test_stable_identity_uniforms_is_permutation_equivariant() -> None:
     permuted_draws = stable_identity_uniforms(permuted_ids, seed=7, salt="flag")
 
     np.testing.assert_array_equal(permuted_draws[[1, 2, 0]], draws)
+
+
+def test_stable_identity_uniform_is_the_array_helpers_draw_for_one_label() -> None:
+    # Labels of the kind the UK stages key a walk's offset on (microcosm#931).
+    for key, seed, salt in (
+        ("cell:0:45:london", 552, "hmrc_cgt_gains_spine:offset:2024"),
+        ("0|10000", 555, "assign_badr_qualifying_gains:offset:2024"),
+        (1001, 7, "flag"),
+    ):
+        value = stable_identity_uniform(key, seed=seed, salt=salt)
+        assert type(value) is float
+        assert 0.0 <= value < 1.0
+        assert value == stable_identity_uniforms([key], seed=seed, salt=salt)[0]
+    base = stable_identity_uniform("a", seed=0, salt="x")
+    assert base != stable_identity_uniform("a", seed=1, salt="x")
+    assert base != stable_identity_uniform("a", seed=0, salt="y")
+    assert base != stable_identity_uniform("b", seed=0, salt="x")
+
+
+def test_stable_identity_uniform_refuses_a_sequence_for_its_label() -> None:
+    # A list would be formatted whole into the key and draw something else.
+    for key in (["a"], ("a", "b"), np.array([1, 2])):
+        with pytest.raises(TypeError, match="single value"):
+            stable_identity_uniform(key, seed=0, salt="x")
 
 
 def test_anchored_residual_population_restricts_the_draw_and_the_target() -> None:

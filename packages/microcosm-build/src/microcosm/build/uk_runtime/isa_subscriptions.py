@@ -61,8 +61,12 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.stochastic_assignment import (
+    stable_identity_uniform,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.cgt_imputation import (
+    _KeyedOffset,
     _truncated_exponential_quantile,
     _walk_bands,
     uk_cgt_component_sum_income,
@@ -199,18 +203,10 @@ class ISASubscriptionsError(ValueError):
     """Raised when the inputs or the declaration do not carry what the stage needs."""
 
 
-class _KeyedOffset:
-    """One identity-keyed offset in the shape ``_walk_bands`` reads (``random()``)."""
-
-    def __init__(self, value: float) -> None:
-        self._value = float(value)
-
-    def random(self) -> float:
-        return self._value
-
-
 def _keyed_offset(seed: int, salt: str, key: str) -> _KeyedOffset:
-    return _KeyedOffset(stable_identity_uniforms([key], seed=seed, salt=salt)[0])
+    """One walk's offset, keyed on its label, in the shape ``_walk_bands`` reads."""
+
+    return _KeyedOffset(stable_identity_uniform(key, seed=seed, salt=salt))
 
 
 # --------------------------------------------------------------------------
@@ -1064,9 +1060,9 @@ def draw_band_amounts(
         cumulative = np.cumsum(row_weights[ordered])
         tops = cumulative / cumulative[-1]
         bottoms = np.concatenate(([0.0], tops[:-1]))
-        jitter = stable_identity_uniforms(
-            [f"{key}:{band}"], seed=seed, salt=f"{salt}:jitter"
-        )[0]
+        jitter = stable_identity_uniform(
+            f"{key}:{band}", seed=seed, salt=f"{salt}:jitter"
+        )
         quantiles = bottoms + (0.05 + 0.9 * jitter) * (tops - bottoms)
         amounts[ordered] = lower + quantiles * (upper - lower)
     return amounts

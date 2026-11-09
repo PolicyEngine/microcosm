@@ -17,6 +17,7 @@ __all__ = [
     "clipped_normal_from_uniforms",
     "integer_record_keys",
     "sample_categorical_from_counts",
+    "stable_identity_uniform",
     "stable_identity_uniforms",
     "weight_balanced_uniforms",
 ]
@@ -46,6 +47,23 @@ def stable_identity_uniforms(
         ],
         dtype=np.float64,
     )
+
+
+def stable_identity_uniform(key: object, *, seed: int, salt: str) -> float:
+    """One U[0,1) draw keyed by ``seed:salt:key``, for a label, not a record.
+
+    The draw ``stable_identity_uniforms([key], seed=seed, salt=salt)`` gives,
+    for a scalar a stage keys on a label of its own (a walk's cell, a band's
+    bounds) rather than on a record id: it is the same whichever other draws
+    the stage makes, and in whatever order, where the n-th draw of a shared
+    Generator belongs to whichever call happens to come n-th (microcosm#931).
+    ``key`` is one value; a sequence would be formatted whole into the key
+    string, so it is refused.
+    """
+
+    if np.ndim(key) != 0:
+        raise TypeError("key must be a single value, not a sequence.")
+    return float(stable_identity_uniforms([key], seed=seed, salt=salt)[0])
 
 
 def weight_balanced_uniforms(

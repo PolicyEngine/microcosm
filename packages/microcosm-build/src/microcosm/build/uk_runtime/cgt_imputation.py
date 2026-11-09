@@ -99,6 +99,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import stable_identity_uniform
 from microcosm.build.uk_runtime.advani_summers import (
     ADVANI_SUMMERS_RESOURCE,
     ADVANI_SUMMERS_VINTAGE,
@@ -168,8 +169,9 @@ __all__ = [
 #: the certified June H5) is retired; its family left the release contract.
 UK_CGT_SPINE_STAGE_NAME = "hmrc_cgt_gains_spine"
 
-#: Base seed for the stage's draws. Combined with the build period so two
-#: periods draw differently while each build is reproducible.
+#: Base seed for the stage's draws. Combined with the build period, which
+#: salts every walk offset and plan jitter, so two periods draw differently
+#: while each build is reproducible.
 UK_CGT_IMPUTATION_SEED = 552
 
 #: How the sub-AEA remainder takes its amounts (microcosm#970): the
@@ -1224,12 +1226,30 @@ def _rake_allocation_targets(
     return targets, report
 
 
+class _KeyedOffset:
+    """One identity-keyed uniform in the shape the walks read (``random()``).
+
+    ``_walk_bands`` reads its rounding offset, and ``_draw_plan_amounts`` its
+    quantile jitter, through one ``rng.random()`` call each. The redraw
+    passes each call one of these, holding a ``stable_identity_uniform``
+    keyed on that walk's or plan's own label, in place of a shared
+    Generator, whose n-th draw belonged to whichever call came n-th
+    (microcosm#931). The ISA subscriptions walk their bands with it too.
+    """
+
+    def __init__(self, value: float) -> None:
+        self._value = float(value)
+
+    def random(self) -> float:
+        return self._value
+
+
 def _walk_bands(
     *,
     ranked: np.ndarray,
     weights: np.ndarray,
     boundaries: Sequence[tuple[int, float]],
-    rng: np.random.Generator,
+    rng: np.random.Generator | _KeyedOffset,
     members: dict[int, list[np.ndarray]],
 ) -> tuple[np.ndarray, dict[int, float]]:
     """Assign ranked gainers to bands, highest first, and draw their amounts.
@@ -1272,7 +1292,7 @@ def _draw_plan_amounts(
     person_id: np.ndarray,
     existing: np.ndarray,
     weights: np.ndarray,
-    rng: np.random.Generator,
+    rng: np.random.Generator | _KeyedOffset,
     new_gains: np.ndarray,
 ) -> None:
     """Draw one plan's amounts on weight-proportional quantile strata.
@@ -1526,7 +1546,7 @@ def _placement_receipts(
 
     Receipts only: every input is what the two passes, the plan draws and
     the remainder mapping already produced, and nothing here touches
-    ``new_gains`` or the seeded stream. Placed rows are the gainers a pass
+    ``new_gains`` or draws. Placed rows are the gainers a pass
     assigned to a plan; demoted rows are the gainers left to the sub-exempt
     remainder. The initial band is the Table 2.1a band of the prior gain; the
     redrawn band is the band of the new amount, which for a placed row is the
@@ -1787,7 +1807,16 @@ def impute_uk_capital_gains_with_report(
     # Receipts only (microcosm#1045): the walk never reads the row type.
     support_family, support_column_present = _support_family_rows(person, household)
 
-    rng = np.random.default_rng((seed, int(time_period)))
+    # Each walk's rounding offset and each plan's quantile jitter is an
+    # identity-keyed uniform on its own label, salted with the build period,
+    # so none depends on which other walks run or skip, or in what order
+    # (microcosm#931).
+    offset_salt = f"{UK_CGT_SPINE_STAGE_NAME}:offset:{int(time_period)}"
+    jitter_salt = f"{UK_CGT_SPINE_STAGE_NAME}:jitter:{int(time_period)}"
+
+    def keyed(salt: str, key: str) -> _KeyedOffset:
+        return _KeyedOffset(stable_identity_uniform(key, seed=seed, salt=salt))
+
     new_gains = existing.copy()
     is_gainer = existing > 0
     assigned = np.zeros(len(person), dtype=bool)
@@ -1863,7 +1892,11 @@ def impute_uk_capital_gains_with_report(
                     ranked=ranked,
                     weights=weights,
                     boundaries=boundaries,
-                    rng=rng,
+                    rng=keyed(
+                        offset_salt,
+                        f"cell:{income_lower}:{UK_CGT_AGE_GROUP_LOWER_BOUNDS[a]}:"
+                        f"{UK_CGT_REGION_GROUP_LABELS[r]}",
+                    ),
                     members=cell_members,
                 )
                 for gain_lower, chunks in cell_members.items():
@@ -1914,7 +1947,7 @@ def impute_uk_capital_gains_with_report(
             ranked=ranked,
             weights=weights,
             boundaries=boundaries,
-            rng=rng,
+            rng=keyed(offset_salt, f"pool:{income_lower}"),
             members=pool_members,
         )
         for gain_lower, chunks in pool_members.items():
@@ -1937,14 +1970,13 @@ def impute_uk_capital_gains_with_report(
                 person_id=person_id,
                 existing=rank_key,
                 weights=person_weight,
-                rng=rng,
+                rng=keyed(jitter_salt, f"plan:{gain_lower}:{income_lower}"),
                 new_gains=new_gains,
             )
 
     # Below the published taxpayer mass: sub-AEA gainers take Advani-Summers
     # within-band amounts restricted to (0, AEA], rank-preserving within each
-    # A&S total-income band (microcosm#970). Nothing here touches rng, so the
-    # walk and plan draw order above is unchanged.
+    # A&S total-income band (microcosm#970). Nothing here draws.
     remainder_receipt = _map_remainder_amounts(
         remainder=np.flatnonzero(is_gainer & ~assigned),
         existing=existing,
@@ -2512,10 +2544,16 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             "bottom_band_floor": "annual exempt amount plus one pound",
             "seed_base": UK_CGT_IMPUTATION_SEED,
             "seed_mixing": (
-                "seed combined with the build period; each walk draws its "
-                "rounding offset in cell order then pooled-fallback order, then "
-                "each plan draws its quantile jitter, income bands ascending and "
-                "gain bands highest first"
+                "seed combined with the build period, which salts every draw; "
+                "each walk's rounding offset and each plan's quantile jitter is "
+                "an identity-keyed uniform on its own label, with no stream "
+                "order, so none depends on which other walks run or skip: a cell "
+                "walk keys on cell:<income band>:<age group>:<region group> and "
+                "an income band's pooled walk on pool:<income band>, salted "
+                "hmrc_cgt_gains_spine:offset:<period>, and a plan on "
+                "plan:<gain band>:<income band>, salted "
+                "hmrc_cgt_gains_spine:jitter:<period>, bands and age groups by "
+                "their lower bounds and region groups by their labels"
             ),
             "deterministic": True,
             "cell_means": (
@@ -2561,9 +2599,8 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "remainder gainers take the midpoints of the weight-proportional "
                 "quantile strata that partition the range, evaluated on the "
                 "band's spline; zero-weight persons take a nominal stratum of "
-                "the band's smallest positive weight and carry no mass; no "
-                "seeded draw is consumed, so the walk and plan draw order is "
-                "unchanged"
+                "the band's smallest positive weight and carry no mass; the "
+                "mapping draws nothing"
             ),
             "ordering": (
                 "existing gains ascending, person_id descending on ties (the "
