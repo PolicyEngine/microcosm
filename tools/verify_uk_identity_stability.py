@@ -846,23 +846,35 @@ def _e8_support_split(
     ``parameters``, and the stored wealth columns. The stored layer must
     agree: the households the rule divides are exactly the roots of the
     flagged copies (the pre-clone rows carrying ``cgt_support_copies`` above
-    one), each family's count is ``ceil(K x w / maximum_copy_weight)``, ``K``
-    the geographic clone count the stage read from the frame (microcosm#931;
-    the recompute reads it from the pre-split table the same way), to the
-    family weights' relative tolerance of 1e-9 at every ``K``. The fold
-    re-sums the ``n`` copies, which can land ulps from ``w``: at ``K = 1``
-    for a weight a few ulps above a multiple of the maximum, or where the
-    stage's exact-total correction fell on a copy, and at ``K > 1`` by more
-    than the count's snap absorbs. So for a family whose weight lies within
-    that tolerance of a multiple of the maximum, the check accepts ``n`` or
+    one), and each family's count is ``ceil(K x w / maximum_copy_weight)``,
+    ``K`` the geographic clone count the stage read from the frame
+    (microcosm#931; the recompute reads it from the pre-split table the same
+    way). The fold re-sums the ``n`` copies, which can land ulps from ``w``:
+    at ``K = 1`` for a weight a few ulps above a multiple of the maximum, or
+    where an exact-total correction fell on a member, and at ``K > 1`` by
+    more than the count's snap absorbs. So the count is not recounted from
+    the fold. At ``K = 1`` a family of more than three members whose clone
+    pair sums are all one value ``c`` is held exactly: the stored ``n`` must
+    be the count of a weight ``w`` with ``fl(w / n) == c``, or, where fewer
+    than four of its members show their clone pair untouched, with
+    ``fl(w / n)`` within one float of ``c``, the most the #970 anchor and the
+    residential arms move an uncorrected member
+    (``_support_count_held_exactly``). Every other family, and every family
+    at ``K > 1``, is held to the family weights' relative tolerance of 1e-9:
+    the stored ``n`` must lie between the counts at the folded weight times
+    ``1 - 1e-9`` and ``1 + 1e-9``. That bracket opens for a family whose
+    source-scaled weight ``K x w`` lies within a relative 1e-9 of a multiple
+    of 60 (at ``K = 1``, its own weight), where it accepts ``n`` or
     ``n + 1``. A stored count moved there on its own is still reported, by
     the flag and family-weight checks, but a family the stage split
     consistently into one copy more there, every member at ``w / (n + 1)``
-    and indexed in full, is reported by no check at any ``K``. The receipt's
-    ``copies_recomputed`` stays the exact recount, so it can differ from
-    ``copies`` by one for each family whose re-summed weight lands across a
-    multiple, or that was split into one copy more, while the count check
-    passes.
+    and indexed in full, is reported by no check. Where the exact hold
+    applies, that blind spot narrows to at most the multiple itself (the
+    multiple and the float either side of it where ``c`` may have moved).
+    The receipt's ``copies_recomputed`` stays the exact recount from the
+    re-summed fold, so it can differ from ``copies`` by one for each family
+    whose re-summed weight lands across a multiple, or that was split into
+    one copy more, while the count check passes.
     Every member of a family carries ``w / n`` at stage time (its clone pair
     sum, since the clone runs afterwards), the copies of each root are
     indexed ``1..n-1`` without gaps and carry the root's count, no count is
@@ -980,8 +992,9 @@ def _e8_support_split(
         problems["support_split_flags"] = flag_problems
     receipt["families"] = int(len(family_positions))
 
-    # Fold: clones onto originals (pair sums), then copies onto roots.
-    pre_clone = _pre_clone_household_weights(frame)
+    # Fold: clones onto originals (pair sums), then copies onto roots. Which
+    # members' halves agree feeds the K = 1 count hold below.
+    pre_clone, equal_halves = _pre_clone_fold(frame)
     folded = pre_clone.copy()
     np.add.at(folded, root_positions, pre_clone[lineage.copy_positions])
 
@@ -1064,15 +1077,15 @@ def _e8_support_split(
     agreed = (recomputed_family & stored_family).to_numpy()
     stored_agreed = stored_count.to_numpy()[agreed]
     # The fold re-sums the n copies, which can land ulps from w: at K = 1 for
-    # a weight a few ulps above a multiple of 60, or where the exact-total
-    # correction fell on a copy, and at K > 1 by more than the count's K-ulp
-    # snap absorbs (an exact multiple of 60 at K = 11, for one). An exact
-    # recount would flag a family the stage counted right, so at every K the
-    # count is held to the family weights' tolerance instead: the stored n
+    # a weight a few ulps above a multiple of 60, or where an exact-total
+    # correction fell on a member, and at K > 1 by more than the count's
+    # K-ulp snap absorbs (an exact multiple of 60 at K = 11, for one). An
+    # exact recount of the fold would flag a family the stage counted right,
+    # so the count is held to the family weights' tolerance: the stored n
     # must lie between the counts at the folded weight times 1 - 1e-9 and
-    # 1 + 1e-9 (microcosm#931 review). Within that tolerance of a multiple it
-    # cannot tell n from n + 1, so a family split consistently into one copy
-    # more there goes unreported.
+    # 1 + 1e-9 (microcosm#931 review). That bracket opens for a family whose
+    # source-scaled weight K x w lies within a relative 1e-9 of a multiple of
+    # 60 (at K = 1, its own weight), where it cannot tell n from n + 1.
     agreed_weights = pre_weights[agreed]
     lowest, highest = (
         cgt_support_copy_counts(
@@ -1082,6 +1095,21 @@ def _e8_support_split(
         )
         for factor in (1.0 - 1e-9, 1.0 + 1e-9)
     )
+    if clone_count == 1:
+        # At K = 1 a family of more than three members that all fold to one
+        # weight c is held exactly instead: the stored n must be the count
+        # of a weight w that divides by n to c, or to within the one float
+        # the later stages' roundings can move c where fewer than four
+        # members show their pair untouched (_support_count_held_exactly).
+        held, held_lowest, held_highest = _support_count_held_exactly(
+            pre_clone,
+            equal_halves,
+            roots=np.flatnonzero(pre_split)[agreed],
+            stored_counts=stored_agreed,
+            lineage=lineage,
+        )
+        lowest = np.where(held, held_lowest, lowest)
+        highest = np.where(held, held_highest, highest)
     count_off = int(((stored_agreed < lowest) | (stored_agreed > highest)).sum())
     if count_off:
         problems["support_split_copies_stored"] = count_off
@@ -1100,6 +1128,163 @@ def _e8_support_split(
     ):
         problems["support_split_selection_permutation"] = True
     return receipt
+
+
+#: The exact-total corrections between the CGT support split's division and
+#: the identity tool's read, each of which moves one household row: the
+#: split's own (only where none of the whole households it tries can carry
+#: it does spi_support's shared fallback put it on a root or copy), the
+#: incidence clone's and the residential split's. The #970 anchor applies
+#: none. So at most this many support-family members carry a corrected
+#: weight, and a family of more members has one that carries none.
+_SUPPORT_SPLIT_CORRECTED_ROWS = 3
+#: How many floats the #970 anchor and the residential arms' fold can move
+#: the pair sum of a K = 1 family member no correction touched.
+_SUPPORT_SPLIT_PAIR_ROUNDING_FLOATS = 1
+
+
+def _support_count_held_exactly(
+    pre_clone: np.ndarray,
+    equal_halves: np.ndarray,
+    *,
+    roots: np.ndarray,
+    stored_counts: np.ndarray,
+    lineage: _SupportCopyLineage,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The K = 1 support families whose copy count is held exactly, and its counts.
+
+    ``roots`` are the positions of the families the recompute and the stored
+    layer agree on, ``stored_counts`` their stored counts ``n``. A family is
+    held where all ``n`` members are present (its root and copies 1 to
+    ``n - 1``), ``n`` exceeds :data:`_SUPPORT_SPLIT_CORRECTED_ROWS`, and every
+    member's clone pair sum (``pre_clone``) is one value ``c``. The split gave
+    every member ``fl(w / n)``, ``w`` the family's source weight, and at most
+    that many members carry a weight an exact-total correction moved after
+    it, so at least one carries ``fl(w / n)`` as only the later stages'
+    roundings can have moved it:
+
+    - Where more than that many members show equal halves
+      (``equal_halves``), one of those is uncorrected, and its pair sum is
+      exactly ``fl(w / n)``. The incidence clone halves a weight exactly. The
+      #970 anchor scales a pair's clone half by a factor of at most one and
+      adds what it took to the original. The residential split divides only
+      a liable clone half, which the anchor leaves at factor one, and never
+      an original (the clone stage gives gains to clone carriers alone). So
+      an uncorrected member whose halves are still equal after the anchor
+      and the arms' fold carries both at exactly half of ``fl(w / n)``, and
+      ``c == fl(w / n)``.
+    - Otherwise ``c`` is within :data:`_SUPPORT_SPLIT_PAIR_ROUNDING_FLOATS`
+      float of ``fl(w / n)``. At ``K = 1`` a member's weight lies in [32,
+      64) once ``n > 3``. The anchor's three roundings move a trimmed pair's
+      sum by at most three quarters of an ulp before its last rounding. The
+      anchor refuses gains on any clone member but its carrier, so a liable
+      clone half becomes its own row and one arm, and the two products and
+      their sum keep it within one ulp of itself, half an ulp of the pair.
+
+    A held family's stored ``n`` must then be the count
+    ``cgt_support_copy_counts(w', 60, clone_count=1)`` of some ``w'`` whose
+    quotient ``fl(w' / n)`` lies that close to ``c``. Those ``w'`` are one
+    run of floats, and the count rises with ``w'``, so the counts at the
+    run's ends bound it. A family the stage counted right always passes. One
+    it split consistently into one copy more or fewer passes only where that
+    run reaches across the count's step. By design arithmetic over every
+    ``n`` from 4 to 9,998, that leaves at most the multiple of 60 itself
+    where the family is held exactly, and the multiple and the float either
+    side of it where the hold reaches one float. Returns the held mask over
+    ``roots`` and the counts at the run's ends (zero where not held).
+    """
+
+    from microcosm.build.uk_runtime.cgt_support import (
+        CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
+        cgt_support_copy_counts,
+    )
+
+    rows = len(pre_clone)
+    copy_roots = lineage.root_positions
+    copy_positions = lineage.copy_positions
+    copies_present = np.bincount(copy_roots, minlength=rows)[roots]
+    differing = np.bincount(
+        copy_roots,
+        weights=(pre_clone[copy_positions] != pre_clone[copy_roots]).astype(float),
+        minlength=rows,
+    )[roots]
+    untouched = equal_halves[roots].astype(np.int64) + np.bincount(
+        copy_roots,
+        weights=equal_halves[copy_positions].astype(float),
+        minlength=rows,
+    )[roots].astype(np.int64)
+    held = (
+        (copies_present + 1 == stored_counts)
+        & (stored_counts > _SUPPORT_SPLIT_CORRECTED_ROWS)
+        & (differing == 0)
+    )
+    lowest = np.zeros(len(roots), dtype=np.int64)
+    highest = np.zeros(len(roots), dtype=np.int64)
+    if held.any():
+        floats = np.where(
+            untouched[held] > _SUPPORT_SPLIT_CORRECTED_ROWS,
+            0,
+            _SUPPORT_SPLIT_PAIR_ROUNDING_FLOATS,
+        )
+        least, greatest = _floats_dividing_to(
+            pre_clone[roots[held]], stored_counts[held], floats
+        )
+        lowest[held] = cgt_support_copy_counts(
+            least, CGT_SUPPORT_MAXIMUM_COPY_WEIGHT, clone_count=1
+        )
+        highest[held] = cgt_support_copy_counts(
+            greatest, CGT_SUPPORT_MAXIMUM_COPY_WEIGHT, clone_count=1
+        )
+    return held, lowest, highest
+
+
+def _floats_dividing_to(
+    quotients: np.ndarray, divisors: np.ndarray, floats: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """The least and greatest float ``w`` with ``fl(w / n)`` near each ``c``.
+
+    Near means within ``floats`` floats of ``c``. Division by a positive
+    ``n`` is monotone, so those ``w`` are one run of consecutive floats,
+    found by stepping with ``np.nextafter`` from ``fl(n x c)``. Where no
+    float divides to within reach (a weight no division by ``n`` gives,
+    which no member the split divided carries), the two floats either side
+    of the gap are returned instead, the lesser first.
+    """
+
+    targets = np.asarray(quotients, dtype=float)
+    divisors = np.asarray(divisors, dtype=float)
+    floats = np.asarray(floats, dtype=np.int64)
+    low, high = targets.copy(), targets.copy()
+    for step in range(int(floats.max(initial=0))):
+        reach = floats > step
+        low = np.where(reach, np.nextafter(low, -np.inf), low)
+        high = np.where(reach, np.nextafter(high, np.inf), high)
+    least = _step_while(low * divisors, lambda w: w / divisors < low, np.inf)
+    least = _step_while(
+        least, lambda w: np.nextafter(w, -np.inf) / divisors >= low, -np.inf
+    )
+    greatest = _step_while(high * divisors, lambda w: w / divisors > high, -np.inf)
+    greatest = _step_while(
+        greatest, lambda w: np.nextafter(w, np.inf) / divisors <= high, np.inf
+    )
+    return np.minimum(least, greatest), np.maximum(least, greatest)
+
+
+def _step_while(
+    values: np.ndarray, condition: Callable[[np.ndarray], np.ndarray], toward: float
+) -> np.ndarray:
+    """``values`` stepped one float at a time toward ``toward`` while ``condition``."""
+
+    values = values.copy()
+    for _ in range(64):
+        moving = condition(values)
+        if not moving.any():
+            return values
+        values = np.where(moving, np.nextafter(values, toward), values)
+    raise RuntimeError(
+        "e8 identity receipt: the support-split count hold found no float "
+        "run within 64 steps."
+    )
 
 
 def _e8_residential_split(
@@ -1800,10 +1985,17 @@ def e8_identity_receipt(
             "pair sum against w / n at rtol 1e-9 / atol 1e-6 (the fold and "
             "the anchor each cost one float rounding generation); "
             "support-split mass record: new_total against old_total at rtol "
-            "1e-9; support-split copy counts: between the counts at the "
-            "folded family weight times 1 - 1e-9 and 1 + 1e-9, so within that "
-            "tolerance of a multiple of the maximum copy weight a family split "
-            "consistently into one copy more is not reported; support-split "
+            "1e-9; support-split copy counts: at K = 1, for a family of more "
+            "than three members whose clone pair sums are all one weight c, "
+            "exactly the count of a weight w with fl(w / n) == c, or with "
+            "fl(w / n) within one float of c where fewer than four members "
+            "show their clone pair untouched; for every other family and at "
+            "K > 1, between the counts at the folded family weight times "
+            "1 - 1e-9 and 1 + 1e-9, which for a family whose source-scaled "
+            "weight K x w lies within a relative 1e-9 of a multiple of 60 (at "
+            "K = 1, its own weight) does not report a family split "
+            "consistently into one copy more; copies_recomputed is the exact "
+            "recount from the re-summed fold; support-split "
             "families, flags and student_loan_plan: exact equality; "
             "band-donor seats, bands and "
             "carriers: exact equality; band-donor weights within a band and "
@@ -2148,6 +2340,22 @@ def _pre_clone_household_weights(frame) -> np.ndarray:
     without the clone layer is returned unchanged.
     """
 
+    return _pre_clone_fold(frame)[0]
+
+
+def _pre_clone_fold(frame) -> tuple[np.ndarray, np.ndarray]:
+    """``_pre_clone_household_weights`` and, per row, whether its halves agree.
+
+    The mask is true on an original whose clone carries bitwise the
+    original's own weight, with the residential arms folded onto both, and
+    on every row of an artifact without the clone layer; false on the
+    clones and the arms. The K = 1 count hold of ``_e8_support_split`` reads
+    it: the incidence clone halves each weight exactly, and halves still
+    equal after the #970 anchor and the arms' fold are both still exactly
+    half the weight the clone halved, unless an exact-total correction moved
+    one of them (``_support_count_held_exactly``).
+    """
+
     from microcosm.build.uk_runtime.cgt_residential_split import (
         HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
     )
@@ -2161,7 +2369,7 @@ def _pre_clone_household_weights(frame) -> np.ndarray:
     benunit = frame.table("benunit")
     weights = _pre_residential_household_weights(frame)
     if HOUSEHOLD_IS_CGT_CLONE not in household.columns:
-        return weights
+        return weights, np.ones(len(household), dtype=bool)
     # The residential arms (microcosm#1063) are stacked after the clone, so
     # the clone pairing runs on the frame without them, their mass already
     # folded onto their sources.
@@ -2187,8 +2395,14 @@ def _pre_clone_household_weights(frame) -> np.ndarray:
         kept_positions = np.flatnonzero(keep)
         clone_positions = kept_positions[clone_kept]
         original_positions = kept_positions[original_kept]
+    equal_halves = np.zeros(len(household), dtype=bool)
+    # The members' weights are positive and finite, so == is bitwise
+    # equality on them.
+    equal_halves[original_positions] = (
+        weights[original_positions] == weights[clone_positions]
+    )
     weights[original_positions] += weights[clone_positions]
-    return weights
+    return weights, equal_halves
 
 
 def _pre_residential_household_weights(frame) -> np.ndarray:
