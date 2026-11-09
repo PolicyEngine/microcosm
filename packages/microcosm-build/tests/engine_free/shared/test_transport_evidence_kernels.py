@@ -2985,7 +2985,11 @@ class TestExternalSources:
 
 
 def _money_battery_spec(*inputs, nodes=()):
-    """CREATE and a battery over the toy graph's money routes; no node maps money."""
+    """CREATE, ``nodes`` and a battery over ``inputs``, with the toy money routes.
+
+    CREATE declares no outputs, so a money column has an owner only if ``nodes``
+    adds one.
+    """
 
     return {
         "country": "xx",
@@ -3016,6 +3020,21 @@ def _money_battery_spec(*inputs, nodes=()):
     }
 
 
+def _derived_person_column(column, entity, read):
+    """A node that owns ``person.<column>`` and reads ``<entity>.<read>``."""
+
+    return {
+        "id": f"x.{column}",
+        "kernel": "toy.derive@1",
+        "inputs": [{"entity": entity, "columns": [read]}],
+        "outputs": [{"entity": "person", "column": column, "dtype": "float64"}],
+    }
+
+
+_RENT_SHARE = _derived_person_column("rent_share", "household", "rent")
+_RENT_SHARE_HALF = _derived_person_column("rent_share_half", "person", "rent_share")
+
+
 class TestMoneyAwaitingItsProducer:
     @pytest.mark.parametrize(
         ("entity", "column", "reason"),
@@ -3041,24 +3060,47 @@ class TestMoneyAwaitingItsProducer:
         (row,) = compose._support_roster(spec)["columns"]
         assert row["class"] == "copied"
 
-    def test_a_derived_row_names_the_pending_source_it_reads(self) -> None:
-        # The support gate fails a derived row on any source outside
-        # SUPPORT_COVERED, so the roster must report the pending source.
-        derive = {
-            "id": "x.derive",
-            "kernel": "toy.derive@1",
-            "inputs": [{"entity": "household", "columns": ["rent"]}],
-            "outputs": [
-                {"entity": "person", "column": "rent_share", "dtype": "float64"}
-            ],
-        }
-        spec = _money_battery_spec(("person", "rent_share"), nodes=(derive,))
-        (row,) = compose._support_roster(spec)["columns"]
+    @pytest.mark.parametrize(
+        ("column", "nodes"),
+        (
+            ("rent_share", (_RENT_SHARE,)),
+            ("rent_share_half", (_RENT_SHARE, _RENT_SHARE_HALF)),
+        ),
+        ids=("direct", "through-a-derived-row"),
+    )
+    def test_a_derived_row_fails_the_gate_on_the_pending_source_it_reads(
+        self, column, nodes
+    ) -> None:
+        # The walk flattens a derived input into that input's own sources,
+        # so the pending source reaches the row at any depth.
+        spec = _money_battery_spec(("person", column), nodes=nodes)
+        roster = compose._support_roster(spec)
+        (row,) = roster["columns"]
         assert row["class"] == "derived"
-        (source,) = row["sources"]
-        assert (source["entity"], source["column"]) == ("household", "rent")
-        assert source["class"] == "pending"
-        assert source["class"] not in compose.SUPPORT_COVERED
+        assert row["sources"] == [
+            {
+                "entity": "household",
+                "column": "rent",
+                "class": "pending",
+                "reason": "awaits toy rent bands",
+            }
+        ]
+        donor, _ = _donor_and_terminal()
+        terminal = _support_frame({("person", column): [1e9] * 6})
+        ranges, bounds, rn, bn = _run_support(roster, donor, terminal)
+        outcome = _support_outcome(ranges, bounds, rn, bn, terminal)
+        assert outcome.status is GateStatus.FAILED
+        assert any(
+            f"person.{column} (derived): sources without coverage: "
+            "household.rent (pending)" in line
+            for line in outcome.result.failures
+        )
+
+    def test_the_roster_and_the_gate_agree_on_the_covered_classes(self) -> None:
+        # compose and gate_bindings each hold this set; the gate reads its own.
+        from microcosm.build.transport.gate_bindings import _SUPPORT_COVERED
+
+        assert compose.SUPPORT_COVERED == _SUPPORT_COVERED
 
 
 class TestDeclaredStructuralRows:
