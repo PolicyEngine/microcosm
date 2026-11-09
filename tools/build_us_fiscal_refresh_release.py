@@ -8020,7 +8020,7 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "this parity check. The reference value is an incidental artifact of "
         "the incumbent weight solve (nothing pinned this column before Build "
         "H). Pinning it can move revenue, because estate_income feeds "
-        "federal income tax. In policyengine-us 2.2.1 (the uv.lock pin) it "
+        "federal income tax. In policyengine-us 2.2.1 it "
         "is not a gross-income source, but loss_ald deducts its negative "
         "part above the line under the section 461(l) limit, whose ceiling "
         "its positive part raises, and it counts toward qualified business "
@@ -8031,7 +8031,10 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "K-1 (Form 1041) box 14 code H adjustment input is net investment "
         "income for the NIIT (estate_net_investment_income). The exclusion "
         "rests on the band math above, not on revenue neutrality "
-        "(PolicyEngine/microcosm#299 Build H)."
+        "(PolicyEngine/microcosm#299 Build H). That math holds only for the "
+        "$98.434B reference. The build applies this entry for any reference, "
+        "so re-adjudicate it if --export-input-mass-reference-h5 names a file "
+        "with a different level."
     ),
     "non_sch_d_capital_gains": (
         "Identified by SOI Table 1.4 capital gain distributions reported on "
