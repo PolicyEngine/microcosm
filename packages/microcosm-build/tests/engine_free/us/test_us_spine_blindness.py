@@ -120,6 +120,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # re-application and per-origin gate (#1022); exact boundary
         # functions are pinned below.
         "acs_local_ssi_medicaid_take_up.py",
+        # Legacy local-lane per-origin native SNAP receipt-anchor gate
+        # (#1022); the exact boundary function is pinned below.
+        "acs_local_receipt_anchors.py",
         # Owner-approved release boundary: exact raw ACS join and receipt.
         "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
@@ -269,6 +272,17 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Legacy local-lane SSI/Medicaid take-up assignment and release gate
         # (#1022); outside the registry.
         "acs_local_ssi_medicaid_take_up.py",
+        # Legacy local-lane native FS receipt anchor and release gate (#1022);
+        # outside the registry.
+        "acs_local_receipt_anchors.py",
+        # Legacy local-lane Head Start take-up fill, ACS VEH availability
+        # receipt and grade helpers (#1022); tag-free, the take-up stage
+        # passes the spine masks. Outside the registry.
+        "acs_local_vehicles_head_start.py",
+        # Reviewed-fill consumer register loader, dependency walk and release
+        # gate (#1022); reads fill manifests and the packaged register, never a
+        # frame. Outside the registry.
+        "acs_local_reviewed_fill_consumers.py",
         "acs_multispine.py",
         "acs_pums.py",
         "acs_release_predictors.py",  # Pinned release join; provenance owner.
@@ -313,6 +327,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "esi_premiums.py",
         "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",
+        # Federal Student Aid portfolio targets (microcosm#1074): compiles FSA
+        # facts into target specs and sums the stored person balances for
+        # them; no population treatment.
+        "fsa_student_loan_targets.py",
         "geography_ladder.py",
         "hours_worked.py",
         "h5_io.py",  # US artifact I/O; no population treatment.
@@ -3497,9 +3515,12 @@ def test_acs_local_hours_provenance_is_limited_to_reviewed_boundaries() -> None:
 def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> None:
     """Pin the ACS-row take-up fill and per-origin take-up gate (#1019).
 
-    Each boundary reads exactly two origin tags, spm_unit and person: the
-    engine-free fills (#1022) are person- and SPM-unit-level. Their helpers
-    receive the resulting masks and read no tag themselves.
+    Each boundary reads exactly three origin tags, spm_unit, person and
+    household: the engine-free fills (#1022) are person- and SPM-unit-level,
+    and the ACS VEH availability receipt and owned-count grade are
+    household-level. Their helpers, including the tag-free
+    acs_local_vehicles_head_start module, receive the resulting masks and
+    read no tag themselves.
     """
 
     source = (_US_RUNTIME / "acs_local_take_up.py").read_text()
@@ -3509,7 +3530,7 @@ def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> Non
     )
     assert tuple(
         sorted(caller for caller, _line in _function_callers(source, "spine_column"))
-    ) == tuple(sorted(boundaries * 2))
+    ) == tuple(sorted(boundaries * 3))
     tree = ast.parse(source)
     remaining = ast.Module(
         body=[
@@ -3523,6 +3544,9 @@ def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> Non
         type_ignores=[],
     )
     assert not _source_spine_accesses(ast.unparse(remaining))
+    helpers = (_US_RUNTIME / "acs_local_vehicles_head_start.py").read_text()
+    assert not _function_callers(helpers, "spine_column")
+    assert not _source_spine_accesses(helpers)
 
 
 def test_acs_local_immigration_provenance_is_limited_to_reviewed_boundaries() -> None:
@@ -3677,6 +3701,40 @@ def test_acs_local_ssi_medicaid_take_up_provenance_is_limited_to_reviewed_bounda
         "with_acs_local_ssi_medicaid_take_up",
         "with_recorded_acs_local_ssi_medicaid_take_up",
     )
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
+def test_acs_local_receipt_anchors_provenance_is_limited_to_reviewed_boundaries() -> (
+    None
+):
+    """Pin the per-origin ACS SNAP receipt-anchor gate (#1022).
+
+    The anchor runs on the ACS-only frame after the transfer and before
+    pooling, so it reads no origin tag; only the release gate does.
+    """
+
+    source = (_US_RUNTIME / "acs_local_receipt_anchors.py").read_text()
+    boundaries = ("acs_local_receipt_anchor_signal_gate",)
     assert (
         tuple(
             sorted(

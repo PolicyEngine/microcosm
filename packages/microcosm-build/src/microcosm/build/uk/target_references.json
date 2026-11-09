@@ -428,6 +428,8 @@
       "hmrc.itl.taxpayers_aged_65_and_over": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.taxpayers_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.total_income_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.pris.expenses.scotland": "hmrc.tax_statistics",
+      "hmrc.pris.rental_income.scotland": "hmrc.tax_statistics",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "hmrc.salary_sacrifice_income_tax_relief",
@@ -633,9 +635,15 @@
       "ons.population.female_0_4": "ons.population",
       "ons.population.female_10_14": "ons.population",
       "ons.population.female_15": "ons.population",
-      "ons.population.female_16_17": "ons.population",
-      "ons.population.female_18_19": "ons.population",
-      "ons.population.female_20_24": "ons.population",
+      "ons.population.female_16": "ons.population",
+      "ons.population.female_17": "ons.population",
+      "ons.population.female_18": "ons.population",
+      "ons.population.female_19": "ons.population",
+      "ons.population.female_20": "ons.population",
+      "ons.population.female_21": "ons.population",
+      "ons.population.female_22": "ons.population",
+      "ons.population.female_23": "ons.population",
+      "ons.population.female_24": "ons.population",
       "ons.population.female_25_29": "ons.population",
       "ons.population.female_30_34": "ons.population",
       "ons.population.female_35_39": "ons.population",
@@ -654,9 +662,15 @@
       "ons.population.male_0_4": "ons.population",
       "ons.population.male_10_14": "ons.population",
       "ons.population.male_15": "ons.population",
-      "ons.population.male_16_17": "ons.population",
-      "ons.population.male_18_19": "ons.population",
-      "ons.population.male_20_24": "ons.population",
+      "ons.population.male_16": "ons.population",
+      "ons.population.male_17": "ons.population",
+      "ons.population.male_18": "ons.population",
+      "ons.population.male_19": "ons.population",
+      "ons.population.male_20": "ons.population",
+      "ons.population.male_21": "ons.population",
+      "ons.population.male_22": "ons.population",
+      "ons.population.male_23": "ons.population",
+      "ons.population.male_24": "ons.population",
       "ons.population.male_25_29": "ons.population",
       "ons.population.male_30_34": "ons.population",
       "ons.population.male_35_39": "ons.population",
@@ -887,6 +901,8 @@
       "hmrc.itl.taxpayers_aged_65_and_over": "Income Tax payers aged 65 and over by region and nation",
       "hmrc.itl.taxpayers_by_total_income_band": "Income Tax payers by total income band",
       "hmrc.itl.total_income_by_total_income_band": "Total income by total income band",
+      "hmrc.pris.expenses.scotland": "Landlords' allowable expenses, residential finance costs included, Scotland",
+      "hmrc.pris.rental_income.scotland": "Landlords' rental receipts before expenses, Scotland",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "It relief additional rate",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "It relief basic rate",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "It relief higher rate",
@@ -1092,9 +1108,15 @@
       "ons.population.female_0_4": "Female 0 4",
       "ons.population.female_10_14": "Female 10 14",
       "ons.population.female_15": "Female 15",
-      "ons.population.female_16_17": "Female 16 17",
-      "ons.population.female_18_19": "Female 18 19",
-      "ons.population.female_20_24": "Female 20 24",
+      "ons.population.female_16": "Female 16",
+      "ons.population.female_17": "Female 17",
+      "ons.population.female_18": "Female 18",
+      "ons.population.female_19": "Female 19",
+      "ons.population.female_20": "Female 20",
+      "ons.population.female_21": "Female 21",
+      "ons.population.female_22": "Female 22",
+      "ons.population.female_23": "Female 23",
+      "ons.population.female_24": "Female 24",
       "ons.population.female_25_29": "Female 25 29",
       "ons.population.female_30_34": "Female 30 34",
       "ons.population.female_35_39": "Female 35 39",
@@ -1113,9 +1135,15 @@
       "ons.population.male_0_4": "Male 0 4",
       "ons.population.male_10_14": "Male 10 14",
       "ons.population.male_15": "Male 15",
-      "ons.population.male_16_17": "Male 16 17",
-      "ons.population.male_18_19": "Male 18 19",
-      "ons.population.male_20_24": "Male 20 24",
+      "ons.population.male_16": "Male 16",
+      "ons.population.male_17": "Male 17",
+      "ons.population.male_18": "Male 18",
+      "ons.population.male_19": "Male 19",
+      "ons.population.male_20": "Male 20",
+      "ons.population.male_21": "Male 21",
+      "ons.population.male_22": "Male 22",
+      "ons.population.male_23": "Male 23",
+      "ons.population.male_24": "Male 24",
       "ons.population.male_25_29": "Male 25 29",
       "ons.population.male_30_34": "Male 30 34",
       "ons.population.male_35_39": "Male 35 39",
@@ -5195,6 +5223,57 @@
       },
       "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.rental_income.scotland",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_income_amount",
+        "record_set_spec_id": "hmrc.property_rental_2026.table_9.ty2024.v1",
+        "source_measure_id": "property_income_amount",
+        "entity_name": "tax_unit",
+        "geography_id": "S92000003",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "hmrc/pris_rental_income/scotland",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.rental_income.scotland",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.pris.expenses.scotland",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.property_expenses_amount",
+        "record_set_spec_id": "hmrc.property_rental_2026.table_11.ty2024.v1",
+        "source_measure_id": "property_expenses_amount",
+        "entity_name": "tax_unit",
+        "geography_id": "S92000003",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "hmrc/pris_expenses/scotland",
+      "family": "hmrc_pris",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.pris.expenses.scotland",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "value_operation": "sum",
+      "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
     {
@@ -15358,14 +15437,42 @@
       "expected_member_count": 1
     },
     {
-      "name": "ons.population.female_16_17",
+      "name": "ons.population.female_16",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
         "dimension_values": {
           "sex": "female",
           "age": [
-            16,
+            16
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/female_16",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.female_16",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.female_17",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
             17
           ]
         },
@@ -15377,25 +15484,53 @@
         ]
       },
       "entity": "person",
-      "measure": "ons/female_16_17",
+      "measure": "ons/female_17",
       "family": "ons_population",
       "period": 2025,
       "metadata": {
-        "contract_target_id": "ons.population.female_16_17",
+        "contract_target_id": "ons.population.female_17",
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 2
+      "expected_member_count": 1
     },
     {
-      "name": "ons.population.female_18_19",
+      "name": "ons.population.female_18",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
         "dimension_values": {
           "sex": "female",
           "age": [
-            18,
+            18
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/female_18",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.female_18",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.female_19",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
             19
           ]
         },
@@ -15407,28 +15542,140 @@
         ]
       },
       "entity": "person",
-      "measure": "ons/female_18_19",
+      "measure": "ons/female_19",
       "family": "ons_population",
       "period": 2025,
       "metadata": {
-        "contract_target_id": "ons.population.female_18_19",
+        "contract_target_id": "ons.population.female_19",
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 2
+      "expected_member_count": 1
     },
     {
-      "name": "ons.population.female_20_24",
+      "name": "ons.population.female_20",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
         "dimension_values": {
           "sex": "female",
           "age": [
-            20,
-            21,
-            22,
-            23,
+            20
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/female_20",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.female_20",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.female_21",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
+            21
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/female_21",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.female_21",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.female_22",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
+            22
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/female_22",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.female_22",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.female_23",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
+            23
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/female_23",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.female_23",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.female_24",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
             24
           ]
         },
@@ -15440,15 +15687,15 @@
         ]
       },
       "entity": "person",
-      "measure": "ons/female_20_24",
+      "measure": "ons/female_24",
       "family": "ons_population",
       "period": 2025,
       "metadata": {
-        "contract_target_id": "ons.population.female_20_24",
+        "contract_target_id": "ons.population.female_24",
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5
+      "expected_member_count": 1
     },
     {
       "name": "ons.population.female_25_29",
@@ -16037,14 +16284,42 @@
       "expected_member_count": 1
     },
     {
-      "name": "ons.population.male_16_17",
+      "name": "ons.population.male_16",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
         "dimension_values": {
           "sex": "male",
           "age": [
-            16,
+            16
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/male_16",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.male_16",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.male_17",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
             17
           ]
         },
@@ -16056,25 +16331,53 @@
         ]
       },
       "entity": "person",
-      "measure": "ons/male_16_17",
+      "measure": "ons/male_17",
       "family": "ons_population",
       "period": 2025,
       "metadata": {
-        "contract_target_id": "ons.population.male_16_17",
+        "contract_target_id": "ons.population.male_17",
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 2
+      "expected_member_count": 1
     },
     {
-      "name": "ons.population.male_18_19",
+      "name": "ons.population.male_18",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
         "dimension_values": {
           "sex": "male",
           "age": [
-            18,
+            18
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/male_18",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.male_18",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.male_19",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
             19
           ]
         },
@@ -16086,28 +16389,140 @@
         ]
       },
       "entity": "person",
-      "measure": "ons/male_18_19",
+      "measure": "ons/male_19",
       "family": "ons_population",
       "period": 2025,
       "metadata": {
-        "contract_target_id": "ons.population.male_18_19",
+        "contract_target_id": "ons.population.male_19",
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 2
+      "expected_member_count": 1
     },
     {
-      "name": "ons.population.male_20_24",
+      "name": "ons.population.male_20",
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.mid_year_population_estimate",
         "dimension_values": {
           "sex": "male",
           "age": [
-            20,
-            21,
-            22,
-            23,
+            20
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/male_20",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.male_20",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.male_21",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
+            21
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/male_21",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.male_21",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.male_22",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
+            22
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/male_22",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.male_22",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.male_23",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
+            23
+          ]
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimensions": [
+          "age",
+          "sex"
+        ]
+      },
+      "entity": "person",
+      "measure": "ons/male_23",
+      "family": "ons_population",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.population.male_23",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 1
+    },
+    {
+      "name": "ons.population.male_24",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
             24
           ]
         },
@@ -16119,15 +16534,15 @@
         ]
       },
       "entity": "person",
-      "measure": "ons/male_20_24",
+      "measure": "ons/male_24",
       "family": "ons_population",
       "period": 2025,
       "metadata": {
-        "contract_target_id": "ons.population.male_20_24",
+        "contract_target_id": "ons.population.male_24",
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
-      "expected_member_count": 5
+      "expected_member_count": 1
     },
     {
       "name": "ons.population.male_25_29",

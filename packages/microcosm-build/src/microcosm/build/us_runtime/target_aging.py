@@ -46,6 +46,13 @@ Factor policy (priority order):
 4. **Counts stay raw.** Return/claim counts (``measure_mode ==
    "indicator_sum"``) and population counts are never aged here; a growing
    nominal aggregate does not imply a growing return count.
+5. **Declared stocks stay raw.** A target whose metadata declares
+   ``period_alignment`` as one of :data:`DECLARED_UNAGED_PERIOD_ALIGNMENTS`
+   is a stock the build carries at its source reference date (Federal Student
+   Aid's loan portfolio, microcosm#1074): no income-growth series describes
+   it, so it is neither aged nor a period-contract violation, and the
+   declaration is recorded as its ``aging_factor_source``. Only targets that
+   declare it are affected, so the policy for every other target is unchanged.
 
 A target is only aged when both the build-year and the source-year projection
 facts of the chosen series are present in the feed. Otherwise it is left at
@@ -62,6 +69,7 @@ from microcosm.calibrate import TargetRegistry, TargetSpec
 __all__ = [
     "AGING_MODEL_ID",
     "AGING_MODEL_VERSION",
+    "DECLARED_UNAGED_PERIOD_ALIGNMENTS",
     "PeriodContractError",
     "PeriodContractViolation",
     "age_us_dollar_targets",
@@ -74,6 +82,13 @@ __all__ = [
 # consumer-artifact hash changes when it does — only Microcosm build outputs.
 AGING_MODEL_ID = "cbo_growth_factor_aging"
 AGING_MODEL_VERSION = "1.2.0"
+
+#: ``period_alignment`` declarations that keep a dollar target at its source
+#: reference date by design (factor policy 5). Each names a stock whose level
+#: the build carries as of that date; none is a silent cross-period read.
+DECLARED_UNAGED_PERIOD_ALIGNMENTS: frozenset[str] = frozenset(
+    {"stock_at_source_reference_date"}
+)
 
 
 # CBO income-by-source ``groupby_value_id`` for the AGI projection series. This
@@ -454,6 +469,9 @@ def _not_ageable_reason(spec: TargetSpec) -> str | None:
     metadata = spec.metadata
     if metadata.get("measure_mode") != "sum":
         return "not_dollar_amount"
+    alignment = metadata.get("period_alignment", "")
+    if alignment in DECLARED_UNAGED_PERIOD_ALIGNMENTS:
+        return alignment
     unit = metadata.get("ledger_measure_unit", "")
     if unit and unit != "usd":
         return "not_usd_unit"

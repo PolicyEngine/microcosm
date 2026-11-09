@@ -236,6 +236,9 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     # What build_optional_acs_multispine records for the separate ASEC-channel
     # income transfer pass (microcosm#1022).
     income_receipt = {"issue": "microcosm#1022", "donor_channel": "asec"}
+    # What build_optional_acs_multispine records for the native FS receipt
+    # anchor (microcosm#1022).
+    anchor_receipt = {"issue": "microcosm#1022", "snap": {"units_anchored": 1}}
     # What the ACS local SSI disability-criteria stage returns
     # (microcosm#1022): the null audit, hours gate and export must see it.
     ssi_filled = Frame(
@@ -346,6 +349,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                 ],
                 "acs_local_work_disability": work_disability_receipt,
                 "acs_local_income_transfer": income_receipt,
+                "acs_local_receipt_anchors": anchor_receipt,
                 "spm_independence_role": _spm_role_receipt(persons=1),
             },
         )
@@ -408,6 +412,17 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
             passed=True,
             failures=(),
             details={"per_spine": {}},
+        )
+
+    def fake_receipt_anchor_gate(frame, *, receipt):
+        assert frame is combined
+        assert receipt is anchor_receipt
+        order.append("receipt_anchor_gate")
+        return GateResult(
+            name="acs_local_receipt_anchor_signal",
+            passed=True,
+            failures=(),
+            details={"snap": {"units_anchored": 1}},
         )
 
     def fake_work_disability_gate(frame, *, receipt):
@@ -507,6 +522,9 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         builder, "acs_local_work_disability_signal_gate", fake_work_disability_gate
     )
     monkeypatch.setattr(
+        builder, "acs_local_receipt_anchor_signal_gate", fake_receipt_anchor_gate
+    )
+    monkeypatch.setattr(
         builder,
         "require_acs_local_income_donor",
         lambda frame: captured.setdefault("income_donor", frame),
@@ -581,6 +599,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "hours_under15_policy": None,
         "work_disability_inputs": True,
         "income_transfer": True,
+        "native_receipt_anchors": True,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,
         "n_estimators": 32,
@@ -595,9 +614,12 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     # the immigration stage and before the input-null audit. microcosm#1022:
     # the SIPP donor is verified before the ACS fetch, and the SSI disability
     # stage runs after the income gate and before the input-null audit.
+    # microcosm#1022: the native FS receipt anchor's gate grades the pooled
+    # frame first, before any stage that replaces the frame.
     assert order == [
         "sipp_load",
         "acs_fetch",
+        "receipt_anchor_gate",
         "immigration",
         "work_disability_gate",
         "income_gate",
@@ -649,6 +671,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "passed": True,
         "failures": [],
         "details": {"per_spine": {}},
+    }
+    assert summary["acs_local_receipt_anchors"] == anchor_receipt
+    assert summary["acs_local_receipt_anchors_gate"] == {
+        "name": "acs_local_receipt_anchor_signal",
+        "passed": True,
+        "failures": [],
+        "details": {"snap": {"units_anchored": 1}},
     }
     assert summary["acs_local_work_disability"] == work_disability_receipt
     assert summary["acs_local_work_disability_gate"] == {
@@ -817,6 +846,46 @@ def test_work_disability_gate_failures_abort_staging(monkeypatch) -> None:
     entries = builder._require_local_work_disability(result)
     assert entries["acs_local_work_disability"] is receipt
     assert entries["acs_local_work_disability_gate"]["passed"] is True
+
+
+def test_receipt_anchor_gate_failures_abort_staging(monkeypatch) -> None:
+    """microcosm#1022: no receipt, or a failed gate, never reaches the audit."""
+
+    builder = _load_builder_module()
+    without = builder.AcsMultispineResult(frame=_frame(), provenance={})
+    with pytest.raises(
+        SystemExit, match=r"no receipt-anchor receipt \(microcosm#1022\)"
+    ):
+        builder._require_local_receipt_anchors(without)
+
+    receipt = {"issue": "microcosm#1022"}
+    result = builder.AcsMultispineResult(
+        frame=_frame(), provenance={"acs_local_receipt_anchors": receipt}
+    )
+    monkeypatch.setattr(
+        builder,
+        "acs_local_receipt_anchor_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_receipt_anchor_signal",
+            passed=False,
+            failures=("acs_2024_1yr: 2 SPM unit(s) report SNAP receipt",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit, match="Local staging receipt-anchor gate failed: acs_2024_1yr"
+    ):
+        builder._require_local_receipt_anchors(result)
+
+    monkeypatch.setattr(
+        builder,
+        "acs_local_receipt_anchor_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_receipt_anchor_signal", passed=True, failures=()
+        ),
+    )
+    entries = builder._require_local_receipt_anchors(result)
+    assert entries["acs_local_receipt_anchors"] is receipt
+    assert entries["acs_local_receipt_anchors_gate"]["passed"] is True
 
 
 def test_ssi_disability_stage_failures_abort_staging(monkeypatch) -> None:

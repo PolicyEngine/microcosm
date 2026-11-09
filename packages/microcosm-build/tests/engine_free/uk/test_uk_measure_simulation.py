@@ -803,8 +803,10 @@ def test_packaged_exclusions_load():
     # only binds). The savings follow-up holds the SPI £1m-and-over interest
     # amount row on its measured distortion (microcosm#1428, María's ruling of
     # 2026-10-30). microcosm#1426 holds HMRC's High Income Child Benefit Charge count
-    # and revenue as measured diagnostics (María's ruling of 2026-11-03).
-    assert len(names) == len(set(names)) == 47
+    # and revenue as measured diagnostics (María's ruling of 2026-11-03). The
+    # November event data holds PRIS 2026's Scottish receipts and expenses as
+    # measured diagnostics (María's approval of 2026-11-06).
+    assert len(names) == len(set(names)) == 49
     (gas,) = [
         entry
         for entry in exclusions
