@@ -715,8 +715,9 @@ def materialize_target_bindings(
     bands keep their stored reads: who a row counts is fixed at the frame.
     A provider binding reads its columns as the frame holds them, so a
     period it declares must be one its value reads hold. A declared period
-    no read honours refuses the run: for a provider row on any frame with a
-    period model, for a plain row on a frame with period metadata.
+    that any one read misses refuses the run: for a provider row on any
+    frame with a period model, for a plain row on a frame with period
+    metadata.
     """
 
     provider_registry = {**default_provider_registry(), **(providers or {})}
