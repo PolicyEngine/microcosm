@@ -866,7 +866,10 @@ def test_the_engine_stages_bind_what_the_injected_engine_computes_through() -> N
     is rooted at that class (``_ENGINE_CLASS``): it follows the methods the
     stage's code names on it, by attribute or through ``getattr``, with the
     constructor and every method they call on ``self``, at the first-party
-    scope with the stage rule's tables (``_engine_walk``). ``_stage_walks``
+    scope with the stage rule's tables (``_engine_walk``), and the methods
+    its own reach names on any receiver outside the engine's classes, as a
+    helper handed the engine might call, to a fixed point
+    (``_engine_reach``). ``_stage_walks``
     adds it to the walk from the transform, so the rule's tests hold what it
     reaches like any other module the stage computes through. Every engine
     stage names ``materialize``, the RulesEngine protocol's call. Together the
@@ -921,7 +924,10 @@ def test_the_engine_root_follows_the_methods_a_stage_calls(
     """Control for the second root: the methods a stage names on an engine,
     by attribute on any receiver or through ``getattr``, are followed, with
     the constructor and the methods they call on ``self``; a method no stage
-    names is not, nor what only it computes through."""
+    names is not, nor what only it computes through. A method a helper the
+    engine hands itself to calls on that argument is followed too, to a fixed
+    point (``_engine_reach``), which one pass from the stage's methods
+    misses."""
     import importlib
     import uuid
 
@@ -958,20 +964,45 @@ def test_the_engine_root_follows_the_methods_a_stage_calls(
             "        reader = getattr(model, 'parameters', None)\n"
             "        return model.materialize(frame, ['x'], 2024), reader\n"
         ),
+        "delegating": (
+            "from .engine import Engine\n\n"
+            "def _vocabulary_of(engine):\n"
+            "    return engine.concept_mapping()\n\n"
+            "class Delegating(Engine):\n"
+            "    def materialize(self, frame, names, period):\n"
+            "        return _vocabulary_of(self)\n"
+        ),
     }
     for module, source in sources.items():
         (package / f"{module}.py").write_text(source)
     prefix = f"microcosm.{scratch}."
+
+    def short(reach):
+        return {module.removeprefix(prefix): names for module, names in reach.items()}
+
     engine_class = importlib.import_module(f"{prefix}engine").Engine
     walk = _helper_walk((f"{prefix}stage", "Transform"), scope=prefix)
     methods = _engine_methods(engine_class, walk)
     assert methods == {"materialize", "parameters"}
     reach = _engine_walk(engine_class, methods, scope=prefix).reach
-    assert {module.removeprefix(prefix): names for module, names in reach.items()} == {
+    assert short(reach) == {
         "engine": {"Engine"},
         "count": {"count"},
         "tables": {"tables"},
         "tree": {"tree"},
+    }
+    assert _engine_reach(engine_class, walk, scope=prefix).reach == reach
+    delegating = importlib.import_module(f"{prefix}delegating").Delegating
+    once = _engine_walk(
+        delegating, _engine_methods(delegating, walk), scope=prefix
+    ).reach
+    assert "vocabulary" not in short(once)
+    assert short(_engine_reach(delegating, walk, scope=prefix).reach) == {
+        "delegating": {"Delegating", "_vocabulary_of"},
+        "engine": {"Engine"},
+        "count": {"count"},
+        "tree": {"tree"},
+        "vocabulary": {"vocabulary"},
     }
 
 
@@ -1342,10 +1373,10 @@ _KERNEL_STOPS: dict[tuple[str, str], str] = {
         "maps each UK gate to its evaluator. The bound spine builds a battery "
         "run through it only for the checkpoint's gate digests, which read the "
         "manifest, and the run reads the registry only to refuse a parameter "
-        "its binding does not declare. The kernels that evaluate gates through "
-        "it are held past it (microcosm#931 ruling 6): each gate battery "
-        "phase to what the gates it declares compute through "
-        "(_GATE_BATTERY_KERNELS), and the national gates to its whole reach "
+        "its binding does not declare. The rule follows the kernels that "
+        "evaluate gates through it past it (microcosm#931 ruling 6): each gate "
+        "battery phase into what the gates it declares compute through "
+        "(_GATE_BATTERY_KERNELS), and the national gates into its whole reach "
         "(_WHOLE_REGISTRY_KERNELS)"
     ),
 }
@@ -1357,9 +1388,14 @@ _GATE_REGISTRY = ("microcosm.build.uk_runtime.battery_bindings", "UK_GATE_REGIST
 #: evaluates the gates its manifest declares for it. The rule holds each phase
 #: to what it computes through (``_battery_phase_walk``): its key, that hash
 #: with the phase's own code, which its node carries as ``<phase>_code``,
-#: covers it and carries nothing only another phase computes through, so an
-#: edit only one phase computes through re-keys that phase alone
-#: (microcosm#931 ruling 6; test_each_gate_battery_phase_keys_on_its_own_reach).
+#: covers it and carries nothing only another phase computes through, so no
+#: other phase's own key re-keys on an edit only one phase computes through.
+#: Key chaining still re-keys another phase where a node upstream of it hashes
+#: the edited module: a stage before the assembled gate, for a module only
+#: the transferred phase computes through, or a spine, target, population or
+#: solve kernel before the preflight and the solve, for one only the terminal
+#: phase does (microcosm#931 ruling 6;
+#: test_each_gate_battery_phase_keys_on_its_own_reach).
 _GATE_BATTERY_KERNELS: dict[str, str] = {
     "uk.spine-gates@1": "spine",
     "uk.full-gates.preflight@1": "full",
@@ -1396,7 +1432,9 @@ _EVIDENCE_ARTIFACT_TABLES: dict[tuple[str, str], str] = {
         "domain its one declared column names, so the CGT asset type domain, "
         "which only a transferred-phase gate checks, is the transferred "
         "phase's alone, and the ONS household type domain the assembled "
-        "phase's; the rules engine is the kernel's own, no first-party code"
+        "phase's. The rules engine entry names no first-party definition: it "
+        "is the engine the kernel is built with, whose methods a phase's gates "
+        "call the walk follows from its class (_BATTERY_ENGINES)"
     ),
 }
 #: Artifacts a gate's evaluator reads beyond those its binding declares
@@ -1912,11 +1950,15 @@ def _helper_reach(
 _ENGINE_CLASS = ("microcosm.frame.adapters.policyengine_uk", "PolicyEngineUKEngine")
 
 
-def _engine_class() -> type:
+def _class_named(ref: tuple[str, str]) -> type:
     import importlib
 
-    module, name = _ENGINE_CLASS
+    module, name = ref
     return getattr(importlib.import_module(module), name)
+
+
+def _engine_class() -> type:
+    return _class_named(_ENGINE_CLASS)
 
 
 def _class_attributes(cls: type) -> dict[str, list[tuple[type, object]]]:
@@ -1956,13 +1998,22 @@ def _engine_methods(engine_class: type, walk: _Walk) -> frozenset[str]:
     return frozenset(found & set(_class_attributes(engine_class)))
 
 
-def _engine_walk(
+def _engine_roots(engine_class: type) -> frozenset[tuple[str, str]]:
+    """The classes an engine of ``engine_class`` comes from, the roots of its
+    walk. Their definitions name every method, so the engine methods a walk
+    names are read outside them (``_engine_reach``)."""
+
+    return frozenset(
+        (cls.__module__, cls.__name__) for cls in _kernel_classes(engine_class)
+    )
+
+
+def _engine_seeds(
     engine_class: type, methods: frozenset[str], scope: str = _HELPER_SCOPE
-) -> _Walk:
-    """What an engine of ``engine_class`` computes through for a stage that
-    calls ``methods`` on it: the stage rule's walk, at ``scope`` with the
-    same tables, from those methods, the constructor the builds call, and
-    every method they call on ``self``, to a fixed point."""
+) -> list[tuple[tuple[str, str], tuple[str, str]]]:
+    """What ``methods`` of ``engine_class``, the constructor the builds call
+    and every method they call on ``self`` name, each with the method naming
+    it: the seeds of the engine walk (``_engine_walk``)."""
 
     import ast
 
@@ -1982,18 +2033,63 @@ def _engine_walk(
                 and sub.value.id in {"self", "cls"}
                 and sub.attr in body
             )
-    seeds = [
+    return [
         (found, (owner.__module__, f"{owner.__name__}.{name}"))
         for name in sorted(chosen)
         for owner, statement in body[name]
         for found in _named(owner.__module__, statement, scope)
     ]
+
+
+def _engine_walk(
+    engine_class: type, methods: frozenset[str], scope: str = _HELPER_SCOPE
+) -> _Walk:
+    """What an engine of ``engine_class`` computes through for a stage that
+    calls ``methods`` on it: the stage rule's walk, at ``scope`` with the
+    same tables, from those methods, the constructor the builds call, and
+    every method they call on ``self``, to a fixed point."""
+
     walk, _, _ = _walk(
-        {(cls.__module__, cls.__name__) for cls in _kernel_classes(engine_class)},
-        seeds,
+        set(_engine_roots(engine_class)),
+        _engine_seeds(engine_class, methods, scope),
         scope,
     )
     return walk
+
+
+def _engine_methods_beyond(engine_class: type, walk: _Walk) -> frozenset[str]:
+    """The methods of ``engine_class`` that ``walk`` names outside the
+    engine's own classes (``_engine_methods``, ``_engine_roots``)."""
+
+    roots = _engine_roots(engine_class)
+    return _engine_methods(
+        engine_class,
+        _Walk(
+            {
+                module: frozenset(name for name in names if (module, name) not in roots)
+                for module, names in walk.reach.items()
+            },
+            walk.stops,
+            walk.core,
+        ),
+    )
+
+
+def _engine_reach(engine_class: type, walk: _Walk, scope: str = _HELPER_SCOPE) -> _Walk:
+    """What an engine of ``engine_class`` computes through for code whose
+    walk is ``walk``: the engine walk (``_engine_walk``) from the methods
+    ``walk`` names, and from those the engine walk's own reach names on any
+    receiver outside the engine's classes, to a fixed point. So a helper the
+    engine hands itself to, which calls another of its methods on that
+    argument, is followed into that method too."""
+
+    methods = _engine_methods(engine_class, walk)
+    while True:
+        reached = _engine_walk(engine_class, methods, scope)
+        more = methods | _engine_methods_beyond(engine_class, reached)
+        if more == methods:
+            return reached
+        methods = more
 
 
 def _merged(first: _Walk, second: _Walk) -> _Walk:
@@ -2060,16 +2156,15 @@ def _transform_walks() -> MappingProxyType:
 
 @functools.cache
 def _engine_root_walks() -> MappingProxyType:
-    """Each engine stage's second walk (``_engine_walk``): from the methods
-    of the injected engine its transform's walk names."""
+    """Each engine stage's second walk (``_engine_reach``): from the methods
+    of the injected engine its transform's walk names, and those the engine
+    walk's own reach names, to a fixed point."""
 
     engine_class = _engine_class()
     walks = _transform_walks()
     return MappingProxyType(
         {
-            stage: _engine_walk(
-                engine_class, _engine_methods(engine_class, walks[stage])
-            )
+            stage: _engine_reach(engine_class, walks[stage])
             for stage in sorted(_engine_stages())
         }
     )
@@ -2866,7 +2961,12 @@ def _artifacts_read(entry) -> frozenset[str]:
     return frozenset(read)
 
 
-def _battery_phase_walk(kernel_class: type, gates, phase: str) -> _KernelWalk:
+def _battery_phase_walk(
+    kernel_class: type,
+    gates,
+    phase: str,
+    engine: tuple[tuple[str, str], frozenset[str]] | None = None,
+) -> _KernelWalk:
     """What one phase of a gate battery computes through (microcosm#931
     ruling 6): the kernel rule's walk from what the kernel runs, each ``if
     phase == ...`` taking the branch ``phase`` takes (``_phase_branch``), and
@@ -2877,8 +2977,12 @@ def _battery_phase_walk(kernel_class: type, gates, phase: str) -> _KernelWalk:
     dispatcher is followed only into the branches of the checks the phase
     declares (``_STAGE_HEALTH_DISPATCH``), and an evidence-artifact table the
     walk meets only into the entries the phase's gates read
-    (``_EVIDENCE_ARTIFACT_TABLES``, ``_artifacts_read``). ``met`` holds the
-    listed kernel stops it meets."""
+    (``_EVIDENCE_ARTIFACT_TABLES``, ``_artifacts_read``). ``engine`` is the
+    class the battery's kernel is built with and the artifacts that hand it
+    to the gates (``_BATTERY_ENGINES``): where the phase's gates read one,
+    the engine's walk from the methods the phase's reach names joins the
+    phase's, to a fixed point, as for an engine stage (``_engine_reach``).
+    ``met`` holds the listed kernel stops it meets."""
 
     entries = [
         entry
@@ -2925,12 +3029,27 @@ def _battery_phase_walk(kernel_class: type, gates, phase: str) -> _KernelWalk:
         _STAGE_HEALTH_DISPATCH: "the stage-health dispatch",
         **_EVIDENCE_ARTIFACT_TABLES,
     }
+    # A phase whose gates read the engine the kernel hands them computes
+    # through the methods they call on it.
+    handed = (
+        _class_named(engine[0]) if engine is not None and read & engine[1] else None
+    )
+    methods: frozenset[str] = frozenset()
     followed: set[tuple[str, str]] = set()
     while True:
         walk, met, core_names = _walk(roots, seeds, _HELPER_SCOPE, halts=halts)
         tables = (set(_EVIDENCE_ARTIFACT_TABLES) & set(met)) - followed
-        if not tables:
+        more = (
+            methods | _engine_methods_beyond(handed, walk)
+            if handed is not None
+            else methods
+        )
+        if not tables and more == methods:
             break
+        if more != methods:
+            roots |= _engine_roots(handed)
+            seeds.extend(_engine_seeds(handed, more))
+            methods = more
         for table in sorted(tables):
             roots.add(table)
             seeds.extend(
@@ -2947,6 +3066,29 @@ def _battery_phase_walk(kernel_class: type, gates, phase: str) -> _KernelWalk:
         {item: namers for item, namers in met.items() if item in _KERNEL_STOPS},
         core_names,
     )
+
+
+#: The engine each gate battery's kernel is built with, and the evidence
+#: artifacts through which its run hands that engine to the gates, by
+#: battery. The spine gates hand the rules engine the spine build injects
+#: (spine_build._rules_engine) as ``rules_engine`` (uk_spine_gate_artifacts).
+#: The full build's preflight and calibrated gates hand the coverage engine
+#: the driver builds them with as ``coverage_engine``, and the gate context
+#: hands it on as ``rules_engine`` (full_gates.build_full_gate_context). A
+#: phase whose gates read one computes through the methods they call on the
+#: engine, which the walk follows from its class (``_battery_phase_walk``),
+#: as the engine stages' walks follow the engine they call (microcosm#931
+#: ruling 5; test_each_gate_battery_walks_the_engine_its_build_hands_it).
+_BATTERY_ENGINES: dict[str, tuple[tuple[str, str], frozenset[str]]] = {
+    "spine": (_ENGINE_CLASS, frozenset({"rules_engine"})),
+    "full": (
+        (
+            "microcosm.build.uk_runtime.release_input_coverage",
+            "PolicyEngineUKCoverageEngine",
+        ),
+        frozenset({"coverage_engine", "rules_engine"}),
+    ),
+}
 
 
 class _Battery(NamedTuple):
@@ -3032,7 +3174,12 @@ def _kernel_rule_walks() -> MappingProxyType:
                 shared = _hashed_modules(kernel)
                 rule[ref] = {
                     f"{ref} {phase}": _KeyedWalk(
-                        _battery_phase_walk(kernel_class, battery.gates, phase),
+                        _battery_phase_walk(
+                            kernel_class,
+                            battery.gates,
+                            phase,
+                            _BATTERY_ENGINES[_GATE_BATTERY_KERNELS[ref]],
+                        ),
                         shared | _phase_code_modules(battery, phase),
                     )
                     for phase, runner in battery.phases.items()
@@ -3220,12 +3367,14 @@ def test_each_gate_battery_phase_keys_on_its_own_reach() -> None:
     only some of them do. Each phase's own code, which its node carries as
     ``<phase>_code``, holds exactly the rest of what that phase computes
     through, and a phase that computes through nothing of its own carries
-    none. So an edit only the transferred spine phase computes through
-    re-keys neither the assembled gate nor the spine stages that wait on it,
-    and one only the terminal phase computes through re-keys neither the
-    preflight nor the dense solve keyed on it. What a phase computes through
-    is its walk (``_battery_phase_walk``), which the kernel rule's test holds
-    each phase's key to cover."""
+    none. So the assembled gate's own key, which the spine stages after it
+    chain on, carries nothing only the transferred phase computes through,
+    and the preflight's, which the dense solve chains on, nothing only the
+    terminal phase does. An edit to such a module still re-keys the sibling
+    phase where a node upstream of it hashes the module (graph_evidence's and
+    graph_terminal's phase-code docstrings name where). What a phase computes
+    through is its walk (``_battery_phase_walk``), which the kernel rule's
+    test holds each phase's key to cover."""
     from microcosm.build.uk_runtime.graph_evidence import (
         UK_SPINE_GATE_PHASE_CODE,
         add_uk_spine_gate_nodes,
@@ -3270,6 +3419,94 @@ def test_each_gate_battery_phase_keys_on_its_own_reach() -> None:
         ), phase
         if code is not None:
             assert params[f"{phase}_code"] == code(), phase
+
+
+def test_each_gate_battery_walks_the_engine_its_build_hands_it() -> None:
+    """The engine a battery's phase walk follows (``_BATTERY_ENGINES``) is
+    the one its build constructs the battery's kernel with, and the kernel
+    hands it to the gates as one of the battery's engine artifacts
+    (microcosm#931 review):
+
+    - the spine build hands the spine gates the engine ``_rules_engine``
+      builds, the class the engine stages' root follows
+      (test_the_engine_root_is_the_engine_the_builds_inject), and the gates'
+      artifact table hands it on as ``rules_engine``;
+    - the full build's driver hands the preflight and calibrated gates a new
+      coverage engine, and their source evidence hands it on as
+      ``coverage_engine``;
+    - each spine phase's enum gates read the rules engine, so each phase's
+      walk reaches the engine's class, through which they resolve a domain no
+      artifact supplies, and the spine gates' shared hash binds its module."""
+    import ast
+
+    from microcosm.build.uk_runtime import (
+        full_build_cli,
+        graph_evidence,
+        graph_terminal,
+        spine_build,
+    )
+
+    for module, register, keyword, battery in (
+        (spine_build, "register_spine_gate_kernel", "engine", "spine"),
+        (full_build_cli, "register_uk_full_gate_kernels", "coverage_engine", "full"),
+    ):
+        tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+        handed = []
+        for function in ast.walk(tree):
+            if not isinstance(function, ast.FunctionDef):
+                continue
+            bound = {
+                target.id: sub.value
+                for sub in ast.walk(function)
+                if isinstance(sub, ast.Assign)
+                for target in sub.targets
+                if isinstance(target, ast.Name)
+            }
+            for call in ast.walk(function):
+                if not (
+                    isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Name)
+                    and call.func.id == register
+                ):
+                    continue
+                (value,) = [item.value for item in call.keywords if item.arg == keyword]
+                if isinstance(value, ast.Name):
+                    value = bound[value.id]
+                assert isinstance(value, ast.Call), (module.__name__, register)
+                assert isinstance(value.func, ast.Name), (module.__name__, register)
+                handed.append(_resolve(module.__name__, value.func.id, _HELPER_SCOPE))
+        engine = _BATTERY_ENGINES[battery][0]
+        expected = (
+            (spine_build.__name__, "_rules_engine") if battery == "spine" else engine
+        )
+        assert handed and set(handed) == {expected}, (battery, handed)
+
+    for module, function, artifact in (
+        (graph_evidence.__name__, "uk_spine_gate_artifacts", "rules_engine"),
+        (graph_terminal.__name__, "_source_gate_evidence", "coverage_engine"),
+    ):
+        node = _module_definitions(module, _HELPER_SCOPE).definitions[function]
+        (table,) = [sub.value for sub in ast.walk(node) if isinstance(sub, ast.Return)]
+        assert isinstance(table, ast.Dict), function
+        values = {
+            key.value: value
+            for key, value in zip(table.keys, table.values, strict=True)
+            if isinstance(key, ast.Constant)
+        }
+        assert ast.unparse(values[artifact]) == "engine", function
+        assert (
+            artifact
+            in _BATTERY_ENGINES[
+                "spine" if function == "uk_spine_gate_artifacts" else "full"
+            ][1]
+        )
+
+    rule = _kernel_rule_walks()
+    engine_module, engine_name = _ENGINE_CLASS
+    for phase in _gate_batteries()["spine"].phases:
+        walk = rule["uk.spine-gates@1"][f"uk.spine-gates@1 {phase}"].walk
+        assert engine_name in walk.reach.get(engine_module, ()), phase
+    assert engine_module in _hashed_modules(_uk_graph_kernels()["uk.spine-gates@1"])
 
 
 def test_the_battery_model_reads_the_declared_dispatch() -> None:
@@ -3548,8 +3785,8 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
 
     # The gate registry: the bound spine derives its gate digests through it,
     # in _manifest_digests, which returns the battery run's digests alone.
-    # The gate batteries' runs evaluate through it, and each phase is held
-    # past it to the gates it declares; the national gates' run evaluates
+    # The gate batteries' runs evaluate through it, and each phase is followed
+    # past it into the gates it declares; the national gates' run evaluates
     # through it too, and they are walked past it to its whole reach.
     registry = _GATE_REGISTRY
     assert namers[registry] == {
@@ -3661,27 +3898,39 @@ def test_no_spine_or_national_line_kernel_hashes_the_source_codecs() -> None:
     microcosm.graph.codecs (microcosm#931 ruling 8): no spine kernel hashes
     it, so an edit to it re-keys no spine node, nor any node downstream of
     the spine through it, and no kernel of the national line, whose root is
-    the bound spine checkpoint, hashes it either. The atomic geography
-    kernels, which read their sources' bytes through it, do."""
-    from microcosm.build.uk_runtime import (
-        graph_build,
-        graph_calibration,
-        graph_national,
-    )
+    the bound spine checkpoint, hashes it either: each kernel the national
+    graph's nodes run, read from that graph, and the readback of its output.
+    The atomic geography kernels, which read their sources' bytes through it,
+    do."""
+    from microcosm.build.uk_runtime import graph_national
+    from microcosm.build.uk_runtime.graph_build import bound_spine_graph
+    from microcosm.build.uk_runtime.national_doctrine import uk_doctrine_with_overrides
     from microcosm.graph import codecs
+    from test_support.microcosm_build import uk_calibration_run as seam
 
     spine = uk_registry(graph=uk_spine_graph())
     for ref in spine.refs():
         assert codecs.__name__ not in _hashed_modules(spine.get(ref)), ref
-    kernels = _uk_graph_kernels()
-    for ref in (
-        graph_build.UKBoundSpineKernel.ref,
-        graph_national.UKNationalTargetKernel.ref,
-        graph_national.UKNationalProblemKernel.ref,
-        graph_calibration.UKDenseSolveKernel.ref,
+    doctrine, receipt = uk_doctrine_with_overrides(epochs=5)
+    national = graph_national.uk_national_graph(
+        graph_national.UKNationalBuildConfig(
+            calibration_year=2025,
+            time_period="2023",
+            source_year=2023,
+            doctrine=doctrine,
+            doctrine_overrides=receipt,
+        ),
+        spine=bound_spine_graph(seam._frame()),
+        spine_population="uk.full.spine_checkpoint",
+        review_date="2026-09-10",
+    )
+    line = {node.kernel for node in national.graph.nodes}
+    assert {
+        "uk.full.bound_spine@1",
         graph_national.UKNationalGateKernel.ref,
-        graph_national.UKNationalReadbackKernel.ref,
-    ):
+    } <= line
+    kernels = _uk_graph_kernels()
+    for ref in sorted(line | {graph_national.UKNationalReadbackKernel.ref}):
         assert codecs.__name__ not in _hashed_modules(kernels[ref]), ref
     assert codecs.__name__ in _hashed_modules(kernels["geography.support_import@1"])
 

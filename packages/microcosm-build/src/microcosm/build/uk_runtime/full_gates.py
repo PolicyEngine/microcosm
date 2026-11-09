@@ -327,7 +327,7 @@ def classify_full_gate_outcomes(
     BLOCKS_ARTIFACT policy, including its declared missing-evidence rules.
     """
     from microcosm.build.gate_battery import GatePhaseReport, GateStatus
-    from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
+    from microcosm.build.uk_runtime.gate_scopes import UK_LOCAL_GATE_SCOPE
 
     if not isinstance(report, GatePhaseReport):
         raise TypeError("Classify a validated GatePhaseReport, not unbound JSON.")

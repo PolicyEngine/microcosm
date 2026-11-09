@@ -794,8 +794,21 @@ def uk_terminal_only_code_hash() -> str:
     The source preflight runs the gate kernel's code and the dense solve keys
     on the preflight, so the code only the terminal phase computes through
     keys the calibrated node through its ``terminal_code`` parameter, not the
-    kernel's hash (microcosm#1306 review; microcosm#931 ruling 6): an edit to
-    it re-keys the calibrated gates and what follows them, never the solve.
+    kernel's hash (microcosm#1306 review; microcosm#931 ruling 6), and the
+    preflight's own key, and with it the solve's, carries none of it. An edit
+    to one of these modules re-keys the calibrated gates and what follows
+    them, and re-solves too wherever a node upstream of the solve hashes the
+    module, as a spine stage, a target or problem kernel, a population kernel
+    or the dense solve itself does for most of them. Nine never re-solve, on
+    a bound spine or in the in-graph build: ``high_value_home_gates``,
+    ``uk_runtime.diagnostics``, ``microcosm.diagnostics``' catalogs and
+    schema, ``calibrate.hierarchy_labels``, the target loss attribution,
+    ``input_mass``, ``cgt_projection`` and ``source_runtime``.
+    ``calibration_run`` and ``release_certification`` re-solve only on a bound
+    spine, whose kernel hashes both, and seven that upstream of the solve only
+    the spine's stage and gate nodes hash re-solve only in the in-graph build
+    (``donor_uprating``, ``etb_services``, ``etb_vat``, ``frs_take_up``,
+    ``hmrc_capital_gains``, ``take_up_contract``, ``uc_capital_coherence``).
     That is the terminal branch of the kernel's run, and what the terminal
     gates compute through beyond the preflight's:
 
@@ -820,7 +833,8 @@ def uk_terminal_only_code_hash() -> str:
       (``graph_population``), the area-support summary (``local_rowwise``),
       the support floors, admin anchors and CGT projection it builds the
       gate context with (``support_floor``, ``etb_services``,
-      ``cgt_projection``, ``donor_uprating``), the input-mass reference
+      ``cgt_projection``, ``donor_uprating``, and the runner's admin totals
+      and projection artifact, ``calibration_run``), the input-mass reference
       (``weighted_integrity``) and the fit-weight records it rehydrates
       (``release_certification``);
     - the terminal gates' evaluators: the input-mass parity
@@ -847,6 +861,7 @@ def uk_terminal_only_code_hash() -> str:
 
     from .. import chronicle_epoch, input_mass
     from . import (
+        calibration_run,
         cgt_projection,
         chronicle_feed,
         dfe_spring_term,
@@ -894,6 +909,7 @@ def uk_terminal_only_code_hash() -> str:
         release_certification,
         weighted_integrity,
         input_mass,
+        calibration_run,
         etb_services,
         etb_vat,
         domestic_energy_targets,
@@ -924,9 +940,14 @@ def uk_preflight_only_code_hash() -> str:
     (``microcosm.build.ledger_targets``).
 
     The preflight's node carries it as its ``preflight_code`` parameter, so
-    an edit to it re-keys the preflight and the solve after it, and the
-    calibrated gates only through them (microcosm#931 ruling 6). Hashed once
-    per process, as the calibrated gates' own code is.
+    the calibrated gates' own key leaves it out (microcosm#931 ruling 6). An
+    edit to it re-keys the preflight, the solve after it and the calibrated
+    gates through them, and every other node that hashes it: the full build's
+    target compilation, selection, measures and problem, the national line's
+    targets, problem and gates, and in the in-graph build the
+    ``etb_services`` and ``lcfs_consumption`` stages and the transferred
+    spine gate, whose own code it is too. Hashed once per process, as the
+    calibrated gates' own code is.
     """
     from .. import ledger_targets as shared_ledger_targets
 
@@ -987,10 +1008,14 @@ class UKFullGateKernel(KernelBase):
         # encodes; the battery, the gate registry and the shared gates'
         # evaluators; and what both phases' gates compute through, among it
         # the release input coverage and the frame surface it reads, the
-        # target surfaces and their expected sets, and the register loaders
-        # (terminal_gates). What only one phase computes through is that
-        # phase's own code (UK_FULL_GATE_PHASE_CODE), so the preflight, and
-        # the dense solve keyed on it, re-key on none of the terminal phase's.
+        # target surfaces and their expected sets, the register loaders
+        # (terminal_gates), and the spine and local gate scopes (gate_scopes,
+        # not the runner that re-exports them). What only one phase computes
+        # through is that phase's own code (UK_FULL_GATE_PHASE_CODE), so the
+        # preflight's own key, and with it the dense solve's, carries none of
+        # the terminal phase's; an edit to one of those still re-solves
+        # wherever a node upstream of the solve hashes it
+        # (uk_terminal_only_code_hash).
         import microcosm.calibrate.geography_constants as geography_constants
         import microcosm.calibrate.hierarchy as calibrate_hierarchy
         import microcosm.calibrate.registry as calibrate_registry
@@ -1002,9 +1027,9 @@ class UKFullGateKernel(KernelBase):
         from .. import gate_battery, gates, stage_evidence
         from . import (
             battery_bindings,
-            calibration_run,
             council_tax_constants,
             full_gates,
+            gate_scopes,
             geography_ladder,
             graph_evidence,
             graph_targets,
@@ -1031,7 +1056,7 @@ class UKFullGateKernel(KernelBase):
                         stage_evidence,
                         graph_evidence,
                         graph_targets,
-                        calibration_run,
+                        gate_scopes,
                         release_input_coverage,
                         national_frame,
                         uk_engine_adapter,
@@ -1984,8 +2009,8 @@ def rowwise_candidate_manifest_from_graph(
     from microcosm.calibrate.artifacts import decode_problem
 
     from .battery_bindings import uk_area_support_below_floor
-    from .calibration_run import UK_LOCAL_GATE_SCOPE
     from .diagnostics import uk_fit_by_family, uk_support_limited_misses
+    from .gate_scopes import UK_LOCAL_GATE_SCOPE
     from .graph_targets import registry_from_payload
     from .national_sampling import UK_SAMPLE_RUNG_TOKENS
     from .rowwise_cli import (

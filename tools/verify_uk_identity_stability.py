@@ -857,8 +857,9 @@ def _e8_support_split(
     is recounted from the fold. At any ``K`` a family of more than three
     members is held exactly where it can be (``_support_count_held_exactly``).
     Where at least four of its members show their two clone halves at equal
-    weights and share one pair sum ``c``, whatever the others carry, the
-    stored ``n`` must be the count of a weight ``w`` with ``fl(w / n) == c``.
+    weights and every member that does shares one pair sum ``c``, whatever
+    the others carry, the stored ``n`` must be the count of a weight ``w``
+    with ``fl(w / n) == c``.
     Where every member shares ``c`` but fewer show equal halves,
     ``fl(w / n)`` may lie within one float of ``c``, or two where ``c`` sits
     that close to a power of two, the most the anchor and the arms move an
@@ -2076,8 +2077,9 @@ def e8_identity_receipt(
             "1e-9; support-split copy counts, at any K: for a family of more "
             "than three members, exactly the count of a weight w with "
             "fl(w / n) == c where at least four members show their two clone "
-            "halves at equal weights and share the pair sum c, whatever the "
-            "others carry, or, where every member's pair sum is c but fewer "
+            "halves at equal weights and every member that does shares the "
+            "pair sum c, whatever the others carry, or, where every member's "
+            "pair sum is c but fewer "
             "show equal halves, with fl(w / n) within one float of c, or two "
             "where c sits within two floats of a power of two; either run "
             "can reach across the count's step from the floats next to it "

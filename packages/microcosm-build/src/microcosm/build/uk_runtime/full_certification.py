@@ -402,13 +402,13 @@ class UKFullCertificationKernel(KernelBase):
         from microcosm.data import contract
 
         from .. import artifact_files, gate_battery, gates, trace
-        from . import calibration_run, full_gates, graph_evidence, graph_terminal
+        from . import full_gates, gate_scopes, graph_evidence, graph_terminal
 
         # The readiness also computes through the comparison files' records
         # (artifact_files, trace's file digest), the phase reports it decodes
         # (gate_battery, gates), the spine gate manifest and its scope
-        # (graph_evidence, calibration_run) and its report's canonical
-        # encoding (microcosm#931).
+        # (graph_evidence, gate_scopes) and its report's canonical encoding
+        # (microcosm#931).
         return source_hash(
             sys.modules[__name__],
             contract,
@@ -419,7 +419,7 @@ class UKFullCertificationKernel(KernelBase):
             gate_battery,
             gates,
             graph_evidence,
-            calibration_run,
+            gate_scopes,
             canonical_json,
         )
 

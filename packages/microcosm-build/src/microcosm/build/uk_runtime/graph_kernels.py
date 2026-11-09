@@ -1543,11 +1543,13 @@ def fixture_stage_plan_inputs(
 ) -> tuple[tuple[SourceStageSpec, ...], Mapping[str, object]]:
     """The H2 bundle as legacy StagePlan inputs: ordered specs, every transform.
 
-    The graph's CREATE node loads the captured root frame, so the kernel
-    mapping carries no ``frs_spine`` transform; the legacy oracle applies one
-    built from the same ``frs_raw`` tables, added here. The descriptor keys
-    stages by name, so the committed UK manifest supplies the order the
-    legacy plan runs them in.
+    The hermetic registry's transforms (``_fixture_implementations``) carry
+    no ``frs_spine`` transform, so its CREATE node, with no root transform
+    bound, loads the captured root frame. This mapping adds one built from
+    the same ``frs_raw`` tables: the legacy oracle applies it, and H2 parity
+    binds the graph's CREATE kernel to it, the root's production path. The
+    descriptor keys stages by name, so the committed UK manifest supplies the
+    order the legacy plan runs them in.
     """
 
     from microcosm.build.country_spec import load_country_spec

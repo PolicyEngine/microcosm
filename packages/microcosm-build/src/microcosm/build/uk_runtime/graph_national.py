@@ -97,12 +97,12 @@ from .battery_bindings import UK_GATE_REGISTRY, uk_gate_registry_modules
 from .calibration_run import (
     UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS,
     uk_local_gate_scope_exclusions,
-    uk_scoped_gate_manifest,
 )
 from .cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
 from .content_identity import uk_frame_content_identity
 from .diagnostics import uk_target_geography_levels
 from .full_targets import CHRONICLE_SOURCE_CODEC, load_uk_national_target_inputs
+from .gate_scopes import uk_scoped_gate_manifest
 from .graph_build import SPINE_PROVENANCE_TYPE
 from .graph_calibration import (
     UKCalibrationNodes,
@@ -1102,6 +1102,7 @@ class UKNationalGateKernel(_NationalKernel):
             diagnostics,
             donor_uprating,
             etb_services,
+            gate_scopes,
             graph_population,
             graph_targets,
             national_frame,
@@ -1128,6 +1129,7 @@ class UKNationalGateKernel(_NationalKernel):
                         gate_battery,
                         battery_bindings,
                         calibration_run,
+                        gate_scopes,
                         weighted_integrity,
                         diagnostics,
                         support_floor_rules,
