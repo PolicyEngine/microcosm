@@ -10,8 +10,8 @@ bindings and the closure's defaults. With a closure, each selected path names
 a module the closure lists, which may bind nothing, since a module may default
 every input it reads; without one, each names a module the mapping binds.
 ``concepts.encode@1`` writes the defaults of the mapping's ``person_role``
-entities on the person table, beside their bindings, and the group kernels
-refuse such an entity.
+entities on the person table, beside their bindings. The group kernels refuse
+such an entity, and any entity the mapping's correspondence names.
 
 The encode and scenario kernels derive no take-up draws: they refuse
 ``take_up_rates``, so the encoder refuses any selected take-up-threshold

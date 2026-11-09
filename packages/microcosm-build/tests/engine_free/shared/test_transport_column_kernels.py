@@ -129,11 +129,12 @@ def _binding(name, entity, concept, *, group_rule=None, module=None, transform=N
     )
 
 
-def _mapping_with(bindings):
+def _mapping_with(bindings, correspondence=None):
     return ConceptMapping(
         engine="axiom:xx",
         engine_version="synthetic",
-        entity_correspondence={"person": "Person", "household": "Household"},
+        entity_correspondence=correspondence
+        or {"person": "Person", "household": "Household"},
         input_declaration=InputDeclaration.USAGE_INFERRED,
         bindings=tuple(bindings),
         unmapped={
@@ -646,11 +647,13 @@ def test_person_role_bindings_and_defaults_go_on_the_person_table(tables):
         Owned("person", "child_age", "int64"),
         Owned("person", "child_in_care", "bool"),
         Owned("person", "child_rate", "float64"),
+        Owned("person", "dependant_age", "int64"),
+        Owned("person", "dependant_in_care", "bool"),
     )
     params = _encode_params(
         mapping=ROLE_MAPPING,
         closure=ROLE_CLOSURE,
-        paths=(PERSON_PATH, CHILD_PATH, CHILD_DEFAULTS_PATH),
+        paths=(PERSON_PATH, CHILD_PATH, CHILD_DEFAULTS_PATH, DEPENDANT_PATH),
     )
     result = CONCEPTS_ENCODE.run(_context(CONCEPTS_ENCODE, frame, params, outputs))
     rows = len(frame.person)
@@ -660,6 +663,8 @@ def test_person_role_bindings_and_defaults_go_on_the_person_table(tables):
         "child_age": frame.person["age"],
         "child_in_care": pd.Series([False] * rows),
         "child_rate": pd.Series([0.5] * rows),
+        "dependant_age": frame.person["age"],
+        "dependant_in_care": pd.Series([False] * rows),
     }
     for output in outputs:
         _assert_column(result, frame, "person", output.column, expected[output.column])
@@ -677,8 +682,8 @@ def test_without_person_role_defaults_encoding_matches_the_old_gather(
     # Before person_role entities joined the person table's entities, the
     # kernel gathered defaults for the correspondence's entities only. With
     # no closure root on a person_role entity, it writes the same bytes. This
-    # checks the correspondence defaults; the merge property below checks
-    # the person_role defaults.
+    # checks the correspondence defaults; the test above and the merge
+    # property below check the person_role defaults.
     frame = _generated_frame(tables)
     mapping = ROLE_MAPPING if role else MAPPING
     closure = replace(
@@ -838,29 +843,58 @@ def test_group_kernels_refuse_a_person_role_entity(tables):
     ids=["encode-groups", "scenario-override"],
 )
 @pytest.mark.parametrize(
-    ("engine_entity", "frame_entity", "column", "dtype"),
+    ("frame_entity", "column", "dtype"),
     [
-        ("Person", "person", "eligibility_code", "int64"),
-        ("Household", "household", "household_flag", "bool"),
+        ("person", "eligibility_code", "int64"),
+        ("household", "household_flag", "bool"),
     ],
     ids=["person", "household"],
 )
+# The refusal follows the names the mapping declares, whatever they are.
+@pytest.mark.parametrize(
+    ("person", "household"),
+    [("Person", "Household"), ("Individual", "Residence")],
+    ids=["usual-names", "other-names"],
+)
 def test_group_kernels_refuse_a_correspondence_entity(
-    tmp_path, kernel, engine_entity, frame_entity, column, dtype
+    tmp_path, kernel, frame_entity, column, dtype, person, household
 ):
     sources = write_population_sources(tmp_path / "sources")
     frame = _donor_frame(sources)
+
+    def named(entity):
+        return {"Person": person, "Household": household}.get(entity, entity)
+
+    mapping = _mapping_with(
+        tuple(
+            replace(
+                item,
+                engine_entity=named(item.engine_entity),
+                canonical_input=f"xx:{named(item.engine_entity)}"
+                f"#input.{item.engine_input}",
+            )
+            for item in BINDINGS
+        ),
+        {"person": person, "household": household},
+    )
     # Both entities have a default the unguarded kernel could write on
     # family rows, even though concepts.encode@1 owns their input tables.
     closure = replace(
         CLOSURE,
         entries=(
-            *CLOSURE.entries,
-            _default(PERSON_PATH, "Household", "household_flag", True),
+            *(replace(item, entity=named(item.entity)) for item in CLOSURE.entries),
+            _default(PERSON_PATH, household, "household_flag", True),
         ),
     )
+    engine_entity = mapping.entity_correspondence[frame_entity]
     params = {
-        **_encode_params(groups=True, knobs={}, closure=closure, paths=(PERSON_PATH,)),
+        **_encode_params(
+            groups=True,
+            knobs={},
+            mapping=mapping,
+            closure=closure,
+            paths=(PERSON_PATH,),
+        ),
         "engine_entity": engine_entity,
     }
     outputs = (Owned("family", column, dtype, rewrite=True),)
