@@ -27,8 +27,12 @@ refuses, or carries the run's own content, on its own:
 Each kernel emits one canonical JSON artifact whose header has the shape of
 :func:`~microcosm.build.transport.evidence_contract.evidence_header`. The
 producer hash is the kernel's own implementation hash, over the modules
-:data:`INCOME_EVIDENCE_KERNEL_MODULES` lists for it: this module and every
-first-party module its ``run()`` executes or reads a constant from.
+:data:`INCOME_EVIDENCE_KERNEL_MODULES` lists for it: this module and the other
+first-party modules whose source its ``run()`` executes, except the graph
+runtime's kernel protocol, ``microcosm.graph.kernel``. As in the evidence
+kernels' lists, ``microcosm.graph.decl`` stays out: the runs read its
+``ROWS_ALL`` and compare its ``ArtifactType`` values without executing its
+source. The trace test checks executed source and can't see a constant read.
 ``evidence_contract`` hashes only the kernels it lists, and this module stays
 outside the gate battery's binding closure, so adding it re-keys no battery.
 
@@ -190,9 +194,10 @@ _CALIBRATION_DECODE = (
 )
 _SCHEMA = "microcosm.frame.schema"
 #: Each kernel's source modules, in ``source_hash`` order: this module first,
-#: then every first-party module its ``run()`` executes or reads a constant
-#: from, and ``microcosm.graph.canonical`` last. An edit to any of them changes
-#: the kernel's implementation hash, and so its node's key.
+#: then the other first-party modules whose source its ``run()`` executes,
+#: with ``microcosm.graph.canonical`` last. The module docstring names the two
+#: graph modules the lists leave out. An edit to any listed module changes the
+#: kernel's implementation hash, and so its node's key.
 INCOME_EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         INCOME_IDENTITY_REF: (

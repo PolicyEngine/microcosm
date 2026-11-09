@@ -183,19 +183,17 @@ def _artifact_values(payloads):
     }
 
 
-def _encoded_problem(ids, design, *, bindings=None):
-    """A one-target household problem over ``ids`` at ``design`` weights."""
+def _encoded_problem(ids, design, *, bindings=None, entity="household"):
+    """A one-target problem calibrating ``entity`` over ``ids`` at ``design``."""
 
-    target = Target(
-        "count", "household", lambda f: np.ones(len(ids)), value=6, period=2027
-    )
+    target = Target("count", entity, lambda f: np.ones(len(ids)), value=6, period=2027)
     return encode_problem(
         CalibrationProblem(
             sparse.csr_array([[1.0] * len(ids)]),
             np.array([6.0]),
             (target.row_name,),
             Weights(np.asarray(design, dtype=np.float64), WeightKind.DESIGN),
-            "household",
+            entity,
             (target,),
         ),
         entity_ids=tuple(ids),
@@ -452,6 +450,22 @@ def test_the_sum_at_int64_max_passes_and_one_cent_more_refuses() -> None:
     document = json.loads(_identities(person, declaration)[0])
     assert document["sum_measure"] == top
     person = _unmeasured({WAGES: [2**62], BUSINESS: [2**62]}, outputs)
+    with pytest.raises(IncomeIdentityError, match="int64_range fails at record 0"):
+        _identities(person, declaration)
+
+
+def test_the_sum_at_int64_min_passes_and_one_cent_less_refuses() -> None:
+    # The bottom of the bound is inclusive too: -2**63 fits, one cent less
+    # doesn't. Without the lower bound, that record would refuse as
+    # component_sum instead, since no int64 measure can hold the sum.
+    declaration = _declaration([(WAGES, 1), (BUSINESS, 1)])
+    bottom = -(2**63)
+    # A measure of 0 or less is excluded, and the floor of 0 sets its unit to 0.
+    outputs = {"measure": [bottom], "unit": [0.0], "universe_status": ["excluded"]}
+    person = _unmeasured({WAGES: [-(2**62)], BUSINESS: [-(2**62)]}, outputs)
+    document = json.loads(_identities(person, declaration)[0])
+    assert document["sum_measure"] == bottom
+    person = _unmeasured({WAGES: [-(2**62)], BUSINESS: [-(2**62) - 1]}, outputs)
     with pytest.raises(IncomeIdentityError, match="int64_range fails at record 0"):
         _identities(person, declaration)
 
@@ -1346,6 +1360,7 @@ def _native_world(
     intervals_sha256=None,
     native_entity=None,
     problem_bindings=None,
+    problem_entity="household",
     artifact_types=None,
     edit=None,
 ):
@@ -1358,8 +1373,9 @@ def _native_world(
     solution's ids) while the frame keeps the ascending order a Frame
     requires, which puts the frame off the problem. ``intervals_sha256`` and
     ``native_entity`` put the preparation off; ``problem_bindings`` replaces
-    the problem's preparation digest; ``artifact_types`` retypes artifact
-    inputs; ``edit`` changes the node.
+    the problem's preparation digest; ``problem_entity`` names the entity the
+    problem calibrates; ``artifact_types`` retypes artifact inputs; ``edit``
+    changes the node.
     """
 
     intervals = _intervals(NATIVE_CUTS, COARSE_CUTS, COARSE_FIRST)
@@ -1419,6 +1435,7 @@ def _native_world(
         bindings={"preparation_sha256": sha256(preparation).hexdigest()}
         if problem_bindings is None
         else problem_bindings,
+        entity=problem_entity,
     )
     payloads = {
         "preparation": (preparation, CALIBRATION_PREPARATION_TYPE),
@@ -1565,6 +1582,20 @@ def test_the_kernel_refuses_a_preparation_the_problem_didnt_compile(
             ValueError, match="isn't the one the calibration problem compiled"
         ):
             NATIVE_BAND_REPORT.run(context)
+
+
+def test_the_kernel_refuses_a_problem_that_calibrates_another_entity(
+    tmp_path,
+) -> None:
+    # The report reads the problem's household weights by household position.
+    # Decoding the problem without the entity check would read a family
+    # problem's weights as household weights, since the two share these ids.
+    context, *_ = _native_world(tmp_path, problem_entity="family")
+    with pytest.raises(
+        ValueError,
+        match="broadcasts 'household' weights, but the problem calibrates 'family'",
+    ):
+        NATIVE_BAND_REPORT.run(context)
 
 
 @pytest.mark.parametrize(
