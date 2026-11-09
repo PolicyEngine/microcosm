@@ -3033,6 +3033,16 @@ def _derived_person_column(column, entity, read):
 
 _RENT_SHARE = _derived_person_column("rent_share", "household", "rent")
 _RENT_SHARE_HALF = _derived_person_column("rent_share_half", "person", "rent_share")
+_MIX = {
+    "id": "x.mix",
+    "kernel": "toy.derive@1",
+    "inputs": [
+        {"entity": "person", "columns": ["age", "dividend_income"]},
+        {"entity": "household", "columns": ["rent"]},
+    ],
+    "outputs": [{"entity": "person", "column": "mix", "dtype": "float64"}],
+}
+_MIX_HALF = _derived_person_column("mix_half", "person", "mix")
 
 
 def _support_gate_on(roster):
@@ -3127,22 +3137,22 @@ class TestMoneyAwaitingItsProducer:
         outcome = _support_gate_on(roster)
         assert outcome.status is GateStatus.PASSED, outcome.result.failures
 
+    @pytest.mark.parametrize(
+        ("column", "nodes"),
+        (
+            ("mix", (_MIX,)),
+            ("mix_half", (_MIX, _MIX_HALF)),
+        ),
+        ids=("direct", "through-a-derived-row"),
+    )
     def test_a_derived_row_lists_each_column_of_each_input_its_owner_reads(
-        self,
+        self, column, nodes
     ) -> None:
-        # Every input of the owner, and every column of each, reaches the row,
+        # Every input of the owner, and every column of each, reaches the row.
+        # Through a derived input, every one of that input's own sources does,
         # and the gate names each pending source.
-        node = {
-            "id": "x.mix",
-            "kernel": "toy.derive@1",
-            "inputs": [
-                {"entity": "person", "columns": ["age", "dividend_income"]},
-                {"entity": "household", "columns": ["rent"]},
-            ],
-            "outputs": [{"entity": "person", "column": "mix", "dtype": "float64"}],
-        }
         roster = compose._support_roster(
-            _money_battery_spec(("person", "mix"), nodes=(node,))
+            _money_battery_spec(("person", column), nodes=nodes)
         )
         (row,) = roster["columns"]
         assert row["sources"] == [
@@ -3162,7 +3172,7 @@ class TestMoneyAwaitingItsProducer:
         ]
         (line,) = _support_gate_on(roster).result.failures
         assert line.startswith(
-            "person.mix (derived): sources without coverage: "
+            f"person.{column} (derived): sources without coverage: "
             "household.rent (pending), person.dividend_income (pending). "
         )
 
