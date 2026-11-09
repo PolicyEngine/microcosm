@@ -55,10 +55,11 @@ from microcosm.calibrate.geography_constants import UK_REGION_TIER
 
 #: The engine variables a cell reads, as the contract's ``policyengine``
 #: bindings of the ``BOUND_BY`` targets name them: every cell counts people
-#: whose ``TAX`` is above zero, a band reads ``TOTAL_INCOME``, the counts of
+#: whose ``TAX`` exceeds zero, a band reads ``TOTAL_INCOME``, the counts of
 #: and below State Pension age read ``IS_SP_AGE`` and the count aged 65 and
-#: over reads ``AGE``. ``resolved_people`` reads them; a test holds them, and
-#: the cells' masks, to the bindings.
+#: over reads ``AGE``. ``resolved_people`` reads them. The tests hold them to
+#: the bindings, and each bound cell's mask to what the build materializes
+#: for its target.
 TAX = "income_tax_before_winter_fuel_payment_charge_annual"
 TOTAL_INCOME = "total_income_after_loss_relief_annual"
 IS_SP_AGE = "is_SP_age"

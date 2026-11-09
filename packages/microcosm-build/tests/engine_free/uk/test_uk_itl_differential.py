@@ -9,9 +9,12 @@ within tolerance exactly when its relative miss is no larger than the
 tolerance fixed before any file is read. The in-sample flags read the
 targets by the names the contract's references and a run's diagnostics give
 them, so Table 2.2's areas, bound since microcosm#1069, are in sample. Each
-bound cell counts exactly the people the build's own reading of its contract
-binding counts (its filters and its band), so an edit to a binding's filter
-or band variable fails these tests until the check follows it.
+bound cell counts exactly the people the build's own materialization of its
+target counts: the binding's filters, the band the build reads from the
+compiled spec, and the reference's geography. So an edit to a binding's
+filter, band variable or band reading fails these tests until the check
+follows it, and an edit to any other key that counts fails the test that
+holds the bindings to what the check reads.
 """
 
 from __future__ import annotations
@@ -21,19 +24,28 @@ import importlib.util
 import itertools
 import json
 import math
+import re
 from fractions import Fraction
 from importlib.resources import files
-from types import SimpleNamespace
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.ledger_targets import (
+    CALENDAR_YEAR_WINDOW_WEIGHTS,
+    _ledger_metadata,
+    _reference_metadata,
+)
 from microcosm.build.target_materialization import (
     WHOLE_PENCE_UPPER_CLOSED,
-    _prepared_column_values,
+    materialize_target_bindings,
 )
+from microcosm.build.uk_runtime import itl_differential
 from microcosm.build.uk_runtime.hmrc_uprating import (
     ITL_BANDS,
     UK_HMRC_ITL_UK_GEOGRAPHY_ID,
@@ -63,10 +75,14 @@ from microcosm.build.uk_runtime.itl_differential import (
     table_of,
 )
 from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendored_resource
+from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.geography_constants import (
+    UK_GEOGRAPHY_ID_TO_LABEL,
     UK_REGION_TIER,
     UK_REGION_TIER_ENUM,
 )
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
 AREAS = tuple(code for _level, code in UK_REGION_TIER)
@@ -651,38 +667,77 @@ def test_the_vendored_table_2_5_rows_give_every_band_at_calendar_2025() -> None:
     assert sum(1 for key in cells if key[1] == BAND_COUNT) == len(ITL_BANDS)
 
 
-def test_the_tolerance_note_cites_the_vendored_counts() -> None:
-    """The counts the note on ``NATIONAL_TOLERANCE`` cites, from the vendored
-    rows at the calendar-2025 window: five of the eleven bands hold under
-    400,000 taxpayers, and the top three hold fewer than the smallest area
-    cell, Northern Ireland's State Pension age count. Every band takes the
-    national tolerance all the same: geography, not size, decides."""
+#: Numbers as the tolerance note spells them.
+_NUMBER_WORDS = (
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+)
+_MEASURE_WORDS = {
+    "state_pension_age": "State Pension age",
+    "age_65_and_over": "aged 65 and over",
+}
 
+
+def _tolerance_note() -> str:
+    """The ``#:`` note above ``NATIONAL_TOLERANCE`` in the module's source,
+    as one line."""
+
+    lines = Path(itl_differential.__file__).read_text(encoding="utf-8").splitlines()
+    end = next(
+        index
+        for index, line in enumerate(lines)
+        if line.startswith("NATIONAL_TOLERANCE = ")
+    )
+    start = end
+    while lines[start - 1].startswith("#:"):
+        start -= 1
+    return " ".join(line.removeprefix("#:").strip() for line in lines[start:end])
+
+
+def test_the_tolerance_note_cites_the_vendored_counts() -> None:
+    """The note on ``NATIONAL_TOLERANCE`` says what the vendored rows give at
+    the calendar-2025 window, and this test reads the note: how many bands
+    hold under 400,000 taxpayers and, in band order, each one's count; how
+    many of the top bands hold fewer than the smallest area cell; and that
+    cell's area, measure and count. A change to the rows fails here until
+    the note follows it. Every band takes the national tolerance all the
+    same: geography, not size, decides."""
+
+    note = _tolerance_note()
     rows = load_vendored_resource("hmrc_itl_taxpayer_counts.json")["rows"]
     cells = expected_cells(rows, year=2025)
     bands = [cell for cell in cells if cell.measure == BAND_COUNT]
-    assert len(bands) == len(ITL_BANDS)
-    assert {cell.key: cell.expected for cell in bands if cell.expected < 400_000} == {
-        "150000-200000": 342_750.0,
-        "200000-500000": 372_500.0,
-        "500000-1000000": 65_500.0,
-        "1000000-2000000": 20_750.0,
-        "2000000+": 10_750.0,
-    }
+    assert [cell.band for cell in bands] == list(ITL_BANDS)
+    under = [cell.expected for cell in bands if cell.expected < 400_000]
+    assert (
+        f"{_NUMBER_WORDS[len(under)]} of the {_NUMBER_WORDS[len(bands)]} bands "
+        "hold under 400,000 taxpayers"
+    ) in note
+    assert re.findall(r"([\d,]+) at £", note) == [f"{count:,.0f}" for count in under]
     smallest = min(
         (cell for cell in cells if cell.tolerance == REGIONAL_TOLERANCE),
         key=lambda cell: cell.expected,
     )
-    assert (smallest.measure, smallest.key, smallest.expected) == (
-        "state_pension_age",
-        "N92000002",
-        198_750.0,
-    )
-    assert [cell.key for cell in bands if cell.expected < smallest.expected] == [
-        "500000-1000000",
-        "1000000-2000000",
-        "2000000+",
-    ]
+    fewer = [cell for cell in bands if cell.expected < smallest.expected]
+    assert fewer == bands[len(bands) - len(fewer) :]
+    assert (
+        f"the top {_NUMBER_WORDS[len(fewer)]} hold fewer than the smallest area cell"
+    ) in note
+    assert (
+        f"({UK_GEOGRAPHY_ID_TO_LABEL[smallest.key]}'s "
+        f"{_MEASURE_WORDS[smallest.measure]} count, {smallest.expected:,.0f})"
+    ) in note
     assert {cell.tolerance for cell in bands} == {NATIONAL_TOLERANCE}
 
 
@@ -997,31 +1052,26 @@ def _contract():
     }
 
 
-#: The keys of a ``policyengine`` binding that decide whom its rows count and
-#: what each person counts for.
-_COUNTING_KEYS = (
-    "kind",
-    "value_variable",
-    "value_expression",
-    "value_reduction",
-    "from_entity",
-    "map_to",
-    "filters",
-    "household_conditions",
-    "groupby_variable",
-    "band_semantics",
-)
+#: The keys of a ``policyengine`` binding that change no count: ``notes``
+#: documents the row, and ``metric_name`` names a counterfactual binding's
+#: column, which these plain bindings do not have.
+_INERT_KEYS = frozenset({"metric_name", "notes"})
 
 
 def test_the_check_reads_what_the_contract_binds() -> None:
-    """The three families ``BOUND_BY`` reads count as the check counts. Each
-    counts ``person_count`` at person grain, mapped to the household (the
-    check gives each person its household's weight), and only people whose
-    ``TAX`` is above zero. The bands group on ``TOTAL_INCOME`` and read
-    ``[lower, upper)``: no ``band_semantics``. The age families add
-    ``IS_SP_AGE`` true and ``AGE`` at least 65, and band nothing. A binding
-    that changes any of these, or gains a provider ``kind``, a value
-    expression or reduction, or a household condition, fails here."""
+    """The three families ``BOUND_BY`` reads bind exactly what the check
+    counts: ``person_count`` at person grain, mapped to the household (the
+    check gives each person its household's weight), of people whose ``TAX``
+    exceeds zero. The bands group on ``TOTAL_INCOME`` along the
+    ``total_income`` filter dimension and declare no band semantics, upper
+    bound or period factor, so the build reads each band as ``[lower,
+    upper)`` between the vendored lower edges. The age families add
+    ``IS_SP_AGE`` true or ``AGE`` at least 65, and band nothing. Every key
+    but ``notes`` and ``metric_name`` is held, so a binding that gains or
+    changes any other key fails here. That covers the keys whose effect the
+    differential below cannot see on these rows: ``band_filter_dimension``
+    beside a single band-like filter, ``measurement_period`` on a frame
+    without period metadata, and ``require_matching_fact_period``."""
 
     taxpayer = {"variable": TAX, "operator": ">", "value": 0}
     counted = {
@@ -1034,6 +1084,7 @@ def test_the_check_reads_what_the_contract_binds() -> None:
             **counted,
             "filters": [taxpayer],
             "groupby_variable": TOTAL_INCOME,
+            "band_filter_dimension": "total_income",
         },
         ("2.2", "state_pension_age"): {
             **counted,
@@ -1048,23 +1099,22 @@ def test_the_check_reads_what_the_contract_binds() -> None:
     contract = _contract()
     for family, target in BOUND_BY.items():
         binding = contract[target]["bindings"]["policyengine"]
-        read = {key: binding[key] for key in _COUNTING_KEYS if key in binding}
-        assert read == expected[family], target
+        held = {key: value for key, value in binding.items() if key not in _INERT_KEYS}
+        assert held == expected[family], target
 
 
 def _edge_people():
     """Engine columns for people at every edge the bindings read, and each
-    person's household region: tax either side of zero, total income either
-    side of each band edge, either State Pension age flag and ages either
-    side of 65, in each of the twelve region-tier areas and in none."""
+    person's household region: tax either side of zero; total income at each
+    band edge, a penny either side of it and 0.4p below it (where a reading
+    in whole pence moves a person across the edge); either State Pension age
+    flag; ages either side of 65; in each of the twelve region-tier areas
+    and in none."""
 
     edges = [float(lower) for lower, _upper in ITL_BANDS]
+    steps = (-0.01, -0.004, 0.0, 0.01)
     incomes = sorted(
-        {
-            0.0,
-            5_000_000.0,
-            *(edge + step for edge in edges for step in (-0.01, 0.0, 0.01)),
-        }
+        {0.0, 5_000_000.0, *(edge + step for edge in edges for step in steps)}
     )
     grid = itertools.product(
         (*UK_REGION_TIER_ENUM.values(), "UNKNOWN"),
@@ -1079,51 +1129,117 @@ def _edge_people():
     return {TAX: tax, TOTAL_INCOME: income, IS_SP_AGE: sp_age, AGE: age}, region
 
 
+def _edge_frame(engine, region):
+    """The edge people as a frame, each in a household of their own."""
+
+    ids = np.arange(len(region), dtype="int64")
+    return Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": ids, "person_household_id": ids, **engine}
+            ),
+            "household": pd.DataFrame({"household_id": ids, "region": region}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.ones(len(ids)), WeightKind.DESIGN)},
+    )
+
+
+def _window_facts(rows, reference):
+    """The vendored facts ``reference`` selects in the calendar-2025 window:
+    its geography, measure and dimension values, at each tax year the
+    window weights."""
+
+    selector = reference.ledger_selector
+    wanted = {
+        key: str(value)
+        for key, value in (selector.get("dimension_values") or {}).items()
+    }
+    years = {2025 + offset for offset in CALENDAR_YEAR_WINDOW_WEIGHTS}
+    return [
+        row
+        for row in rows
+        if row["geography"]["id"] == selector["geography_id"]
+        and row["measure_id"] == selector["source_measure_id"]
+        and row["period"]["value"] in years
+        and all(
+            str(row["dimensions"].get(key)) == value for key, value in wanted.items()
+        )
+    ]
+
+
+def _bound_registry():
+    """The compiled spec of each bound reference, stamped as the Ledger
+    compile stamps it: the compile's Ledger metadata of a fact the reference
+    selects (the fact's dimensions give the band's edges, as
+    ``ledger_filter_total_income_lower_bound``), under the compile's
+    metadata of the reference (its contract target and geography predicate
+    among it). The window's facts carry the same dimensions, so either one
+    stamps the spec."""
+
+    rows = load_vendored_resource("hmrc_itl_taxpayer_counts.json")["rows"]
+    specs = []
+    for reference in load_country_spec("uk").target_references:
+        if reference.metadata.get("contract_target_id") not in BOUND_BY.values():
+            continue
+        facts = _window_facts(rows, reference)
+        assert len(facts) == len(CALENDAR_YEAR_WINDOW_WEIGHTS), reference.name
+        assert all(fact["dimensions"] == facts[0]["dimensions"] for fact in facts), (
+            reference.name
+        )
+        metadata = {
+            **_ledger_metadata(facts[0], fact_key=facts[0]["source_record_id"]),
+            **_reference_metadata(reference),
+        }
+        specs.append(
+            TargetSpec(
+                name=reference.name,
+                entity=reference.entity,
+                measure=reference.measure,
+                value=1.0,
+                period=reference.period,
+                source="vendored",
+                metadata=metadata,
+            )
+        )
+    return TargetRegistry(specs, country="uk")
+
+
 def _readings(contract):
     """Each bound cell (a Table 2.5 band or a Table 2.2 area) on
     ``_edge_people``, with what each person counts for in it: the check's
-    reading, and the build's reading of the cell's binding in ``contract``
-    through the plain-column interpreter that materializes these
-    prepared-column targets (None when it cannot read the binding from the
-    check's columns, or bands what the check does not). The reference's
-    geography predicate is not part of the binding, so the check's own area
-    stands in for it on both sides."""
+    reading, and what ``materialize_target_bindings`` writes for the cell's
+    reference from ``contract`` on a ``UKFrameTargetAdapter`` (None when it
+    skips the reference). The build reads each band from the compiled spec
+    and scopes each area by its reference's geography predicate, as a UK
+    calibration does."""
 
     engine, region = _edge_people()
     size = len(region)
     people = resolved_people(
         _Resolver({**engine, "household_weight": np.ones(size), "region": region})
     )
-    adapter = SimpleNamespace(
-        tables={"person": {**engine, "person_count": np.ones(size)}}
-    )
+    registry = _bound_registry()
+    adapter = UKFrameTargetAdapter(_edge_frame(engine, region))
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+    skipped = {skip.name for skip in result.skipped}
+    specs = {spec.name: spec for spec in registry.specs}
     for cell in expected_cells(_rows(), year=2025):
         if cell.reference is None:
             continue
-        target = BOUND_BY[(cell.table, cell.measure)]
-        binding = contract[target]["bindings"]["policyengine"]
         build = None
-        if bool(binding.get("groupby_variable")) == (cell.band is not None):
-            band = None
-            if cell.band is not None:
-                lower, upper = cell.band
-                band = (float(lower), math.inf if upper is None else float(upper))
-            try:
-                counted = _prepared_column_values(adapter, "person", binding, band=band)
-            except (KeyError, TypeError, ValueError):
-                pass
-            else:
-                build = np.asarray(counted, dtype=float)
-                if cell.area is not None:
-                    build = np.where(people.area == cell.area, build, 0.0)
+        if cell.reference not in skipped:
+            spec = specs[cell.reference]
+            build = np.asarray(adapter.column(spec.entity, spec.measure), dtype=float)
         yield cell, cell_mask(cell, people).astype(float), build
 
 
 def test_each_bound_cell_counts_whom_its_binding_counts() -> None:
     """Two readings of each bound family agree: on people at every edge, each
     Table 2.5 band and Table 2.2 area counts, person by person, what the
-    build's interpreter counts for the cell's contract binding, and each
-    counts someone and leaves someone out."""
+    build's own materialization of its contract target counts, band edges
+    and geography included; the build skips none of them; and each counts
+    someone and leaves someone out."""
 
     readings = list(_readings(_contract()))
     assert len(readings) == len(ITL_BANDS) + len(AGE_MEASURES) * len(AREAS)
@@ -1136,83 +1252,118 @@ def test_each_bound_cell_counts_whom_its_binding_counts() -> None:
 _BAND_TARGET = BOUND_BY[("2.5", BAND_COUNT)]
 _STATE_PENSION_AGE_TARGET = BOUND_BY[("2.2", "state_pension_age")]
 _AGED_65_AND_OVER_TARGET = BOUND_BY[("2.2", "age_65_and_over")]
+_TOP_BAND = f"{_BAND_TARGET}.{itl_band_key(ITL_BANDS[-1])}"
 
 #: Edits a later change could make to a binding, by name: the binding's
-#: target and the edit.
+#: target, the edit, and the references it turns red (None: every reference
+#: of the target).
 _BINDING_EDITS = {
     "taxpayers-from-zero": (
         _BAND_TARGET,
         lambda binding: binding["filters"][0].update(operator=">="),
+        None,
     ),
     "another-tax-variable": (
         _STATE_PENSION_AGE_TARGET,
         lambda binding: binding["filters"][0].update(variable="income_tax"),
+        None,
     ),
     "bands-on-tax": (
         _BAND_TARGET,
         lambda binding: binding.update(groupby_variable=TAX),
+        None,
     ),
     "bands-on-another-variable": (
         _BAND_TARGET,
         lambda binding: binding.update(groupby_variable="total_income"),
+        None,
     ),
     "no-band-variable": (
         _BAND_TARGET,
         lambda binding: binding.pop("groupby_variable"),
+        None,
     ),
     "bands-in-whole-pence": (
         _BAND_TARGET,
         lambda binding: binding.update(band_semantics=WHOLE_PENCE_UPPER_CLOSED),
+        None,
+    ),
+    "a-capped-top-band": (
+        _BAND_TARGET,
+        lambda binding: binding.update(
+            band_upper_bound=3_000_000, band_upper_bound_inclusive=False
+        ),
+        {_TOP_BAND},
+    ),
+    "monthly-band-edges": (
+        _BAND_TARGET,
+        lambda binding: binding.update(band_period_factor=12),
+        None,
+    ),
+    "a-provider-kind": (
+        _BAND_TARGET,
+        lambda binding: binding.update(kind="parameter_gated_threshold"),
+        None,
     ),
     "below-state-pension-age": (
         _STATE_PENSION_AGE_TARGET,
         lambda binding: binding["filters"][1].update(equals=False),
+        None,
     ),
     "another-state-pension-age-flag": (
         _STATE_PENSION_AGE_TARGET,
         lambda binding: binding["filters"][1].update(variable="is_female"),
+        None,
     ),
     "aged-66-and-over": (
         _AGED_65_AND_OVER_TARGET,
         lambda binding: binding["filters"][1].update(value=66),
+        None,
     ),
     "aged-over-65": (
         _AGED_65_AND_OVER_TARGET,
         lambda binding: binding["filters"][1].update(operator=">"),
+        None,
     ),
     "any-age": (
         _AGED_65_AND_OVER_TARGET,
         lambda binding: binding["filters"].pop(),
+        None,
     ),
     "an-added-filter": (
         _STATE_PENSION_AGE_TARGET,
         lambda binding: binding["filters"].append(
             {"variable": AGE, "operator": ">=", "value": 70}
         ),
+        None,
     ),
 }
 
 
 @pytest.mark.parametrize("edit", sorted(_BINDING_EDITS))
-def test_an_edited_binding_turns_its_family_red(edit) -> None:
-    """The differential reads the bindings themselves, not a copy of them:
-    an edit to a filter, the band variable or the band reading makes every
-    cell of that binding's family, and no other cell, read differently from
-    the check."""
+def test_an_edited_binding_turns_its_cells_red(edit) -> None:
+    """The differential reads the bindings themselves, through the build: an
+    edit to a filter, the band variable, the band reading (whole pence, an
+    upper bound or a period factor) or the binding's kind makes exactly the
+    cells it moves read differently from the check, or the build skip them.
+    That is every cell of the binding's family, except for an upper bound
+    above the top band's lower edge, which moves the top band alone."""
 
-    target, change = _BINDING_EDITS[edit]
+    target, change, red = _BINDING_EDITS[edit]
     contract = copy.deepcopy(_contract())
     change(contract[target]["bindings"]["policyengine"])
-    red = {
+    if red is None:
+        red = {
+            cell.reference
+            for cell in expected_cells(_rows(), year=2025)
+            if cell.reference is not None
+            and BOUND_BY[(cell.table, cell.measure)] == target
+        }
+    assert {
         cell.reference
         for cell, check, build in _readings(contract)
         if build is None or not np.array_equal(check, build)
-    }
-    assert red == {
-        cell.reference
-        for cell in expected_cells(_rows(), year=2025)
-        if cell.reference is not None and BOUND_BY[(cell.table, cell.measure)] == target
-    }
+    } == red
 
 
 def _diagnostics(tmp_path, *, left_out=frozenset()):
@@ -1393,7 +1544,7 @@ def test_the_cells_read_the_bindings_at_their_edges() -> None:
     64.9 is not; only taxpayers count; State Pension age is the engine's
     flag, not an age; the residents are the twelve areas and no other code.
     ``test_each_bound_cell_counts_whom_its_binding_counts`` reads the
-    bindings themselves."""
+    bindings themselves, through the build's materialization."""
 
     people = ITLPeople(
         weight=np.array([1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]),
@@ -1638,8 +1789,10 @@ def test_the_current_income_route_needs_a_basis(
     annual income descriptors, whose calibration this tree's references do
     not describe: on their basis every band would read in sample. Without
     ``--diagnostics`` or ``--references`` the tool refuses the option before
-    it reads anything; with either it passes the reason on. Without the
-    option, this tree's references stay the default basis."""
+    it reads anything, and it refuses an empty reason, which would turn the
+    route off; with a basis it passes the reason on, and the receipt records
+    it. Without the option, this tree's references stay the default basis
+    and the receipt records no reason."""
 
     reasons = []
     weight = np.array([(index + 1) * 1_000.0 for index in range(len(ITL_BANDS))])
@@ -1657,22 +1810,37 @@ def test_the_current_income_route_needs_a_basis(
     argv = ["--h5", str(h5), "--out", str(out), "--itl-rows", str(rows)]
     incumbent = [*argv, "--current-income-for-annual-measures", "incumbent"]
 
-    with pytest.raises(SystemExit) as refused:
-        tool.main(incumbent)
-    assert refused.value.code == 2
-    assert "needs --diagnostics or --references" in capsys.readouterr().err
+    references = tmp_path / "target_references.json"
+    references.write_text(json.dumps({"target_references": []}))
+    for refused_argv, message in (
+        (incumbent, "needs --diagnostics or --references"),
+        (
+            [
+                *argv,
+                "--current-income-for-annual-measures",
+                " ",
+                "--references",
+                str(references),
+            ],
+            "needs a reason",
+        ),
+    ):
+        with pytest.raises(SystemExit) as refused:
+            tool.main(refused_argv)
+        assert refused.value.code == 2
+        assert message in capsys.readouterr().err
     assert reasons == [] and not out.exists()
 
     assert tool.main(argv) == 0
     receipt = json.loads(out.read_text())
     assert receipt["in_sample_basis"] == "target references of this tree at 2025"
+    assert receipt["current_income_for_annual_measures"] is None
     assert all(cell["in_sample"] for cell in receipt["cells"])
 
-    references = tmp_path / "target_references.json"
-    references.write_text(json.dumps({"target_references": []}))
     assert tool.main([*incumbent, "--references", str(references)]) == 0
     receipt = json.loads(out.read_text())
     assert receipt["in_sample_basis"] == f"target references {references} at 2025"
+    assert receipt["current_income_for_annual_measures"] == "incumbent"
     assert not any(cell["in_sample"] for cell in receipt["cells"])
     diagnostics = tmp_path / "calibration_diagnostics.json"
     diagnostics.write_text(json.dumps({"targets": []}))
