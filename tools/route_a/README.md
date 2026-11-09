@@ -63,9 +63,10 @@ holds `asecpub26csv.zip`, `asecpub25csv.zip` and `asecpub24csv.zip`.
 `tools/fetch_us_asec_sources.py` resolves each H5 against its pin and prints
 its path; copy or link the file into `STORAGE` under its own name.
 `fetch_asec_education_assistance_source(year, cache_dir=EDU)` downloads an
-archive into `EDU` and checks its pin. `--resolve` hashes them all. The base also reads the LKWEEKS
-sidecar, the income-2022 archive `asecpub23csv.zip`, in every mode. The
-driver passes no path for it: the prefetch stage fills the fetcher's cache,
+archive into `EDU`, verifies it and extracts its person file there.
+`--resolve` hashes them all. The base also reads the LKWEEKS sidecar, the
+income-2022 archive `asecpub23csv.zip`, in every mode. The driver passes no
+path for it: the prefetch stage fills the fetcher's cache,
 `~/.cache/microcosm/cps/asec_2023/`, and the base checks the pin there.
 
 The driver writes each year and pin out. Its build-commit check refuses a

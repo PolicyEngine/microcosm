@@ -67,13 +67,13 @@ write every year and pin out. `test_route_a_asec_pool.py` fails when their
 years leave the default pool or a pin leaves its registry, so the PR that pins
 a 2026 file moves Route A too, or must say why not.
 
-Until then Route A pooled 2022-2024. That covers the 10/24 build published
-under d2181 and the November 2026 certified build. Each keeps the driver of
-its own commit, and main keeps their Modal registrations, `us-puf-support-base`
-and `us-puf-support-base-rerun`, so their plans still validate. The pull
-request that set the default pool said Route A was not affected because it
-passes explicit paths. That held for the driver of that time, which named
-2022-2024; it no longer holds.
+Until then Route A pooled 2022-2024, through the November 2026 certified
+build. Each of those builds keeps the driver of its own commit, and main keeps
+their Modal registrations, `us-puf-support-base` and
+`us-puf-support-base-rerun`, so their plans still validate. The pull request
+that set the default pool said Route A was not affected because it passes
+explicit paths. That held for the driver of that time, which named 2022-2024;
+it no longer holds.
 
 A default-pool base build passes the three processed files with their pins
 and, for offline runs, the three Census archives:

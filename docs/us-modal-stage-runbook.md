@@ -761,7 +761,8 @@ build. It names `us-puf-support-base-income-2023-2025`, which runs the rerun
 registration's command, crosswalk pin and resources on the default pool, with
 the years newest first as `route_a.sh` passes them. Its commit,
 `PICK_MAIN_COMMIT_FOR_THE_NEXT_CERTIFIED_BUILD`, refuses validation until an
-operator fills it, and the run id needs the commit as the rerun's did.
+operator fills it. Replace `pending` in its run id with the commit's first 12
+characters, as the rerun's launch sequence did.
 
 It takes twelve inputs, one more than the rerun:
 

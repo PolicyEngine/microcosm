@@ -20,11 +20,14 @@ instead of deriving them, so these tests hold them to the registries:
 - The default-pool registration differs from the rerun registration only in
   its pool and its seeded LKWEEKS archive, and its argv builder maps any pool
   year for year (a Hypothesis property).
+- The template as it stood before d2603 still validates on main, on its own
+  2022-2024 pool: the student debt pilot's base (d2606) runs on it.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import re
 import subprocess
@@ -53,9 +56,22 @@ from test_support.microcosm_build.route_a_driver import (
     ROUTE_A_TOOLS,
     run_driver_settings,
 )
-from test_support.microcosm_build.us_modal_stage_plan_tool import ROOT, plan_lib
+from test_support.microcosm_build.us_modal_stage_plan_tool import (
+    ROOT,
+    ROUTE_A_BASE_COMMAND,
+    plan_lib,
+)
 
 TEMPLATE = ROOT / "docs" / "us-modal-stage-route-a-rerun-base-plan.json"
+#: TEMPLATE as it stood at 9b7a4544b, before d2603, byte for byte: the 18
+#: October rerun's template, which the student debt pilot's base (d2606) also
+#: takes, on income years 2022-2024 (EqRC, 2026-11-09).
+PRE_D2603_TEMPLATE = (
+    ROUTE_A_BASE_COMMAND.parent / "route_a_rerun_base_plan_9b7a4544b.json"
+)
+PRE_D2603_TEMPLATE_SHA256 = (
+    "9d4e911606f304cf97d75a2156d0b5541a8b043b18ba839f3cf67eb7c2c52242"
+)
 DEFAULT_POOL_TOOL = plan_lib.US_PUF_SUPPORT_BASE_2023_2025
 SEED = plan_lib.LKWEEKS_ARCHIVE_SEED
 ASEC_PIN_REL = "packages/microcosm-build/src/microcosm/build/us_runtime/asec_sources.py"
@@ -377,6 +393,34 @@ def test_the_default_pool_registration_changes_only_the_pool_and_its_seed() -> N
     for name in (plan_lib.US_PUF_SUPPORT_BASE.name, rerun.name):
         assert plan_lib.PUF_SUPPORT_BASE_POOLS[name] == (
             plan_lib.AsecPool((2024, 2023, 2022), (2022, 2023, 2024))
+        )
+
+
+def test_the_pre_d2603_template_still_validates_on_its_own_pool() -> None:
+    raw = PRE_D2603_TEMPLATE.read_bytes()
+    # A byte copy of the file at 9b7a4544b: an edited copy would test a plan
+    # nobody ran.
+    assert hashlib.sha256(raw).hexdigest() == PRE_D2603_TEMPLATE_SHA256
+    data = json.loads(raw)
+    data["source"]["commit"] = "0" * 40
+    plan = plan_lib.parse_plan(data)
+    assert plan.tool is plan_lib.US_PUF_SUPPORT_BASE_RERUN
+    assert set(plan.inputs) == set(plan_lib.PUF_SUPPORT_BASE_INPUTS)
+    argv = plan_lib.planned_argv(plan)
+    assert [year for year, _ in _mapping(argv, "--asec-h5")] == [2024, 2023, 2022]
+    assert [year for year, _ in _mapping(argv, "--asec-education-source")] == [
+        2022,
+        2023,
+        2024,
+    ]
+    assert [seed.input for seed in plan.tool.home_seeds] == ["asec_education_2022_zip"]
+    for year in (2024, 2023, 2022):
+        assert plan.inputs[f"asec_{year}_h5"].sha256 == (
+            ASEC_SOURCE_ARTIFACTS[year].sha256
+        )
+    for year in (2022, 2023, 2024):
+        assert plan.inputs[f"asec_education_{year}_zip"].sha256 == (
+            ASEC_EDUCATION_ASSISTANCE_ARCHIVES[year].zip_sha256
         )
 
 

@@ -1096,7 +1096,7 @@ US_PUF_SUPPORT_BASE_2023_2025 = replace(
     inputs=PUF_SUPPORT_BASE_INPUTS_2023_2025,
     stages={
         "all": replace(
-            US_PUF_SUPPORT_BASE.stages["all"],
+            US_PUF_SUPPORT_BASE_RERUN.stages["all"],
             required_inputs=PUF_SUPPORT_BASE_INPUTS_2023_2025,
         )
     },
