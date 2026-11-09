@@ -1979,8 +1979,8 @@
           "locator": "benefits.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "89446e64bb97825ba7f94c4080c160c9f189e22426f3af1e89d7d86eee8f2f3f",
-          "size_bytes": 20239,
+          "sha256": "17f7b60e24819af9f46d103b0fcf909f22ffc120c25894a25818426abaa5d7b3",
+          "size_bytes": 21274,
           "table": "benefits",
           "vintage": "synthetic-h2"
         },
@@ -2561,8 +2561,8 @@
           "locator": "benefits.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "89446e64bb97825ba7f94c4080c160c9f189e22426f3af1e89d7d86eee8f2f3f",
-          "size_bytes": 20239,
+          "sha256": "17f7b60e24819af9f46d103b0fcf909f22ffc120c25894a25818426abaa5d7b3",
+          "size_bytes": 21274,
           "table": "benefits",
           "vintage": "synthetic-h2"
         },
@@ -2730,7 +2730,7 @@
         "frs_company_car_fuel_code",
         "frs_company_car_contribution"
       ],
-      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults. frs_company_car_price_band, frs_company_car_fuel_code, frs_company_car_private_fuel and frs_company_car_contribution carry each person's company car from the FRS job tab (CARVAL, FUELTYP, EXPBEN03, and CARAMT where CARCON is 1, on their EXPBEN01 job with the lowest JOBTYPE), stage-internal carriers the company_cars stage reads and the release drops (PolicyEngine/uk-autumn-budget-dashboard-2026#316).",
+      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults. frs_company_car_price_band, frs_company_car_fuel_code, frs_company_car_private_fuel and frs_company_car_contribution carry each person's company car from the FRS job tab (CARVAL, FUELTYP, EXPBEN03, and CARAMT where CARCON is 1, on their EXPBEN01 job with the lowest JOBTYPE), stage-internal carriers the company_cars stage reads and the release drops (PolicyEngine/uk-autumn-budget-dashboard-2026#316). frs_uc_lcw_status carries DWP's limited capability for work status on a linked Universal Credit claim (BENEFITS.UCLCW, coded 0 None, 1 LCFW Group and 2 LCFWRA Group in SN 9563's UKDA data dictionary; blank, as UCSTART is, where the claim has no linked record) on the UC row's person, NOT_LINKED for everyone else; the FRS keeps one UC row per claim, couples included, so the status is the claim's. It is a stage-internal carrier the uc_limited_capability stage reads and the release drops (microcosm#1095, Y1).",
       "operations": [
         {
           "delimiter": "\t",
@@ -2793,6 +2793,7 @@
         "is_claimant_or_partner",
         "is_hbai_dependent_child",
         "uc_is_in_startup_period",
+        "frs_uc_lcw_status",
         "uc_is_in_gainful_self_employment",
         "rent_paid_as_boarder",
         "rent_paid_as_lodger",
@@ -7867,6 +7868,59 @@
       "source": "https://stat-xplore.dwp.gov.uk",
       "stage": "uc_legacy_closure_take_up",
       "survey": "DWP Stat-Xplore, Households invited to Move to Universal Credit by legacy benefit and move status, notices July 2022 to June 2026"
+    },
+    "uc_limited_capability": {
+      "artifacts": [],
+      "grain": "person",
+      "nonnegative_outputs": [],
+      "notes": "DWP's limited capability for work status on linked Universal Credit claims (Y1 of the November event-data plan, microcosm#1095; Mar\u00eda's NS6 ruling of 9 November 2026, which revisits her ruling of 29 October 2026 to keep the engine's proxy; the choices below are for her signature). policyengine-uk 2.174.1 gives limited capability for work and work-related activity (uc_limited_capability_for_WRA) to a person flagged is_disabled_for_benefits, which the spine sets from any reported disability benefit or ESA, unless their own ESA award lacks the support component, and limited capability for work (uc_limited_capability_for_work) to that or the same flag. The FRS 2024-25 links most UC claims to DWP's records, and BENEFITS.UCLCW, which frs_spine carries as frs_uc_lcw_status on the UC row's person, gives the claim's own status; the status and the proxy disagree on a substantial share of linked claims in both directions, so the stage changes who has the LCWRA element more than how many. Every person takes the locked engine's own proxy, so nothing mirrors its formula here, and a linked FRS claim (a non-SPI household) takes DWP's status: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags and, if it flags none, gives both flags to the UC row's person, or to the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not, so a carer keeps the carer element; LCW does the same for limited capability for work, with WRA false for every claimant. The FRS keeps one UC row per claim, couples included, so which partner holds a joint claim's status is this rule's approximation. Unlinked reporters, the take-up redraw's entrants, the legacy-closure movers and every SPI row keep the proxy, which their stored value equals, since no later stage writes its inputs. The flags are stored as survey-year inputs, which the engine carries into every projected year, and the release carries both. uc_reporter_redraw's award screen, earlier in the spine, still reads the proxy.",
+      "operations": [
+        {
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "uc_limited_capability_for_WRA",
+            "uc_limited_capability_for_work",
+            "is_uc_assessed_claimant",
+            "is_carer_for_benefits"
+          ],
+          "year_rule": "survey_year"
+        },
+        {
+          "carer": "is_carer_for_benefits",
+          "carrier": "frs_uc_lcw_status",
+          "claimant": "is_uc_assessed_claimant",
+          "joint_claim_rule": "The FRS keeps one UC row per claim, couples included, so the status is the claim's. Where a claimant must be chosen it is the UC row's person, or the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not; the other claimant keeps the proxy.",
+          "kind": "assign_uc_limited_capability_from_admin_status",
+          "linked_scope": "household_is_spi_synthetic",
+          "not_linked": "NOT_LINKED",
+          "outputs": [
+            "uc_limited_capability_for_WRA",
+            "uc_limited_capability_for_work"
+          ],
+          "rule": "Every person takes the locked engine's own proxy for both flags. A linked FRS claim (a non-SPI household whose UC row carries a status) takes DWP's: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags, and if it flags none gives both flags to one claimant; LCW keeps the claimants the proxy gives limited capability for work, and if it gives none gives it to one claimant, with WRA false for every claimant.",
+          "scope": "Unlinked reporters, the take-up redraw's entrants, the legacy-closure movers and every SPI row keep the proxy; no later stage writes the proxy's inputs, so their stored value equals the formula's.",
+          "statuses": [
+            "NONE",
+            "LCW",
+            "LCWRA"
+          ]
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "UC limited capability flags stored on the source spine: household weights pass through unchanged and total household mass is conserved."
+        }
+      ],
+      "outputs": [
+        "uc_limited_capability_for_WRA",
+        "uc_limited_capability_for_work"
+      ],
+      "rewrites": [],
+      "source": "frs_uc_lcw_status (frs_spine) on the UC row's person, and the locked engine's uc_limited_capability_for_WRA, uc_limited_capability_for_work, is_uc_assessed_claimant and is_carer_for_benefits on the frame as it stands",
+      "stage": "uc_limited_capability",
+      "survey": "Family Resources Survey 2024-25 (BENEFITS.UCLCW, DWP's limited capability status on a linked Universal Credit claim) and policyengine-uk's limited capability proxy, evaluated by the pinned engine"
     },
     "uc_reporter_redraw": {
       "artifacts": [],
