@@ -1199,14 +1199,15 @@ def _split_with_floor_plus_one(monkeypatch, clone_count: int, scenario):
         return _clone_first_split_then_cloned(clone_count, scenario)
 
 
-def _held_families(frame, scenario) -> tuple[dict, dict, int, int]:
-    """The support-split receipt and problems, with the K = 1 hold's reach.
+def _hold_reaches(frame, scenario, tool=None) -> tuple[dict, dict, dict[int, int]]:
+    """The support-split receipt and problems, with the hold's reach by family.
 
-    Also returns how many families the hold took exactly and how many to
-    within one float; at ``K > 1``, or where no family is held, both are 0.
+    The reach counts map how many floats the hold reached around a family's
+    shared pair sum (0 where it took the family exactly) to how many
+    families it held so; a family it did not hold is not counted.
     """
 
-    tool = _load_tool()
+    tool = _load_tool() if tool is None else tool
     dividing_to = tool._floats_dividing_to
     reaches: list[np.ndarray] = []
 
@@ -1216,15 +1217,31 @@ def _held_families(frame, scenario) -> tuple[dict, dict, int, int]:
 
     tool._floats_dividing_to = recorded
     problems: dict[str, object] = {}
-    receipt = tool._e8_support_split(
-        frame,
-        problems,
-        distribution=support_distribution(scenario["top_cells"]),
-        parameters=PARAMETERS,
-        permutation_seed=7,
-    )
+    try:
+        receipt = tool._e8_support_split(
+            frame,
+            problems,
+            distribution=support_distribution(scenario["top_cells"]),
+            parameters=PARAMETERS,
+            permutation_seed=7,
+        )
+    finally:
+        tool._floats_dividing_to = dividing_to
     reach = np.concatenate(reaches) if reaches else np.zeros(0, dtype=np.int64)
-    return receipt, problems, int((reach == 0).sum()), int((reach > 0).sum())
+    values, counts = np.unique(reach, return_counts=True)
+    return receipt, problems, dict(zip(values.tolist(), counts.tolist(), strict=True))
+
+
+def _held_families(frame, scenario) -> tuple[dict, dict, int, int]:
+    """The support-split receipt and problems, with the hold's reach.
+
+    Also returns how many families the hold took exactly and how many to
+    within one float or two; where no family is held, both are 0.
+    """
+
+    receipt, problems, reaches = _hold_reaches(frame, scenario)
+    within = sum(count for reach, count in reaches.items() if reach > 0)
+    return receipt, problems, reaches.get(0, 0), within
 
 
 def _through_the_residential_split(twinned):
@@ -1314,20 +1331,25 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
     The stage reads ``K`` from its input and counts ``ceil(K x w / 60)``
     copies (microcosm#931); the tool reads ``K`` from the pre-split table the
     same way. At one clone its receipt is the one the rule before ``K`` gave.
-    The fold re-sums the copies, so the count check never recounts it. At one
-    clone a family of more than three members whose clone pair sums are all
-    one weight ``c`` is held exactly: the stored ``n`` must be the count of a
-    weight that divides by ``n`` to ``c``, or to within one float of it where
-    fewer than four members show their clone pair untouched, a reach that can
+    The fold re-sums the copies, so neither the count check nor the family
+    test recounts it. At any clone count a family of more than three members
+    is held exactly where at least four of its members show their two clone
+    halves at equal weights and share one pair sum ``c``, whatever the others
+    carry: the stored ``n`` must be the count of a weight that divides by
+    ``n`` to ``c``. Where every member shares ``c`` but fewer show equal
+    halves, the weight may divide to within one float of ``c``, or two where
+    ``c`` sits that close to a power of two, a reach that at one clone can
     take in the multiple of 60 itself, where a family split consistently into
-    one copy more goes unreported. Every other family, and every family at
-    ``K > 1``, is held to the family weights' relative tolerance of 1e-9.
-    That bracket opens for a family whose
-    source-scaled weight ``K x w`` lies within a relative 1e-9 of a multiple
-    of 60 (at ``K = 1``, its own weight), where it cannot tell ``n`` copies
-    from ``n + 1``: a stored count moved on its own is left to the flags and
-    the family weights, and a family split consistently into one copy more
-    goes unreported.
+    one copy more goes unreported. Every other family, and whether each
+    household is a family at all, is held to the family weights' relative
+    tolerance of 1e-9, the counts at the folded weight times ``1 - 1e-9`` and
+    ``1 + 1e-9``, unless the hold decides. That bracket opens for a household
+    whose source-scaled weight ``K x w`` lies within a relative 1e-9 of a
+    multiple of 60 (at ``K = 1``, its own weight), where it cannot tell ``n``
+    copies from ``n + 1``, or a family of two from a whole household: a
+    stored count moved on its own is left to the flags and the family
+    weights, and a household split consistently into one copy more goes
+    unreported.
     """
 
     def test_at_one_clone_the_receipt_is_the_rule_before_the_clone_count(
@@ -1410,19 +1432,24 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         # count's snap absorbs, so an exact recount would count 128 in all 11
         # clones at 11 and in 12 of the 13 at 13 (the clone whose last copy
         # took the exact-total correction, which no household left whole
-        # could carry there, re-sums to 127); the tolerance accepts the
-        # stage's 127.
+        # could carry there, re-sums to 127). The hold takes every family
+        # exactly on its members' shared weight and accepts the stage's 127,
+        # except, at 7 and 13 clones, that last clone's 7,620 family: its
+        # corrected copy shows equal halves off the others' weight, so the
+        # family falls to the bracket, which accepts 127 too.
         one_split, one = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
         split, many = _clone_first_split_then_cloned(clone_count, _NESTING_SCENARIO)
 
         one_receipt, one_problems = _exhausting_receipt(one, _NESTING_SCENARIO)
-        receipt, problems = _exhausting_receipt(many, _NESTING_SCENARIO)
+        receipt, problems, exact, within = _held_families(many, _NESTING_SCENARIO)
 
         assert one_problems == problems == {}
         assert one_receipt["families"] == 6
         assert one_receipt["copies"] == one_split.copies_created == 259
         assert receipt["families"] == clone_count * 6
         assert receipt["copies"] == split.copies_created == clone_count * 259
+        assert exact == clone_count * 6 - (clone_count in (7, 13))
+        assert within == 0
 
     @pytest.mark.parametrize("clone_count", [1, 3, 11])
     def test_a_count_moved_off_a_non_multiple_is_reported(
@@ -1448,10 +1475,10 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         self, clone_count: int
     ) -> None:
         # Household 1 (900: 15 copies) moved to 16 on its root alone. Its 15
-        # members no longer match that count, so even at one clone the family
-        # is not held exactly, and K x w / 60 is exactly 15, where the bracket
-        # cannot tell 15 from 16 (microcosm#931 review). The count check
-        # passes; the flags and the family weights report the family instead.
+        # members no longer match that count, so the family is not held at any
+        # clone count, and K x w / 60 is exactly 15, where the bracket cannot
+        # tell 15 from 16 (microcosm#931 review). The count check passes; the
+        # flags and the family weights report the family instead.
         _, frame = _clone_first_split_then_cloned(clone_count, _NESTING_SCENARIO)
         household = frame.table("household").copy()
         household.loc[household["household_id"] == 1, CGT_SUPPORT_COPIES_COLUMN] = 16
@@ -1485,20 +1512,27 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         assert exact == receipt["families"] == 6
         assert within == 0
 
-    def test_beyond_one_clone_a_family_split_into_one_more_copy_on_a_multiple_goes_unreported(
-        self, monkeypatch
+    @pytest.mark.parametrize("clone_count", [3, 7, 13, 15])
+    def test_beyond_one_clone_a_family_split_into_one_more_copy_on_a_multiple_is_reported(
+        self, monkeypatch, clone_count: int
     ) -> None:
-        # The blind spot the bracket leaves (microcosm#931 review): at three
-        # clones the same four families, split into one copy more in every
-        # clone, pass every check, since no family is held exactly at K > 1;
-        # only the exact recount records the gap.
-        split, frame = _split_with_floor_plus_one(monkeypatch, 3, _NESTING_SCENARIO)
+        # The same four families, split into one copy more in every clone. The
+        # stage counts n on each clone's own weight w and gives every member
+        # fl(w / n), so the hold applies at any clone count: each family's
+        # members still share one weight, every weight that divides by n + 1
+        # to it counts n copies under the snapped count, and the hold reports
+        # all four in every clone. The bracket, which the tool before applied
+        # at K > 1, reported none.
+        split, frame = _split_with_floor_plus_one(
+            monkeypatch, clone_count, _NESTING_SCENARIO
+        )
 
-        receipt, problems = _exhausting_receipt(frame, _NESTING_SCENARIO)
+        receipt, problems, exact, within = _held_families(frame, _NESTING_SCENARIO)
 
-        assert problems == {}
-        assert receipt["copies"] == split.copies_created == 3 * (259 + 4)
-        assert receipt["copies_recomputed"] < receipt["copies"]
+        assert problems == {"support_split_copies_stored": 4 * clone_count}
+        assert receipt["copies"] == split.copies_created == clone_count * (259 + 4)
+        assert exact == receipt["families"] == 6 * clone_count
+        assert within == 0
 
     def test_at_one_clone_families_one_to_three_ulps_above_a_multiple_stay_green(
         self,
@@ -1532,14 +1566,17 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         assert receipt["copies"] == split.copies_created == 244
         assert receipt["copies_recomputed"] == 242
 
-    def test_at_one_clone_a_family_with_a_corrected_member_falls_to_the_bracket(
+    def test_at_one_clone_a_family_with_a_corrected_member_is_held_on_its_equal_halves(
         self, monkeypatch
     ) -> None:
         # One copy of the 900 family, which the floor(q) + 1 stage split into
-        # 16, carries a rounding amount more, as where an exact-total
-        # correction falls on a member. Its members no longer carry one
-        # weight, so the family is held to the bracket, which cannot tell 15
-        # from 16 at the multiple; the other three stay held and reported.
+        # 16, carries a rounding amount more on its original half, as where
+        # the incidence clone's exact-total correction falls on a member. Its
+        # members no longer carry one weight, but the other 15 still show
+        # their two clone halves at equal weights and share w / 16, so the
+        # hold takes the family exactly on them and reports it with the
+        # other three. The tool before held only families whose members all
+        # carried one weight, and left this one to the bracket.
         split, frame = _split_with_floor_plus_one(monkeypatch, 1, _NESTING_SCENARIO)
         ids = frame.table("household")["household_id"].to_numpy()
         weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
@@ -1550,19 +1587,75 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
             _rebuild(frame, household_weights=weights), _NESTING_SCENARIO
         )
 
-        assert problems == {"support_split_copies_stored": 3}
-        assert exact == 5
+        assert problems == {"support_split_copies_stored": 4}
+        assert exact == 6
         assert within == 0
 
-    def test_at_one_clone_a_family_of_three_or_fewer_is_left_to_the_bracket(
-        self, monkeypatch
+    @pytest.mark.parametrize(
+        ("stage", "equal", "reported", "exact"),
+        [
+            ("floor_plus_one", 4, 4, 6),
+            ("floor_plus_one", 3, 3, 5),
+            ("correct", 4, 0, 6),
+            ("correct", 3, 0, 5),
+        ],
+    )
+    def test_at_one_clone_four_equal_halves_vouch_for_a_family_whose_others_differ(
+        self, monkeypatch, stage: str, equal: int, reported: int, exact: int
+    ) -> None:
+        # Every member of the 900 family but ``equal`` of them has its halves
+        # re-split unevenly with its pair sum one float above its stage-time
+        # weight, as the #970 anchor's roundings can leave a trimmed pair, so
+        # its members carry two weights. Four members left with equal halves
+        # sharing one weight vouch for w / n: at most three members carry a
+        # corrected weight, so one of the four does not, and the hold takes
+        # the family exactly on them. It then reports the floor(q) + 1
+        # stage's 16 and accepts the correct stage's 15. With three left, any
+        # of them may be corrected, the family falls to the bracket, and the
+        # floor(q) + 1 family goes unreported with the bracket's blind spot.
+        if stage == "floor_plus_one":
+            _, frame = _split_with_floor_plus_one(monkeypatch, 1, _NESTING_SCENARIO)
+            count = 16
+        else:
+            _, frame = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
+            count = 15
+        ids = frame.table("household")["household_id"].to_numpy()
+        weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+        members = np.r_[
+            np.int64(1),
+            copy_id_table.mint([1] * (count - 1), "cgt_support_split", range(1, count)),
+        ]
+        clones = copy_id_table.mint(members, "cgt_incidence_clone", 1)
+        for member, clone in list(zip(members, clones, strict=True))[equal:]:
+            moved = float(
+                np.nextafter(
+                    weights[ids == member][0] + weights[ids == clone][0], np.inf
+                )
+            )
+            weights[ids == clone] = 16.0
+            weights[ids == member] = moved - 16.0
+
+        _, problems, held_exactly, within = _held_families(
+            _rebuild(frame, household_weights=weights), _NESTING_SCENARIO
+        )
+
+        assert problems == (
+            {"support_split_copies_stored": reported} if reported else {}
+        )
+        assert held_exactly == exact
+        assert within == 0
+
+    @pytest.mark.parametrize("clone_count", [1, 3])
+    def test_a_family_of_three_or_fewer_is_left_to_the_bracket(
+        self, monkeypatch, clone_count: int
     ) -> None:
         # Each of the three exact-total corrections after the split moves one
         # row, so in a family of three or fewer every member may carry a
         # corrected weight, and none vouches for w / n: the family is held to
-        # the bracket. Under the floor(q) + 1 stage the 120 family becomes
-        # three members and goes unreported; the 240 family becomes five and
-        # is reported. The correct stage receipts green.
+        # the bracket at any clone count. Under the floor(q) + 1 stage the
+        # 120 family becomes three members in every clone and goes
+        # unreported; the 240 family becomes five and is reported. The
+        # correct stage receipts green.
         assert _load_tool()._SUPPORT_SPLIT_CORRECTED_ROWS == 3
         scenario = {
             "weights": [120.0, 240.0, 9_000.0],
@@ -1570,16 +1663,16 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
             "incomes": [BAND_INCOMES[0]] * 2 + [BAND_INCOMES[37_700]],
             "top_cells": {0: {250_000: 1_000_000.0}},
         }
-        _, correct = _clone_first_split_then_cloned(1, scenario)
-        _, mutated = _split_with_floor_plus_one(monkeypatch, 1, scenario)
+        _, correct = _clone_first_split_then_cloned(clone_count, scenario)
+        _, mutated = _split_with_floor_plus_one(monkeypatch, clone_count, scenario)
 
         _, correct_problems = _exhausting_receipt(correct, scenario)
         receipt, problems, exact, within = _held_families(mutated, scenario)
 
         assert correct_problems == {}
-        assert problems == {"support_split_copies_stored": 1}
-        assert receipt["families"] == 2
-        assert exact == 1
+        assert problems == {"support_split_copies_stored": clone_count}
+        assert receipt["families"] == 2 * clone_count
+        assert exact == clone_count
         assert within == 0
 
     def test_at_one_clone_members_moved_one_float_are_held_to_within_one_float(
@@ -1623,22 +1716,31 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         assert within == 1
         assert exact_problems == {"support_split_copies_stored": 1}
 
+    @pytest.mark.parametrize(
+        ("clone_count", "reported"),
+        [(1, 3), (3, 12)],
+    )
     def test_through_the_anchor_and_the_residential_split_the_hold_stays_sound(
-        self, monkeypatch
+        self, monkeypatch, clone_count: int, reported: int
     ) -> None:
         # The nesting scenario through the support split, the incidence
         # clone, a hand redraw giving the clone carriers gains in all four of
         # the anchor's groups, the #970 anchor and the residential split, with
         # the arms folded away as the E8 entry folds them. The anchor trims
-        # some pairs and the arms divide the liable clones, so two families
-        # show fewer than four untouched pairs (every carrier of the 900
-        # family falls in one trimmed group) and are held to within one
-        # float; the other four are held exactly. The correct stage receipts
-        # green. Under the floor(q) + 1 stage three of the four families on a
-        # multiple are reported; the fourth, the 900 family, is held to
-        # within one float, a reach that takes in the multiple.
-        _, correct = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
-        _, mutated = _split_with_floor_plus_one(monkeypatch, 1, _NESTING_SCENARIO)
+        # some pairs and the arms divide the liable clones, so in every clone
+        # two families show fewer than four equal halves and differ (every
+        # carrier of the 900 family falls in one trimmed group) and are held
+        # to within one float; the other four are held exactly on their equal
+        # halves. The correct stage receipts green. Under the floor(q) + 1
+        # stage, at one clone three of the four families on a multiple are
+        # reported; the fourth, the 900 family, is held to within one float,
+        # a reach that takes in the multiple. At three clones all four are
+        # reported in every clone: the multiple sits a few floats below the
+        # snapped count's step, beyond that reach.
+        _, correct = _clone_first_split_then_cloned(clone_count, _NESTING_SCENARIO)
+        _, mutated = _split_with_floor_plus_one(
+            monkeypatch, clone_count, _NESTING_SCENARIO
+        )
 
         correct_receipt, correct_problems, correct_exact, correct_within = (
             _held_families(_through_the_residential_split(correct), _NESTING_SCENARIO)
@@ -1648,46 +1750,126 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         )
 
         assert correct_problems == {}
-        assert correct_receipt["families"] == 6
-        assert (correct_exact, correct_within) == (4, 2)
-        assert problems == {"support_split_copies_stored": 3}
-        assert (exact, within) == (4, 2)
+        assert correct_receipt["families"] == 6 * clone_count
+        assert (correct_exact, correct_within) == (4 * clone_count, 2 * clone_count)
+        assert problems == {"support_split_copies_stored": reported}
+        assert (exact, within) == (4 * clone_count, 2 * clone_count)
 
     @pytest.mark.parametrize("member", ["root", "copy"])
     def test_at_one_clone_a_family_folded_just_above_a_multiple_is_green(
         self, member: str
     ) -> None:
         # The root or one copy of household 1 (900: 15 copies of 60) carries a
-        # rounding amount more, as where an exact-total correction falls on a
-        # member, so the family folds to just above 900, where an exact
-        # recount gives 16. Its members no longer carry one weight, so the
-        # family is held to the bracket at one clone too (microcosm#931
-        # review), which accepts the stage's 15, and the receipt is green; its
-        # exact recount still records the extra copy. Held exactly on the
-        # root's weight, the moved root would report the family.
+        # rounding amount more on its original half, as where the incidence
+        # clone's exact-total correction falls on a member, so the family
+        # folds to just above 900, where an exact recount gives 16. The moved
+        # member's halves differ, and the other 14 still show equal halves
+        # at 60, so the hold takes the family exactly on them and accepts the
+        # stage's 15, and the receipt is green; its exact recount still
+        # records the extra copy. Held exactly on the root's weight, the
+        # moved root would report the family.
         split, frame = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
         ids = frame.table("household")["household_id"].to_numpy()
         weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
         (copy,) = copy_id_table.mint([1], "cgt_support_split", [1])
         weights[ids == (1 if member == "root" else copy)] *= 1.0 + 1e-12
 
-        receipt, problems = _exhausting_receipt(
+        receipt, problems, exact, within = _held_families(
             _rebuild(frame, household_weights=weights), _NESTING_SCENARIO
         )
 
         assert problems == {}
         assert receipt["copies"] == split.copies_created == 259
         assert receipt["copies_recomputed"] == 260
+        assert (exact, within) == (6, 0)
 
-    def test_a_household_the_correction_would_divide_keeps_the_receipt_green(
+    @pytest.mark.parametrize(
+        ("clone_count", "source_weight", "copies", "moved_floats"),
+        [
+            # 900 at 15 clones: every member at exactly 4, a power of two,
+            # moved two floats below it, as far as the bound allows there.
+            (15, 900.0, 15, -2),
+            # Two floats below 900 at 15 clones: c two floats below 4.
+            (15, float(np.nextafter(np.nextafter(900.0, 0.0), 0.0)), 15, 1),
+            # Two floats below 448 at 7 clones: c two floats below 8.
+            (7, float(np.nextafter(np.nextafter(448.0, 0.0), 0.0)), 8, 1),
+            # Two floats below 192 at 3 clones: c three floats below 16.
+            (3, float(np.nextafter(np.nextafter(192.0, 0.0), 0.0)), 4, 1),
+        ],
+    )
+    def test_beyond_one_clone_members_near_a_power_of_two_are_held_to_two_floats(
+        self, clone_count: int, source_weight: float, copies: int, moved_floats: int
+    ) -> None:
+        # (45 / K, 60 / K] holds a power of two at these clone counts. Every
+        # member of the family has its halves re-split unevenly, as the #970
+        # anchor re-splits a trimmed pair, with its pair sum moved off the
+        # stage's fl(w / n) and onto a weight within two floats of the power,
+        # so the hold reaches two floats either side. The stage's weight lies
+        # within that reach: one float either way is the most the anchor's
+        # roundings move a pair sum where the floats either side are as wide,
+        # and below a power of two they are half as wide. The receipt is
+        # green. One float of reach would leave the stage's weight out of the
+        # run where c is the power itself.
+        tool = _load_tool()
+        scenario = {
+            "weights": [source_weight, 9_000.0],
+            "wealth": [7e3, 1.0],
+            "incomes": [BAND_INCOMES[0], BAND_INCOMES[37_700]],
+            "top_cells": {0: {250_000: 1_000_000.0}},
+        }
+        split, frame = _clone_first_split_then_cloned(clone_count, scenario)
+        assert split.copies_created == clone_count * (copies - 1)
+        ids = frame.table("household")["household_id"].to_numpy()
+        weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+        roots = np.r_[
+            np.int64(1),
+            copy_id_table.mint(
+                [1] * (clone_count - 1), "geographic_support", range(1, clone_count)
+            ),
+        ]
+        for root in roots:
+            members = np.r_[
+                root,
+                copy_id_table.mint(
+                    [root] * (copies - 1), "cgt_support_split", range(1, copies)
+                ),
+            ]
+            clones = copy_id_table.mint(members, "cgt_incidence_clone", 1)
+            stage_weight = 2.0 * weights[ids == root][0]
+            moved = stage_weight
+            for _ in range(abs(moved_floats)):
+                moved = float(np.nextafter(moved, np.inf if moved_floats > 0 else 0.0))
+            assert tool._pair_rounding_floats(np.array([moved])).tolist() == [2]
+            clone_half = float(2.0 ** (np.floor(np.log2(moved)) - 2))
+            weights[np.isin(ids, members)] = moved - clone_half
+            weights[np.isin(ids, clones)] = clone_half
+        if moved_floats == -2:
+            least, greatest = tool._floats_dividing_to(
+                np.array([moved]), np.array([copies]), np.array([1])
+            )
+            assert not least[0] <= stage_weight * copies <= greatest[0]
+
+        _, problems, reaches = _hold_reaches(
+            _rebuild(frame, household_weights=weights), scenario, tool
+        )
+
+        assert problems == {}
+        assert reaches == {2: clone_count}
+
+    def test_a_household_the_correction_would_divide_is_passed_over(
         self, monkeypatch
     ) -> None:
         # Every household is selected, and the heaviest left at one copy
         # weighs 60: the correction it could carry would lift it to a weight
         # that counts two copies (test_uk_cgt_support.py). The split passes
-        # it over (microcosm#931), so the recompute divides the households
-        # the stage divided. Had the 60 household carried the correction, the
-        # recompute would find a family the stage never made.
+        # it over (microcosm#931), so its weight stays 60 and the recompute
+        # divides the households the stage divided. Had the 60 household
+        # carried the correction, it would be a whole household at a weight
+        # that counts two copies. The family test holds a household to the
+        # bracket, and that weight lies within a relative 1e-9 of 60, where
+        # the bracket cannot tell a family of two from a whole household, so
+        # the receipt would be green as well (microcosm#931 review): only the
+        # stage's own test sees the check.
         from microcosm.build.uk_runtime import cgt_support
 
         scenario = {
@@ -1696,9 +1878,16 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
             "incomes": [BAND_INCOMES[0]] * 4,
             "top_cells": {0: {250_000: 1_000.0}},
         }
-        _, frame = _clone_first_split_then_cloned(1, scenario)
+
+        def stage_weight(split) -> float:
+            household = split.frame.table("household")
+            weights = split.frame.weights_for("household").values
+            return float(weights[household["household_id"].to_numpy() == 3][0])
+
+        split, frame = _clone_first_split_then_cloned(1, scenario)
         _, problems = _exhausting_receipt(frame, scenario)
         assert problems == {}
+        assert stage_weight(split) == 60.0
 
         correct = cgt_support._exact_support_weights
 
@@ -1706,11 +1895,117 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
             return correct(values, target=target, whole=whole)
 
         monkeypatch.setattr(cgt_support, "_exact_support_weights", without_the_check)
-        _, unchecked = _clone_first_split_then_cloned(1, scenario)
+        unchecked_split, unchecked = _clone_first_split_then_cloned(1, scenario)
+        monkeypatch.undo()
         _, problems = _exhausting_receipt(unchecked, scenario)
-        assert problems == {
-            "support_split_selection_stored": {"missing": 0, "extra": 1}
+        assert problems == {}
+        assert stage_weight(unchecked_split) > 60.0
+        assert cgt_support.cgt_support_copy_counts(
+            [stage_weight(unchecked_split)], 60.0, clone_count=1
+        ).tolist() == [2]
+
+    def test_a_two_copy_family_that_folds_onto_a_multiple_is_not_reported_missing(
+        self,
+    ) -> None:
+        # A household one float above 60 is divided into two copies, each at
+        # 30 plus a float. One member's pair sum then moves one float down,
+        # as the #970 anchor's roundings can move a trimmed pair, and the
+        # family's fold re-sums to 60, where an exact recount gives one copy:
+        # the tool before reported the family missing, though the stage made
+        # it right (microcosm#931 review). The family test now holds it to
+        # the bracket, which counts two copies at the fold times 1 + 1e-9, so
+        # it accepts the stored family, and its count of two, and the receipt
+        # is green; the exact recount still records the lost copy.
+        scenario = {
+            "weights": [_ulps_above(60.0, 1), 9_000.0],
+            "wealth": [7e3, 1.0],
+            "incomes": [BAND_INCOMES[0], BAND_INCOMES[37_700]],
+            "top_cells": {0: {250_000: 1_000_000.0}},
         }
+        split, frame = _clone_first_split_then_cloned(1, scenario)
+        ids = frame.table("household")["household_id"].to_numpy()
+        weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+        (clone,) = copy_id_table.mint([1], "cgt_incidence_clone", 1)
+        assert weights[ids == 1][0] + weights[ids == clone][0] == _ulps_above(30.0, 1)
+        weights[ids == 1] = 20.0
+        weights[ids == clone] = 10.0
+        moved = _rebuild(frame, household_weights=weights)
+        assert _load_tool()._pre_split_household_weights(moved)[ids == 1][0] == 60.0
+
+        receipt, problems = _exhausting_receipt(moved, scenario)
+
+        assert problems == {}
+        assert receipt["families"] == 1
+        assert receipt["copies"] == split.copies_created == 1
+        assert receipt["copies_recomputed"] == 0
+
+    @pytest.mark.parametrize("clone_count", [1, 3])
+    def test_a_family_dropped_or_added_away_from_a_multiple_is_reported(
+        self, monkeypatch, clone_count: int
+    ) -> None:
+        # A stage that keeps the 100 household whole and divides the 50 one
+        # into two copies, in every clone, against the rule's two and one:
+        # both weights lie far from a multiple of 60, so the bracket holds
+        # each to the rule's count, and the family test reports one family
+        # missing and one extra per clone.
+        from microcosm.build.uk_runtime import cgt_support
+
+        scenario = {
+            "weights": [100.0, 50.0, 9_000.0],
+            "wealth": [7e3, 6e3, 1.0],
+            "incomes": [BAND_INCOMES[0]] * 2 + [BAND_INCOMES[37_700]],
+            "top_cells": {0: {250_000: 1_000_000.0}},
+        }
+        counted = cgt_support.cgt_support_copy_counts
+
+        def dropped_and_added(weights, maximum_copy_weight, *, clone_count):
+            counts = counted(weights, maximum_copy_weight, clone_count=clone_count)
+            source = clone_count * np.asarray(weights, dtype=float)
+            counts = np.where(np.isclose(source, 100.0), 1, counts)
+            return np.where(np.isclose(source, 50.0), 2, counts)
+
+        with monkeypatch.context() as patched:
+            patched.setattr(cgt_support, "cgt_support_copy_counts", dropped_and_added)
+            _, frame = _clone_first_split_then_cloned(clone_count, scenario)
+
+        receipt, problems = _exhausting_receipt(frame, scenario)
+
+        assert problems == {
+            "support_split_selection_stored": {
+                "missing": clone_count,
+                "extra": clone_count,
+            }
+        }
+        assert receipt["families"] == clone_count
+
+    def test_a_family_whose_members_weigh_nothing_is_reported_not_refused(
+        self,
+    ) -> None:
+        # Every member of the 900 family carries no weight, which no family
+        # the split divides does. The hold is asked about every stored
+        # family, and its members share one pair sum, but it takes only a
+        # positive normal one, so the family falls to the bracket and the
+        # family test reports it missing (the rule no longer selects it),
+        # where a run of weights stepped from zero would reach below zero.
+        _, frame = _clone_first_split_then_cloned(1, _NESTING_SCENARIO)
+        ids = frame.table("household")["household_id"].to_numpy()
+        weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+        members = np.r_[
+            np.int64(1), copy_id_table.mint([1] * 14, "cgt_support_split", range(1, 15))
+        ]
+        weights[np.isin(ids, members)] = 0.0
+        weights[np.isin(ids, copy_id_table.mint(members, "cgt_incidence_clone", 1))] = (
+            0.0
+        )
+
+        _, problems, exact, within = _held_families(
+            _rebuild(frame, household_weights=weights), _NESTING_SCENARIO
+        )
+
+        assert problems == {
+            "support_split_selection_stored": {"missing": 1, "extra": 0}
+        }
+        assert (exact, within) == (5, 0)
 
     def test_a_household_the_correction_would_move_the_walk_past_keeps_it_green(
         self, monkeypatch
@@ -1788,13 +2083,14 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         assert (exact, within) == (5, 1)
 
     def test_the_hold_counts_every_weight_change_after_the_split(self) -> None:
-        """The K = 1 hold's premises, read from the spine graph and the
+        """The count hold's premises, read from the spine graph and the
         stages' code (microcosm#931 review).
 
         ``_SUPPORT_SPLIT_CORRECTED_ROWS`` counts the one-row exact-total
         corrections that can land on a support family member between the split
-        and the tool's read, and ``_SUPPORT_SPLIT_PAIR_ROUNDING_FLOATS`` how
-        far the rest can move an uncorrected one. A spine node changes the
+        and the tool's read, and ``_SUPPORT_SPLIT_PAIR_ROUNDING_FLOATS`` (two
+        floats near a power of two) how far the rest can move an uncorrected
+        one, at any clone count. A spine node changes the
         household weights only where it creates or expands rows or declares
         weights: the executor refuses any other node's weights and frames.
         After the split those are
@@ -1846,36 +2142,63 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         }
         assert boundaries == {"uk.identity@1"}
 
-        # Each call that corrects a frame's total, by the function making it:
-        # a call to spi_support's helpers, or to a function of the stage's
-        # module that wraps them.
+        # Each call that corrects a frame's total, by the function or method
+        # making it: a call to spi_support's helpers, or to a function of the
+        # stage's module that wraps them, by bare name or as an attribute
+        # (spi_support._importance_weights_with_exact_total(...)). Every
+        # function, method and nested function counts its own calls, not
+        # those of the functions it nests.
         helpers = {"_exact_total_correction", "_importance_weights_with_exact_total"}
         stages = ("cgt_support_split", *weighing)
         modules = {graph_kernels._stage_module(stage) for stage in stages}
         assert modules == {cgt_support, cgt_structure, cgt_residential_split}
+        defined = ast.FunctionDef | ast.AsyncFunctionDef
+        nests = defined | ast.ClassDef
+
+        def collect(node, prefix: str, into: dict[str, ast.AST]) -> None:
+            """Every function and method under ``node``, by qualified name."""
+
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, defined):
+                    into[prefix + child.name] = child
+                    collect(child, f"{prefix}{child.name}.", into)
+                elif isinstance(child, ast.ClassDef):
+                    collect(child, f"{prefix}{child.name}.", into)
+                else:
+                    collect(child, prefix, into)
+
+        def called(function) -> list[str]:
+            """The names ``function`` calls outside the functions it nests."""
+
+            names: list[str] = []
+            pending = list(ast.iter_child_nodes(function))
+            while pending:
+                node = pending.pop()
+                if isinstance(node, nests):
+                    continue
+                if isinstance(node, ast.Call):
+                    name = getattr(node.func, "id", getattr(node.func, "attr", None))
+                    if name is not None:
+                        names.append(name)
+                pending.extend(ast.iter_child_nodes(node))
+            return names
+
         corrections: dict[tuple[str, str], int] = {}
         for module in modules:
             tree = ast.parse(inspect.getsource(module))
-            functions = {
-                node.name: node
-                for node in tree.body
-                if isinstance(node, ast.FunctionDef)
-            }
-
-            def called(function) -> list[str]:
-                return [
-                    sub.func.id
-                    for sub in ast.walk(function)
-                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
-                ]
-
+            functions: dict[str, ast.AST] = {}
+            collect(tree, "", functions)
+            assert {
+                node.name for node in ast.walk(tree) if isinstance(node, defined)
+            } == {function.name for function in functions.values()}
             wrappers = {
-                name
-                for name, function in functions.items()
-                if name.startswith("_exact") and set(called(function)) & helpers
+                function.name
+                for function in functions.values()
+                if function.name.startswith("_exact")
+                and set(called(function)) & helpers
             }
             for name, function in functions.items():
-                if name in wrappers:
+                if function.name in wrappers:
                     continue
                 count = sum(item in helpers | wrappers for item in called(function))
                 if count:
@@ -1906,6 +2229,7 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         # The anchor scales a clone half by at most one.
         assert CGT_ANCHOR_MAXIMUM_FACTOR == 1.0
         assert tool._SUPPORT_SPLIT_PAIR_ROUNDING_FLOATS == 1
+        assert tool._SUPPORT_SPLIT_PAIR_ROUNDING_FLOATS_NEAR_A_POWER_OF_TWO == 2
 
         # The stages after the split that change no weight pass their input's
         # household weights to every frame they build.
