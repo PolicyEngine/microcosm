@@ -487,6 +487,7 @@ def test_nz_hold_fixed_has_identity_families_in_its_own_normalization_scenario()
         "capital_income",
         "pensions",
         "owner_housing_costs",
+        "consumer_prices",
     }
     assert all(family.get("identity") is True for family in factors.values())
 
@@ -676,13 +677,13 @@ _BRIDGE_AND_REGION = {
 
 
 def _nz_composition_spec_and_config():
-    """Supply compiler-only toy pins, the three money producers and CREATE's inventory.
+    """Supply compiler-only toy engine pins and CREATE's inventory.
 
-    The synthetic quantile declarations certify no distribution or runtime
-    result. They only remove the three deliberate money-producer gaps while
-    the compiler checks the complete packaged node and population structure.
-    CREATE's inventory holds canonical concepts and unit outputs only: no
-    bridge or region column enters as a root.
+    The packaged graph declares every money producer, so the compiler checks
+    the complete packaged node and population structure with no synthetic
+    node. The toy pins certify no runtime result. CREATE's inventory holds
+    canonical concepts and unit outputs only: no bridge or region column
+    enters as a root.
     """
     from microcosm.graph import Owned
 
@@ -692,46 +693,6 @@ def _nz_composition_spec_and_config():
         commit="1" * 40, wheel_sha256="2" * 64
     )
 
-    def add_quantiles(rows):
-        money = next(row for row in rows if row["kernel"] == "money.normalize@1")
-        at = rows.index(money) + 1
-        synthetic = []
-        mapped = {
-            (output["entity"], output["column"])
-            for row in rows
-            if row["kernel"].startswith("transport.quantile_map@")
-            for output in row.get("outputs", ())
-        }
-        for entity, columns in resources["money_normalization"][
-            "quantile_mapped"
-        ].items():
-            for column in columns:
-                # G8-r2c E declares the real P1 wage map; keep it the only producer.
-                if (entity, column) in mapped:
-                    continue
-                synthetic.append(
-                    {
-                        "id": money["id"] + ".synthetic_quantile." + column,
-                        "kernel": "transport.quantile_map@1",
-                        "population": money["population"],
-                        "inputs": [{"entity": entity, "columns": [column]}],
-                        "outputs": [
-                            {
-                                "entity": entity,
-                                "column": column,
-                                "dtype": "float64",
-                                "rewrite": True,
-                            }
-                        ],
-                        "params": {},
-                    }
-                )
-        rows[at:at] = synthetic
-
-    add_quantiles(resources["transport_graph"]["nodes"])
-    for scenario in resources["scenarios"]["scenarios"]:
-        if scenario["tier"] == "calibration":
-            add_quantiles(scenario["nodes"])
     rows = _instantiated_nz_rows(spec)
     produced = {
         (output["entity"], output["column"])
@@ -1197,6 +1158,54 @@ def test_the_builder_check_refuses_each_stale_earnings_declaration(mutate):
         builder.validate_earnings_bands(document, intervals, aging)
 
 
+def test_the_rent_map_reads_the_region_and_precedes_the_encoder_on_every_branch():
+    spec = _spec()
+    for prefix, rows in _branches(spec):
+        ids = [row["id"] for row in rows]
+        by_id = {row["id"]: row for row in rows}
+        mapper, money = by_id[f"{prefix}.rent.map"], by_id[f"{prefix}.money.normalize"]
+        assert (
+            ids.index(money["id"])
+            < ids.index(mapper["id"])
+            < ids.index(f"{prefix}.encode.person")
+        )
+        assert mapper["kernel"] == "transport.quantile_map@1"
+        assert mapper["population"] == money["population"]
+        assert mapper["inputs"] == [
+            {"entity": "household", "columns": ["rent", "household_region_code"]}
+        ]
+        assert mapper["outputs"] == [
+            {
+                "entity": "household",
+                "column": "rent",
+                "dtype": "float64",
+                "rewrite": True,
+            }
+        ]
+        assert mapper["artifact_inputs"] == [
+            {"name": "surface", "producer": "nz.facts.precal", "artifact": "surface"}
+        ]
+        assert mapper["params"]["component_column"] == "household_region_code"
+        assert mapper["params"]["bands"] == {
+            "resource": "rent_bands",
+            "path": ["map_bands"],
+            "encoding": "json",
+        }
+
+
+def test_each_branch_converts_the_liquid_asset_stock_at_one_node():
+    """d1982 converts once, so a second writer on any branch is a defect."""
+    spec = _spec()
+    for prefix, rows in _branches(spec):
+        writers = [
+            row["id"]
+            for row in rows
+            for output in row.get("outputs", ())
+            if output["column"] == "liquid_financial_assets"
+        ]
+        assert writers == [f"{prefix}.money.normalize"], prefix
+
+
 def test_the_wage_map_and_cents_precede_the_person_encoder_on_every_branch():
     spec = _spec()
     selected = {"V1": "low", "V2": "high"}
@@ -1286,7 +1295,7 @@ def test_the_wage_bands_reach_quantile_map_v2_as_a_bare_band_list():
 
 def test_pending_outputs_no_longer_name_p1_earnings():
     pending = _spec()["resources"]["transport_graph"]["pending_outputs"]
-    assert "Census rent and liquid-assets quantile producers" in pending
+    assert "Census rent and liquid-assets quantile producers" not in pending
     assert not any("P1" in entry or "earnings" in entry for entry in pending)
 
 
