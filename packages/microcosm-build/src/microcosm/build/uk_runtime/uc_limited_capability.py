@@ -28,8 +28,8 @@ The FRS keeps one UC row per claim, couples included, so the status is the
 claim's, and which partner holds it in a joint claim is this rule's
 approximation. Unlinked reporters, the take-up redraw's entrants, the
 legacy-closure movers and every SPI row keep the proxy, which their stored
-value equals: no later stage writes the proxy's inputs. These choices are for
-María's signature.
+value equals: no later stage writes the proxy's inputs. María signed these
+choices on 9 November 2026.
 """
 
 from __future__ import annotations

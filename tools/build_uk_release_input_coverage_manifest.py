@@ -109,7 +109,7 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
             "enhanced) where no category is supplied for the year; the "
             "pip_points stage stores the points within the stored award, and "
             "the release and calibration boundaries drop the category, which "
-            "the spine keeps (for María's signature)."
+            "the spine keeps (María's signature of 2026-11-09)."
         ),
         "approved_by": "juaristi22",
         "approved_on": "2026-11-09",
@@ -123,7 +123,7 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
             "category is supplied for the year; the pip_points stage stores "
             "the points within the stored award, and the release and "
             "calibration boundaries drop the category, which the spine keeps "
-            "(for María's signature)."
+            "(María's signature of 2026-11-09)."
         ),
         "approved_by": "juaristi22",
         "approved_on": "2026-11-09",

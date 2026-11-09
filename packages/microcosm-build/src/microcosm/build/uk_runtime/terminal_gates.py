@@ -525,7 +525,7 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "supplied for the year; a persisted category would override the "
         "points in every projected year, so the candidate carries the points "
         "the pip_points stage draws within the stored award and drops the "
-        "category (microcosm#1095, P1; for María's signature)."
+        "category (microcosm#1095, P1; María's signature of 2026-11-09)."
     ),
     "person.pip_m_category": (
         "policyengine-uk derives pip_m_category from pip_m_points (8 points "
@@ -533,7 +533,7 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "supplied for the year; a persisted category would override the "
         "points in every projected year, so the candidate carries the points "
         "the pip_points stage draws within the stored award and drops the "
-        "category (microcosm#1095, P1; for María's signature)."
+        "category (microcosm#1095, P1; María's signature of 2026-11-09)."
     ),
     "person.tax_free_savings_income": (
         "policyengine-uk derives tax_free_savings_income as the sum of the ISA "

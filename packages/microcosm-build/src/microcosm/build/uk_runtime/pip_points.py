@@ -33,7 +33,7 @@ Scotland and Northern Ireland, outside DWP's tables, use England and Wales's,
 and pension-age recipients take the 60-and-over row, which carries them (the
 package's volumes run past State Pension age). With unchanged thresholds the
 engine's category from the points equals the stored category for every
-person, which the stage asserts. These choices are for María's signature.
+person, which the stage asserts. María signed these choices on 9 November 2026.
 """
 
 from __future__ import annotations

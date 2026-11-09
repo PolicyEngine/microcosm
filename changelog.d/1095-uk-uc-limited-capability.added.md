@@ -11,4 +11,4 @@ policyengine-uk 2.174.1 gives limited capability for work and work-related activ
 - **The registers.**
   - The export allow-list carries both flags, and the coverage manifest gains the stage's family.
   - The bound LCWRA households row's note records the ruling. It no longer says the carer and childcare rows sit on the measure-exclusion register, since neither does.
-- **For María's signature:** the restated NS6 note, the code mapping, the joint-claim rule, NONE overriding the proxy, and who keeps the proxy.
+- **Signed by María on 9 November 2026:** the restated NS6 note, the code mapping, the joint-claim rule, NONE overriding the proxy, and who keeps the proxy.

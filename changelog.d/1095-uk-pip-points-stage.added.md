@@ -14,9 +14,9 @@ policyengine-uk 2.174.1 decides a PIP component's rate from `pip_dl_points` and 
   - The coverage manifest restates the categories as engine-derived. The eFRS reference's engine (2.89.0) treated them as plain inputs, so the manifest tool admits them through a reviewed list of inputs the pinned engine derives since the reference.
   - The points join the manifest through their own family.
 - **The receipt.** By age group in England and Wales, it gives the weighted shares by DWP's cells against DWP's own, with support bands, cells on fewer than three source households withheld, and every table row's published total. Table 2.9's whole percentages add to between 92 and 102 per row as ported.
-- **For María's signature:**
+- **Signed by María on 9 November 2026:**
   - within a band the points spread evenly over its integers, and the open band (41 and over) sits at 41;
   - Scotland's and Northern Ireland's recipients use England and Wales's tables;
   - pension-age recipients take the 60-and-over row, which carries them;
   - the draws are seeded on `person_id`;
-  - the categories leave the release, and the coverage manifest's two engine-derived entries are dated for her signature.
+  - the categories leave the release, and the coverage manifest's two engine-derived entries are dated 9 November 2026.
