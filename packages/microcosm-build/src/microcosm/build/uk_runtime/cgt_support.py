@@ -125,8 +125,14 @@ CGT_SUPPORT_MASS_CHANGE_REASON = (
 #: a support split left whole, heaviest first, before spi_support's shared
 #: fallback (microcosm#931; :func:`_exact_support_weights`, which the
 #: high-value home support split shares). Each candidate that cannot carry the
-#: correction costs a few dozen sums of the frame's weights, so the cap bounds
-#: the search on a national frame.
+#: correction costs a few dozen sums of the frame's weights. At the CGT split
+#: a selected household left at one copy that can carry it also costs a rerun
+#: of the selection walk (``keeps_the_split``), so 64 such candidates that the
+#: check passes over would cost 64 walks, about 26 s at the 0.41 s one walk
+#: takes on a synthetic vector the size of a ``K = 15`` spine. A national
+#: frame does not reach that, since its 64 heaviest whole households are
+#: unselected ones, far heavier than ``60 / K``, so the cap bounds the search
+#: there to the sums.
 CGT_SUPPORT_CORRECTION_CANDIDATES = 64
 #: The one exception to "every copy carries weight / copies" that the
 #: ``copy_rule`` of both support splits declares, built on the cap so the
@@ -604,12 +610,15 @@ def split_cgt_support_households(
     :data:`CGT_SUPPORT_CORRECTION_CANDIDATES` heaviest that can carry it, so
     every root and copy weighs bitwise ``w / n``. A selected one carries it
     only where its corrected weight leaves the walk's selection and its one
-    copy as they were, so the rule rerun on the output divides the same
-    households. Only where none of them can does spi_support's shared
-    fallback place it, and that row can be a root or copy, then off ``w /
-    n`` by about one ulp of the total (:func:`_exact_support_weights`).
-    Refuses a frame the incidence clone stage (``cgt_incidence_clone``) has
-    already seen or one this stage has already split.
+    copy as they were, so wherever one of those candidates carries it, the
+    rule rerun on the output divides the same households. Only where none of
+    them can does spi_support's shared fallback place it, unchanged and
+    without that check. Its row can then be a root or copy, off ``w / n`` by
+    about one ulp of the total, or a whole household, among them a one-copy
+    one the check passed over, after which the rule rerun on the output can
+    divide a different set (:func:`_exact_support_weights`). Refuses a frame
+    the incidence clone stage (``cgt_incidence_clone``) has already seen or
+    one this stage has already split.
     """
 
     validate_uk_national_frame(frame)
@@ -710,13 +719,13 @@ def split_cgt_support_households(
     def keeps_the_split(row: int, weight: float) -> bool:
         """Whether whole household ``row`` at ``weight`` leaves the split as it was.
 
-        An unselected household sits past its band's crossing, so its weight
-        moves neither the walk nor its count of one. A selected household
-        left at one copy can move both, so it carries the correction only
-        where the walk rerun on its corrected weight selects the same
-        households and that weight still counts one copy: the rule rerun on
-        the stage's output then divides the same households the same way, as
-        the identity tool's recompute does.
+        An unselected household sits past its band's crossing, or in no
+        walked band, so its weight moves neither the walk nor its count of
+        one. A selected household left at one copy can move both, so it
+        carries the correction only where the walk rerun on its corrected
+        weight selects the same households and that weight still counts one
+        copy: the rule rerun on the stage's output then divides the same
+        households the same way, as the identity tool's recompute does.
         """
 
         if not selected[row]:
@@ -840,10 +849,12 @@ def _exact_support_weights(
     spi_support's shared multi-candidate correction place it, unchanged: its
     candidates (the heaviest, last, first, lightest and middle positive rows)
     can be a root or copy of a divided household, which is then off ``w / n``
-    by about one ulp of the total. On the CGT nesting scenario at 7 and 13
-    clones, for one, every whole household sits in the half of NumPy's
-    pairwise sum whose other half carries exactly half an ulp of the total,
-    so no change to its weight rounds the total onto the target.
+    by about one ulp of the total, or a whole household, a one-copy household
+    that check refused among them, since it does not consult
+    ``keeps_the_split``. On the CGT nesting scenario at 7 and 13 clones, for
+    one, every whole household sits in the half of NumPy's pairwise sum whose
+    other half carries exactly half an ulp of the total, so no change to its
+    weight rounds the total onto the target.
     """
 
     rows = np.asarray(whole, dtype=np.int64)
