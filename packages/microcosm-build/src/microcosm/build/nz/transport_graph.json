@@ -4524,7 +4524,7 @@
     {
       "id": "nz.evidence.income_identity",
       "kernel": "transport.income_identity@1",
-      "population": "nz.central",
+      "population": "nz.terminal",
       "inputs": [
         {
           "entity": "person",
@@ -4564,7 +4564,7 @@
           ],
           "encoding": "value"
         },
-        "measurement_id": "ird_taxable_income_ty2027_v1",
+        "measurement": "ird_taxable_income_ty2027_v1",
         "identities": {
           "resource": "income_measurements",
           "path": [
@@ -4586,7 +4586,7 @@
     {
       "id": "nz.evidence.omission_register",
       "kernel": "transport.omission_register@1",
-      "population": "nz.central",
+      "population": "nz.terminal",
       "inputs": [
         {
           "entity": "person",
@@ -4636,8 +4636,16 @@
           ],
           "encoding": "value"
         },
-        "measurement_id": "ird_taxable_income_ty2027_v1"
+        "measurement": "ird_taxable_income_ty2027_v1",
+        "weight_entity": "household"
       },
+      "artifact_inputs": [
+        {
+          "name": "problem",
+          "producer": "nz.targets.problem",
+          "artifact": "problem"
+        }
+      ],
       "artifact_outputs": [
         {
           "name": "omission_register",
@@ -4694,7 +4702,7 @@
           "encoding": "json"
         },
         "weight_entity": "household",
-        "measurement_id": "ird_taxable_income_ty2027_v1"
+        "measurement": "ird_taxable_income_ty2027_v1"
       },
       "artifact_inputs": [
         {

@@ -1209,6 +1209,13 @@ def native_band_report(
             }
         )
 
+    households = list(source_households)
+    if len(households) != len(person_ids):
+        raise ValueError("Source households must be record-aligned.")
+    # boundary_diagnostics needs source households exactly when the table
+    # declares support_household_entity. The rows read only each band's
+    # declared measures, so a support declaration changes no row.
+    support = None if table.support_household_entity is None else households
     diagnostics = {
         basis: boundary_diagnostics(
             table,
@@ -1218,14 +1225,13 @@ def native_band_report(
             vector,
             weight_record_ids=person_ids,
             weight_kind=kind,
+            source_households=support,
         )
         for basis, (vector, kind) in weights.items()
     }
     positions = classify_records(table, amounts, statuses)
-    if len(source_households) != len(positions):
-        raise ValueError("Source households must be record-aligned.")
     supports: dict[int, set] = {}
-    for position, household in zip(positions, source_households, strict=True):
+    for position, household in zip(positions, households, strict=True):
         supports.setdefault(position, set()).add(household)
     rows = []
     for index, band in enumerate(aged["bands"]):

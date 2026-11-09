@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "666db95715d8a5013aaaf209c610fdfbda6ccddb2872c9658efcee81ceb6e70d",
+  "fingerprint": "deaa12c8fbbe4b754d52f2880024d855b50ca7967a92accf3726bb83cb91823a",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -65,7 +65,7 @@
     "holdout_comparator_bindings.json": "bee86794af30953c4f7f922edd07900dbcad38f17ecb398be10bdd8b2d43297c",
     "holdout_references.json": "c779749905c8266020122734e8a468eebf27a222e919b03bce5472cb65076a32",
     "income_diagnostic_references.json": "2a050e0ce4cdf5a338c1722604879fa911f2fe845654ff5780511af435fac494",
-    "income_measurements.json": "f53731b115c5568f375a007c21d5239870a886303c0067e8c12f921543003ffb",
+    "income_measurements.json": "21e05023240c3dfdc2e61685a4de0a9e219215bd0c43f93963d95d466dd8b0e1",
     "mass_references.json": "1c1e7e6e1af8917917fc84072ed39b4298ad0444f04906fa6a594ebc2e48a926",
     "money_normalization.json": "34fc0aaa77a188cb05801c640e5862cae9072be3f83d6533b5c8439227beb443",
     "money_normalization_hold_fixed.json": "7ad09195e5504bb22fe40e05d290c07d08b7802bafb6a111dd13f218007fb7e2",
@@ -92,7 +92,7 @@
     "spec/vintages.yaml": "1ecc1a3f952bd25b834c394314e8c933ddb5b095fd64ba492dddb03e3cdd803e",
     "target_references.json": "6af5258a4e3451d7742ab9f3b454fec9e0bd7cf320fab6e784ff002a8be211c8",
     "transport_atomic_geography_support.json": "53465827f67c87aaf5a06c305c082cbf1e6cdf28f3843e853d1e012635517d10",
-    "transport_graph.json": "5f4109c29f7c6b5fba686e2bddcc45fd85125933658141bc79702ed50d9771b5",
+    "transport_graph.json": "c7f7a89495fcb7424279ffc1d6ae98bfdf6552eebead4ae69967264deaddb3c4",
     "transport_inputs.json": "16d3957214d6305e3d3f41fe6343143a411d6055c75c43d3f171db3ee659ec2d"
   },
   "resources": [

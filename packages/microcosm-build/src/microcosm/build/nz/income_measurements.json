@@ -109,15 +109,11 @@
     }
   },
   "identity_receipts": {
-    "description": "R2C-29: the exact identities transport.income_identity@1 checks on every record of the central measure in each run, in Python integers with its own arithmetic. It refuses at the first record where one fails and names the identity and the record.",
+    "description": "R2C-29: the exact identities transport.income_identity@1 checks on every record of the central measure in each run, in Python integers with its own arithmetic. It refuses at the first record where one fails and names the identity and the record. It also reports each add-back column's total, which follows from component_sum and carries no identity of its own.",
     "identities": [
       {
         "id": "component_sum",
         "statement": "On each record with every component present, the measure equals the sum of each component times its sign plus each add-back column's max(0, -signed value). A record with any null component carries a null measure."
-      },
-      {
-        "id": "add_back",
-        "statement": "Over the resolved records, the summed measure equals the summed signed components plus the summed add-backs, exactly, in integer cents."
       },
       {
         "id": "unit_rule",
@@ -125,7 +121,7 @@
       },
       {
         "id": "universe_partition",
-        "statement": "A record's universe status reads unresolved when any component is null, included when the measure exceeds zero and excluded otherwise. The three counts sum to the record count."
+        "statement": "A record's universe status reads unresolved when any component is null, included when the measure exceeds zero and excluded otherwise."
       },
       {
         "id": "int64_range",

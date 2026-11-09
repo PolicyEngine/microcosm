@@ -1023,6 +1023,42 @@ def test_an_empty_nil_row_carries_null_not_zero() -> None:
     assert nil["model_reason"] is None
 
 
+def test_a_native_table_that_declares_support_reports_the_same_rows() -> None:
+    # The toy graph's native table declares support_household_entity and NZ's
+    # doesn't. boundary_diagnostics needs source households from a table that
+    # declares it and refuses them from one that doesn't, so the report must
+    # pass them exactly then; the declaration then moves only the table digest.
+    intervals = _intervals(NATIVE_CUTS, COARSE_CUTS, COARSE_FIRST)
+    references = _references(intervals, _toy_counts(intervals))
+    plain = _report(intervals, references, _toy_records())
+    declared = copy.deepcopy(intervals)
+    declared["tables"][0]["diagnostics"]["support_household_entity"] = "household"
+    report = _report(declared, references, _toy_records())
+    assert report["rows"] == plain["rows"]
+    assert report["coarse"] == plain["coarse"]
+    for basis in ("pre_fit", "post_fit"):
+        mass, before = report["mass"][basis], plain["mass"][basis]
+        assert {key: mass[key] for key in mass if key != "digests"} == {
+            key: before[key] for key in before if key != "digests"
+        }
+        moved = {
+            key
+            for key in mass["digests"]
+            if mass["digests"][key] != before["digests"][key]
+        }
+        assert moved == {"table_sha256"}
+    ids, amounts, statuses, households, weights = _toy_records()
+    for document in (intervals, declared):
+        with pytest.raises(
+            ValueError, match="Source households must be record-aligned"
+        ):
+            _report(
+                document,
+                references,
+                (ids, amounts, statuses, households[:-1], weights),
+            )
+
+
 def test_a_native_band_across_a_coarse_cut_refuses() -> None:
     intervals = _intervals(NATIVE_CUTS, [35_000, 50_000], COARSE_FIRST)
     native, coarse = intervals["tables"]
@@ -1306,7 +1342,7 @@ def _native_world(
     *,
     calibrated=CALIBRATED_WEIGHTS,
     frame_weights=None,
-    household_order=None,
+    problem_order=None,
     intervals_sha256=None,
     native_entity=None,
     problem_bindings=None,
@@ -1315,13 +1351,15 @@ def _native_world(
 ):
     """The node, a frame, a pinned feed and the three artifacts run() reads.
 
-    The solution holds ``calibrated`` on the problem's household order.
-    ``frame_weights`` (the solution's, by default) and ``household_order`` (a
-    permutation of the frame's household rows) let a test put the frame off
-    the problem. ``intervals_sha256`` and ``native_entity`` put the
-    preparation off; ``problem_bindings`` replaces the problem's preparation
-    digest; ``artifact_types`` retypes artifact inputs; ``edit`` changes the
-    node.
+    The solution holds ``calibrated`` on the problem's household order, and
+    the frame holds ``frame_weights`` (``calibrated``, by default) on its own
+    ascending household order, position by position. ``problem_order``
+    permutes the problem's households (its ids and design weights, and so the
+    solution's ids) while the frame keeps the ascending order a Frame
+    requires, which puts the frame off the problem. ``intervals_sha256`` and
+    ``native_entity`` put the preparation off; ``problem_bindings`` replaces
+    the problem's preparation digest; ``artifact_types`` retypes artifact
+    inputs; ``edit`` changes the node.
     """
 
     intervals = _intervals(NATIVE_CUTS, COARSE_CUTS, COARSE_FIRST)
@@ -1341,22 +1379,18 @@ def _native_world(
             MASK: np.ones(len(NATIVE_PEOPLE["person_id"]), dtype=bool),
         }
     )
-    order = list(range(len(NATIVE_HOUSEHOLDS["household_id"])))
-    if household_order is not None:
-        order = list(household_order)
     households = pd.DataFrame(
         {
             "household_id": np.asarray(
                 NATIVE_HOUSEHOLDS["household_id"], dtype=np.int64
-            )[order],
+            ),
             "source_household_id": pd.array(
-                [NATIVE_HOUSEHOLDS["source_household_id"][index] for index in order],
-                dtype="string",
+                NATIVE_HOUSEHOLDS["source_household_id"], dtype="string"
             ),
         }
     )
     if frame_weights is None:
-        frame_weights = np.asarray(calibrated, dtype=np.float64)[order]
+        frame_weights = calibrated
     frame = Frame(
         {"person": person, "household": households},
         SCHEMA,
@@ -1366,7 +1400,11 @@ def _native_world(
             )
         },
     )
-    ids = tuple(NATIVE_HOUSEHOLDS["household_id"])
+    order = range(len(NATIVE_HOUSEHOLDS["household_id"]))
+    if problem_order is not None:
+        order = problem_order
+    ids = tuple(NATIVE_HOUSEHOLDS["household_id"][index] for index in order)
+    design = tuple(DESIGN_WEIGHTS[index] for index in order)
     preparation = canonical_json(
         {
             "effective_intervals": intervals,
@@ -1377,7 +1415,7 @@ def _native_world(
     # The targets compile kernel binds its preparation's digest this way.
     problem = _encoded_problem(
         ids,
-        DESIGN_WEIGHTS,
+        design,
         bindings={"preparation_sha256": sha256(preparation).hexdigest()}
         if problem_bindings is None
         else problem_bindings,
@@ -1504,11 +1542,13 @@ def test_the_kernel_refuses_a_preparation_without_authenticated_intervals(
 def test_the_kernel_refuses_a_household_frame_off_the_problems_order(
     tmp_path,
 ) -> None:
-    # Mutant M4: households 11 and 12 swap rows in the frame. Their calibrated
-    # weights match, so the frame-weights check passes, and only the ids
-    # check refuses a frame whose rows the report reads by position.
+    # Mutant M4: the problem orders households 12, 11, 13, and the frame keeps
+    # the ascending order a Frame requires. The two swapped households share a
+    # calibrated weight, so the frame-weights check passes position by
+    # position, and only the ids check refuses a frame whose rows the report
+    # reads by position.
     context, *_ = _native_world(
-        tmp_path, calibrated=(2.5, 2.5, 4.0), household_order=(1, 0, 2)
+        tmp_path, calibrated=(2.5, 2.5, 4.0), problem_order=(1, 0, 2)
     )
     with pytest.raises(ValueError, match="frame household ids differ from the problem"):
         NATIVE_BAND_REPORT.run(context)
