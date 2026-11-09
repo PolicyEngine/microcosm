@@ -477,6 +477,7 @@ class TestUKManifest:
                 "was_wealth",
                 "was_lisa",
                 "isa_subscriptions",
+                "uc_limited_capability",
                 "pip_points",
                 "trading_allowance_receipts",
                 "company_cars",

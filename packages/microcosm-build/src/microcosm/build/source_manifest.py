@@ -63,6 +63,8 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_trips_from_band_means",
         # microcosm#1428: the self-employed's gross receipts.
         "assign_trading_allowance_receipts",
+        # microcosm#1095 (Y1): DWP's admin-linked UC limited capability status.
+        "assign_uc_limited_capability_from_admin_status",
         "assign_uniform_draw",
         "aggregate_person_to_benunit",
         "allocate_per_capita_from_cell_table",

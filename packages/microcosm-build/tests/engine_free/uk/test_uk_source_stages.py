@@ -92,6 +92,12 @@ UC_COHERENCE_STAGE_NAMES = [
 # microcosm#1334: the Universal Credit redraw reads the post-SPI awards and the
 # capital UC capital coherence sets, and writes would_claim_uc before the Move
 # to UC claim draw reads it.
+# microcosm#1095 (Y1): the UC limited capability flags, from DWP's admin-linked
+# status on linked FRS claims and the engine's proxy elsewhere, before the
+# redraw reads entitlement.
+UC_LIMITED_CAPABILITY_STAGE_NAMES = [
+    "uc_limited_capability",
+]
 UC_TAKE_UP_STAGE_NAMES = [
     "uc_take_up",
 ]
@@ -154,6 +160,7 @@ UK_SOURCE_STAGE_NAMES = [
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
+    *UC_LIMITED_CAPABILITY_STAGE_NAMES,
     *UC_TAKE_UP_STAGE_NAMES,
     *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
@@ -227,6 +234,7 @@ class TestUKSourceStagesManifest:
             *UC_REPORTER_REDRAW_STAGE_NAMES,
             *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
+            *UC_LIMITED_CAPABILITY_STAGE_NAMES,
             *UC_TAKE_UP_STAGE_NAMES,
             *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
@@ -320,6 +328,7 @@ class TestUKSourceStagesManifest:
                     "uc_reporter_redraw": _identity,
                     "spi_benefit_coherence": _identity,
                     "uc_capital_coherence": _identity,
+                    "uc_limited_capability": _identity,
                     "uc_take_up": _identity,
                     "uc_legacy_closure_take_up": _identity,
                     "pension_credit_take_up": _identity,

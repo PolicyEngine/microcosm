@@ -455,6 +455,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
     "uc_reporter_redraw": None,
+    # One engine materialization of the limited capability proxy, the UC
+    # claimant role and carer status over the whole frame, beside the admin
+    # status carrier (microcosm#1095, Y1): an open surface.
+    "uc_limited_capability": None,
     # One temporary engine materialization of the Universal Credit award over
     # the whole frame, which also hands the stage the source lineage its pools
     # and receipt count by: an open surface (microcosm#1334).
@@ -773,7 +777,7 @@ class _Cell:
         return Owned(self.entity, self.column, self.dtype, rewrite=rewrite)
 
 
-_ROOT_PERSON_STRING = {"gender", "marital_status"}
+_ROOT_PERSON_STRING = {"gender", "marital_status", "frs_uc_lcw_status"}
 _ROOT_PERSON_BOOL = {
     "is_household_head",
     "esa_includes_support_component",
@@ -1286,6 +1290,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "pension_credit_reported_capital", "float64"),
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
+    ),
+    "uc_limited_capability": (
+        _Cell("person", "uc_limited_capability_for_WRA", "bool"),
+        _Cell("person", "uc_limited_capability_for_work", "bool"),
     ),
     "uc_take_up": (_Cell("benunit", "would_claim_uc", "bool"),),
     "uc_legacy_closure_take_up": (

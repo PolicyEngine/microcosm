@@ -1484,6 +1484,8 @@
           "person.trading_loss",
           "person.uc_is_in_startup_period",
           "person.uc_is_in_gainful_self_employment",
+          "person.uc_limited_capability_for_WRA",
+          "person.uc_limited_capability_for_work",
           "person.is_looked_after_by_local_authority",
           "person.child_limit_non_parental_caring_exception",
           "person.would_claim_carers_allowance",

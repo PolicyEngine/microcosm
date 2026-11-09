@@ -194,6 +194,9 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
 from microcosm.build.uk_runtime.uc_deduction_attributes import (
     UKUCDeductionAttributesStageTransform,
 )
+from microcosm.build.uk_runtime.uc_limited_capability import (
+    UKUCLimitedCapabilityStageTransform,
+)
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
@@ -220,7 +223,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 55
+UK_FIXTURE_STAGE_COUNT = 56
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -254,6 +257,9 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "car_first_registration_date",
         # policyengine-uk's trading allowance claim status (microcosm#1439).
         "trading_allowance_claim_status",
+        # DWP's admin-linked UC limited capability status, the carrier the
+        # uc_limited_capability stage reads (microcosm#1095, Y1).
+        "frs_uc_lcw_status",
     ),
     "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
@@ -626,6 +632,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "VAR3": (2 if household_id % 2 else 1) if benefit == 16 else 0,
                 "BENAMT": amount,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             }
             for benefit, variant, amount in (
@@ -651,6 +658,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "VAR3": 0,
                     "BENAMT": 81.9,
                     "UCSTART": "",
+                    "UCLCW": "",
                     "UCHOUSEL": "",
                 }
             )
@@ -667,6 +675,8 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "VAR3": 0,
                     "BENAMT": 8.0,
                     "UCSTART": ("07/01/2024", "01/15/2022", "")[household_id % 9 // 3],
+                    # DWP's limited capability status, blank where the claim is unlinked (Y1).
+                    "UCLCW": (2, 0, "")[household_id % 9 // 3],
                     "UCHOUSEL": 50.0 if household_id % 2 else "",
                 }
             )
@@ -2174,8 +2184,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 32:
-        raise RuntimeError("The legacy normalization audit is not exactly 32 cells.")
+    if observed != expected_order or len(observed) != 33:
+        raise RuntimeError("The legacy normalization audit is not exactly 33 cells.")
     return Frame(
         tables,
         frame.schema,
@@ -2429,6 +2439,9 @@ def _build_implementations(
         ),
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
+        ),
+        "uc_limited_capability": UKUCLimitedCapabilityStageTransform(
+            stage=stages["uc_limited_capability"], engine=engine
         ),
         "uc_take_up": UKUCTakeUpStageTransform(
             stage=stages["uc_take_up"], engine=engine

@@ -985,6 +985,12 @@ def build_manifest(
                 stage_name="isa_subscriptions",
                 candidate_source=candidate_source,
             ),
+            # microcosm#1095 (Y1): the UC limited capability flags, DWP's
+            # admin-linked status on linked claims and the proxy elsewhere.
+            "uc_limited_capability": _source_stage_family_coverage_contract(
+                stage_name="uc_limited_capability",
+                candidate_source=candidate_source,
+            ),
             # microcosm#1095 (P1): the PIP points, drawn within the stored awards.
             "pip_points": _source_stage_family_coverage_contract(
                 stage_name="pip_points",

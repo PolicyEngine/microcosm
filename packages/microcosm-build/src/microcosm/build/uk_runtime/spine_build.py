@@ -220,6 +220,9 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
 from microcosm.build.uk_runtime.uc_deduction_attributes import (
     UKUCDeductionAttributesStageTransform,
 )
+from microcosm.build.uk_runtime.uc_limited_capability import (
+    UKUCLimitedCapabilityStageTransform,
+)
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
@@ -1890,6 +1893,11 @@ def prepare_uk_spine_execution(
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
+        )
+    if "uc_limited_capability" in stage_names:
+        implementations["uc_limited_capability"] = UKUCLimitedCapabilityStageTransform(
+            stage=stages_by_name["uc_limited_capability"],
+            engine=engine,
         )
     if "uc_take_up" in stage_names:
         implementations["uc_take_up"] = UKUCTakeUpStageTransform(

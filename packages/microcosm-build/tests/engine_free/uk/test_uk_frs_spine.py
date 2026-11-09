@@ -54,6 +54,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_COMPANY_CAR_PRICE_BAND_OPEN,
     FRS_COMPANY_CAR_PRICE_BANDS,
     FRS_SPINE_TABLES,
+    FRS_UC_LCW_STATUS_COLUMN,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
@@ -67,6 +68,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     completed_months,
     frs_claimant_or_partner,
     frs_council_tax_band,
+    frs_uc_lcw_status,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
     uc_gainful_self_employment,
@@ -538,6 +540,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 1,
                 "BENAMT": 2.0,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
             {
@@ -548,6 +551,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 2,
                 "BENAMT": 3.0,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
             {
@@ -560,6 +564,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR3": 1,
                 "BENAMT": 4.0,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
             {
@@ -572,6 +577,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR3": 3,
                 "BENAMT": 5.0,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
             {
@@ -584,6 +590,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 # month, as a weekly amount.
                 "BENAMT": _BSP_STANDARD_WEEKLY,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
             {
@@ -594,6 +601,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 0,
                 "BENAMT": 7.0,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
         ],
@@ -2431,6 +2439,7 @@ def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
             "VAR2": 0,
             "BENAMT": 8.0,
             "UCSTART": "",
+            "UCLCW": "",
             "UCHOUSEL": "",
         }
     )
@@ -4479,7 +4488,7 @@ class TestAccessFundAnnual:
             access_fund_annual(frame)
 
 
-def _uc_row(sernum: int, ucstart: str) -> dict[str, object]:
+def _uc_row(sernum: int, ucstart: str, uclcw: object = "") -> dict[str, object]:
     return {
         "SERNUM": sernum,
         "BENUNIT": 1,
@@ -4488,6 +4497,7 @@ def _uc_row(sernum: int, ucstart: str) -> dict[str, object]:
         "VAR2": 0,
         "BENAMT": 1.0,
         "UCSTART": ucstart,
+        "UCLCW": uclcw,
     }
 
 
@@ -4627,6 +4637,72 @@ def _gainful_flags(tmp_path: Path, tables) -> dict[int, bool]:
     person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
     assert person["uc_is_in_gainful_self_employment"].dtype == bool
     return person.set_index("person_id")["uc_is_in_gainful_self_employment"].to_dict()
+
+
+class TestUCLimitedCapabilityCarrier:
+    """DWP's admin-linked LCW status on a linked UC claim (microcosm#1095, Y1)."""
+
+    @staticmethod
+    def _benefits(rows) -> pd.DataFrame:
+        return pd.DataFrame(
+            rows, columns=["benunit_id", "person_id", "benefit", "uclcw"]
+        )
+
+    def test_the_uc_rows_person_carries_the_claims_status(self) -> None:
+        benefits = self._benefits(
+            [
+                (101, 1001, 95, 2.0),  # LCFWRA Group, on the claimant
+                (201, 2002, 95, 0.0),  # None, on the partner's row
+                (301, 3001, 95, np.nan),  # no linked record
+                (401, 4001, 96, np.nan),  # PIP daily living, not UC
+                (501, 5001, 95, 1.0),  # LCFW Group
+            ]
+        )
+        person = pd.DataFrame({"person_id": [1001, 1002, 2001, 2002, 3001, 4001, 5001]})
+
+        assert frs_uc_lcw_status(benefits, person).tolist() == [
+            "LCWRA",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NONE",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "LCW",
+        ]
+
+    def test_the_carrier_refuses_what_it_cannot_read(self) -> None:
+        person = pd.DataFrame({"person_id": [1001, 1002]})
+        with pytest.raises(KeyError, match="uclcw"):
+            frs_uc_lcw_status(
+                pd.DataFrame(
+                    {"benunit_id": [101], "person_id": [1001], "benefit": [95]}
+                ),
+                person,
+            )
+        with pytest.raises(ValueError, match="two FRS UC rows"):
+            frs_uc_lcw_status(
+                self._benefits([(101, 1001, 95, 2.0), (101, 1002, 95, 2.0)]), person
+            )
+        with pytest.raises(ValueError, match="outside the data dictionary"):
+            frs_uc_lcw_status(self._benefits([(101, 1001, 95, 3.0)]), person)
+        with pytest.raises(ValueError, match="does not hold"):
+            frs_uc_lcw_status(self._benefits([(101, 9999, 95, 2.0)]), person)
+
+    def test_the_spine_stores_the_carrier_from_the_raw_tab(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 2))
+        tables["benefits"].append(_uc_row(2, "", ""))
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        status = person.set_index("person_id")[FRS_UC_LCW_STATUS_COLUMN].to_dict()
+        assert status[1001] == "LCWRA"
+        assert status[2001] == "NOT_LINKED"
+        assert {value for key, value in status.items() if key not in (1001,)} == {
+            "NOT_LINKED"
+        }
 
 
 class TestUCGainfulSelfEmployment:

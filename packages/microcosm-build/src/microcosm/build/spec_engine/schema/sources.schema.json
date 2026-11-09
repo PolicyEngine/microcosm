@@ -7024,6 +7024,67 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "outputs",
+      "carrier",
+      "statuses",
+      "not_linked",
+      "claimant",
+      "carer",
+      "linked_scope",
+      "rule",
+      "joint_claim_rule",
+      "scope"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_uc_limited_capability_from_admin_status"
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 2,
+       "maxItems": 2,
+       "items": {
+        "type": "string"
+       }
+      },
+      "carrier": {
+       "type": "string"
+      },
+      "statuses": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "not_linked": {
+       "type": "string"
+      },
+      "claimant": {
+       "type": "string"
+      },
+      "carer": {
+       "type": "string"
+      },
+      "linked_scope": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      },
+      "joint_claim_rule": {
+       "type": "string"
+      },
+      "scope": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "output",
       "draw",
       "seed",

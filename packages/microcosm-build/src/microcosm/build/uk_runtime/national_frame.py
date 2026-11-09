@@ -732,6 +732,10 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # (frs_spine.FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN) the Carer's Allowance
         # draw reads (microcosm#1418); it is no engine input.
         "frs_care_hours_in_household",
+        # The admin UC limited capability carrier
+        # (frs_spine.FRS_UC_LCW_STATUS_COLUMN) the uc_limited_capability stage
+        # reads (microcosm#1095, Y1); it is no engine input.
+        "frs_uc_lcw_status",
         # The company car carriers (frs_spine.FRS_COMPANY_CAR_CARRIER_COLUMNS)
         # the company_cars stage reads to set policyengine-uk's company car
         # inputs (PolicyEngine/uk-autumn-budget-dashboard-2026#316); they are

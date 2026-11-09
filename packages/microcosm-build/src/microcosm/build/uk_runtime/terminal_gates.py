@@ -400,6 +400,11 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.trading_loss",
     "person.uc_is_in_startup_period",
     "person.uc_is_in_gainful_self_employment",
+    # microcosm#1095 (Y1): the limited capability flags the
+    # uc_limited_capability stage stores, DWP's status on linked claims and
+    # the engine's proxy elsewhere.
+    "person.uc_limited_capability_for_WRA",
+    "person.uc_limited_capability_for_work",
     "person.is_looked_after_by_local_authority",
     "person.child_limit_non_parental_caring_exception",
     "person.would_claim_carers_allowance",

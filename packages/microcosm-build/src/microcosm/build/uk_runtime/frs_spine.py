@@ -206,6 +206,18 @@ FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMNS = ("hourab", "hourah", "hourcb", "hourch")
 #: disabled household member (microcosm#1418). It is no engine input and
 #: leaves at the release boundary.
 FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN = "frs_care_hours_in_household"
+#: DWP's limited capability for work status on a benefit unit's linked
+#: Universal Credit claim: BENEFITS.UCLCW on the UC row, "Limited Capability
+#: for Work Status (Admin UC)", coded 0 None, 1 LCFW Group and 2 LCFWRA Group
+#: in SN 9563's UKDA data dictionary and value labels, and blank where the
+#: claim has no linked record, as UCSTART is. The FRS keeps one UC row per
+#: claim, couples included, so the status is the claim's: it rides on the UC
+#: row's person, and every other person carries NOT_LINKED. The
+#: uc_limited_capability stage reads it (microcosm#1095, Y1); it is no engine
+#: input and leaves at the release boundary.
+FRS_UC_LCW_STATUS_COLUMN = "frs_uc_lcw_status"
+FRS_UC_LCW_STATUS_CODES = {0: "NONE", 1: "LCW", 2: "LCWRA"}
+FRS_UC_LCW_NOT_LINKED = "NOT_LINKED"
 
 # FRS adult RENTPROF (question RentProf): whether the rent from other property
 # in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
@@ -267,6 +279,7 @@ OUTPUT_COLUMNS = (
     "is_claimant_or_partner",
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
+    FRS_UC_LCW_STATUS_COLUMN,
     "uc_is_in_gainful_self_employment",
     "rent_paid_as_boarder",
     "rent_paid_as_lodger",
@@ -726,6 +739,7 @@ def _assemble_frame(
         job=frs["job"],
         benefits=frs["benefits"],
     )
+    pe_person[FRS_UC_LCW_STATUS_COLUMN] = frs_uc_lcw_status(frs["benefits"], pe_person)
     pe_person["uc_is_in_gainful_self_employment"] = uc_gainful_self_employment(
         _number(person, "empstati").isin(FRS_SELF_EMPLOYED_EMPSTATI).to_numpy(),
         pe_person["self_employment_income"],
@@ -2157,6 +2171,51 @@ def frs_uc_start_up_period(
         unlinked & (draws < linked_share)
     )
     return self_employed & (claim_in_window[person_benunit] | (trade_years < 1))
+
+
+def frs_uc_lcw_status(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.ndarray:
+    """Each person's carrier of DWP's limited capability status on a linked UC claim.
+
+    BENEFITS.UCLCW (``FRS_UC_LCW_STATUS_COLUMN``'s codes) comes from DWP's
+    administrative record of the claim, on the claim's single UC row, and is
+    blank exactly where UCSTART is: the claim has no linked record. The UC
+    row's person carries NONE, LCW or LCWRA, or NOT_LINKED for a blank, and
+    every other person NOT_LINKED. A second UC row on one benefit unit, a code
+    outside the dictionary's, or a UC row whose person isn't on the spine is
+    refused rather than guessed (microcosm#1095, Y1).
+    """
+
+    if "uclcw" not in benefits.columns:
+        raise KeyError(
+            "The UC limited capability carrier needs the FRS column benefits.uclcw."
+        )
+    uc_rows = benefits.loc[
+        _number(benefits, "benefit").isin(BENEFIT_CODES["universal_credit"])
+    ]
+    if uc_rows["benunit_id"].duplicated().any():
+        raise ValueError(
+            "A benefit unit has two FRS UC rows; UCLCW is read as one claim's status."
+        )
+    codes = _raw_number(uc_rows, "uclcw")
+    unknown = codes.notna() & ~codes.isin(list(FRS_UC_LCW_STATUS_CODES))
+    if unknown.any():
+        raise ValueError(
+            f"FRS UCLCW codes outside the data dictionary's: "
+            f"{sorted(codes[unknown].unique().tolist())}."
+        )
+    status = pd.Series(
+        codes.map(FRS_UC_LCW_STATUS_CODES).fillna(FRS_UC_LCW_NOT_LINKED).to_numpy(),
+        index=uc_rows["person_id"].to_numpy(),
+    )
+    person_ids = pe_person["person_id"].to_numpy()
+    absent = ~np.isin(status.index.to_numpy(), person_ids)
+    if absent.any():
+        raise ValueError(
+            f"{int(absent.sum())} FRS UC row(s) name a person the spine does not hold."
+        )
+    return status.reindex(person_ids, fill_value=FRS_UC_LCW_NOT_LINKED).to_numpy(
+        dtype=object
+    )
 
 
 def uc_gainful_self_employment(
