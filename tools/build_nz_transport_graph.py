@@ -25,6 +25,11 @@ from microcosm.build.transport.codecs import (
     FACTS_SOURCE_CODEC,
     RULESPEC_SOURCE_CODEC,
 )
+from microcosm.build.transport.income_evidence_kernels import (
+    IDENTITY_RECEIPTS_TYPE,
+    NATIVE_BAND_REPORT_TYPE,
+    OMISSION_REGISTER_TYPE,
+)
 from microcosm.build.transport.terminal_kernels import EXPORT_SOURCE_CODEC
 from microcosm.frame import EntitySchema
 from microcosm.frame.concepts import (
@@ -112,8 +117,12 @@ def node(id, kernel, **kwargs):
     return {"id": id, "kernel": kernel, **kwargs}
 
 
-def artifact_output(name, type_name):
-    return {"name": name, "type": {"name": type_name, "schema_version": 1}}
+def artifact_output(name, kind):
+    """A declared artifact output under the producing kernel's own type."""
+    return {
+        "name": name,
+        "type": {"name": kind.name, "schema_version": kind.schema_version},
+    }
 
 
 def mapping_document():
@@ -1548,7 +1557,7 @@ def add_evidence(graph):
                 ),
             },
             artifact_outputs=[
-                artifact_output("identity_receipts", "transport_income_identity")
+                artifact_output("identity_receipts", IDENTITY_RECEIPTS_TYPE)
             ],
         ),
         node(
@@ -1564,7 +1573,7 @@ def add_evidence(graph):
                 **measure_params(),
             },
             artifact_outputs=[
-                artifact_output("omission_register", "transport_omission_register")
+                artifact_output("omission_register", OMISSION_REGISTER_TYPE)
             ],
         ),
         node(
@@ -1594,7 +1603,7 @@ def add_evidence(graph):
                 edge("solution", "nz.calibrate"),
             ],
             artifact_outputs=[
-                artifact_output("native_band_report", "transport_native_band_report")
+                artifact_output("native_band_report", NATIVE_BAND_REPORT_TYPE)
             ],
         ),
     ]

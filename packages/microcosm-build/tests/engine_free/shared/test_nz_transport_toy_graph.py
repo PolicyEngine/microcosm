@@ -849,18 +849,21 @@ def test_target_profile_coverage_passes_on_the_toy_with_income_required(toy):
     )
 
 
-def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
-    """Design 80 section 6 G (3): R2C-18 leaves every alias unwired until G8-x.
+def test_measurement_prefit_passes_the_toy_on_its_wired_evidence(toy):
+    """Design 80 section 6 G (3), with G8-x1's producers wired.
 
-    The gate runs on the toy's problem, and its only failures are one evidence
-    line per alias in the packaged gate's required_evidence; no roster, band,
-    support or diagnostics failure appears.
+    Every alias in the packaged gate's required_evidence reaches the battery
+    from the node that produces it: the three income producers, and three toy
+    calibration variants' gaps in place of VSI, VEX and VPT. The gate runs on
+    the toy's problem and passes, so no roster, band, support, diagnostics or
+    evidence failure appears, and the gate blocks nothing.
     """
     from importlib.resources import files
 
     from test_support.microcosm_build.transport_nz_toy import (
         TOY_PREFIT_EVIDENCE,
         TOY_PREFIT_SUPPORT,
+        TOY_SCENARIO_EVIDENCE,
         TOY_STANDIN_TABLE,
     )
 
@@ -875,6 +878,7 @@ def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
         for gate in fixture.spec["resources"]["gates"]["gates"]
         if gate["id"] == "toy_measurement_prefit"
     ]
+    assert entry["criticality"] == packaged["criticality"] == "release_blocking"
     # R2C-3's ratio bounds stand on the toy; only the two support floors scale
     # down to forty households.
     assert set(entry["parameters"]) == set(packaged["parameters"])
@@ -882,13 +886,23 @@ def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
         assert entry["parameters"][key] == packaged["parameters"][key], key
     for key, value in TOY_PREFIT_SUPPORT.items():
         assert entry["parameters"][key] == value, key
+    battery = fixture.graph().node("nz.gates.terminal")
+    wired = {
+        edge.name: (edge.producer, edge.artifact) for edge in battery.artifact_inputs
+    }
+    assert {alias: wired[alias] for alias in TOY_PREFIT_EVIDENCE} == {
+        "native_band_report": ("nz.evidence.native_bands", "native_band_report"),
+        "omission_register": ("nz.evidence.omission_register", "omission_register"),
+        "identity_receipts": ("nz.evidence.income_identity", "identity_receipts"),
+        **{
+            alias: (f"nz.v.{scenario}.gap", "gap")
+            for alias, scenario in TOY_SCENARIO_EVIDENCE.items()
+        },
+    }
     row = _gate_row(run, "toy_measurement_prefit")
     assert row["gate"] == "measurement_prefit"
-    assert row["status"] == "failed"
-    assert row["failures"] == [
-        f"evidence: the run lacks required evidence {alias!r}."
-        for alias in TOY_PREFIT_EVIDENCE
-    ]
+    assert row["status"] == "passed", row["failures"]
+    assert row["failures"] == []
     details = row["details"]
     assert details["tables"] == [TOY_STANDIN_TABLE]
     assert details["discrepant_bands"] == []
@@ -898,9 +912,187 @@ def test_measurement_prefit_fails_the_toy_only_on_its_unwired_evidence(toy):
     for band in details["bands"]:
         for role in ("count", "amount"):
             assert band[role]["inside_band_bounds"] is True, band
-    # A diagnostic entry: the refusal reaches the report, not the export.
     report = json.loads(_artifact(run, "nz.gates.terminal", "gate_report"))
+    assert set(TOY_PREFIT_EVIDENCE) <= set(report["evidence"])
     assert "toy_measurement_prefit" not in report["enforcement"]["blocking"]
+    assert report["enforcement"]["artifact_permitted"] is True
+
+
+def _central_columns(manifest, names):
+    person = manifest.populations["nz.central"].table("person")
+    return person, {name: person[name] for name in names}
+
+
+def test_the_identity_receipts_recompute_from_the_central_columns(toy):
+    """G8-x1, R2C-28: the receipts are the run's own exact totals.
+
+    The producer checks each identity on every toy person, and its totals
+    equal income_identity_receipts recomputed from nz.central's columns.
+    """
+    from microcosm.build.transport.income_evidence_kernels import (
+        INCOME_IDENTITIES,
+        income_identity_receipts,
+    )
+    from test_support.microcosm_build.transport_nz_toy import (
+        TOY_STANDIN_COMPONENTS,
+        TOY_STANDIN_OUTPUTS,
+        toy_standin_declaration,
+    )
+
+    fixture, run = toy
+    person, columns = _central_columns(
+        run[0], [*TOY_STANDIN_COMPONENTS, *TOY_STANDIN_OUTPUTS.values()]
+    )
+    expected = income_identity_receipts(
+        toy_standin_declaration(), columns, person["person_id"].tolist()
+    )
+    document = json.loads(
+        _artifact(run, "nz.evidence.income_identity", "identity_receipts")
+    )
+    assert {key: document[key] for key in expected} == json.loads(
+        canonical_json(expected)
+    )
+    assert document["n"] == len(person) == 120
+    assert sum(document["universe_statuses"].values()) == len(person)
+    assert [row["id"] for row in document["identities"]] == list(INCOME_IDENTITIES)
+    declared = fixture.spec["resources"]["toy_income_measurements"]
+    assert document["identities"] == declared["identity_receipts"]["identities"]
+
+
+def test_the_omission_register_binds_its_items_to_the_pre_fit_totals(toy):
+    """G8-x1: the register carries its declared items and the run's totals.
+
+    Its totals equal omission_register_totals recomputed from nz.central's
+    columns at the person weights nz.central resolves before calibration.
+    """
+    from microcosm.build.transport.income_evidence_kernels import (
+        omission_register_totals,
+    )
+    from test_support.microcosm_build.transport_nz_toy import (
+        TOY_OMISSION_REGISTER,
+        TOY_STANDIN_COMPONENTS,
+        TOY_STANDIN_OUTPUTS,
+        toy_standin_declaration,
+    )
+
+    _, run = toy
+    central = run[0].populations["nz.central"]
+    _, columns = _central_columns(
+        run[0], [*TOY_STANDIN_COMPONENTS, TOY_STANDIN_OUTPUTS["measure"]]
+    )
+    weights = central.resolve_weights("person")
+    expected = omission_register_totals(
+        toy_standin_declaration(), columns, weights.values
+    )
+    document = json.loads(
+        _artifact(run, "nz.evidence.omission_register", "omission_register")
+    )
+    assert document["included"] == json.loads(canonical_json(expected))
+    assert document["register"] == TOY_OMISSION_REGISTER
+    assert document["weights"]["entity"] == "person"
+    assert document["weights"]["basis"] == "pre_fit"
+    assert weights.kind is WeightKind.DESIGN
+
+
+def test_the_native_band_report_rebuilds_from_the_terminal_run(toy):
+    """G8-x1, R2C-4: the report is the run's own, rebuilt byte for byte.
+
+    native_band_report, fed nz.terminal's columns, the problem's design
+    weights, the solution's weights, the preparation's effective intervals
+    and the pinned feed, returns the producer's report. Each native band pins
+    its member label's facts, each coarse band sums its members, and the
+    report ages the native cuts by the coarse table's own scaling.
+    """
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.transport.income_evidence_kernels import native_band_report
+    from microcosm.calibrate.artifacts import decode_problem, decode_solution
+    from test_support.microcosm_build.transport_nz_toy import (
+        TOY_MEASUREMENT,
+        TOY_NATIVE_CUTS,
+        TOY_NATIVE_TABLE,
+        TOY_STANDIN_FACTS,
+        TOY_STANDIN_OUTPUTS,
+        TOY_STANDIN_TABLE,
+    )
+
+    fixture, run = toy
+    manifest = run[0]
+    resources = fixture.spec["resources"]
+    terminal = manifest.populations["nz.terminal"]
+    person = terminal.table("person")
+    household = terminal.table("household")
+    preparation = json.loads(_artifact(run, "nz.calibration.prepare", "preparation"))
+    problem = decode_problem(_artifact(run, "nz.targets.problem", "problem"))
+    solution = decode_solution(
+        _artifact(run, "nz.calibrate", "solution"),
+        problem_sha256=problem.sha256,
+        entity_ids=problem.entity_ids,
+    )
+    ids = household["household_id"].tolist()
+    assert tuple(ids) == tuple(problem.entity_ids)
+    position = {value: index for index, value in enumerate(ids)}
+    rows = [position[value] for value in person["person_household_id"].tolist()]
+    sources = household["source_household_id"].tolist()
+    frame_weights = terminal.weights_for("household")
+    calibrated = np.asarray(solution.weights, dtype=np.float64)
+    assert np.array_equal(np.asarray(frame_weights.values), calibrated)
+    design = np.asarray(problem.problem.initial_weights.values, dtype=np.float64)
+    feed = load_ledger_consumer_artifact(
+        fixture.sources["nz_calibration_facts"],
+        feed_pin=resources["toy_calibration_feed_pin"],
+        lexical_floats=True,
+    )
+    expected = native_band_report(
+        preparation["effective_intervals"],
+        native_table=TOY_NATIVE_TABLE,
+        coarse_table=TOY_STANDIN_TABLE,
+        references=resources["target_references"],
+        diagnostic_references=resources["toy_income_diagnostic_references"],
+        facts=feed.facts,
+        person_ids=person["person_id"].tolist(),
+        amounts=person[TOY_STANDIN_OUTPUTS["measure"]].tolist(),
+        statuses=person[TOY_STANDIN_OUTPUTS["universe_status"]].tolist(),
+        source_households=[sources[row] for row in rows],
+        weights={
+            "pre_fit": (design[rows], problem.problem.initial_weights.kind.value),
+            "post_fit": (calibrated[rows], frame_weights.kind.value),
+        },
+        measurement_id=TOY_MEASUREMENT,
+    )
+    document = json.loads(
+        _artifact(run, "nz.evidence.native_bands", "native_band_report")
+    )
+    assert {key: document[key] for key in expected} == json.loads(
+        canonical_json(expected)
+    )
+    native_ids = [f"b{index}" for index in range(len(TOY_NATIVE_CUTS) + 1)]
+    assert [row["band"] for row in document["rows"]] == native_ids
+    assert [row["publisher"]["count"] for row in document["rows"]] == [
+        int(count) for count, _ in TOY_STANDIN_FACTS.values()
+    ]
+    sizes = [len(members) for members in TOY_STANDIN_MEMBERS]
+    starts = [sum(sizes[:index]) for index in range(len(sizes))]
+    assert [band["members"] for band in document["coarse"]] == [
+        native_ids[start : start + size]
+        for start, size in zip(starts, sizes, strict=True)
+    ]
+    for band, members in zip(document["coarse"], TOY_STANDIN_MEMBERS, strict=True):
+        assert band["publisher"]["count"] == sum(
+            int(TOY_STANDIN_FACTS[label][0]) for label in members
+        )
+    (coarse,) = [
+        table
+        for table in preparation["effective_intervals"]["tables"]
+        if table["id"] == TOY_STANDIN_TABLE
+    ]
+    assert {key: coarse["scaling"][key] for key in document["scaling"]} == (
+        document["scaling"]
+    )
+    assert (
+        document["feed"]["facts_sha256"]
+        == (resources["toy_calibration_feed_pin"]["facts_sha256"])
+    )
+    assert document["measurement_id"] == TOY_MEASUREMENT
 
 
 def test_each_toy_coarse_reference_equals_the_sum_of_its_member_references(toy):

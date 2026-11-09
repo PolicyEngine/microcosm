@@ -26,6 +26,12 @@ from microcosm.build.transport import compose as compose_module
 from microcosm.build.transport.codecs import FACTS_SOURCE_CODEC
 from microcosm.build.transport.compose import TransportGraphConfig
 from microcosm.build.transport.evidence_contract import binding_relation_inputs
+from microcosm.build.transport.income_evidence_kernels import (
+    IDENTITY_RECEIPTS_TYPE,
+    INCOME_IDENTITIES,
+    NATIVE_BAND_REPORT_TYPE,
+    OMISSION_REGISTER_TYPE,
+)
 from microcosm.build.transport.registry import build_transport_registry
 from microcosm.build.transport.takeup_kernels import reporting_cell_declarations
 from microcosm.frame import Frame, VariableMetadata, WeightKind, Weights
@@ -633,6 +639,31 @@ TOY_STANDIN_FACTS = {
 TOY_AGING_DIMENSION = "toy_aging_index"
 #: Support thresholds suited to forty households; R2C-3's ratio bounds stand.
 TOY_PREFIT_SUPPORT = {"minimum_source_households": 3, "minimum_kish_ess": 2}
+#: The toy counterpart of ird_taxable_income_national_ty2024: one native band
+#: per member label above, in order, at cuts that tile the coarse table's.
+#: No binding names it, so preparation passes it through at its source cuts,
+#: as NZ's national table passes (R2C-4).
+TOY_NATIVE_TABLE = "toy_income_native"
+TOY_NATIVE_CUTS = (20_000, 30_000, 40_000, 50_000, 60_000, 70_000, 80_000, 90_000)
+#: The toy runs no VSI, VEX or VPT, so three of its own calibration variants
+#: carry the three scenario aliases: each alias names that variant's gap, as
+#: N/entitlement_graph.json's gate_evidence rows name VSI's, VEX's and VPT's.
+TOY_SCENARIO_EVIDENCE = {
+    "scenario_vsi": "V1",
+    "scenario_vex": "V3",
+    "scenario_vpt": "VHF",
+}
+#: The toy's omission register: one synthetic item, in the packaged shape.
+TOY_OMISSION_REGISTER = {
+    "description": "Items the toy's taxable income contains that its stand-in omits.",
+    "items": [
+        {
+            "item": "toy_dividend_income",
+            "size": "unknown",
+            "reason": "The synthetic donor carries no dividends.",
+        }
+    ],
+}
 
 
 def toy_standin_declaration():
@@ -675,6 +706,63 @@ def toy_standin_table():
             amount_reference=f"toy_income_standin_amount__{band['id']}",
         )
     return table
+
+
+def toy_native_table():
+    """The toy counterpart of ird_taxable_income_national_ty2024."""
+    from test_support.microcosm_build.reference_intervals import (
+        interval_table_fixture,
+    )
+
+    table = interval_table_fixture(
+        table_id=TOY_NATIVE_TABLE,
+        cuts=TOY_NATIVE_CUTS,
+        nil=False,
+        first=TOY_STANDIN_FIRST_CUT,
+        indicator_prefix="toy_income_native_band",
+    )
+    table.update(
+        income_column=TOY_STANDIN_OUTPUTS["measure"],
+        universe_column=TOY_STANDIN_OUTPUTS["universe_status"],
+    )
+    table["diagnostics"]["support_household_entity"] = "household"
+    return table
+
+
+def toy_native_diagnostic_references(table):
+    """F's native diagnostic rows at toy scale: each band pins its two facts.
+
+    Band ``b<i>`` pins member label ``n<i+1>``'s count and amount facts by
+    aggregate fact key, as income_diagnostic_references.json pins IRD's.
+    """
+    rows = []
+    for band, label in zip(table["bands"], TOY_STANDIN_FACTS, strict=True):
+        for kind in ("count", "money"):
+            name = f"toy_income_native_{kind}__{band['id']}"
+            rows.append(
+                {
+                    "name": name,
+                    "entity": "person",
+                    "measure": "toy_people"
+                    if kind == "count"
+                    else TOY_STANDIN_OUTPUTS["unit"],
+                    "filter": band["indicator"],
+                    "period": 2002,
+                    "family": "income",
+                    "ledger_selector": {
+                        "record_set_id": "toy.standin.bands",
+                        "aggregate_fact_key": (
+                            f"ledger.aggregate_fact.v2:toy-{kind}-{label}"
+                        ),
+                    },
+                    "metadata": {
+                        "contract_target_id": name,
+                        "activation_status": "diagnostic_only",
+                        "reference_value_kind": kind,
+                    },
+                }
+            )
+    return {"schema_version": 1, "diagnostic_references": rows}
 
 
 def toy_standin_member_facts():
@@ -735,6 +823,15 @@ def _income_standin(resources, rows, facts, problem):
                 "declaration_sha256": sha256(canonical_json(declaration)).hexdigest(),
             }
         },
+        # R2C-28's two declared documents, in income_measurements.json's shape.
+        "identity_receipts": {
+            "description": "The identities transport.income_identity@1 checks.",
+            "identities": [
+                {"id": identity, "statement": f"The toy measure keeps {identity}."}
+                for identity in INCOME_IDENTITIES
+            ],
+        },
+        "omission_register": copy.deepcopy(TOY_OMISSION_REGISTER),
     }
     # E's nz.earnings.cents: the mapped float wage becomes integer cents.
     wages = {
@@ -789,7 +886,14 @@ def _income_standin(resources, rows, facts, problem):
         )
     )
     table = toy_standin_table()
-    resources["toy_reference_intervals"] = {"schema_version": 1, "tables": [table]}
+    native = toy_native_table()
+    resources["toy_reference_intervals"] = {
+        "schema_version": 1,
+        "tables": [table, native],
+    }
+    resources["toy_income_diagnostic_references"] = toy_native_diagnostic_references(
+        native
+    )
     references = toy_standin_references(table)
     document = resources["target_references"]
     document["target_references"] += references
@@ -871,9 +975,9 @@ def _income_standin(resources, rows, facts, problem):
                 **TOY_PREFIT_SUPPORT,
             ),
             "id": "toy_measurement_prefit",
-            # R2C-18 leaves every alias unwired, so the gate fails every run;
-            # as a diagnostic it reports that without blocking the toy export.
-            "criticality": "diagnostic",
+            # G8-x1 wires every alias (_evidence and TOY_SCENARIO_EVIDENCE), so
+            # the gate blocks the toy export as the packaged gate blocks NZ's.
+            "criticality": "release_blocking",
             "evidence_absent_blocks": True,
         },
     ]
@@ -1186,6 +1290,10 @@ def make_nz_toy_fixture(root):
     ]
     entitlement = r["entitlement_graph"]
     entitlement["scenario_nodes"] = []
+    entitlement["gate_evidence"] = [
+        {"name": alias, "scenario": scenario, "phase": "terminal"}
+        for alias, scenario in TOY_SCENARIO_EVIDENCE.items()
+    ]
     # As in the package, the shared bridge runs on its own FILTER branch.
     shared = [
         row for row in entitlement["nodes"] if row["id"].startswith(SHARED_BRIDGE + ".")
@@ -1295,7 +1403,10 @@ def closure_slices(resources):
 
 
 def _evidence(spec):
-    """Wire the five release-evidence producers and their three gates.
+    """Wire the eight release-evidence producers and the battery's edges.
+
+    The first five feed the three evidence gates; the three income producers
+    feed measurement_prefit (_income_evidence).
 
     The toy closure's surface engine commit becomes the toy bindings' engine
     commit, as ruling H36 requires; the donor pin also carries the staged
@@ -1443,6 +1554,7 @@ def _evidence(spec):
             },
             artifact_inputs=[_edge("donor_ranges", "nz.evidence.donor_ranges")],
         ),
+        *_income_evidence(rows),
     ]
     battery = next(row for row in rows if row["id"] == "nz.gates.terminal")
     rows[rows.index(battery) : rows.index(battery)] = evidence
@@ -1454,6 +1566,110 @@ def _evidence(spec):
         _edge("donor_ranges", "nz.evidence.donor_ranges"),
         _edge("donor_support_bounds", "nz.evidence.support"),
         _edge("fit_weight_records", "nz.evidence.weights"),
+        _edge("identity_receipts", "nz.evidence.income_identity"),
+        _edge("omission_register", "nz.evidence.omission_register"),
+        _edge("native_band_report", "nz.evidence.native_bands"),
+    ]
+
+
+def _artifact_output(name, kind):
+    return {
+        "name": name,
+        "type": {"name": kind.name, "schema_version": kind.schema_version},
+    }
+
+
+def _income_evidence(rows):
+    """measurement_prefit's three income producers, wired as N/ wires them.
+
+    tools/build_nz_transport_graph.py declares the same three nodes over
+    nz.income.standin's measure; each reads the stand-in node's own measure
+    params, and the native-band report reads the coarse table the toy
+    calibrates beside the native table it passes through.
+    """
+    standin = next(row for row in rows if row["id"] == TOY_STANDIN_NODE)
+    measure = {
+        name: standin["params"][name]
+        for name in ("measure", "measure_sha256", "measurement_id")
+    }
+    return [
+        _node(
+            "nz.evidence.income_identity",
+            "transport.income_identity@1",
+            population="nz.central",
+            inputs=[
+                _slice(
+                    "person", [*TOY_STANDIN_COMPONENTS, *TOY_STANDIN_OUTPUTS.values()]
+                )
+            ],
+            params={
+                **measure,
+                "identities": _select(
+                    "toy_income_measurements", "json", "identity_receipts"
+                ),
+            },
+            artifact_outputs=[
+                _artifact_output("identity_receipts", IDENTITY_RECEIPTS_TYPE)
+            ],
+        ),
+        _node(
+            "nz.evidence.omission_register",
+            "transport.omission_register@1",
+            population="nz.central",
+            inputs=[
+                _slice(
+                    "person",
+                    [*TOY_STANDIN_COMPONENTS, TOY_STANDIN_OUTPUTS["measure"]],
+                )
+            ],
+            params={
+                "register": _select(
+                    "toy_income_measurements", "json", "omission_register"
+                ),
+                "income_measurements_sha256": _select(
+                    "toy_income_measurements", "sha256"
+                ),
+                **measure,
+            },
+            artifact_outputs=[
+                _artifact_output("omission_register", OMISSION_REGISTER_TYPE)
+            ],
+        ),
+        _node(
+            "nz.evidence.native_bands",
+            "transport.native_band_report@1",
+            population="nz.terminal",
+            sources=["nz_calibration_facts"],
+            inputs=[
+                _slice(
+                    "person",
+                    [
+                        TOY_STANDIN_OUTPUTS["measure"],
+                        TOY_STANDIN_OUTPUTS["universe_status"],
+                    ],
+                ),
+                _slice("household", ["source_household_id"]),
+            ],
+            params={
+                "native_table": TOY_NATIVE_TABLE,
+                "coarse_table": TOY_STANDIN_TABLE,
+                "references": _select("target_references"),
+                **_document(
+                    "diagnostic_references", "toy_income_diagnostic_references"
+                ),
+                "chronicle_feed_pin": _select("toy_calibration_feed_pin"),
+                "weight_entity": "household",
+                "measurement_id": TOY_MEASUREMENT,
+            },
+            artifact_inputs=[
+                _edge("preparation", "nz.calibration.prepare"),
+                _edge("problem", "nz.targets.problem"),
+                _edge("solution", "nz.calibrate"),
+            ],
+            artifact_outputs=[
+                _artifact_output("native_band_report", NATIVE_BAND_REPORT_TYPE)
+            ],
+        ),
     ]
 
 

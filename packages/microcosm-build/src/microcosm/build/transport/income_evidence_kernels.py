@@ -113,11 +113,11 @@ __all__ = [
 ]
 
 INCOME_IDENTITY_REF = "transport.income_identity@1"
-IDENTITY_RECEIPTS_TYPE = ArtifactType("transport_income_identity", 1)
+IDENTITY_RECEIPTS_TYPE = ArtifactType("microcosm.transport.income-identity-receipts", 1)
 OMISSION_REGISTER_REF = "transport.omission_register@1"
-OMISSION_REGISTER_TYPE = ArtifactType("transport_omission_register", 1)
+OMISSION_REGISTER_TYPE = ArtifactType("microcosm.transport.omission-register", 1)
 NATIVE_BAND_REPORT_REF = "transport.native_band_report@1"
-NATIVE_BAND_REPORT_TYPE = ArtifactType("transport_native_band_report", 1)
+NATIVE_BAND_REPORT_TYPE = ArtifactType("microcosm.transport.native-band-report", 1)
 #: The weight vectors the native-band report reads, in report order.
 WEIGHT_BASES = ("pre_fit", "post_fit")
 #: Why the report gives a null, not a 0, for the model's nil row.
