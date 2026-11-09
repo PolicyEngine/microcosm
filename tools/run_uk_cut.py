@@ -29,7 +29,9 @@ Credentials come from the environment: ``HF_TOKEN`` (write access to
 ``policyengine/populace-uk-private`` and ``policyengine/populace-uk-staging``,
 read access to the input repositories) and
 ``MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY``, which must be registered in
-``microcosm.data.gate_signing_keys``. See ``docs/uk-cut-anyone.md``.
+``microcosm.data.gate_signing_keys``. The build's uploads go through the
+separately installed ``microcosm-emitter``, which preflight starts to check
+write access. See ``docs/uk-cut-anyone.md``.
 """
 
 from __future__ import annotations
@@ -1095,32 +1097,76 @@ def signing_key_check(
     return Check("signing key registered", True, detail)
 
 
+def _preflight_emitter():
+    """A short-lived emitter with only its Hugging Face module, without the key.
+
+    The emitter inherits this process's environment, and preflight signs
+    nothing, so the key leaves the environment while the emitter starts.
+    """
+
+    from microcosm.build.telemetry_emitter import start_bundle_emitter
+    from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
+
+    key = os.environ.pop(UK_GATE_SIGNING_KEY_ENV, None)
+    try:
+        return start_bundle_emitter()
+    finally:
+        if key is not None:
+            os.environ[UK_GATE_SIGNING_KEY_ENV] = key
+
+
+def _error_detail(error: Exception) -> str:
+    message = " ".join(str(error).split())
+    return (
+        f"{type(error).__name__}: {message[:300]}" if message else type(error).__name__
+    )
+
+
 def hub_checks() -> list[Check]:
+    """Write access as the build reaches the Hub: through the installed emitter.
+
+    The spine and the national build hand their uploads to the separately
+    installed ``microcosm-emitter`` (microcosm#1460), and the national build
+    asks it to check write access only once it starts. The same check here
+    refuses a missing or outdated emitter, or a token that cannot write,
+    before anything is built. Starting the emitter also resumes any hand-over
+    a build on this machine left queued, as every build's emitter does.
+    """
+
     checks = []
     if not os.environ.get("HF_TOKEN"):
         return [
             Check("HF_TOKEN", False, "export HF_TOKEN (write to the release repos)")
         ]
+    from microcosm.build.staging_dataset import hub_offline, write_access_problem
+
+    if hub_offline():
+        return [
+            Check(
+                "Hugging Face online",
+                False,
+                "unset HF_HUB_OFFLINE and TRANSFORMERS_OFFLINE: the emitter "
+                "could not upload",
+            )
+        ]
     try:
         from huggingface_hub import HfApi
 
-        from microcosm.build.staging_storage import HuggingFaceDatasetStorage
-
-        api = HfApi()
-        for repo in (PUBLISH_REPO, TELEMETRY_REPO):
-            storage = HuggingFaceDatasetStorage(repo, api=api)
-            storage.head_revision()
-            can_write = storage.credential_can_write()
-            checks.append(
-                Check(
-                    f"write {repo}",
-                    can_write is not False,
-                    "write scope confirmed"
-                    if can_write
-                    else "scope unreadable; the upload will prove it",
+        emitter = _preflight_emitter()
+        try:
+            for repo in (PUBLISH_REPO, TELEMETRY_REPO):
+                # An unread write scope passes with a warning, as in the build.
+                problem = write_access_problem(emitter, repo, action="the cut's upload")
+                checks.append(
+                    Check(
+                        f"write {repo}",
+                        problem is None,
+                        problem or "the emitter's write-access check passed",
+                    )
                 )
-            )
-        refs = api.list_repo_refs(PUBLISH_REPO, repo_type="dataset")
+        finally:
+            emitter.close()
+        refs = HfApi().list_repo_refs(PUBLISH_REPO, repo_type="dataset")
         stale = [b.name for b in refs.branches if b.name == STAGING_BRANCH]
         checks.append(
             Check(
@@ -1132,7 +1178,7 @@ def hub_checks() -> list[Check]:
             )
         )
     except Exception as error:
-        checks.append(Check("Hugging Face reachable", False, f"{type(error).__name__}"))
+        checks.append(Check("Hugging Face reachable", False, _error_detail(error)))
     return checks
 
 

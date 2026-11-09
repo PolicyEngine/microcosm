@@ -7,6 +7,7 @@ import dataclasses
 import hashlib
 import io
 import json
+import os
 import re
 import zipfile
 from contextlib import redirect_stdout
@@ -16,6 +17,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build import telemetry_emitter
 from tools import run_uk_cut as cut
 
 REPO = Path(cut.__file__).resolve().parents[1]
@@ -1052,3 +1054,114 @@ def test_the_preflight_test_runs_never_get_the_key(monkeypatch):
     assert len(seen) == 2
     assert all(UK_GATE_SIGNING_KEY_ENV not in env for env in seen)
     assert seen[1]["CHRONICLE_UK_FACTS"] == "/facts"
+
+
+# --------------------------------------------------------------------------- #
+# Hub checks: the build's own emitter, with the real write-access check        #
+# --------------------------------------------------------------------------- #
+
+
+class _Refs:
+    def __init__(self, branches=()):
+        self.branches = [type("Ref", (), {"name": name}) for name in branches]
+        self.tags = []
+
+
+@pytest.fixture
+def hub(monkeypatch):
+    """A token, the Hub online, and an ``HfApi`` that lists no branches."""
+
+    import huggingface_hub
+
+    for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HF_TOKEN", "hf_test")
+    monkeypatch.setattr(
+        huggingface_hub,
+        "HfApi",
+        lambda: type("Api", (), {"list_repo_refs": lambda self, *a, **k: _Refs()})(),
+    )
+
+
+def _with_emitter(monkeypatch, emitter):
+    from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
+
+    started = []
+
+    def start():
+        started.append(UK_GATE_SIGNING_KEY_ENV in os.environ)
+        return emitter
+
+    # Where the build's own code has it, so a rename there fails here.
+    monkeypatch.setattr(telemetry_emitter, "start_bundle_emitter", start)
+    return started
+
+
+def test_the_hub_checks_ask_the_builds_emitter(hub, monkeypatch):
+    from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    monkeypatch.setenv(UK_GATE_SIGNING_KEY_ENV, "key-under-test")
+    emitter = FakeEmitterClient()
+    started = _with_emitter(monkeypatch, emitter)
+    checks = cut.hub_checks()
+    assert [c.name for c in checks] == [
+        f"write {cut.PUBLISH_REPO}",
+        f"write {cut.TELEMETRY_REPO}",
+        "no leftover release-staging branch",
+    ]
+    assert all(c.ok for c in checks), checks
+    assert emitter.calls.count("check_write_access") == 2 and emitter.closed
+    # The emitter inherits the environment; preflight signs nothing.
+    assert started == [False]
+    assert os.environ[UK_GATE_SIGNING_KEY_ENV] == "key-under-test"
+
+
+def _read_only():
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    return FakeEmitterClient(
+        write_access={
+            "status": "checked",
+            "credential": "present",
+            "reachable": True,
+            "can_write": False,
+            "error_type": None,
+        }
+    )
+
+
+def _outdated():
+    from microcosm.build.telemetry_emitter import OutdatedEmitterClient
+
+    return OutdatedEmitterClient("0.5.1")
+
+
+@pytest.mark.parametrize(
+    ("emitter", "message"),
+    [(_read_only, "read-only"), (_outdated, "uv tool install --upgrade")],
+)
+def test_an_emitter_that_cannot_upload_refuses_preflight(
+    hub, monkeypatch, emitter, message
+):
+    _with_emitter(monkeypatch, emitter())
+    refused = [c for c in cut.hub_checks() if not c.ok]
+    assert refused and all(message in c.detail for c in refused), refused
+
+
+def test_an_offline_hub_refuses_before_any_emitter_starts(hub, monkeypatch):
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    started = _with_emitter(monkeypatch, None)
+    (check,) = cut.hub_checks()
+    assert not check.ok and "HF_HUB_OFFLINE" in check.detail
+    assert started == []
+
+
+def test_an_unexpected_hub_error_says_what_it_was(hub, monkeypatch):
+    def start():
+        raise RuntimeError("the emitter's spool is locked")
+
+    monkeypatch.setattr(telemetry_emitter, "start_bundle_emitter", start)
+    (check,) = cut.hub_checks()
+    assert not check.ok
+    assert check.detail == "RuntimeError: the emitter's spool is locked"

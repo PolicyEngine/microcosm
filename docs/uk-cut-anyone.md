@@ -19,6 +19,7 @@ on for a re-cut; until then the hand-run launchers stay the fallback.
 |---|---|---|
 | A clean checkout of `main` locked at the policyengine-uk you want | a "Lock policyengine-uk X" PR merged to main | `tools/run_uk_cut.py preflight` |
 | `HF_TOKEN` | write access to `policyengine/populace-uk-private` and `policyengine/populace-uk-staging`, and read access to the input repos below | preflight |
+| `microcosm-emitter`, at the release `minimum_emitter_version.json` names or later | `uv tool install microcosm-emitter`. The build hands every upload to it (#1460), and preflight starts it to check that `HF_TOKEN` can write both repos. A read-only token is refused there | preflight |
 | `MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY` | a key registered **active** in `microcosm.data.gate_signing_keys` (see [Signing keys](#signing-keys)) | `python -m microcosm.data.gate_signing_keys check` |
 | Cover under the UK Data Service licences for the FRS, SPI, WAS, LCFS, NTS, ETB and APS | the licence holders | access to the input repositories (below) |
 | About 60 GB of free disk, AC power, a quiet host | the machine | preflight |
