@@ -52,7 +52,7 @@ the ``would_claim_uc`` identity stream ``frs_take_up`` and
 ``spi_benefit_coherence`` use, so a unit whose pool's rate falls below the
 early draw's keeps its claim only if it had one.
 
-The age fit (María's call of 2026-11-09, microcosm#1095). Y2 took full-time
+The age fit (María's calls of 2026-11-09, microcosm#1095). Y2 took full-time
 students off Universal Credit, and the pools then refilled the single
 caseload from every other entitled single, so claimants and partners aged
 16 to 24 read well above DWP's count. Within every pool, the drawn units
@@ -62,11 +62,14 @@ count. The ratio is solved over Great Britain so that those young claimants
 and partners, in entitled units that claim, come as near DWP's People on
 Universal Credit aged 16 to 24 (February, May, August and November 2025),
 the facts the dwp.uc.people_aged_16_to_24 diagnostic reads, as the redraw
-allows. Fixed claims (a reporter, a moved unit, a unit kept on its legacy
-benefits) and a pool whose count needs more claims than its other drawn
-units can give keep young units claiming whatever the ratio, so the count
-can stay above DWP's; the ratio then holds at the end of its range and the
-receipt says so. No family type or award band count moves.
+allows. A shortfall passed from one pool to another fills only the receiving
+pool's drawn units with no young claimant or partner, so a family type whose
+shortfall only young units could fill falls short of DWP's count by it, and
+the receipt records what stays unplaced. Fixed claims (a reporter, a moved
+unit, a unit kept on its legacy benefits) and a pool whose own count needs
+more claims than its other drawn units can give keep young units claiming
+whatever the ratio, so the young count can stay above DWP's; the ratio then
+holds at the end of its range and the receipt says so.
 """
 
 from __future__ import annotations
@@ -219,7 +222,9 @@ UC_TAKE_UP_POOLING = (
     "held at the nearer of those ends and passes its gap to the other pools, "
     "nearest first, the one with more room first at equal distance and the "
     "lower on a tie, each taking what its room allows; a gap no pool can take "
-    "leaves the family type unreachable"
+    "leaves the family type unreachable. With the age fit, a passed "
+    "shortfall's room is the pool's undrawn claims plus the weight of its "
+    "drawn units with no young claimant or partner, less its count (age_fit)"
 )
 UC_TAKE_UP_RESIDUAL_RATE = (
     "(T - F) / D, clipped to [0, 1]; T DWP's calendar-2025 mean count of the "
@@ -229,13 +234,14 @@ UC_TAKE_UP_RESIDUAL_RATE = (
     "their uniform until their weight is nearest T - F, and applied at that "
     "uniform to Northern Ireland's drawn units too"
 )
-#: The age fit (María's call of 2026-11-09, Y4 of the November event-data
+#: The age fit (María's calls of 2026-11-09, Y4 of the November event-data
 #: plan, microcosm#1095). After Y2 took full-time students off Universal
 #: Credit, the award-band pools refilled the single caseload from every other
-#: entitled single, and claimants and partners aged 16 to 24 read about 1.3
-#: times DWP's count. The fit keeps every pool's count and gives the drawn units
-#: with a young claimant or partner one odds ratio against the pool's others,
-#: solved for DWP's count of people on Universal Credit aged 16 to 24.
+#: entitled single, and claimants and partners aged 16 to 24 read well above
+#: DWP's count. The fit gives the drawn units with a young claimant or partner
+#: one odds ratio against the pool's others, solved for DWP's count of people
+#: on Universal Credit aged 16 to 24, and a shortfall passed between pools
+#: fills only units with no young claimant or partner.
 UC_TAKE_UP_AGE_RESOURCE = "dwp_uc_people_by_age_facts.json"
 UC_TAKE_UP_AGE_MONTHS: tuple[str, ...] = ("2025-02", "2025-05", "2025-08", "2025-11")
 UC_TAKE_UP_AGE_RECORD_SETS: tuple[str, ...] = tuple(
@@ -269,7 +275,11 @@ UC_TAKE_UP_AGE_FIT = (
     "the order of the uniform as a pool's rate is; theta is solved so that the "
     "young claimants and partners of Great Britain's entitled units that claim, "
     "at the stage's household weights, are nearest DWP's count, held at the "
-    "nearer end of exp(-12) to exp(12) where no theta reaches it"
+    "nearer end of exp(-12) to exp(12) where no theta reaches it; a shortfall "
+    "passed to another pool fills only that pool's drawn units with no young "
+    "claimant or partner, and what no pool can take that way stays unplaced, "
+    "leaving the family type short of DWP's count by it (María's call of "
+    "2026-11-09)"
 )
 #: The odds ratio's search interval, on its log.
 _LOG_ODDS_BOUNDS = (-12.0, 12.0)
@@ -506,6 +516,8 @@ def _pools(
 
 def _pass_unmet_gaps(
     sums: Sequence[tuple[float, float, float]],
+    *,
+    older: Sequence[float] | None = None,
 ) -> tuple[list[float], list[float]]:
     """Each pool's count after the unmet pools pass their gaps on.
 
@@ -522,8 +534,12 @@ def _pass_unmet_gaps(
     so the drawn units of an overshooting band started claiming and those of
     a short band stopped; held at its clip, each band realizes as near its own
     count as it can, and the family type's total is unchanged wherever its
-    entitled units allow (microcosm#1428 review, finding 7). Returns each
-    pool's count and the part of its gap no pool could take.
+    entitled units allow (microcosm#1428 review, finding 7). With ``older``,
+    the weight of each pool's drawn units with no young claimant or partner
+    (the age fit, María's call of 2026-11-09), a shortfall passed to another
+    pool fills only those units: its room is ``F + older - count``, and what
+    no pool can take that way stays unplaced. An excess passes as before.
+    Returns each pool's count and the part of its gap no pool could take.
     """
 
     targets = [float(target) for target, _, _ in sums]
@@ -557,10 +573,12 @@ def _pass_unmet_gaps(
         short = gap > 0.0
 
         def room(other: int, *, short: bool = short) -> float:
-            return max(
-                highs[other] - counts[other] if short else counts[other] - lows[other],
-                0.0,
+            if not short:
+                return max(counts[other] - lows[other], 0.0)
+            ceiling = (
+                highs[other] if older is None else lows[other] + float(older[other])
             )
+            return max(ceiling - counts[other], 0.0)
 
         remaining = abs(gap)
         for other in sorted(
@@ -725,10 +743,15 @@ def assign_award_band_take_up(
             float(weights[solve & drawable].sum()),
         )
 
+    young_unit = (
+        np.zeros(shape, dtype=bool) if young_people is None else young_people > 0.0
+    )
     pools: list[dict[str, object]] = []
     # Each pool's drawn units (with Northern Ireland's), its Great Britain
     # drawn units, the claims they must realize and their weight.
     needs: list[tuple[np.ndarray, np.ndarray, float, float]] = []
+    # With the age fit, the shortfall each family type leaves unplaced.
+    unplaced_shortfall: dict[str, float] = {}
     for name, _ in UC_FAMILY_TYPES:
         in_family = family == name
         family_pools = _pools(
@@ -740,7 +763,22 @@ def assign_award_band_take_up(
             minimum_sources=minimum_pool_sources,
         )
         sums = [balance(name, in_family, bands) for bands in family_pools]
-        counts, unplaced = _pass_unmet_gaps(sums)
+        # With the age fit, a passed shortfall fills only a pool's drawn units
+        # with no young claimant or partner (María's call of 2026-11-09).
+        older = (
+            None
+            if young_people is None
+            else [
+                float(
+                    weights[
+                        in_family & np.isin(band, bands) & gb & drawable & ~young_unit
+                    ].sum()
+                )
+                for bands in family_pools
+            ]
+        )
+        counts, unplaced = _pass_unmet_gaps(sums, older=older)
+        unplaced_shortfall[name] = float(sum(gap for gap in unplaced if gap > 0.0))
         feasible = not any(unplaced)
         for bands, (target, undrawn, drawn), count in zip(
             family_pools, sums, counts, strict=True
@@ -768,9 +806,6 @@ def assign_award_band_take_up(
                     "feasible_family": feasible,
                 }
             )
-    young_unit = (
-        np.zeros(shape, dtype=bool) if young_people is None else young_people > 0.0
-    )
 
     def realize(theta: float | None) -> np.ndarray:
         """Each unit's claim at the age fit's odds ratio, or at one rate."""
@@ -940,6 +975,15 @@ def assign_award_band_take_up(
                 else UK_WITHHELD
             ),
             "target_unreachable": age_status,
+            # The shortfall no pool could take with older units, by family
+            # type, at the stage's household weights.
+            "unplaced_shortfall": {
+                name: small_cell_share(
+                    unplaced_shortfall[name],
+                    sources((family == name) & entitled & gb),
+                )
+                for name, _ in UC_FAMILY_TYPES
+            },
         }
     return would_claim.astype(bool), receipt
 

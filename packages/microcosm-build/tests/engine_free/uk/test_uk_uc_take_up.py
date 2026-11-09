@@ -917,6 +917,52 @@ def test_the_age_fit_holds_at_its_bound_where_dwp_count_is_out_of_reach() -> Non
     assert float(would_claim.sum()) == pytest.approx(30.0, abs=1.0)
 
 
+def test_with_older_weights_a_passed_shortfall_fills_only_older_units() -> None:
+    # Pool 0 holds four drawn units against DWP's 10 (six short); pool 1 holds
+    # eight against DWP's 2. Unrestricted, pool 1 takes the six. With the age
+    # fit, only pool 1's three older units can take passed claims, and it
+    # already needs two of them for its own count, so it takes one and five
+    # stay unplaced (María's call of 2026-11-09).
+    sums = [(10.0, 0.0, 4.0), (2.0, 0.0, 8.0)]
+    counts, unplaced = uc_take_up._pass_unmet_gaps(sums)
+    assert counts == [4.0, 8.0]
+    assert not any(unplaced)
+    counts, unplaced = uc_take_up._pass_unmet_gaps(sums, older=[4.0, 3.0])
+    assert counts == [4.0, 3.0]
+    assert unplaced == [5.0, 0.0]
+    # An excess still comes off any drawn claims.
+    counts, unplaced = uc_take_up._pass_unmet_gaps(
+        [(1.0, 3.0, 1.0), (4.0, 0.0, 6.0)], older=[1.0, 0.0]
+    )
+    assert counts == [3.0, 2.0]
+    assert not any(unplaced)
+
+
+def test_the_age_fit_leaves_a_shortfall_unplaced_rather_than_draw_young_units() -> None:
+    # Band 2: two older drawn units against DWP's 5 (three short). Band 4: ten
+    # drawn units, the first five young, against DWP's 5. Without the fit band
+    # 4 takes band 2's three and claims 8, young units among them. With it,
+    # band 4's five older units are all its own count needs, so the three
+    # stay unplaced and the singles land at 7 against DWP's 10.
+    award = np.asarray([3_000.0] * 2 + [5_500.0] * 10)
+    young = np.asarray([0.0] * 2 + [1.0] * 5 + [0.0] * 5)
+    targets = _targets(SINGLE_2=5.0, SINGLE_4=5.0)
+    unfitted, _ = _assign(award=award, targets=targets)
+    assert unfitted[:2].all()
+    assert int(unfitted[2:].sum()) == 8
+    would_claim, receipt = _assign(
+        award=award, targets=targets, young_people=young, young_target=0.5
+    )
+    assert would_claim[:2].all()
+    assert int(would_claim[2:].sum()) == 5
+    assert int((young * would_claim).sum()) == 0
+    single = receipt["families"]["SINGLE"]
+    assert single["caseload_after"] == pytest.approx(7.0)
+    assert receipt["age_fit"]["unplaced_shortfall"]["SINGLE"] == pytest.approx(3.0)
+    # Nothing unplaced is an exact zero, which needs no withholding.
+    assert receipt["age_fit"]["unplaced_shortfall"]["LONE_PARENT"] == 0.0
+
+
 def test_the_age_fit_needs_both_its_inputs() -> None:
     with pytest.raises(ValueError, match="needs both"):
         _young_pool(young_target=None)
