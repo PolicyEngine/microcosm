@@ -658,12 +658,16 @@ def _toy_spec_without_a_closure(tmp_path):
     """The composed toy spec, with its closure renamed out of ``_has_resource``'s reach.
 
     A node selects the closure, so renaming keeps activation satisfied where
-    deleting the resource wouldn't.
+    deleting the resource wouldn't. The rename matches the quoted name only: it
+    moves the resource key and the selections that name it, and leaves the
+    document's own ``format``, so the renamed document still parses.
     """
 
     fixture = make_composed_fixture(tmp_path / "fixture")
-    text = json.dumps(fixture.spec).replace("axiom_input_closure", "other_closure")
-    return json.loads(text), fixture.config
+    text = json.dumps(fixture.spec).replace('"axiom_input_closure"', '"other_closure"')
+    spec = json.loads(text)
+    InputClosure.from_dict(spec["resources"]["other_closure"])
+    return spec, fixture.config
 
 
 @pytest.mark.parametrize(
