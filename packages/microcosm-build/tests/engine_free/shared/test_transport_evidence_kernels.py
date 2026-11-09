@@ -2987,8 +2987,8 @@ class TestExternalSources:
 def _money_battery_spec(*inputs, nodes=()):
     """CREATE, ``nodes`` and a battery over ``inputs``, with the toy money routes.
 
-    CREATE declares no outputs, so a money column has an owner only if ``nodes``
-    adds one.
+    CREATE is structural and owns no column, so a money column has an owner only
+    if ``nodes`` adds one.
     """
 
     return {
@@ -3033,6 +3033,26 @@ def _derived_person_column(column, entity, read):
 
 _RENT_SHARE = _derived_person_column("rent_share", "household", "rent")
 _RENT_SHARE_HALF = _derived_person_column("rent_share_half", "person", "rent_share")
+
+
+def _support_gate_on(roster):
+    """The support gate on the toy frames, with ``roster``'s rows added to the toy roster.
+
+    The toy roster alone passes this gate, so each failure comes from ``roster``.
+    """
+
+    donor, terminal = _donor_and_terminal()
+    ranges, bounds, rn, bn = _run_support(
+        _toy_roster(more=roster["columns"]), donor, terminal
+    )
+    return _support_outcome(
+        ranges,
+        bounds,
+        rn,
+        bn,
+        terminal,
+        structural=[("household", "source_household_id")],
+    )
 
 
 class TestMoneyAwaitingItsProducer:
@@ -3085,15 +3105,65 @@ class TestMoneyAwaitingItsProducer:
                 "reason": "awaits toy rent bands",
             }
         ]
-        donor, _ = _donor_and_terminal()
-        terminal = _support_frame({("person", column): [1e9] * 6})
-        ranges, bounds, rn, bn = _run_support(roster, donor, terminal)
-        outcome = _support_outcome(ranges, bounds, rn, bn, terminal)
+        outcome = _support_gate_on(roster)
         assert outcome.status is GateStatus.FAILED
-        assert any(
+        (line,) = outcome.result.failures
+        assert line.startswith(
             f"person.{column} (derived): sources without coverage: "
-            "household.rent (pending)" in line
-            for line in outcome.result.failures
+            "household.rent (pending). "
+        )
+
+    def test_a_derived_row_on_a_copied_source_passes_the_gate(self) -> None:
+        # The control for the test above: the same gate passes a derived row
+        # whose one source the donor covers.
+        node = _derived_person_column("age_share", "person", "age")
+        roster = compose._support_roster(
+            _money_battery_spec(("person", "age_share"), nodes=(node,))
+        )
+        (row,) = roster["columns"]
+        assert row["sources"] == [
+            {"entity": "person", "column": "age", "class": "copied"}
+        ]
+        outcome = _support_gate_on(roster)
+        assert outcome.status is GateStatus.PASSED, outcome.result.failures
+
+    def test_a_derived_row_lists_each_column_of_each_input_its_owner_reads(
+        self,
+    ) -> None:
+        # Every input of the owner, and every column of each, reaches the row,
+        # and the gate names each pending source.
+        node = {
+            "id": "x.mix",
+            "kernel": "toy.derive@1",
+            "inputs": [
+                {"entity": "person", "columns": ["age", "dividend_income"]},
+                {"entity": "household", "columns": ["rent"]},
+            ],
+            "outputs": [{"entity": "person", "column": "mix", "dtype": "float64"}],
+        }
+        roster = compose._support_roster(
+            _money_battery_spec(("person", "mix"), nodes=(node,))
+        )
+        (row,) = roster["columns"]
+        assert row["sources"] == [
+            {
+                "entity": "household",
+                "column": "rent",
+                "class": "pending",
+                "reason": "awaits toy rent bands",
+            },
+            {"entity": "person", "column": "age", "class": "copied"},
+            {
+                "entity": "person",
+                "column": "dividend_income",
+                "class": "pending",
+                "reason": "awaits a donor that carries it",
+            },
+        ]
+        (line,) = _support_gate_on(roster).result.failures
+        assert line.startswith(
+            "person.mix (derived): sources without coverage: "
+            "household.rent (pending), person.dividend_income (pending). "
         )
 
     def test_the_roster_and_the_gate_agree_on_the_covered_classes(self) -> None:
