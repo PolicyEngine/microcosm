@@ -627227,59 +627227,6 @@
       ]
     },
     {
-      "name": "welshgov.council_tax_stock.by_area.band_i@W06000010",
-      "ledger_selector": {
-        "source_name": "welshgov",
-        "record_set_spec_id": [
-          "uk.local_geography.council_tax.wales_ct1.a1_all_chargeable_dwellings.v1",
-          "uk.local_geography.council_tax.wales_ct1.h7_total_chargeable_empty_properties.v1",
-          "uk.local_geography.council_tax.wales_ct1.h8_total_chargeable_second_homes.v1"
-        ],
-        "geography_level": "local_authority",
-        "geography_id": "W06000010"
-      },
-      "entity": "household",
-      "measure": "council_tax/band_i",
-      "family": "council_tax_stock",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "welshgov.council_tax_stock.by_area.band_i",
-        "measure_kind": "prepared_column",
-        "geography_level": "local_authority",
-        "geography_id": "W06000010"
-      },
-      "value_operation": "linear_combination",
-      "value_operands": [
-        {
-          "weight": 1,
-          "source_concept": "welshgov.council_tax_dwellings.all_chargeable_dwellings",
-          "source_measure_id": "a1",
-          "label": "a1[I]",
-          "dimension_values": {
-            "council_tax_band": "I"
-          }
-        },
-        {
-          "weight": -1,
-          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_empty_properties",
-          "source_measure_id": "h7",
-          "label": "h7[I]",
-          "dimension_values": {
-            "council_tax_band": "I"
-          }
-        },
-        {
-          "weight": -1,
-          "source_concept": "welshgov.council_tax_dwellings.total_chargeable_second_homes",
-          "source_measure_id": "h8",
-          "label": "h8[I]",
-          "dimension_values": {
-            "council_tax_band": "I"
-          }
-        }
-      ]
-    },
-    {
       "name": "welshgov.council_tax_stock.by_area.band_i@W06000011",
       "ledger_selector": {
         "source_name": "welshgov",

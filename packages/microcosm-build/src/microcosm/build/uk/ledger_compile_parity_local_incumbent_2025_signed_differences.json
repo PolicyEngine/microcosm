@@ -1,11 +1,11 @@
 {
- "compiled_count": 27168,
+ "compiled_count": 27167,
  "counts_by_kind": {
   "calibration_drift": 19274,
   "fixture_only": 4267,
-  "ledger_only": 7890
+  "ledger_only": 7889
  },
- "difference_count": 31431,
+ "difference_count": 31430,
  "differences": [
   {
    "fixture_value": 70.0,
@@ -85033,13 +85033,6 @@
    "kind": "ledger_only",
    "ledger_value": 80.0,
    "name": "welshgov.council_tax_stock.by_area.band_i@W06000009",
-   "period": 2025,
-   "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 72.0,
-   "name": "welshgov.council_tax_stock.by_area.band_i@W06000010",
    "period": 2025,
    "reason": "No incumbent counterpart: the incumbent bound VOA local rows for England only, and Wales alone has a band I. Microcosm binds the 22 Welsh authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus h7 empty minus h8 second homes; chronicle#264), microcosm#929."
   },
