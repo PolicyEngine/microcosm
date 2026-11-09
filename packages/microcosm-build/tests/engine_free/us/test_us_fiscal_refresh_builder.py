@@ -6533,7 +6533,10 @@ def _run_green_register_release(
             self.dataset_sha256 = builder._sha256(self.dataset_path)
             captured["scorer_opened_on"] = self.dataset_path
 
-        def open_consumer(self, name, baseline_plan):
+        def open_consumer(self, name, baseline_plan, planned_reform_passes=None):
+            captured.setdefault("planned_reform_passes", {})[name] = (
+                planned_reform_passes
+            )
             record = {"dataset_sha256": self.dataset_sha256, "consumer": name}
             simulate = self.dataset_path
             if name == "ssi_social_security_holdout":
@@ -6672,6 +6675,12 @@ def _run_green_register_release(
         assert not (release_dir / "reform_coverage_smoke.json").exists()
     else:
         assert captured["smoke_scored"] == captured["written_dataset"]
+        # _main hands the smoke its plan's reform pass count (#1556). This
+        # test's smoke gate asks no reformed simulation for a key, so the dry
+        # run counted none; a consumer opened without a count gets None.
+        assert captured["planned_reform_passes"]["reform_coverage_smoke"] == 0
+    # The holdouts score no reform, so _main gives them no count.
+    assert captured["planned_reform_passes"]["ssi_social_security_holdout"] is None
     assert captured["scorer_opened_on"] == captured["written_dataset"]
     assert captured["holdout_scored"] == captured["written_dataset"]
     assert captured["scorer_closed"] is True

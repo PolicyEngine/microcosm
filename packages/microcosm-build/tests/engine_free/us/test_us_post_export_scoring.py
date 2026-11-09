@@ -845,11 +845,14 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     (open_call,) = calls_to("_open_post_export_scorer")
     (smoke_gate_call,) = calls_to("us_reform_coverage_smoke_gate")
     assert write_call.lineno < open_call.lineno < smoke_gate_call.lineno
-    # The smoke's served baseline is its own recorded plan, and the gate reads
-    # that consumer's seam.
+    # The smoke's served baseline is its own recorded plan, with that plan's
+    # reform pass count for progress (#1556), and the gate reads that
+    # consumer's seam.
     assert [ast.unparse(call) for call in calls_to("open_consumer")] == [
         "post_export_scorer.open_consumer('reform_coverage_smoke', "
-        "post_export_scoring_plan.baseline_plan('reform_coverage_smoke'))"
+        "post_export_scoring_plan.baseline_plan('reform_coverage_smoke'), "
+        "planned_reform_passes=post_export_scoring_plan.planned_reform_passes("
+        "'reform_coverage_smoke'))"
     ]
     (smoke_call,) = calls_to("us_reform_coverage_smoke_gate")
     simulate = next(kw for kw in smoke_call.keywords if kw.arg == "simulate")
@@ -869,9 +872,16 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
         ]
         assert plan_calls == [f"post_export_scoring_plan.baseline_plan({consumer!r})"]
     (validation_call,) = calls_to("_write_reform_validation")
-    assert {kw.arg: ast.unparse(kw.value) for kw in validation_call.keywords}[
-        "simulate_out_of_sample"
-    ] == "not args.skip_out_of_sample_reforms"
+    validation_keywords = {
+        kw.arg: ast.unparse(kw.value) for kw in validation_call.keywords
+    }
+    assert (
+        validation_keywords["simulate_out_of_sample"]
+        == "not args.skip_out_of_sample_reforms"
+    )
+    assert validation_keywords["planned_reform_passes"] == (
+        "post_export_scoring_plan.planned_reform_passes('reform_validation')"
+    )
     # The manifest binds the sha of the bytes the closed scorer scored, and
     # nothing else assigns it.
     sha_assignments = [
