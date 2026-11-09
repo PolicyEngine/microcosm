@@ -11,18 +11,24 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.calibration_run import resign_uk_gate_report
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
+    uk_release_export_frame,
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.release_certification import (
     compose_uk_release_certification,
 )
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
+from microcosm.build.uk_runtime.weight_year import (
+    uk_dataset_year_frame,
+    uk_weight_projection_factor,
+)
 from microcosm.data.contract import validate_release_dir
-from microcosm.data.registry import REGISTRY
+from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY
 from microcosm.frame import WeightKind
 from test_support.paths import paths_for
 
@@ -48,8 +54,10 @@ _SHARED_FIXTURES = (
     _signing_key_fixture,
 )
 _CODE_PIN = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
+#: The stages a national spine runs: the signed provenance names them, and the
+#: assembler rederives the SPI Public Use Tape marker from them.
+_SPINE_STAGES = tuple(stage.stage for stage in load_country_spec("uk").sources.stages)
 _ATTEMPT_ID = "uk-frs-calibration-attempt-20260828T101112Z-1a2b3c4d"
-_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260828T101112Z-1a2b3c4d"
 
 
 def _load_driver_module():
@@ -78,7 +86,7 @@ def test_national_dataset_filename_mirrors_registry() -> None:
 
     assert driver._DATASET_KEY == "microcosm_uk_2024_25"
     assert driver._DATASET_FILENAME == f"{driver._DATASET_KEY}.h5"
-    assert REGISTRY[("uk", 2025, "national")].filename == driver._DATASET_FILENAME
+    assert REGISTRY[("uk", 2025, DEFAULT_VARIANT)].filename == driver._DATASET_FILENAME
 
 
 def _frame(weights: list[float], *, weight_kind: WeightKind):
@@ -103,7 +111,12 @@ def _frame(weights: list[float], *, weight_kind: WeightKind):
     )
 
 
-def _diagnostics(spine_sha256: str, *, runtime: dict | None = None) -> dict:
+def _diagnostics(
+    spine_sha256: str,
+    *,
+    runtime: dict | None = None,
+    spine_provenance: dict | None = None,
+) -> dict:
     return {
         "schema_version": 6,
         "weight_entity": "household",
@@ -191,6 +204,11 @@ def _diagnostics(spine_sha256: str, *, runtime: dict | None = None) -> dict:
             "build_id": _ATTEMPT_ID,
             "input_posture": {"tier": "staging_candidate", "sha256": spine_sha256},
             "runtime": dict(_SIGNED_RUNTIME if runtime is None else runtime),
+            "spine_provenance": (
+                {"stages": list(_SPINE_STAGES)}
+                if spine_provenance is None
+                else spine_provenance
+            ),
         },
     }
 
@@ -215,22 +233,29 @@ def _build_assembler_inputs(
     tmp_path: Path,
     *,
     spine_frame=None,
+    candidate_frame=None,
     runtime=None,
+    spine_provenance=None,
 ):
     pytest.importorskip("tables")  # pandas HDF backend
     pytest.importorskip("h5py")
     candidate = green_certification_inputs["candidate_path"]
     spine = tmp_path / "spine.h5"
-    write_uk_national_frame(
-        _frame([0.0, 4.0], weight_kind=WeightKind.CALIBRATED), candidate
-    )
+    if candidate_frame is None:
+        candidate_frame = _frame([0.0, 4.0], weight_kind=WeightKind.CALIBRATED)
+    write_uk_national_frame(candidate_frame, candidate)
     if spine_frame is None:
         spine_frame = _frame([1.0, 2.0], weight_kind=WeightKind.DESIGN)
     write_uk_national_frame(spine_frame, spine)
 
     diagnostics_path = tmp_path / "calibration_diagnostics.json"
     diagnostics_path.write_text(
-        json.dumps(_diagnostics(sha256(spine), runtime=runtime)), encoding="utf-8"
+        json.dumps(
+            _diagnostics(
+                sha256(spine), runtime=runtime, spine_provenance=spine_provenance
+            )
+        ),
+        encoding="utf-8",
     )
     diagnostics_sha = sha256(diagnostics_path)
     for report_name in ("seam_report_path", "release_cut_report_path"):
@@ -361,6 +386,11 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     assert build_manifest["dataset"]["filename"] == driver._DATASET_FILENAME
+    # The fixture candidate was written as solved, never divided for release.
+    assert build_manifest["calibration"]["household_weight_year"] == {
+        "dataset_year": 2024,
+        "basis": "as_solved",
+    }
     assert build_manifest["staging"] == {
         "contract_version": 2,
         "enabled": False,
@@ -373,8 +403,17 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
         "last_error_code": None,
         "opt_out_reason": "test fixture deliberately disables staging",
     }
-    assert build_manifest["attempt_id"] == _ATTEMPT_ID
-    assert build_manifest["cut_tag"] == _CUT_TAG
+    # The build publishes into its own folder: both manifests name the release
+    # and the build (the calibration attempt), and nothing names a tag.
+    for manifest in (build_manifest, release_manifest):
+        assert (manifest.get("release"), manifest.get("build")) == (
+            UK_NATIONAL_RELEASE_ID,
+            _ATTEMPT_ID,
+        )
+        assert not {"build_id", "attempt_id", "cut_tag"} & set(manifest)
+    assert release_manifest["built_at"] == build_manifest["created_at"]
+    assert release_manifest["built_with_core_package"]["name"] == "policyengine-core"
+    assert release_manifest["built_with_model_package"]["name"] == "policyengine-uk"
     assert release_manifest["default_datasets"] == {"national": driver._DATASET_KEY}
     assert release_manifest["artifacts"][driver._DATASET_KEY]["path"] == (
         driver._DATASET_FILENAME
@@ -383,53 +422,128 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
         release_manifest["artifacts"][f"{driver._DATASET_KEY}_calibration"]["path"]
         == f"{driver._DATASET_KEY}_calibration.npz"
     )
-    assert {entry["revision"] for entry in release_manifest["artifacts"].values()} == {
-        _CUT_TAG
+    assert not any(
+        "revision" in entry for entry in release_manifest["artifacts"].values()
+    )
+    assert {
+        key: entry["role"] for key, entry in release_manifest["artifacts"].items()
+    } == {
+        driver._DATASET_KEY: "dataset",
+        f"{driver._DATASET_KEY}_calibration": "calibration_weights",
+        "calibration_diagnostics": "calibration_diagnostics",
+        "release_certification": "release_certification",
+        "terminal_gates": "terminal_gates",
+        "release_cut_gates": "release_cut_gates",
+        "spine_gates": "spine_gates",
+        "score_vs_enhanced_frs": "score_vs_enhanced_frs",
     }
     assert "dataset_role" not in release_manifest
+    # The spine ran the SPI stages, so the release says it rests on the tape,
+    # on the microdata's own entry and with the tape's conditions.
+    assert release_manifest["artifacts"][driver._DATASET_KEY][
+        "spi_public_use_tape_dependent"
+    ]
+    tape = release_manifest["licensed_data"]["spi_public_use_tape"]
+    assert tape["study"] == "SN 9422"
+    assert tape["dependent"] is True
+    assert "spi_income_band_donors" in tape["stages"]
+    assert len(tape["conditions"]) == 2
     assert (
         release_dir / "calibration_diagnostics.json"
     ).read_bytes() == assembler_inputs["diagnostics"].read_bytes()
     assert (
         release_dir / "release_certification.json"
     ).read_bytes() == assembler_inputs["certification"].read_bytes()
-    assert summary["cut_tag"] == _CUT_TAG
+    assert (summary.get("release"), summary.get("build")) == (
+        UK_NATIONAL_RELEASE_ID,
+        _ATTEMPT_ID,
+    )
+    assert "cut_tag" not in summary
     assert summary["release_dir"] == str(release_dir)
-    # The command is rendered shell-safe; parse it back rather than comparing
-    # one quoting of it.
+    # The commands are rendered shell-safe; parse them back rather than
+    # comparing one quoting. The publication lists the build without making
+    # it current; the reviewed promotion is the separate second command.
     assert shlex.split(summary["publish_command"]) == [
         "uv",
         "run",
-        "python",
-        "-m",
-        "microcosm.data.publish_cli",
+        "microcosm-publish-release-build",
         str(release_dir),
         "--repo-id",
         "policyengine/populace-uk-private",
         "--artifact-root",
         str(assembler_inputs["candidate"].parent),
-        "--no-latest",
-        "--tag-name",
-        _CUT_TAG,
     ]
-    promote_command = shlex.split(summary["promote_command"])
-    assert promote_command == [
+    assert shlex.split(summary["promote_command"]) == [
         "uv",
         "run",
-        "python",
-        "-m",
-        "microcosm.data.publish_cli",
+        "microcosm-publish-release-build",
         str(release_dir),
         "--repo-id",
         "policyengine/populace-uk-private",
-        "--artifact-root",
-        str(assembler_inputs["candidate"].parent),
-        "--promote-line",
-        "national",
-        "--tag-name",
-        _CUT_TAG,
+        "--promote",
     ]
-    assert "--no-latest" not in promote_command
+
+
+def test_an_assembled_national_build_publishes_through_the_emitter(
+    assembler_inputs, capsys, monkeypatch
+) -> None:
+    """The publication checks the assembled directory with the release
+    contract itself, not a replaced one, and hands every file over."""
+    from microcosm.build import release_publication
+    from microcosm.data.contract import (
+        BUILD_MANIFEST_FILE_ROLE,
+        RELEASE_MANIFEST_FILE_ROLE,
+    )
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    # The command lists the repository's files to refuse one that still has
+    # latest*.json pointer files; here the list is in memory and has none, so
+    # the test never queries the private UK repository.
+    listed: list[str] = []
+
+    def switched_repository_files(repository: str) -> list[str]:
+        listed.append(repository)
+        return ["releases.json"]
+
+    monkeypatch.setattr(
+        release_publication,
+        "_repository_files",
+        switched_repository_files,
+        raising=False,
+    )
+    driver = _load_driver_module()
+    assert driver.main(assembler_inputs["argv"]) == 0
+    capsys.readouterr()
+    release_dir = assembler_inputs["out_dir"] / UK_NATIONAL_RELEASE_ID
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    # The assembler writes the build-folder layout, which names the build.
+    assert manifest.get("build") == _ATTEMPT_ID
+    client = FakeEmitterClient()
+
+    outcome = release_publication.publish_release_build(
+        release_dir,
+        artifact_root=assembler_inputs["candidate"].parent,
+        client=client,
+    )
+
+    assert outcome.published and outcome.succeeded and not outcome.current
+    (request,) = client.release_requests
+    assert (request.release, request.build, request.release_role) == (
+        UK_NATIONAL_RELEASE_ID,
+        _ATTEMPT_ID,
+        "national",
+    )
+    assert {item.name: item.role for item in request.files} == {
+        "release_manifest.json": RELEASE_MANIFEST_FILE_ROLE,
+        "build_manifest.json": BUILD_MANIFEST_FILE_ROLE,
+        **{entry["path"]: entry["role"] for entry in manifest["artifacts"].values()},
+    }
+    folder = f"releases/{UK_NATIONAL_RELEASE_ID}/{_ATTEMPT_ID}"
+    published_dataset = client.hub_files[
+        ("policyengine/populace-uk-private", f"{folder}/{driver._DATASET_FILENAME}")
+    ]
+    assert published_dataset == assembler_inputs["candidate"].read_bytes()
+    assert listed == ["policyengine/populace-uk-private"]
 
 
 def test_assemble_preserves_successful_version_2_delivery(
@@ -556,11 +670,17 @@ def test_assemble_refuses_missing_score_receipt(assembler_inputs) -> None:
         _load_driver_module().main(assembler_inputs["argv"])
 
 
-def test_assemble_refuses_unprefixed_cut_tag(assembler_inputs) -> None:
-    with pytest.raises(SystemExit, match="--cut-tag must be"):
+def test_assemble_takes_no_cut_tag(assembler_inputs, capsys) -> None:
+    """A build in its own folder has no tag to name."""
+    with pytest.raises(SystemExit):
         _load_driver_module().main(
-            [*assembler_inputs["argv"], "--cut-tag", "not-a-national-cut"]
+            [
+                *assembler_inputs["argv"],
+                "--cut-tag",
+                f"{UK_NATIONAL_RELEASE_ID}-20260828T101112Z-1a2b3c4d",
+            ]
         )
+    assert "unrecognized arguments: --cut-tag" in capsys.readouterr().err
 
 
 def test_assemble_refuses_substituted_spine(assembler_inputs) -> None:
@@ -586,6 +706,72 @@ def test_assemble_refuses_build_record_attempt_id_tamper(assembler_inputs) -> No
     record_path.write_text(json.dumps(record), encoding="utf-8")
     with pytest.raises(SystemExit, match="signed diagnostics.build.build_id"):
         _load_driver_module().main(assembler_inputs["argv"])
+
+
+def test_assemble_labels_weights_written_at_the_dataset_year(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    """microcosm#796 A19: the NPZ pairs with the H5 it ships beside, so it
+    carries the dataset-year weights and the build manifest says so."""
+    released = uk_dataset_year_frame(
+        _frame([0.0, 4.0], weight_kind=WeightKind.CALIBRATED), solve_year=2025
+    )
+    inputs = _build_assembler_inputs(
+        green_certification_inputs, tmp_path, candidate_frame=released
+    )
+    driver = _load_driver_module()
+
+    assert driver.main(inputs["argv"]) == 0
+
+    release_dir = inputs["out_dir"] / UK_NATIONAL_RELEASE_ID
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["calibration"]["household_weight_year"] == {
+        "dataset_year": 2024,
+        "basis": "dataset_year",
+    }
+    calibration_path = inputs["candidate"].with_name(
+        "microcosm_uk_2024_25_calibration.npz"
+    )
+    with np.load(calibration_path) as calibration:
+        np.testing.assert_array_equal(
+            calibration["household_weight"],
+            np.asarray([0.0, 4.0]) / uk_weight_projection_factor(2024, 2025),
+        )
+
+
+def test_assemble_pairs_a_renumbered_release_with_its_spine(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    """microcosm#1194: the release renumbers its identifiers, so the row
+    pairing with the spine stands on the build identifiers it keeps."""
+    ids = np.asarray([5, 6], dtype="int64")
+
+    def frame(weights, weight_kind):
+        return uk_national_frame(
+            person=pd.DataFrame(
+                {
+                    "person_id": ids,
+                    "person_benunit_id": ids,
+                    "person_household_id": ids,
+                }
+            ),
+            benunit=pd.DataFrame({"benunit_id": ids}),
+            household=pd.DataFrame({"household_id": ids}),
+            time_period="2024",
+            weight_kind=weight_kind,
+            household_weights=np.asarray(weights, dtype="float64"),
+        )
+
+    released = uk_release_export_frame(frame([0.0, 4.0], WeightKind.CALIBRATED))
+    assert released.table("household")["household_id"].tolist() == [1, 2]
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        candidate_frame=released,
+        spine_frame=frame([1.0, 2.0], WeightKind.DESIGN),
+    )
+
+    assert _load_driver_module().main(inputs["argv"]) == 0
 
 
 def test_assemble_refuses_spine_with_different_household_count(
@@ -690,17 +876,6 @@ def test_assemble_late_failure_leaves_no_partial_release(
     assert not list(assembler_inputs["candidate"].parent.glob(".*.tmp.npz"))
 
 
-def test_assemble_refuses_cut_tag_outside_the_grammar(assembler_inputs) -> None:
-    with pytest.raises(SystemExit, match="YYYYMMDDTHHMMSSZ"):
-        _load_driver_module().main(
-            [
-                *assembler_inputs["argv"],
-                "--cut-tag",
-                f"{UK_NATIONAL_RELEASE_ID}-hotfix",
-            ]
-        )
-
-
 def test_assemble_refuses_reserialized_diagnostics(assembler_inputs) -> None:
     diagnostics = json.loads(assembler_inputs["diagnostics"].read_text())
     assembler_inputs["diagnostics"].write_text(
@@ -708,3 +883,35 @@ def test_assemble_refuses_reserialized_diagnostics(assembler_inputs) -> None:
     )
     with pytest.raises(SystemExit, match="diagnostics bytes"):
         _load_driver_module().main(assembler_inputs["argv"])
+
+
+def test_assemble_refuses_a_recorded_spi_marker_its_stages_contradict(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        spine_provenance={
+            "stages": list(_SPINE_STAGES),
+            "spi_public_use_tape": {
+                "study": "SN 9422",
+                "dependent": False,
+                "stages": [],
+                "conditions": [],
+            },
+        },
+    )
+    with pytest.raises(SystemExit, match="disagrees with the stages"):
+        _load_driver_module().main(inputs["argv"])
+
+
+def test_assemble_refuses_a_spine_stage_the_spec_does_not_declare(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        spine_provenance={"stages": [*_SPINE_STAGES, "unknown_stage"]},
+    )
+    with pytest.raises(SystemExit, match="declares no stage"):
+        _load_driver_module().main(inputs["argv"])

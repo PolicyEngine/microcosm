@@ -12,11 +12,17 @@ from __future__ import annotations
 import hashlib
 import math
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal
 from xml.etree import ElementTree
 from zipfile import ZIP_STORED, BadZipFile, ZipFile
+
+import numpy as np
+
+from microcosm.build.target_materialization import evaluate_named_term
 
 __all__ = [
     "HMRCIncomeBandTargetRecord",
@@ -36,9 +42,12 @@ __all__ = [
     "HMRC_SPI_SOURCE_TAX_YEAR_START",
     "HMRC_SPI_SOURCE_VINTAGE",
     "HMRC_SPI_TARGET_RECORD_COUNT",
+    "LOSS_RELIEF_COLUMN",
+    "UK_LOSS_RELIEF_TERMS",
     "VerifiedHMRCODSIdentity",
     "hmrc_spi_component_source_columns",
     "materialize_hmrc_spi_income_band_targets",
+    "self_employment_income_after_loss_relief",
     "verify_hmrc_spi_collated_ods",
 ]
 
@@ -87,6 +96,54 @@ HMRC_SPI_INCOME_COMPONENTS = (
     "dividend_income",
     "other_investment_income",
 )
+#: policyengine-uk's input for the losses of earlier years relieved against a
+#: trade's profit (ITA 2007 s.83, pe-uk#2085); the SPI tape's profits are after
+#: that relief (microcosm#1095).
+LOSS_RELIEF_COLUMN = "loss_relief"
+#: The measures HMRC counts that policyengine-uk holds in parts, declared once
+#: as named terms of the binding interpreter's expression grammar
+#: (microcosm#1095). policyengine-uk holds a trade's profit for the year in
+#: ``self_employment_income`` and the losses of earlier years it relieves
+#: against that profit in ``loss_relief``, never taking the profit below zero
+#: (ITA 2007 s.83); its ``total_income`` adds the profit before the relief.
+#: The SPI tape's profits, the HMRC accounting aggregates and every HMRC row on
+#: self-employment or total income are after the relief. Both terms are
+#: person-grain; the measure resolver computes them for every line and
+#: position that names them, and each ``_annual`` form is the same term on
+#: the annual income simulation.
+UK_LOSS_RELIEF_TERMS: Mapping[str, str] = MappingProxyType(
+    {
+        "self_employment_income_after_loss_relief": (
+            f"max(self_employment_income - {LOSS_RELIEF_COLUMN}, 0)"
+        ),
+        "total_income_after_loss_relief": (
+            "total_income - self_employment_income"
+            " + self_employment_income_after_loss_relief"
+        ),
+    }
+)
+
+
+def self_employment_income_after_loss_relief(
+    self_employment_income: object, loss_relief: object
+) -> np.ndarray:
+    """The profit HMRC counts: the year's profit after losses brought forward.
+
+    The declared term (``UK_LOSS_RELIEF_TERMS``) on the given columns, for the
+    stages that read it from their own tables.
+    """
+
+    columns = {
+        "self_employment_income": self_employment_income,
+        LOSS_RELIEF_COLUMN: loss_relief,
+    }
+    return evaluate_named_term(
+        "self_employment_income_after_loss_relief",
+        UK_LOSS_RELIEF_TERMS,
+        columns.__getitem__,
+    )
+
+
 HMRC_SPI_TARGET_RECORD_COUNT = (
     len(HMRC_SPI_INCOME_BAND_LOWER_BOUNDS) * len(HMRC_SPI_INCOME_COMPONENTS) * 2
 )

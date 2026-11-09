@@ -25,7 +25,12 @@ from microcosm.calibrate import (
     TargetSpec,
     calibrate,
 )
+from microcosm.data.stored_inputs import register_sha256
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -1948,6 +1953,67 @@ def test_soi_component_amounts_use_source_specific_signs() -> None:
         builder._signed_component(np.array([-5.0, 7.0]), "adjusted_gross_income"),
         np.array([-5.0, 7.0]),
     )
+    # microcosm#1258: Table 1.4's entity legs, net income as the positive part
+    # and net loss as the negative-part magnitude of each entity's own leaf.
+    for income, loss in (
+        ("partnership_income", "partnership_losses"),
+        ("s_corp_income", "s_corp_losses"),
+    ):
+        assert np.array_equal(
+            builder._signed_component(np.array([-5.0, 0.0, 7.0]), income),
+            np.array([0.0, 0.0, 7.0]),
+        )
+        assert np.array_equal(
+            builder._signed_component(np.array([-5.0, 0.0, 7.0]), loss),
+            np.array([5.0, -0.0, -0.0]),
+        )
+
+
+def test_table_1_4_entity_legs_partition_each_signed_leaf() -> None:
+    """Invariant (microcosm#1258): each entity's legs partition its leaf.
+
+    For every tax-unit vector of a signed entity leaf, the net-income leg less
+    the net-loss leg is the leaf itself, both legs are nonnegative, no unit
+    sits in both, and the two return-count indicators partition the units
+    with a nonzero amount. Hypothesis is a workspace dependency; the wheels
+    job installs no test extras, so it skips there.
+    """
+
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    builder = _load_builder_module()
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        st.lists(
+            st.one_of(
+                st.just(0.0),
+                st.floats(-1e10, 1e10, allow_nan=False, allow_infinity=False),
+            ),
+            min_size=1,
+            max_size=60,
+        )
+    )
+    def check(values: list[float]) -> None:
+        leaf = np.asarray(values, dtype=np.float64)
+        for income, loss in (
+            ("partnership_income", "partnership_losses"),
+            ("s_corp_income", "s_corp_losses"),
+        ):
+            income_leg = builder._signed_component(leaf, income)
+            loss_leg = builder._signed_component(leaf, loss)
+            assert (income_leg >= 0.0).all() and (loss_leg >= 0.0).all()
+            assert not ((income_leg > 0.0) & (loss_leg > 0.0)).any()
+            np.testing.assert_array_equal(income_leg - loss_leg, leaf)
+            income_returns = builder._soi_component_row(leaf, income, indicator=True)
+            loss_returns = builder._soi_component_row(leaf, loss, indicator=True)
+            np.testing.assert_array_equal(
+                income_returns + loss_returns, (leaf != 0.0).astype(np.float64)
+            )
+
+    check()
 
 
 def test_export_target_audit_is_opt_in(monkeypatch) -> None:
@@ -2075,6 +2141,189 @@ def test_builder_exact_k_parser_enforces_charter_and_explicit_seed(capsys) -> No
     assert parsed.exact_k == "N"
     assert parsed.seed == 17
     assert parsed.no_staging is True
+
+
+def test_scf_education_debt_stage_is_opt_in_and_follows_auto_loans() -> None:
+    """microcosm#1073: the 2025 SCF stage runs only when asked, after auto loans.
+
+    The pinned engine does not define the four federal student loan inputs
+    yet, so a default release must not fetch the 2025 SCF or carry them.
+    """
+
+    builder = _load_builder_module()
+    base_argv = ["--ledger-facts", "facts.jsonl", "--out", "release"]
+    parsed = builder._parse_args(base_argv)
+    assert parsed.scf_education_debt is False
+    assert parsed.scf_2025_summary_extract is None
+    assert parsed.scf_2025_full_extract is None
+
+    parsed = builder._parse_args(
+        [
+            *base_argv,
+            "--scf-education-debt",
+            "--scf-2025-summary-extract",
+            "rscfp2025.dta",
+            "--scf-2025-full-extract",
+            "p25i6.dta",
+        ]
+    )
+    assert parsed.scf_education_debt is True
+    assert parsed.scf_2025_summary_extract == Path("rscfp2025.dta")
+    assert parsed.scf_2025_full_extract == Path("p25i6.dta")
+
+    source = inspect.getsource(builder._main)
+    gate = source.index("if args.scf_education_debt:")
+    assert source.index("with_us_scf_auto_loan_inputs(") < gate
+    assert gate < source.index("_with_scf_education_debt_stage(")
+    assert source.index("join_acs_release_predictors(") < gate
+
+
+def test_scf_education_debt_stage_runs_its_gate_and_writes_its_fit(
+    tmp_path, monkeypatch
+) -> None:
+    builder = _load_builder_module()
+    calls: list[str] = []
+    frame = object()
+
+    monkeypatch.setattr(
+        builder,
+        "load_scf_2025_education_debt_donor",
+        lambda summary, full: calls.append(f"load:{summary}:{full}") or "donor",
+    )
+
+    def fake_with_inputs(base_frame, *, seed, time_period, scf_education_debt_donor):
+        assert base_frame is frame
+        assert scf_education_debt_donor == "donor"
+        calls.append(f"impute:{seed}:{time_period}")
+        return base_frame
+
+    monkeypatch.setattr(builder, "with_us_scf_education_debt_inputs", fake_with_inputs)
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_signal_gate",
+        lambda base_frame: builder.GateResult(
+            name="scf_education_debt_signal", passed=True
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_fit_table",
+        lambda base_frame: {"households": {"share_with_federal_education_debt": 0.2}},
+    )
+    args = SimpleNamespace(
+        seed=7,
+        scf_2025_summary_extract=Path("rscfp2025.dta"),
+        scf_2025_full_extract=Path("p25i6.dta"),
+    )
+    fit_path = tmp_path / "artifacts" / "us_scf_education_debt_fit.json"
+    assert (
+        builder._with_scf_education_debt_stage(
+            frame, args=args, telemetry=None, fit_path=fit_path
+        )
+        is frame
+    )
+    assert calls == [
+        f"load:{Path('rscfp2025.dta')}:{Path('p25i6.dta')}",
+        f"impute:7:{builder.PERIOD}",
+    ]
+    payload = json.loads(fit_path.read_text(encoding="utf-8"))
+    assert payload["weights"] == "pre_calibration_household_weights"
+    assert payload["fit"]["households"]["share_with_federal_education_debt"] == 0.2
+
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_signal_gate",
+        lambda base_frame: builder.GateResult(
+            name="scf_education_debt_signal",
+            passed=False,
+            failures=("constant column",),
+        ),
+    )
+    with pytest.raises(RuntimeError, match="SCF education-debt signal failed"):
+        builder._with_scf_education_debt_stage(
+            frame, args=args, telemetry=None, fit_path=None
+        )
+
+
+def test_scf_education_debt_fit_is_written_at_calibrated_weights_before_scoring(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1074: a --scf-education-debt build tabulates the stage's fit
+    on the frame it exports, at the weights it ships, before any scoring."""
+    import ast
+
+    builder = _load_builder_module()
+    frame = object()
+    seen: list[object] = []
+    fit = {"households": {"share_with_federal_education_debt": 0.3}}
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_fit_table",
+        lambda base_frame: seen.append(base_frame) or fit,
+    )
+    name = builder.US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME
+    path = tmp_path / "artifacts" / name
+    builder._write_us_scf_education_debt_fit(
+        path, frame, weights="calibrated_household_weights"
+    )
+    assert seen == [frame]
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "schema_version": 1,
+        "weights": "calibrated_household_weights",
+        "fit": fit,
+    }
+    assert name != builder.US_SCF_EDUCATION_DEBT_FIT_FILENAME
+
+    # The write is a statement of _main's own body, under the flag alone,
+    # after the export frame takes the calibrated weights and before the
+    # post-export scoring plan. The syntax tree tells a call from a comment.
+    tree = ast.parse(Path(builder.__file__).read_text(encoding="utf-8"))
+    main = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+
+    def calls(node: ast.AST, function: str) -> list[ast.Call]:
+        return [
+            call
+            for call in ast.walk(node)
+            if isinstance(call, ast.Call) and getattr(call.func, "id", "") == function
+        ]
+
+    def position(predicate) -> int:
+        (index,) = [i for i, stmt in enumerate(main.body) if predicate(stmt)]
+        return index
+
+    write = position(lambda stmt: calls(stmt, "_write_us_scf_education_debt_fit"))
+    statement = main.body[write]
+    assert isinstance(statement, ast.If)
+    assert ast.unparse(statement.test) == "args.scf_education_debt"
+    (call,) = calls(statement, "_write_us_scf_education_debt_fit")
+    assert [ast.unparse(arg) for arg in call.args] == [
+        "artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME",
+        "export_frame",
+    ]
+    assert {kw.arg: ast.unparse(kw.value) for kw in call.keywords} == {
+        "weights": "'calibrated_household_weights'"
+    }
+    export = position(
+        lambda stmt: (
+            calls(stmt, "_with_calibrated_weights")
+            and calls(stmt, "_with_l0_refit_weights")
+        )
+    )
+    scoring = position(lambda stmt: calls(stmt, "_record_post_export_scoring_plan"))
+    # test_us_post_export_scoring executes the export and cleanup statements
+    # on their own, without args, so the write follows the ladder cleanup.
+    cleanup = position(
+        lambda stmt: (
+            isinstance(stmt, ast.If)
+            and ast.unparse(stmt.test)
+            == "isinstance(ladder_outcome, ExactKLadderCalibration)"
+        )
+    )
+    assert export < cleanup < write < scoring
 
 
 def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
@@ -4018,7 +4267,7 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
 
     Adding a concept to ``RESTATED_LEDGER_FILTER_CONCEPTS`` without a rule
     would raise at compile time on the first spec carrying it; this pins the
-    three rules that exist instead.
+    four rules that exist instead.
     """
 
     builder = _load_builder_module()
@@ -4027,7 +4276,12 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
         "agi_band",
         "eitc_child_count",
         "age_band",
+        "student_loan_balance_band",
     }
+    # The FSA debt-size band (microcosm#1074) reads the person's federal balance.
+    assert builder._restated_ledger_filter_concept(
+        "ledger_filter_federal_student_loan_balance_lower_bound"
+    ) == ("federal_student_loan_balance", "lower")
     assert builder._restated_ledger_filter_concept(_RESTATED_AGE_UPPER) == (
         "age",
         "upper",
@@ -4079,7 +4333,10 @@ def test_pinned_chronicle_feed_compiles_no_unsupported_ledger_filters() -> None:
     list. That is deliberate — the rows keep pinning the compile the
     supported/identity classification was reviewed against, and
     :func:`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
-    is the arm that meets the restated keys on the live feed.
+    is the arm that meets the restated keys on the live feed. The rows also
+    predate microcosm#1206, so the Part B premium row still names
+    ``gross_medicare_part_b_premium``; the live mapping binds
+    ``gross_medicare_part_b_premium_if_enrolled``.
     """
 
     builder = _load_builder_module()
@@ -5891,10 +6148,9 @@ def test_release_calibration_diagnostics_include_gate_failures(
     }
 
 
-def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
-    small_frame,
-    tmp_path,
-) -> None:
+def _write_release_diagnostics_with_nan_final_loss(small_frame, tmp_path) -> Path:
+    """Write release diagnostics for a one-target US registry with a NaN loss."""
+
     builder = _load_builder_module()
     base_h5 = tmp_path / "base.h5"
     base_h5.write_bytes(b"h5")
@@ -5967,30 +6223,44 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
         # writer; keep that call boundary explicit rather than moving the fix.
         default_dataset={"method": "dense_no_l0", "final_loss": None},
     )
+    return tmp_path / "calibration_diagnostics.json"
 
-    diagnostics = json.loads((tmp_path / "calibration_diagnostics.json").read_text())
-    assert diagnostics["schema_version"] == 8
+
+def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
+    small_frame,
+    tmp_path,
+) -> None:
+    written = _write_release_diagnostics_with_nan_final_loss(small_frame, tmp_path)
+
+    diagnostics = json.loads(written.read_text())
+    # Published as schema 9: the labels sit in catalogs, the row refers to them.
+    assert diagnostics["schema_version"] == 9
     assert diagnostics["targets"][0]["source"] == "fixture"
     assert diagnostics["targets"][0]["hierarchy"] == {
-        "provider": {
-            "id": "irs_soi",
-            "label": "IRS Statistics of Income",
-        },
-        "category": {
-            "id": "irs_soi.income",
-            "label": "Income",
-            "provider_id": "irs_soi",
-        },
-        "geography": {
-            "id": "0400000US06",
-            "label": "California",
-            "level": "state",
-        },
+        "category_id": "irs_soi.income",
+        "geography_id": "0400000US06",
         "dimensions": [],
         "target": {"id": "income", "label": "Income"},
     }
+    assert diagnostics["hierarchy_catalogs"] == {
+        "providers": [{"id": "irs_soi", "label": "IRS Statistics of Income"}],
+        "categories": [
+            {"id": "irs_soi.income", "label": "Income", "provider_id": "irs_soi"}
+        ],
+        "geographies": [{"id": "0400000US06", "label": "California", "level": "state"}],
+        "dimensions": [],
+    }
     assert diagnostics["final_loss"] is None
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
+
+
+def test_release_calibration_diagnostics_match_the_published_json_schema(
+    small_frame,
+    tmp_path,
+) -> None:
+    written = _write_release_diagnostics_with_nan_final_loss(small_frame, tmp_path)
+
+    assert published_json_schema_errors(load_strict_json(written.read_bytes())) == []
 
 
 #: What the stubbed stored-input gate refuses in the ``stored_input_refused``
@@ -6000,6 +6270,18 @@ STORED_INPUT_REFUSAL_FIXTURE = (
     "'would_claim_wic' (person table) looks like a model input but is not a "
     "variable in policyengine-us 2.2.1, so the engine ignores it."
 )
+#: What the stubbed stored-input gate reports it checked: the verdict shape
+#: ``_stored_input_gate_failures`` returns, against the harness runtime's
+#: policyengine-us (2.2.1), so the green run's manifests meet the publisher's
+#: stored-input requirement (microcosm#1034).
+STORED_INPUT_GATE_DETAILS = {
+    "evaluated": True,
+    "engine": "policyengine-us 2.2.1",
+    "stored_columns": 12,
+    "registered_non_variables": ["person_source_id"],
+    "refused": [],
+    "register_sha256": register_sha256(),
+}
 #: What the stubbed post-write check reports in ``stored_input_premise``.
 STORED_INPUT_PREMISE_FIXTURE = (
     "Stored-input gate premise failed: the written H5 stores model-named "
@@ -6025,18 +6307,31 @@ def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
     assert not (release_dir / "release_manifest.json").exists()
     assert not (release_dir / "build_manifest.json").exists()
     assert "scorer_opened_on" not in captured
+    # microcosm#1034: either way the run leaves the gate's own verdict, as
+    # the tool writes every gate's evidence before the batched raise.
+    evidence = json.loads((release_dir / "stored_inputs.json").read_text())
     if mode == "stored_input_refused":
         assert str(abort.value) == (
             f"Release gates failed: {STORED_INPUT_REFUSAL_FIXTURE}"
         )
         assert "written_dataset" not in captured
         assert "stored_input_post_write_check" not in captured
+        assert evidence["stored_inputs"] == {
+            "passed": False,
+            "failures": [STORED_INPUT_REFUSAL_FIXTURE],
+            "details": {**STORED_INPUT_GATE_DETAILS, "refused": ["would_claim_wic"]},
+        }
     else:
         assert str(abort.value) == STORED_INPUT_PREMISE_FIXTURE
         assert captured["stored_input_post_write_check"] == (
             captured["written_dataset"],
             captured["written_dataset"],
         )
+        assert evidence["stored_inputs"] == {
+            "passed": True,
+            "failures": [],
+            "details": STORED_INPUT_GATE_DETAILS,
+        }
 
 
 def _run_dry_run_release(
@@ -6094,6 +6389,13 @@ def _run_dry_run_release(
     assert not out.exists()
     inputs = payload["inputs"]
     assert inputs["git_dirty"] is True
+    # The fixture's feed check finds no difference (microcosm#454).
+    assert inputs["esi_anchor_feed"] == {
+        "enforced": True,
+        "matches": True,
+        "mismatches": [],
+    }
+    assert inputs["waivers"]["allow_unpinned_feed"] is False
     # The stop point's time is taken before any grading.
     if mode == "dry_run_refusal":
         assert inputs["seconds_to_stop_point"] is None
@@ -6183,6 +6485,8 @@ def _run_green_register_release(
         _check_build_manifest,
         _check_local_artifact_hashes,
         _check_release_manifest,
+        _check_us_stored_input_evidence,
+        stored_input_evidence_manifest_block,
     )
     from microcosm.data.release import _release_manifest_release_artifacts
 
@@ -6256,6 +6560,39 @@ def _run_green_register_release(
                 def simulate(reform):
                     return SimpleNamespace(calculate=calculate)
 
+            if name == "medicare_irmaa_holdout":
+                captured["irmaa_holdout_scored"] = self.dataset_path
+                record.update(
+                    baseline_passes=1,
+                    reform_passes=0,
+                    reform_systems=0,
+                    n_batches=1,
+                    max_batch_households=2,
+                )
+
+                def calculate(variable, period):
+                    assert period == builder.PERIOD
+                    # One enrollee in IRMAA tier 1 (2024: $69.90 and $12.90 a
+                    # month) and one eligible non-enrollee.
+                    values = {
+                        "medicare_enrolled": [True, False],
+                        "gross_medicare_part_b_premium_if_enrolled": [
+                            12 * (174.70 + 69.90),
+                            0.0,
+                        ],
+                        "base_part_b_premium": [12 * 174.70, 12 * 174.70],
+                        "income_adjusted_part_d_premium_surcharge": [
+                            12 * 12.90,
+                            0.0,
+                        ],
+                    }
+                    return builder._PostExportValues(
+                        np.array(values[variable]), np.array([2.0, 3.0])
+                    )
+
+                def simulate(reform):
+                    return SimpleNamespace(calculate=calculate)
+
             return SimpleNamespace(name=name, simulate=simulate, record=lambda: record)
 
         def finish_consumer(self, scoring):
@@ -6312,10 +6649,14 @@ def _run_green_register_release(
         "input_mass_parity",
         "qrf_tail_concentration",
     ]
-    # All four stale verdicts were cleared before any gate ran, including the
-    # three this run goes on to rewrite: a gate that crashed or was skipped
-    # must leave no verdict rather than the superseded one.
-    assert captured["gate_evidence_on_disk_at_first_gate"] == []
+    # Every stale verdict was cleared before any gate ran, including the ones
+    # this run goes on to rewrite: a gate that crashed or was skipped must
+    # leave no verdict rather than the superseded one. The stored-input
+    # verdict is the one already on disk, and it is this run's own: its gate
+    # ran before the clear and its file is written right after
+    # (microcosm#1034).
+    assert captured["gate_evidence_on_disk_at_first_gate"] == ["stored_inputs.json"]
+    assert captured["stale_gate_evidence_at_first_gate"] == []
     assert captured["qrf_tail_register_seen"] == {
         "estate_income": "donor tail concentrated before calibration"
     }
@@ -6348,6 +6689,18 @@ def _run_green_register_release(
     assert working_age["share"] == 0
     assert older["weighted_ssi_recipients"] == 3
     assert older["share"] == 1
+    assert captured["irmaa_holdout_scored"] == captured["written_dataset"]
+    irmaa = json.loads((release_dir / "us_medicare_irmaa_holdout.json").read_text())
+    assert irmaa["status"] == "available"
+    assert irmaa["release_id"] == release_id
+    assert irmaa["enforced"] is False
+    assert irmaa["used_for_calibration"] is False
+    assert irmaa["benchmark"]["year"] == 2024
+    part_b, part_d = irmaa["parts"]
+    assert part_b["weighted_payers"] == 2
+    assert part_b["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 69.90)
+    assert part_d["weighted_payers"] == 2
+    assert part_d["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 12.90)
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     if not skipped_smoke:
@@ -6369,9 +6722,13 @@ def _run_green_register_release(
         assert block["post_export_scoring"] == {
             "dataset_sha256": build_manifest["dataset"]["sha256"],
             "consumers": (
-                ["ssi_social_security_holdout"]
+                ["ssi_social_security_holdout", "medicare_irmaa_holdout"]
                 if skipped_smoke
-                else ["reform_coverage_smoke", "ssi_social_security_holdout"]
+                else [
+                    "reform_coverage_smoke",
+                    "ssi_social_security_holdout",
+                    "medicare_irmaa_holdout",
+                ]
             ),
         }
 
@@ -6441,10 +6798,43 @@ def _run_green_register_release(
         ),
     }
     expected_gate_evidence = {
+        "esi_premiums": "bound",
         "input_coverage": "bound",
         "input_mass_parity": "bound",
         "qrf_tail_concentration": "bound",
         "reform_coverage_smoke": "skipped" if skipped_smoke else "bound",
+        "stored_inputs": "bound",
+    }
+    stored_inputs_evidence = json.loads(
+        (release_dir / "stored_inputs.json").read_text()
+    )
+    assert stored_inputs_evidence == {
+        "schema_version": 1,
+        "enforced": True,
+        "checked_at_stage": "export frame",
+        "stored_inputs": {
+            "passed": True,
+            "failures": [],
+            "details": STORED_INPUT_GATE_DETAILS,
+        },
+    }
+    # microcosm#454: the ESI premium signal gate graded the base before the
+    # solve and the export after it; the anchor gate graded the export at the
+    # release period and its verdict is the bound esi_premiums evidence, with
+    # both signal verdicts recorded beside it.
+    assert captured["esi_premiums_signal_gate_calls"] == 2
+    assert captured["esi_premiums_anchor_periods"] == [builder.PERIOD]
+    signal_evidence = {"evaluated": True, "passed": True, "failures": []}
+    assert json.loads((release_dir / "esi_premiums.json").read_text()) == {
+        "schema_version": 3,
+        "enforced": True,
+        "esi_premiums": {
+            "passed": True,
+            "failures": [],
+            "details": {"checked": True},
+        },
+        "anchor_feed": {"enforced": True, "matches": True, "mismatches": []},
+        "signal": {"base_frame": signal_evidence, "export_frame": signal_evidence},
     }
     for block in (build_manifest, release_manifest["build"]):
         assert block["gate_evidence"] == expected_gate_evidence
@@ -6457,6 +6847,10 @@ def _run_green_register_release(
         # One reading, recorded in the diagnostics and both manifests.
         assert runtime == captured["diagnostics"]["calibration_runtime"]
         assert block["fiscal_target_exclusion_receipt"] == expected_receipt
+        # microcosm#1034: the stored-input verdict, bound to the pinned H5.
+        assert block["stored_inputs"] == stored_input_evidence_manifest_block(
+            stored_inputs_evidence, dataset_sha256=build_manifest["dataset"]["sha256"]
+        )
     # The manifests pin the reference the export-mass gate compared against.
     assert captured["export_reference_loaded"] == export_mass_reference
     parity_kwargs = captured["export_input_mass_kwargs"]
@@ -6469,6 +6863,15 @@ def _run_green_register_release(
     _check_build_manifest(build_manifest, release_id, failures)
     _check_release_manifest(release_manifest, release_id, failures)
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    # Producer and publisher agree: what the tool wrote meets the stored-input
+    # evidence requirement (microcosm#1034).
+    _check_us_stored_input_evidence(
+        release_dir,
+        build_manifest=build_manifest,
+        release_manifest=release_manifest,
+        failures=failures,
+        evidence_tier=False,
+    )
     assert failures == []
     assert set(bound.values()) <= set(_release_manifest_release_artifacts(release_dir))
     assert not list(release_dir.glob("final_household_weight*"))
@@ -6944,6 +7347,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values()
                 if (out / "releases" / release_id / filename).exists()
             )
+            captured["stale_gate_evidence_at_first_gate"] = sorted(
+                filename
+                for filename in captured["gate_evidence_on_disk_at_first_gate"]
+                if (out / "releases" / release_id / filename).read_text()
+                == '{"stale": true}'
+            )
             return builder.GateResult(
                 name="input_coverage",
                 passed=True,
@@ -7044,9 +7453,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         if terminal_mode == "stored_input_refused":
             return (
                 [STORED_INPUT_REFUSAL_FIXTURE],
-                {"evaluated": True, "refused": ["would_claim_wic"], "fixture": stage},
+                {**STORED_INPUT_GATE_DETAILS, "refused": ["would_claim_wic"]},
             )
-        return ([], {"evaluated": True, "refused": [], "fixture": stage})
+        return ([], dict(STORED_INPUT_GATE_DETAILS))
 
     monkeypatch.setattr(builder, "_stored_input_gate_failures", fake_stored_input_gate)
 
@@ -7089,6 +7498,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             facts=({"fact": 1},),
             facts_sha256="facts-sha",
             manifest_sha256=None,
+            fact_schema_versions=(),
             provenance=lambda: {
                 "path_name": "facts.jsonl",
                 "fact_row_count": 1,
@@ -7099,9 +7509,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ),
     )
     # The invented feed is not the committed pin; this test is about the
-    # corridor contract, not the pin, which has its own tests.
+    # corridor contract, not the pin, which has its own tests. Nor does it
+    # carry the ESI anchor's B4923C facts (checked in test_us_esi_premiums).
     monkeypatch.setattr(
         builder, "_check_committed_us_ledger_feed_pin", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        builder, "us_esi_premiums_anchor_feed_mismatches", lambda facts: []
     )
     monkeypatch.setattr(
         builder,
@@ -8291,6 +8705,32 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_other_health_insurance_signal_gate",
         fake_other_health_insurance_signal_gate,
     )
+
+    def fake_esi_premiums_signal_gate(frame):
+        # Called on the base before the solve and on the export after it.
+        captured["esi_premiums_signal_gate_calls"] = (
+            captured.get("esi_premiums_signal_gate_calls", 0) + 1
+        )
+        return builder.GateResult(
+            name="esi_premiums_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    def fake_esi_premiums_anchor_gate(frame, *, time_period):
+        captured.setdefault("esi_premiums_anchor_periods", []).append(time_period)
+        return builder.GateResult(
+            name="esi_premiums_anchor",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder, "us_esi_premiums_signal_gate", fake_esi_premiums_signal_gate
+    )
+    monkeypatch.setattr(
+        builder, "us_esi_premiums_anchor_gate", fake_esi_premiums_anchor_gate
+    )
     monkeypatch.setattr(
         builder,
         "_with_snap_state_take_up_outputs",
@@ -9008,6 +9448,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "reform_validation",
         "demographics",
         "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
     ]
     assert captured["diagnostics"]["default_dataset"] == {
         "method": "l0_refit",
@@ -12146,7 +12587,7 @@ def test_exact_k_receipt_carries_current_worker_authentication() -> None:
     inputs = _gate_failed_exact_k_inputs(builder)
     worker_authentication = {
         "manifest_schema_version": 10,
-        "execution_config_schema_version": 5,
+        "execution_config_schema_version": 6,
         "worker_execution_schema_version": 1,
         "semantic_identity_sha256": "6" * 64,
         "audit_aliases": {
@@ -12454,6 +12895,69 @@ def test_build_manifests_selects_ssi_social_security_holdout_for_publication(
     assert failures == []
 
 
+@pytest.mark.parametrize(
+    "scoring_available", (True, False), ids=("available", "unavailable")
+)
+def test_build_manifests_selects_medicare_irmaa_holdout_for_publication(
+    monkeypatch, tmp_path, scoring_available
+) -> None:
+    from microcosm.build.us_runtime.medicare_irmaa_holdout import (
+        medicare_irmaa_holdout_payload,
+    )
+    from microcosm.data.contract import (
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+
+    def score_holdout(name, consumer, **kwargs):
+        assert name == "medicare_irmaa_holdout"
+        if not scoring_available:
+            raise RuntimeError("holdout scoring is unavailable")
+        return medicare_irmaa_holdout_payload(
+            np.array([True, False]),
+            np.array([3_000.0, 0.0]),
+            np.array([2_000.0, 2_000.0]),
+            np.array([200.0, 0.0]),
+            np.array([1.0, 2.0]),
+            period=builder.PERIOD,
+        )
+
+    monkeypatch.setattr(builder, "_score_post_export_consumer", score_holdout)
+    builder._write_medicare_irmaa_holdout(
+        release_dir=release_dir,
+        dataset_path=artifact_root / builder.DATASET_FILENAME,
+        release_id=release_id,
+    )
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root)
+    )
+
+    filename = "us_medicare_irmaa_holdout.json"
+    holdout_path = release_dir / filename
+    holdout = json.loads(holdout_path.read_text())
+    assert holdout["status"] == ("available" if scoring_available else "unavailable")
+    assert holdout["release_id"] == release_id
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert manifest["artifacts"]["us_medicare_irmaa_holdout"] == {
+        "kind": "diagnostics",
+        "path": filename,
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": hashlib.sha256(holdout_path.read_bytes()).hexdigest(),
+    }
+    assert filename in _release_manifest_release_artifacts(release_dir)
+    failures: list[str] = []
+    _check_release_manifest(manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, manifest, failures)
+    assert failures == []
+
+
 @pytest.mark.parametrize("readable", (True, False), ids=("available", "unavailable"))
 def test_build_manifests_selects_population_structure_holdout_for_publication(
     monkeypatch, tmp_path, readable
@@ -12532,13 +13036,16 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     monkeypatch, tmp_path
 ) -> None:
     """Route A remediation PR-3: a certified waiver must ship with the
-    release. The four gate verdicts become release artifacts, and both
-    manifests record the register the tail gate evaluated, the export-mass
-    reference, the solve's thread geometry and the exclusion receipt."""
+    release. The gate verdicts become release artifacts, and both manifests
+    record the register the tail gate evaluated, the export-mass reference,
+    the solve's thread geometry, the exclusion receipt and the stored-input
+    verdict (microcosm#1034) for the H5 they pin."""
     from microcosm.data.contract import (
         _check_build_manifest,
         _check_local_artifact_hashes,
         _check_release_manifest,
+        _check_us_stored_input_evidence,
+        stored_input_evidence_manifest_block,
     )
     from microcosm.data.release import _release_manifest_release_artifacts
 
@@ -12569,10 +13076,20 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
         == []
     )
     assert failures == []
-    for filename in ("input_coverage.json", "input_mass_parity.json"):
+    for filename in (
+        "esi_premiums.json",
+        "input_coverage.json",
+        "input_mass_parity.json",
+    ):
         (release_dir / filename).write_text('{"schema_version": 1, "enforced": true}')
     (release_dir / "reform_coverage_smoke.json").write_text(
         '{"schema_version": 1, "enforced": true}'
+    )
+    stored_inputs_payload = builder._record_stored_inputs_gate_evidence(
+        release_dir,
+        failures=[],
+        details=STORED_INPUT_GATE_DETAILS,
+        telemetry=builder._TerminalBatchProgress(None, []),
     )
     reference = {
         "path": "/runtime/forensics/populace_us_2024.h5",
@@ -12631,6 +13148,10 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
                 json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest(),
         },
+        "stored_inputs": stored_input_evidence_manifest_block(
+            stored_inputs_payload,
+            dataset_sha256=hashlib.sha256(b"h5").hexdigest(),
+        ),
     }
     for key, block in expected.items():
         assert build_manifest[key] == block
@@ -12641,6 +13162,13 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     _check_build_manifest(build_manifest, release_id, contract_failures)
     _check_release_manifest(release_manifest, release_id, contract_failures)
     _check_local_artifact_hashes(release_dir, release_manifest, contract_failures)
+    _check_us_stored_input_evidence(
+        release_dir,
+        build_manifest=build_manifest,
+        release_manifest=release_manifest,
+        failures=contract_failures,
+        evidence_tier=False,
+    )
     assert contract_failures == []
     assert set(builder.US_RELEASE_GATE_EVIDENCE_FILES.values()) <= set(
         _release_manifest_release_artifacts(release_dir)
@@ -12695,11 +13223,16 @@ def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_re
     assert build["fiscal_target_exclusion_receipt"]["receipt_sha256"] is None
     # A verdict that was not written is named, never silently missing.
     assert build["gate_evidence"] == {
+        "esi_premiums": "not_evaluated",
         "input_coverage": "not_evaluated",
         "input_mass_parity": "not_evaluated",
         "qrf_tail_concentration": "bound",
         "reform_coverage_smoke": "not_evaluated",
+        "stored_inputs": "not_evaluated",
     }
+    # No stored-input verdict was written, so the manifests carry no block,
+    # and the publisher would refuse the release for it (microcosm#1034).
+    assert "stored_inputs" not in build
     # Only the verdict this run wrote is an artifact; direct callers that
     # pass no reference or runtime get no such block.
     evidence_keys = set(builder.US_RELEASE_GATE_EVIDENCE_FILES)
@@ -12713,23 +13246,31 @@ def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_re
 def test_build_manifests_without_gate_evidence_binds_none() -> None:
     builder = _load_builder_module()
     assert builder._qrf_tail_register_manifest_block(Path("/nonexistent")) is None
+    assert (
+        builder._stored_inputs_manifest_block(
+            Path("/nonexistent"), dataset_sha256="d" * 64
+        )
+        is None
+    )
     assert builder._gate_evidence_artifacts(Path("/nonexistent"), revision="r") == {}
 
 
 def test_gate_evidence_status_names_skipped_and_unevaluated_gates() -> None:
     """A skipped smoke and a gate that crashed under earlier failures both
     leave no verdict; the status block tells them apart. A gate cannot be
-    both skipped and bound, and only the four bound gates can be skipped."""
+    both skipped and bound, and only the registered gates can be skipped."""
     builder = _load_builder_module()
     bound = {"input_coverage": {}, "input_mass_parity": {}}
 
     assert builder._gate_evidence_status(
         bound, skipped_gates=("reform_coverage_smoke",)
     ) == {
+        "esi_premiums": "not_evaluated",
         "input_coverage": "bound",
         "input_mass_parity": "bound",
         "qrf_tail_concentration": "not_evaluated",
         "reform_coverage_smoke": "skipped",
+        "stored_inputs": "not_evaluated",
     }
     with pytest.raises(ValueError, match=r"skipped have a verdict.*input_coverage"):
         builder._gate_evidence_status(bound, skipped_gates=("input_coverage",))
@@ -12820,6 +13361,7 @@ def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
             "_export_input_mass_gate",
             "_record_qrf_tail_concentration_gate",
             "us_reform_coverage_smoke_gate",
+            "_record_stored_inputs_gate_evidence",
         }
     )
     assert clear_loop.lineno < first_gate
@@ -13567,6 +14109,8 @@ def test_us_release_id_guard() -> None:
 
 class _TestEmitter:
     available = True
+    #: No emitter process: a staging writer built with this one hands nothing over.
+    client = None
 
     def __init__(self) -> None:
         self.events = []
@@ -13616,6 +14160,8 @@ def test_staging_bundle_defaults_on_and_no_staging_disables_files(
             staging_run_id=None,
             staging_prefix=args.staging_prefix,
             staging_upload_interval_seconds=60.0,
+            epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+            dense_default_dataset=False,
         )
 
     progress = module._build_progress(
@@ -13637,6 +14183,57 @@ def test_staging_bundle_defaults_on_and_no_staging_disables_files(
     )
     assert progress.staging_bundle is None
     assert progress.staging_opt_out_reason == "--no-staging"
+
+
+def test_build_progress_hands_staging_files_to_the_build_emitter(
+    tmp_path, monkeypatch
+) -> None:
+    from microcosm.build import staging_storage
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    module = _load_builder_module()
+    monkeypatch.setattr(
+        staging_storage.HuggingFaceDatasetStorage,
+        "_api",
+        lambda storage: pytest.fail("the build contacted the Hub itself"),
+    )
+    emitter = FakeTelemetryEmitter(TelemetryRun("rel-1", "US", "us_fiscal_refresh"))
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=tmp_path / "stage",
+        staging_repo_id="policyengine/populace-us-staging",
+        staging_run_id=None,
+        staging_prefix="runs",
+        staging_upload_interval_seconds=60.0,
+        epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+        dense_default_dataset=False,
+    )
+
+    progress = module._build_progress(
+        args, release_root=tmp_path, release_id="rel-1", emitter=emitter
+    )
+    progress.stage("target_compilation", force_upload=True)
+    progress.fail(RuntimeError("build exploded"))
+
+    client = emitter.client
+    assert progress.staging_bundle.emitter_client is client
+    assert {request.repository for request in client.run_file_requests} == {
+        "policyengine/populace-us-staging"
+    }
+    # The failed state reaches the emitter before the build's telemetry
+    # outcome shuts the emitter down.
+    last_hand_over = max(
+        index for index, call in enumerate(client.calls) if call == "stage_run_files"
+    )
+    assert last_hand_over < client.calls.index("close")
+    remote = client.hub_json(
+        "policyengine/populace-us-staging", "runs/rel-1/progress.json"
+    )
+    assert remote["status"] == "failed"
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["failed"]
 
 
 def test_hosted_progress_survives_staging_bundle_failure() -> None:
@@ -13663,6 +14260,191 @@ def test_hosted_progress_survives_staging_bundle_failure() -> None:
             {"status": "running", "message": None, "batches": 4},
         )
     ]
+
+
+def _solver_epoch_events(phase: str, epochs: int) -> list[dict[str, object]]:
+    """One solve's per-epoch reports, as the calibrator emits them."""
+
+    return [
+        {
+            "phase": phase,
+            "kind": "calibration_epoch",
+            "epoch": epoch,
+            "epochs": epochs,
+            "loss": 100.0 / epoch,
+        }
+        for epoch in range(1, epochs + 1)
+    ]
+
+
+def _forwarded_calibration_events(emitter: _TestEmitter) -> list[dict[str, object]]:
+    return [recorded[1] for recorded in emitter.events if recorded[0] == "calibration"]
+
+
+def test_us_build_progress_forwards_each_solve_first_final_and_every_tenth_epoch(
+    tmp_path,
+) -> None:
+    """The US forwards the UK's epochs: each solve's first and last, every tenth.
+
+    The solver reports every epoch (microcosm#1292). An L0 selection and its
+    refit are two solves whose epoch counters each restart at 1, so each
+    keeps its own first and final epoch, and both the hosted emitter and the
+    staging bundle receive the same thinned rows.
+    """
+
+    module = _load_builder_module()
+    emitter = _TestEmitter()
+    run_dir = tmp_path / "stage"
+    progress = module._BuildProgress(
+        run_id="rel-1",
+        emitter=emitter,
+        staging_bundle=module.StagingRunBundleWriter(
+            run_id="rel-1",
+            candidate_release_id="rel-1",
+            run_dir=run_dir,
+        ),
+    )
+    solver_reports = [
+        *_solver_epoch_events("l0_selection", 25),
+        {"kind": "budget_probe", "budget_iteration": 1},
+        *_solver_epoch_events("post_l0_refit", 25),
+    ]
+
+    for report in solver_reports:
+        progress.calibration_progress(report)
+
+    expected_rows = [
+        (phase, epoch, 100.0 / epoch)
+        for phase in ("l0_selection", "post_l0_refit")
+        for epoch in (1, 10, 20, 25)
+    ]
+    forwarded = _forwarded_calibration_events(emitter)
+    assert [
+        (event.get("phase"), event.get("epoch"), event.get("loss"))
+        for event in forwarded
+    ] == expected_rows
+    staged_rows = json.loads((run_dir / "calibration_progress.json").read_text())[
+        "events"
+    ]
+    assert [(row["epoch"], row["epochs"], row["loss"]) for row in staged_rows] == [
+        (epoch, 25, loss) for _phase, epoch, loss in expected_rows
+    ]
+    latest = json.loads((run_dir / "progress.json").read_text())["calibration"]
+    assert (latest["epoch"], latest["epochs"], latest["loss"]) == (25, 25, 4.0)
+
+
+@pytest.mark.parametrize("epochs", [10, 5])
+@pytest.mark.parametrize(
+    "solve_phases",
+    [("l0_selection", "post_l0_refit"), ("l0_selection", "exact_k_refit")],
+    ids=["l0_refit", "exact_k_below_the_pool"],
+)
+def test_us_short_run_forwards_each_solve_first_epoch_so_the_epoch_falls_at_the_refit(
+    tmp_path, solve_phases, epochs
+) -> None:
+    """A run no longer than the stride still shows both of its solves.
+
+    With ``--epochs`` of 10 or fewer, no epoch but the last is a multiple of
+    the stride, so without each solve's first epoch an L0 run, or an exact-k
+    run whose k is below the pool, forwarded ``(epochs, epochs)`` twice. The
+    calibration-diagnostics build monitor starts a new solver pass only when
+    the epoch falls or the epoch total changes, so it merged the selection and
+    its refit into one pass with no start time it could back-date
+    (microcosm#1292).
+    """
+
+    module = _load_builder_module()
+    emitter = _TestEmitter()
+    run_dir = tmp_path / "stage"
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=run_dir,
+        staging_repo_id=None,
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+        epochs=epochs,
+        dense_default_dataset=False,
+    )
+    progress = module._build_progress(
+        args,
+        release_root=tmp_path,
+        release_id="rel-1",
+        emitter=emitter,
+    )
+
+    for phase in solve_phases:
+        for report in _solver_epoch_events(phase, epochs):
+            progress.calibration_progress(report)
+
+    assert [
+        (event["phase"], event["epoch"])
+        for event in _forwarded_calibration_events(emitter)
+    ] == [(phase, epoch) for phase in solve_phases for epoch in (1, epochs)]
+    staged_epochs = [
+        row["epoch"]
+        for row in json.loads((run_dir / "calibration_progress.json").read_text())[
+            "events"
+        ]
+    ]
+    assert staged_epochs == [1, epochs, 1, epochs]
+    refit_first_row = 2
+    assert staged_epochs[refit_first_row] < staged_epochs[refit_first_row - 1]
+
+
+@pytest.mark.parametrize(
+    ("epochs", "dense_default_dataset", "expected_stride", "expected_rows"),
+    [
+        # The default L0 selection and refit: 2 x 1,500 epochs.
+        (1_500, False, 10, 302),
+        # 2 x 15,000 epochs would be 3,000 rows at the base stride.
+        (15_000, False, 13, 2_310),
+        # A single dense solve of the same total length.
+        (30_000, True, 13, 2_309),
+    ],
+)
+def test_us_build_progress_stride_keeps_long_runs_under_the_row_cap(
+    tmp_path, epochs, dense_default_dataset, expected_stride, expected_rows
+) -> None:
+    """The stride grows with the run's solves, as the UK's does.
+
+    No run forwards more than the UK's 2,400 epochs on the stride plus each
+    solve's first and last epoch, whatever ``--epochs`` says (microcosm#1292).
+    """
+
+    module = _load_builder_module()
+    emitter = _TestEmitter()
+    args = SimpleNamespace(
+        no_staging=True,
+        staging_dir=None,
+        staging_repo_id=None,
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+        epochs=epochs,
+        dense_default_dataset=dense_default_dataset,
+    )
+    progress = module._build_progress(
+        args,
+        release_root=tmp_path,
+        release_id="rel-1",
+        emitter=emitter,
+    )
+    phases = ("dense",) if dense_default_dataset else ("l0_selection", "post_l0_refit")
+
+    for phase in phases:
+        for report in _solver_epoch_events(phase, epochs):
+            progress.calibration_progress(report)
+
+    forwarded = _forwarded_calibration_events(emitter)
+    assert len(forwarded) == expected_rows
+    assert len(forwarded) <= 2_400 + 2 * len(phases)
+    for phase in phases:
+        assert [event["epoch"] for event in forwarded if event["phase"] == phase] == [
+            epoch
+            for epoch in range(1, epochs + 1)
+            if epoch == 1 or epoch % expected_stride == 0 or epoch == epochs
+        ]
 
 
 def test_blank_staging_repo_id_is_refused_at_parse_time(monkeypatch, capsys) -> None:
@@ -13754,6 +14536,8 @@ def test_build_progress_replaces_any_previous_active_run(tmp_path) -> None:
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
         staging_upload_interval_seconds=60.0,
+        epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+        dense_default_dataset=False,
     )
     first = module._build_progress(
         args,
@@ -13819,6 +14603,8 @@ def test_staging_bundle_refuses_a_destinationless_namespace(tmp_path) -> None:
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
         staging_upload_interval_seconds=60.0,
+        epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+        dense_default_dataset=False,
     )
 
     with pytest.raises(ValueError, match="no destination"):
@@ -16270,6 +17056,54 @@ def test_committed_feed_pin_is_waived_only_by_the_flag() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("facts_sha256", "rows", "message"),
+    [
+        ("a" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+        ("a" * 64, ("chronicle.consumer_fact.v5",), "consumer_fact_schema_versions"),
+        ("a" * 64, (), "consumer_fact_schema_versions"),
+        ("f" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+    ],
+    ids=["undeclared", "not_in_the_pin", "unstamped", "undeclared_unpinned_feed"],
+)
+def test_feed_row_contract_check_refuses_rows_the_pin_or_epoch_lacks(
+    facts_sha256, rows, message
+) -> None:
+    """The release build holds the rows' row contracts, not only the pin's list.
+
+    On the committed feed (its facts digest) the rows must carry exactly the
+    pin's list, which a re-pin types by hand; a feed admitted by
+    ``--allow-unpinned-feed`` is held only to the declared row contracts.
+    """
+    builder = _load_builder_module()
+    check = getattr(builder, "_check_us_ledger_feed_row_contracts", None)
+    assert callable(check)
+    bare = _feed_pin(bare=True)
+    assert bare.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
+    check(("chronicle.consumer_fact.v3",), facts_sha256="a" * 64, pin=bare)
+    check(("chronicle.consumer_fact.v5",), facts_sha256="f" * 64, pin=bare)
+
+    with pytest.raises(ValueError) as refusal:
+        check(rows, facts_sha256=facts_sha256, pin=bare)
+
+    assert message in str(refusal.value)
+
+
+def test_main_checks_the_feed_row_contracts_before_compiling_targets() -> None:
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    call = (
+        "_check_us_ledger_feed_row_contracts(\n"
+        "        ledger_artifact.fact_schema_versions,"
+    )
+    assert call in source
+    assert source.count("_check_us_ledger_feed_row_contracts(") == 1
+    pinned = source.index("_check_committed_us_ledger_feed_pin(")
+    checked = source.index(call)
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert pinned < checked < compiled
+
+
 def _minimal_pin_argv() -> list[str]:
     return [
         "--base-h5",
@@ -16292,6 +17126,83 @@ def test_main_checks_the_committed_feed_pin_before_compiling_targets() -> None:
     compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
     assert loaded < checked < compiled
     assert source.count("_check_committed_us_ledger_feed_pin(") == 1
+
+
+def test_main_holds_the_esi_anchor_to_the_feed_before_compiling_targets() -> None:
+    """microcosm#454: the anchor-versus-feed check runs on the pinned feed."""
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    checked = source.index("_check_committed_us_ledger_feed_pin(")
+    anchored = source.index(
+        "_check_us_esi_anchor_against_feed(\n        ledger_artifact.facts"
+    )
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert checked < anchored < compiled
+    assert source.count("_check_us_esi_anchor_against_feed(") == 1
+    # The same list reaches the evidence file.
+    assert "_esi_anchor_feed_evidence(\n" in source
+
+
+def _b4923c_facts(values: dict[int, int]) -> list[dict]:
+    return [
+        {
+            "layout": {
+                "record_set_id": f"bea_nipa.cy{year}.private_group_health_insurance"
+            },
+            "value": value,
+        }
+        for year, value in values.items()
+    ]
+
+
+def test_the_esi_anchor_feed_check_passes_on_the_banked_series() -> None:
+    builder = _load_builder_module()
+    facts = _b4923c_facts(
+        {2023: 923_195_000_000, 2024: 977_034_000_000, 2025: 1_027_929_000_000}
+    )
+    assert (
+        builder._check_us_esi_anchor_against_feed(
+            facts, allow_unpinned_feed=False, allow_esi_premium_gaps=False
+        )
+        == []
+    )
+
+
+def test_the_esi_anchor_feed_check_refuses_a_feed_that_disagrees() -> None:
+    """A revised or missing B4923C fact stops a release build."""
+    builder = _load_builder_module()
+    # BEA's pre-revision 2024 value, and no 2025 fact.
+    facts = _b4923c_facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})
+    with pytest.raises(SystemExit, match="anchor differs from the Chronicle feed"):
+        builder._check_us_esi_anchor_against_feed(
+            facts, allow_unpinned_feed=False, allow_esi_premium_gaps=False
+        )
+
+
+@pytest.mark.parametrize(
+    ("allow_unpinned_feed", "allow_esi_premium_gaps"),
+    [(True, False), (False, True), (True, True)],
+)
+def test_a_waived_esi_anchor_feed_mismatch_stays_on_the_record(
+    allow_unpinned_feed, allow_esi_premium_gaps
+) -> None:
+    """A diagnostic flag lets the build go on; the difference is recorded."""
+    builder = _load_builder_module()
+    facts = _b4923c_facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})
+    mismatches = builder._check_us_esi_anchor_against_feed(
+        facts,
+        allow_unpinned_feed=allow_unpinned_feed,
+        allow_esi_premium_gaps=allow_esi_premium_gaps,
+    )
+    assert len(mismatches) == 2
+    evidence = builder._esi_anchor_feed_evidence(mismatches, enforced=False)
+    assert evidence == {
+        "enforced": False,
+        "matches": False,
+        "mismatches": mismatches,
+    }
+    assert any("1002920000000" in item for item in evidence["mismatches"])
+    assert any("cy2025" in item for item in evidence["mismatches"])
 
 
 # SPM measurement composition refusal
@@ -17092,3 +18003,111 @@ def test_main_reports_actual_dry_run_outcome(
     if expected_status == "failed":
         assert str(exit_code) in run_events[0]["message"]
         assert run_events[0]["details"]["failure_class"] == "build_failure"
+
+
+def test_a_dry_run_reports_a_waived_esi_anchor_feed_mismatch() -> None:
+    """microcosm#454: a dry run stops before esi_premiums.json, so the report
+    carries a B4923C difference that --allow-unpinned-feed let through."""
+
+    builder = _load_builder_module()
+    args = SimpleNamespace(
+        evidence_release=False,
+        allow_qrf_tail_concentration=False,
+        allow_input_mass_drift=False,
+        allow_ecps_parity_gaps=False,
+        allow_input_coverage_gaps=False,
+        allow_esi_premium_gaps=False,
+        allow_unpinned_feed=True,
+    )
+    dry_run = builder._ReleaseDryRun(
+        args=args,
+        argv=("--allow-unpinned-feed",),
+        report_path=Path("report.json"),
+        margins=SimpleNamespace(to_dict=lambda: {}),
+        git_dirty=False,
+        started=0.0,
+    )
+    assert dry_run.inputs()["esi_anchor_feed"] == {
+        "enforced": False,
+        "matches": True,
+        "mismatches": [],
+    }
+    facts = _b4923c_facts({2023: 923_195_000_000, 2024: 1_002_920_000_000})
+    dry_run.esi_anchor_feed_mismatches = builder._check_us_esi_anchor_against_feed(
+        facts, allow_unpinned_feed=True, allow_esi_premium_gaps=False
+    )
+    inputs = dry_run.inputs()
+    assert inputs["waivers"]["allow_unpinned_feed"] is True
+    assert inputs["esi_anchor_feed"]["enforced"] is False
+    assert inputs["esi_anchor_feed"]["matches"] is False
+    assert len(inputs["esi_anchor_feed"]["mismatches"]) == 2
+
+
+def test_esi_premium_signal_evidence_keeps_a_waived_failure_on_the_record() -> None:
+    """microcosm#454: --allow-esi-premium-gaps records, it does not erase.
+
+    The evidence file carries the base and export signal verdicts, so a build
+    that waived an assignment failure still says which check was red. A gate
+    that never ran (it crashed under earlier failures) is recorded as such.
+    """
+
+    builder = _load_builder_module()
+    failed = builder.GateResult(
+        name="esi_premiums_signal",
+        passed=False,
+        failures=("ESI premiums: 100 employer premium(s) outside employed ...",),
+    )
+    assert builder._esi_premiums_signal_evidence(failed) == {
+        "evaluated": True,
+        "passed": False,
+        "failures": ["ESI premiums: 100 employer premium(s) outside employed ..."],
+    }
+    assert builder._esi_premiums_signal_evidence(None) == {"evaluated": False}
+
+
+def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    monkeypatch, tmp_path
+) -> None:
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the build's first call raises.
+
+    The build starts its emitter right after reading its arguments, so with
+    the real adapter (not the shared fixture's in-memory one) it stops before
+    its first check, download or write.
+    """
+
+    from microcosm.build import telemetry_emitter
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+    output = tmp_path / "out"
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda argv: SimpleNamespace(
+            staging_run_id="observed-run",
+            release_id="release-id",
+            dry_run_gates_report=None,
+            out=output,
+        ),
+    )
+
+    def went_on(*args, **kwargs):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's next steps after starting its emitter.
+    monkeypatch.setattr(builder._ReleaseDryRun, "start", went_on)
+    monkeypatch.setattr(builder, "_git_dirty", went_on)
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        builder.main([])
+
+    assert raised.value.reason == "command_not_found"
+    assert builder._ACTIVE_EMITTER is None
+    assert not output.exists()

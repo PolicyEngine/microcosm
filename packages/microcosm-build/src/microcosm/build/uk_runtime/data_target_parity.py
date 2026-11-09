@@ -59,8 +59,8 @@ PORTED_PARITY_STATUSES = frozenset(
 
 _REFERENCE = {
     "incumbent_inventory": UK_DATA_TARGET_INVENTORY_RESOURCE,
-    "incumbent_commit": "8629dbb",
-    "verified_on": "2026-09-01",
+    "incumbent_commit": "a43e8c5",
+    "verified_on": "2026-10-16",
     "inventory_nature": (
         "A sha-stamped snapshot of the incumbent's target-bearing modules, "
         "re-extracted manually against a local checkout and committed. CI "
@@ -88,6 +88,10 @@ _CONCERN_COVERS: dict[str, tuple[str, ...]] = {
     "national_hmrc_cgt_size_bands": (_source("hmrc_cgt"),),
     "national_hmrc_salary_sacrifice": (_source("hmrc_salary_sacrifice"),),
     "national_dwp_benefits_and_uc_caseloads": (_source("dwp"),),
+    "national_dwp_housing_benefit_pension_age": (_source("dwp_housing_benefit"),),
+    "national_dwp_housing_benefit_working_age": (_source("dwp_housing_benefit"),),
+    "national_dwp_pension_credit": (_source("dwp_pension_credit"),),
+    "national_ons_lfs_employment": (_source("ons_labour_market"),),
     "national_ons_demographics": (_source("ons_demographics"),),
     "national_ons_household_composition": (_source("ons_households"),),
     "national_ons_england_tenure": (_source("ons_tenure"),),
@@ -184,14 +188,14 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_obr_national_insurance",
         "status": "ported_national",
         "classification": "red_line_national_family",
-        "evidence": "uk-data targets/sources/obr.py:348; Microcosm target ids obr.ni, obr.ni_employee, obr.ni_employer, and obr.ni_self_employed.",
+        "evidence": "uk-data at a43e8c5 targets/sources/obr.py:366 (_parse_nics); Microcosm target ids obr.ni_employee, obr.ni_employer, and obr.ni_self_employed; OBR's cash total obr.ni is a diagnostic on obr.ni_employee (microcosm#1095).",
     },
     {
         "concern_id": "national_obr_national_insurance_class_3",
         "status": "reviewed_exclusion",
         "classification": "not_modeled",
         "reason": "The incumbent deliberately skipped Class 3 and no Microcosm dataset path exists.",
-        "evidence": "uk-data targets/sources/obr.py:402-409 and uk-data#88.",
+        "evidence": "uk-data at a43e8c5 targets/sources/obr.py:420-427 (the Class 3 note in _parse_nics) and uk-data#88.",
         "fence": _fence(
             "uk-data skipped the Class 3 OBR row pending uk-data#88.",
             "Avoid pretending voluntary Class 3 contributions are represented by another NIC variable.",
@@ -202,31 +206,31 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_obr_council_tax",
         "status": "ported_national",
         "classification": "red_line_national_family",
-        "evidence": "uk-data targets/sources/obr.py:284; Microcosm target ids obr.council_tax and country legs obr.council_tax_{england,scotland,wales}.",
+        "evidence": "uk-data at a43e8c5 targets/sources/obr.py:302 (_parse_council_tax); Microcosm target ids obr.council_tax (OBR table 4.1 row 15, England, Scotland and Wales receipts over Great Britain's households, microcosm#1095) and country legs obr.council_tax_{england,scotland,wales}.",
     },
     {
         "concern_id": "national_obr_welfare",
         "status": "ported_national",
         "classification": "national_registry_family",
-        "evidence": "uk-data targets/sources/obr.py:458 welfare rows; Microcosm uk_population_targets.json OBR benefit-spending targets.",
+        "evidence": "uk-data at a43e8c5 targets/sources/obr.py:502 (_parse_welfare) welfare rows; Microcosm uk_population_targets.json OBR benefit-spending targets. Since uk-data a43e8c5 the Housing Benefit and Pension Credit lines come from DWP's benefit expenditure and caseload tables (targets/sources/dwp_housing_benefit.py, uk-data#490; dwp_pension_credit.py, uk-data#510) and Universal Credit is one Great Britain total (uk-data#530).",
     },
     {
         "concern_id": "national_tv_licence_and_policy_statics",
         "status": "ported_national",
         "classification": "national_registry_family",
-        "evidence": "uk-data targets/sources/obr.py:617-728; Microcosm uk_population_targets.json tv_licence, private-school, and salary-sacrifice target rows.",
+        "evidence": "uk-data at a43e8c5 targets/sources/obr.py:620 (_parse_tv_licence) and 668-684 (the private-school and salary-sacrifice static rows before get_targets); Microcosm uk_population_targets.json tv_licence, private-school, and salary-sacrifice target rows.",
     },
     {
         "concern_id": "national_hmrc_spi_income_bands",
         "status": "ported_national",
         "classification": "national_registry_family",
-        "evidence": "uk-data targets/sources/hmrc_spi.py:230; Microcosm HMRC SPI amount/count-by-total-income-band targets and replay fences.",
+        "evidence": "uk-data at a43e8c5 targets/sources/hmrc_spi.py:229 (get_targets); Microcosm HMRC SPI amount/count-by-total-income-band targets and replay fences.",
     },
     {
         "concern_id": "national_hmrc_cgt_size_bands",
         "status": "ported_national",
         "classification": "national_registry_family",
-        "evidence": "uk-data targets/sources/hmrc_cgt.py:195; Microcosm hmrc_cgt_conditioning_facts.json (vendored HMRC Table 2.1a 2024-25 rows read by the donor stage and the amounts redraw) and uk_population_targets.json CGT rows.",
+        "evidence": "uk-data at a43e8c5 targets/sources/hmrc_cgt.py:196 (_band_targets); Microcosm hmrc_cgt_conditioning_facts.json (vendored HMRC Table 2.1a 2024-25 rows read by the donor stage and the amounts redraw) and uk_population_targets.json CGT rows.",
     },
     {
         "concern_id": "national_hmrc_salary_sacrifice",
@@ -239,6 +243,42 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "status": "ported_national",
         "classification": "national_registry_family",
         "evidence": "uk-data targets/sources/dwp.py, including post-ebf733c uk-data#458 UC claimant-by-children, family-type, and two-child-limit caseload rows; Microcosm DWP target rows in uk_population_targets.json.",
+    },
+    {
+        "concern_id": "national_dwp_housing_benefit_pension_age",
+        "status": "ported_national",
+        "classification": "national_registry_family",
+        "evidence": "uk-data targets/sources/dwp_housing_benefit.py (uk-data#490): Housing Benefit spending and claims over Pension Credit qualifying age, Great Britain, from DWP's benefit expenditure and caseload tables (Spring 2026); Microcosm binds the same DWP line as dwp.hb.amount_pension_age and the pension-age caseloads dwp.hb.households_pension_age (all tenures, social and private rented) from Stat-Xplore. The age split differs: uk-data counts a unit as pension-age when the claimant or partner has reached State Pension age and neither is on Universal Credit, Income Support, income-based Jobseeker's Allowance or income-related Employment and Support Allowance (the pension-age regulations, which policyengine-uk 2.132.6 encodes as housing_benefit_pension_age_regulations_apply), while Microcosm's four rows filter on eldest_adult_age >= 66 alone, a variable policyengine-uk marks deprecated, so a unit on one of those benefits falls in Microcosm's pension-age rows. Re-binding on the regulations variable goes with microcosm#867.",
+    },
+    {
+        "concern_id": "national_dwp_housing_benefit_working_age",
+        "status": "routed",
+        "classification": "adjudication_pending",
+        "reason": "uk-data binds working-age Housing Benefit net of supported and temporary accommodation, which neither the frame nor policyengine-uk carries; Microcosm holds working-age Housing Benefit out of the objective while microcosm#867 decides how the accommodation part is declared.",
+        "evidence": "uk-data targets/sources/dwp_housing_benefit.py (uk-data#490; policyengine-uk#1911 for the unmodelled accommodation); Microcosm obr.housing_benefit and the all-age dwp.hb.households rows are measure exclusions tracking microcosm#867.",
+        "fence": _fence(
+            "uk-data split DWP's Housing Benefit line by age and netted supported and temporary accommodation out of the working-age part.",
+            "Anchor working-age Housing Benefit without asking the frame for claims it cannot hold.",
+            "Never bind the full working-age line; route with microcosm#867, which decides whether the accommodation part is a declared reconciliation.",
+        ),
+    },
+    {
+        "concern_id": "national_dwp_pension_credit",
+        "status": "ported_national",
+        "classification": "national_registry_family",
+        "evidence": "uk-data targets/sources/dwp_pension_credit.py (uk-data#510): Pension Credit spending and claims, Great Britain, from DWP's benefit expenditure and caseload tables (Spring 2026), replacing OBR table 4.9's same GB series; Microcosm binds obr.pension_credit (stamped Great Britain since microcosm#1300) and dwp.pension_credit.benefit_units with its type, couple and age splits, beside dfc_ni.pension_credit.benefit_units for Northern Ireland.",
+    },
+    {
+        "concern_id": "national_ons_lfs_employment",
+        "status": "blocked_source",
+        "classification": "awaiting_facts",
+        "reason": "The pinned Chronicle feed carries no ONS Labour Force Survey employment series (MGRN employees, MGRQ self-employed).",
+        "evidence": "uk-data targets/sources/ons_labour_market.py (uk-data#529): LFS employees and self-employed, UK, four-quarter averages, bound on the FRS employment_status; no Chronicle ONS labour-market package. The same change made the local employment-income count validation-only (local_contract.hmrc.employment_income.count).",
+        "fence": _fence(
+            "uk-data tied the counts of employees and the self-employed to the LFS because HMRC's annual counts of employment-income taxpayers include part-year earners.",
+            "Anchor the stock of employed people at a point in time, not only annual taxpayer counts.",
+            "Request the LFS series from Chronicle before any binding; do not derive an employment control from HMRC taxpayer counts.",
+        ),
     },
     {
         "concern_id": "national_ons_demographics",
@@ -265,7 +305,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "status": "routed",
         "classification": "national_grain_follow_up",
         "reason": "The incumbent England-national tenure controls are not part of the current national contract; local tenure is declared separately.",
-        "evidence": "uk-data targets/sources/ons_tenure.py:69; Microcosm local ons.tenure.* contract rows.",
+        "evidence": "uk-data at a43e8c5 targets/sources/ons_tenure.py:69 (get_targets); Microcosm local ons.tenure.* contract rows.",
         "fence": _fence(
             "uk-data calibrated five England tenure controls.",
             "Preserve an England-level representation check independently of the local Census tenure surface.",
@@ -318,7 +358,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_council_tax_stock",
         "status": "ported_national",
         "classification": "red_line_national_family",
-        "evidence": "uk-data targets/sources/voa_council_tax.py:235,275; Microcosm mhclg.council_tax_stock.* (England, composed from the MHCLG taxbase authority rows per region), welshgov.council_tax_stock.* and scotgov.council_tax_stock.* targets on the councils' taxbase basis (microcosm#929).",
+        "evidence": "uk-data at a43e8c5 targets/sources/voa_council_tax.py:235,275; Microcosm mhclg.council_tax_stock.* (England, composed from the MHCLG taxbase authority rows per region), welshgov.council_tax_stock.* and scotgov.council_tax_stock.* targets on the councils' taxbase basis (microcosm#929).",
     },
     {
         "concern_id": "national_housing_rate_headcount_products",
@@ -360,25 +400,19 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "local_council_tax_band_counts",
         "status": "ported_local_declared",
         "classification": "local_registry_family",
-        "evidence": "uk-data targets/sources/la_council_tax.py and datasets/local_areas/local_authorities/loss.py:251-300; Microcosm council_tax/band_a..i contract rows (mhclg, welshgov and scotgov by_area families) bind 2,511 authority cells on the taxbase basis with the 296 English band-H cells and Shetland's band-H cell signed deferred (microcosm#929).",
+        "evidence": "uk-data at a43e8c5 targets/sources/la_council_tax.py and datasets/local_areas/local_authorities/loss.py:251-300; Microcosm council_tax/band_a..i contract rows (mhclg, welshgov and scotgov by_area families) bind 2,511 authority cells on the taxbase basis with the 296 English band-H cells and Shetland's band-H cell signed deferred (microcosm#929).",
     },
     {
         "concern_id": "local_private_rent_pipr",
         "status": "ported_local_declared",
         "classification": "local_registry_family",
-        "evidence": "Microcosm ons.rent.private_rent is declared, but the pinned feed has only 2026-06 PIPR facts: 314 crosswalk E&W rows are after the 2025 target period, four English LAs are absent, 32 Scottish LAs have BRMA-only facts, and 11 NI LAs are absent.",
+        "evidence": "Microcosm ons.rent.private_rent binds 316 local-authority cells at 12 x the calendar-2025 PIPR mean x the reconciled private renters (PIPR's July 2026 edition, the record set the selector resolves in the pinned feed); 45 cells stay signed deferred: 32 Scottish LAs have BRMA-only facts, which bind at BRMA grain (ons.rent.private_rent_brma, microcosm#1090), 11 NI LAs are absent and 2 English LAs are not published.",
     },
     {
         "concern_id": "cross_grain_private_rent_scotland_brma",
-        "status": "routed",
-        "classification": "cross_grain_grain_gap",
-        "reason": "CrossGrainBridge cannot express an overlapping BRMA-to-LA geography translation and no signed crosswalk is available.",
-        "evidence": "Pinned feed has 18 Scottish statistical_scope BRMA rows at 2026-06 and zero Scottish LA rows; the local crosswalk has 32 Scottish LAs.",
-        "fence": _fence(
-            "PIPR publishes Scottish rent levels at BRMA grain.",
-            "Preserve source geography without allocating BRMA averages over local authorities.",
-            "Keep all 32 Scottish LA cells signed deferred until a source-backed BRMA-to-LA bridge with an explicit aggregation rule exists.",
-        ),
+        "status": "ported_local_declared",
+        "classification": "local_registry_family",
+        "evidence": "Microcosm ons.rent.private_rent_brma binds PIPR's 18 Scottish BRMA rows at their own grain (statistical_scope, microcosm#1090, #1262): each row is 12 x the calendar-2025 mean x the BRMA's private renters, the councils' reconciled private renters in Census 2022's council shares of each BRMA's renters (uk/scotland_brma_la_overlap.json, UV404 by output area), and the model side sums each Scottish household's rent by the BRMA of its assigned output area. No BRMA average is allocated over councils: the 32 Scottish council cells stay signed deferred, councils having no published rent.",
     },
     {
         "concern_id": "local_council_tax_net",
@@ -402,17 +436,17 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "cross_grain_council_tax_stock_england_region",
         "status": "ported_national",
         "classification": "cross_grain_rule",
-        "reason": "The English VOA stock rows fan out over the nine English regions and sit at the region grain of the cross-grain rule (country > region > constituency > la); each region is its own leg, so the LA solve reconciles to its region's published stock rather than to a single England row (microcosm#905).",
+        "reason": "The English council-tax taxbase rows (MHCLG CTB, microcosm#929) fan out over the nine English regions and sit at the region grain of the cross-grain rule (country > nation > region > constituency > la); each region is its own leg, so the LA solve reconciles to its region's composed control rather than to a single England row (microcosm#905).",
         "evidence": "mhclg.council_tax_stock.band_* references mhclg.council_tax_stock.band_*@E12000001..E12000009, each composed from its authorities' MHCLG taxbase rows (microcosm#929); UK_CROSS_GRAIN_RULE declares control_grains (country, region), so the English region rows and the Scottish CTAXBASE country row share the band signature group and each authority takes its nearest covering control (test_uk_ledger_targets::test_voa_region_controls_and_the_scottish_country_control_share_the_surface); parent_geography_legs maps every E12 code to itself; English legs come from the run ladder or the crosswalk's region_code_by_area.",
     },
     {
         "concern_id": "local_council_tax_band_d_rate",
         "status": "reviewed_exclusion",
         "classification": "non_linear",
-        "reason": "Band D currency amounts are per-rate, not additive household controls.",
+        "reason": "Band D currency amounts are per-rate, not additive household controls. So are the eight per-band amounts, band_A_amount to band_H_amount, that uk-data#482 (open, so not in the a43e8c5 inventory) adds to storage/la_council_tax.csv: each English authority's 2026-27 amount for one band (MHCLG Table 9, England only), its Band D amount times the band's statutory ratio. None of the eight is to be ported as a target either.",
         "evidence": "uk-data targets/sources/la_council_tax.py module doctrine; no Microcosm contract row.",
         "fence": _fence(
-            "uk-data published Band D rates but did not wire them into the additive LA loss matrix.",
+            "uk-data emitted each authority's Band D amount as a registry target but never as a column of the additive LA loss; Band D entered that loss only as the multiplier in England's housing/council_tax_net proxy (MHCLG taxbase after support times Band D).",
             "Avoid treating a rate as an additive target.",
             "Keep excluded until a rate-aware non-linear objective exists.",
         ),
@@ -434,7 +468,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "status": "routed",
         "classification": "imputation_anchor",
         "reason": "The £21.6bn rail anchor belongs to WS-E/F (#148), not the local target solve.",
-        "evidence": "uk-data datasets/imputations/services/services.py:18; Chronicle transport facts landed in #200/#202.",
+        "evidence": "uk-data at a43e8c5 datasets/imputations/services/services.py:18; Chronicle transport facts landed in #200/#202.",
         "fence": _fence(
             "uk-data rescaled rail_usage to a national subsidy total.",
             "Anchor the imputed service-consumption mass.",
@@ -446,7 +480,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "status": "routed",
         "classification": "imputation_anchor",
         "reason": "BUS05 subsidy/fare totals are consumed by the #789 rows; the NTS0705 quintile gradient remains routed to WS-E/F (#148).",
-        "evidence": "uk-data datasets/imputations/services/services.py:33 and datasets/imputations/consumption.py:790,830; Chronicle#200/#202.",
+        "evidence": "uk-data at a43e8c5 datasets/imputations/services/services.py:33 and datasets/imputations/consumption.py:790,830; Chronicle#200/#202.",
         "fence": _fence(
             "uk-data post-imputation-rescaled bus subsidy and fares, including London share and quintile rates.",
             "Preserve service-consumption totals and distribution.",
@@ -458,7 +492,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "status": "reviewed_exclusion",
         "classification": "untargeted_both_sides",
         "reason": "Education spending was imputed but its aggregate test was commented out; corrected post-ebf733c DfE entitlement data from uk-data#474 remains input-side.",
-        "evidence": "uk-data datasets/imputations/frs_only.py and uk-data tests/test_aggregates.py:5; uk-data#199 and uk-data#474.",
+        "evidence": "uk-data at a43e8c5 datasets/imputations/services/services.py:137-148 (the dfe_education_spending imputation) and tests/test_aggregates.py:5 (its commented-out aggregate); uk-data#199 and uk-data#474.",
         "fence": _fence(
             "uk-data imputed DfE education spending without an active calibration target.",
             "Retain the imputed input while avoiding an unsupported aggregate claim.",
@@ -551,15 +585,9 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
     },
     {
         "concern_id": "credibility_local_council_tax_outliers",
-        "status": "routed",
-        "classification": "validation_check",
-        "reason": "The Scilly 2000× leak guard belongs to post-compile local validation.",
-        "evidence": "uk-data LA council-tax outlier test and uk-data#371; Microcosm council-tax LA surface.",
-        "fence": _fence(
-            "uk-data LA target test.",
-            "Catch implausible band-count/rate joins.",
-            "Route to local validation once council-tax references compile; do not modify target values to satisfy the check.",
-        ),
+        "status": "ported_local_declared",
+        "classification": "compile_contract",
+        "evidence": "uk-data LA council-tax outlier test and uk-data#371 guard band-count/rate joins such as the Scilly 2000x leak. Microcosm binds dwelling counts by band, never a Band D amount, and compiles each authority's cells from that authority's own taxbase row with no fallback join; a cell with no fact is a signed deferral, and the Isles of Scilly and the City of London stand under the local-authority support floor. The release-blocking uk_ledger_compile_parity_local_incumbent_2025 preflight pins every compiled council-tax cell's ledger value (microcosm#929, microcosm#1278).",
     },
     {
         "concern_id": "credibility_local_missing_source_mask",
@@ -643,7 +671,13 @@ def _local_contract_covers(target_id: str, levels: tuple[str, ...]) -> tuple[str
         covers.add(_source("local_uc"))
     elif target_id.startswith(("ons.equiv_", "ons.tenure.", "ons.rent.")):
         covers.add(_source("local_la_extras"))
-    elif target_id.startswith("voa.council_tax_stock.by_area."):
+    elif target_id.startswith(
+        (
+            "mhclg.council_tax_stock.by_area.",
+            "welshgov.council_tax_stock.by_area.",
+            "scotgov.council_tax_stock.by_area.",
+        )
+    ):
         covers.add(_source("la_council_tax"))
     return tuple(sorted(covers))
 
@@ -653,6 +687,20 @@ def _incumbent_path(inventory_id: str) -> str:
     if not inventory_id.startswith(prefix):
         raise ValueError(f"invalid incumbent inventory id {inventory_id!r}.")
     return inventory_id.removeprefix(prefix).replace(".", "/") + ".py"
+
+
+#: Notes on local contract rows whose incumbent treatment changed outside the
+#: inventory's fixed scope.
+_LOCAL_CONTRACT_NOTES: dict[str, str] = {
+    "hmrc.employment_income.count": (
+        " Since uk-data#529 the incumbent's local calibration logs this count "
+        "but does not train on it (datasets/create_datasets.py "
+        "VALIDATION_ONLY_LOCAL_TARGETS, outside the inventory's scope): HMRC's "
+        "annual counts include part-year earners the FRS records as out of "
+        "work. Microcosm still binds it under the hmrc_spi_frame_model_proxy "
+        "fence; whether to follow is a ruling owed on microcosm#1095."
+    ),
+}
 
 
 def _local_contract_rows() -> list[dict[str, Any]]:
@@ -674,6 +722,7 @@ def _local_contract_rows() -> list[dict[str, Any]]:
                     "Microcosm uk/uk_population_targets.json target "
                     f"{target_id}; {UK_DATA_TARGET_INVENTORY_RESOURCE} pins "
                     f"the incumbent paths {paths}."
+                    + _LOCAL_CONTRACT_NOTES.get(target_id, "")
                 ),
             }
         )

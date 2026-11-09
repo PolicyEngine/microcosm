@@ -1,0 +1,552 @@
+{
+  "schema_version": 2,
+  "resource": "scotland_brma_la_overlap.json",
+  "description": "Households in each Scottish Broad Rental Market Area x council area intersection, from Scotland's Census 2022 UV404 by output area and the committed area-to-BRMA layer. Rebuilt by tools/build_uk_scotland_brma_la_overlap.py.",
+  "licence": {
+    "licence": "Open Government Licence v3.0",
+    "attribution": "Contains public sector information licensed under the Open Government Licence v3.0. Sources: National Records of Scotland, Scotland's Census 2022 UV404 household tenure by output area; the BRMA layer's sources (Scottish Government broad rental market areas, Rent Service Scotland's postcode lookup, NRS output-area population-weighted centroids)."
+  },
+  "weights": {
+    "private_rented_households": "Census 2022 UV404 'Private rented: Total' households (private landlord or letting agency, plus other private rented; rent-free households are not private renters) summed over each intersection's output areas; an output area UV404 prints '-' for counts zero.",
+    "all_households": "Census 2022 UV404 all occupied households summed over each intersection's output areas."
+  },
+  "method": {
+    "output_area_to_brma": "The committed area-to-BRMA layer (uk/brma_area_layer.json, scotland_oa22 grain): population-weighted centroid within the Scottish Government polygon, corrected by Rent Service Scotland's postcode lookup, with the two documented Balloch overrides.",
+    "output_area_to_council": "The committed Scotland atomic support (2019 council-area code set).",
+    "layer_sha256": "79a4b799c5c767af7a03979a325e0e830fe543e74692136529ede0eb4b448ecf",
+    "support_sha256": "1649fa831315e6fac80caa4af7f68e837fd985b7f59c2831bb0db8cbfeeee443",
+    "uv404": {
+      "package_id": "nrs-census2022-uv404-tenure-output-area",
+      "source_sha256": "d6abb0ee1a8f21e17160a517088b1ca62ddcb728a35bf5ecbf82c7f400b6378f",
+      "record_sets": {
+        "private_rented_households": "nrs.census2022.uv404.oa.private_rented_total",
+        "all_households": "nrs.census2022.uv404.oa.all_occupied_households"
+      }
+    },
+    "history": "microcosm#1092 split Scotland's Census 2022 ward tenure table across BRMAs by output-area households; UV404 by output area makes the private-rented cells exact sums (microcosm#1262)."
+  },
+  "brmas": {
+    "ABERDEEN_AND_SHIRE": {
+      "pipr_area_code": "S33000001",
+      "pipr_area_name": "Aberdeen and Shire"
+    },
+    "ARGYLL_AND_BUTE": {
+      "pipr_area_code": "S33000002",
+      "pipr_area_name": "Argyll and Bute"
+    },
+    "AYRSHIRES": {
+      "pipr_area_code": "S33000003",
+      "pipr_area_name": "Ayrshires"
+    },
+    "DUMFRIES_AND_GALLOWAY": {
+      "pipr_area_code": "S33000004",
+      "pipr_area_name": "Dumfries and Galloway"
+    },
+    "DUNDEE_AND_ANGUS": {
+      "pipr_area_code": "S33000005",
+      "pipr_area_name": "Dundee and Angus"
+    },
+    "EAST_DUNBARTONSHIRE": {
+      "pipr_area_code": "S33000006",
+      "pipr_area_name": "East Dunbartonshire"
+    },
+    "FIFE": {
+      "pipr_area_code": "S33000007",
+      "pipr_area_name": "Fife"
+    },
+    "FORTH_VALLEY": {
+      "pipr_area_code": "S33000008",
+      "pipr_area_name": "Forth Valley"
+    },
+    "GREATER_GLASGOW": {
+      "pipr_area_code": "S33000009",
+      "pipr_area_name": "Greater Glasgow"
+    },
+    "HIGHLAND_AND_ISLANDS": {
+      "pipr_area_code": "S33000010",
+      "pipr_area_name": "Highland and Islands"
+    },
+    "LOTHIAN": {
+      "pipr_area_code": "S33000011",
+      "pipr_area_name": "Lothian"
+    },
+    "NORTH_LANARKSHIRE": {
+      "pipr_area_code": "S33000012",
+      "pipr_area_name": "North Lanarkshire"
+    },
+    "PERTH_AND_KINROSS": {
+      "pipr_area_code": "S33000013",
+      "pipr_area_name": "Perth and Kinross"
+    },
+    "RENFREWSHIRE_AND_INVERCLYDE": {
+      "pipr_area_code": "S33000014",
+      "pipr_area_name": "Renfrewshire/Inverclyde"
+    },
+    "SCOTTISH_BORDERS": {
+      "pipr_area_code": "S33000015",
+      "pipr_area_name": "Scottish Borders"
+    },
+    "SOUTH_LANARKSHIRE": {
+      "pipr_area_code": "S33000016",
+      "pipr_area_name": "South Lanarkshire"
+    },
+    "WEST_DUNBARTONSHIRE": {
+      "pipr_area_code": "S33000017",
+      "pipr_area_name": "West Dunbartonshire"
+    },
+    "WEST_LOTHIAN": {
+      "pipr_area_code": "S33000018",
+      "pipr_area_name": "West Lothian"
+    }
+  },
+  "totals": {
+    "cells": 63,
+    "output_areas": 46363,
+    "output_areas_without_private_renters": 4910,
+    "private_rented_households": 322903,
+    "all_households": 2508542
+  },
+  "cells": [
+    {
+      "brma": "FORTH_VALLEY",
+      "local_authority": "S12000005",
+      "output_areas": 441,
+      "private_rented_households": 2094,
+      "all_households": 23989
+    },
+    {
+      "brma": "PERTH_AND_KINROSS",
+      "local_authority": "S12000005",
+      "output_areas": 1,
+      "private_rented_households": 7,
+      "all_households": 56
+    },
+    {
+      "brma": "DUMFRIES_AND_GALLOWAY",
+      "local_authority": "S12000006",
+      "output_areas": 1298,
+      "private_rented_households": 9453,
+      "all_households": 70583
+    },
+    {
+      "brma": "SOUTH_LANARKSHIRE",
+      "local_authority": "S12000006",
+      "output_areas": 2,
+      "private_rented_households": 6,
+      "all_households": 89
+    },
+    {
+      "brma": "AYRSHIRES",
+      "local_authority": "S12000008",
+      "output_areas": 1030,
+      "private_rented_households": 5289,
+      "all_households": 55395
+    },
+    {
+      "brma": "LOTHIAN",
+      "local_authority": "S12000010",
+      "output_areas": 914,
+      "private_rented_households": 4162,
+      "all_households": 48770
+    },
+    {
+      "brma": "GREATER_GLASGOW",
+      "local_authority": "S12000011",
+      "output_areas": 529,
+      "private_rented_households": 1597,
+      "all_households": 28640
+    },
+    {
+      "brma": "RENFREWSHIRE_AND_INVERCLYDE",
+      "local_authority": "S12000011",
+      "output_areas": 211,
+      "private_rented_households": 687,
+      "all_households": 11061
+    },
+    {
+      "brma": "HIGHLAND_AND_ISLANDS",
+      "local_authority": "S12000013",
+      "output_areas": 235,
+      "private_rented_households": 724,
+      "all_households": 12735
+    },
+    {
+      "brma": "FORTH_VALLEY",
+      "local_authority": "S12000014",
+      "output_areas": 1330,
+      "private_rented_households": 5963,
+      "all_households": 71804
+    },
+    {
+      "brma": "WEST_LOTHIAN",
+      "local_authority": "S12000014",
+      "output_areas": 12,
+      "private_rented_households": 44,
+      "all_households": 695
+    },
+    {
+      "brma": "ARGYLL_AND_BUTE",
+      "local_authority": "S12000017",
+      "output_areas": 2,
+      "private_rented_households": 5,
+      "all_households": 129
+    },
+    {
+      "brma": "HIGHLAND_AND_ISLANDS",
+      "local_authority": "S12000017",
+      "output_areas": 2052,
+      "private_rented_households": 11907,
+      "all_households": 111594
+    },
+    {
+      "brma": "RENFREWSHIRE_AND_INVERCLYDE",
+      "local_authority": "S12000018",
+      "output_areas": 694,
+      "private_rented_households": 4027,
+      "all_households": 37367
+    },
+    {
+      "brma": "LOTHIAN",
+      "local_authority": "S12000019",
+      "output_areas": 776,
+      "private_rented_households": 3164,
+      "all_households": 41060
+    },
+    {
+      "brma": "ABERDEEN_AND_SHIRE",
+      "local_authority": "S12000020",
+      "output_areas": 5,
+      "private_rented_households": 33,
+      "all_households": 269
+    },
+    {
+      "brma": "HIGHLAND_AND_ISLANDS",
+      "local_authority": "S12000020",
+      "output_areas": 801,
+      "private_rented_households": 5122,
+      "all_households": 42848
+    },
+    {
+      "brma": "AYRSHIRES",
+      "local_authority": "S12000021",
+      "output_areas": 1155,
+      "private_rented_households": 6374,
+      "all_households": 64214
+    },
+    {
+      "brma": "HIGHLAND_AND_ISLANDS",
+      "local_authority": "S12000023",
+      "output_areas": 188,
+      "private_rented_households": 1023,
+      "all_households": 10622
+    },
+    {
+      "brma": "LOTHIAN",
+      "local_authority": "S12000026",
+      "output_areas": 1,
+      "private_rented_households": 4,
+      "all_households": 67
+    },
+    {
+      "brma": "SCOTTISH_BORDERS",
+      "local_authority": "S12000026",
+      "output_areas": 1013,
+      "private_rented_households": 7547,
+      "all_households": 55031
+    },
+    {
+      "brma": "SOUTH_LANARKSHIRE",
+      "local_authority": "S12000026",
+      "output_areas": 11,
+      "private_rented_households": 61,
+      "all_households": 498
+    },
+    {
+      "brma": "HIGHLAND_AND_ISLANDS",
+      "local_authority": "S12000027",
+      "output_areas": 189,
+      "private_rented_households": 733,
+      "all_households": 10594
+    },
+    {
+      "brma": "AYRSHIRES",
+      "local_authority": "S12000028",
+      "output_areas": 978,
+      "private_rented_households": 5504,
+      "all_households": 52473
+    },
+    {
+      "brma": "GREATER_GLASGOW",
+      "local_authority": "S12000029",
+      "output_areas": 6,
+      "private_rented_households": 39,
+      "all_households": 268
+    },
+    {
+      "brma": "SCOTTISH_BORDERS",
+      "local_authority": "S12000029",
+      "output_areas": 2,
+      "private_rented_households": 11,
+      "all_households": 106
+    },
+    {
+      "brma": "SOUTH_LANARKSHIRE",
+      "local_authority": "S12000029",
+      "output_areas": 2762,
+      "private_rented_households": 14063,
+      "all_households": 147452
+    },
+    {
+      "brma": "EAST_DUNBARTONSHIRE",
+      "local_authority": "S12000030",
+      "output_areas": 1,
+      "private_rented_households": 2,
+      "all_households": 78
+    },
+    {
+      "brma": "FORTH_VALLEY",
+      "local_authority": "S12000030",
+      "output_areas": 749,
+      "private_rented_households": 5109,
+      "all_households": 40232
+    },
+    {
+      "brma": "ABERDEEN_AND_SHIRE",
+      "local_authority": "S12000033",
+      "output_areas": 1963,
+      "private_rented_households": 21643,
+      "all_households": 109471
+    },
+    {
+      "brma": "ABERDEEN_AND_SHIRE",
+      "local_authority": "S12000034",
+      "output_areas": 2057,
+      "private_rented_households": 10252,
+      "all_households": 112658
+    },
+    {
+      "brma": "DUNDEE_AND_ANGUS",
+      "local_authority": "S12000034",
+      "output_areas": 54,
+      "private_rented_households": 213,
+      "all_households": 2903
+    },
+    {
+      "brma": "HIGHLAND_AND_ISLANDS",
+      "local_authority": "S12000034",
+      "output_areas": 1,
+      "private_rented_households": 11,
+      "all_households": 64
+    },
+    {
+      "brma": "ARGYLL_AND_BUTE",
+      "local_authority": "S12000035",
+      "output_areas": 774,
+      "private_rented_households": 4865,
+      "all_households": 41824
+    },
+    {
+      "brma": "LOTHIAN",
+      "local_authority": "S12000036",
+      "output_areas": 4420,
+      "private_rented_households": 55084,
+      "all_households": 238899
+    },
+    {
+      "brma": "GREATER_GLASGOW",
+      "local_authority": "S12000038",
+      "output_areas": 1,
+      "private_rented_households": 3,
+      "all_households": 63
+    },
+    {
+      "brma": "RENFREWSHIRE_AND_INVERCLYDE",
+      "local_authority": "S12000038",
+      "output_areas": 1589,
+      "private_rented_households": 9581,
+      "all_households": 86650
+    },
+    {
+      "brma": "ARGYLL_AND_BUTE",
+      "local_authority": "S12000039",
+      "output_areas": 26,
+      "private_rented_households": 85,
+      "all_households": 1354
+    },
+    {
+      "brma": "GREATER_GLASGOW",
+      "local_authority": "S12000039",
+      "output_areas": 1,
+      "private_rented_households": 0,
+      "all_households": 28
+    },
+    {
+      "brma": "WEST_DUNBARTONSHIRE",
+      "local_authority": "S12000039",
+      "output_areas": 789,
+      "private_rented_households": 3372,
+      "all_households": 41192
+    },
+    {
+      "brma": "FORTH_VALLEY",
+      "local_authority": "S12000040",
+      "output_areas": 1,
+      "private_rented_households": 2,
+      "all_households": 47
+    },
+    {
+      "brma": "NORTH_LANARKSHIRE",
+      "local_authority": "S12000040",
+      "output_areas": 9,
+      "private_rented_households": 19,
+      "all_households": 416
+    },
+    {
+      "brma": "WEST_LOTHIAN",
+      "local_authority": "S12000040",
+      "output_areas": 1463,
+      "private_rented_households": 7312,
+      "all_households": 79361
+    },
+    {
+      "brma": "DUNDEE_AND_ANGUS",
+      "local_authority": "S12000041",
+      "output_areas": 1009,
+      "private_rented_households": 6386,
+      "all_households": 54223
+    },
+    {
+      "brma": "DUNDEE_AND_ANGUS",
+      "local_authority": "S12000042",
+      "output_areas": 1310,
+      "private_rented_households": 14726,
+      "all_households": 69850
+    },
+    {
+      "brma": "EAST_DUNBARTONSHIRE",
+      "local_authority": "S12000045",
+      "output_areas": 864,
+      "private_rented_households": 2688,
+      "all_households": 45869
+    },
+    {
+      "brma": "NORTH_LANARKSHIRE",
+      "local_authority": "S12000045",
+      "output_areas": 11,
+      "private_rented_households": 20,
+      "all_households": 576
+    },
+    {
+      "brma": "FIFE",
+      "local_authority": "S12000047",
+      "output_areas": 3182,
+      "private_rented_households": 19588,
+      "all_households": 169439
+    },
+    {
+      "brma": "FORTH_VALLEY",
+      "local_authority": "S12000047",
+      "output_areas": 1,
+      "private_rented_households": 4,
+      "all_households": 46
+    },
+    {
+      "brma": "DUNDEE_AND_ANGUS",
+      "local_authority": "S12000048",
+      "output_areas": 120,
+      "private_rented_households": 790,
+      "all_households": 6196
+    },
+    {
+      "brma": "FIFE",
+      "local_authority": "S12000048",
+      "output_areas": 6,
+      "private_rented_households": 16,
+      "all_households": 294
+    },
+    {
+      "brma": "FORTH_VALLEY",
+      "local_authority": "S12000048",
+      "output_areas": 15,
+      "private_rented_households": 61,
+      "all_households": 841
+    },
+    {
+      "brma": "PERTH_AND_KINROSS",
+      "local_authority": "S12000048",
+      "output_areas": 1150,
+      "private_rented_households": 8810,
+      "all_households": 62570
+    },
+    {
+      "brma": "EAST_DUNBARTONSHIRE",
+      "local_authority": "S12000049",
+      "output_areas": 7,
+      "private_rented_households": 55,
+      "all_households": 408
+    },
+    {
+      "brma": "GREATER_GLASGOW",
+      "local_authority": "S12000049",
+      "output_areas": 5291,
+      "private_rented_households": 49487,
+      "all_households": 292431
+    },
+    {
+      "brma": "NORTH_LANARKSHIRE",
+      "local_authority": "S12000049",
+      "output_areas": 5,
+      "private_rented_households": 32,
+      "all_households": 329
+    },
+    {
+      "brma": "RENFREWSHIRE_AND_INVERCLYDE",
+      "local_authority": "S12000049",
+      "output_areas": 1,
+      "private_rented_households": 4,
+      "all_households": 77
+    },
+    {
+      "brma": "SOUTH_LANARKSHIRE",
+      "local_authority": "S12000049",
+      "output_areas": 10,
+      "private_rented_households": 35,
+      "all_households": 456
+    },
+    {
+      "brma": "EAST_DUNBARTONSHIRE",
+      "local_authority": "S12000050",
+      "output_areas": 8,
+      "private_rented_households": 16,
+      "all_households": 430
+    },
+    {
+      "brma": "FORTH_VALLEY",
+      "local_authority": "S12000050",
+      "output_areas": 1,
+      "private_rented_households": 4,
+      "all_households": 25
+    },
+    {
+      "brma": "GREATER_GLASGOW",
+      "local_authority": "S12000050",
+      "output_areas": 73,
+      "private_rented_households": 247,
+      "all_households": 3826
+    },
+    {
+      "brma": "NORTH_LANARKSHIRE",
+      "local_authority": "S12000050",
+      "output_areas": 2637,
+      "private_rented_households": 12320,
+      "all_households": 140650
+    },
+    {
+      "brma": "SOUTH_LANARKSHIRE",
+      "local_authority": "S12000050",
+      "output_areas": 126,
+      "private_rented_households": 418,
+      "all_households": 6357
+    }
+  ]
+}

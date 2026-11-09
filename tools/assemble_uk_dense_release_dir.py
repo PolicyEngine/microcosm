@@ -1,16 +1,30 @@
 """Assemble the dense joint UK line's release directory (microcosm#762 A18).
 
 Mirrors ``assemble_uk_release_dir.py`` for the ``microcosm-uk-2024-25-dense``
-line: verify the complete hash join over a finished ``--release-candidate``
-run of ``build_uk_rowwise_candidate.py`` (its manifest, signed gate report,
-diagnostics and incumbent score, plus the spine, ladder, Ledger artifact and
-incumbent extraction it stood on), run the release-candidate pre-flight,
-mint the per-cut tag from the run's attempt id, stage the bundle under the
-non-default local-area role with UK evidence, validate it with the release
-contract, and only then rename it into place. The candidate H5 is cloned
-beside itself under the published filename; nothing is uploaded — the
-summary prints the exact ``publish_cli`` command for the human step
-(``--no-latest``, per-cut tag, private repo).
+release: verify the complete hash join over a finished
+``--release-candidate`` run of ``build_uk_rowwise_candidate.py`` (its
+manifest, its signed ``local_gate_report`` and ``full_gate_report`` outputs
+and its diagnostics, plus the spine, ladder and Ledger artifact it stood
+on), run the release-candidate
+pre-flight, stage the bundle under the non-default local-area role with UK
+evidence, validate it with the release contract, and only then rename it
+into place. The candidate H5 is cloned beside itself under the published
+filename; nothing is uploaded. The release publishes each build into its own
+folder through the emitter: the build is the run's attempt ID, both manifests
+name the release and the build, and nothing is tagged. The summary prints the
+exact ``microcosm-publish-release-build`` commands for the human step
+(private repository): ``publish_command`` lists the build, and
+``promote_command`` makes it the release's current build. Each new dense
+build becomes current, by that promotion or by adding ``--make-current`` to
+``publish_command``, which does both in one commit.
+
+The rotated holdout and the incumbent comparison are opt-in diagnostics
+(microcosm#1301). The manifest's reviewed limitations say what the release
+does not claim: no out-of-sample fit unless the holdout ran, no incumbent
+comparison unless ``--incumbent-manifest`` attaches the score and the
+surface evaluation (recorded, not enforced), how the engine measured the
+file, the size record, and the reviewed exclusions the gates stood on, by
+name with their register reasons copied verbatim.
 """
 
 from __future__ import annotations
@@ -29,6 +43,7 @@ import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NamedTuple
 
 from pydantic import ValidationError
 
@@ -38,12 +53,19 @@ from microcosm.build.staging_v2 import (
     validate_staging_delivery,
 )
 from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
+from microcosm.build.uk_runtime.spi_dependency import (
+    UK_SPI_PUBLIC_USE_TAPE_KEY,
+    uk_check_spi_public_use_tape_marker,
+    uk_spi_public_use_tape_marker_for_stage_names,
+)
 from microcosm.data.contract import (
+    _UK_DENSE_SIGNED_EXCLUSION_GATES,
     _check_uk_incumbent_surface_evaluation,
+    release_artifact_role,
     validate_release_dir,
 )
 from microcosm.diagnostics import (
-    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     parse_calibration_diagnostics,
 )
 
@@ -55,9 +77,28 @@ _NAMESPACE = "uk_dense"
 # pins the two.
 _DATASET_KEY = "microcosm_uk_2024_25_dense"
 _DATASET_FILENAME = f"{_DATASET_KEY}.h5"
-_ATTEMPT_SUFFIX = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
 _RUNTIME_PACKAGES = ("policyengine-core", "policyengine-uk", "microcosm-data")
 _GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+#: The gates whose reviewed exclusions the manifest names, each with its
+#: register reason copied verbatim (see ``_signed_exclusion_limitations``).
+#: The contract owns the tuple, since it checks the names (microcosm#1301).
+_SIGNED_EXCLUSION_GATES = _UK_DENSE_SIGNED_EXCLUSION_GATES
+
+
+class _IncumbentAttachment(NamedTuple):
+    """The incumbent comparison an operator attached with --incumbent-manifest.
+
+    A named tuple rather than a dataclass: the tests load this tool by path,
+    without registering it in ``sys.modules``.
+    """
+
+    manifest_path: Path
+    manifest: Mapping[str, object]
+    score_path: Path
+    score: Mapping[str, object]
+    surface_path: Path
+    measured: Mapping[str, str]
+    assessment: Mapping[str, object]
 
 
 def _sha256(path: Path) -> str:
@@ -105,7 +146,10 @@ def _write_release_diagnostics(
 ) -> None:
     """Copy current diagnostics exactly; adapt only legacy candidate evidence."""
 
-    if diagnostics.get("schema_version") == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+    # Schema 8 and schema 9 (labels in catalogs) are both current documents.
+    if diagnostics.get("schema_version") in (
+        HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+    ):
         try:
             parse_calibration_diagnostics(diagnostics)
         except ValidationError as error:
@@ -150,26 +194,176 @@ def _preflight_module():
     return module
 
 
-def _cut_tag(attempt_id: str, override: str | None) -> str:
-    prefix = UK_DENSE_RELEASE_ID + "-"
-    if override is not None:
-        if not override.startswith(prefix) or not _ATTEMPT_SUFFIX.fullmatch(
-            override[len(prefix) :]
-        ):
-            raise SystemExit(
-                f"error: --cut-tag must be {prefix}<YYYYMMDDTHHMMSSZ>-<uuid8>"
+def _holdout_limitation(fit: Mapping[str, object]) -> dict[str, object]:
+    """What the release claims about fit on rows the solve never saw."""
+
+    holdout = _mapping(fit.get("rotated_holdout"), "manifest.fit.rotated_holdout")
+    if holdout.get("skipped") is True:
+        return {
+            "id": "no_out_of_sample_claim",
+            "summary": (
+                "the rotated holdout was not requested (an opt-in diagnostic); "
+                "the release makes no out-of-sample fit claim."
+            ),
+        }
+    return {
+        "id": "rotated_holdout",
+        "claim": "report_only",
+        "summary": "capped relative-error loss on local rows the solve never saw.",
+        "mean_holdout_loss": holdout.get("mean_holdout_loss"),
+        "worst_holdout_loss": holdout.get("worst_holdout_loss"),
+    }
+
+
+def _holdout_coverage(fit: Mapping[str, object]) -> dict[str, object]:
+    """The coverage receipt's holdout block, with its claim discriminator."""
+
+    holdout = _mapping(fit.get("rotated_holdout"), "fit.rotated_holdout")
+    if holdout.get("skipped") is True:
+        return {"run": False, "claim": "none"}
+    return {
+        **{
+            key: value
+            for key, value in holdout.items()
+            if key not in ("folds", "graph_binding")
+        },
+        "run": True,
+        "claim": "report_only",
+    }
+
+
+def _signed_exclusion_names(full_report: Mapping[str, object]) -> dict[str, list]:
+    """The coverage's names of the reviewed exclusions each fit gate stood on.
+
+    Every gate of ``_SIGNED_EXCLUSION_GATES`` is keyed, empty when it stood
+    on none: the names the ``reviewed_exclusion`` limitations restate, which
+    the contract checks (microcosm#1301).
+    """
+
+    names: dict[str, list] = {gate_id: [] for gate_id in _SIGNED_EXCLUSION_GATES}
+    for limitation in _signed_exclusion_limitations(full_report):
+        _, gate_id, name = str(limitation["id"]).split(":", 2)
+        names[gate_id].append(name)
+    return names
+
+
+def _engine_measurement_limitation(solve: Mapping[str, object]) -> dict[str, object]:
+    """How the engine measured the released file (no single-engine readback)."""
+
+    resolution = _mapping(
+        solve.get("measure_resolution") or {}, "solve.measure_resolution"
+    )
+    representation = resolution.get("engine_population_representation")
+    representation = representation if isinstance(representation, Mapping) else {}
+    return {
+        "id": "engine_measurement",
+        "summary": (
+            "the fit gates read the measures the build resolved; the released "
+            "file is not re-measured on a single engine."
+        ),
+        "blocks": resolution.get("blocks"),
+        "representation_mode": representation.get("mode"),
+        "representation_exact": representation.get("exact"),
+        "representation_exact_scope": representation.get("exact_scope"),
+    }
+
+
+def _signed_exclusion_limitations(
+    full_report: Mapping[str, object],
+) -> list[dict[str, object]]:
+    """The reviewed exclusions the release's fit gates stood on.
+
+    Each carries its name and its register entry's reason (cut at 300
+    characters), approver, adjudication and expiry, copied verbatim from the
+    full gate report. The gate's own measurement of the row, such as its
+    relative error, is not copied. That is not a no-figures guarantee: a
+    reason is reviewer prose and can cite figures of its own, as the
+    input-mass register's reasons cite national totals and percentages.
+    """
+
+    report = _mapping(full_report.get("report"), "full gate report.report")
+    outcomes = report.get("outcomes")
+    if not isinstance(outcomes, list):
+        raise SystemExit("error: full gate report.report.outcomes must be a list")
+    limitations: list[dict[str, object]] = []
+    for outcome in outcomes:
+        if not isinstance(outcome, Mapping):
+            continue
+        gate_id = outcome.get("id")
+        if gate_id not in _SIGNED_EXCLUSION_GATES:
+            continue
+        details = outcome.get("details")
+        details = details if isinstance(details, Mapping) else {}
+        excluded = details.get("reviewed_exclusions")
+        if not isinstance(excluded, Mapping):
+            continue
+        dormant = set(details.get("dormant_exclusions") or ())
+        for name, record in sorted(excluded.items()):
+            if name in dormant:
+                continue
+            record = record if isinstance(record, Mapping) else {"reason": record}
+            limitations.append(
+                {
+                    "id": f"reviewed_exclusion:{gate_id}:{name}",
+                    "summary": str(record.get("reason") or "")[:300],
+                    "approved_by": record.get("approved_by"),
+                    "adjudication": record.get("adjudication"),
+                    "expires_on": record.get("expires_on"),
+                }
             )
-        return override
-    match = re.search(r"([0-9]{8}T[0-9]{6}Z-[0-9a-f]{8})$", attempt_id)
-    if match is None:
-        raise SystemExit(
-            "error: the run's build id must end with <YYYYMMDDTHHMMSSZ>-<uuid8>"
+    return limitations
+
+
+def _area_support_exclusion_limitations(
+    solve: Mapping[str, object],
+) -> list[dict[str, object]]:
+    """The reviewed area-support exclusions the gate stood on, named by grain.
+
+    An exclusion is gate-only since microcosm#1301 and may excuse a
+    constituency as well as a local authority, so the summary names the
+    entry's own grain.
+    """
+
+    exclusions = solve.get("area_support_exclusions")
+    if not isinstance(exclusions, Mapping):
+        return []
+    limitations: list[dict[str, object]] = []
+    for area in exclusions.get("entries_stood_on") or []:
+        grain = str(area).partition("/")[0].replace("_", "-") or "local-area"
+        limitations.append(
+            {
+                "id": f"area_support_exclusion:{area}",
+                "summary": f"reviewed exclusion of the {grain} support floor.",
+            }
         )
-    return f"{UK_DENSE_RELEASE_ID}-{match.group(1)}"
+    return limitations
+
+
+def _size_doctrine_record(
+    parameters: Mapping[str, object], solve: Mapping[str, object]
+) -> dict[str, object]:
+    """The coverage receipt's size block: whether and how the file was sized."""
+
+    requested = parameters.get("dataset_households")
+    size = solve.get("dataset_size")
+    size = size if isinstance(size, Mapping) else {}
+    return {
+        "sized": requested is not None,
+        "clone_count": parameters.get("n_clones"),
+        "dataset_households": requested,
+        "realized_households": size.get("realized_households"),
+        "selection_initial_lambda": parameters.get("selection_initial_lambda"),
+        "selection_l0_lambda": size.get("selection_l0_lambda"),
+        "search_bracket": size.get("selection_search_bracket"),
+    }
 
 
 def _reviewed_limitations(
-    manifest: Mapping[str, object], report: Mapping[str, object]
+    manifest: Mapping[str, object],
+    report: Mapping[str, object],
+    *,
+    full_report: Mapping[str, object],
+    incumbent: _IncumbentAttachment | None,
 ) -> list[dict[str, object]]:
     limitations: list[dict[str, object]] = []
     for gate_id, entry in (report.get("gates") or {}).items():
@@ -196,15 +390,7 @@ def _reviewed_limitations(
                 }
             )
     solve = _mapping(manifest.get("solve"), "manifest.solve")
-    exclusions = solve.get("area_support_exclusions")
-    if isinstance(exclusions, Mapping):
-        for area in exclusions.get("entries_stood_on") or []:
-            limitations.append(
-                {
-                    "id": f"area_support_exclusion:{area}",
-                    "summary": "reviewed exclusion of the local-authority support floor.",
-                }
-            )
+    limitations.extend(_area_support_exclusion_limitations(solve))
     cross_grain = _mapping(manifest.get("cross_grain"), "manifest.cross_grain")
     for bridge in cross_grain.get("unbound_bridges") or []:
         if isinstance(bridge, Mapping):
@@ -214,19 +400,205 @@ def _reviewed_limitations(
                     "summary": "cross-grain bridge unbound with a receipt; the lower rows bind as published.",
                 }
             )
-    holdout = _mapping(
-        _mapping(manifest.get("fit"), "manifest.fit").get("rotated_holdout"),
-        "manifest.fit.rotated_holdout",
-    )
+    limitations.extend(_signed_exclusion_limitations(full_report))
     limitations.append(
-        {
-            "id": "rotated_holdout",
-            "summary": "capped relative-error loss on local rows the solve never saw.",
-            "mean_holdout_loss": holdout.get("mean_holdout_loss"),
-            "worst_holdout_loss": holdout.get("worst_holdout_loss"),
-        }
+        _holdout_limitation(_mapping(manifest.get("fit"), "manifest.fit"))
     )
+    if incumbent is None:
+        limitations.append(
+            {
+                "id": "no_incumbent_comparison",
+                "summary": (
+                    "no incumbent comparison is attached (an opt-in "
+                    "diagnostic); the release makes no claim against the "
+                    "incumbent."
+                ),
+            }
+        )
+    else:
+        failures = list(incumbent.assessment.get("limit_failures") or [])
+        limitations.append(
+            {
+                "id": "incumbent_surface_diagnostic",
+                "summary": (
+                    "the incumbent-surface evaluation is attached as a "
+                    "diagnostic; its measured limits are recorded, not enforced."
+                ),
+                "passed": not failures,
+                "failure_count": len(failures),
+            }
+        )
+    limitations.append(_engine_measurement_limitation(solve))
+    parameters = _mapping(manifest.get("parameters"), "manifest.parameters")
+    if parameters.get("dataset_households") is not None:
+        size = _size_doctrine_record(parameters, solve)
+        limitations.append(
+            {
+                "id": "size_doctrine",
+                "summary": (
+                    "the release ships the exact-k selection under the local "
+                    "size doctrine, not the whole calibrated pool."
+                ),
+                **{key: value for key, value in size.items() if key != "sized"},
+            }
+        )
     return limitations
+
+
+def _incumbent_attachment(
+    args: argparse.Namespace,
+    candidate_dir: Path,
+    *,
+    measured: Mapping[str, str],
+    identity: Mapping[str, object],
+) -> _IncumbentAttachment | None:
+    """Verify the opt-in incumbent comparison, when --incumbent-manifest asks.
+
+    Without the flag nothing is attached, even when the candidate directory
+    holds a score or a surface evaluation. With it, both are required and
+    hash-joined to the candidate and to the incumbent extraction; identity
+    failures refuse, while the measured limits are recorded for the manifest.
+    """
+
+    score_path = candidate_dir / "score_vs_incumbent.json"
+    surface_path = candidate_dir / "incumbent_surface_evaluation.json"
+    if args.incumbent_manifest is None:
+        stray = [path.name for path in (score_path, surface_path) if path.is_file()]
+        if stray:
+            print(
+                "note: no --incumbent-manifest, so the incumbent comparison is "
+                f"not attached; ignoring {', '.join(stray)}",
+                file=sys.stderr,
+            )
+        return None
+    paths = {
+        "score receipt": score_path,
+        "incumbent surface": surface_path,
+        "incumbent manifest": args.incumbent_manifest,
+    }
+    for label, path in paths.items():
+        if not path.is_file():
+            raise SystemExit(f"error: {label} missing: {path}")
+    attachment_measured = {label: _sha256(path) for label, path in paths.items()}
+    score = _load_json(score_path, label="score receipt")
+    incumbent = _load_json(args.incumbent_manifest, label="--incumbent-manifest")
+    # Hash-join the score to the candidate and to the incumbent extraction it
+    # names: a score computed on other bytes cannot ride into the release.
+    score_artifacts = _mapping(score.get("artifacts"), "score receipt artifacts")
+    _require_equal(
+        "score receipt artifacts.candidate_diagnostics.sha256 vs diagnostics bytes",
+        _mapping(
+            score_artifacts.get("candidate_diagnostics"),
+            "score receipt artifacts.candidate_diagnostics",
+        ).get("sha256"),
+        measured["diagnostics"],
+    )
+    incumbent_outputs = _mapping(
+        incumbent.get("outputs"), "--incumbent-manifest outputs"
+    )
+    for score_key, output_key in (
+        ("incumbent_household_metrics", "metrics"),
+        ("incumbent_wide_weights", "weights"),
+    ):
+        _require_equal(
+            f"score receipt artifacts.{score_key}.sha256 vs "
+            f"--incumbent-manifest outputs.{output_key}.sha256",
+            _mapping(
+                score_artifacts.get(score_key), f"score receipt artifacts.{score_key}"
+            ).get("sha256"),
+            _mapping(
+                incumbent_outputs.get(output_key),
+                f"--incumbent-manifest outputs.{output_key}",
+            ).get("sha256"),
+        )
+    evaluation = _load_json(surface_path, label="incumbent surface evaluation")
+    chronicle = _mapping(
+        _mapping(identity.get("targets"), "manifest.identity.targets").get("chronicle"),
+        "manifest.identity.targets.chronicle",
+    )
+    expected_surface_identity = {
+        "candidate_dataset_sha256": measured["candidate"],
+        "candidate_manifest_sha256": measured["candidate manifest"],
+        "candidate_diagnostics_sha256": measured["diagnostics"],
+        "ledger_facts_sha256": chronicle.get("facts_sha256"),
+        "ledger_manifest_sha256": chronicle.get("manifest_sha256"),
+        "incumbent_manifest_sha256": attachment_measured["incumbent manifest"],
+        "incumbent_metrics_sha256": _mapping(
+            incumbent_outputs.get("metrics"), "incumbent metrics"
+        ).get("sha256"),
+        "incumbent_weights_sha256": _mapping(
+            incumbent_outputs.get("weights"), "incumbent weights"
+        ).get("sha256"),
+    }
+    surface_failures: list[str] = []
+    assessment = _check_uk_incumbent_surface_evaluation(
+        evaluation,
+        surface_failures,
+        expected_identity=expected_surface_identity,
+        enforce_limits=False,
+    )
+    if surface_failures:
+        raise SystemExit(
+            "error: incumbent surface evaluation failed:\n"
+            + "\n".join(surface_failures)
+        )
+    return _IncumbentAttachment(
+        manifest_path=args.incumbent_manifest,
+        manifest=incumbent,
+        score_path=score_path,
+        score=score,
+        surface_path=surface_path,
+        measured=attachment_measured,
+        assessment=assessment,
+    )
+
+
+def _incumbent_coverage(incumbent: _IncumbentAttachment | None) -> dict[str, object]:
+    """The coverage receipt's incumbent block, with its compared discriminator."""
+
+    if incumbent is None:
+        return {"compared": False}
+    failures = list(incumbent.assessment.get("limit_failures") or [])
+    return {
+        "compared": True,
+        "snapshot": incumbent.manifest.get("inputs"),
+        "period": incumbent.manifest.get("period"),
+        "households": incumbent.manifest.get("households"),
+        "score_receipt_sha256": incumbent.measured["score receipt"],
+        "rows_compared": incumbent.score.get("rows_compared"),
+        "incumbent_missing_areas": incumbent.score.get("incumbent_missing_areas"),
+        "assessment_passed": not failures,
+        "assessment_failure_count": len(failures),
+    }
+
+
+def _area_support_block(solve: Mapping[str, object]) -> dict[str, object]:
+    """The areas below the local support floor, as codes only (microcosm#1278).
+
+    The support gate blocks release, so an area of a released file sits below
+    a floor only under a reviewed exclusion the gate stood on, and those
+    entries name the areas. Their support figures are in the signed gate
+    report's reviewed exclusions (María's ruling of 2026-10-26 dropped their
+    withholding, microcosm#1301).
+    """
+    from microcosm.build.uk_runtime.battery_bindings import uk_area_support_floors
+
+    exclusions = _mapping(
+        solve.get("area_support_exclusions"), "area_support_exclusions"
+    )
+    below: dict[str, list[str]] = {}
+    for key in exclusions.get("entries_stood_on") or []:
+        level, separator, code = str(key).partition("/")
+        if not separator or not level or not code:
+            raise SystemExit(
+                f"error: area support exclusion {key!r} is not '<level>/<code>'"
+            )
+        below.setdefault(level, []).append(code)
+    return {
+        "gate": "uk_local_area_support",
+        "floors": uk_area_support_floors(),
+        "below_floor": {level: sorted(codes) for level, codes in sorted(below.items())},
+    }
 
 
 def _assemble(args: argparse.Namespace) -> dict[str, object]:
@@ -279,17 +651,14 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     candidate_h5 = output_path("dataset")
     diagnostics_path = output_path("calibration_diagnostics")
     report_path = output_path("local_gate_report")
-    score_path = candidate_dir / "score_vs_incumbent.json"
-    surface_path = candidate_dir / "incumbent_surface_evaluation.json"
+    full_report_path = output_path("full_gate_report")
     inputs = {
         "candidate": candidate_h5,
         "diagnostics": diagnostics_path,
         "gate report": report_path,
-        "score receipt": score_path,
+        "full gate report": full_report_path,
         "spine H5": args.spine_h5,
-        "incumbent surface": surface_path,
         "candidate manifest": candidate_dir / "rowwise_candidate_manifest.json",
-        "incumbent manifest": args.incumbent_manifest,
     }
     for label, path in inputs.items():
         if not path.is_file():
@@ -299,6 +668,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         ("dataset", "candidate"),
         ("calibration_diagnostics", "diagnostics"),
         ("local_gate_report", "gate report"),
+        ("full_gate_report", "full gate report"),
     ):
         _require_equal(
             f"{label} bytes vs manifest.outputs.{key}.sha256",
@@ -335,65 +705,14 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             + "\n".join(f"  - {f}" for f in failures)
         )
     diagnostics = _load_json(diagnostics_path, label="calibration diagnostics")
-    score = _load_json(score_path, label="score receipt")
-    incumbent = _load_json(args.incumbent_manifest, label="--incumbent-manifest")
-    # Hash-join the score to the candidate and to the incumbent extraction it
-    # names: a score computed on other bytes cannot ride into the release.
-    score_artifacts = _mapping(score.get("artifacts"), "score receipt artifacts")
-    _require_equal(
-        "score receipt artifacts.candidate_diagnostics.sha256 vs diagnostics bytes",
-        _mapping(
-            score_artifacts.get("candidate_diagnostics"),
-            "score receipt artifacts.candidate_diagnostics",
-        ).get("sha256"),
-        measured["diagnostics"],
-    )
-    incumbent_outputs = _mapping(
-        incumbent.get("outputs"), "--incumbent-manifest outputs"
-    )
-    for score_key, output_key in (
-        ("incumbent_household_metrics", "metrics"),
-        ("incumbent_wide_weights", "weights"),
-    ):
-        _require_equal(
-            f"score receipt artifacts.{score_key}.sha256 vs "
-            f"--incumbent-manifest outputs.{output_key}.sha256",
-            _mapping(
-                score_artifacts.get(score_key), f"score receipt artifacts.{score_key}"
-            ).get("sha256"),
-            _mapping(
-                incumbent_outputs.get(output_key),
-                f"--incumbent-manifest outputs.{output_key}",
-            ).get("sha256"),
-        )
-    evaluation = _load_json(surface_path, label="incumbent surface evaluation")
-    chronicle = _mapping(
-        _mapping(identity.get("targets"), "manifest.identity.targets").get("chronicle"),
-        "manifest.identity.targets.chronicle",
-    )
-    expected_surface_identity = {
-        "candidate_dataset_sha256": measured["candidate"],
-        "candidate_manifest_sha256": measured["candidate manifest"],
-        "candidate_diagnostics_sha256": measured["diagnostics"],
-        "ledger_facts_sha256": chronicle.get("facts_sha256"),
-        "ledger_manifest_sha256": chronicle.get("manifest_sha256"),
-        "incumbent_manifest_sha256": measured["incumbent manifest"],
-        "incumbent_metrics_sha256": _mapping(
-            incumbent_outputs.get("metrics"), "incumbent metrics"
-        ).get("sha256"),
-        "incumbent_weights_sha256": _mapping(
-            incumbent_outputs.get("weights"), "incumbent weights"
-        ).get("sha256"),
-    }
-    surface_failures = []
-    _check_uk_incumbent_surface_evaluation(
-        evaluation, surface_failures, expected_identity=expected_surface_identity
-    )
-    if surface_failures:
+    full_report = _load_json(full_report_path, label="full gate report")
+    if full_report.get("kind") != "uk_full_gate_report":
         raise SystemExit(
-            "error: incumbent surface evaluation failed:\n"
-            + "\n".join(surface_failures)
+            "error: manifest.outputs.full_gate_report is not a uk_full_gate_report"
         )
+    incumbent = _incumbent_attachment(
+        args, candidate_dir, measured=measured, identity=identity
+    )
     runtime_block = _mapping(identity.get("runtime"), "manifest.identity.runtime")
     runtime = {}
     for package in _RUNTIME_PACKAGES:
@@ -412,7 +731,6 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         raise SystemExit(
             "error: manifest.identity.code.git_commit must be a 40-hex commit"
         )
-    cut_tag = _cut_tag(attempt_id, args.cut_tag)
     parameters = _mapping(manifest.get("parameters"), "manifest.parameters")
     if parameters.get("release_candidate") is not True:
         raise SystemExit("error: the run was not a --release-candidate run")
@@ -440,23 +758,28 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             artifact_root=artifact_root,
             manifest=manifest,
             report=report,
+            full_report=full_report,
             diagnostics=diagnostics,
-            score=score,
             incumbent=incumbent,
             measured=measured,
             attempt_id=attempt_id,
-            cut_tag=cut_tag,
             runtime=runtime,
             code_pin=code_pin,
             report_path=report_path,
-            score_path=score_path,
             logbook_row=logbook_row,
             source_paths={
-                "incumbent_surface_evaluation.json": surface_path,
                 "rowwise_candidate_manifest.json": candidate_dir
                 / "rowwise_candidate_manifest.json",
-                "incumbent_manifest.json": args.incumbent_manifest,
                 "source_calibration_diagnostics.json": diagnostics_path,
+                **(
+                    {}
+                    if incumbent is None
+                    else {
+                        "incumbent_surface_evaluation.json": incumbent.surface_path,
+                        "incumbent_manifest.json": incumbent.manifest_path,
+                        "score_vs_incumbent.json": incumbent.score_path,
+                    }
+                ),
             },
         )
     finally:
@@ -470,16 +793,14 @@ def _stage_and_finalize(
     artifact_root: Path,
     manifest: Mapping[str, object],
     report: Mapping[str, object],
+    full_report: Mapping[str, object],
     diagnostics: Mapping[str, object],
-    score: Mapping[str, object],
-    incumbent: Mapping[str, object],
+    incumbent: _IncumbentAttachment | None,
     measured: Mapping[str, str],
     attempt_id: str,
-    cut_tag: str,
     runtime: Mapping[str, str],
     code_pin: str,
     report_path: Path,
-    score_path: Path,
     logbook_row: Mapping[str, object],
     source_paths: Mapping[str, Path],
 ) -> dict[str, object]:
@@ -531,7 +852,9 @@ def _stage_and_finalize(
             if isinstance(entry, Mapping)
             and entry.get("criticality") != "release_blocking"
         },
-        "reviewed_limitations": _reviewed_limitations(manifest, report),
+        "reviewed_limitations": _reviewed_limitations(
+            manifest, report, full_report=full_report, incumbent=incumbent
+        ),
     }
     _write_json(release_dir / "gate_summary.json", gate_summary)
     ladder = _mapping(identity.get("ladder"), "identity.ladder")
@@ -572,14 +895,7 @@ def _stage_and_finalize(
             "bytes": ladder.get("bytes"),
             "layer_vintages": ladder.get("layer_vintages"),
         },
-        "incumbent": {
-            "snapshot": incumbent.get("inputs"),
-            "period": incumbent.get("period"),
-            "households": incumbent.get("households"),
-            "score_receipt_sha256": measured["score receipt"],
-            "rows_compared": score.get("rows_compared"),
-            "incumbent_missing_areas": score.get("incumbent_missing_areas"),
-        },
+        "incumbent": _incumbent_coverage(incumbent),
         "doctrine": dict(_mapping(parameters.get("doctrine"), "parameters.doctrine")),
         "measure_exclusions": {
             name: dict(rec)
@@ -609,8 +925,13 @@ def _stage_and_finalize(
                 )
                 or []
             ),
+            # The names the manifest's reviewed_exclusion limitations restate
+            # (microcosm#1301); the contract checks the local target-fit names
+            # against the signed report.
+            "reviewed_exclusions": _signed_exclusion_names(full_report),
         },
-        "holdout": dict(_mapping(fit.get("rotated_holdout"), "fit.rotated_holdout")),
+        "holdout": _holdout_coverage(fit),
+        "size": _size_doctrine_record(parameters, solve),
         "uprating": dict(
             _mapping(
                 manifest.get("census_household_uprating"),
@@ -629,18 +950,19 @@ def _stage_and_finalize(
             "prev_row_digest": logbook_row.get("prev_row_digest"),
         },
     }
-    coverage["holdout"].pop("folds", None)
     _write_json(release_dir / "uk_source_coverage.json", coverage)
     shutil.copyfile(report_path, release_dir / "uk_local_gates.json")
-    shutil.copyfile(score_path, release_dir / "score_vs_incumbent.json")
     # Measured by the candidate build when it recorded it; otherwise unmeasured
     # (None), never asserted clean.
     recorded_dirty = _mapping(identity.get("code"), "manifest.identity.code").get(
         "git_dirty"
     )
     git_dirty = recorded_dirty if isinstance(recorded_dirty, bool) else None
+    # The build is the calibration attempt: both manifests name it, and the
+    # release, so the emitter can publish it into its own folder.
     build_manifest = {
-        "build_id": UK_DENSE_RELEASE_ID,
+        "release": UK_DENSE_RELEASE_ID,
+        "build": attempt_id,
         "build_sha": code_pin[:7],
         "code": {
             "repository": "PolicyEngine/microcosm",
@@ -667,20 +989,18 @@ def _stage_and_finalize(
             for gate_id, entry in gates.items()
             if isinstance(entry, Mapping)
         },
-        "attempt_id": attempt_id,
-        "cut_tag": cut_tag,
         "created_at": created_at,
         "staging": dict(staging_delivery),
     }
     _write_json(release_dir / "build_manifest.json", build_manifest)
 
-    def artifact(kind: str, path: str, sha256: str) -> dict[str, str]:
+    def artifact(key: str, kind: str, path: str, sha256: str) -> dict[str, str]:
         return {
             "kind": kind,
             "path": path,
             "repo_id": _REPO_ID,
-            "revision": cut_tag,
             "sha256": sha256,
+            "role": release_artifact_role(key, kind),
         }
 
     evidence_files = (
@@ -688,11 +1008,25 @@ def _stage_and_finalize(
         "gate_summary.json",
         "uk_source_coverage.json",
         "uk_local_gates.json",
-        "score_vs_incumbent.json",
         "build_manifest.json",
     )
     evidence_files = (*evidence_files, *source_paths)
     evidence_sha = {name: _sha256(release_dir / name) for name in evidence_files}
+    # The SPI Public Use Tape marker, rederived from the stages the spine
+    # provenance names and checked against any marker it records (#1095).
+    spine_provenance = _mapping(
+        _mapping(identity.get("spine"), "identity.spine").get("spine_provenance"),
+        "identity.spine.spine_provenance",
+    )
+    try:
+        spi_marker = uk_spi_public_use_tape_marker_for_stage_names(
+            [str(stage) for stage in spine_provenance.get("stages") or ()]
+        )
+        uk_check_spi_public_use_tape_marker(
+            spine_provenance.get(UK_SPI_PUBLIC_USE_TAPE_KEY), spi_marker
+        )
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
     release_manifest = {
         "schema_version": 1,
         "data_package": {
@@ -703,19 +1037,16 @@ def _stage_and_finalize(
         "is_default": False,
         "default_datasets": {},
         "namespace": _NAMESPACE,
-        "build": {
-            "build_id": UK_DENSE_RELEASE_ID,
-            "built_at": created_at,
-            "built_with_core_package": {
-                "name": "policyengine-core",
-                "version": runtime["policyengine-core"],
-            },
-            "built_with_model_package": {
-                "name": "policyengine-uk",
-                "version": runtime["policyengine-uk"],
-            },
-            "attempt_id": attempt_id,
-            "cut_tag": cut_tag,
+        "release": UK_DENSE_RELEASE_ID,
+        "build": attempt_id,
+        "built_at": created_at,
+        "built_with_core_package": {
+            "name": "policyengine-core",
+            "version": runtime["policyengine-core"],
+        },
+        "built_with_model_package": {
+            "name": "policyengine-uk",
+            "version": runtime["policyengine-uk"],
         },
         "compatible_core_packages": [
             {
@@ -727,17 +1058,26 @@ def _stage_and_finalize(
             {"name": "policyengine-uk", "specifier": f"=={runtime['policyengine-uk']}"}
         ],
         "artifacts": {
-            _DATASET_KEY: artifact(
-                "microdata", _DATASET_FILENAME, measured["candidate"]
-            ),
+            _DATASET_KEY: {
+                **artifact(
+                    _DATASET_KEY, "microdata", _DATASET_FILENAME, measured["candidate"]
+                ),
+                "spi_public_use_tape_dependent": bool(spi_marker["dependent"]),
+            },
             **{
-                Path(name).stem: artifact("diagnostics", name, evidence_sha[name])
+                Path(name).stem: artifact(
+                    Path(name).stem, "diagnostics", name, evidence_sha[name]
+                )
                 for name in evidence_files
                 if name != "build_manifest.json"
             },
         },
         "reviewed_limitations": gate_summary["reviewed_limitations"],
-        "description": f"UK dense joint national + local line assembled from attempt {attempt_id} at immutable cut {cut_tag}; inspect lane, never the default slot.",
+        "area_support": _area_support_block(solve),
+        "description": (
+            "UK dense joint national + local release build assembled from "
+            f"attempt {attempt_id}; never the default release."
+        ),
         "publisher_labels": {
             "obr": "Office for Budget Responsibility",
             "hmrc": "HM Revenue and Customs",
@@ -746,6 +1086,7 @@ def _stage_and_finalize(
             "voa": "Valuation Office Agency",
             "slc": "Student Loans Company",
         },
+        "licensed_data": {UK_SPI_PUBLIC_USE_TAPE_KEY: dict(spi_marker)},
     }
     _write_json(release_dir / "release_manifest.json", release_manifest)
     sums = {
@@ -756,35 +1097,52 @@ def _stage_and_finalize(
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
     )
-    validate_release_dir(release_dir)
+    # A contract warning never refuses; each is weighed before publication.
+    contract_warnings = validate_release_dir(release_dir)
+    for contract_warning in contract_warnings:
+        print(f"warning: {contract_warning}", file=sys.stderr)
     release_dir.rename(destination)
+    # Each new dense build becomes current: the publication lists it and the
+    # promotion makes it current, or --make-current on the publication does
+    # both in one commit. The emitter refuses either while a latest*.json
+    # pointer file is in the repository; its switch to releases.json deleted
+    # them.
     publish_command = shlex.join(
         [
             "uv",
             "run",
-            "python",
-            "-m",
-            "microcosm.data.publish_cli",
+            "microcosm-publish-release-build",
             str(destination),
             "--repo-id",
             _REPO_ID,
             "--artifact-root",
             str(artifact_root),
-            "--no-latest",
-            "--tag-name",
-            cut_tag,
+        ]
+    )
+    promote_command = shlex.join(
+        [
+            "uv",
+            "run",
+            "microcosm-publish-release-build",
+            str(destination),
+            "--repo-id",
+            _REPO_ID,
+            "--promote",
         ]
     )
     return {
         "release_id": UK_DENSE_RELEASE_ID,
+        "release": UK_DENSE_RELEASE_ID,
+        "build": attempt_id,
         "release_dir": str(destination),
-        "cut_tag": cut_tag,
         "dataset": {
             "path": str(artifact_root / _DATASET_FILENAME),
             "sha256": measured["candidate"],
         },
         "evidence": {name: _sha256(destination / name) for name in evidence_files},
         "publish_command": publish_command,
+        "promote_command": promote_command,
+        "warnings": contract_warnings,
     }
 
 
@@ -799,9 +1157,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--spine-h5", required=True, type=Path)
     parser.add_argument(
         "--incumbent-manifest",
-        required=True,
         type=Path,
-        help="incumbent_local_surface_manifest.json from the extractor",
+        help=(
+            "optional diagnostic (microcosm#1301): the extractor's "
+            "incumbent_local_surface_manifest.json; attaches the candidate "
+            "directory's score_vs_incumbent.json and "
+            "incumbent_surface_evaluation.json, whose measured limits are "
+            "recorded, not enforced"
+        ),
     )
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument(
@@ -809,7 +1172,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         type=Path,
         help="where the published H5 is cloned (default: beside the candidate)",
     )
-    parser.add_argument("--cut-tag")
     parser.add_argument(
         "--allow-missing-staging",
         action="store_true",

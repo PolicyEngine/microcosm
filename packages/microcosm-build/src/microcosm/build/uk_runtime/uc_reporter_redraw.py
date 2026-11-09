@@ -17,11 +17,20 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    UK_GATE_OUTCOMES_EVIDENCE,
+    gate_outcomes,
 )
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
@@ -30,8 +39,16 @@ from microcosm.build.uk_runtime.spi_support import (
     support_clone_index_column,
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
+    PROPERTY_CAPITAL_OWNER_COLUMN,
+    PROPERTY_CAPITAL_SECURED_DEBT,
+    UC_CAPITAL_WITH_PROPERTY_DEFINITION,
+    UC_PROPERTY_CAPITAL_SHARE,
+    UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
+    UC_PROPERTY_CAPITAL_SOURCES,
     _boolean_values,
     _household_to_benunit_weights,
+    recorded_capital_with_property,
+    uc_property_capital_share,
 )
 from microcosm.build.uk_runtime.uc_relationships import (
     UC_COUPLE_DEFINITION,
@@ -44,6 +61,10 @@ from microcosm.frame.rules import assert_rules_engine_country
 UC_REPORTER_REDRAW_STAGE_NAME = "uc_reporter_redraw"
 UC_REPORTER_REDRAW_OUTPUT = "universal_credit_reported"
 UC_REPORTER_REDRAW_SEED = 44
+#: The redraw's sign gate is cross-fitted, its folds dealt by household
+#: (microcosm#1359): an in-sample gate draws the rare reported award too
+#: rarely on the benefit units it was not fitted to.
+UC_REPORTER_GATE_CALIBRATION = "cross_fitted"
 UC_REPORTER_SCREEN_VARIABLES = (
     "uc_maximum_amount",
     "uc_income_reduction",
@@ -69,9 +90,20 @@ UC_REPORTER_NUMERIC_PREDICTORS = tuple(
     predictor for predictor in UC_REPORTER_PREDICTORS if predictor != "region"
 )
 UC_REPORTER_TARGET = "universal_credit_reported_amount"
+UC_REPORTER_SCREEN_CAPITAL_DEFINITION = (
+    f"{UC_CAPITAL_WITH_PROPERTY_DEFINITION}; a base FRS-channel unit with "
+    f"{UC_REPORTER_TARGET} > 0 takes frs_benunit_capital alone"
+)
 UC_REPORTER_TEMPORARY_DERIVED = {
     "is_uc_couple": UC_COUPLE_DEFINITION,
-    "uc_reported_capital": "frs_benunit_capital",
+    # The screen reads the capital uc_capital_coherence records. An FRS unit
+    # that reports Universal Credit is screened on its carrier alone, so the
+    # training set keeps the reporters whose imputed property would take them
+    # over the capital limit. Every other unit is screened on the carrier plus
+    # its property share, so a drawn SPI reporter does not land on a unit its
+    # property takes over the limit (microcosm#1095).
+    UC_PROPERTY_CAPITAL_SHARE: UC_PROPERTY_CAPITAL_SHARE_DEFINITION,
+    "uc_reported_capital": UC_REPORTER_SCREEN_CAPITAL_DEFINITION,
     "positive_pre_takeup_uc_award": (
         "max(0, uc_maximum_amount - uc_income_reduction) > 0"
     ),
@@ -92,10 +124,13 @@ UC_REPORTER_TARGET_ROWS = "spi_channel_screened"
 UC_REPORTER_REWRITE_ROWS = "spi_channel"
 UC_REPORTER_LANDING = "eldest_working_age_adult_lowest_person_id"
 _HOUSEHOLD_CGT_CLONE_COLUMN = "household_is_capital_gains_clone"
+#: Interest is ISA interest included, as gross interest held it before the
+#: additive contract (microcosm#1360).
 _PERSON_INCOME_COLUMNS = (
     "employment_income",
     "self_employment_income",
     "savings_interest_income",
+    "individual_savings_account_interest_income",
     "dividend_income",
     "property_income",
     "other_investment_income",
@@ -111,11 +146,13 @@ class UKUCReporterRedrawResult:
     screened_spi_benunits: int
     screen_failed_spi_benunits: int
     reporter_transitions: Mapping[str, Mapping[str, Mapping[str, int]]]
+    #: The redraw's gate outcome, when the gate is not in-sample.
+    gate_outcomes: Mapping[str, str] | None = None
 
     def evidence(self) -> dict[str, object]:
         """Return JSON-safe stage evidence."""
 
-        return {
+        evidence: dict[str, object] = {
             "stage": UC_REPORTER_REDRAW_STAGE_NAME,
             "seed": UC_REPORTER_REDRAW_SEED,
             "training_benunits": self.training_benunits,
@@ -129,6 +166,9 @@ class UKUCReporterRedrawResult:
                 for channel, families in self.reporter_transitions.items()
             },
         }
+        if self.gate_outcomes:
+            evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.gate_outcomes)
+        return evidence
 
 
 @dataclass(frozen=True)
@@ -184,6 +224,7 @@ def redraw_spi_reported_uc(
             "is_benunit_head",
             "is_parent",
             "age",
+            PROPERTY_CAPITAL_OWNER_COLUMN,
             UC_REPORTER_REDRAW_OUTPUT,
             *_PERSON_INCOME_COLUMNS,
         ),
@@ -202,7 +243,15 @@ def redraw_spi_reported_uc(
     )
     _require_columns(
         household,
-        ("household_id", "region"),
+        (
+            "household_id",
+            "region",
+            *UC_PROPERTY_CAPITAL_SOURCES,
+            *(
+                PROPERTY_CAPITAL_SECURED_DEBT[source]
+                for source in UC_PROPERTY_CAPITAL_SOURCES
+            ),
+        ),
         label="household",
     )
 
@@ -288,14 +337,43 @@ def redraw_spi_reported_uc(
     model_predictors = [
         column for column in encoded_train.columns if column != UC_REPORTER_TARGET
     ]
-    fitted = qrf_factory(seed=UC_REPORTER_REDRAW_SEED).fit(
+    # A household's benefit units share its household predictors, so a
+    # cross-fitted gate deals each household to one fold.
+    benunit_household = (
+        person.groupby("person_benunit_id", sort=False)["person_household_id"]
+        .first()
+        .reindex(benunit["benunit_id"])
+        .to_numpy()
+    )
+    fitted = qrf_factory(
+        seed=UC_REPORTER_REDRAW_SEED, gate_calibration=UC_REPORTER_GATE_CALIBRATION
+    ).fit(
         encoded_train,
         model_predictors,
         [UC_REPORTER_TARGET],
         weights=weights[training],
+        groups=benunit_household[training],
     )
     draws = np.zeros(len(benunit), dtype=np.float64)
-    predicted = fitted.predict(encoded_target)
+    # Uniforms keyed on each benefit unit's own id, never a positional
+    # stream: a unit's redraw moves only when its own predictors do.
+    keys = integer_record_keys(
+        benunit["benunit_id"].to_numpy()[target], label="UC reporter benunit_id"
+    )
+    salt = f"uc_reporter_redraw:{UC_REPORTER_TARGET}"
+    predicted = fitted.predict_from_uniforms(
+        encoded_target,
+        quantiles={
+            UC_REPORTER_TARGET: stable_identity_uniforms(
+                keys, seed=UC_REPORTER_REDRAW_SEED, salt=salt
+            )
+        },
+        sign_uniforms={
+            UC_REPORTER_TARGET: stable_identity_uniforms(
+                keys, seed=UC_REPORTER_REDRAW_SEED, salt=f"{salt}:sign"
+            )
+        },
+    )
     if list(predicted.columns) != [UC_REPORTER_TARGET]:
         raise ValueError(
             "UC reporter redraw model must return exactly the declared target."
@@ -352,6 +430,11 @@ def redraw_spi_reported_uc(
         screened_spi_benunits=int(target.sum()),
         screen_failed_spi_benunits=int((spi & ~screen).sum()),
         reporter_transitions=transitions,
+        gate_outcomes=(
+            gate_outcomes(UC_REPORTER_REDRAW_STAGE_NAME, fitted)
+            if UC_REPORTER_GATE_CALIBRATION != UK_DEFAULT_GATE_CALIBRATION
+            else None
+        ),
     )
 
 
@@ -364,9 +447,21 @@ def _materialize_screen_inputs(
     household: pd.DataFrame,
 ) -> Mapping[str, np.ndarray]:
     temporary_benunit = benunit.copy()
-    temporary_benunit["uc_reported_capital"] = pd.to_numeric(
-        temporary_benunit["frs_benunit_capital"], errors="coerce"
-    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    frs_reporter = temporary_benunit[support_channel_column("benunit")].astype(str).eq(
+        BASE_FRS_SUPPORT_CHANNEL
+    ).to_numpy(dtype=bool) & (
+        _benefit_unit_reporter_amounts(person, temporary_benunit) > 0.0
+    )
+    temporary_benunit["uc_reported_capital"] = recorded_capital_with_property(
+        pd.to_numeric(
+            temporary_benunit["frs_benunit_capital"], errors="coerce"
+        ).to_numpy(dtype=np.float64, na_value=np.nan),
+        np.where(
+            frs_reporter,
+            0.0,
+            uc_property_capital_share(person, temporary_benunit, household),
+        ),
+    )
     temporary = uk_national_frame(
         person=person,
         benunit=temporary_benunit,
@@ -491,6 +586,7 @@ def _benefit_unit_predictors(
         grouped[
             [
                 "savings_interest_income",
+                "individual_savings_account_interest_income",
                 "dividend_income",
                 "property_income",
                 "other_investment_income",
@@ -817,6 +913,7 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
             "fit": "regime_gated_qrf",
             "landing": UC_REPORTER_LANDING,
             "seed": UC_REPORTER_REDRAW_SEED,
+            "gate_calibration": UC_REPORTER_GATE_CALIBRATION,
         },
     }
     actual = {

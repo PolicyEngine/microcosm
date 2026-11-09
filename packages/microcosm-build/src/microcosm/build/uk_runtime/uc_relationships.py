@@ -83,12 +83,14 @@ def frs_uc_couple_mask(person: pd.DataFrame, benunit: pd.DataFrame) -> np.ndarra
     return counts.eq(2).to_numpy(dtype=bool)
 
 
-#: Benefit-unit financial investment income: interest (tax-free included),
-#: dividends and other investment income. TOTCAPB4 counts accounts and assets
-#: and has no property code (SN 9563), so let-property income is not part of
-#: the capital it predicts (microcosm#1095).
+#: Benefit-unit financial investment income: interest (ISA interest included,
+#: stored beside non-ISA interest since microcosm#1360), dividends and other
+#: investment income. TOTCAPB4 counts accounts and assets and has no property
+#: code (SN 9563), so let-property income is not part of the capital it
+#: predicts (microcosm#1095).
 UC_FINANCIAL_INVESTMENT_INCOME_COLUMNS = (
     "savings_interest_income",
+    "individual_savings_account_interest_income",
     "dividend_income",
     "other_investment_income",
 )

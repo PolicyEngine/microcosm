@@ -67,10 +67,14 @@ from microcosm.build.telemetry_emitter import (
 )
 from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
+from microcosm.build.uk_runtime.aps_occupation import UKAPSOccupationStageTransform
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_SPINE_GATE_SCOPE,
     uk_scoped_gate_manifest,
+)
+from microcosm.build.uk_runtime.carers_allowance_take_up import (
+    UKCarersAllowanceTakeUpStageTransform,
 )
 from microcosm.build.uk_runtime.cgt_asset_type import (
     uk_cgt_asset_type_stage_transform,
@@ -87,15 +91,23 @@ from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransfo
 from microcosm.build.uk_runtime.child_benefit_take_up import (
     UKChildBenefitTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.childcare_copy_take_up import (
+    UKChildcareCopyTakeUpStageTransform,
+)
+from microcosm.build.uk_runtime.company_cars import (
+    UKCompanyCarsStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
+from microcosm.build.uk_runtime.frs_annual_income import (
+    UKFRSAnnualIncomeStageTransform,
+)
 from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
 from microcosm.build.uk_runtime.frs_education_grants import (
-    FRS_EDUCATION_GRANT_REWRITES,
     UKFRSEducationGrantSplitStageTransform,
 )
 from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
@@ -116,6 +128,7 @@ from microcosm.build.uk_runtime.frs_spine import (
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.graph import (
+    UK_SPINE_ASSEMBLED_FINAL_STAGE,
     uk_registry,
     uk_spine_graph,
     uk_spine_operation_inventory,
@@ -128,8 +141,17 @@ from microcosm.build.uk_runtime.graph_evidence import (
     register_spine_gate_kernel,
     spine_sidecar_evidence,
 )
+from microcosm.build.uk_runtime.high_value_home_support import (
+    UKHighValueHomeSupportStageTransform,
+)
+from microcosm.build.uk_runtime.isa_subscriptions import (
+    UKISASubscriptionsStageTransform,
+)
 from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
+)
+from microcosm.build.uk_runtime.legacy_closure_take_up import (
+    UKLegacyClosureTakeUpStageTransform,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -147,6 +169,18 @@ from microcosm.build.uk_runtime.orrery_contract import (
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.private_school_attendance import (
+    UKPrivateSchoolAttendanceStageTransform,
+)
+from microcosm.build.uk_runtime.property_components import (
+    UKPropertyComponentsStageTransform,
+)
+from microcosm.build.uk_runtime.property_purchases import (
+    UKPropertyPurchasesStageTransform,
+)
+from microcosm.build.uk_runtime.regional_home_values import (
+    UKRegionalHomeValuesStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -157,6 +191,13 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 )
 from microcosm.build.uk_runtime.spi_benefit_coherence import (
     UKSPIBenefitCoherenceStageTransform,
+)
+from microcosm.build.uk_runtime.spi_dependency import (
+    UK_SPI_PUBLIC_USE_TAPE_KEY,
+    uk_spi_public_use_tape_marker,
+)
+from microcosm.build.uk_runtime.spi_employment_shell import (
+    UKSPIEmploymentShellStageTransform,
 )
 from microcosm.build.uk_runtime.spi_housing_shell import (
     UKSPIHousingShellStageTransform,
@@ -169,6 +210,9 @@ from microcosm.build.uk_runtime.spi_spine import (
 from microcosm.build.uk_runtime.staging import UK_STAGING_REPOSITORY
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+from microcosm.build.uk_runtime.trading_allowance_receipts import (
+    UKTradingAllowanceReceiptsStageTransform,
+)
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     UKUCCapitalCoherenceStageTransform,
 )
@@ -178,6 +222,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.uc_take_up import UKUCTakeUpStageTransform
 from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
@@ -201,11 +246,6 @@ _REPOSITORY = next(
 )
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
-#: The last stage of the assembled checkpoint: everything through the base
-#: FRS mapping and the stochastic draws. A name, not an index — a position
-#: standing in for a key is correct only while two independently-maintained
-#: orderings happen to agree (the uk-data#468 class).
-UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 
 
 def _uk_spine_stage_names(spec) -> tuple[str, ...]:
@@ -326,8 +366,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--was-person-tab",
         type=Path,
         help=(
-            "Caller-supplied private WAS round-8 person tab for was_lisa (with "
-            "--was-tab)."
+            "Caller-supplied private WAS round-8 person tab for was_lisa, "
+            "isa_subscriptions and company_cars (with --was-tab)."
         ),
     )
     parser.add_argument(
@@ -356,19 +396,35 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Caller-supplied private NTS ticket tab for nts_bus_travel.",
     )
     parser.add_argument(
+        "--nts-vehicle-tab",
+        type=Path,
+        help=(
+            "Caller-supplied private NTS vehicle tab for lcfs_consumption's "
+            "zero-emission share by income fifth and household-paid road-fuel mix."
+        ),
+    )
+    parser.add_argument(
         "--lcfs-hh-tab",
         type=Path,
-        help="Caller-supplied private LCFS 2023-24 household tab for lcfs_consumption.",
+        help="Caller-supplied private LCFS 2024-25 household tab for lcfs_consumption.",
     )
     parser.add_argument(
         "--lcfs-person-tab",
         type=Path,
-        help="Caller-supplied private LCFS 2023-24 person tab for lcfs_consumption.",
+        help="Caller-supplied private LCFS 2024-25 person tab for lcfs_consumption.",
     )
     parser.add_argument(
         "--etb-tab",
         type=Path,
         help="Caller-supplied private ETB 1977-2024 household tab for ETB stages.",
+    )
+    parser.add_argument(
+        "--aps-tab",
+        type=Path,
+        help=(
+            "Caller-supplied private APS April 2024-March 2025 person tab for "
+            "aps_occupation."
+        ),
     )
     parser.add_argument(
         "--emit-nonzero-shares",
@@ -414,9 +470,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 ("--nts-trip-tab", args.nts_trip_tab),
                 ("--nts-stage-tab", args.nts_stage_tab),
                 ("--nts-ticket-tab", args.nts_ticket_tab),
+                ("--nts-vehicle-tab", args.nts_vehicle_tab),
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
                 ("--etb-tab", args.etb_tab),
+                ("--aps-tab", args.aps_tab),
             )
             if value is not None
         )
@@ -522,9 +580,11 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         "nts_trip": "nts_trip",
         "nts_stage": "nts_stage",
         "nts_ticket": "nts_ticket",
+        "nts_vehicle": "nts_vehicle",
         "lcfs_household": "lcfs_household",
         "lcfs_person": "lcfs_person",
         "etb": "etb",
+        "aps": "aps",
         "spi": "spi_donor",
         "hmrc_income": "hmrc_income_targets",
     }
@@ -685,15 +745,76 @@ def _rules_engine() -> PolicyEngineUKEngine:
             "build_uk_frs_spine requires the microcosm-build 'uk' extra "
             "(policyengine-uk). Run: uv sync --all-packages --extra uk"
         ) from exc
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     return PolicyEngineUKEngine()
 
 
-def _rules_engine_provenance() -> dict[str, str]:
+def _rules_engine_provenance() -> dict[str, object]:
     try:
         version = metadata.version("policyengine-uk")
     except metadata.PackageNotFoundError:
         return {"package": "policyengine-uk", "version": "unavailable"}
-    return {"package": "policyengine-uk", "version": version}
+    provenance: dict[str, object] = {"package": "policyengine-uk", "version": version}
+    direct_install = _direct_install("policyengine-uk")
+    if direct_install is not None:
+        # A release installed from an index writes no direct_url.json
+        # (PEP 610), so its provenance, and the engine identity hashed from
+        # it, stay as they were.
+        provenance["direct_install"] = direct_install
+    return provenance
+
+
+def _direct_install(package: str) -> dict[str, object] | None:
+    """What PEP 610's ``direct_url.json`` records of a URL install, or None.
+
+    A git install of an engine pull request carries a release's version
+    string, so only this tells the two apart: it names the commit. An archive
+    is named by every hash its record holds, whatever the algorithm, and one
+    that records no hash is refused, since nothing would tell it from another
+    archive. URLs are left out, so no local path reaches a build or release
+    record.
+    """
+    try:
+        text = metadata.distribution(package).read_text("direct_url.json")
+    except metadata.PackageNotFoundError:
+        return None
+    if not text:
+        return None
+    record = json.loads(text)
+    vcs = record.get("vcs_info")
+    if isinstance(vcs, Mapping):
+        return {
+            "kind": "vcs",
+            "vcs": str(vcs.get("vcs", "")),
+            "commit_id": str(vcs.get("commit_id", "")),
+        }
+    archive = record.get("archive_info")
+    if isinstance(archive, Mapping):
+        listed = archive.get("hashes")
+        hashes = (
+            {str(name): str(value) for name, value in listed.items()}
+            if isinstance(listed, Mapping)
+            else {}
+        )
+        legacy = archive.get("hash")
+        if isinstance(legacy, str) and "=" in legacy:
+            name, value = legacy.split("=", 1)
+            hashes.setdefault(name, value)
+        if not hashes:
+            raise ValueError(
+                f"{package} was installed from an archive whose direct_url.json "
+                "records no hash, so no engine identity can tell it from another "
+                "archive: install a release, or an archive with a recorded hash."
+            )
+        return {"kind": "archive", "hashes": dict(sorted(hashes.items()))}
+    directory = record.get("dir_info")
+    if isinstance(directory, Mapping):
+        return {"kind": "dir", "editable": bool(directory.get("editable", False))}
+    return {"kind": "unrecognised"}
 
 
 def _declared_seeds(stages) -> dict[str, dict[str, int]]:
@@ -737,7 +858,10 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     # Identity-keyed draws: the seed is declared under the
                     # salt it is hashed with (microcosm#1063).
                     stage_seeds[str(operation.parameters["salt"])] = seed
-                elif operation.kind == "impute_spi_housing_shell":
+                elif operation.kind in (
+                    "impute_spi_employment_shell",
+                    "impute_spi_housing_shell",
+                ):
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "price_domestic_energy":
                     stage_seeds["gas_disconnection"] = seed
@@ -745,9 +869,24 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["within_band_draws"] = seed
                 elif operation.kind == "assign_badr_qualifying_gains":
                     stage_seeds[operation.kind] = seed
-                elif operation.kind == "convert_donors_to_target_stock":
+                elif operation.kind in (
+                    "convert_donors_to_target_stock",
+                    "convert_bonuses_to_bonus_sacrifice",
+                ):
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "top_up_to_stock":
+                    stage_seeds[str(operation.parameters["salt"])] = seed
+                elif operation.kind in (
+                    "split_household_isa_balances",
+                    "allocate_isa_subscribers",
+                    "draw_isa_subscription_amounts",
+                    "draw_lifetime_isa_payments",
+                    "assign_company_car_fuel_types",
+                    "draw_company_car_list_prices",
+                    "draw_company_car_co2_emissions",
+                ):
+                    # Identity-keyed draws: the seed is declared under the salt
+                    # it is hashed with (microcosm#1415).
                     stage_seeds[str(operation.parameters["salt"])] = seed
         if stage_seeds:
             declared[stage.stage] = stage_seeds
@@ -793,6 +932,7 @@ def _build_sidecar(
             {
                 "stage": record.stage,
                 "produced": list(record.produced),
+                "rewrote": list(record.rewrote),
                 "nonzero_share": dict(record.nonzero_share),
                 "seconds": record.seconds,
             }
@@ -814,6 +954,9 @@ def _build_sidecar(
         "spine_gate_report": spine_gate_report,
         "stochastic_contract_sha256": stochastic_contract_sha256,
         "rules_engine": _rules_engine_provenance(),
+        # Which stages read the SPI Public Use Tape, whose Special Conditions
+        # reach every output built on them (microcosm#1095).
+        UK_SPI_PUBLIC_USE_TAPE_KEY: uk_spi_public_use_tape_marker(stages),
     }
 
 
@@ -876,7 +1019,9 @@ def _graph_stage_records(
         )
         output_receipt = manifest.nodes[output_node]
         shares: dict[str, float] = {}
-        for column in stage.outputs:
+        # A declared rewrite is an owned cell of its node, as an output is, so
+        # its share reads the node's artifact too (microcosm#721).
+        for column in (*stage.outputs, *stage.rewrites):
             matches = [
                 (coordinate, key)
                 for coordinate, key in output_receipt.artifacts.items()
@@ -888,7 +1033,8 @@ def _graph_stage_records(
             if len(matches) != 1:
                 raise RuntimeError(
                     f"graph stage {stage.stage!r} exposes {len(matches)} artifacts "
-                    f"for declared output {column!r}."
+                    f"for declared {'rewrite' if column in stage.rewrites else 'output'} "
+                    f"{column!r}."
                 )
             shares[column] = _series_nonzero_share(store.load_column(matches[0][1]))
         execution_node = "create_uk_frs" if stage.stage == "frs_spine" else stage.stage
@@ -896,6 +1042,7 @@ def _graph_stage_records(
             StageRecord(
                 stage=stage.stage,
                 produced=stage.outputs,
+                rewrote=stage.rewrites,
                 donor_survey=stage.survey,
                 nonzero_share=shares,
                 seconds=manifest.nodes[execution_node].wall_time,
@@ -1345,6 +1492,10 @@ def _create_staging_run_bundle(
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
         upload_interval_seconds=args.staging_upload_interval_seconds,
+        # The build's emitter commits the run files with its own credential.
+        emitter_client=(
+            None if local_only or _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
+        ),
     )
 
 
@@ -1447,7 +1598,12 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--was-tab is required when the was_wealth stage is scheduled."
         )
-    if args.synthetic_fixture_dir is None and "was_lisa" in stage_names:
+    for was_person_stage in ("was_lisa", "isa_subscriptions", "company_cars"):
+        if (
+            args.synthetic_fixture_dir is not None
+            or was_person_stage not in stage_names
+        ):
+            continue
         missing_was = [
             flag
             for flag, value in (
@@ -1458,7 +1614,7 @@ def prepare_uk_spine_execution(
         ]
         if missing_was:
             raise ValueError(
-                "was_lisa requires caller-supplied private inputs: "
+                f"{was_person_stage} requires caller-supplied private inputs: "
                 f"{', '.join(missing_was)}."
             )
     if args.synthetic_fixture_dir is None and "nts_bus_travel" in stage_names:
@@ -1484,6 +1640,8 @@ def prepare_uk_spine_execution(
             for flag, value in (
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
+                ("--nts-household-tab", args.nts_household_tab),
+                ("--nts-vehicle-tab", args.nts_vehicle_tab),
             )
             if value is None
         ]
@@ -1500,6 +1658,12 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--etb-tab is required when etb_vat or etb_services is scheduled."
         )
+    if (
+        args.synthetic_fixture_dir is None
+        and "aps_occupation" in stage_names
+        and args.aps_tab is None
+    ):
+        raise ValueError("--aps-tab is required when aps_occupation is scheduled.")
     stages = [stages_by_name[name] for name in stage_names]
     synthetic_fixture = _synthetic_fixture_evidence(args.synthetic_fixture_dir)
     engine = _rules_engine()
@@ -1594,6 +1758,23 @@ def prepare_uk_spine_execution(
                 was_person_tab_path=sources["was_person"],
             )
         )
+    if "isa_subscriptions" in stage_names:
+        implementations["isa_subscriptions"] = _GraphSourceTransform(
+            lambda sources: UKISASubscriptionsStageTransform(
+                stage=stages_by_name["isa_subscriptions"],
+                engine=engine,
+                was_tab_path=sources["was"],
+                was_person_tab_path=sources["was_person"],
+            )
+        )
+    if "company_cars" in stage_names:
+        implementations["company_cars"] = _GraphSourceTransform(
+            lambda sources: UKCompanyCarsStageTransform(
+                stage=stages_by_name["company_cars"],
+                engine=engine,
+                was_person_tab_path=sources["was_person"],
+            )
+        )
     if "nts_bus_travel" in stage_names:
         implementations["nts_bus_travel"] = _GraphSourceTransform(
             lambda sources: UKNTSBusTravelStageTransform(
@@ -1612,6 +1793,21 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["regional_property_uprating"],
             )
         )
+    if "property_components" in stage_names:
+        implementations["property_components"] = _GraphSourceTransform(
+            lambda sources: UKPropertyComponentsStageTransform(
+                stage=stages_by_name["property_components"],
+                spi_tab_path=sources["spi"],
+            )
+        )
+    if "regional_home_values" in stage_names:
+        implementations["regional_home_values"] = UKRegionalHomeValuesStageTransform(
+            stage=stages_by_name["regional_home_values"],
+        )
+    if "property_purchases" in stage_names:
+        implementations["property_purchases"] = UKPropertyPurchasesStageTransform(
+            stage=stages_by_name["property_purchases"],
+        )
     if "lcfs_consumption" in stage_names:
         implementations["lcfs_consumption"] = _GraphSourceTransform(
             lambda sources: UKLCFSConsumptionStageTransform(
@@ -1619,6 +1815,8 @@ def prepare_uk_spine_execution(
                 engine=engine,
                 lcfs_hh_tab_path=sources["lcfs_household"],
                 lcfs_person_tab_path=sources["lcfs_person"],
+                nts_household_tab_path=sources["nts_household"],
+                nts_vehicle_tab_path=sources["nts_vehicle"],
             )
         )
     if "etb_vat" in stage_names:
@@ -1644,6 +1842,13 @@ def prepare_uk_spine_execution(
             sampled_rung=_is_sampled(args),
         )
     )
+    if "frs_annual_income_spells" in stage_names:
+        implementations["frs_annual_income_spells"] = _GraphSourceTransform(
+            lambda sources: UKFRSAnnualIncomeStageTransform(
+                sources["frs"],
+                stage=stages_by_name["frs_annual_income_spells"],
+            )
+        )
     implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
         stage=stages_by_name["spi_support_channel"],
         sample_fraction=args.sample_fraction,
@@ -1657,6 +1862,17 @@ def prepare_uk_spine_execution(
             )
         )
     implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
+    if "spi_employment_shell" in stage_names:
+        implementations["spi_employment_shell"] = UKSPIEmploymentShellStageTransform(
+            stage=stages_by_name["spi_employment_shell"]
+        )
+    if "aps_occupation" in stage_names:
+        implementations["aps_occupation"] = _GraphSourceTransform(
+            lambda sources: UKAPSOccupationStageTransform(
+                stage=stages_by_name["aps_occupation"],
+                aps_tab_path=sources["aps"],
+            )
+        )
     if "spi_housing_shell" in stage_names:
         implementations["spi_housing_shell"] = UKSPIHousingShellStageTransform(
             stage=stages_by_name["spi_housing_shell"]
@@ -1674,6 +1890,17 @@ def prepare_uk_spine_execution(
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
         )
+    if "uc_take_up" in stage_names:
+        implementations["uc_take_up"] = UKUCTakeUpStageTransform(
+            stage=stages_by_name["uc_take_up"],
+            engine=engine,
+        )
+    if "uc_legacy_closure_take_up" in stage_names:
+        implementations["uc_legacy_closure_take_up"] = (
+            UKLegacyClosureTakeUpStageTransform(
+                stage=stages_by_name["uc_legacy_closure_take_up"]
+            )
+        )
     if "pension_credit_take_up" in stage_names:
         implementations["pension_credit_take_up"] = UKPensionCreditTakeUpStageTransform(
             stage=stages_by_name["pension_credit_take_up"],
@@ -1684,10 +1911,24 @@ def prepare_uk_spine_execution(
             stage=stages_by_name["child_benefit_take_up"],
             engine=engine,
         )
+    if "carers_allowance_take_up" in stage_names:
+        implementations["carers_allowance_take_up"] = (
+            UKCarersAllowanceTakeUpStageTransform(
+                stage=stages_by_name["carers_allowance_take_up"],
+                engine=engine,
+                contract=stochastic_contract,
+            )
+        )
     if "uc_deduction_attributes" in stage_names:
         implementations["uc_deduction_attributes"] = (
             UKUCDeductionAttributesStageTransform(
                 stage=stages_by_name["uc_deduction_attributes"]
+            )
+        )
+    if "high_value_home_support" in stage_names:
+        implementations["high_value_home_support"] = (
+            UKHighValueHomeSupportStageTransform(
+                stage=stages_by_name["high_value_home_support"]
             )
         )
     if "cgt_support_split" in stage_names:
@@ -1724,6 +1965,25 @@ def prepare_uk_spine_execution(
         implementations["student_loans"] = UKStudentLoansStageTransform(
             stage=stages_by_name["student_loans"],
             calibration_year=frs_release.calibration_year,
+        )
+    if "private_school_attendance" in stage_names:
+        implementations["private_school_attendance"] = (
+            UKPrivateSchoolAttendanceStageTransform(
+                stage=stages_by_name["private_school_attendance"],
+                engine=engine,
+                calibration_year=frs_release.calibration_year,
+            )
+        )
+    if "childcare_copy_take_up" in stage_names:
+        implementations["childcare_copy_take_up"] = UKChildcareCopyTakeUpStageTransform(
+            contract=stochastic_contract,
+            stage=stages_by_name["childcare_copy_take_up"],
+        )
+    if "trading_allowance_receipts" in stage_names:
+        implementations["trading_allowance_receipts"] = (
+            UKTradingAllowanceReceiptsStageTransform(
+                stage=stages_by_name["trading_allowance_receipts"]
+            )
         )
     if "age_tail" in stage_names:
         implementations["age_tail"] = UKAgeTailStageTransform(
@@ -1771,9 +2031,14 @@ def prepare_uk_spine_execution(
         graph_sources = _synthetic_graph_sources(args.synthetic_fixture_dir)
     else:
         graph_sources = {"frs": args.frs_raw_dir}
-        if "was_wealth" in stage_names or "was_lisa" in stage_names:
+        was_person_stages = {
+            "was_lisa",
+            "isa_subscriptions",
+            "company_cars",
+        } & set(stage_names)
+        if "was_wealth" in stage_names or was_person_stages:
             graph_sources["was"] = args.was_tab
-        if "was_lisa" in stage_names:
+        if was_person_stages:
             graph_sources["was_person"] = args.was_person_tab
         if "nts_bus_travel" in stage_names:
             graph_sources["nts_household"] = args.nts_household_tab
@@ -1784,9 +2049,15 @@ def prepare_uk_spine_execution(
         if "lcfs_consumption" in stage_names:
             graph_sources["lcfs_household"] = args.lcfs_hh_tab
             graph_sources["lcfs_person"] = args.lcfs_person_tab
+            graph_sources["nts_household"] = args.nts_household_tab
+            graph_sources["nts_vehicle"] = args.nts_vehicle_tab
         if "etb_vat" in stage_names or "etb_services" in stage_names:
             graph_sources["etb"] = args.etb_tab
+        if "aps_occupation" in stage_names:
+            graph_sources["aps"] = args.aps_tab
         if "spi_income_band_donors" in stage_names:
+            graph_sources["spi"] = args.spi_tab
+        if "property_components" in stage_names:
             graph_sources["spi"] = args.spi_tab
         if "hmrc_spi_income_spine" in stage_names:
             graph_sources["spi"] = args.spi_tab
@@ -2171,8 +2442,9 @@ def _main(argv: list[str] | None = None) -> int:
         if args.emit_nonzero_shares is not None:
             final_columns = list(
                 dict.fromkeys(
-                    [column for record in records for column in record.produced]
-                    + list(FRS_EDUCATION_GRANT_REWRITES)
+                    column
+                    for record in records
+                    for column in (*record.produced, *record.rewrote)
                 )
             )
             atomic_write_json(

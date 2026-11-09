@@ -3,9 +3,10 @@
 Usage: python sanitize_outputs.py <measurement dir> <outputs dir>
 
 The stage's ``donor_floor`` receipt records each donor column's exact minimum,
-which is licensed unit-record information, so it is dropped. Household dumps
-and solved weight vectors are never copied. Paths inside the outputs are
-machine-local.
+and the ``support_clip`` entries carry ``donor_min`` and ``donor_max``, all
+licensed unit-record information, so they are dropped. Household dumps and
+solved weight vectors are never copied. The ``spine`` field keeps only the
+file's name, since the path is machine-local.
 """
 
 from __future__ import annotations
@@ -25,12 +26,18 @@ AGGREGATE_OUTPUTS = (
     "stage_dev_run.base-7f235941c.json",
     "stage_dev_run.review-r2.json",
 )
-DROPPED = ("donor_floor",)
+DROPPED = ("donor_floor", "donor_min", "donor_max")
+#: Keys whose string value is a machine-local path; only the file name stays.
+PATH_KEYS = ("spine",)
 
 
 def _strip(value):
     if isinstance(value, dict):
-        return {k: _strip(v) for k, v in value.items() if k not in DROPPED}
+        return {
+            k: (Path(v).name if k in PATH_KEYS and isinstance(v, str) else _strip(v))
+            for k, v in value.items()
+            if k not in DROPPED
+        }
     if isinstance(value, list):
         return [_strip(item) for item in value]
     return value

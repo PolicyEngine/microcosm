@@ -19,6 +19,7 @@ from microcosm.frame.concepts import (
     HOUSEHOLD_ID_COLUMN,
     PERSON_HOUSEHOLD_ID_COLUMN,
     PERSON_ID_COLUMN,
+    SOURCE_HOUSEHOLD_ID_COLUMN,
     ContentBasis,
     Unit,
     concept_for_column,
@@ -468,6 +469,11 @@ class DonorBank:
     transport. No destination country or year is inferred by this reader.
     ``dropped_parent_cycle_edges`` counts directed parent pointers removed by
     the reader's age-based two-person-cycle rule, including support copies.
+    The household table carries ``source_household_id`` only when explicit
+    source year and raw household lineage are available. Its typed JSON key
+    merges clones across support channels and distinguishes source vintages.
+    ``time_period`` is the donor file's recorded model ``_time_period`` year,
+    or ``None`` when absent. It does not authenticate the amounts' money basis.
     """
 
     tables: Mapping[str, pd.DataFrame]
@@ -478,6 +484,7 @@ class DonorBank:
     donor_country: str = "us"
     currency: str = "USD"
     dropped_parent_cycle_edges: int = 0
+    time_period: int | None = None
 
 
 #: Line numbers and pointers are validated as float64 (pointer columns can hold
@@ -522,6 +529,47 @@ def _pointed_rows(
     if np.any(present & (rows < 0)):
         raise ValueError(f"Donor {values.name} points to an unknown household line.")
     return present, rows
+
+
+def _source_household_ids(
+    person: pd.DataFrame, household: pd.DataFrame
+) -> pd.arrays.StringArray | None:
+    """Scope raw household lineage by vintage and retain clone identity.
+
+    The pooled donor's raw ``source_household_id`` is vintage-local. Its
+    remapped ``PH_SEQ`` and row ``household_id`` serve different roles and
+    are never substituted. Support channel is excluded because support
+    copies of one original household may live in different channels.
+    """
+    columns = ("source_year", SOURCE_HOUSEHOLD_ID_COLUMN)
+    if not any(column in person for column in columns):
+        return None
+    if not all(column in person for column in columns):
+        raise ValueError("Donor source lineage requires year and household IDs.")
+    try:
+        parts = [_source_id_payloads(person[column]) for column in columns]
+    except ValueError as error:
+        raise ValueError(
+            "Donor source household lineage requires exact IDs."
+        ) from error
+    identities = [
+        json.dumps(items, ensure_ascii=False, separators=(",", ":"))
+        for items in zip(*parts, strict=True)
+    ]
+    by_household = {}
+    for household_id, identity in zip(
+        person[PERSON_HOUSEHOLD_ID_COLUMN], identities, strict=True
+    ):
+        if household_id in by_household and by_household[household_id] != identity:
+            raise ValueError(
+                "Donor source household lineage disagrees within household."
+            )
+        by_household[household_id] = identity
+    try:
+        values = [by_household[value] for value in household[HOUSEHOLD_ID_COLUMN]]
+    except KeyError as error:
+        raise ValueError("Donor source household lineage lacks a household.") from error
+    return pd.array(values, dtype=pd.StringDtype(storage="python"))
 
 
 def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
@@ -676,6 +724,7 @@ def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
         "weights": weights,
         "support_strata": strata,
         "source_person_ids": source_ids,
+        "source_household_ids": _source_household_ids(person, household),
     }
 
 
@@ -739,6 +788,19 @@ def _drop_two_person_parent_cycles(person: pd.DataFrame) -> int:
     return int(drop.sum())
 
 
+def _donor_time_period(store: pd.HDFStore) -> int | None:
+    """The exporter's one-row ``_time_period`` series, or ``None`` when absent."""
+    if "/_time_period" not in store.keys():
+        return None
+    values = store["_time_period"]
+    if not isinstance(values, pd.Series) or len(values) != 1:
+        raise ValueError("Donor _time_period must hold exactly one value.")
+    value = values.iloc[0]
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise ValueError("Donor _time_period must be an integer year.")
+    return int(value)
+
+
 def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> DonorBank:
     """Authenticate a local donor H5, then decode its person/household inputs.
 
@@ -778,7 +840,9 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
 
     Donor-only enrichment is staged before ``decode``; all work after that
     seam reads concept names. The result declares transport content with a
-    US donor and unchanged source-currency amounts and design weights.
+    US donor and unchanged source-currency amounts and design weights. The
+    exporter's ``_time_period`` (a one-row integer series) is returned as
+    ``time_period``; a file without it reads as ``None``.
     """
     path = Path(path)
     if isinstance(size, bool) or not isinstance(size, int) or size < 0:
@@ -799,6 +863,7 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
             entity: read_frame_table(store, entity)
             for entity in ("person", "household")
         }
+        time_period = _donor_time_period(store)
     staged = _donor_extras(raw["person"], raw["household"])
     tables = POLICYENGINE_US_CONCEPT_MAPPING.decode(raw)
     del raw
@@ -806,6 +871,8 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
         tables["person"][name] = values
     tables["person"]["liquid_financial_assets"] = staged["liquid_financial_assets"]
     tables["household"]["reference_person_id"] = staged["reference_person_id"]
+    if staged["source_household_ids"] is not None:
+        tables["household"][SOURCE_HOUSEHOLD_ID_COLUMN] = staged["source_household_ids"]
     violations = validate_concept_tables(tables)
     dropped = 0
     if violations and all(v.code == "parent_cycle" for v in violations):
@@ -821,6 +888,7 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
         staged["support_strata"],
         staged["source_person_ids"],
         dropped_parent_cycle_edges=dropped,
+        time_period=time_period,
     )
 
 

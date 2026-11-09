@@ -14,6 +14,8 @@ Frame's sorted-group-id and bidirectional-membership invariants.
 
 from __future__ import annotations
 
+import json
+from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
@@ -21,11 +23,14 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.national_frame import (
+    UK_ENERGY_PRICE_BASIS,
+    UK_ENERGY_PRICE_BASIS_ATTR,
     UK_NATIONAL_SCHEMA,
     UKNationalStage,
     load_uk_national_frame,
     uk_household_weight_kind,
     uk_national_frame,
+    uk_savings_income_projection,
     uk_time_period,
     validate_uk_national_frame,
     write_uk_national_frame,
@@ -38,6 +43,11 @@ from microcosm.build.uk_runtime.spi_support import (
     replace_uk_spi_support_tables,
 )
 from microcosm.frame import CONSERVE_MASS, Frame, MassChangeRecord, WeightKind, Weights
+from microcosm.frame.adapters.policyengine_uk import (
+    UK_DEFAULT_SAVINGS_INCOME_PROJECTION,
+    UK_SAVINGS_INCOME_PROJECTION,
+    UK_SAVINGS_INCOME_PROJECTION_ATTR,
+)
 
 
 def person_frame() -> pd.DataFrame:
@@ -320,6 +330,90 @@ def test_frame_writer_payload_is_stable_across_generations(
         new_attrs = {name: new_file.attrs[name] for name in new_file.attrs}
         assert list(old_attrs) == list(new_attrs)
         assert old_attrs == new_attrs
+
+
+def test_the_writer_declares_the_energy_price_period_where_energy_is_stored(
+    tmp_path: Path,
+) -> None:
+    """policyengine-uk projects stored energy spending only from a declared
+    period (PolicyEngine/policyengine-uk#2571), so every H5 that stores it
+    declares the period, and one that stores none declares nothing."""
+
+    pytest.importorskip("tables")
+    h5py = pytest.importorskip("h5py")
+    household = household_frame().assign(electricity_consumption=[1.0, 2.0, 3.0])
+    with_energy = write_uk_national_frame(
+        _frame(household=household), tmp_path / "energy.h5"
+    )
+    without_energy = write_uk_national_frame(_frame(), tmp_path / "plain.h5")
+
+    with h5py.File(with_energy, mode="r") as file:
+        stored = file.attrs[UK_ENERGY_PRICE_BASIS_ATTR]
+    assert json.loads(stored) == {"period_type": "calendar_year", "period_value": 2024}
+    # The engine's own writer sorts the keys, so the bytes match its own.
+    assert stored == '{"period_type": "calendar_year", "period_value": 2024}'
+    with h5py.File(without_energy, mode="r") as file:
+        assert UK_ENERGY_PRICE_BASIS_ATTR not in file.attrs
+    # A reload and rewrite declares it again.
+    reloaded, _provenance = load_uk_national_frame(with_energy)
+    again = write_uk_national_frame(reloaded, tmp_path / "again.h5")
+    with h5py.File(again, mode="r") as file:
+        assert file.attrs[UK_ENERGY_PRICE_BASIS_ATTR] == stored
+
+
+def test_the_writer_declares_the_producers_savings_income_projection(
+    tmp_path: Path,
+) -> None:
+    """policyengine-uk 2.165.2 grows savings income by the rule an H5 declares.
+
+    Every H5 the producer writes declares the OBR rule its savings income was
+    calibrated to (microcosm#1418). A file declaring none loads as GDP per
+    head, the engine's default, and keeps that reading when written again, so
+    a reference file never gains the producer's rule.
+    """
+
+    pytest.importorskip("tables")
+    h5py = pytest.importorskip("h5py")
+    path = write_uk_national_frame(_frame(), tmp_path / "frame.h5")
+    with h5py.File(path, mode="r") as file:
+        stored = file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR]
+    assert stored == UK_SAVINGS_INCOME_PROJECTION
+    reloaded, _provenance = load_uk_national_frame(path)
+    assert uk_savings_income_projection(reloaded) == UK_SAVINGS_INCOME_PROJECTION
+    assert UK_SAVINGS_INCOME_PROJECTION_ATTR not in reloaded.metadata
+
+    with h5py.File(path, mode="r+") as file:
+        del file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR]
+    unmarked, _provenance = load_uk_national_frame(path)
+    assert (
+        uk_savings_income_projection(unmarked) == UK_DEFAULT_SAVINGS_INCOME_PROJECTION
+    )
+    again = write_uk_national_frame(unmarked, tmp_path / "again.h5")
+    with h5py.File(again, mode="r") as file:
+        stored = file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR]
+    assert stored == UK_DEFAULT_SAVINGS_INCOME_PROJECTION
+
+    with h5py.File(again, mode="r+") as file:
+        file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR] = "household_interest_income"
+    with pytest.raises(ValueError, match="savings income projection"):
+        load_uk_national_frame(again)
+
+
+def test_the_declared_energy_price_period_is_the_one_the_lcfs_gate_holds() -> None:
+    """The stage-time gate holds every LCFS spend level to one calendar year
+    (microcosm#1113); the declaration must name that year, not drift from it."""
+
+    gates = json.loads(
+        files("microcosm.build.uk").joinpath("gates.json").read_text("utf-8")
+    )["gates"]
+    (entry,) = [
+        gate for gate in gates if gate["id"] == "uk_stage_lcfs_consumption_basis"
+    ]
+    parameters = entry["parameters"]
+    assert {
+        "period_type": parameters["period_type"],
+        "period_value": parameters["period_value"],
+    } == dict(UK_ENERGY_PRICE_BASIS)
 
 
 def test_spi_replacement_output_constructs_a_frame() -> None:

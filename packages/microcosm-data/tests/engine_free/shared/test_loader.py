@@ -13,7 +13,11 @@ from types import SimpleNamespace
 
 import huggingface_hub
 import pytest
-from huggingface_hub.errors import GatedRepoError, RepositoryNotFoundError
+from huggingface_hub.errors import (
+    GatedRepoError,
+    LocalEntryNotFoundError,
+    RepositoryNotFoundError,
+)
 
 import microcosm.data.loader as loader
 from microcosm.data import DEFAULT_VARIANT, download, latest_year, load, resolve
@@ -28,6 +32,12 @@ from microcosm.data.release import (
     line_pointer_path,
     line_pointer_payload,
 )
+from test_support.microcosm_data.build_folders import (
+    UK_LOCAL_BUILD,
+    UK_NATIONAL_BUILD,
+    build_folder_release_manifest,
+)
+from test_support.microcosm_data.hub_errors import hub_unreachable, missing_on_hub
 
 #: Release id served by the hub fixture. Any well-formed id works: nothing in
 #: this suite may assert which release the live Hub currently points at,
@@ -37,12 +47,19 @@ TAGGED_ARTIFACT = b"certified release artifact"
 MUTABLE_ROOT_ARTIFACT = b"uncertified in-flight root artifact"
 UK_REPO_ID = "policyengine/populace-uk-private"
 UK_2023_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+#: The UK switch moves the June 2023 build into this release, as its only and
+#: current build, named by its old release ID.
+UK_2023_RELEASE = "populace-uk-2023"
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+UK_LOCAL_RELEASE_ID = "microcosm-uk-2024-25-local-k15"
+UK_TAGGED_ARTIFACT = b"certified UK line artifact"
+#: Until a repository switches to releases.json, UK releases are tagged and
+#: made current through latest-<line>.json pointer files.
 UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260920T120000Z-deadbeef"
 UK_LOCAL_LINE = "local-k15"
-UK_LOCAL_RELEASE_ID = "microcosm-uk-2024-25-local-k15"
 UK_LOCAL_CUT_TAG = f"{UK_LOCAL_RELEASE_ID}-20260920T120000Z-cafebabe"
-UK_TAGGED_ARTIFACT = b"certified UK line artifact"
+#: An earlier national build, still listed in releases.json.
+UK_EARLIER_BUILD = "uk-frs-calibration-attempt-20260901T000000Z-0badcafe"
 
 
 def test_resolve_defaults_to_the_latest_year() -> None:
@@ -124,8 +141,8 @@ def _release_manifest(
 
 def _uk_release_manifest(
     *,
-    release_id: str = UK_NATIONAL_RELEASE_ID,
-    revision: str = UK_NATIONAL_CUT_TAG,
+    release_id: str = UK_2023_RELEASE_ID,
+    revision: str = UK_2023_RELEASE_ID,
     filename: str = "microcosm_uk_2024_25.h5",
     artifact_key: str = "microcosm_uk_2024_25",
     dataset_role: str | None = NATIONAL_DEFAULT_DATASET_ROLE,
@@ -170,7 +187,7 @@ def _uk_release_manifest(
     return manifest
 
 
-def _uk_local_spec(*, pointer_path: str | None = None) -> DatasetSpec:
+def _uk_local_spec() -> DatasetSpec:
     return DatasetSpec(
         country="uk",
         year=2025,
@@ -180,19 +197,100 @@ def _uk_local_spec(*, pointer_path: str | None = None) -> DatasetSpec:
         engine_module="policyengine_uk.data",
         engine_class="UKSingleYearDataset",
         engine_package="policyengine-uk",
-        pointer_path=pointer_path or line_pointer_path(UK_LOCAL_LINE),
+        release=UK_LOCAL_RELEASE_ID,
+    )
+
+
+def _uk_build_folder_manifest(
+    *,
+    release: str = UK_NATIONAL_RELEASE_ID,
+    build: str = UK_NATIONAL_BUILD,
+    **options,
+) -> dict:
+    """A release manifest as a build in its own folder carries it."""
+    return build_folder_release_manifest(
+        _uk_release_manifest(release_id=release, **options),
+        release=release,
+        build=build,
     )
 
 
 def _uk_local_manifest() -> dict:
-    return _uk_release_manifest(
-        release_id=UK_LOCAL_RELEASE_ID,
-        revision=UK_LOCAL_CUT_TAG,
+    return _uk_build_folder_manifest(
+        release=UK_LOCAL_RELEASE_ID,
+        build=UK_LOCAL_BUILD,
         filename="microcosm_uk_2024_25_local_k15.h5",
         artifact_key="microcosm_uk_2024_25_local_k15",
         dataset_role=NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
         default_datasets={},
     )
+
+
+def _releases_record(
+    release: str = UK_NATIONAL_RELEASE_ID,
+    *,
+    role: str = "national",
+    current: str | None = UK_NATIONAL_BUILD,
+    builds: dict[str, bool] | None = None,
+) -> dict:
+    """A releases.json document: ``builds`` maps each build to ``withdrawn``."""
+    if builds is None:
+        builds = {UK_EARLIER_BUILD: False, UK_NATIONAL_BUILD: False}
+    return {
+        "schema_version": 1,
+        "default": release,
+        "releases": {
+            release: {
+                "role": role,
+                "current": current,
+                "builds": {
+                    build: {
+                        "published_at": "2026-09-20T12:00:00+00:00",
+                        "withdrawn": withdrawn,
+                    }
+                    for build, withdrawn in builds.items()
+                },
+            }
+        },
+    }
+
+
+def _build_folder_hub(
+    tmp_path: Path,
+    *,
+    manifest: dict,
+    record: dict | bytes | None = None,
+    artifact_content: bytes = UK_TAGGED_ARTIFACT,
+) -> FakeHubDownload:
+    """Serve releases.json and one build folder, all read at ``main``."""
+    hub = FakeHubDownload(tmp_path)
+    hub.calls.clear()
+    hub.files.clear()
+    record = _releases_record() if record is None else record
+    hub._add(
+        tmp_path,
+        UK_REPO_ID,
+        "releases.json",
+        None,
+        record if isinstance(record, bytes) else json.dumps(record).encode(),
+    )
+    folder = f"releases/{manifest['release']}/{manifest['build']}"
+    hub._add(
+        tmp_path,
+        UK_REPO_ID,
+        f"{folder}/release_manifest.json",
+        None,
+        json.dumps(manifest).encode(),
+    )
+    artifact = next(
+        entry
+        for entry in manifest["artifacts"].values()
+        if entry.get("kind") == "microdata"
+    )
+    hub._add(
+        tmp_path, UK_REPO_ID, f"{folder}/{artifact['path']}", None, artifact_content
+    )
+    return hub
 
 
 class FakeHubDownload:
@@ -262,8 +360,11 @@ class FakeHubDownload:
         try:
             return str(self.files[(repo_id, filename, revision)])
         except KeyError as exc:
-            raise FileNotFoundError(
-                f"{repo_id}/{filename} at revision {revision!r}"
+            raise missing_on_hub(
+                repo_id,
+                filename,
+                revision,
+                message=f"{repo_id}/{filename} at revision {revision!r}",
             ) from exc
 
 
@@ -296,29 +397,6 @@ def _hub_with_pointer(
     return hub
 
 
-def _line_pointer_hub(
-    tmp_path: Path,
-    *,
-    line: str,
-    release_id: str,
-    revision: str,
-    manifest: dict,
-) -> FakeHubDownload:
-    pointer = line_pointer_payload(
-        release_id,
-        line=line,
-        revision=revision,
-        updated_at="2026-09-20T12:00:00+00:00",
-    )
-    return _hub_with_pointer(
-        tmp_path,
-        repo_id=UK_REPO_ID,
-        pointer_path=line_pointer_path(line),
-        pointer=pointer,
-        manifest=manifest,
-    )
-
-
 def _patch_engine(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -345,46 +423,230 @@ def _patch_engine(
     return constructed
 
 
-def test_resolve_uk_default_stays_on_2023_until_the_national_line_is_promoted():
-    """The national line is registered off the default variant until its
-    pointer exists on the Hub, so a default load never chases an absent
-    pointer (review of #966); the flip is a one-line follow-up."""
-    assert latest_year("uk") == 2023
-    assert resolve("uk").key == ("uk", 2023, DEFAULT_VARIANT)
-    assert resolve("uk", 2025, variant="national").pointer_path == (
-        "latest-national.json"
-    )
-    with pytest.raises(ValueError, match="published years"):
-        resolve("uk", 2025)
+def test_resolve_uk_default_is_the_national_release():
+    """The national release is the default UK load, read through
+    releases.json; the June 2023 release stays at its year, read through
+    releases.json too once its repository has one, latest.json until then."""
+    assert latest_year("uk") == 2025
+    assert resolve("uk").key == ("uk", 2025, DEFAULT_VARIANT)
+    assert resolve("uk").release == UK_NATIONAL_RELEASE_ID
+    assert resolve("uk", 2023).release == UK_2023_RELEASE
+    assert resolve("uk", 2023).pointer_path == "latest.json"
+    with pytest.raises(ValueError, match="variant 'national'"):
+        resolve("uk", 2025, variant="national")
 
 
-def test_resolve_uk_national_variant_follows_the_line_pointer(
+def test_uk_national_load_follows_the_current_build_in_releases_json(
     tmp_path: Path,
 ) -> None:
-    spec = resolve("uk", 2025, variant="national")
-    manifest = _uk_release_manifest()
-    hub = _line_pointer_hub(
-        tmp_path,
-        line="national",
-        release_id=UK_NATIONAL_RELEASE_ID,
-        revision=UK_NATIONAL_CUT_TAG,
-        manifest=manifest,
-    )
+    spec = resolve("uk", 2025)
+    hub = _build_folder_hub(tmp_path, manifest=_uk_build_folder_manifest())
 
     certified = loader._resolve_certified_release(spec, hub_download=hub)
 
-    manifest_path = f"releases/{UK_NATIONAL_RELEASE_ID}/release_manifest.json"
-    assert spec.key == ("uk", 2025, "national")
-    assert spec.pointer_path == "latest-national.json"
+    folder = f"releases/{UK_NATIONAL_RELEASE_ID}/{UK_NATIONAL_BUILD}"
     assert certified.release_id == UK_NATIONAL_RELEASE_ID
-    assert certified.artifact_revision == UK_NATIONAL_CUT_TAG
+    assert certified.build == UK_NATIONAL_BUILD
+    assert certified.artifact_path == f"{folder}/microcosm_uk_2024_25.h5"
+    assert certified.artifact_revision is None
+    assert certified.model.built_version == "2.89.2"
+    assert certified.core.built_version == "3.27.1"
     assert hub.calls == [
-        (UK_REPO_ID, "latest-national.json", None),
-        (UK_REPO_ID, manifest_path, UK_NATIONAL_CUT_TAG),
+        (UK_REPO_ID, "releases.json", None),
+        (UK_REPO_ID, f"{folder}/release_manifest.json", None),
     ]
 
 
-def test_resolve_uk_2023_still_uses_latest_json(tmp_path: Path) -> None:
+def test_a_pinned_build_loads_that_build(tmp_path: Path) -> None:
+    hub = _build_folder_hub(
+        tmp_path, manifest=_uk_build_folder_manifest(build=UK_EARLIER_BUILD)
+    )
+
+    certified = loader._resolve_certified_release(
+        resolve("uk", 2025), hub_download=hub, build=UK_EARLIER_BUILD
+    )
+
+    assert certified.build == UK_EARLIER_BUILD
+
+
+def test_a_pinned_withdrawn_build_loads_with_a_warning(tmp_path: Path) -> None:
+    record = _releases_record(builds={UK_EARLIER_BUILD: True, UK_NATIONAL_BUILD: False})
+    hub = _build_folder_hub(
+        tmp_path,
+        manifest=_uk_build_folder_manifest(build=UK_EARLIER_BUILD),
+        record=record,
+    )
+
+    with pytest.warns(UserWarning, match="has been withdrawn"):
+        certified = loader._resolve_certified_release(
+            resolve("uk", 2025), hub_download=hub, build=UK_EARLIER_BUILD
+        )
+    assert certified.build == UK_EARLIER_BUILD
+
+
+@pytest.mark.parametrize(
+    ("record", "build", "message"),
+    [
+        (
+            _releases_record(builds={UK_NATIONAL_BUILD: False}),
+            UK_EARLIER_BUILD,
+            "is not listed in releases.json",
+        ),
+        (_releases_record(current=None), None, "has no current build"),
+        (
+            _releases_record("microcosm-uk-2024-25-dense", role="local_area"),
+            None,
+            "does not list release 'microcosm-uk-2024-25-national'",
+        ),
+        (b"not json", None, "is not a valid release record"),
+        ({"schema_version": 2, "default": None, "releases": {}}, None, "valid"),
+        (
+            _releases_record(current=UK_EARLIER_BUILD, builds={UK_EARLIER_BUILD: True}),
+            None,
+            "is not a valid release record",
+        ),
+    ],
+)
+def test_releases_json_must_list_the_build_to_load(
+    tmp_path: Path, record: dict | bytes, build: str | None, message: str
+) -> None:
+    hub = _build_folder_hub(
+        tmp_path, manifest=_uk_build_folder_manifest(), record=record
+    )
+
+    with pytest.raises(ValueError, match=message):
+        loader._resolve_certified_release(
+            resolve("uk", 2025), hub_download=hub, build=build
+        )
+
+
+@pytest.mark.parametrize("field", ["release", "build"])
+def test_a_manifest_naming_another_build_is_refused(tmp_path: Path, field) -> None:
+    manifest = _uk_build_folder_manifest()
+    hub = _build_folder_hub(tmp_path, manifest=manifest)
+    manifest[field] = "uk-frs-calibration-attempt-20260101T000000Z-00000000"
+    hub._add(
+        tmp_path,
+        UK_REPO_ID,
+        f"releases/{UK_NATIONAL_RELEASE_ID}/{UK_NATIONAL_BUILD}/release_manifest.json",
+        None,
+        json.dumps(manifest).encode(),
+    )
+
+    with pytest.raises(ValueError, match="names release"):
+        loader._resolve_certified_release(resolve("uk", 2025), hub_download=hub)
+
+
+def test_a_build_folder_artifact_with_a_revision_is_refused(tmp_path: Path) -> None:
+    manifest = _uk_build_folder_manifest()
+    manifest["artifacts"]["microcosm_uk_2024_25"]["revision"] = "main"
+    hub = _build_folder_hub(tmp_path, manifest=manifest)
+
+    with pytest.raises(ValueError, match="pins a revision"):
+        loader._resolve_certified_release(resolve("uk", 2025), hub_download=hub)
+
+
+def test_the_dataset_artifact_must_have_the_dataset_role(tmp_path: Path) -> None:
+    manifest = _uk_build_folder_manifest()
+    manifest["artifacts"]["microcosm_uk_2024_25"]["role"] = "calibration_weights"
+    hub = _build_folder_hub(tmp_path, manifest=manifest)
+
+    with pytest.raises(ValueError, match="not 'dataset'"):
+        loader._resolve_certified_release(resolve("uk", 2025), hub_download=hub)
+
+
+def test_releases_json_role_must_match_the_manifest(tmp_path: Path) -> None:
+    hub = _build_folder_hub(
+        tmp_path,
+        manifest=_uk_build_folder_manifest(),
+        record=_releases_record(role="local_area"),
+    )
+
+    with pytest.raises(ValueError, match="listed with role 'local_area'"):
+        loader._resolve_certified_release(resolve("uk", 2025), hub_download=hub)
+
+
+def test_a_build_pin_needs_a_build_folder_release() -> None:
+    def unexpected_download(**_kwargs) -> str:
+        pytest.fail("a refused pin must fail before a Hub request")
+
+    with pytest.raises(ValueError, match="pins a build only for releases"):
+        loader._resolve_certified_release(
+            resolve("us", 2024), hub_download=unexpected_download, build="x"
+        )
+
+
+def test_unverified_root_loading_is_refused_for_a_build_folder_release(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Once the repository records its builds in releases.json, it has no
+    root file to load."""
+    hub = _build_folder_hub(tmp_path, manifest=_uk_build_folder_manifest())
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", hub)
+    monkeypatch.setattr(
+        loader,
+        "_dataset_class",
+        lambda _spec: pytest.fail("refused before the engine is imported"),
+    )
+    with pytest.raises(ValueError, match="no root file"):
+        load("uk", 2025, unverified_root=True)
+    assert hub.calls == [(UK_REPO_ID, "releases.json", None)]
+
+
+def test_unverified_root_loading_reads_the_root_file_before_the_switch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Without releases.json the repository still has its root file, and the
+    escape hatch loads it as before."""
+    hub = FakeHubDownload(tmp_path)
+    hub.calls.clear()
+    hub.files.clear()
+    hub._add(tmp_path, UK_REPO_ID, "microcosm_uk_2024_25.h5", None, b"root file")
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", hub)
+    constructed: list[str] = []
+
+    class FakeDataset:
+        def __init__(self, *, file_path: str) -> None:
+            constructed.append(file_path)
+
+    monkeypatch.setattr(loader, "_dataset_class", lambda _spec: FakeDataset)
+
+    with pytest.warns(RuntimeWarning, match="UNVERIFIED"):
+        load("uk", 2025, unverified_root=True)
+
+    assert [Path(path).read_bytes() for path in constructed] == [b"root file"]
+    assert hub.calls == [
+        (UK_REPO_ID, "releases.json", None),
+        (UK_REPO_ID, "microcosm_uk_2024_25.h5", None),
+    ]
+
+
+def test_download_verifies_the_build_folder_dataset(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    hub = _build_folder_hub(tmp_path, manifest=_uk_build_folder_manifest())
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", hub)
+
+    path = download("uk", 2025)
+
+    folder = f"releases/{UK_NATIONAL_RELEASE_ID}/{UK_NATIONAL_BUILD}"
+    assert path.read_bytes() == UK_TAGGED_ARTIFACT
+    assert hub.calls[-1] == (UK_REPO_ID, f"{folder}/microcosm_uk_2024_25.h5", None)
+
+    hub._add(
+        tmp_path,
+        UK_REPO_ID,
+        f"{folder}/microcosm_uk_2024_25.h5",
+        None,
+        b"other bytes",
+    )
+    with pytest.raises(ValueError, match="sha256 verification failed"):
+        download("uk", 2025)
+
+
+def test_uk_2023_follows_latest_json_until_its_repository_has_releases_json(
+    tmp_path: Path,
+) -> None:
     spec = resolve("uk", 2023)
     manifest = _uk_release_manifest(
         release_id=UK_2023_RELEASE_ID,
@@ -412,8 +674,46 @@ def test_resolve_uk_2023_still_uses_latest_json(tmp_path: Path) -> None:
     assert certified.release_id == UK_2023_RELEASE_ID
     assert certified.artifact_revision == UK_2023_RELEASE_ID
     assert hub.calls == [
+        (UK_REPO_ID, "releases.json", None),
         (UK_REPO_ID, LATEST_POINTER_PATH, None),
         (UK_REPO_ID, manifest_path, UK_2023_RELEASE_ID),
+    ]
+
+
+def test_uk_2023_loads_the_june_build_from_its_folder_after_the_switch(
+    tmp_path: Path,
+) -> None:
+    """The UK switch moves the June 2023 build into release populace-uk-2023,
+    as its current build under its old release ID, and deletes latest.json."""
+    spec = resolve("uk", 2023)
+    assert spec.release == UK_2023_RELEASE
+    manifest = _uk_build_folder_manifest(
+        release=UK_2023_RELEASE,
+        build=UK_2023_RELEASE_ID,
+        filename="populace_uk_2023.h5",
+        artifact_key="populace_uk_2023",
+        dataset_role=None,
+    )
+    hub = _build_folder_hub(
+        tmp_path,
+        manifest=manifest,
+        record=_releases_record(
+            UK_2023_RELEASE,
+            current=UK_2023_RELEASE_ID,
+            builds={UK_2023_RELEASE_ID: False},
+        ),
+    )
+
+    certified = loader._resolve_certified_release(spec, hub_download=hub)
+
+    folder = f"releases/{UK_2023_RELEASE}/{UK_2023_RELEASE_ID}"
+    assert certified.release_id == UK_2023_RELEASE
+    assert certified.build == UK_2023_RELEASE_ID
+    assert certified.artifact_path == f"{folder}/populace_uk_2023.h5"
+    assert certified.artifact_revision is None
+    assert hub.calls == [
+        (UK_REPO_ID, "releases.json", None),
+        (UK_REPO_ID, f"{folder}/release_manifest.json", None),
     ]
 
 
@@ -428,8 +728,347 @@ def test_resolve_refuses_an_unsupported_pointer_path(pointer_path: str) -> None:
         loader._resolve_certified_release(spec, hub_download=unexpected_download)
 
 
+def test_local_area_release_selects_its_only_microdata_artifact(
+    tmp_path: Path,
+) -> None:
+    manifest = _uk_local_manifest()
+    manifest["artifacts"]["calibration_report"] = {
+        "kind": "diagnostics",
+        "path": "calibration_diagnostics.json",
+        "repo_id": UK_REPO_ID,
+        "sha256": "0" * 64,
+        "role": "calibration_diagnostics",
+    }
+    hub = _build_folder_hub(
+        tmp_path,
+        manifest=manifest,
+        record=_releases_record(
+            UK_LOCAL_RELEASE_ID,
+            role="local_area",
+            current=UK_LOCAL_BUILD,
+            builds={UK_LOCAL_BUILD: False},
+        ),
+    )
+
+    certified = loader._resolve_certified_release(_uk_local_spec(), hub_download=hub)
+
+    folder = f"releases/{UK_LOCAL_RELEASE_ID}/{UK_LOCAL_BUILD}"
+    assert certified.release_id == UK_LOCAL_RELEASE_ID
+    assert certified.artifact_path == f"{folder}/microcosm_uk_2024_25_local_k15.h5"
+    assert hub.calls == [
+        (UK_REPO_ID, "releases.json", None),
+        (UK_REPO_ID, f"{folder}/release_manifest.json", None),
+    ]
+
+
+def test_latest_json_refuses_a_local_area_manifest(tmp_path: Path) -> None:
+    manifest = _uk_release_manifest(
+        filename="microcosm_uk_2024_25_local_k15.h5",
+        artifact_key="microcosm_uk_2024_25_local_k15",
+        dataset_role=NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
+        default_datasets={},
+    )
+    pointer = latest_pointer_payload(
+        UK_2023_RELEASE_ID,
+        updated_at="2026-09-20T12:00:00+00:00",
+    )
+    hub = _hub_with_pointer(
+        tmp_path,
+        repo_id=UK_REPO_ID,
+        pointer_path=LATEST_POINTER_PATH,
+        pointer=pointer,
+        manifest=manifest,
+    )
+    spec = replace(_uk_local_spec(), release=None, pointer_path=LATEST_POINTER_PATH)
+
+    with pytest.raises(
+        ValueError,
+        match=r"non_default_local_area.*build folder.*latest\.json",
+    ):
+        loader._resolve_certified_release(spec, hub_download=hub)
+
+
+def _local_area_hub(tmp_path: Path, manifest: dict) -> FakeHubDownload:
+    return _build_folder_hub(
+        tmp_path,
+        manifest=manifest,
+        record=_releases_record(
+            UK_LOCAL_RELEASE_ID,
+            role="local_area",
+            current=UK_LOCAL_BUILD,
+            builds={UK_LOCAL_BUILD: False},
+        ),
+    )
+
+
+def test_local_area_release_refuses_nonempty_default_datasets(tmp_path: Path) -> None:
+    manifest = _uk_local_manifest()
+    manifest["default_datasets"] = {"national": "microcosm_uk_2024_25_local_k15"}
+    hub = _local_area_hub(tmp_path, manifest)
+
+    with pytest.raises(ValueError, match=r"default_datasets is not empty"):
+        loader._resolve_certified_release(_uk_local_spec(), hub_download=hub)
+
+
+@pytest.mark.parametrize("microdata_count", [0, 2])
+def test_local_area_release_requires_exactly_one_microdata_artifact(
+    tmp_path: Path,
+    microdata_count: int,
+) -> None:
+    manifest = _uk_local_manifest()
+    hub = _local_area_hub(tmp_path, manifest)
+    artifact = manifest["artifacts"]["microcosm_uk_2024_25_local_k15"]
+    if microdata_count == 0:
+        artifact["kind"] = "diagnostics"
+    else:
+        manifest["artifacts"]["second_microdata"] = {
+            "kind": "microdata",
+            "path": "second.h5",
+            "repo_id": UK_REPO_ID,
+            "sha256": "1" * 64,
+            "role": "dataset",
+        }
+    hub._add(
+        tmp_path,
+        UK_REPO_ID,
+        f"releases/{UK_LOCAL_RELEASE_ID}/{UK_LOCAL_BUILD}/release_manifest.json",
+        None,
+        json.dumps(manifest).encode(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=rf"{microdata_count} microdata artifacts; expected exactly one",
+    ):
+        loader._resolve_certified_release(_uk_local_spec(), hub_download=hub)
+
+
+def test_loader_refuses_an_unknown_dataset_role(tmp_path: Path) -> None:
+    manifest = _uk_build_folder_manifest(dataset_role="research_preview")
+    hub = _build_folder_hub(tmp_path, manifest=manifest)
+
+    with pytest.raises(ValueError, match="unknown dataset_role 'research_preview'"):
+        loader._resolve_certified_release(resolve("uk", 2025), hub_download=hub)
+
+
+# Before the switch: a repository without releases.json -----------------------
+# Until its repository switches to releases.json, a UK release's current
+# build is the one its latest*.json pointer file names. A registry entry that
+# names a release reads releases.json where the repository has one, and
+# otherwise follows its pointer file exactly as before.
+
+
+def _uk_national_line_manifest() -> dict:
+    return _uk_release_manifest(
+        release_id=UK_NATIONAL_RELEASE_ID, revision=UK_NATIONAL_CUT_TAG
+    )
+
+
+def _uk_local_line_spec() -> DatasetSpec:
+    return replace(_uk_local_spec(), pointer_path=line_pointer_path(UK_LOCAL_LINE))
+
+
+def _uk_local_line_manifest() -> dict:
+    return _uk_release_manifest(
+        release_id=UK_LOCAL_RELEASE_ID,
+        revision=UK_LOCAL_CUT_TAG,
+        filename="microcosm_uk_2024_25_local_k15.h5",
+        artifact_key="microcosm_uk_2024_25_local_k15",
+        dataset_role=NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
+        default_datasets={},
+    )
+
+
+def _line_pointer_hub(
+    tmp_path: Path,
+    *,
+    line: str,
+    release_id: str,
+    revision: str,
+    manifest: dict,
+) -> FakeHubDownload:
+    pointer = line_pointer_payload(
+        release_id,
+        line=line,
+        revision=revision,
+        updated_at="2026-09-20T12:00:00+00:00",
+    )
+    return _hub_with_pointer(
+        tmp_path,
+        repo_id=UK_REPO_ID,
+        pointer_path=line_pointer_path(line),
+        pointer=pointer,
+        manifest=manifest,
+    )
+
+
+def test_resolve_uk_default_is_the_promoted_national_line():
+    """microcosm#823: once the national line's first certified cut was
+    promoted, the line became the default UK load; the June 2023 line stays
+    addressable at its year and its own pointer (Max's #823 ruling)."""
+    assert latest_year("uk") == 2025
+    assert resolve("uk").key == ("uk", 2025, DEFAULT_VARIANT)
+    assert resolve("uk").pointer_path == "latest-national.json"
+    assert resolve("uk", 2023).pointer_path == "latest.json"
+    with pytest.raises(ValueError, match="variant 'national'"):
+        resolve("uk", 2025, variant="national")
+
+
+def test_resolve_uk_national_variant_follows_the_line_pointer(
+    tmp_path: Path,
+) -> None:
+    spec = resolve("uk", 2025)
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=_uk_national_line_manifest(),
+    )
+
+    certified = loader._resolve_certified_release(spec, hub_download=hub)
+
+    manifest_path = f"releases/{UK_NATIONAL_RELEASE_ID}/release_manifest.json"
+    assert spec.key == ("uk", 2025, DEFAULT_VARIANT)
+    assert spec.pointer_path == "latest-national.json"
+    assert certified.release_id == UK_NATIONAL_RELEASE_ID
+    assert certified.build is None
+    assert certified.artifact_path == "microcosm_uk_2024_25.h5"
+    assert certified.artifact_revision == UK_NATIONAL_CUT_TAG
+    assert hub.calls == [
+        (UK_REPO_ID, "releases.json", None),
+        (UK_REPO_ID, "latest-national.json", None),
+        (UK_REPO_ID, manifest_path, UK_NATIONAL_CUT_TAG),
+    ]
+
+
+def test_download_follows_the_line_pointer_without_releases_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """load("uk") and download("uk") do not fail for want of releases.json."""
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=_uk_national_line_manifest(),
+    )
+    hub._add(
+        tmp_path,
+        UK_REPO_ID,
+        "microcosm_uk_2024_25.h5",
+        UK_NATIONAL_CUT_TAG,
+        UK_TAGGED_ARTIFACT,
+    )
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", hub)
+
+    path = download("uk")
+
+    assert path.read_bytes() == UK_TAGGED_ARTIFACT
+    assert hub.calls[-1] == (
+        UK_REPO_ID,
+        "microcosm_uk_2024_25.h5",
+        UK_NATIONAL_CUT_TAG,
+    )
+
+
+def test_a_build_pin_needs_the_repository_to_have_releases_json(
+    tmp_path: Path,
+) -> None:
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=_uk_national_line_manifest(),
+    )
+
+    with pytest.raises(ValueError, match="has no releases.json"):
+        loader._resolve_certified_release(
+            resolve("uk", 2025), hub_download=hub, build=UK_NATIONAL_BUILD
+        )
+    assert hub.calls == [(UK_REPO_ID, "releases.json", None)]
+
+
+def test_only_a_missing_releases_json_follows_the_pointer_file(tmp_path: Path) -> None:
+    """An error other than the file's absence, such as an unreachable Hub,
+    propagates rather than reading the pointer files."""
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=_uk_national_line_manifest(),
+    )
+
+    def unreachable(**request) -> str:
+        if request["filename"] == "releases.json":
+            raise ConnectionError("the Hub did not answer")
+        return hub(**request)
+
+    with pytest.raises(ConnectionError, match="did not answer"):
+        loader._resolve_certified_release(resolve("uk", 2025), hub_download=unreachable)
+    assert hub.calls == []
+
+
+@pytest.mark.parametrize(
+    "status_code", [None, 503, 403], ids=["no-answer", "server-error", "forbidden"]
+)
+def test_a_hub_failure_reading_releases_json_does_not_fall_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status_code: int | None
+) -> None:
+    """Online, huggingface_hub raises LocalEntryNotFoundError when it could
+    not ask the Hub, after a 5xx or on a 403. That is not the file's absence:
+    falling back would load the pointer's build after the switch."""
+    monkeypatch.setattr(huggingface_hub.constants, "HF_HUB_OFFLINE", False)
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=_uk_national_line_manifest(),
+    )
+
+    def unreachable(**request) -> str:
+        if request["filename"] == "releases.json":
+            raise hub_unreachable(UK_REPO_ID, "releases.json", status_code=status_code)
+        return hub(**request)
+
+    with pytest.raises(LocalEntryNotFoundError):
+        loader._resolve_certified_release(resolve("uk", 2025), hub_download=unreachable)
+    assert hub.calls == []
+
+
+def test_offline_a_releases_json_never_cached_falls_back_to_the_pointer_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In offline mode the cache is all there is: a releases.json never
+    cached loads the cached pointer file's build, as an offline load did
+    before."""
+    monkeypatch.setattr(huggingface_hub.constants, "HF_HUB_OFFLINE", True)
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=_uk_national_line_manifest(),
+    )
+
+    def offline(**request) -> str:
+        if request["filename"] == "releases.json":
+            raise hub_unreachable(UK_REPO_ID, "releases.json")
+        return hub(**request)
+
+    certified = loader._resolve_certified_release(
+        resolve("uk", 2025), hub_download=offline
+    )
+
+    assert certified.release_id == UK_NATIONAL_RELEASE_ID
+    assert certified.artifact_revision == UK_NATIONAL_CUT_TAG
+
+
 def test_line_pointer_refuses_any_artifact_revision_mismatch(tmp_path: Path) -> None:
-    manifest = _uk_release_manifest()
+    manifest = _uk_national_line_manifest()
     manifest["artifacts"]["calibration_report"] = {
         "kind": "diagnostics",
         "path": "calibration_diagnostics.json",
@@ -449,13 +1088,29 @@ def test_line_pointer_refuses_any_artifact_revision_mismatch(tmp_path: Path) -> 
         ValueError,
         match=r"artifacts not pinned to expected revision.*calibration_report",
     ):
-        loader._resolve_certified_release(
-            resolve("uk", 2025, variant="national"), hub_download=hub
-        )
+        loader._resolve_certified_release(resolve("uk", 2025), hub_download=hub)
+
+
+def test_line_pointer_refuses_a_manifest_with_another_lines_role(tmp_path: Path):
+    """A line pointer carries one role: the national pointer cannot select a
+    local-area manifest, nor a local-area pointer a national one."""
+    spec = resolve("uk", 2025)
+    manifest = _uk_national_line_manifest()
+    manifest["dataset_role"] = "non_default_local_area"
+    manifest["default_datasets"] = {}
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=manifest,
+    )
+    with pytest.raises(ValueError, match="publishes only 'national_default'"):
+        loader._resolve_certified_release(spec, hub_download=hub)
 
 
 def test_local_area_line_selects_its_only_microdata_artifact(tmp_path: Path) -> None:
-    manifest = _uk_local_manifest()
+    manifest = _uk_local_line_manifest()
     manifest["artifacts"]["calibration_report"] = {
         "kind": "diagnostics",
         "path": "calibration_diagnostics.json",
@@ -472,7 +1127,7 @@ def test_local_area_line_selects_its_only_microdata_artifact(tmp_path: Path) -> 
     )
 
     certified = loader._resolve_certified_release(
-        _uk_local_spec(),
+        _uk_local_line_spec(),
         hub_download=hub,
     )
 
@@ -481,37 +1136,14 @@ def test_local_area_line_selects_its_only_microdata_artifact(tmp_path: Path) -> 
     assert certified.artifact_path == "microcosm_uk_2024_25_local_k15.h5"
     assert certified.artifact_revision == UK_LOCAL_CUT_TAG
     assert hub.calls == [
+        (UK_REPO_ID, "releases.json", None),
         (UK_REPO_ID, "latest-local-k15.json", None),
         (UK_REPO_ID, manifest_path, UK_LOCAL_CUT_TAG),
     ]
 
 
-def test_latest_json_refuses_a_local_area_manifest(tmp_path: Path) -> None:
-    manifest = _uk_local_manifest()
-    local_artifact = manifest["artifacts"]["microcosm_uk_2024_25_local_k15"]
-    local_artifact["revision"] = UK_LOCAL_RELEASE_ID
-    pointer = latest_pointer_payload(
-        UK_LOCAL_RELEASE_ID,
-        updated_at="2026-09-20T12:00:00+00:00",
-    )
-    hub = _hub_with_pointer(
-        tmp_path,
-        repo_id=UK_REPO_ID,
-        pointer_path=LATEST_POINTER_PATH,
-        pointer=pointer,
-        manifest=manifest,
-    )
-    spec = replace(_uk_local_spec(), pointer_path=LATEST_POINTER_PATH)
-
-    with pytest.raises(
-        ValueError,
-        match=r"non_default_local_area.*line pointer.*latest\.json",
-    ):
-        loader._resolve_certified_release(spec, hub_download=hub)
-
-
 def test_local_area_line_refuses_nonempty_default_datasets(tmp_path: Path) -> None:
-    manifest = _uk_local_manifest()
+    manifest = _uk_local_line_manifest()
     manifest["default_datasets"] = {"national": "microcosm_uk_2024_25_local_k15"}
     hub = _line_pointer_hub(
         tmp_path,
@@ -522,7 +1154,7 @@ def test_local_area_line_refuses_nonempty_default_datasets(tmp_path: Path) -> No
     )
 
     with pytest.raises(ValueError, match=r"default_datasets is not empty"):
-        loader._resolve_certified_release(_uk_local_spec(), hub_download=hub)
+        loader._resolve_certified_release(_uk_local_line_spec(), hub_download=hub)
 
 
 @pytest.mark.parametrize("microdata_count", [0, 2])
@@ -530,7 +1162,7 @@ def test_local_area_line_requires_exactly_one_microdata_artifact(
     tmp_path: Path,
     microdata_count: int,
 ) -> None:
-    manifest = _uk_local_manifest()
+    manifest = _uk_local_line_manifest()
     artifact = manifest["artifacts"]["microcosm_uk_2024_25_local_k15"]
     if microdata_count == 0:
         artifact["kind"] = "diagnostics"
@@ -554,23 +1186,7 @@ def test_local_area_line_requires_exactly_one_microdata_artifact(
         ValueError,
         match=rf"{microdata_count} microdata artifacts; expected exactly one",
     ):
-        loader._resolve_certified_release(_uk_local_spec(), hub_download=hub)
-
-
-def test_loader_refuses_an_unknown_dataset_role(tmp_path: Path) -> None:
-    manifest = _uk_release_manifest(dataset_role="research_preview")
-    hub = _line_pointer_hub(
-        tmp_path,
-        line="national",
-        release_id=UK_NATIONAL_RELEASE_ID,
-        revision=UK_NATIONAL_CUT_TAG,
-        manifest=manifest,
-    )
-
-    with pytest.raises(ValueError, match="unknown dataset_role 'research_preview'"):
-        loader._resolve_certified_release(
-            resolve("uk", 2025, variant="national"), hub_download=hub
-        )
+        loader._resolve_certified_release(_uk_local_line_spec(), hub_download=hub)
 
 
 def test_download_uses_pointer_manifest_and_release_revision(
@@ -804,7 +1420,7 @@ def _is_missing_pointer_error(exc: BaseException, pointer_path: str) -> bool:
     [
         ("us", 2024, DEFAULT_VARIANT),
         ("uk", 2023, DEFAULT_VARIANT),
-        ("uk", 2025, "national"),
+        ("uk", 2025, DEFAULT_VARIANT),
     ],
 )
 def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
@@ -823,6 +1439,10 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
     which are updated atomically with each certification PR.
     """
     spec = resolve(country, year, variant=variant)
+    # The UK 2025 default follows its line's pointer since microcosm#823, until
+    # its repository switches to releases.json; the pointer, not the variant,
+    # says how the release is named.
+    line = loader._line_from_pointer_path(spec.pointer_path)
     try:
         certified = loader._resolve_certified_release(spec)
     except Exception as exc:
@@ -834,47 +1454,48 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
             pytest.skip(
                 f"repo requires credentials this environment lacks (private): {exc}"
             )
-        if variant != DEFAULT_VARIANT and _is_missing_pointer_error(
-            exc, spec.pointer_path
-        ):
+        if line is not None and _is_missing_pointer_error(exc, spec.pointer_path):
             # A line pointer exists only once its first cut is promoted;
             # until then the line is registered but not yet live. Anything
             # else on a promoted line (a manifest 404, a bad pin) fails.
             pytest.skip(f"line pointer {spec.pointer_path} not yet promoted: {exc}")
         raise
 
-    assert certified.release_id.startswith(
-        # Live certified releases still carry the pre-rename id prefix; new
-        # builds may adopt the microcosm- prefix at the next versioned release.
-        (f"microcosm-{country}-{spec.year}-", f"populace-{country}-{spec.year}-")
-    )
     assert certified.artifact_repo_id == spec.hf_repo
-    assert certified.artifact_path == spec.filename
-    if variant == DEFAULT_VARIANT:
+    if certified.build is not None:
+        # The repository records its builds in releases.json.
+        assert certified.release_id == spec.release
+        assert certified.artifact_path == (
+            f"releases/{spec.release}/{certified.build}/{spec.filename}"
+        )
+        assert certified.artifact_revision is None
+    elif line is None:
+        assert certified.artifact_path == spec.filename
+        assert certified.release_id.startswith(
+            # Live certified releases still carry the pre-rename id prefix; new
+            # builds may adopt the microcosm- prefix at the next versioned
+            # release.
+            (f"microcosm-{country}-{spec.year}-", f"populace-{country}-{spec.year}-")
+        )
         assert certified.artifact_revision == certified.release_id
     else:
         # A line pointer names the immutable cut tag of its constant id.
+        assert certified.artifact_path == spec.filename
+        assert certified.release_id.startswith(f"microcosm-{country}-")
         assert certified.artifact_revision.startswith(f"{certified.release_id}-")
     assert re.fullmatch(r"[0-9a-f]{64}", certified.artifact_sha256)
     assert certified.model.name == spec.engine_package
 
 
-def test_line_pointer_refuses_a_manifest_with_another_lines_role(tmp_path: Path):
-    """A line pointer carries one role: the national pointer cannot select a
-    local-area manifest, nor a local-area pointer a national one."""
-    spec = resolve("uk", 2025, variant="national")
-    manifest = _uk_release_manifest()
-    manifest["dataset_role"] = "non_default_local_area"
-    manifest["default_datasets"] = {}
-    hub = _line_pointer_hub(
-        tmp_path,
-        line="national",
-        release_id=UK_NATIONAL_RELEASE_ID,
-        revision=UK_NATIONAL_CUT_TAG,
-        manifest=manifest,
+def test_the_national_release_refuses_a_local_area_manifest(tmp_path: Path):
+    """releases.json gives each release one role: the national release
+    cannot load a local-area manifest on the strength of its name."""
+    manifest = _uk_build_folder_manifest(
+        dataset_role="non_default_local_area", default_datasets={}
     )
-    with pytest.raises(ValueError, match="publishes only 'national_default'"):
-        loader._resolve_certified_release(spec, hub_download=hub)
+    hub = _build_folder_hub(tmp_path, manifest=manifest)
+    with pytest.raises(ValueError, match="listed with role 'national'"):
+        loader._resolve_certified_release(resolve("uk", 2025), hub_download=hub)
 
 
 def test_latest_pointer_refuses_any_artifact_revision_mismatch(tmp_path: Path):

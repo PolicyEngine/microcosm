@@ -1,0 +1,1 @@
+Derive `partnership_self_employment_net_earnings` from a raw PUF with the archived pipeline's Schedule SE residual instead of the sum of partnership and S corporation losses, and fail closed when a raw PUF lacks any of its eight input columns. The certified default reads the processed donor's `partnership_se_income` column and is unchanged.

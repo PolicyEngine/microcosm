@@ -12,7 +12,14 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.hmrc_isa_statistics import (
+    HMRCISAStatisticsError,
+    load_hmrc_isa_statistics,
+)
+from microcosm.build.uk_runtime.national_frame import (
+    uk_national_frame,
+    uk_time_period,
+)
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.build.uk_runtime.was_lisa import (
     BALANCE_COLUMN,
@@ -36,6 +43,11 @@ from microcosm.build.uk_runtime.was_lisa import (
     recipient_predictors,
 )
 from microcosm.build.uk_runtime.was_wealth import UK_WAS_ENGINE_PREDICTOR_ENTITIES
+from test_support.microcosm_build.uk_isa_statistics import (
+    ISA_FACTS_VERIFY_OPERATION,
+    LISA_ANCHOR_OPERATION,
+    synthetic_isa_statistics_payload,
+)
 from test_support.paths import paths_for
 from tools.graph_uk_spine_fixture import _was_donor, _was_person_donor
 
@@ -139,7 +151,7 @@ class _FakeEngine:
         return SimpleNamespace(entity=UK_WAS_ENGINE_PREDICTOR_ENTITIES[name])
 
     def materialize(self, frame, variables, period):
-        assert period == "2023"
+        assert period == uk_time_period(frame)
         tables = {
             entity: frame.table(entity) for entity in ("person", "benunit", "household")
         }
@@ -211,7 +223,7 @@ def _donor():
     return clean_was_lisa_donor(_was_person_donor(), _was_donor(), columns=_columns())
 
 
-def _recipient_frame(households: int = 64):
+def _recipient_frame(households: int = 64, time_period: str = "2024"):
     """FRS-like recipients in the synthetic donor's ranges (the fixture's scale)."""
 
     persons: list[dict[str, object]] = []
@@ -279,7 +291,7 @@ def _recipient_frame(households: int = 64):
         person=pd.DataFrame(persons),
         benunit=pd.DataFrame(benunits),
         household=pd.DataFrame(homes),
-        time_period="2023",
+        time_period=time_period,
     )
 
 
@@ -513,12 +525,28 @@ def test_cap_scales_a_household_over_its_financial_wealth_pro_rata() -> None:
 # --------------------------------------------------------------------------
 
 
+def _statistics(lifetime_accounts: float = 0.0):
+    """Synthetic ISA facts whose 2024-25 Lifetime ISA accounts are as given.
+
+    The synthetic payload carries 1,100 Lifetime ISA accounts at scale 1; a
+    target of zero leaves the drawn holders as they are.
+    """
+
+    return load_hmrc_isa_statistics(
+        payload=synthetic_isa_statistics_payload(
+            scale=max(lifetime_accounts, 1e-9) / 1_100.0
+        ),
+        verify_feed_identity=False,
+    )
+
+
 def _transform() -> UKWASLISAStageTransform:
     return UKWASLISAStageTransform(
         stage=_committed_stage(),
         engine=_FakeEngine(),
         donor_household=_was_donor(),
         donor_person=_was_person_donor(),
+        statistics=_statistics(),
     )
 
 
@@ -566,7 +594,10 @@ def test_stage_writes_the_declared_outputs_with_receipts() -> None:
         "realised",
         "financial_wealth_coherence",
         "population",
+        "anchored_holders_after_cap",
     }
+    # A zero target leaves the drawn holders as they are (microcosm#1415).
+    assert evidence["ownership_model"]["anchor"]["logit_shift"] == 0.0
     assert evidence["support_clip"]["columns"][BALANCE_COLUMN]["clipped_high_rows"] == 0
     assert (
         evidence["financial_wealth_coherence"]["households_over_financial_wealth"] >= 0
@@ -589,6 +620,75 @@ def test_stage_writes_the_declared_outputs_with_receipts() -> None:
     assert {record.weight_kind for record in transform.fit_weight_records} == {
         "explicit"
     }
+
+
+def _counted_holders(frame) -> float:
+    person = frame.table("person")
+    weights = (
+        pd.Series(
+            np.asarray(frame.weights_for("household").values, dtype=float),
+            index=frame.table("household")["household_id"].to_numpy(),
+        )
+        .reindex(person["person_household_id"].to_numpy())
+        .to_numpy(dtype=float)
+    )
+    ages = person["age"].to_numpy(dtype=float)
+    counted = person[OWNERSHIP_COLUMN].to_numpy(bool) & (ages >= 18) & (ages <= 47)
+    return float(weights[counted].sum())
+
+
+def test_the_declared_anchor_adds_holders_up_to_hmrc_payers() -> None:
+    frame = _recipient_frame(households=400)
+    drawn = _transform()(frame)
+    before = _counted_holders(drawn)
+    target = 1.5 * before
+    statistics = _statistics(target)
+    transform = UKWASLISAStageTransform(
+        stage=_committed_stage(),
+        engine=_FakeEngine(),
+        donor_household=_was_donor(),
+        donor_person=_was_person_donor(),
+        statistics=statistics,
+    )
+
+    result = transform(frame)
+
+    person = result.table("person")
+    anchored = person[OWNERSHIP_COLUMN].to_numpy(bool)
+    assert not (
+        drawn.table("person")[OWNERSHIP_COLUMN].to_numpy(bool) & ~anchored
+    ).any()
+    np.testing.assert_array_equal(anchored, person[BALANCE_COLUMN].to_numpy() > 0)
+    evidence = transform.checkpoint_metadata()["evidence"]
+    achieved = evidence["anchored_holders_after_cap"]
+    assert achieved == pytest.approx(_counted_holders(result))
+    anchor = evidence["ownership_model"]["anchor"]
+    assert anchor["target_holders"] == pytest.approx(target)
+    # The cap clears holders exactly where the anchor predicted it would.
+    assert achieved == pytest.approx(anchor["holders_after"])
+    assert target <= achieved <= target + 5.0
+    assert anchor["logit_shift"] > 0
+    assert anchor["removed_holders"] == 0
+    gate = uk_stage_health_gate(
+        evidence=evidence,
+        stage=UK_WAS_LISA_STAGE_NAME,
+        check="was_lisa_anchor",
+        parameters={"maximum_relative_deviation": 5.0 / target},
+    )
+    assert gate.passed, gate.failures
+
+
+def test_the_anchor_maps_hmrc_facts_to_the_build_year_only() -> None:
+    transform = UKWASLISAStageTransform(
+        stage=_committed_stage(),
+        engine=_FakeEngine(),
+        donor_household=_was_donor(),
+        donor_person=_was_person_donor(),
+        statistics=_statistics(),
+    )
+
+    with pytest.raises(HMRCISAStatisticsError, match="build period 2024"):
+        transform(_recipient_frame(time_period="2023"))
 
 
 def test_stage_is_deterministic() -> None:
@@ -623,6 +723,13 @@ def test_committed_declaration_carries_the_tested_parameters() -> None:
     assert by_kind["impute_lifetime_isa_ownership"] == OWNERSHIP
     assert by_kind["impute_lifetime_isa_balance"] == {**BALANCE, "n_estimators": 100}
     assert by_kind["cap_lifetime_isa_to_financial_wealth"] == CAP
+    # microcosm#1415: the anchor to HMRC's payers and its facts check.
+    assert by_kind["anchor_lifetime_isa_ownership"] == {
+        key: value for key, value in LISA_ANCHOR_OPERATION.items() if key != "kind"
+    }
+    assert by_kind["verify_vendored_fact_resource"] == {
+        key: value for key, value in ISA_FACTS_VERIFY_OPERATION.items() if key != "kind"
+    }
     assert by_kind["aggregate_person_to_household"] == {
         "method": "sum",
         "aggregates": {HOUSEHOLD_BALANCE_COLUMN: BALANCE_COLUMN},
@@ -674,7 +781,13 @@ def test_committed_support_bounds_match_the_stage_pins() -> None:
     )
     payload = json.loads(resource.read_text(encoding="utf-8"))
     stage = load_country_spec("uk").sources.stage_map()[UK_WAS_LISA_STAGE_NAME]
-    pins = {artifact["role"]: artifact["sha256"] for artifact in stage.artifacts}
+    # The microdata tabs are pinned by digest; the vendored ISA facts are a
+    # packaged resource (microcosm#1415).
+    pins = {
+        artifact["role"]: artifact["sha256"]
+        for artifact in stage.artifacts
+        if "sha256" in artifact
+    }
 
     assert set(payload["bounds"]) == set(UK_WAS_LISA_SUPPORT_CLIP_COLUMNS)
     assert payload["source"]["household_tab_sha256"] == pins["was_qrf_donor"]

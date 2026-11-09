@@ -1,4 +1,15 @@
-"""CLI for contract-gated Microcosm release publication."""
+"""CLI for contract-checked Microcosm release publication.
+
+It publishes releases that keep the tagged layout and ``latest.json``, which
+are every US release. The UK national, dense and local-area releases publish
+each build into its own folder through the emitter
+(``microcosm-publish-release-build``), and this command refuses them. The
+other UK releases take no new builds: this command refuses any repository
+that records its builds in ``releases.json``, as the UK repository does after
+its switch, which moves the June 2023 build into a build folder of release
+``populace-uk-2023`` and leaves ``populace-uk-<year>-<tier>-k<N>`` releases
+with no publication path.
+"""
 
 from __future__ import annotations
 
@@ -141,6 +152,48 @@ def _reform_validation_skipped(release_dir: Path) -> bool:
     return payload.get("out_of_sample_simulated") is False
 
 
+def publication_refusal(
+    release_dir: Path,
+    *,
+    allow_incomplete_reform_validation: bool = False,
+    allow_missing_staging: bool = False,
+) -> str | None:
+    """Why a release must not be published, read from its local files, or None.
+
+    The checks every publication path shares: non-release smoke output, a
+    reform validation built with out-of-sample reforms skipped, and staging
+    telemetry that never arrived. Each override flag lifts one check.
+    """
+    if _non_release_artifact(release_dir):
+        return (
+            "refusing to publish: build_manifest.json identifies this as "
+            "non-release smoke output."
+        )
+    if not allow_incomplete_reform_validation and _reform_validation_skipped(
+        release_dir
+    ):
+        return (
+            "refusing to publish: reform_validation.json has "
+            "out_of_sample_simulated=false (built with "
+            "--skip-out-of-sample-reforms), so the dashboard would show blank "
+            "out-of-sample reforms. Rebuild without skipping, or pass "
+            "--allow-incomplete-reform-validation to publish anyway."
+        )
+    if not allow_missing_staging and _staging_undelivered(release_dir):
+        return (
+            "refusing to publish: this release's build_manifest records no "
+            "delivered staging telemetry, so the build never appeared on the "
+            "staging dashboard and there is no pre-publication review of it. "
+            "Either the staging destination was lost mid-build (uploads "
+            "self-disable after repeated failures — check the build machine's "
+            "Hugging Face write token), or the manifest predates staging "
+            "provenance. Rebuild with staging reaching its repo, or pass "
+            "--allow-missing-staging to publish anyway. A build that declared "
+            "--no-staging publishes without the flag."
+        )
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("release_dir", help="Local releases/<release_id> directory.")
@@ -194,14 +247,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--tag-name",
         help="Optional tag name override; defaults to the release id.",
-    )
-    parser.add_argument(
-        "--promote-line",
-        metavar="LINE",
-        help=(
-            "Promote the release through latest-<line>.json. Requires "
-            "--tag-name and never writes latest.json."
-        ),
     )
     parser.add_argument(
         "--extra-file",
@@ -263,54 +308,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if args.promote_line is not None:
-        if args.no_latest:
-            parser.error("--promote-line cannot be combined with --no-latest.")
-        if args.tag_only:
-            parser.error("--promote-line cannot be combined with --tag-only.")
-        if args.evidence:
-            parser.error("--promote-line cannot be combined with --evidence.")
-        if not args.tag_name:
-            parser.error("--promote-line requires --tag-name.")
     if args.tag_only and not args.no_latest:
         parser.error("--tag-only requires --no-latest.")
     if args.tag_only and not args.create_tag:
         parser.error("--tag-only requires tag creation; remove --no-create-tag.")
 
-    if _non_release_artifact(Path(args.release_dir)):
-        print(
-            "refusing to publish: build_manifest.json identifies this as "
-            "non-release smoke output.",
-            file=sys.stderr,
-        )
-        return 1
-
-    if not args.allow_incomplete_reform_validation and _reform_validation_skipped(
-        Path(args.release_dir)
-    ):
-        print(
-            "refusing to publish: reform_validation.json has "
-            "out_of_sample_simulated=false (built with "
-            "--skip-out-of-sample-reforms), so the dashboard would show blank "
-            "out-of-sample reforms. Rebuild without skipping, or pass "
-            "--allow-incomplete-reform-validation to publish anyway.",
-            file=sys.stderr,
-        )
-        return 1
-
-    if not args.allow_missing_staging and _staging_undelivered(Path(args.release_dir)):
-        print(
-            "refusing to publish: this release's build_manifest records no "
-            "delivered staging telemetry, so the build never appeared on the "
-            "staging dashboard and there is no pre-publication review of it. "
-            "Either the staging destination was lost mid-build (uploads "
-            "self-disable after repeated failures — check the build machine's "
-            "Hugging Face write token), or the manifest predates staging "
-            "provenance. Rebuild with staging reaching its repo, or pass "
-            "--allow-missing-staging to publish anyway. A build that declared "
-            "--no-staging publishes without the flag.",
-            file=sys.stderr,
-        )
+    refusal = publication_refusal(
+        Path(args.release_dir),
+        allow_incomplete_reform_validation=args.allow_incomplete_reform_validation,
+        allow_missing_staging=args.allow_missing_staging,
+    )
+    if refusal is not None:
+        print(refusal, file=sys.stderr)
         return 1
 
     preparation_options = dict(
@@ -323,9 +332,11 @@ def main(argv: list[str] | None = None) -> int:
         update_latest=not args.no_latest,
         tag_only=args.tag_only,
         evidence=args.evidence,
-        line=args.promote_line,
     )
-    from microcosm.data.source_enrichment import recorded_narrowed_claims
+    from microcosm.data.source_enrichment import (
+        recorded_claim_measurement,
+        recorded_narrowed_claims,
+    )
 
     # A re-certification that reverted a declared compatibility range to the
     # exact pin warned in the terminal that ran it, days and an operator ago.
@@ -340,11 +351,37 @@ def main(argv: list[str] | None = None) -> int:
             f"earlier certification: {json.dumps(narrowed)}",
             file=sys.stderr,
         )
+    # A declared compatibility range admits model versions no check measured.
+    # The bundle records which one was; say it on the same two paths. A
+    # recertification records the measured version, its baseline and the
+    # drift summary the declarer read.
+    from microcosm.data import compatibility_recertification
+
+    measurement = recorded_claim_measurement(
+        Path(args.release_dir)
+    ) or compatibility_recertification.recorded_claim_measurement(
+        Path(args.release_dir)
+    )
+    if measurement:
+        print(
+            "note: this release declares a publisher compatibility range that "
+            "certification measured against only the versions recorded here: "
+            f"{json.dumps(measurement)}",
+            file=sys.stderr,
+        )
     if args.preflight_only:
-        prepare_release(Path(args.release_dir), **preparation_options)
+        prepared = prepare_release(Path(args.release_dir), **preparation_options)
         preflight = {"valid": True, "published": False}
         if narrowed:
             preflight["narrowed_claims"] = narrowed
+        if measurement:
+            preflight["claim_measurement"] = measurement
+        # The contract's warnings never refuse, so the verdict carries them
+        # for whatever parses stdout; each names a file and paths in it,
+        # never a value. Publication's printed pointer carries them the same
+        # way.
+        if prepared.contract_warnings:
+            preflight["contract_warnings"] = list(prepared.contract_warnings)
         print(json.dumps(preflight))
         return 0
 

@@ -17,8 +17,16 @@ from pydantic import (
     model_validator,
 )
 
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION: Final[Literal[8]] = 8
-SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({6, 7, 8})
+#: The schema current builds publish: 9, with hierarchy labels in catalogs.
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION: Final[Literal[9]] = 9
+#: The schema producers assemble before writing: 8, with every hierarchy
+#: label on its row. The writer turns it into schema 9
+#: (``catalog_calibration_diagnostics``).
+CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION: Final[Literal[8]] = 8
+SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({6, 7, 8, 9})
+#: The versions whose rows carry the calibration hierarchy: on each row in
+#: schema 8, by reference to ``hierarchy_catalogs`` in schema 9.
+HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({8, 9})
 UK_DIAGNOSTICS_SCHEMA_VERSION: Final[Literal[1]] = 1
 
 
@@ -230,12 +238,16 @@ class TargetLossBasis(DiagnosticsModel):
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+#: ``brma`` is Scotland's 18 Broad Rental Market Areas, where ONS publishes
+#: its Scottish private rents (microcosm#1262); its rows have no area
+#: rollups, so it is not a local rollup level.
 UKGeographyLevel = Literal[
     "national",
     "region",
     "country",
     "local_authority",
     "constituency",
+    "brma",
 ]
 UKLocalGeographyLevel = Literal["local_authority", "constituency"]
 UKCountry = Literal["England", "Northern Ireland", "Scotland", "Wales"]
@@ -245,6 +257,12 @@ UK_TARGET_GEOGRAPHY_LEVELS: Final[tuple[UKGeographyLevel, ...]] = (
     "country",
     "local_authority",
     "constituency",
+    "brma",
+)
+#: Levels a report may leave out: reports written before the level existed
+#: carry no row for it. Current builds always write every level.
+UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS: Final[frozenset[UKGeographyLevel]] = frozenset(
+    {"brma"}
 )
 
 
@@ -390,9 +408,13 @@ class UKAreaFit(DiagnosticsModel):
     worst_target: NonBlankText
     worst_abs_relative_error: NonNegativeFiniteFloat
     loss_contribution: NonNegativeFiniteFloat
-    nonzero_households: NonNegativeInt
-    nonzero_source_households: NonNegativeInt
-    effective_sample_size: NonNegativeFiniteFloat
+    # The per-area support figures, which the releases built between
+    # microcosm#1301 and María's ruling of 2026-10-26 withheld; optional so
+    # those payloads still parse. The floor flag rides beside them.
+    support_below_floor: bool | None = None
+    nonzero_households: NonNegativeInt | None = None
+    nonzero_source_households: NonNegativeInt | None = None
+    effective_sample_size: NonNegativeFiniteFloat | None = None
 
     @model_validator(mode="after")
     def reconcile_pass_rate(self) -> UKAreaFit:
@@ -472,7 +494,16 @@ class UKMeasuredRotatedHoldout(DiagnosticsModel):
     method: Literal["rotated_folds"]
     target_loss_cap: PositiveFiniteFloat
     loss_weight_scale: Literal["held_local_grains_only"]
-    target_weight_rule: Literal["uniform", "grain_equal"]
+    # The UK local target-weight vocabulary (microcosm#1124); a microcosm-build
+    # test pins it to ``UK_LOCAL_TARGET_WEIGHT_RULES``.
+    target_weight_rule: Literal[
+        "uniform",
+        "grain_equal",
+        "grain_family_equal",
+        "grain_family_equal_sqrt_count",
+        "nation_grain_family_equal",
+        "nation_grain_family_equal_sqrt_count",
+    ]
     population: Literal["held_out_local_targets"]
     grains: list[Literal["constituency", "local_authority", "la"]] = Field(min_length=1)
     n_folds: Annotated[int, Field(ge=2)]
@@ -557,6 +588,72 @@ class UKConsumptionDrift(DiagnosticsModel):
     shares: dict[NonBlankText, UKDriftValue] = Field(min_length=1)
 
 
+#: The fields of a target row that the model's weights produce. A row whose
+#: model figures a UK build withholds carries none of them (microcosm#1262).
+UK_MODEL_FIGURE_FIELDS: Final[tuple[str, ...]] = (
+    "initial_estimate",
+    "final_estimate",
+    "relative_error",
+    "within_tolerance",
+    "final_capped_scaled_error",
+    "final_loss_contribution",
+)
+#: The solve options a UK payload keeps while any row is withheld: settings,
+#: not outcomes. Every other option reads null, since an outcome recorded
+#: there may cover every row, as the iterate-selection receipt's losses do
+#: (microcosm#1262).
+UK_WITHHELD_PUBLISHED_OPTIONS: Final[frozenset[str]] = frozenset(
+    {
+        "budget_basis",
+        "epochs",
+        "feasible_draw_pi_hi",
+        "gate_initialization_supplied",
+        "iterate_selection",
+        "l1_lambda",
+        "l1_penalty",
+        "l2_anchor",
+        "l2_anchor_weights_supplied",
+        "l2_basis",
+        "l2_lambda",
+        "l2_penalty",
+        "learning_rate",
+        "mass",
+        "mass_parametrization",
+        "mass_reason",
+        "matrix_format",
+        "max_weight_ratio",
+        "method",
+        "seed",
+        "target_loss_cap",
+        "target_loss_scales",
+        "target_loss_weights",
+        "target_records",
+        "warm_start_weights",
+    }
+)
+#: The iterate-selection receipt's fields kept while any row is withheld; its
+#: selected and closing iterates' losses cover every row and read null.
+UK_WITHHELD_PUBLISHED_ITERATE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"rule", "selected_epoch", "epochs_executed", "epoch_convention"}
+)
+
+
+class UKWithheldModelFigures(DiagnosticsModel):
+    """Target rows whose model figures stay in the build (microcosm#1262).
+
+    A row resting on fewer than ``min_source_households`` distinct source
+    households keeps its place without its model figures. While any does, the
+    payload's totals are restated over the published rows (``totals_basis``)
+    so that none can be differenced against them, and its loss trajectory is
+    empty.
+    """
+
+    targets: int = Field(gt=0)
+    min_source_households: int = Field(gt=0)
+    totals_basis: Literal["published_rows"]
+    note: NonBlankText
+
+
 class UKDiagnosticsV1(DiagnosticsModel):
     schema_version: Literal[UK_DIAGNOSTICS_SCHEMA_VERSION]
     weights: UKWeightSummary
@@ -567,6 +664,7 @@ class UKDiagnosticsV1(DiagnosticsModel):
     weakest_areas_by_fit: UKWeakestAreasByFit | None = None
     rotated_holdout: UKRotatedHoldout | None = None
     consumption_drift: UKConsumptionDrift | None = None
+    model_figures_withheld: UKWithheldModelFigures | None = None
 
     @model_validator(mode="after")
     def reconcile_uk_diagnostics(self) -> UKDiagnosticsV1:
@@ -595,7 +693,9 @@ class UKDiagnosticsV1(DiagnosticsModel):
         if len(levels) != len(set(levels)):
             raise ValueError("UK geography pass-rate levels must be unique")
         expected_levels = set(UK_TARGET_GEOGRAPHY_LEVELS)
-        missing = sorted(expected_levels - set(levels))
+        missing = sorted(
+            expected_levels - set(levels) - UK_OPTIONAL_TARGET_GEOGRAPHY_LEVELS
+        )
         unexpected = sorted(set(levels) - expected_levels)
         if missing or unexpected:
             raise ValueError(
@@ -609,8 +709,79 @@ class UKDiagnosticsV1(DiagnosticsModel):
         return self
 
 
+def _reconcile_diagnostics_counts(
+    diagnostics: CalibrationDiagnosticsV8 | CalibrationDiagnosticsV9,
+) -> None:
+    """Counts that schema 8 and schema 9 documents must both reconcile."""
+
+    if diagnostics.target_surface.n_targets != len(diagnostics.targets):
+        raise ValueError("target_surface.n_targets must equal len(targets)")
+    if diagnostics.target_registry.n_specs < len(diagnostics.targets):
+        raise ValueError("target_registry.n_specs cannot be less than len(targets)")
+    if diagnostics.target_surface.n_records != diagnostics.n_records:
+        raise ValueError("target_surface.n_records must equal n_records")
+    if diagnostics.n_nonzero > diagnostics.n_records:
+        raise ValueError("n_nonzero cannot exceed n_records")
+    if diagnostics.target_registry.country == "uk":
+        if diagnostics.uk_diagnostics is None:
+            raise ValueError(
+                "UK calibration diagnostics require a uk_diagnostics block"
+            )
+        uk = diagnostics.uk_diagnostics
+        if uk.weights.n_records != diagnostics.n_records:
+            raise ValueError("UK weights.n_records must match top-level n_records")
+        if diagnostics.effective_sample_size is None or not math.isclose(
+            uk.weights.effective_sample_size,
+            diagnostics.effective_sample_size,
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        ):
+            raise ValueError(
+                "UK weights.effective_sample_size must match the top-level value"
+            )
+        if diagnostics.top_1pct_weight_share is None or not math.isclose(
+            uk.weights.top_1pct_weight_share,
+            diagnostics.top_1pct_weight_share,
+            rel_tol=1e-12,
+            abs_tol=1e-12,
+        ):
+            raise ValueError(
+                "UK weights.top_1pct_weight_share must match the top-level value"
+            )
+        total_targets = sum(
+            row.n_targets for row in uk.target_pass_rates_by_geography_level
+        )
+        total_scored = sum(
+            row.n_scored for row in uk.target_pass_rates_by_geography_level
+        )
+        total_skipped = sum(
+            row.n_skipped for row in uk.target_pass_rates_by_geography_level
+        )
+        if total_targets != diagnostics.target_registry.n_specs:
+            raise ValueError(
+                "UK geography target counts must match target_registry.n_specs"
+            )
+        if total_scored != len(diagnostics.targets):
+            raise ValueError(
+                "UK geography scored counts must match the target row count"
+            )
+        if total_skipped != len(diagnostics.skipped):
+            raise ValueError(
+                "UK geography skipped counts must match the skipped row count"
+            )
+    elif diagnostics.uk_diagnostics is not None:
+        raise ValueError(
+            "uk_diagnostics is only valid when target_registry.country is 'uk'"
+        )
+
+
 class CalibrationDiagnosticsV8(DiagnosticsModel):
-    """The only calibration-diagnostics schema emitted by current builds."""
+    """Schema 8: every target row carries its complete hierarchy, labels included.
+
+    Producers assemble this document; the writer publishes it as schema 9
+    (``CalibrationDiagnosticsV9``), and releases published before schema 9
+    carry it as written.
+    """
 
     schema_version: Literal[8]
     weight_entity: NonBlankText
@@ -652,65 +823,229 @@ class CalibrationDiagnosticsV8(DiagnosticsModel):
 
     @model_validator(mode="after")
     def reconcile_counts(self) -> CalibrationDiagnosticsV8:
-        if self.target_surface.n_targets != len(self.targets):
-            raise ValueError("target_surface.n_targets must equal len(targets)")
-        if self.target_registry.n_specs < len(self.targets):
-            raise ValueError("target_registry.n_specs cannot be less than len(targets)")
-        if self.target_surface.n_records != self.n_records:
-            raise ValueError("target_surface.n_records must equal n_records")
-        if self.n_nonzero > self.n_records:
-            raise ValueError("n_nonzero cannot exceed n_records")
-        if self.target_registry.country == "uk":
-            if self.uk_diagnostics is None:
+        _reconcile_diagnostics_counts(self)
+        return self
+
+
+class HierarchyProviderEntry(DiagnosticsModel):
+    id: NonBlankText
+    label: NonBlankText
+
+
+class HierarchyCategoryEntry(DiagnosticsModel):
+    id: NonBlankText
+    label: NonBlankText
+    provider_id: NonBlankText
+
+
+class HierarchyGeographyEntry(DiagnosticsModel):
+    id: NonBlankText
+    label: NonBlankText
+    level: NonBlankText
+
+
+class HierarchyDimensionValueEntry(DiagnosticsModel):
+    id: NonBlankText
+    label: NonBlankText
+
+
+class HierarchyDimensionEntry(DiagnosticsModel):
+    id: NonBlankText
+    label: NonBlankText
+    values: list[HierarchyDimensionValueEntry]
+
+    @model_validator(mode="after")
+    def value_ids_are_unique(self) -> HierarchyDimensionEntry:
+        seen: set[str] = set()
+        for value in self.values:
+            if value.id in seen:
                 raise ValueError(
-                    "UK calibration diagnostics require a uk_diagnostics block"
+                    f"hierarchy_catalogs dimension {self.id} lists value "
+                    f"{value.id} twice"
                 )
-            uk = self.uk_diagnostics
-            if uk.weights.n_records != self.n_records:
-                raise ValueError("UK weights.n_records must match top-level n_records")
-            if self.effective_sample_size is None or not math.isclose(
-                uk.weights.effective_sample_size,
-                self.effective_sample_size,
-                rel_tol=1e-12,
-                abs_tol=1e-12,
-            ):
+            seen.add(value.id)
+        return self
+
+
+class HierarchyCatalogs(DiagnosticsModel):
+    """Each hierarchy label, declared once (schema 9).
+
+    A category names its provider; a dimension lists its values. Entries are
+    arrays, so a repeated ID stays visible to any reader.
+    """
+
+    providers: list[HierarchyProviderEntry]
+    categories: list[HierarchyCategoryEntry]
+    geographies: list[HierarchyGeographyEntry]
+    dimensions: list[HierarchyDimensionEntry]
+
+    @model_validator(mode="after")
+    def identifiers_are_unique_and_providers_listed(self) -> HierarchyCatalogs:
+        for name in ("providers", "categories", "geographies", "dimensions"):
+            seen: set[str] = set()
+            for entry in getattr(self, name):
+                if entry.id in seen:
+                    raise ValueError(
+                        f"hierarchy_catalogs.{name} lists {entry.id} twice"
+                    )
+                seen.add(entry.id)
+        providers = {provider.id for provider in self.providers}
+        for category in self.categories:
+            if category.provider_id not in providers:
                 raise ValueError(
-                    "UK weights.effective_sample_size must match the top-level value"
+                    f"category {category.id} refers to provider "
+                    f"{category.provider_id}, which hierarchy_catalogs.providers "
+                    "does not list"
                 )
-            if self.top_1pct_weight_share is None or not math.isclose(
-                uk.weights.top_1pct_weight_share,
-                self.top_1pct_weight_share,
-                rel_tol=1e-12,
-                abs_tol=1e-12,
-            ):
+        return self
+
+
+class HierarchyDimensionReference(DiagnosticsModel):
+    id: NonBlankText
+    value_id: NonBlankText
+
+
+class CatalogHierarchyReference(DiagnosticsModel):
+    """A schema 9 row's hierarchy: catalog IDs, and the target's own label.
+
+    The provider is the category's. ``dimensions`` keep producer order; each
+    ``value_id`` is listed under its own dimension in the catalog.
+    """
+
+    category_id: NonBlankText
+    geography_id: NonBlankText
+    dimensions: list[HierarchyDimensionReference]
+    target: HierarchyNode
+
+    @model_validator(mode="after")
+    def dimension_ids_are_unique(self) -> CatalogHierarchyReference:
+        dimension_ids = [dimension.id for dimension in self.dimensions]
+        if len(dimension_ids) != len(set(dimension_ids)):
+            raise ValueError("hierarchy dimension ids must be unique")
+        return self
+
+
+class TargetDiagnosticV9(DiagnosticsModel):
+    """A schema 8 target row whose hierarchy refers to the catalogs.
+
+    The fields are schema 8's, in the same order; only ``hierarchy`` differs.
+    """
+
+    name: NonBlankText
+    target_name: NonBlankText
+    period: int | NonBlankText
+    entity: NonBlankText
+    measure: Selector
+    filter: Selector | None
+    source: NonBlankText
+    metadata: dict[str, JsonValue]
+    target: float | None
+    compiled_target: float | None
+    initial_estimate: float | None
+    final_estimate: float | None
+    relative_error: float | None
+    within_tolerance: bool | None
+    hierarchy: CatalogHierarchyReference
+    registry: RegistryTargetMetadata | None = None
+    target_loss_weight: float | None = None
+    target_loss_weight_share: float | None = None
+    target_loss_scale: float | None = None
+    final_capped_scaled_error: float | None = None
+    final_loss_contribution: float | None = None
+
+    @model_validator(mode="after")
+    def hierarchy_target_matches_row(self) -> TargetDiagnosticV9:
+        if self.hierarchy.target.id != self.target_name:
+            raise ValueError("hierarchy target id must match target_name")
+        return self
+
+
+class CalibrationDiagnosticsV9(DiagnosticsModel):
+    """The calibration-diagnostics schema current builds publish.
+
+    Schema 8 with each provider, category, geography and dimension label
+    declared once in ``hierarchy_catalogs`` and referred to by ID from the
+    rows, so one identifier cannot carry two labels. Every other field is
+    schema 8's.
+    """
+
+    schema_version: Literal[9]
+    weight_entity: NonBlankText
+    options: dict[str, JsonValue]
+    target_surface: TargetSurface
+    target_registry: TargetRegistryRef
+    l0_lambda: float | None
+    n_nonzero: int = Field(ge=0)
+    n_records: int = Field(gt=0)
+    initial_loss: float | None
+    final_loss: float | None
+    fraction_within_10pct: float | None
+    effective_sample_size: float | None
+    realized_max_weight_ratio: float | None
+    top_1pct_weight_share: float | None
+    loss_trajectory: list[float | None]
+    skipped: list[SkippedTarget]
+    past_cap_census: PastCapCensus | None
+    diagnostic_warnings: list[DiagnosticsWarning]
+    hierarchy_catalogs: HierarchyCatalogs
+    targets: list[TargetDiagnosticV9]
+    target_loss_basis: TargetLossBasis | None = None
+    build: dict[str, JsonValue] | None = None
+    uk_diagnostics: UKDiagnosticsV1 | None = None
+
+    @field_validator(
+        "l0_lambda",
+        "initial_loss",
+        "final_loss",
+        "fraction_within_10pct",
+        "effective_sample_size",
+        "realized_max_weight_ratio",
+        "top_1pct_weight_share",
+    )
+    @classmethod
+    def finite_optional_scalar(cls, value: float | None) -> float | None:
+        if value is not None and not math.isfinite(value):
+            raise ValueError("diagnostic scalars must be finite or null")
+        return value
+
+    @model_validator(mode="after")
+    def reconcile_counts(self) -> CalibrationDiagnosticsV9:
+        _reconcile_diagnostics_counts(self)
+        return self
+
+    @model_validator(mode="after")
+    def rows_refer_to_catalog_entries(self) -> CalibrationDiagnosticsV9:
+        catalogs = self.hierarchy_catalogs
+        categories = {category.id for category in catalogs.categories}
+        geographies = {geography.id for geography in catalogs.geographies}
+        dimension_values = {
+            dimension.id: {value.id for value in dimension.values}
+            for dimension in catalogs.dimensions
+        }
+        for row in self.targets:
+            reference = row.hierarchy
+            if reference.category_id not in categories:
                 raise ValueError(
-                    "UK weights.top_1pct_weight_share must match the top-level value"
+                    f"target {row.name}: category {reference.category_id} is not "
+                    "in hierarchy_catalogs"
                 )
-            total_targets = sum(
-                row.n_targets for row in uk.target_pass_rates_by_geography_level
-            )
-            total_scored = sum(
-                row.n_scored for row in uk.target_pass_rates_by_geography_level
-            )
-            total_skipped = sum(
-                row.n_skipped for row in uk.target_pass_rates_by_geography_level
-            )
-            if total_targets != self.target_registry.n_specs:
+            if reference.geography_id not in geographies:
                 raise ValueError(
-                    "UK geography target counts must match target_registry.n_specs"
+                    f"target {row.name}: geography {reference.geography_id} is not "
+                    "in hierarchy_catalogs"
                 )
-            if total_scored != len(self.targets):
-                raise ValueError(
-                    "UK geography scored counts must match the target row count"
-                )
-            if total_skipped != len(self.skipped):
-                raise ValueError(
-                    "UK geography skipped counts must match the skipped row count"
-                )
-        elif self.uk_diagnostics is not None:
-            raise ValueError(
-                "uk_diagnostics is only valid when target_registry.country is 'uk'"
-            )
+            for dimension in reference.dimensions:
+                values = dimension_values.get(dimension.id)
+                if values is None:
+                    raise ValueError(
+                        f"target {row.name}: dimension {dimension.id} is not in "
+                        "hierarchy_catalogs"
+                    )
+                if dimension.value_id not in values:
+                    raise ValueError(
+                        f"target {row.name}: value {dimension.value_id} is not "
+                        f"listed under dimension {dimension.id}"
+                    )
         return self
 
 
@@ -730,7 +1065,7 @@ class LegacyCalibrationDiagnostics(BaseModel):
 
 
 CalibrationDiagnostics = Annotated[
-    CalibrationDiagnosticsV8 | LegacyCalibrationDiagnostics,
+    CalibrationDiagnosticsV9 | CalibrationDiagnosticsV8 | LegacyCalibrationDiagnostics,
     Field(discriminator="schema_version"),
 ]
 CALIBRATION_DIAGNOSTICS_ADAPTER = TypeAdapter(CalibrationDiagnostics)

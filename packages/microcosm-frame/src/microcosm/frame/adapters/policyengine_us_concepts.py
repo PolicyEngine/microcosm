@@ -620,6 +620,10 @@ POLICYENGINE_US_CONCEPT_MAPPING = ConceptMapping(
         ),
     ),
     unmapped={
+        "fact:household.source_household_id": (
+            "Original donor household lineage is build provenance and weight "
+            "diagnostic support, not a policyengine-us rules input."
+        ),
         "fact:person.liquid_financial_assets": (
             "policyengine-us splits this stock across three person inputs, "
             "which the populace-us donor H5 also carries as person columns. "
