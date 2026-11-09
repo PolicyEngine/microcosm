@@ -1653,3 +1653,121 @@ def test_guard_sweep_runs_every_chunk_and_propagates_worker_failure(tmp_path) ->
 
     with pytest.raises(subprocess.CalledProcessError):
         sweep._run_workers(args, run=fail)
+
+
+# ---------------------------------------------------------------------------
+# Outer progress: each reform pass's number of its consumer's pass count
+# ---------------------------------------------------------------------------
+
+
+class _ProgressRecorder:
+    """Stands for the build's emitter: records each progress request."""
+
+    def __init__(self) -> None:
+        self.requests: list[dict[str, object]] = []
+
+    def progress(self, stage_id, *, done, total, unit=None, outer=None, **details):
+        self.requests.append(
+            {
+                "stage_id": stage_id,
+                "done": done,
+                "total": total,
+                "unit": unit,
+                "outer": outer,
+                "pass_name": details.get("pass_name"),
+            }
+        )
+
+
+def _counted_run(builder, tmp_path, monkeypatch):
+    """Run the shipped consumers as ``_main`` opens them, with pass counts."""
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path)
+    record_requests = getattr(builder, "_record_post_export_requests", None)
+    assert record_requests is not None
+    consumers: dict[str, object] = {}
+    planned: dict[str, int] = {}
+
+    def simulate_for(name, consumer):
+        plan, passes = record_requests(consumer)
+        planned[name] = passes
+        consumers[name] = scorer.open_consumer(name, plan, planned_reform_passes=passes)
+        return consumers[name].simulate
+
+    _run_consumers(builder, simulate_for)
+    return scorer, consumers, planned, recorder.requests
+
+
+def test_the_dry_run_counts_each_consumers_reform_passes(
+    builder, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    _, consumers, planned, _ = _counted_run(builder, tmp_path, monkeypatch)
+    assert planned["reform_coverage_smoke"] == len(us_release_reform_coverage_probes())
+    assert planned["reform_validation"] > 0
+    assert planned["demographics"] == 0
+    # The count is the passes the consumer then runs: one per key it asks
+    # each reform for.
+    for name, consumer in consumers.items():
+        assert consumer.record()["reform_passes"] == planned[name], name
+
+
+def test_each_reform_pass_reports_its_number_of_its_consumers_passes(
+    builder, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    scorer, _, planned, requests = _counted_run(builder, tmp_path, monkeypatch)
+    outer = [
+        (entry["outer"].done, entry["outer"].total, entry["outer"].unit)
+        for entry in requests
+        if entry["outer"] is not None
+    ]
+    expected = [
+        (number, planned[name], "reform_pass")
+        for name in ("reform_coverage_smoke", "reform_validation")
+        for number in range(1, planned[name] + 1)
+        for _batch in range(scorer.n_batches)
+    ]
+    assert outer == expected
+    # A baseline pass has no outer counter, and every request keeps the
+    # batch counter it had.
+    baseline = [
+        entry for entry in requests if str(entry["pass_name"]).endswith("baseline plan")
+    ]
+    assert baseline
+    assert all(entry["outer"] is None for entry in baseline)
+    assert all(entry["total"] == scorer.n_batches for entry in requests)
+
+
+def test_a_consumer_opened_without_a_pass_count_reports_no_outer_counter(
+    builder, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    _batched_run(builder, _nested_frame(), 3, tmp_path)
+    assert recorder.requests
+    assert all(entry["outer"] is None for entry in recorder.requests)
+
+
+def test_the_scoring_plan_holds_each_consumers_reform_pass_count(
+    builder, fake_reforms
+) -> None:
+    args = SimpleNamespace(
+        skip_reform_coverage_smoke=False,
+        skip_reform_validation=False,
+        skip_out_of_sample_reforms=False,
+        skip_demographics=False,
+    )
+    plan = builder._post_export_scoring_plan(
+        n_households=352_932,
+        maximum_microsim_batch_size=2_000,
+        consumers=builder._post_export_consumers(
+            args, result=_empty_calibration_result(), release_id="fixture"
+        ),
+    )
+    planned = getattr(plan, "planned_reform_passes", None)
+    assert planned is not None
+    assert planned("reform_coverage_smoke") == len(us_release_reform_coverage_probes())
+    assert planned("demographics") == 0
+    assert planned("reform_validation") > 0
+    # The diagnostics' record of the plan keeps its shape.
+    assert "reform_passes" not in plan.record()["consumers"]["reform_coverage_smoke"]

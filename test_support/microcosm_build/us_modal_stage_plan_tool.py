@@ -42,7 +42,7 @@ TEST_COLLECTOR_ORIGIN = "https://collector.invalid"
 #: What the image's emitter answers to ``microcosm-emitter version``. Tests
 #: get this answer instead of running a command at the image's emitter path.
 RECORDED_EMITTER_VERSION = {
-    "emitter_version": "0.13.0",
+    "emitter_version": "0.14.0",
     "protocol_versions": [1],
     "collector_origin": TEST_COLLECTOR_ORIGIN,
 }

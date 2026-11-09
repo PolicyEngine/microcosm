@@ -1791,6 +1791,7 @@ def tool_environment(
     plan_env: Mapping[str, str],
     *,
     telemetry_run_id: str | None = None,
+    resources: Resources | None = None,
 ) -> tuple[dict[str, str], list[str]]:
     """The stage tool's environment, and the names removed from ``base``.
 

@@ -418,7 +418,7 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     commands = plan_lib.image_build_commands(plan)
     sync = next(index for index, command in enumerate(commands) if "uv sync" in command)
     install_command = (
-        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.13.0'"
+        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.14.0'"
     )
     assert install_command in commands
     install = commands.index(install_command)
@@ -1214,7 +1214,14 @@ def test_a_build_the_runner_starts_keeps_its_staged_bundle_in_the_container() ->
 
 
 @pytest.mark.parametrize(
-    "key", ["HF_HUB_OFFLINE", "HF_TOKEN", "POPULACE_LEDGER_KEY", "PYTHONHASHSEED"]
+    "key",
+    [
+        "HF_HUB_OFFLINE",
+        "HF_TOKEN",
+        "POPULACE_LEDGER_KEY",
+        "PYTHONHASHSEED",
+        "MICROCOSM_MODAL_RESOURCES",
+    ],
 )
 def test_tool_environment_refuses_an_unvalidated_plan_env(key: str) -> None:
     with pytest.raises(plan_lib.PlanError, match="may not be passed"):
@@ -3758,3 +3765,46 @@ def test_every_container_refusal_names_the_opt_out_within_the_note_s_limit() -> 
         assert "MICROCOSM_TELEMETRY_REQUIRED=0" in problem, case
         # The opt-out is only for people outside PolicyEngine.
         assert "outside PolicyEngine" in problem, case
+
+
+def test_the_tool_environment_names_the_stage_s_resource_request() -> None:
+    """A build on Modal reports what its container requested (2e · 4)."""
+
+    env, removed = plan_lib.tool_environment(
+        {"PATH": "/usr/bin", "MICROCOSM_MODAL_RESOURCES": '{"class": "stale"}'},
+        {},
+        resources=plan_lib.HEAVY,
+    )
+    assert json.loads(env.get("MICROCOSM_MODAL_RESOURCES", "null")) == {
+        "class": "heavy",
+        "cpu": plan_lib.HEAVY.cpu,
+        "cpu_limit": plan_lib.HEAVY.cpu_limit,
+        "memory_mib": plan_lib.HEAVY.memory_mib,
+    }
+    # Like the telemetry run ID, the container's own value is removed and
+    # the runner's put in its place.
+    assert "MICROCOSM_MODAL_RESOURCES" in removed
+    # Without a resource class, the container's own value is not passed on.
+    env, removed = plan_lib.tool_environment(
+        {"PATH": "/usr/bin", "MICROCOSM_MODAL_RESOURCES": '{"class": "stale"}'}, {}
+    )
+    assert "MICROCOSM_MODAL_RESOURCES" not in env
+    assert "MICROCOSM_MODAL_RESOURCES" in removed
+
+
+def test_a_stage_s_tool_gets_its_resource_request(fake_runner, monkeypatch) -> None:
+    """The runner fixes the tool's environment with the plan's resource class."""
+
+    app = fake_runner(_fake_tool())
+    real_tool_environment = plan_lib.tool_environment
+    given: list[object] = []
+
+    def tool_environment(base, plan_env, **options):
+        given.append(options.get("resources"))
+        return real_tool_environment(base, plan_env, **options)
+
+    monkeypatch.setattr(plan_lib, "tool_environment", tool_environment)
+    data = _fake_plan(max_wall_seconds=600)
+    app._run_stage(data)
+    assert given
+    assert all(resources == plan_lib.parse_plan(data).resources for resources in given)
