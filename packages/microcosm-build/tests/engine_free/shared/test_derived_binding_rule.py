@@ -25,6 +25,7 @@ from test_support.microcosm_build.derived_binding_rule import (
     BindingRule,
     RuleTables,
     hashed_modules,
+    local_containers,
     module_definitions,
     writes_nothing,
 )
@@ -58,6 +59,130 @@ def test_the_refusal_check_sees_each_way_a_function_writes() -> None:
     for label, source in {**refusing, **writing}.items():
         function = ast.parse(source).body[0]
         assert writes_nothing(function) is (label in refusing), label
+
+
+def test_the_refusal_check_lets_a_function_write_into_containers_it_creates():
+    """Control for ``local_containers`` (microcosm#931): a function that
+    stores into, deletes from, augments or calls an in-place method on a
+    container its own scope creates, and that no other binding reaches,
+    writes nothing outside itself, a closure over it included. A store into
+    an item of an item or an attribute of one, an augmented store into an
+    item (``seen = list(rows)`` holds the rows' own objects), a store through
+    a name bound otherwise anywhere in the function (an alias, a parameter, a
+    loop target or an unpacked binding), one through a name a nested scope
+    binds, which in the function is a global, a container built by a
+    ``dict`` the function binds, and returning the container still count."""
+    refusing = {
+        "local dict": (
+            "def f(rows):\n"
+            "    seen = {}\n"
+            "    for row in rows:\n"
+            "        if row in seen:\n"
+            "            raise ValueError('x')\n"
+            "        seen[row] = 1\n"
+        ),
+        "annotated local dict": (
+            "def f(rows):\n"
+            "    seen: dict[str, int] = {}\n"
+            "    for row in rows:\n"
+            "        seen[row] = 1\n"
+            "    if len(seen) != len(rows):\n"
+            "        raise ValueError('x')\n"
+        ),
+        "local list append": (
+            "def f(rows):\n"
+            "    bad = []\n"
+            "    for row in rows:\n"
+            "        if row < 0:\n"
+            "            bad.append(row)\n"
+            "    if bad:\n"
+            "        raise ValueError(bad)\n"
+        ),
+        "local set add": (
+            "def f(rows):\n    seen = set()\n    for row in rows:\n        seen.add(row)\n"
+        ),
+        "local counter": (
+            "def f(rows):\n"
+            "    counts = dict()\n"
+            "    for row in rows:\n"
+            "        counts[row] = counts.get(row, 0) + 1\n"
+        ),
+        "local list augmented": (
+            "def f(rows):\n"
+            "    bad = []\n"
+            "    bad += [row for row in rows if row < 0]\n"
+            "    if bad:\n"
+            "        raise ValueError(bad)\n"
+        ),
+        "local item deleted": (
+            "def f(rows):\n"
+            "    seen = {row: 1 for row in rows}\n"
+            "    del seen[rows[0]]\n"
+            "    if seen:\n"
+            "        raise ValueError('x')\n"
+        ),
+        "local slice": "def f(rows):\n    window = list(rows)\n    window[1:] = []\n",
+        "local unpacked items": (
+            "def f(rows):\n    pair = [0, 0]\n    pair[0], pair[1] = rows\n"
+        ),
+        "closure over a local": (
+            "def f(rows):\n"
+            "    seen = set()\n\n"
+            "    def note(row):\n"
+            "        seen.add(row)\n\n"
+            "    for row in rows:\n"
+            "        note(row)\n"
+        ),
+    }
+    writing = {
+        "alias of a parameter": "def f(values):\n    seen = values\n    seen[0] = 1\n",
+        "rebound to a parameter": (
+            "def f(values):\n    seen = {}\n    seen = values\n    seen['a'] = 1\n"
+        ),
+        "nested store": (
+            "def f(values):\n    seen = {'a': values}\n    seen['a'][0] = 1\n"
+        ),
+        "item's method": "def f(values):\n    seen = [values]\n    seen[0].append(1)\n",
+        "augmented item": "def f(rows):\n    seen = list(rows)\n    seen[0] += [1]\n",
+        "attribute on a local": "def f(rows):\n    seen = {}\n    seen.a = 1\n",
+        "unpacked into a parameter": (
+            "def f(values):\n    seen = [0]\n    seen[0], values[0] = 1, 2\n"
+        ),
+        "returns the local": (
+            "def f(rows):\n    seen = {}\n    seen['a'] = 1\n    return seen\n"
+        ),
+        "shadowed dict": "def f(dict):\n    seen = dict()\n    seen['a'] = 1\n",
+        "parameter named like a local": (
+            "def f(seen):\n    seen = {}\n    seen['a'] = 1\n"
+        ),
+        "unpacked binding": (
+            "def f(values):\n    seen, other = {}, values\n    other[0] = 1\n"
+        ),
+        "loop target": (
+            "def f(rows):\n"
+            "    seen = []\n"
+            "    for seen in rows:\n"
+            "        seen.append(1)\n"
+        ),
+        "nested parameter": (
+            "def f(rows):\n"
+            "    seen = {}\n\n"
+            "    def note(seen):\n"
+            "        seen['a'] = 1\n\n"
+            "    note(rows)\n"
+        ),
+        "bound only in a nested scope": (
+            "def f(rows):\n    def note():\n        seen = {}\n\n    seen['a'] = 1\n"
+        ),
+    }
+    for label, source in {**refusing, **writing}.items():
+        function = ast.parse(source).body[0]
+        assert writes_nothing(function) is (label in refusing), label
+    # The containers it counts as the function's own.
+    function = ast.parse(refusing["closure over a local"]).body[0]
+    assert local_containers(function) == {"seen"}
+    function = ast.parse(writing["unpacked binding"]).body[0]
+    assert local_containers(function) == frozenset()
 
 
 def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(

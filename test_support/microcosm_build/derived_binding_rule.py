@@ -102,6 +102,9 @@ IN_PLACE_CALLS = frozenset(
     }
 )
 
+#: The builtins whose call returns a new container (``local_containers``).
+FRESH_CONTAINER_CALLS = frozenset({"dict", "list", "set"})
+
 
 @dataclass(frozen=True)
 class RuleTables:
@@ -249,15 +252,9 @@ def module_definitions(name: str, scope: str) -> ModuleDefinitions | None:
     return ModuleDefinitions(imports, modules, tuple(stars), definitions)
 
 
-def writes_nothing(node) -> bool:
-    """Whether a function can only refuse: it returns nothing but None, or its
-    sole parameter unrebound, and writes nothing: no store through a
-    subscript or attribute, no augmented assignment, no ``out=`` or
-    ``inplace=`` argument, and no call by a name that changes its receiver or
-    an argument in place."""
-
+def _parameters(node) -> set[str]:
     arguments = node.args
-    parameters = {
+    return {
         argument.arg
         for argument in (
             *arguments.posonlyargs,
@@ -266,12 +263,161 @@ def writes_nothing(node) -> bool:
             *(a for a in (arguments.vararg, arguments.kwarg) if a is not None),
         )
     }
+
+
+def _fresh_container(value, calls: frozenset[str]) -> bool:
+    """A new container: a dict, list or set display or comprehension, or a
+    call by one of the names ``calls``."""
+
+    if isinstance(
+        value, ast.Dict | ast.List | ast.Set | ast.DictComp | ast.ListComp | ast.SetComp
+    ):
+        return True
+    return (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id in calls
+    )
+
+
+def _own_scope(node) -> set[int]:
+    """The nodes of ``node``'s own scope, by id: everything in it but the
+    functions, lambdas and classes nested in it."""
+
+    found: set[int] = set()
+    pending = list(ast.iter_child_nodes(node))
+    while pending:
+        sub = pending.pop()
+        found.add(id(sub))
+        if not isinstance(
+            sub, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef
+        ):
+            pending.extend(ast.iter_child_nodes(sub))
+    return found
+
+
+def local_containers(node) -> frozenset[str]:
+    """The names a function binds only to containers it creates itself.
+
+    A name is local when the function's own scope binds it to a new
+    container (``name = <fresh>`` or ``name: T = <fresh>``, where fresh is a
+    dict, list or set display or comprehension, or a call of ``dict``,
+    ``list`` or ``set``), every other binding of it anywhere in the function,
+    nested scopes included, is one too, and it is a parameter of neither the
+    function nor anything nested in it. A bare annotation binds nothing, and
+    an augmented assignment to the name itself keeps it local, since a
+    container's augmented operators change it in place or refuse. A call
+    counts only where the function binds no name ``dict``, ``list`` or
+    ``set`` of its own; one its module binds at its top level is not seen."""
+
+    parameters: set[str] = set()
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+            parameters |= _parameters(sub)
+    # Each single-name binding with its value, and the name targets they and
+    # the bindings of no new object (a bare annotation, an augmented
+    # assignment to a name) account for.
+    valued: dict[int, tuple[str, ast.expr]] = {}
+    accounted: set[int] = set()
+    for sub in ast.walk(node):
+        if (
+            isinstance(sub, ast.Assign)
+            and len(sub.targets) == 1
+            and isinstance(sub.targets[0], ast.Name)
+        ):
+            valued[id(sub)] = (sub.targets[0].id, sub.value)
+            accounted.add(id(sub.targets[0]))
+        elif isinstance(sub, ast.AnnAssign) and isinstance(sub.target, ast.Name):
+            if sub.value is not None:
+                valued[id(sub)] = (sub.target.id, sub.value)
+            accounted.add(id(sub.target))
+        elif isinstance(sub, ast.AugAssign) and isinstance(sub.target, ast.Name):
+            accounted.add(id(sub.target))
+    # Every other binding: loop, with, walrus, unpacking and comprehension
+    # targets, deletions, imports, nested definitions, exception and match
+    # captures.
+    other: set[str] = set()
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Store | ast.Del):
+            if id(sub) not in accounted:
+                other.add(sub.id)
+        elif isinstance(sub, ast.alias):
+            other.add((sub.asname or sub.name).partition(".")[0])
+        elif (
+            isinstance(sub, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+            and sub is not node
+        ):
+            other.add(sub.name)
+        elif isinstance(sub, ast.ExceptHandler | ast.MatchAs | ast.MatchStar):
+            if sub.name is not None:
+                other.add(sub.name)
+        elif isinstance(sub, ast.MatchMapping) and sub.rest is not None:
+            other.add(sub.rest)
+    stored = {
+        sub.id
+        for sub in ast.walk(node)
+        if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Store | ast.Del)
+    }
+    calls = FRESH_CONTAINER_CALLS - (parameters | other | stored)
+    own = _own_scope(node)
+    fresh = {
+        name
+        for key, (name, value) in valued.items()
+        if key in own and _fresh_container(value, calls)
+    }
+    stale = {
+        name for name, value in valued.values() if not _fresh_container(value, calls)
+    }
+    return frozenset(fresh - stale - other - parameters)
+
+
+def _stored(target):
+    """The parts of an assignment or deletion target that receive a value or
+    lose one: the target, or each element of a tuple or list target, starred
+    or not, at any depth."""
+
+    if isinstance(target, ast.Tuple | ast.List):
+        for element in target.elts:
+            yield from _stored(element)
+    elif isinstance(target, ast.Starred):
+        yield from _stored(target.value)
+    else:
+        yield target
+
+
+def _item_of(target, local: frozenset[str]) -> bool:
+    """``target`` is one item of a local container: ``name[...]``."""
+
+    return (
+        isinstance(target, ast.Subscript)
+        and isinstance(target.value, ast.Name)
+        and target.value.id in local
+    )
+
+
+def writes_nothing(node) -> bool:
+    """Whether a function can only refuse: it returns nothing but None, or its
+    sole parameter unrebound, and writes nothing outside itself: no store
+    through a subscript or attribute, no augmented assignment, no ``out=`` or
+    ``inplace=`` argument, and no call by a name that changes its receiver or
+    an argument in place.
+
+    A container the function creates is its own (``local_containers``): it
+    may store into or delete one item of it, call an in-place method on it,
+    or augment it as a whole. A nested store (into an item of an item, or an
+    attribute of one), an augmented store into an item, which can change in
+    place an object the function was handed, and a store through any other
+    name, an alias of the container included, are still writes, and
+    returning the container returns a value."""
+
+    parameters = _parameters(node)
     rebound = {
         sub.id
         for sub in ast.walk(node)
         if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Store | ast.Del)
     }
     returnable = parameters - rebound if len(parameters) == 1 else set()
+    local = local_containers(node)
     for sub in ast.walk(node):
         if isinstance(sub, ast.Return) and sub.value is not None:
             value = sub.value
@@ -280,9 +426,10 @@ def writes_nothing(node) -> bool:
                 or (isinstance(value, ast.Name) and value.id in returnable)
             ):
                 return False
-        elif isinstance(
-            sub, ast.AugAssign | ast.Yield | ast.YieldFrom | ast.Global | ast.Nonlocal
-        ):
+        elif isinstance(sub, ast.AugAssign):
+            if not (isinstance(sub.target, ast.Name) and sub.target.id in local):
+                return False
+        elif isinstance(sub, ast.Yield | ast.YieldFrom | ast.Global | ast.Nonlocal):
             return False
         elif isinstance(sub, ast.Assign | ast.AnnAssign | ast.Delete):
             targets = (
@@ -291,16 +438,24 @@ def writes_nothing(node) -> bool:
                 else [sub.target]
             )
             if any(
-                isinstance(part, ast.Subscript | ast.Attribute)
+                isinstance(inner, ast.Subscript | ast.Attribute)
                 for target in targets
-                for part in ast.walk(target)
+                for part in _stored(target)
+                if not _item_of(part, local)
+                for inner in ast.walk(part)
             ):
                 return False
         elif isinstance(sub, ast.keyword) and sub.arg in {"inplace", "out"}:
             return False
         elif isinstance(sub, ast.Call):
             function = sub.func
-            if isinstance(function, ast.Attribute) and function.attr in IN_PLACE_CALLS:
+            if (
+                isinstance(function, ast.Attribute)
+                and function.attr in IN_PLACE_CALLS
+                and not (
+                    isinstance(function.value, ast.Name) and function.value.id in local
+                )
+            ):
                 return False
             if isinstance(function, ast.Name) and function.id in {
                 *IN_PLACE_CALLS,
