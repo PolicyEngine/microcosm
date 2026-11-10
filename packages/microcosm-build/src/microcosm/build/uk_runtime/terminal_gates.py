@@ -215,6 +215,10 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # microcosm#1550 (microcosm#1095, Y1): the UC limited capability flags.
     "person.uc_limited_capability_for_WRA",
     "person.uc_limited_capability_for_work",
+    # PR3 of the November event-data plan (microcosm#1095, A3): whether a
+    # carer cares for a severely disabled person, policyengine-uk's input
+    # (2.177.3, pe-uk#2860), which frs_disability writes from the FRS care tab.
+    "person.cares_for_severely_disabled_person",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

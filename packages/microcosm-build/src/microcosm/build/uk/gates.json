@@ -1330,7 +1330,8 @@
           "person.trading_allowance_claim_status",
           "person.trading_allowance_full_relief",
           "person.uc_limited_capability_for_WRA",
-          "person.uc_limited_capability_for_work"
+          "person.uc_limited_capability_for_work",
+          "person.cares_for_severely_disabled_person"
         ],
         "reviewed_exclusions": {
           "household.property_wealth": "policyengine-uk derives property_wealth from main_residence_value, other_residential_property_value and non_residential_property_value; a persisted copy overrides that sum and has no uprating index, so the candidate must drop it (microcosm#1106, the uk-data#543 defect).",
