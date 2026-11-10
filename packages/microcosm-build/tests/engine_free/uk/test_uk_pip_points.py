@@ -254,6 +254,37 @@ def test_store_pip_points_writes_both_points_and_keeps_every_award() -> None:
             for cell in group["cells"]:
                 if cell["support"] in ("<3",):
                     assert cell["share"] in ("withheld", "<3")
+    # Every country's recipients, so a threshold reform can be netted out by
+    # country: Wales, London and Scotland hold five recipients each, weight 10.
+    assert receipt["recipients_by_country"] == {
+        "england": {"records": "3-9", "support": "3-9", "weighted": 50},
+        "wales": {"records": "3-9", "support": "3-9", "weighted": 50},
+        "scotland": {"records": "3-9", "support": "3-9", "weighted": 50},
+        "northern_ireland": {"records": 0, "support": 0, "weighted": 0},
+    }
+
+
+def test_a_country_on_fewer_than_three_households_shows_no_weighted_count() -> None:
+    awards = [("STANDARD", "NONE")] * 5 + [("NONE", "NONE")]
+    frame = _frame(
+        awards,
+        ages=[40] * 6,
+        regions=["SCOTLAND", "SCOTLAND", "LONDON", "LONDON", "LONDON", "WALES"],
+        sources=[1, 2, 3, 4, 5, 6],
+    )
+    rows = _rows()
+    receipt = store_pip_points(
+        frame, distributions=pip_points_distributions_from_rows(rows)
+    ).evidence()
+    by_country = receipt["recipients_by_country"]
+    assert by_country["scotland"] == {
+        "records": "<3",
+        "support": "<3",
+        "weighted": "<3",
+    }
+    assert by_country["england"] == {"records": "3-9", "support": "3-9", "weighted": 30}
+    # Wales's one household holds no recipient.
+    assert by_country["wales"] == {"records": 0, "support": 0, "weighted": 0}
 
 
 def test_store_pip_points_is_the_points_only_writer_and_needs_its_inputs() -> None:

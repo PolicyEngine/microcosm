@@ -54,6 +54,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     rounded_count,
     small_cell_share,
@@ -151,6 +153,28 @@ _SHARE_CONCEPTS = {
 #: Outside DWP's tables (England and Wales only): their recipients use the
 #: same distributions, and the receipt compares England and Wales alone.
 PIP_OUTSIDE_TABLES = ("SCOTLAND", "NORTHERN_IRELAND")
+#: The release's regions by UK country, for the receipt's recipients by
+#: country. policyengine-uk 2.174.1 has one set of PIP points thresholds, and
+#: frs_spine reads Scotland's Adult Disability Payment (FRS codes 117 and 118)
+#: as PIP, so a threshold reform reaches Scotland's ADP recipients and Northern
+#: Ireland's PIP recipients too, whose awards their own regulations set. The
+#: counts let a user net them out (Vahid's review of microcosm#1550, Should 1).
+PIP_POINTS_COUNTRY_REGIONS: Mapping[str, tuple[str, ...]] = {
+    "england": (
+        "NORTH_EAST",
+        "NORTH_WEST",
+        "YORKSHIRE",
+        "EAST_MIDLANDS",
+        "WEST_MIDLANDS",
+        "EAST_OF_ENGLAND",
+        "LONDON",
+        "SOUTH_EAST",
+        "SOUTH_WEST",
+    ),
+    "wales": ("WALES",),
+    "scotland": ("SCOTLAND",),
+    "northern_ireland": ("NORTHERN_IRELAND",),
+}
 
 PIP_POINTS_SCOPE = (
     "every person with pip_dl_category or pip_m_category other than NONE; "
@@ -487,6 +511,40 @@ def _shares_receipt(
     return out
 
 
+def _recipients_by_country(
+    *,
+    recipient: np.ndarray,
+    country: np.ndarray,
+    weights: np.ndarray,
+    sources: np.ndarray,
+) -> dict[str, dict[str, object]]:
+    """Each UK country's recipients: the records, their support and the weighted count.
+
+    Weighted at the stage's household weights. A country resting on fewer than
+    three source households shows its weighted count as "<3" (UKDS disclosure
+    control), and the records are rounded as every count here is. Recipients
+    in a region no country lists are counted apart, as "unassigned".
+    """
+
+    names = [*PIP_POINTS_COUNTRY_REGIONS]
+    if (recipient & (country == "unassigned")).any():
+        names.append("unassigned")
+    out: dict[str, dict[str, object]] = {}
+    for name in names:
+        mask = recipient & (country == name)
+        support = distinct_count(sources, mask, weights)
+        out[name] = {
+            "records": rounded_count(int(mask.sum())),
+            "support": support_band(support),
+            "weighted": (
+                UK_WITHHELD
+                if 0 < support < UK_DISCLOSURE_FLOOR
+                else round(float(weights[mask].sum()))
+            ),
+        }
+    return out
+
+
 def store_pip_points(
     frame: Frame,
     *,
@@ -555,6 +613,18 @@ def store_pip_points(
     in_tables = ~person["person_household_id"].map(region_by_household).isin(
         PIP_OUTSIDE_TABLES
     ).to_numpy(bool)
+    country_by_region = {
+        region: country
+        for country, regions in PIP_POINTS_COUNTRY_REGIONS.items()
+        for region in regions
+    }
+    country = (
+        person["person_household_id"]
+        .map(region_by_household)
+        .map(country_by_region)
+        .fillna("unassigned")
+        .to_numpy(dtype=object)
+    )
 
     receipt: dict[str, object] = {
         "rule": PIP_POINTS_RULE,
@@ -564,6 +634,9 @@ def store_pip_points(
         # Record counts are rounded, never exact (UKDS CD137 cl. 8).
         "recipients": rounded_count(int(recipient.sum())),
         "recipients_support": support_band(distinct_count(sources, recipient, weights)),
+        "recipients_by_country": _recipients_by_country(
+            recipient=recipient, country=country, weights=weights, sources=sources
+        ),
         "components": {},
     }
     for name, category, output in PIP_COMPONENTS:
