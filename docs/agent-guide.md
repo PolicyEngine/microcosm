@@ -135,11 +135,12 @@ its 25 slowest tests.
 Every behavioral or cross-language compatibility assertion must be a pytest
 test in a directory registered by `TEST_GROUPS` and must run through that
 category's existing workflow job. Supporting programs and data may live under
-`tools/`, but they do not receive separate workflow jobs. The test-plan verifier
-allows only registered test jobs and the explicitly declared orchestration,
-lint, wheel-building, and aggregate-result jobs. Add a test category to
-`TEST_GROUPS` before its executor; do not create a separate selection system,
-test workflow, or single-purpose behavioral test job.
+`tools/`, but they do not receive separate workflow jobs.
+`tools/ci_test_plan.py verify-workflow` allows only registered test jobs and
+the explicitly declared orchestration, lint, wheel-building, and
+aggregate-result jobs. Add a test category to `TEST_GROUPS` before its
+executor; do not create a separate selection system, test workflow, or
+single-purpose behavioral test job.
 
 The Orrery parser compatibility assertion lives in
 `packages/microcosm-graph/tests/engine_free/shared/test_graph_orrery.py`. The

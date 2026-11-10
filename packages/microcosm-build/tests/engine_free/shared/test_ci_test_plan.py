@@ -2036,6 +2036,24 @@ def test_a_tool_change_selects_the_country_its_path_holds_alone() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("path", "scope"),
+    [
+        # Documentation takes no country, whatever its name holds.
+        ("tools/us_notes.md", None),
+        # A file in a test group's directory takes the group's country.
+        ("tools/x/tests/engine_free/us/uk_fixture.json", "us"),
+        ("tools/x/tests/engine_free/shared/uk_fixture.json", "shared"),
+        # A file of a country's runtime package takes that country.
+        ("tools/x/src/microcosm/build/uk_runtime/us_targets.py", "uk"),
+    ],
+)
+def test_earlier_rules_claim_a_path_below_tools_before_the_tool_rule(
+    path: str, scope: str | None
+) -> None:
+    assert ci_test_plan.scope_for_path(path) == scope
+
+
 def _checkout_files(directory: str) -> list[str]:
     """Return the tracked and new files below ``directory``, as git lists them."""
 
