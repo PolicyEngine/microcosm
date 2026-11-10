@@ -866,7 +866,7 @@ def build_details(manifest: Mapping) -> Mapping:
 def _is_build_folder_us_release(release: object) -> bool:
     """Whether ``release`` is a US release whose builds have their own folders.
 
-    These are the four release names; a US build's own release in the tagged
+    These are the US release names; a US build's own release in the tagged
     layout (``populace-us-…``) keeps its tag.
     """
 
