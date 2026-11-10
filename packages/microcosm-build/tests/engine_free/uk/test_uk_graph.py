@@ -9,6 +9,21 @@ from typing import NamedTuple
 
 from microcosm.graph import graph_schema, orrery_document
 from microcosm.graph.canonical import canonical_json
+from test_support.microcosm_build.derived_binding_rule import (
+    FIRST_PARTY_SCOPE,
+    BindingRule,
+    KernelWalk,
+    KeyedWalk,
+    RuleTables,
+    Walk,
+    class_named,
+    findings,
+    hashed_by,
+    hashed_modules,
+    kernel_classes_defined,
+    merged,
+    module_definitions,
+)
 from test_support.microcosm_build.first_party_imports import hashed_module_names
 from test_support.microcosm_build.uk_graph import *
 
@@ -869,7 +884,7 @@ def test_the_engine_stages_bind_what_the_injected_engine_computes_through() -> N
     is rooted at that class (``_ENGINE_CLASS``): it follows the methods the
     stage's code names on it, by attribute or through ``getattr``, with the
     constructor and every method they call on ``self``, at the first-party
-    scope with the stage rule's tables (``_engine_walk``), and the methods
+    scope with the stage rule's tables (``engine_walk``), and the methods
     its own reach names on any receiver outside the engine's classes, as a
     helper handed the engine might call, to a fixed point
     (``_engine_reach``). ``_stage_walks``
@@ -919,94 +934,6 @@ def test_the_engine_root_is_the_engine_the_builds_inject() -> None:
             if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
         }
         assert _ENGINE_CLASS in built, (module, function)
-
-
-def test_the_engine_root_follows_the_methods_a_stage_calls(
-    tmp_path, monkeypatch
-) -> None:
-    """Control for the second root: the methods a stage names on an engine,
-    by attribute on any receiver or through ``getattr``, are followed, with
-    the constructor and the methods they call on ``self``; a method no stage
-    names is not, nor what only it computes through. A method a helper the
-    engine hands itself to calls on that argument is followed too, to a fixed
-    point (``_engine_reach``), which one pass from the stage's methods
-    misses."""
-    import importlib
-    import uuid
-
-    scratch = f"engine_root_{uuid.uuid4().hex[:8]}"
-    package = tmp_path / "microcosm" / scratch
-    package.mkdir(parents=True)
-    (package / "__init__.py").write_text("")
-    monkeypatch.syspath_prepend(str(tmp_path))
-    sources = {
-        "tables": "def tables(frame):\n    return frame\n",
-        "tree": "def tree(year):\n    return year\n",
-        "vocabulary": "def vocabulary():\n    return {'a': 1}\n",
-        "count": "def count(x):\n    return int(x)\n",
-        "engine": (
-            "from .count import count\n"
-            "from .tables import tables\n"
-            "from .tree import tree\n"
-            "from .vocabulary import vocabulary\n\n"
-            "class Engine:\n"
-            "    def __init__(self, clones=1):\n"
-            "        self._clones = count(clones)\n\n"
-            "    def materialize(self, frame, names, period):\n"
-            "        return self._dataset(frame)\n\n"
-            "    def _dataset(self, frame):\n"
-            "        return tables(frame)\n\n"
-            "    def parameters(self, period):\n"
-            "        return tree(period)\n\n"
-            "    def concept_mapping(self):\n"
-            "        return vocabulary()\n"
-        ),
-        "stage": (
-            "class Transform:\n"
-            "    def __call__(self, frame, model):\n"
-            "        reader = getattr(model, 'parameters', None)\n"
-            "        return model.materialize(frame, ['x'], 2024), reader\n"
-        ),
-        "delegating": (
-            "from .engine import Engine\n\n"
-            "def _vocabulary_of(engine):\n"
-            "    return engine.concept_mapping()\n\n"
-            "class Delegating(Engine):\n"
-            "    def materialize(self, frame, names, period):\n"
-            "        return _vocabulary_of(self)\n"
-        ),
-    }
-    for module, source in sources.items():
-        (package / f"{module}.py").write_text(source)
-    prefix = f"microcosm.{scratch}."
-
-    def short(reach):
-        return {module.removeprefix(prefix): names for module, names in reach.items()}
-
-    engine_class = importlib.import_module(f"{prefix}engine").Engine
-    walk = _helper_walk((f"{prefix}stage", "Transform"), scope=prefix)
-    methods = _engine_methods(engine_class, walk)
-    assert methods == {"materialize", "parameters"}
-    reach = _engine_walk(engine_class, methods, scope=prefix).reach
-    assert short(reach) == {
-        "engine": {"Engine"},
-        "count": {"count"},
-        "tables": {"tables"},
-        "tree": {"tree"},
-    }
-    assert _engine_reach(engine_class, walk, scope=prefix).reach == reach
-    delegating = importlib.import_module(f"{prefix}delegating").Delegating
-    once = _engine_walk(
-        delegating, _engine_methods(delegating, walk), scope=prefix
-    ).reach
-    assert "vocabulary" not in short(once)
-    assert short(_engine_reach(delegating, walk, scope=prefix).reach) == {
-        "delegating": {"Delegating", "_vocabulary_of"},
-        "engine": {"Engine"},
-        "count": {"count"},
-        "tree": {"tree"},
-        "vocabulary": {"vocabulary"},
-    }
 
 
 def test_the_engine_call_scan_sees_any_receiver(tmp_path) -> None:
@@ -1084,6 +1011,9 @@ def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(
 # derive those modules from what a stage's transform, or a UK graph kernel's
 # own code, names, and follow each named definition into the module that
 # defines it, through re-exports and module attributes, to a fixed point.
+# The walk is country-neutral (test_support.microcosm_build.
+# derived_binding_rule); the tables below are the UK's, and the stage table,
+# the engine root and the gate-battery phase walk are the UK's own.
 
 #: The packages the rule follows: every first-party package, each under the
 #: microcosm namespace (microcosm-build, -calibrate, -data, -diagnostics,
@@ -1095,7 +1025,7 @@ def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(
 #: weight-update receipt and content store; and microcosm.calibrate's solver,
 #: targets and region tier. It stops at the core modules every node runs
 #: through (``_CORE_MODULES``).
-_HELPER_SCOPE = "microcosm."
+_HELPER_SCOPE = FIRST_PARTY_SCOPE
 #: Where the rule stops. What a stage reads from these is its own
 #: declaration, which its node key already hashes as the stage contract: its
 #: operations, artifacts and resource pins (graph._stage_contract_sha256).
@@ -1453,497 +1383,42 @@ _UNDECLARED_ARTIFACT_READS: dict[str, tuple[Callable, str]] = {
         "that artifact is absent",
     ),
 }
-#: Packages that export names lazily, through a module ``__getattr__``, each
-#: with the table, of name to the submodule defining it, that ``__getattr__``
-#: reads. The walk resolves such a name to the module that defines it and
-#: follows it like any other (microcosm#931 ruling 8). microcosm.graph imports
-#: its runtime modules, which need numpy, pandas and microcosm-frame, only on
-#: first access. test_every_lazy_export_resolves_to_the_object_python_returns
-#: checks the table.
-_LAZY_EXPORT_TABLES: dict[str, str] = {"microcosm.graph": "_RUNTIME_EXPORTS"}
-#: First-party modules that define a module ``__getattr__`` but export
-#: nothing through it, each with why.
-_NO_LAZY_EXPORTS: dict[str, str] = {
-    "microcosm.build.us_runtime.sources": (
-        "its __getattr__ raises for every name: it only words the error for "
-        "the names it removed"
-    ),
-}
-#: Method and function names that change their receiver or an argument in
-#: place.
-_IN_PLACE_CALLS = frozenset(
-    {
-        "__delitem__",
-        "__setattr__",
-        "__setitem__",
-        "add",
-        "append",
-        "appendleft",
-        "at",
-        "clear",
-        "copyto",
-        "difference_update",
-        "discard",
-        "extend",
-        "extendleft",
-        "fill",
-        "fill_diagonal",
-        "insert",
-        "intersection_update",
-        "itemset",
-        "place",
-        "pop",
-        "popitem",
-        "put",
-        "putmask",
-        "remove",
-        "resize",
-        "reverse",
-        "rotate",
-        "setdefault",
-        "setflags",
-        "shuffle",
-        "sort",
-        "symmetric_difference_update",
-        "update",
-    }
+#: The rule over the UK's tables (test_support.microcosm_build.
+#: derived_binding_rule, whose controls are in
+#: tests/engine_free/shared/test_derived_binding_rule.py). The lazy exports it
+#: follows are the first-party packages' (``LAZY_EXPORT_TABLES`` there).
+_RULE = BindingRule(
+    RuleTables(
+        core_modules=_CORE_MODULES,
+        refusal_only=_REFUSAL_ONLY_HELPERS,
+        stops=_KERNEL_STOPS,
+        declaration_modules=_DECLARATION_MODULES,
+    )
 )
-
-
-class _ModuleDefinitions(NamedTuple):
-    """What one module imports, anywhere in it, and defines at its top level."""
-
-    imports: dict[str, tuple[str, str]]
-    modules: dict[str, str]
-    stars: tuple[str, ...]
-    definitions: dict[str, object]
-
-
-@functools.cache
-def _is_module(name: str) -> bool:
-    """Whether a first-party dotted name is a module. The rule never follows
-    another package, so it never imports one to find out."""
-
-    import importlib.util
-
-    if not name.startswith("microcosm."):
-        return False
-    parent = name.rpartition(".")[0]
-    try:
-        if parent:
-            spec = importlib.util.find_spec(parent)
-            if spec is None or spec.submodule_search_locations is None:
-                return False
-        return importlib.util.find_spec(name) is not None
-    except (ImportError, ValueError):
-        return False
-
-
-@functools.cache
-def _module_definitions(name: str, scope: str) -> _ModuleDefinitions | None:
-    import ast
-    import importlib.util
-
-    if not name.startswith(scope):
-        return None
-    try:
-        spec = importlib.util.find_spec(name)
-    except (ImportError, ValueError):
-        return None
-    if spec is None or not (spec.origin or "").endswith(".py"):
-        return None
-    package = name if spec.submodule_search_locations else name.rpartition(".")[0]
-    tree = ast.parse(Path(spec.origin).read_text(encoding="utf-8"))
-    imports: dict[str, tuple[str, str]] = {}
-    modules: dict[str, str] = {}
-    stars: list[str] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if node.level:
-                base = package.rsplit(".", node.level - 1)[0]
-                origin = ".".join(part for part in (base, node.module) if part)
-            else:
-                origin = node.module or ""
-            for alias in node.names:
-                if alias.name == "*":
-                    stars.append(origin)
-                elif _is_module(f"{origin}.{alias.name}"):
-                    modules[alias.asname or alias.name] = f"{origin}.{alias.name}"
-                else:
-                    imports[alias.asname or alias.name] = (origin, alias.name)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.asname:
-                    modules[alias.asname] = alias.name
-                else:
-                    head = alias.name.partition(".")[0]
-                    modules[head] = head
-    definitions: dict[str, object] = {}
-    for node in tree.body:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            definitions[node.name] = node
-        elif isinstance(node, ast.TypeAlias):
-            definitions[node.name.id] = node
-        elif isinstance(node, ast.Assign | ast.AnnAssign):
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            for target in targets:
-                for sub in ast.walk(target):
-                    if isinstance(sub, ast.Name):
-                        definitions[sub.id] = node
-    return _ModuleDefinitions(imports, modules, tuple(stars), definitions)
-
-
-@functools.cache
-def _lazy_exports(module: str) -> Mapping[str, str]:
-    """Each name ``module`` exports lazily, to the module defining it, read
-    from the table its ``__getattr__`` reads (``_LAZY_EXPORT_TABLES``)."""
-
-    import importlib
-
-    table = _LAZY_EXPORT_TABLES.get(module)
-    if table is None:
-        return MappingProxyType({})
-    exports = getattr(importlib.import_module(module), table)
-    return MappingProxyType(
-        {name: f"{module}.{submodule}" for name, submodule in exports.items()}
-    )
-
-
-def _resolve(module: str, name: str, scope: str) -> tuple[str, str] | None:
-    """The top-level definition ``name`` refers to in ``module``, through
-    re-exports and lazy exports (``_LAZY_EXPORT_TABLES``); None for a module
-    or anything outside ``scope``."""
-
-    pending, seen = [(module, name)], set()
-    while pending:
-        item = pending.pop()
-        if item in seen:
-            continue
-        seen.add(item)
-        module, name = item
-        facts = _module_definitions(module, scope)
-        if facts is None:
-            continue
-        if name in facts.definitions:
-            return item
-        if name in facts.imports:
-            pending.append(facts.imports[name])
-            continue
-        # As in Python, the module's __getattr__ supplies a name only where
-        # none of its own attributes, its star imports' included, is one.
-        lazy = _lazy_exports(module).get(name)
-        if lazy is not None:
-            pending.append((lazy, name))
-        pending.extend((star, name) for star in facts.stars)
-    return None
-
-
-def _named(module: str, node, scope: str) -> set[tuple[str, str]]:
-    """The top-level definitions ``node`` names, annotations included: a bare
-    name, or a name read by attribute on a module, each resolved through
-    re-exports."""
-
-    import ast
-
-    facts = _module_definitions(module, scope)
-    found = set()
-    for sub in ast.walk(node):
-        if isinstance(sub, ast.Name):
-            hit = _resolve(module, sub.id, scope)
-        elif isinstance(sub, ast.Attribute):
-            chain = []
-            value = sub
-            while isinstance(value, ast.Attribute):
-                chain.insert(0, value.attr)
-                value = value.value
-            target = (
-                facts.modules.get(value.id) if isinstance(value, ast.Name) else None
-            )
-            while target and chain and _is_module(f"{target}.{chain[0]}"):
-                target = f"{target}.{chain.pop(0)}"
-            hit = _resolve(target, chain[0], scope) if target and chain else None
-        else:
-            continue
-        if hit is not None:
-            found.add(hit)
-    return found
-
-
-def _writes_nothing(node) -> bool:
-    """Whether a function can only refuse: it returns nothing but None, or its
-    sole parameter unrebound, and writes nothing: no store through a
-    subscript or attribute, no augmented assignment, no ``out=`` or
-    ``inplace=`` argument, and no call by a name that changes its receiver or
-    an argument in place."""
-
-    import ast
-
-    arguments = node.args
-    parameters = {
-        argument.arg
-        for argument in (
-            *arguments.posonlyargs,
-            *arguments.args,
-            *arguments.kwonlyargs,
-            *(a for a in (arguments.vararg, arguments.kwarg) if a is not None),
-        )
-    }
-    rebound = {
-        sub.id
-        for sub in ast.walk(node)
-        if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Store | ast.Del)
-    }
-    returnable = parameters - rebound if len(parameters) == 1 else set()
-    for sub in ast.walk(node):
-        if isinstance(sub, ast.Return) and sub.value is not None:
-            value = sub.value
-            if not (
-                (isinstance(value, ast.Constant) and value.value is None)
-                or (isinstance(value, ast.Name) and value.id in returnable)
-            ):
-                return False
-        elif isinstance(
-            sub, ast.AugAssign | ast.Yield | ast.YieldFrom | ast.Global | ast.Nonlocal
-        ):
-            return False
-        elif isinstance(sub, ast.Assign | ast.AnnAssign | ast.Delete):
-            targets = (
-                sub.targets
-                if isinstance(sub, ast.Assign | ast.Delete)
-                else [sub.target]
-            )
-            if any(
-                isinstance(part, ast.Subscript | ast.Attribute)
-                for target in targets
-                for part in ast.walk(target)
-            ):
-                return False
-        elif isinstance(sub, ast.keyword) and sub.arg in {"inplace", "out"}:
-            return False
-        elif isinstance(sub, ast.Call):
-            function = sub.func
-            if isinstance(function, ast.Attribute) and function.attr in _IN_PLACE_CALLS:
-                return False
-            if isinstance(function, ast.Name) and function.id in {
-                *_IN_PLACE_CALLS,
-                "delattr",
-                "eval",
-                "exec",
-                "setattr",
-            }:
-                return False
-    return True
-
-
-def _string_expression(node) -> bool:
-    """A string literal, an f-string of names or of one call on names, or a
-    concatenation of them."""
-
-    import ast
-
-    if isinstance(node, ast.Constant):
-        return isinstance(node.value, str)
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        return _string_expression(node.left) and _string_expression(node.right)
-    if not isinstance(node, ast.JoinedStr):
-        return False
-    for part in node.values:
-        value = part.value if isinstance(part, ast.FormattedValue) else part
-        if isinstance(value, ast.Call):
-            if not isinstance(value.func, ast.Name) or value.keywords:
-                return False
-            value = value.args[0] if len(value.args) == 1 else None
-        if not isinstance(value, ast.Name | ast.Constant):
-            return False
-    return True
-
-
-_HELPER_KINDS: dict[tuple[str, str, str], str | None] = {}
-
-
-def _helper_kind(module: str, name: str, scope: str) -> str:
-    """How a top-level definition can bear on a value.
-
-    ``value`` unless it is a listed refusal-only ``check``
-    (``_REFUSAL_ONLY_HELPERS``) or provably one of: a ``name`` (one string: a
-    literal, an f-string or concatenation of names, or another name of these
-    kinds); a ``column name`` (a function returning one such string built
-    from its arguments); a ``record`` (a class of undefaulted fields whose
-    types are of these kinds, no methods). A collection of strings is a
-    value, since it selects rows, columns or codes, as is a number. A cycle
-    reads as ``value``.
-    """
-
-    if (module, name) in _REFUSAL_ONLY_HELPERS:
-        return "check"
-    key = (module, name, scope)
-    if key in _HELPER_KINDS:
-        return _HELPER_KINDS[key] or "value"
-    _HELPER_KINDS[key] = None
-    _HELPER_KINDS[key] = _classify_helper(module, name, scope)
-    return _HELPER_KINDS[key]
-
-
-def _names_only_harmless(module: str, node, scope: str) -> bool:
-    return all(
-        found[0].startswith(_DECLARATION_MODULES)
-        or _helper_kind(*found, scope) != "value"
-        for found in _named(module, node, scope)
-    )
-
-
-def _classify_helper(module: str, name: str, scope: str) -> str:
-    import ast
-
-    node = _module_definitions(module, scope).definitions[name]
-    # A type alias statement (``type X = ...``) reads as an assignment of its
-    # value.
-    if isinstance(node, ast.Assign | ast.AnnAssign | ast.TypeAlias):
-        if node.value is None or (
-            (
-                isinstance(node.value, ast.Name | ast.Attribute)
-                or _string_expression(node.value)
-            )
-            and _names_only_harmless(module, node.value, scope)
-        ):
-            return "name"
-        return "value"
-    if isinstance(node, ast.ClassDef):
-        fields = [item for item in node.body if isinstance(item, ast.AnnAssign)]
-        fields_only = all(
-            (isinstance(item, ast.Expr) and isinstance(item.value, ast.Constant))
-            or isinstance(item, ast.Pass)
-            or (isinstance(item, ast.AnnAssign) and item.value is None)
-            for item in node.body
-        )
-        if fields_only and all(
-            _names_only_harmless(module, item, scope)
-            for item in (
-                *node.bases,
-                *node.keywords,
-                *node.decorator_list,
-                *(field.annotation for field in fields),
-            )
-        ):
-            return "record"
-        return "value"
-    body = list(node.body)
-    if (
-        body
-        and isinstance(body[0], ast.Expr)
-        and isinstance(body[0].value, ast.Constant)
-    ):
-        body = body[1:]
-    if (
-        len(body) == 1
-        and isinstance(body[0], ast.Return)
-        and _string_expression(body[0].value)
-        and _names_only_harmless(module, body[0].value, scope)
-    ):
-        return "column name"
-    return "value"
-
-
-class _Walk(NamedTuple):
-    """What a root can compute through (``_helper_walk``)."""
-
-    reach: dict[str, frozenset[str]]
-    stops: frozenset[tuple[str, str]]
-    core: frozenset[str]
-
-
-def _helper_walk(
-    root: tuple[str, str], scope: str = _HELPER_SCOPE, *, follow_core: bool = False
-) -> _Walk:
-    """What ``root`` can compute through, where the rule stops, and the core
-    modules it meets.
-
-    ``reach`` maps every module holding a definition that can change what
-    ``root`` computes to those definitions: ``root`` itself, and each
-    ``value`` definition it names, and they name, to a fixed point. ``stops``
-    is every ``name``, ``column name`` or ``record`` those definitions name,
-    which the rule does not follow. ``core`` is every listed core module
-    (``_CORE_MODULES``) whose definitions they name, which the rule neither
-    follows nor returns in ``reach``, unless ``follow_core``. The declaration
-    modules and the listed refusal-only checks are neither followed nor
-    returned."""
-
-    module, name = root
-    node = _module_definitions(module, scope).definitions[name]
-    walk, _, _ = _walk(
-        {root},
-        [(found, root) for found in _named(module, node, scope)],
-        scope,
-        follow_core=follow_core,
-    )
-    return walk
-
-
-def _walk(
-    roots: set[tuple[str, str]],
-    seeds: list[tuple[tuple[str, str], object]],
-    scope: str,
-    *,
-    follow_core: bool = False,
-    halts: Mapping[tuple[str, str], str] = MappingProxyType({}),
-) -> tuple[_Walk, dict[tuple[str, str], frozenset]]:
-    """The walk behind ``_helper_walk`` and ``_kernel_walk``: ``roots`` are
-    reached as given, and each ``(definition, namer)`` seed is followed as
-    ``_helper_walk`` follows what its root names. A definition in ``halts`` is
-    neither followed nor returned; the second result maps each one met to
-    what named it, and the third holds every core module's definition met."""
-
-    reached: dict[str, set[str]] = {}
-    for module, name in roots:
-        reached.setdefault(module, set()).add(name)
-    stops: set[tuple[str, str]] = set()
-    core: set[str] = set()
-    core_names: set[tuple[str, str]] = set()
-    met: dict[tuple[str, str], set] = {}
-    pending, seen = list(seeds), set(roots)
-    while pending:
-        item, namer = pending.pop()
-        if item in halts:
-            met.setdefault(item, set()).add(namer)
-            continue
-        if item in seen:
-            continue
-        seen.add(item)
-        module, name = item
-        if module.startswith(_DECLARATION_MODULES):
-            continue
-        if module in _CORE_MODULES:
-            core.add(module)
-            core_names.add(item)
-            if not follow_core:
-                continue
-        kind = _helper_kind(module, name, scope)
-        if kind != "value":
-            if kind != "check":
-                stops.add(item)
-            continue
-        reached.setdefault(module, set()).add(name)
-        node = _module_definitions(module, scope).definitions[name]
-        pending.extend((found, item) for found in _named(module, node, scope))
-    walk = _Walk(
-        {module: frozenset(names) for module, names in reached.items()},
-        frozenset(stops),
-        frozenset(core),
-    )
-    return (
-        walk,
-        {item: frozenset(namers) for item, namers in met.items()},
-        frozenset(core_names),
-    )
-
-
-def _helper_reach(
-    root: tuple[str, str], scope: str = _HELPER_SCOPE
-) -> dict[str, frozenset[str]]:
-    """Every module holding a definition that can change what ``root``
-    computes, with those definitions (``_helper_walk``)."""
-
-    return _helper_walk(root, scope).reach
+# The shared machinery and the rule's methods, under the names the UK code
+# below uses.
+_Walk = Walk
+_KernelWalk = KernelWalk
+_KeyedWalk = KeyedWalk
+_module_definitions = module_definitions
+_class_named = class_named
+_merged = merged
+_hashed_by = hashed_by
+_hashed_modules = hashed_modules
+_resolve = _RULE.resolve
+_named = _RULE.named
+_helper_kind = _RULE.helper_kind
+_walk = _RULE.walk
+_helper_walk = _RULE.helper_walk
+_helper_reach = _RULE.helper_reach
+_kernel_classes = _RULE.kernel_classes
+_kernel_body = _RULE.kernel_body
+_kernel_walk = _RULE.kernel_walk
+_engine_methods = _RULE.engine_methods
+_engine_roots = _RULE.engine_roots
+_engine_seeds = _RULE.engine_seeds
+_engine_methods_beyond = _RULE.engine_methods_beyond
+_engine_reach = _RULE.engine_reach
 
 
 #: The class of the engine the builds inject into the stages that compute
@@ -1953,153 +1428,8 @@ def _helper_reach(
 _ENGINE_CLASS = ("microcosm.frame.adapters.policyengine_uk", "PolicyEngineUKEngine")
 
 
-def _class_named(ref: tuple[str, str]) -> type:
-    import importlib
-
-    module, name = ref
-    return getattr(importlib.import_module(module), name)
-
-
 def _engine_class() -> type:
     return _class_named(_ENGINE_CLASS)
-
-
-def _class_attributes(cls: type) -> dict[str, list[tuple[type, object]]]:
-    """Each attribute ``cls`` defines, with the class and statement that
-    define it, as ``_kernel_body`` chooses them by method resolution order."""
-
-    body: dict[str, list[tuple[type, object]]] = {}
-    for owner, statement, name in _kernel_body(cls):
-        body.setdefault(name, []).append((owner, statement))
-    return body
-
-
-def _engine_methods(engine_class: type, walk: _Walk) -> frozenset[str]:
-    """The attributes of ``engine_class`` that the code ``walk`` reaches
-    names: read by attribute, on any receiver, or through ``getattr`` or
-    ``hasattr`` with a constant name. It matches by name alone, as
-    ``_calls_the_engine`` matches its calls, so it sees the engine under any
-    name a stage holds it by, and can only over-count."""
-
-    import ast
-
-    found: set[object] = set()
-    for module, names in walk.reach.items():
-        definitions = _module_definitions(module, _HELPER_SCOPE).definitions
-        for name in names:
-            for sub in ast.walk(definitions[name]):
-                if isinstance(sub, ast.Attribute):
-                    found.add(sub.attr)
-                elif (
-                    isinstance(sub, ast.Call)
-                    and isinstance(sub.func, ast.Name)
-                    and sub.func.id in {"getattr", "hasattr"}
-                    and len(sub.args) > 1
-                    and isinstance(sub.args[1], ast.Constant)
-                ):
-                    found.add(sub.args[1].value)
-    return frozenset(found & set(_class_attributes(engine_class)))
-
-
-def _engine_roots(engine_class: type) -> frozenset[tuple[str, str]]:
-    """The classes an engine of ``engine_class`` comes from, the roots of its
-    walk. Their definitions name every method, so the engine methods a walk
-    names are read outside them (``_engine_reach``)."""
-
-    return frozenset(
-        (cls.__module__, cls.__name__) for cls in _kernel_classes(engine_class)
-    )
-
-
-def _engine_seeds(
-    engine_class: type, methods: frozenset[str], scope: str = _HELPER_SCOPE
-) -> list[tuple[tuple[str, str], tuple[str, str]]]:
-    """What ``methods`` of ``engine_class``, the constructor the builds call
-    and every method they call on ``self`` name, each with the method naming
-    it: the seeds of the engine walk (``_engine_walk``)."""
-
-    import ast
-
-    body = _class_attributes(engine_class)
-    pending, chosen = sorted({"__init__", *methods} & set(body)), set()
-    while pending:
-        name = pending.pop()
-        if name in chosen:
-            continue
-        chosen.add(name)
-        for _, statement in body[name]:
-            pending.extend(
-                sub.attr
-                for sub in ast.walk(statement)
-                if isinstance(sub, ast.Attribute)
-                and isinstance(sub.value, ast.Name)
-                and sub.value.id in {"self", "cls"}
-                and sub.attr in body
-            )
-    return [
-        (found, (owner.__module__, f"{owner.__name__}.{name}"))
-        for name in sorted(chosen)
-        for owner, statement in body[name]
-        for found in _named(owner.__module__, statement, scope)
-    ]
-
-
-def _engine_walk(
-    engine_class: type, methods: frozenset[str], scope: str = _HELPER_SCOPE
-) -> _Walk:
-    """What an engine of ``engine_class`` computes through for a stage that
-    calls ``methods`` on it: the stage rule's walk, at ``scope`` with the
-    same tables, from those methods, the constructor the builds call, and
-    every method they call on ``self``, to a fixed point."""
-
-    walk, _, _ = _walk(
-        set(_engine_roots(engine_class)),
-        _engine_seeds(engine_class, methods, scope),
-        scope,
-    )
-    return walk
-
-
-def _engine_methods_beyond(engine_class: type, walk: _Walk) -> frozenset[str]:
-    """The methods of ``engine_class`` that ``walk`` names outside the
-    engine's own classes (``_engine_methods``, ``_engine_roots``)."""
-
-    roots = _engine_roots(engine_class)
-    return _engine_methods(
-        engine_class,
-        _Walk(
-            {
-                module: frozenset(name for name in names if (module, name) not in roots)
-                for module, names in walk.reach.items()
-            },
-            walk.stops,
-            walk.core,
-        ),
-    )
-
-
-def _engine_reach(engine_class: type, walk: _Walk, scope: str = _HELPER_SCOPE) -> _Walk:
-    """What an engine of ``engine_class`` computes through for code whose
-    walk is ``walk``: the engine walk (``_engine_walk``) from the methods
-    ``walk`` names, and from those the engine walk's own reach names on any
-    receiver outside the engine's classes, to a fixed point. So a helper the
-    engine hands itself to, which calls another of its methods on that
-    argument, is followed into that method too."""
-
-    methods = _engine_methods(engine_class, walk)
-    while True:
-        reached = _engine_walk(engine_class, methods, scope)
-        more = methods | _engine_methods_beyond(engine_class, reached)
-        if more == methods:
-            return reached
-        methods = more
-
-
-def _merged(first: _Walk, second: _Walk) -> _Walk:
-    reach = dict(first.reach)
-    for module, names in second.reach.items():
-        reach[module] = reach.get(module, frozenset()) | names
-    return _Walk(reach, first.stops | second.stops, first.core | second.core)
 
 
 def _stage_transforms() -> dict[str, tuple[str, str]]:
@@ -2342,9 +1672,8 @@ def test_the_core_modules_are_on_every_nodes_path() -> None:
     every spine stage kernel declares SeedSource.NONE."""
     from microcosm.graph import SeedSource
 
-    executor = _helper_walk(("microcosm.graph.executor", "run_graph"), follow_core=True)
-    on_path = set(executor.reach) | set(executor.core)
-    assert set(_CORE_MODULES) <= on_path, sorted(set(_CORE_MODULES) - on_path)
+    off_path = _RULE.core_modules_off_run_graph_path()
+    assert not off_path, off_path
     frame = {
         module for module in _CORE_MODULES if module.startswith("microcosm.frame.")
     }
@@ -2370,417 +1699,8 @@ def test_the_core_modules_are_on_every_nodes_path() -> None:
 
 
 def test_the_refusal_only_helpers_return_and_write_nothing() -> None:
-    import ast
-
-    for module, name in _REFUSAL_ONLY_HELPERS:
-        owner, _, method = name.rpartition(".")
-        node = _module_definitions(module, _HELPER_SCOPE).definitions[owner or name]
-        if owner:
-            (node,) = [
-                item
-                for item in node.body
-                if isinstance(item, ast.FunctionDef) and item.name == method
-            ]
-        assert _writes_nothing(node), (module, name)
-
-
-def test_the_refusal_check_sees_each_way_a_function_writes() -> None:
-    """Control for ``_writes_nothing``: a function that only refuses, or
-    returns its sole argument, passes; one that writes through any of these
-    shapes, or returns one of several arguments, does not."""
-    import ast
-
-    refusing = {
-        "raise": "def f(frame):\n    if frame is None:\n        raise ValueError('x')\n",
-        "identity": (
-            "def f(entity):\n"
-            "    if entity not in {'person'}:\n"
-            "        raise ValueError('x')\n"
-            "    return entity\n"
-        ),
-    }
-    writing = {
-        "copyto": "def f(values, mask):\n    np.copyto(values, 0.0, where=mask)\n",
-        "out": "def f(values):\n    np.clip(values, 0, 1, out=values)\n",
-        "add_at": "def f(w, roots, copies):\n    np.add.at(w, roots, w[copies])\n",
-        "shuffle": "def f(rng, values):\n    rng.shuffle(values)\n",
-        "reverse": "def f(items):\n    items.reverse()\n",
-        "augmented": "def f(values):\n    values *= 2.0\n",
-        "subscript": "def f(values):\n    values[0] = 1.0\n",
-        "inplace": "def f(table):\n    table.drop(columns=['a'], inplace=True)\n",
-        "pick": "def f(left, right):\n    return left\n",
-        "computed": "def f(values):\n    return values + 1\n",
-    }
-    for label, source in {**refusing, **writing}.items():
-        function = ast.parse(source).body[0]
-        assert _writes_nothing(function) is (label in refusing), label
-
-
-def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(
-    tmp_path, monkeypatch
-) -> None:
-    """Control: a helper called by name, through a re-export, a lazy export,
-    by attribute on its module, through an alias or a computed constant, or
-    held only in an annotation (a record's field type included) is reached,
-    as are a numeric constant, a collection of strings and a function that
-    writes in place or only refuses but is not listed; a listed check, a
-    single string, a column name, a record of plain fields, a listed core
-    module, what only a core module names, and a helper the root never names
-    are not. The walk returns the names it stopped at and the core modules it
-    met, and follows a core module only when asked to."""
-    import uuid
-
-    scratch = f"helper_rule_{uuid.uuid4().hex[:8]}"
-    package = tmp_path / "microcosm" / scratch
-    package.mkdir(parents=True)
-    (package / "__init__.py").write_text("")
-    # A package exporting its runtime module's names lazily, as
-    # microcosm.graph does.
-    (package / "lazily").mkdir()
-    (package / "lazily" / "__init__.py").write_text(
-        "from importlib import import_module\n\n"
-        "_EXPORTS = {'deferred': 'runtime', 'idle': 'runtime'}\n\n"
-        "def __getattr__(name):\n"
-        "    if name not in _EXPORTS:\n"
-        "        raise AttributeError(name)\n"
-        "    return getattr(import_module(f'{__name__}.{_EXPORTS[name]}'), name)\n"
-    )
-    (package / "lazily" / "runtime.py").write_text(
-        "def deferred(x):\n    return x * 6\n\ndef idle(x):\n    return x * 7\n"
-    )
-    monkeypatch.syspath_prepend(str(tmp_path))
-    sources = {
-        "direct": "def draw(x):\n    return x + 1\n",
-        "origin": "def total(x):\n    return sum(x)\n",
-        "reexport": "from .origin import total\n",
-        "attribute": "def share(x):\n    return x / 2\n",
-        "alias": "def _scale(x):\n    return x * 3\n\nscale = _scale\n",
-        "computed": "def _build():\n    return {'a': 1}\n\nTABLE = _build()\n",
-        "collaborator": (
-            "class Contract:\n    def rate(self, key):\n        return 0.5\n"
-        ),
-        "fielded": (
-            "from typing import NamedTuple\n\n"
-            "class Rate:\n    def value(self):\n        return 0.1\n\n"
-            "class Inputs(NamedTuple):\n    rate: Rate\n"
-        ),
-        "numeric": "FLOOR = 10\n",
-        "codes": (
-            "CODES = frozenset({'A', 'B'})\n"
-            "OWNER = {'OWNED': 'owner', 'RENTED': 'renter'}\n"
-        ),
-        "inplace": (
-            "import numpy as np\n\n"
-            "def fold(weights, roots, copies):\n"
-            "    np.add.at(weights, roots, weights[copies])\n"
-        ),
-        "guard": (
-            "def guard(frame):\n"
-            "    if frame is None:\n"
-            "        raise ValueError('no frame')\n"
-        ),
-        "harmless": (
-            "COLUMN = 'household_weight'\n\n"
-            "def check(frame):\n"
-            "    if frame is None:\n"
-            "        raise ValueError('no frame')\n\n"
-            "def column(entity):\n"
-            "    return f'{entity}_support_channel'\n\n"
-            "class Record:\n"
-            "    value: float\n"
-        ),
-        "unused": "def never(x):\n    return x - 1\n",
-        "behind": "def kept(x):\n    return x * 4\n",
-        "core": (
-            "from .behind import kept\n\n"
-            "class Container:\n"
-            "    def grow(self, x):\n"
-            "        return kept(x)\n"
-        ),
-        "stage": (
-            "from . import attribute\n"
-            "from .alias import scale\n"
-            "from .codes import CODES, OWNER\n"
-            "from .collaborator import Contract\n"
-            "from .computed import TABLE\n"
-            "from .core import Container\n"
-            "from .direct import draw\n"
-            "from .fielded import Inputs\n"
-            "from .guard import guard\n"
-            "from .harmless import COLUMN, Record, check, column\n"
-            "from .inplace import fold\n"
-            "from .lazily import deferred\n"
-            "from .numeric import FLOOR\n"
-            "from .reexport import total\n"
-            "from .unused import never\n\n"
-            "class Transform:\n"
-            "    contract: Contract\n"
-            "    inputs: Inputs\n\n"
-            "    def __call__(self, frame):\n"
-            "        check(frame)\n"
-            "        guard(frame)\n"
-            "        fold(frame, [0], [1])\n"
-            "        record = Record(value=draw(1) + total([1]) + deferred(1))\n"
-            "        rate = self.contract.rate(column('household'))\n"
-            "        rate += self.inputs.rate.value()\n"
-            "        owners = [OWNER[code] for code in CODES]\n"
-            "        rate += Container().grow(rate)\n"
-            "        return attribute.share(scale(rate)) + TABLE['a'] + FLOOR, (\n"
-            "            record, COLUMN, owners\n"
-            "        )\n\n"
-            "def helper():\n"
-            "    return never(1)\n"
-        ),
-    }
-    for module, source in sources.items():
-        (package / f"{module}.py").write_text(source)
-    prefix = f"microcosm.{scratch}."
-    monkeypatch.setitem(
-        _REFUSAL_ONLY_HELPERS, (f"{prefix}harmless", "check"), "control"
-    )
-    monkeypatch.setitem(_CORE_MODULES, f"{prefix}core", "control")
-    monkeypatch.setitem(_LAZY_EXPORT_TABLES, f"{prefix}lazily", "_EXPORTS")
-    reach, stops, core = _helper_walk((f"{prefix}stage", "Transform"), scope=prefix)
-    assert {module.removeprefix(prefix): names for module, names in reach.items()} == {
-        "stage": {"Transform"},
-        "direct": {"draw"},
-        "origin": {"total"},
-        "lazily.runtime": {"deferred"},
-        "attribute": {"share"},
-        "alias": {"scale", "_scale"},
-        "computed": {"TABLE", "_build"},
-        "collaborator": {"Contract"},
-        "fielded": {"Inputs", "Rate"},
-        "numeric": {"FLOOR"},
-        "codes": {"CODES", "OWNER"},
-        "inplace": {"fold"},
-        "guard": {"guard"},
-    }
-    assert {(module.removeprefix(prefix), name) for module, name in stops} == {
-        ("harmless", "COLUMN"),
-        ("harmless", "Record"),
-        ("harmless", "column"),
-    }
-    assert core == {f"{prefix}core"}
-    followed = _helper_walk(
-        (f"{prefix}stage", "Transform"), scope=prefix, follow_core=True
-    )
-    assert set(followed.reach) - set(reach) == {f"{prefix}core", f"{prefix}behind"}
-    assert followed.core == core
-
-
-class _KernelWalk(NamedTuple):
-    """What a kernel's own code can compute through (``_kernel_walk``)."""
-
-    reach: dict[str, frozenset[str]]
-    stops: frozenset[tuple[str, str]]
-    core: frozenset[str]
-    met: dict[tuple[str, str], frozenset]
-    core_names: frozenset[tuple[str, str]]
-
-
-def _kernel_classes(kernel_class: type) -> list[type]:
-    """The first-party classes a kernel's code comes from, in its method
-    resolution order, without the core modules' (``KernelBase``)."""
-
-    return [
-        cls
-        for cls in kernel_class.__mro__
-        if cls.__module__.startswith(_HELPER_SCOPE)
-        and cls.__module__ not in _CORE_MODULES
-    ]
-
-
-def _calls_super(node) -> bool:
-    import ast
-
-    return any(
-        isinstance(sub, ast.Call)
-        and isinstance(sub.func, ast.Name)
-        and sub.func.id == "super"
-        for sub in ast.walk(node)
-    )
-
-
-def _statement_names(statement) -> list[str]:
-    import ast
-
-    if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
-        return [statement.name]
-    if isinstance(statement, ast.Assign | ast.AnnAssign):
-        targets = (
-            statement.targets
-            if isinstance(statement, ast.Assign)
-            else [statement.target]
-        )
-        return [
-            sub.id
-            for target in targets
-            for sub in ast.walk(target)
-            if isinstance(sub, ast.Name)
-        ]
-    return []
-
-
-def _kernel_body(kernel_class: type) -> list[tuple[type, object, str]]:
-    """What a kernel of ``kernel_class`` runs: each method or class attribute
-    with its class and name, from the first class in the method resolution
-    order that defines it, as Python resolves it, and a base's definition too
-    where the one that wins calls ``super()``. ``implementation_hash`` is left
-    out, since it computes the key: an edit to what it calls that changes what
-    it returns changes the key. So is a method only the key computation calls
-    (``_key_only_methods``), such as the full gates' ``_country_resources``,
-    and so are the listed refusal-only methods."""
-
-    chosen: dict[str, object | None] = {}
-    body = []
-    keyed = []
-    for cls in _kernel_classes(kernel_class):
-        definitions = _module_definitions(cls.__module__, _HELPER_SCOPE).definitions
-        for statement in definitions[cls.__name__].body:
-            for name in _statement_names(statement):
-                if name in chosen:
-                    previous = chosen[name]
-                    if previous is not None and _calls_super(previous):
-                        chosen[name] = statement
-                        (keyed if name == "implementation_hash" else body).append(
-                            (cls, statement, name)
-                        )
-                    continue
-                if (cls.__module__, f"{cls.__name__}.{name}") in _REFUSAL_ONLY_HELPERS:
-                    chosen[name] = None
-                    continue
-                chosen[name] = statement
-                (keyed if name == "implementation_hash" else body).append(
-                    (cls, statement, name)
-                )
-    key_only = _key_only_methods(body, keyed)
-    return [item for item in body if item[2] not in key_only]
-
-
-def _self_attributes(statement) -> set[str]:
-    """The attributes ``statement`` reads on ``self``, ``cls`` or
-    ``type(self)``."""
-    import ast
-
-    found = set()
-    for sub in ast.walk(statement):
-        if not isinstance(sub, ast.Attribute):
-            continue
-        value = sub.value
-        if (isinstance(value, ast.Name) and value.id in {"self", "cls"}) or (
-            isinstance(value, ast.Call)
-            and isinstance(value.func, ast.Name)
-            and value.func.id == "type"
-        ):
-            found.add(sub.attr)
-    return found
-
-
-def _key_only_methods(body, keyed) -> frozenset[str]:
-    """The methods of a kernel's ``body`` that only its key computation calls:
-    named on ``self``, ``cls`` or ``type(self)`` by its ``keyed`` statements
-    (``implementation_hash``) or by another such method, and by nothing else
-    the kernel runs. They compute the key as the hash does."""
-    import ast
-
-    methods = {
-        name
-        for _, statement, name in body
-        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef)
-    }
-    reads: dict[str, set[str]] = {}
-    for _, statement, name in body:
-        reads.setdefault(name, set()).update(_self_attributes(statement))
-    key = set().union(*(_self_attributes(statement) for _, statement, _ in keyed))
-    key_only: set[str] = set()
-    while True:
-        found = {
-            method
-            for method in methods - key_only
-            if method in key.union(*(reads[item] for item in key_only))
-            and not any(
-                method in names
-                for other, names in reads.items()
-                if other != method and other not in key_only
-            )
-        }
-        if not found:
-            return frozenset(key_only)
-        key_only |= found
-
-
-def _kernel_walk(
-    kernel_class: type,
-    scope: str = _HELPER_SCOPE,
-    *,
-    halts: Mapping[tuple[str, str], str] | None = None,
-) -> _KernelWalk:
-    """What a kernel's own code can compute through: the rule followed from
-    what ``_kernel_body`` names, as from a stage's transform, stopping also at
-    ``halts`` (``_KERNEL_STOPS`` unless given). Its classes are in ``reach``;
-    ``met`` maps each listed stop it meets to what names it there (a
-    definition, or ``Class.attribute`` for the kernel's own code), and
-    ``core_names`` holds the core modules' definitions it names."""
-
-    classes = _kernel_classes(kernel_class)
-    seeds = [
-        (found, (cls.__module__, f"{cls.__name__}.{name}"))
-        for cls, statement, name in _kernel_body(kernel_class)
-        for found in _named(cls.__module__, statement, scope)
-    ]
-    walk, met, core_names = _walk(
-        {(cls.__module__, cls.__name__) for cls in classes},
-        seeds,
-        scope,
-        halts=_KERNEL_STOPS if halts is None else halts,
-    )
-    return _KernelWalk(walk.reach, walk.stops, walk.core, met, core_names)
-
-
-def _hashed_by(compute: Callable[[], object]) -> frozenset[str]:
-    """Every module ``compute()`` hashes, recorded at each ``source_hash`` it
-    reaches, in whichever module calls it: every loaded module's
-    ``source_hash`` name stands in for the recorder during one call, after a
-    first call has imported what ``compute`` imports."""
-
-    import inspect
-    import sys
-    from types import ModuleType
-
-    from microcosm.graph import kernel as graph_kernel
-
-    original = graph_kernel.source_hash
-    recorded: list[object] = []
-
-    def record(*objects, **dependencies):
-        recorded.extend(objects)
-        return original(*objects, **dependencies)
-
-    compute()
-    patched = [
-        module
-        for module in list(sys.modules.values())
-        if isinstance(module, ModuleType)
-        and getattr(module, "__dict__", {}).get("source_hash") is original
-    ]
-    for module in patched:
-        module.source_hash = record
-    try:
-        compute()
-    finally:
-        for module in patched:
-            module.source_hash = original
-    return frozenset(
-        (item if isinstance(item, ModuleType) else inspect.getmodule(item)).__name__
-        for item in recorded
-    )
-
-
-def _hashed_modules(kernel) -> frozenset[str]:
-    """Every module ``kernel.implementation_hash()`` hashes (``_hashed_by``)."""
-
-    return _hashed_by(kernel.implementation_hash)
+    violations = _RULE.refusal_only_violations()
+    assert not violations, violations
 
 
 @functools.cache
@@ -3142,14 +2062,6 @@ def _phase_code_modules(battery: _Battery, phase: str) -> frozenset[str]:
     return _hashed_by(getattr(code, "__wrapped__", code))
 
 
-class _KeyedWalk(NamedTuple):
-    """A walk the kernel rule holds a key to, and the modules that key
-    hashes."""
-
-    walk: _KernelWalk
-    key: frozenset[str]
-
-
 @functools.cache
 def _kernel_rule_walks() -> MappingProxyType:
     """What the kernel rule holds each UK graph kernel to, by ref and label:
@@ -3213,34 +2125,20 @@ def test_the_kernel_rule_sees_every_kernel_the_uk_runtime_defines() -> None:
     and the shared atomic geography define, so a new one cannot escape it,
     and the gate batteries' and whole-registry kernels are among them, each
     listed once (microcosm#931)."""
-    import ast
-    import importlib
-
     from microcosm.build import graph_atomic_geography
     from microcosm.build.uk_runtime import graph_kernels
 
     files = sorted(Path(graph_kernels.__file__).parent.glob("*.py"))
     files.append(Path(graph_atomic_geography.__file__))
-    defined = set()
-    for path in files:
-        module = (
+    defined = kernel_classes_defined(
+        (
             graph_atomic_geography.__name__
             if path.stem == "graph_atomic_geography"
-            else f"{graph_kernels.__package__}.{path.stem}"
+            else f"{graph_kernels.__package__}.{path.stem}",
+            path,
         )
-        for node in ast.parse(path.read_text(encoding="utf-8")).body:
-            if not isinstance(node, ast.ClassDef):
-                continue
-            declares_ref = any(
-                "ref" in _statement_names(statement) for statement in node.body
-            ) or any(
-                isinstance(sub, ast.Attribute)
-                and sub.attr == "ref"
-                and isinstance(sub.ctx, ast.Store)
-                for sub in ast.walk(node)
-            )
-            if declares_ref:
-                defined.add(getattr(importlib.import_module(module), node.name))
+        for path in files
+    )
     kernels = _uk_graph_kernels()
     assert {type(kernel) for kernel in kernels.values()} == defined
     listed = (set(_GATE_BATTERY_KERNELS), set(_WHOLE_REGISTRY_KERNELS))
@@ -3271,7 +2169,7 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     6), and test_uk_target_compile_modules keeps only what it does not cover.
     A name microcosm.graph exports lazily, through its module ``__getattr__``,
     is followed to the runtime module that defines it like any other
-    (``_LAZY_EXPORT_TABLES``): the kernels' capability and context records are
+    (``LAZY_EXPORT_TABLES``): the kernels' capability and context records are
     listed core names, and the create kernel's ``load_source``, which it calls
     only where no root transform is bound, is a listed stop."""
     import ast
@@ -3286,21 +2184,12 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     )
 
     kernels = _uk_graph_kernels()
-    unhashed: dict[str, list[str]] = {}
-    unlisted: set[tuple[str, str]] = set()
-    met: set[tuple[str, str]] = set()
-    for walks in _kernel_rule_walks().values():
-        for label, (walk, key) in walks.items():
-            missing = sorted(set(walk.reach) - key)
-            if missing:
-                unhashed[label] = missing
-            unlisted.update(item for item in walk.stops if item[0] not in key)
-            met |= set(walk.met)
-    assert not unhashed, unhashed
-    assert unlisted == set(_KERNEL_UNBOUND_NAMES), sorted(
-        unlisted ^ set(_KERNEL_UNBOUND_NAMES)
+    found = findings(_kernel_rule_walks())
+    assert not found.unhashed, found.unhashed
+    assert found.unlisted == set(_KERNEL_UNBOUND_NAMES), sorted(
+        found.unlisted ^ set(_KERNEL_UNBOUND_NAMES)
     )
-    assert met == set(_KERNEL_STOPS), sorted(met ^ set(_KERNEL_STOPS))
+    assert found.met == set(_KERNEL_STOPS), sorted(found.met ^ set(_KERNEL_STOPS))
     # The clone index columns' reason for the measures. The dense measures'
     # population is the expand's: append_uk_target_nodes defaults it, and the
     # full build leaves the default. The national problem resolves its
@@ -3831,69 +2720,10 @@ def test_the_core_definitions_the_kernels_name_are_listed() -> None:
     the UK graph kernels' own code names are exactly ``_KERNEL_CORE_NAMES``,
     and the executor stores every node's owned cells through the dtype
     tokens' map, as that entry's reason says."""
-    named = {
-        item
-        for walks in _kernel_rule_walks().values()
-        for keyed in walks.values()
-        for item in keyed.walk.core_names
-        if not item[0].startswith("microcosm.frame.")
-    }
+    named = findings(_kernel_rule_walks()).core_names
     assert named == set(_KERNEL_CORE_NAMES), sorted(named ^ set(_KERNEL_CORE_NAMES))
     patching = _helper_walk(("microcosm.graph.population", "patch"), follow_core=True)
     assert "dtype_for_token" in patching.reach["microcosm.graph.population"]
-
-
-def test_every_lazy_export_resolves_to_the_object_python_returns() -> None:
-    """The walk follows a name a package exports lazily, through its module
-    ``__getattr__``, to the module that defines it, as Python imports it
-    (microcosm#931 ruling 8). Every name microcosm.graph exports that way
-    resolves to a definition holding the very object the package returns,
-    the table the walk reads is the one the package's ``__getattr__`` reads,
-    and a name the package imports eagerly resolves as before. Every
-    first-party module that defines a module ``__getattr__`` is listed, as a
-    lazy exporter or as one that exports nothing through it, so a new one
-    cannot hide names from the walk."""
-    import ast
-    import importlib
-
-    import microcosm
-    from microcosm import graph
-
-    for module, table in _LAZY_EXPORT_TABLES.items():
-        getter = _module_definitions(module, _HELPER_SCOPE).definitions["__getattr__"]
-        assert table in {
-            sub.id for sub in ast.walk(getter) if isinstance(sub, ast.Name)
-        }, module
-    exports = getattr(graph, _LAZY_EXPORT_TABLES[graph.__name__])
-    assert {"load_source", "KernelContext", "keyed_uniform"} <= set(exports)
-    for name in exports:
-        found = _resolve(graph.__name__, name, _HELPER_SCOPE)
-        assert found is not None, name
-        module, defined = found
-        assert getattr(importlib.import_module(module), defined) is getattr(
-            graph, name
-        ), name
-    assert _resolve(graph.__name__, "compile_graph", _HELPER_SCOPE) == (
-        "microcosm.graph.decl",
-        "compile_graph",
-    )
-    getters = set()
-    for root in map(Path, microcosm.__path__):
-        for path in sorted(root.rglob("*.py")):
-            text = path.read_text(encoding="utf-8")
-            if "def __getattr__" not in text or not any(
-                isinstance(node, ast.FunctionDef) and node.name == "__getattr__"
-                for node in ast.parse(text).body
-            ):
-                continue
-            parts = path.relative_to(root.parent).with_suffix("").parts
-            getters.add(".".join(parts[:-1] if parts[-1] == "__init__" else parts))
-    listed = set(_LAZY_EXPORT_TABLES) | set(_NO_LAZY_EXPORTS)
-    assert getters == listed, sorted(getters ^ listed)
-    # The modules that export nothing that way only raise from __getattr__.
-    for module in _NO_LAZY_EXPORTS:
-        getter = _module_definitions(module, _HELPER_SCOPE).definitions["__getattr__"]
-        assert not any(isinstance(sub, ast.Return) for sub in ast.walk(getter))
 
 
 def test_no_spine_or_national_line_kernel_hashes_the_source_codecs() -> None:
@@ -3955,104 +2785,6 @@ def test_the_frame_totals_the_uk_corrections_target_are_numpys_sums() -> None:
         assert total == float(values.sum())
         differing += total != math.fsum(values)
     assert differing
-
-
-def test_the_kernel_rule_follows_what_a_kernel_runs(tmp_path, monkeypatch) -> None:
-    """Control: the kernel rule follows what a kernel's methods name,
-    through its bases by method resolution order (a base method it inherits,
-    and one it overrides only where it calls ``super()``), and leaves out its
-    implementation hash, a method only the hash calls, a listed refusal-only
-    method, a base method it overrides without ``super()`` and what lies
-    behind a listed kernel stop, which it reports with what named it. A
-    method the hash and the run both call stays. The recorder sees each
-    module the hash passes to ``source_hash``, in whichever module calls
-    it."""
-    import importlib
-    import uuid
-
-    scratch = f"kernel_rule_{uuid.uuid4().hex[:8]}"
-    package = tmp_path / "microcosm" / scratch
-    package.mkdir(parents=True)
-    (package / "__init__.py").write_text("")
-    monkeypatch.syspath_prepend(str(tmp_path))
-    sources = {
-        "computed": "def computed(x):\n    return x + 1\n",
-        "inherited": "def base_only(x):\n    return x * 2\n",
-        "assisted": "def kept(x):\n    return x * 3\n",
-        "overridden": "def replaced(x):\n    return x - 2\n",
-        "refused": "def check(x):\n    return x < 0\n",
-        "keyonly": "def salt():\n    return 'salt'\n",
-        "behind": "def beyond(x):\n    return x * 5\n",
-        "resourced": "def fingerprint(x):\n    return x * 7\n",
-        "shared": "def both(x):\n    return x * 11\n",
-        "table": "from .behind import beyond\n\nTABLE = {'a': beyond}\n",
-        "keyed": (
-            "from microcosm.graph import source_hash\n\n"
-            "from . import computed, keyonly\n\n"
-            "def key():\n    return source_hash(computed, keyonly)\n"
-        ),
-        "base": (
-            "from .assisted import kept\n"
-            "from .inherited import base_only\n"
-            "from .overridden import replaced\n\n"
-            "class Base:\n"
-            "    def run(self, x):\n"
-            "        return base_only(x)\n\n"
-            "    def prepare(self, x):\n"
-            "        return replaced(x)\n\n"
-            "    def assist(self, x):\n"
-            "        return kept(x)\n"
-        ),
-        "kernel": (
-            "from .base import Base\n"
-            "from .computed import computed\n"
-            "from .keyed import key\n"
-            "from .keyonly import salt\n"
-            "from .refused import check\n"
-            "from .resourced import fingerprint\n"
-            "from .shared import both\n"
-            "from .table import TABLE\n\n"
-            "class Kernel(Base):\n"
-            "    def implementation_hash(self):\n"
-            "        return salt() + key() + self._resources(1) + self._both(1)\n\n"
-            "    def _resources(self, x):\n"
-            "        return str(fingerprint(x))\n\n"
-            "    def _both(self, x):\n"
-            "        return str(both(x))\n\n"
-            "    def _admit(self, x):\n"
-            "        if check(x):\n"
-            "            raise ValueError('refused')\n\n"
-            "    def prepare(self, x):\n"
-            "        return x\n\n"
-            "    def run(self, x):\n"
-            "        self._admit(x)\n"
-            "        self._both(x)\n"
-            "        return computed(x) + super().run(x) + TABLE['a'](x)\n"
-        ),
-    }
-    for module, source in sources.items():
-        (package / f"{module}.py").write_text(source)
-    prefix = f"microcosm.{scratch}."
-    monkeypatch.setitem(
-        _REFUSAL_ONLY_HELPERS, (f"{prefix}kernel", "Kernel._admit"), "control"
-    )
-    monkeypatch.setitem(_KERNEL_STOPS, (f"{prefix}table", "TABLE"), "control")
-    kernel_class = importlib.import_module(f"{prefix}kernel").Kernel
-    walk = _kernel_walk(kernel_class, scope=prefix)
-    assert {
-        module.removeprefix(prefix): names for module, names in walk.reach.items()
-    } == {
-        "kernel": {"Kernel"},
-        "base": {"Base"},
-        "computed": {"computed"},
-        "inherited": {"base_only"},
-        "assisted": {"kept"},
-        "shared": {"both"},
-    }
-    assert walk.met == {
-        (f"{prefix}table", "TABLE"): frozenset({(f"{prefix}kernel", "Kernel.run")})
-    }
-    assert _hashed_modules(kernel_class()) == {f"{prefix}computed", f"{prefix}keyonly"}
 
 
 #: Adapters the spine build installs around a stage's own transform, each with
