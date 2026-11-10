@@ -1975,27 +1975,87 @@ def test_the_walk_sees_a_constant_the_trace_cant(kernel_traces) -> None:
 
 
 @pytest.fixture(scope="module")
-def walk_case_paths(tmp_path_factory):
-    return static_reach_cases.write(tmp_path_factory.mktemp("walk-cases"))
+def walk_case_tree(tmp_path_factory):
+    root = tmp_path_factory.mktemp("walk-cases")
+    return root, static_reach_cases.write(root)
 
 
-@pytest.mark.parametrize(
-    ("module", "qualname"),
-    sorted(static_reach_cases.ROOTS),
-    ids=[module for module, _ in sorted(static_reach_cases.ROOTS)],
-)
+@pytest.fixture(scope="module")
+def walk_case_reads(walk_case_tree):
+    root, _ = walk_case_tree
+    return static_reach_cases.python_reads(root)
+
+
+_WALK_CASE_ROOTS = sorted(static_reach_cases.ROOTS)
+_WALK_CASE_IDS = [f"{module}:{qualname}" for module, qualname in _WALK_CASE_ROOTS]
+
+
+@pytest.mark.parametrize(("module", "qualname"), _WALK_CASE_ROOTS, ids=_WALK_CASE_IDS)
 def test_the_walk_reaches_each_way_code_names_a_module(
-    walk_case_paths, module, qualname
+    walk_case_tree, module, qualname
 ) -> None:
     # Each synthetic root reaches its targets one way the walk's docstring
-    # lists (an alias, a dunder, a literal getattr, a lazy export, a scope
-    # rule), and its walk reaches exactly those targets.
-    walked = reach(
-        f"{static_reach_cases.PACKAGE}.{module}", qualname, paths=walk_case_paths
-    )
+    # lists, and its walk reaches exactly those targets.
+    _, paths = walk_case_tree
+    walked = reach(f"{static_reach_cases.PACKAGE}.{module}", qualname, paths=paths)
     assert (
         static_reach_cases.targets(walked)
         == static_reach_cases.ROOTS[(module, qualname)]
+    )
+
+
+@pytest.mark.parametrize(("module", "qualname"), _WALK_CASE_ROOTS, ids=_WALK_CASE_IDS)
+def test_a_run_reads_what_the_walk_reaches(walk_case_reads, module, qualname) -> None:
+    # The same root, run for real: Python reads exactly the targets its walk
+    # reaches, less the documented over-reach (OVER) and plus the reads that
+    # the walk's "What it can't see" list explains (BLIND). So ROOTS can't
+    # record a walk's mistake as the expected answer.
+    root = (module, qualname)
+    assert walk_case_reads[root] == static_reach_cases.expected_reads(root)
+
+
+def test_the_walk_cases_account_for_every_target() -> None:
+    # OVER only takes away targets a walk reaches, BLIND only adds targets it
+    # doesn't, and every target is some root's, BLIND's or a decoy.
+    roots = static_reach_cases.ROOTS
+    over = {
+        root: found - roots[root]
+        for root, found in static_reach_cases.OVER.items()
+        if found - roots[root]
+    }
+    blind = {
+        root: found & roots[root]
+        for root, found in static_reach_cases.BLIND.items()
+        if found & roots[root]
+    }
+    assert over == {}
+    assert blind == {}
+    used = set().union(*roots.values(), *static_reach_cases.BLIND.values())
+    assert set(static_reach_cases.TARGETS) - used == static_reach_cases.DECOYS
+    assert used <= set(static_reach_cases.TARGETS)
+
+
+@PROPERTY
+@given(
+    picked=st.lists(
+        st.sampled_from(_WALK_CASE_ROOTS), min_size=2, max_size=6, unique=True
+    )
+)
+def test_property_composing_roots_loses_no_target(walk_case_tree, picked) -> None:
+    # One run() that runs several roots in turn. Its walk reaches every target
+    # each part's walk reaches, and may reach more, since the attribute
+    # fallback spans the whole walk. Python reads exactly what the parts read.
+    # So no part's state in the walk hides another part's reach.
+    root, _ = walk_case_tree
+    composite, paths = static_reach_cases.compose(root, picked)
+    walked = reach(
+        f"{static_reach_cases.PACKAGE}.{composite[0]}", composite[1], paths=paths
+    )
+    parts = set().union(*(static_reach_cases.ROOTS[part] for part in picked))
+    assert parts <= static_reach_cases.targets(walked)
+    reads = static_reach_cases.python_reads(root, [composite])[composite]
+    assert reads == set().union(
+        *(static_reach_cases.expected_reads(part) for part in picked)
     )
 
 

@@ -2,13 +2,25 @@
 
 Each root in :data:`ROOTS` reaches its target modules (``t_*``) in one of the
 ways that :mod:`test_support.microcosm_build.static_reach` lists, and its walk
-must reach exactly those targets. A target holds only constants, so a root
-reaches it only through code the walk follows.
+must reach exactly those targets. A target defines nothing but a module
+``__getattr__`` that records each read of ``X`` or ``ROWS``. So the walk
+reaches a target only through code it follows, and :func:`python_reads` can
+run each root for real and report which targets Python read.
+
+Python must read exactly what the walk reaches, apart from the documented
+gaps: :data:`OVER` holds the targets a walk reaches by design and a run
+doesn't read, and :data:`BLIND` holds the reads a run makes that the walk's
+"What it can't see" list explains.
 """
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 import textwrap
+from collections.abc import Iterable
+from hashlib import sha256
 from pathlib import Path
 
 from test_support.microcosm_build.static_reach import Reach, module_paths
@@ -21,43 +33,332 @@ TARGETS = (
     "alias",
     "alias_base",
     "alternative",
+    "alternative_first",
     "attrgetter",
     "base_attr",
+    "base_else",
+    "base_first",
+    "base_getattr",
+    "base_if",
+    "base_import",
+    "base_second",
+    "base_subscript",
+    "body_annotation",
+    "body_before",
+    "body_conditional",
+    "body_decorator",
+    "body_hidden",
+    "body_nested",
+    "class_body_update",
+    "class_fill_call",
+    "class_fill_del",
+    "class_fill_item",
+    "class_fill_method",
+    "class_fill_view",
+    "class_header",
+    "class_import",
     "class_scope",
     "comprehension",
     "conditional",
     "decorator",
+    "default",
+    "del_hidden",
+    "del_item",
+    "delattr",
+    "delattr_patch",
+    "dotted",
     "factory",
+    "fill_call",
+    "fill_global",
     "float",
+    "getattr_alias",
+    "getattr_constant",
     "global",
     "go",
+    "hasattr",
+    "header_for",
+    "header_if",
+    "header_match",
+    "header_try",
+    "header_while",
+    "header_with",
+    "import_from",
     "import_module",
+    "import_relative",
     "lambda",
+    "lambda_shadow",
     "lazy",
+    "lazy_assigned",
     "local",
+    "local_alternative",
+    "local_alternative_first",
+    "match_keyword",
+    "match_positional",
+    "metaclass",
+    "methodcaller",
+    "mutation_alias",
+    "namespace",
+    "nested_scope",
     "nonlocal",
     "override",
     "prop",
     "registrar",
+    "registry_decorator",
     "root_base",
+    "self_method",
     "setattr",
+    "setattr_patch",
+    "setdefault",
     "setitem",
+    "setup_call",
     "shadow",
     "shadowed",
     "sibling",
     "star",
+    "star_lazy",
+    "store_hidden",
     "subclass",
+    "subscript",
     "sunder",
     "unpack",
     "update",
     "value",
 )
 
+#: Targets a case binds so that a wrong walk would reach them. No walk
+#: reaches them and no run reads them: t_shadowed behind a name the class
+#: body rebinds (r_class_decorator), and t_body_hidden behind the function's
+#: import of nest_p, which the class in r_body_nested never reads.
+DECOYS = frozenset({"body_hidden", "shadowed"})
+
+#: Each target's source: reads of X or ROWS are recorded, anything else fails.
+_TARGET = """\
+from walkcase_reads import read
+
+
+def __getattr__(name):
+    return read(__name__, name)
+"""
+
+#: The recorder, a top-level module outside ``microcosm``, so the walk never
+#: parses it.
+_READS = """\
+READS = set()
+
+
+def read(module, name):
+    if name not in ("X", "ROWS"):
+        raise AttributeError(name)
+    READS.add(module.rpartition(".t_")[2])
+    return 1 if name == "X" else {}
+"""
+
 #: Each module's source, by its dotted name inside :data:`PACKAGE`.
 SOURCES: dict[str, str] = {
     "__init__": "",
-    **{f"t_{name}": "X = 1\nROWS = {}\n" for name in TARGETS},
-    # -- Scopes ---------------------------------------------------------------
+    **{f"t_{name}": _TARGET for name in TARGETS},
+    # -- Bodies -----------------------------------------------------------------
+    # A default value, which ``def`` evaluates as it runs.
+    "r_default": """
+        from microcosm.walkcases import t_default
+
+
+        def run(value=t_default.X):
+            return value
+        """,
+    # A class keyword: the metaclass's __init__ runs as the class is made.
+    "meta_mod": """
+        from microcosm.walkcases import t_metaclass
+
+
+        class Meta(type):
+            def __init__(cls, name, bases, namespace):
+                super().__init__(name, bases, namespace)
+                assert t_metaclass.X
+        """,
+    "r_metaclass": """
+        from microcosm.walkcases.meta_mod import Meta
+
+
+        class Kernel(metaclass=Meta):
+            def run(self):
+                return 1
+        """,
+    # A method's decorator that the class body defines first.
+    "r_decorator": """
+        from microcosm.walkcases import t_decorator
+
+
+        class Kernel:
+            @staticmethod
+            def _deco(function):
+                assert t_decorator.X
+                return function
+
+            @_deco
+            def run(self):
+                return 1
+        """,
+    # -- Bindings ---------------------------------------------------------------
+    # A star import binds the names its module defines.
+    "star_src": """
+        from microcosm.walkcases import t_star
+
+
+        def starred():
+            return t_star.X
+        """,
+    "r_star": """
+        from microcosm.walkcases.star_src import *  # noqa: F403
+
+
+        def run():
+            return starred()  # noqa: F405
+        """,
+    # A name with two bindings reaches both, whichever runs: here the live
+    # import is the second, and in r_alternative_first the first.
+    "slow": """
+        from microcosm.walkcases import t_alternative
+
+
+        def impl():
+            return t_alternative.X
+        """,
+    "r_alternative": """
+        try:
+            from microcosm.walkcases.absent import impl
+        except ImportError:
+            from microcosm.walkcases.slow import impl
+
+
+        def run():
+            return impl()
+        """,
+    "slow_first": """
+        from microcosm.walkcases import t_alternative_first
+
+
+        def impl():
+            return t_alternative_first.X
+        """,
+    "fast": """
+        def impl():
+            return 0
+        """,
+    "r_alternative_first": """
+        try:
+            from microcosm.walkcases.slow_first import impl
+        except ImportError:
+            from microcosm.walkcases.fast import impl
+
+
+        def run():
+            return impl()
+        """,
+    # The same inside a function, for a module bound two ways.
+    "alt_impl": """
+        from microcosm.walkcases import t_local_alternative
+
+
+        def impl():
+            return t_local_alternative.X
+        """,
+    "r_local_alternative": """
+        def run():
+            try:
+                from microcosm.walkcases import absent as backend
+            except ImportError:
+                from microcosm.walkcases import alt_impl as backend
+            return backend.impl()
+        """,
+    "alt_first": """
+        from microcosm.walkcases import t_local_alternative_first
+
+
+        def impl():
+            return t_local_alternative_first.X
+        """,
+    "r_local_alternative_first": """
+        def run():
+            try:
+                from microcosm.walkcases import alt_first as backend
+            except ImportError:
+                from microcosm.walkcases import absent as backend
+            return backend.impl()
+        """,
+    # A package's lazy export, through its module-level __getattr__.
+    "lazy.__init__": """
+        def __getattr__(name):
+            from importlib import import_module
+
+            return getattr(import_module(f"{__name__}.impl"), name)
+        """,
+    "lazy.impl": """
+        from microcosm.walkcases import t_lazy
+
+
+        class Lazy:
+            def go(self):
+                return t_lazy.X
+        """,
+    "r_lazy": """
+        from microcosm.walkcases.lazy import Lazy
+
+
+        def run():
+            return Lazy().go()
+        """,
+    # ... with __getattr__ assigned rather than defined.
+    "lazy2.__init__": """
+        def _lazy(name):
+            from importlib import import_module
+
+            return getattr(import_module(f"{__name__}.impl"), name)
+
+
+        __getattr__ = _lazy
+        """,
+    "lazy2.impl": """
+        from microcosm.walkcases import t_lazy_assigned
+
+
+        class Lazy2:
+            def go(self):
+                return t_lazy_assigned.X
+        """,
+    "r_lazy_assigned": """
+        from microcosm.walkcases.lazy2 import Lazy2
+
+
+        def run():
+            return Lazy2().go()
+        """,
+    # ... and through a star import, which __all__ lets reach the lazy name.
+    "lazy3.__init__": """
+        __all__ = ["Lazy3"]
+
+
+        def __getattr__(name):
+            from importlib import import_module
+
+            return getattr(import_module(f"{__name__}.impl"), name)
+        """,
+    "lazy3.impl": """
+        from microcosm.walkcases import t_star_lazy
+
+
+        class Lazy3:
+            def go(self):
+                return t_star_lazy.X
+        """,
+    "r_star_lazy": """
+        from microcosm.walkcases.lazy3 import *  # noqa: F403
+
+
+        def run():
+            return Lazy3().go()  # noqa: F405
+        """,
+    # -- Scopes -----------------------------------------------------------------
     # A nested function's local leaves the enclosing scope's import alone.
     "r_shadow": """
         from microcosm.walkcases import t_shadow as target
@@ -106,8 +407,58 @@ SOURCES: dict[str, str] = {
             def run(self):
                 return target.X
         """,
-    # A method's decorator reads the class body's names first, so the
-    # module's import of the same name stays unreached.
+    # ... and out of a lambda there.
+    "r_lambda_shadow": """
+        from microcosm.walkcases import t_lambda_shadow as target
+
+
+        class Kernel:
+            target = None
+            pick = staticmethod(lambda: target.X)
+
+            def run(self):
+                return self.pick()
+        """,
+    # ... and a nested class's names out of its methods, which read the
+    # enclosing function's binding instead.
+    "nest_q": """
+        from microcosm.walkcases import t_body_nested
+
+
+        def fn():
+            return t_body_nested.X
+        """,
+    "nest_p": """
+        from microcosm.walkcases import t_body_hidden
+
+
+        def fn():
+            return t_body_hidden.X
+        """,
+    "nest_s": """
+        from microcosm.walkcases import t_nested_scope
+
+
+        def fn():
+            return t_nested_scope.X
+        """,
+    "r_nested_scope": """
+        from microcosm.walkcases import nest_q as target
+
+
+        def run():
+            from microcosm.walkcases import nest_s as target
+
+            class Inner:
+                target = None
+
+                def get(self):
+                    return target.fn()
+
+            return Inner().get()
+        """,
+    # A method's decorator reads the class body's names first: the body has
+    # bound target above it, so the module's import stays unreached.
     "r_class_decorator": """
         from microcosm.walkcases import t_shadowed as target
 
@@ -118,6 +469,79 @@ SOURCES: dict[str, str] = {
             @target
             def run(self):
                 return 1
+        """,
+    # Before the body binds a name, Python reads the module's binding: a read
+    # above the binding, a binding under an if that doesn't run, a bare
+    # annotation (which binds nothing), and a decorator above the binding.
+    "r_body_before": """
+        from microcosm.walkcases import t_body_before as target
+
+
+        class Kernel:
+            seen = target.X
+            target = None
+
+            def run(self):
+                return self.seen
+        """,
+    "r_body_conditional": """
+        from microcosm.walkcases import t_body_conditional as target
+
+        ON = False
+
+
+        class Kernel:
+            if ON:
+                target = None
+            seen = target.X
+
+            def run(self):
+                return self.seen
+        """,
+    "r_body_annotation": """
+        from microcosm.walkcases import t_body_annotation as target
+
+
+        class Kernel:
+            target: object
+            seen = target.X
+
+            def run(self):
+                return self.seen
+        """,
+    "deco_body": """
+        from microcosm.walkcases import t_body_decorator
+
+
+        def wrap(function):
+            assert t_body_decorator.X
+            return function
+        """,
+    "r_body_decorator": """
+        from microcosm.walkcases.deco_body import wrap as target
+
+
+        class Kernel:
+            @target
+            def run(self):
+                return 1
+
+            target = None
+        """,
+    # A class inside a function reads such a name from the module too, never
+    # from the function, so nest_p stays unreached.
+    "r_body_nested": """
+        from microcosm.walkcases import nest_q as target
+
+
+        def run():
+            from microcosm.walkcases import nest_p as target
+
+            class Inner:
+                seen = target.fn()
+                target = None
+
+            return Inner.seen
         """,
     # ``global`` sends a name to module level, past the function's own store.
     "r_global": """
@@ -151,68 +575,10 @@ SOURCES: dict[str, str] = {
 
             return inner()
         """,
-    # -- Resolution -----------------------------------------------------------
-    # A star import binds the names its module defines.
-    "star_src": """
-        from microcosm.walkcases import t_star
-
-
-        def starred():
-            return t_star.X
-        """,
-    "r_star": """
-        from microcosm.walkcases.star_src import *  # noqa: F403
-
-
-        def run():
-            return starred()  # noqa: F405
-        """,
-    # A name with two bindings reaches both, whichever runs.
-    "fast": """
-        def impl():
-            return 0
-        """,
-    "slow": """
-        from microcosm.walkcases import t_alternative
-
-
-        def impl():
-            return t_alternative.X
-        """,
-    "r_alternative": """
-        try:
-            from microcosm.walkcases.slow import impl
-        except ImportError:
-            from microcosm.walkcases.fast import impl
-
-
-        def run():
-            return impl()
-        """,
-    # A package's lazy export, through its module-level __getattr__.
-    "lazy.__init__": """
-        def __getattr__(name):
-            from importlib import import_module
-
-            return getattr(import_module(f"{__name__}.impl"), name)
-        """,
-    "lazy.impl": """
-        from microcosm.walkcases import t_lazy
-
-
-        class Lazy:
-            def go(self):
-                return t_lazy.X
-        """,
-    "r_lazy": """
-        from microcosm.walkcases.lazy import Lazy
-
-
-        def run():
-            return Lazy().go()
-        """,
-    # -- Constants ------------------------------------------------------------
-    # A constant that holds a module stands for it.
+    # -- Aliases ----------------------------------------------------------------
+    # A constant that holds a module stands for it, through tuple unpacking,
+    # and through either branch of a condition. (A module used as a value
+    # reaches these too: see the attribute fallback.)
     "helper": """
         from microcosm.walkcases import t_alias
 
@@ -229,7 +595,6 @@ SOURCES: dict[str, str] = {
         def run():
             return _helper.compute()
         """,
-    # ... through tuple unpacking, and through either branch of a condition.
     "mod_a": """
         def fn():
             return 0
@@ -267,7 +632,8 @@ SOURCES: dict[str, str] = {
         def run():
             return _impl.fn()
         """,
-    # A class base held in a constant: run() is the base's.
+    # A class base held in a constant: run() is the base's. Only the alias
+    # leads there, since nothing else names run.
     "made3": """
         from microcosm.walkcases import t_alias_base
 
@@ -285,51 +651,190 @@ SOURCES: dict[str, str] = {
         class Kernel(_Base):
             pass
         """,
-    # -- Changes in place -----------------------------------------------------
-    "r_update": """
-        from microcosm.walkcases import t_update
+    # ... through each branch of a conditional (the walk follows both), each
+    # element of a tuple, getattr, a subscript and import_module.
+    "bases": """
+        from microcosm.walkcases import (
+            t_base_else,
+            t_base_first,
+            t_base_getattr,
+            t_base_if,
+            t_base_import,
+            t_base_second,
+            t_base_subscript,
+        )
 
-        _TABLE = {}
-        _TABLE.update(t_update.ROWS)
+
+        class IfBase:
+            def run(self):
+                return t_base_if.X
+
+
+        class ElseBase:
+            def run(self):
+                return t_base_else.X
+
+
+        class FirstBase:
+            def run(self):
+                return t_base_first.X
+
+
+        class SecondBase:
+            def run(self):
+                return t_base_second.X
+
+
+        class AttrBase:
+            def run(self):
+                return t_base_getattr.X
+
+
+        class SubscriptBase:
+            def __class_getitem__(cls, item):
+                return cls
+
+            def run(self):
+                return t_base_subscript.X
+
+
+        class ImportBase:
+            def run(self):
+                return t_base_import.X
+        """,
+    "r_base_conditional": """
+        from microcosm.walkcases import bases
+
+        FLAG = False
+        _Base = bases.IfBase if FLAG else bases.ElseBase
+
+
+        class Kernel(_Base):
+            pass
+        """,
+    "r_base_tuple": """
+        from microcosm.walkcases import bases
+
+        _First, _Second = bases.FirstBase, bases.SecondBase
+
+
+        class Kernel(_Second):
+            pass
+        """,
+    "r_base_getattr": """
+        from microcosm.walkcases import bases
+
+        _Base = getattr(bases, "AttrBase")
+
+
+        class Kernel(_Base):
+            pass
+        """,
+    "r_base_subscript": """
+        from microcosm.walkcases import bases
+
+        _Base = bases.SubscriptBase[int]
+
+
+        class Kernel(_Base):
+            pass
+        """,
+    "r_import_alias_base": """
+        import importlib
+
+        _impl = importlib.import_module("microcosm.walkcases.bases")
+
+
+        class Kernel(_impl.ImportBase):
+            pass
+        """,
+    # A module alias through getattr with a literal name.
+    "gmod": """
+        from microcosm.walkcases import t_getattr_alias
+
+
+        def fn():
+            return t_getattr_alias.X
+        """,
+    "r_getattr_alias": """
+        import microcosm.walkcases.gmod  # noqa: F401
+        from microcosm import walkcases
+
+        _impl = getattr(walkcases, "gmod")
 
 
         def run():
-            return _TABLE
+            return _impl.fn()
         """,
-    "r_setitem": """
-        from microcosm.walkcases import t_setitem
+    # -- Inheritance ------------------------------------------------------------
+    # The base's run() calls the root class's override.
+    "made6": """
+        class Base:
+            def run(self):
+                return self.step()
 
-        _TABLE = {}
-        _TABLE["key"] = t_setitem.X
-
-
-        def run():
-            return _TABLE
+            def step(self):
+                return 0
         """,
-    # Another module the walk reads fills the registry run() reads.
-    "registry": """
-        REGISTRY = []
+    "r_override": """
+        from microcosm.walkcases import t_override
+        from microcosm.walkcases.made6 import Base
+
+
+        class Kernel(Base):
+            def step(self):
+                return t_override.X
         """,
-    "registrar": """
-        from microcosm.walkcases import t_registrar
-        from microcosm.walkcases.registry import REGISTRY
-
-        REGISTRY.append(t_registrar.X)
+    # A subscripted base in the class statement itself.
+    "made9": """
+        from microcosm.walkcases import t_subscript
 
 
-        def helper():
-            return 1
+        class Base:
+            def __class_getitem__(cls, item):
+                return cls
+
+            def run(self):
+                return t_subscript.X
         """,
-    "r_registry": """
-        from microcosm.walkcases import registrar
-        from microcosm.walkcases.registry import REGISTRY
+    "r_subscript": """
+        from microcosm.walkcases.made9 import Base
 
 
-        def run():
-            return REGISTRY, registrar.helper()
+        class Kernel(Base[int]):
+            pass
         """,
-    # -- Attributes of objects the walk can't type ------------------------------
-    # Thing's dunders count wherever Thing does (see Implicit calls).
+    # -- Self and cls -----------------------------------------------------------
+    # A method called through self. (The class-attribute fallback reaches
+    # it as well.)
+    "r_self_method": """
+        from microcosm.walkcases import t_self_method
+
+
+        class Kernel:
+            def run(self):
+                return self.pick()
+
+            def pick(self):
+                return t_self_method.X
+        """,
+    # A module the class body imports, called through self.
+    "cmod": """
+        from microcosm.walkcases import t_class_import
+
+
+        def fn():
+            return t_class_import.X
+        """,
+    "r_class_import": """
+        class Kernel:
+            from microcosm.walkcases import cmod as mod
+
+            def run(self):
+                return self.mod.fn()
+        """,
+    # -- Implicit calls ---------------------------------------------------------
+    # Thing's dunders count wherever Thing does.
     "made": """
         from microcosm.walkcases import t_add, t_float, t_go, t_prop
 
@@ -352,114 +857,6 @@ SOURCES: dict[str, str] = {
         def make():
             return Thing()
         """,
-    "r_prop": """
-        from microcosm.walkcases.made import make
-
-
-        def run():
-            return make().prop
-        """,
-    # A module passed as an argument.
-    "helper2": """
-        from microcosm.walkcases import t_value
-
-
-        def compute2():
-            return t_value.X
-        """,
-    "use": """
-        def use(module):
-            return module.compute2()
-        """,
-    "r_value": """
-        from microcosm.walkcases import helper2
-        from microcosm.walkcases.use import use
-
-
-        def run():
-            return use(helper2)
-        """,
-    # The base's run() calls the root class's override.
-    "made6": """
-        class Base:
-            def run(self):
-                return self.step()
-
-            def step(self):
-                return 0
-        """,
-    "r_override": """
-        from microcosm.walkcases import t_override
-        from microcosm.walkcases.made6 import Base
-
-
-        class Kernel(Base):
-            def step(self):
-                return t_override.X
-        """,
-    # -- Literal names ----------------------------------------------------------
-    "r_getattr": """
-        from microcosm.walkcases.made import make
-
-
-        def run():
-            return getattr(make(), "go")()
-        """,
-    "made7": """
-        from microcosm.walkcases import t_setattr
-
-
-        class Thing:
-            @property
-            def level(self):
-                return 0
-
-            @level.setter
-            def level(self, value):
-                assert t_setattr.X
-        """,
-    "r_setattr": """
-        from microcosm.walkcases.made7 import Thing
-
-
-        def run():
-            thing = Thing()
-            setattr(thing, "level", 1)
-            return thing
-        """,
-    "made4": """
-        from microcosm.walkcases import t_attrgetter
-
-
-        class Thing:
-            @property
-            def named(self):
-                return t_attrgetter.X
-        """,
-    "r_attrgetter": """
-        from operator import attrgetter
-
-        from microcosm.walkcases.made4 import Thing
-
-
-        def run():
-            return attrgetter("named")(Thing())
-        """,
-    "imp_mod": """
-        from microcosm.walkcases import t_import_module
-
-
-        def fn():
-            return t_import_module.X
-        """,
-    "r_import_module": """
-        import importlib
-
-
-        def run():
-            return importlib.import_module("microcosm.walkcases.imp_mod").fn()
-        """,
-    # -- Implicit calls ---------------------------------------------------------
     "r_float": """
         from microcosm.walkcases.made import make
 
@@ -485,7 +882,7 @@ SOURCES: dict[str, str] = {
 
             @classmethod
             def _missing_(cls, value):
-                return t_sunder.X
+                return cls.A if t_sunder.X else None
         """,
     "r_sunder": """
         from microcosm.walkcases.enum_mod import Kind
@@ -536,6 +933,8 @@ SOURCES: dict[str, str] = {
             def run(self):
                 return 1
         """,
+    # A dataclass field's default factory. Importing made2 also runs Base's
+    # body, which the walk doesn't reach from here (see BLIND).
     "r_factory": """
         from dataclasses import dataclass, field
 
@@ -558,25 +957,581 @@ SOURCES: dict[str, str] = {
             f = lambda: t_lambda.X  # noqa: E731
             return f()
         """,
-    # A method's decorator, held in a class attribute.
-    "deco_mod": """
-        from microcosm.walkcases import t_decorator
+    # -- Import-time code -------------------------------------------------------
+    # Headers of compound statements at module level, and in a class body.
+    "r_headers": """
+        from contextlib import nullcontext
+
+        from microcosm.walkcases import (
+            t_header_for,
+            t_header_if,
+            t_header_match,
+            t_header_try,
+            t_header_while,
+            t_header_with,
+        )
+
+        if t_header_if.X:
+            VALUE = 1
+        else:
+            VALUE = 2
+        while not t_header_while.X:
+            pass
+        for _row in t_header_for.ROWS:
+            pass
+        with nullcontext(t_header_with.X):
+            pass
+        match t_header_match.ROWS:
+            case {"key": found}:
+                FOUND = found
+            case _:
+                FOUND = None
+        try:
+            raise ValueError
+        except ValueError if t_header_try.X else TypeError:
+            pass
 
 
-        def wrap(function):
-            assert t_decorator.X
-            return function
+        def run():
+            return VALUE
         """,
-    "r_decorator": """
-        from microcosm.walkcases import deco_mod
+    "r_class_header": """
+        from microcosm.walkcases import t_class_header
 
 
         class Kernel:
-            _deco = deco_mod.wrap
+            if t_class_header.X:
+                LEVEL = 1
+            else:
+                LEVEL = 2
 
-            @_deco
             def run(self):
+                return self.LEVEL
+        """,
+    # Calls at module level that fill a global or a table.
+    "r_fill_global": """
+        from microcosm.walkcases import t_fill_global
+
+        _CACHE = None
+
+
+        def _fill():
+            global _CACHE
+            _CACHE = t_fill_global.X
+
+
+        _fill()
+
+
+        def run():
+            return _CACHE
+        """,
+    "r_setup_call": """
+        from microcosm.walkcases import t_setup_call
+
+        _TABLE = {}
+
+
+        def _setup():
+            _TABLE.update({"key": t_setup_call.X})
+
+
+        _setup()
+
+
+        def run():
+            return _TABLE
+        """,
+    "r_fill_call": """
+        from microcosm.walkcases import t_fill_call
+
+        _TABLE = {}
+
+
+        def _fill(table):
+            table["key"] = t_fill_call.X
+
+
+        _fill(_TABLE)
+
+
+        def run():
+            return _TABLE
+        """,
+    # A del from a table run() reads, and a store through an alias of it.
+    # (Changes by name reaches these as well.)
+    "r_del_item": """
+        from microcosm.walkcases import t_del_item
+
+        _TABLE = {"a": 1, "b": 2}
+        del _TABLE[t_del_item.X and "a"]
+
+
+        def run():
+            return _TABLE
+        """,
+    "r_mutation_alias": """
+        from microcosm.walkcases import t_mutation_alias
+
+        _TABLE = {}
+        _VIEW = _TABLE
+        _VIEW["key"] = t_mutation_alias.X
+
+
+        def run():
+            return _TABLE
+        """,
+    # The same through a call's result, which no name links to the table,
+    # so only the scan of import-time code reaches the targets.
+    "r_del_hidden": """
+        from microcosm.walkcases import t_del_hidden
+
+        _TABLE = {"a": 1, "b": 2}
+
+
+        def _table():
+            return _TABLE
+
+
+        _VIEW = _table()
+        del _VIEW[t_del_hidden.X and "a"]
+
+
+        def run():
+            return _TABLE
+        """,
+    "r_store_hidden": """
+        from microcosm.walkcases import t_store_hidden
+
+        _TABLE = {}
+
+
+        def _table():
+            return _TABLE
+
+
+        _VIEW = _table()
+        _VIEW["key"] = t_store_hidden.X
+
+
+        def run():
+            return _TABLE
+        """,
+    # Patches to the root class.
+    "patch_helper": """
+        from microcosm.walkcases import t_setattr_patch
+
+
+        def helper():
+            return t_setattr_patch.X
+        """,
+    "r_setattr_patch": """
+        from microcosm.walkcases.patch_helper import helper
+
+
+        class Kernel:
+            def run(self):
+                return self.helper()
+
+
+        setattr(Kernel, "helper", staticmethod(helper))
+        """,
+    "r_delattr_patch": """
+        from microcosm.walkcases import t_delattr_patch
+
+
+        class Base:
+            def pick(self):
+                return 0
+
+
+        class Kernel(Base):
+            def pick(self):
                 return 1
+
+            def run(self):
+                return self.pick()
+
+
+        delattr(Kernel, "pick" if t_delattr_patch.X else "run")
+        """,
+    # A reached class's body changing its own attribute.
+    "r_class_body_update": """
+        from microcosm.walkcases import t_class_body_update
+
+
+        class Kernel:
+            TABLE = {}
+            TABLE.update({"key": t_class_body_update.X})
+
+            def run(self):
+                return self.TABLE
+        """,
+    # -- Changes by name --------------------------------------------------------
+    "r_update": """
+        from microcosm.walkcases import t_update
+
+        _TABLE = {}
+        _TABLE.update(t_update.ROWS)
+
+
+        def run():
+            return _TABLE
+        """,
+    "r_setitem": """
+        from microcosm.walkcases import t_setitem
+
+        _TABLE = {}
+        _TABLE["key"] = t_setitem.X
+
+
+        def run():
+            return _TABLE
+        """,
+    # A method call inside an assignment.
+    "r_setdefault": """
+        from microcosm.walkcases import t_setdefault
+
+        _TABLE = {}
+        _ROW = _TABLE.setdefault("key", t_setdefault.X)
+
+
+        def run():
+            return _TABLE
+        """,
+    # The body of a class nothing reaches still runs at import, and each of
+    # its statements changes a table run() reads.
+    "r_class_fill": """
+        from microcosm.walkcases import (
+            t_class_fill_call,
+            t_class_fill_del,
+            t_class_fill_item,
+            t_class_fill_method,
+            t_class_fill_view,
+        )
+
+        _TABLE = {}
+        _ROWS = []
+        _VIEW = _TABLE
+
+
+        def _fill(table):
+            table["call"] = t_class_fill_call.X
+
+
+        class Filler:
+            _TABLE.update({"method": t_class_fill_method.X})
+            _TABLE["item"] = t_class_fill_item.X
+            del _ROWS[t_class_fill_del.X :]
+            _fill(_TABLE)
+            _VIEW["view"] = t_class_fill_view.X
+
+
+        def run():
+            return _TABLE, _ROWS
+        """,
+    # Another module the walk reads fills the registry run() reads.
+    "registry": """
+        REGISTRY = []
+        """,
+    "registrar": """
+        from microcosm.walkcases import t_registrar
+        from microcosm.walkcases.registry import REGISTRY
+
+        REGISTRY.append(t_registrar.X)
+
+
+        def helper():
+            return 1
+        """,
+    "r_registry": """
+        from microcosm.walkcases import registrar
+        from microcosm.walkcases.registry import REGISTRY
+
+
+        def run():
+            return REGISTRY, registrar.helper()
+        """,
+    # -- Attribute fallback -----------------------------------------------------
+    "r_prop": """
+        from microcosm.walkcases.made import make
+
+
+        def run():
+            return make().prop
+        """,
+    # A module passed as an argument, by name and by a dotted chain.
+    "helper2": """
+        from microcosm.walkcases import t_value
+
+
+        def compute2():
+            return t_value.X
+        """,
+    "use": """
+        def use(module):
+            return module.compute2()
+        """,
+    "r_value": """
+        from microcosm.walkcases import helper2
+        from microcosm.walkcases.use import use
+
+
+        def run():
+            return use(helper2)
+        """,
+    "dot.__init__": "",
+    "dot.helper": """
+        from microcosm.walkcases import t_dotted
+
+
+        def compute2():
+            return t_dotted.X
+        """,
+    "r_dotted": """
+        import microcosm.walkcases.dot.helper
+        from microcosm.walkcases.use import use
+
+
+        def run():
+            return use(microcosm.walkcases.dot.helper)
+        """,
+    # A namespace sub-package (nsdir has no __init__.py) under a module used
+    # as a value. The walk must still settle.
+    "nspkg.__init__": "",
+    "nspkg.nsdir.leaf": """
+        from microcosm.walkcases import t_namespace
+
+
+        def fn():
+            return t_namespace.X
+        """,
+    "r_namespace": """
+        import importlib
+
+        import microcosm.walkcases.nspkg.nsdir.leaf  # noqa: F401
+
+
+        def run():
+            package = importlib.import_module("microcosm.walkcases.nspkg")
+            return package.nsdir.leaf.fn()
+        """,
+    # -- Literal names ----------------------------------------------------------
+    "r_getattr": """
+        from microcosm.walkcases.made import make
+
+
+        def run():
+            return getattr(make(), "go")()
+        """,
+    "made7": """
+        from microcosm.walkcases import t_setattr
+
+
+        class Thing:
+            @property
+            def level(self):
+                return 0
+
+            @level.setter
+            def level(self, value):
+                assert t_setattr.X
+        """,
+    "r_setattr": """
+        from microcosm.walkcases.made7 import Thing
+
+
+        def run():
+            thing = Thing()
+            setattr(thing, "level", 1)
+            return thing
+        """,
+    "made8": """
+        from microcosm.walkcases import t_delattr, t_hasattr
+
+
+        class Probe:
+            @property
+            def ready(self):
+                return t_hasattr.X
+
+            @property
+            def item(self):
+                return 0
+
+            @item.deleter
+            def item(self):
+                assert t_delattr.X
+        """,
+    "r_hasattr": """
+        from microcosm.walkcases.made8 import Probe
+
+
+        def run():
+            return hasattr(Probe(), "ready")
+        """,
+    "r_delattr": """
+        from microcosm.walkcases.made8 import Probe
+
+
+        def run():
+            probe = Probe()
+            delattr(probe, "item")
+            return probe
+        """,
+    "made12": """
+        from microcosm.walkcases import t_getattr_constant
+
+
+        class Gauge:
+            @property
+            def probe(self):
+                return t_getattr_constant.X
+        """,
+    "r_getattr_constant": """
+        from microcosm.walkcases.made12 import Gauge
+
+        _NAME = "probe"
+
+
+        def run():
+            return getattr(Gauge(), _NAME)
+        """,
+    "made4": """
+        from microcosm.walkcases import t_attrgetter
+
+
+        class Thing:
+            @property
+            def named(self):
+                return t_attrgetter.X
+        """,
+    "r_attrgetter": """
+        from operator import attrgetter
+
+        from microcosm.walkcases.made4 import Thing
+
+
+        def run():
+            return attrgetter("named")(Thing())
+        """,
+    "made13": """
+        from microcosm.walkcases import t_methodcaller
+
+
+        class Pinger:
+            def ping(self):
+                return t_methodcaller.X
+        """,
+    "r_methodcaller": """
+        from operator import methodcaller
+
+        from microcosm.walkcases.made13 import Pinger
+
+
+        def run():
+            return methodcaller("ping")(Pinger())
+        """,
+    # A match class pattern reads its keyword names, and the names in an
+    # explicit __match_args__ for its positional ones.
+    "made10": """
+        from microcosm.walkcases import t_match_keyword, t_match_positional
+
+
+        class Point:
+            __match_args__ = ("left",)
+
+            @property
+            def depth(self):
+                return t_match_keyword.X
+
+            @property
+            def left(self):
+                return t_match_positional.X
+        """,
+    "r_match_keyword": """
+        from microcosm.walkcases.made10 import Point
+
+
+        def run():
+            match Point():
+                case Point(depth=value):
+                    return value
+            return None
+        """,
+    "r_match_positional": """
+        from microcosm.walkcases.made10 import Point
+
+
+        def run():
+            match Point():
+                case Point(value):
+                    return value
+            return None
+        """,
+    "imp_mod": """
+        from microcosm.walkcases import t_import_module
+
+
+        def fn():
+            return t_import_module.X
+        """,
+    "r_import_module": """
+        import importlib
+
+
+        def run():
+            return importlib.import_module("microcosm.walkcases.imp_mod").fn()
+        """,
+    "rel_mod": """
+        from microcosm.walkcases import t_import_relative
+
+
+        def fn():
+            return t_import_relative.X
+        """,
+    "r_import_relative": """
+        import importlib
+
+
+        def run():
+            return importlib.import_module(".rel_mod", __package__).fn()
+        """,
+    # __import__ with a fromlist returns the module it names.
+    "imp_leaf": """
+        from microcosm.walkcases import t_import_from
+
+
+        def fn():
+            return t_import_from.X
+        """,
+    "r_import_from": """
+        def run():
+            module = __import__("microcosm.walkcases.imp_leaf", fromlist=["fn"])
+            return module.fn()
+        """,
+    # -- What the walk can't see ------------------------------------------------
+    # A decorator records _entry, and run() calls whatever the registry holds.
+    "reg": """
+        REGISTRY = []
+
+
+        def register(function):
+            REGISTRY.append(function)
+            return function
+        """,
+    "r_registry_decorator": """
+        from microcosm.walkcases import t_registry_decorator
+        from microcosm.walkcases.reg import REGISTRY, register
+
+
+        @register
+        def _entry():
+            return t_registry_decorator.X
+
+
+        def run():
+            return [entry() for entry in REGISTRY]
         """,
 }
 
@@ -586,30 +1541,52 @@ _THING = {"add", "float"}
 
 #: (root module, qualname) -> the targets its walk reaches, exactly.
 ROOTS: dict[tuple[str, str], set[str]] = {
+    # Bodies
+    ("r_default", "run"): {"default"},
+    ("r_metaclass", "Kernel.run"): {"metaclass"},
+    ("r_decorator", "Kernel.run"): {"decorator"},
+    # Bindings
+    ("r_star", "run"): {"star"},
+    ("r_alternative", "run"): {"alternative"},
+    ("r_alternative_first", "run"): {"alternative_first"},
+    ("r_local_alternative", "run"): {"local_alternative"},
+    ("r_local_alternative_first", "run"): {"local_alternative_first"},
+    ("r_lazy", "run"): {"lazy"},
+    ("r_lazy_assigned", "run"): {"lazy_assigned"},
+    ("r_star_lazy", "run"): {"star_lazy"},
+    # Scopes
     ("r_shadow", "run"): {"shadow"},
     ("r_comprehension", "run"): {"comprehension"},
     ("r_sibling", "run"): {"sibling", "local"},
     ("r_class_scope", "Holder.run"): {"class_scope"},
+    ("r_lambda_shadow", "Kernel.run"): {"lambda_shadow"},
+    ("r_nested_scope", "run"): {"nested_scope"},
     ("r_class_decorator", "Kernel.run"): set(),
+    ("r_body_before", "Kernel.run"): {"body_before"},
+    ("r_body_conditional", "Kernel.run"): {"body_conditional"},
+    ("r_body_annotation", "Kernel.run"): {"body_annotation"},
+    ("r_body_decorator", "Kernel.run"): {"body_decorator"},
+    ("r_body_nested", "run"): {"body_nested"},
     ("r_global", "run"): {"global"},
     ("r_nonlocal", "run"): {"nonlocal"},
-    ("r_star", "run"): {"star"},
-    ("r_alternative", "run"): {"alternative"},
-    ("r_lazy", "run"): {"lazy"},
+    # Aliases
     ("r_alias", "run"): {"alias"},
     ("r_unpack", "run"): {"unpack"},
     ("r_conditional", "run"): {"conditional"},
     ("r_alias_base", "Kernel.run"): {"alias_base"},
-    ("r_update", "run"): {"update"},
-    ("r_setitem", "run"): {"setitem"},
-    ("r_registry", "run"): {"registrar"},
-    ("r_prop", "run"): {"prop", *_THING},
-    ("r_value", "run"): {"value"},
+    ("r_base_conditional", "Kernel.run"): {"base_if", "base_else"},
+    ("r_base_tuple", "Kernel.run"): {"base_first", "base_second"},
+    ("r_base_getattr", "Kernel.run"): {"base_getattr"},
+    ("r_base_subscript", "Kernel.run"): {"base_subscript"},
+    ("r_import_alias_base", "Kernel.run"): {"base_import"},
+    ("r_getattr_alias", "run"): {"getattr_alias"},
+    # Inheritance
     ("r_override", "Kernel.run"): {"override"},
-    ("r_getattr", "run"): {"go", *_THING},
-    ("r_setattr", "run"): {"setattr"},
-    ("r_attrgetter", "run"): {"attrgetter"},
-    ("r_import_module", "run"): {"import_module"},
+    ("r_subscript", "Kernel.run"): {"subscript"},
+    # Self and cls
+    ("r_self_method", "Kernel.run"): {"self_method"},
+    ("r_class_import", "Kernel.run"): {"class_import"},
+    # Implicit calls
     ("r_float", "run"): {"float", *_THING},
     ("r_add", "run"): {"add", *_THING},
     ("r_sunder", "run"): {"sunder"},
@@ -617,18 +1594,98 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_root_base", "Kernel.run"): {"root_base"},
     ("r_factory", "run"): {"factory"},
     ("r_lambda", "run"): {"lambda"},
-    ("r_decorator", "Kernel.run"): {"decorator"},
+    # Import-time code
+    ("r_headers", "run"): {
+        "header_for",
+        "header_if",
+        "header_match",
+        "header_try",
+        "header_while",
+        "header_with",
+    },
+    ("r_class_header", "Kernel.run"): {"class_header"},
+    ("r_fill_global", "run"): {"fill_global"},
+    ("r_setup_call", "run"): {"setup_call"},
+    ("r_fill_call", "run"): {"fill_call"},
+    ("r_del_item", "run"): {"del_item"},
+    ("r_mutation_alias", "run"): {"mutation_alias"},
+    ("r_del_hidden", "run"): {"del_hidden"},
+    ("r_store_hidden", "run"): {"store_hidden"},
+    ("r_setattr_patch", "Kernel.run"): {"setattr_patch"},
+    ("r_delattr_patch", "Kernel.run"): {"delattr_patch"},
+    ("r_class_body_update", "Kernel.run"): {"class_body_update"},
+    # Changes by name
+    ("r_update", "run"): {"update"},
+    ("r_setitem", "run"): {"setitem"},
+    ("r_setdefault", "run"): {"setdefault"},
+    ("r_class_fill", "run"): {
+        "class_fill_call",
+        "class_fill_del",
+        "class_fill_item",
+        "class_fill_method",
+        "class_fill_view",
+    },
+    ("r_registry", "run"): {"registrar"},
+    # Attribute fallback
+    ("r_prop", "run"): {"prop", *_THING},
+    ("r_value", "run"): {"value"},
+    ("r_dotted", "run"): {"dotted"},
+    ("r_namespace", "run"): {"namespace"},
+    # Literal names
+    ("r_getattr", "run"): {"go", *_THING},
+    ("r_setattr", "run"): {"setattr"},
+    ("r_hasattr", "run"): {"hasattr"},
+    ("r_delattr", "run"): {"delattr"},
+    ("r_getattr_constant", "run"): {"getattr_constant"},
+    ("r_attrgetter", "run"): {"attrgetter"},
+    ("r_methodcaller", "run"): {"methodcaller"},
+    ("r_match_keyword", "run"): {"match_keyword"},
+    ("r_match_positional", "run"): {"match_positional"},
+    ("r_import_module", "run"): {"import_module"},
+    ("r_import_relative", "run"): {"import_relative"},
+    ("r_import_from", "run"): {"import_from"},
+    # What the walk can't see
+    ("r_registry_decorator", "run"): set(),
 }
+
+#: Targets a root's walk reaches that its run doesn't read. The walk reaches
+#: every dunder of a class it references, and both branches of a condition.
+OVER: dict[tuple[str, str], set[str]] = {
+    ("r_float", "run"): {"add"},
+    ("r_add", "run"): {"float"},
+    ("r_prop", "run"): _THING,
+    ("r_getattr", "run"): _THING,
+    ("r_base_conditional", "Kernel.run"): {"base_if"},
+    ("r_base_tuple", "Kernel.run"): {"base_first"},
+}
+
+#: Targets a root's run reads that its walk doesn't reach, each one a line of
+#: the walk's "What it can't see".
+BLIND: dict[tuple[str, str], set[str]] = {
+    # Importing made2 runs Base's body, a class the walk doesn't reach from
+    # factory. Nothing hands that value to the run.
+    ("r_factory", "run"): {"base_attr"},
+    # Registration: the decorator records _entry, and run() calls it.
+    ("r_registry_decorator", "run"): {"registry_decorator"},
+}
+
+
+def expected_reads(root: tuple[str, str]) -> set[str]:
+    """The targets a root's run must read: its walk's, less OVER, plus BLIND."""
+
+    return (ROOTS[root] - OVER.get(root, set())) | BLIND.get(root, set())
 
 
 def write(root: Path) -> dict[str, Path]:
     """Write :data:`SOURCES` under ``root``; return their modules' paths."""
 
-    base = root / "packages" / "cases" / "src" / "microcosm" / "walkcases"
-    for name, source in SOURCES.items():
+    source = root / "packages" / "cases" / "src"
+    base = source.joinpath(*PACKAGE.split("."))
+    for name, text in SOURCES.items():
         path = base.joinpath(*name.split(".")).with_suffix(".py")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(textwrap.dedent(source).lstrip("\n"), encoding="utf-8")
+        path.write_text(textwrap.dedent(text).lstrip("\n"), encoding="utf-8")
+    (source / "walkcase_reads.py").write_text(_READS, encoding="utf-8")
     return module_paths(root)
 
 
@@ -638,4 +1695,97 @@ def targets(walked: Reach) -> set[str]:
     prefix = f"{PACKAGE}.t_"
     return {
         name.removeprefix(prefix) for name in walked.modules if name.startswith(prefix)
+    }
+
+
+# Imports each root's module afresh and calls the root; prints, for each root,
+# the targets Python read, or the error the root raised.
+_DRIVER = """
+import importlib, json, sys
+
+source, package, roots = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+sys.path.insert(0, source)
+import walkcase_reads
+
+found = {}
+for module, qualname in roots:
+    for name in [name for name in sys.modules if name.split(".")[0] == "microcosm"]:
+        del sys.modules[name]
+    walkcase_reads.READS.clear()
+    try:
+        loaded = importlib.import_module(f"{package}.{module}")
+        owner, _, name = qualname.rpartition(".")
+        root = getattr(getattr(loaded, owner)(), name) if owner else getattr(loaded, name)
+        root()
+    except Exception as error:
+        found[f"{module}:{qualname}"] = f"{type(error).__name__}: {error}"
+    else:
+        found[f"{module}:{qualname}"] = sorted(walkcase_reads.READS)
+print(json.dumps(found))
+"""
+
+
+def compose(
+    root: Path, roots: Iterable[tuple[str, str]]
+) -> tuple[tuple[str, str], dict[str, Path]]:
+    """Write a module whose ``run()`` runs each of ``roots`` in turn.
+
+    ``root`` holds what :func:`write` wrote. Returns the new root, named for
+    the roots it runs, and the tree's module paths with it.
+    """
+
+    picked = sorted(roots)
+    digest = sha256(json.dumps(picked).encode()).hexdigest()[:12]
+    lines = ["def run():"]
+    for module, qualname in picked:
+        owner, _, name = qualname.rpartition(".")
+        lines.append(f"    from {PACKAGE} import {module}")
+        lines.append(
+            f"    {module}.{owner}().{name}()" if owner else f"    {module}.{name}()"
+        )
+    module = f"c_{digest}"
+    base = root.joinpath("packages", "cases", "src", *PACKAGE.split("."))
+    (base / f"{module}.py").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return (module, "run"), module_paths(root)
+
+
+def python_reads(
+    root: Path, roots: Iterable[tuple[str, str]] | None = None
+) -> dict[tuple[str, str], set[str] | str]:
+    """Run each root (by default each in :data:`ROOTS`) for real; the targets
+    Python read.
+
+    ``root`` holds what :func:`write` wrote. One interpreter with no site
+    packages and no environment (``-I -S``) imports each root's module from
+    scratch, then calls the root (for ``Class.method``, on a new instance). A
+    root that raises maps to its error's text instead.
+    """
+
+    picked = sorted(ROOTS if roots is None else roots)
+
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            _DRIVER,
+            str(root / "packages" / "cases" / "src"),
+            PACKAGE,
+            json.dumps(picked),
+        ],
+        capture_output=True,
+        check=True,
+        cwd=root,
+        text=True,
+    )
+    found = json.loads(done.stdout)
+    return {
+        (module, qualname): (
+            set(reads)
+            if isinstance(reads := found[f"{module}:{qualname}"], list)
+            else reads
+        )
+        for module, qualname in picked
     }
