@@ -87,16 +87,21 @@ __all__ = [
     "LOCAL_AREA_REQUIRED_RELEASE_FILES",
     "NATIONAL_DEFAULT_DATASET_ROLE",
     "NON_DEFAULT_LOCAL_AREA_DATASET_ROLE",
-    "PROPOSED_US_RELEASES",
     "PUBLISHER_CLAIM_BASIS",
     "RELEASE_MANIFEST_FILE_ROLE",
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "RELEASE_ROLES",
     "REQUIRED_RELEASE_FILES",
     "RETIRED_BUILD_FIELDS",
+    "US_EVIDENCE_RELEASE_ID",
     "US_FISCAL_STORED_INPUTS_STAGE",
     "US_LOCAL_AREA_SPM_MEASUREMENT_STAGE",
     "US_LOCAL_AREA_STORED_INPUTS_STAGE",
+    "US_LOCAL_RELEASE_ID",
+    "US_NATIONAL_RELEASE_ID",
+    "US_RECEIPT_DONOR_RELEASE_ID",
+    "US_RELEASES",
+    "US_RELEASE_DATASET_FILES",
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
     "US_SPM_MEASUREMENT_EVIDENCE_KEY",
     "US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS",
@@ -105,6 +110,7 @@ __all__ = [
     "US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION",
     "ReleaseContractError",
     "compatibility_claim_declarer_error",
+    "is_us_release",
     "line_for_release_id",
     "publishes_to_build_folder",
     "release_artifact_role",
@@ -215,36 +221,64 @@ _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _ROLE_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 
 
-#: The stable releases proposed for US builds, with each one's role in
-#: ``releases.json``: in the one ``policyengine/populace-us`` repository, the
-#: national release (the repository's default) and the local-area release,
-#: whose builds keep their IDs and the file name
-#: ``populace_us_2024_acs_local.h5``. They are proposals the US data builder
-#: has not agreed yet, so nothing reads them: :func:`publishes_to_build_folder`
-#: names no US release, and every US release keeps tags and ``latest.json``.
-#: Once they are agreed, that function names them, the US builders write the
-#: build-folder manifests under them and the registry's US entries name them.
-PROPOSED_US_RELEASES: Mapping[str, str] = MappingProxyType(
+#: The US repository's releases in the build-folder layout (microcosm#1570),
+#: each with its role in ``releases.json``: the national release, the
+#: repository's default, holds every national build however it was made
+#: (calibrated, SPM source enrichments, compatibility recertifications,
+#: exact-k builds); the local-area release holds the ACS builds; and
+#: receipt-qualified donors and evidence-tier builds have releases of their
+#: own, which are never the default. Builds keep their ``populace-us-2024-…``
+#: IDs.
+US_NATIONAL_RELEASE_ID = "microcosm-us-2024-national"
+US_LOCAL_RELEASE_ID = "microcosm-us-2024-local"
+US_RECEIPT_DONOR_RELEASE_ID = "microcosm-us-2024-receipt-donor"
+US_EVIDENCE_RELEASE_ID = "microcosm-us-2024-evidence"
+US_RELEASES: Mapping[str, str] = MappingProxyType(
     {
-        "populace-us-2024-national": "national",
-        "populace-us-2024-local": "local_area",
+        US_NATIONAL_RELEASE_ID: "national",
+        US_LOCAL_RELEASE_ID: "local_area",
+        US_RECEIPT_DONOR_RELEASE_ID: "national",
+        US_EVIDENCE_RELEASE_ID: "national",
     }
 )
+#: The dataset file a new build of each US release declares. Builds moved by
+#: the switch keep the ``populace_us_2024…`` names their tags had.
+US_RELEASE_DATASET_FILES: Mapping[str, str] = MappingProxyType(
+    {
+        US_NATIONAL_RELEASE_ID: "microcosm_us_2024.h5",
+        US_LOCAL_RELEASE_ID: "microcosm_us_2024_acs_local.h5",
+        US_RECEIPT_DONOR_RELEASE_ID: "microcosm_us_2024_receipt_qualified.h5",
+        US_EVIDENCE_RELEASE_ID: "microcosm_us_2024.h5",
+    }
+)
+#: The prefix of every US build ID, and of every US release in the tagged
+#: layout, where the release was the build.
+_US_BUILD_ID_PREFIX = "populace-us-"
+
+
+def is_us_release(release_id: str) -> bool:
+    """Whether ``release_id`` is a US release: one of :data:`US_RELEASES`, or
+    a US build's own release in the tagged layout (``populace-us-…``).
+
+    The release names are matched exactly: spec-engine build IDs such as
+    ``microcosm-us-2024-stacked-…`` share their prefix.
+    """
+    return release_id in US_RELEASES or release_id.startswith(_US_BUILD_ID_PREFIX)
 
 
 def publishes_to_build_folder(release_id: str) -> bool:
     """Whether builds of ``release_id`` publish into their own build folders.
 
     This is the one place that says which releases use the build-folder
-    layout: the UK national, dense and local-area releases. Every US release
-    keeps the tagged layout and ``latest.json`` until the stable releases US
-    builds publish under (:data:`PROPOSED_US_RELEASES`) are agreed with the
-    US data builder; this function then names them too, and their builders
-    write the same manifests.
+    layout: the UK national, dense and local-area releases, and the US
+    releases (:data:`US_RELEASES`). A US build's own release in the tagged
+    layout (``populace-us-…``) keeps tags, for the builds that have only
+    their tag.
     """
     return (
         release_id in {_UK_NATIONAL_RELEASE_ID, _UK_DENSE_RELEASE_ID}
         or _UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(release_id) is not None
+        or release_id in US_RELEASES
     )
 
 
@@ -1170,7 +1204,7 @@ _UK_CERTIFICATION_REQUIRED_FIELDS = frozenset(
 
 def required_release_files(release_id: str) -> tuple[str, ...]:
     """Files required for a release id's country-specific contract."""
-    if release_id.startswith("populace-us-"):
+    if is_us_release(release_id):
         return (*REQUIRED_RELEASE_FILES, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE)
     if _is_uk_exact_k_release_id(release_id):
         return (*REQUIRED_RELEASE_FILES, _UK_TERMINAL_GATE_REPORT_FILE)
@@ -1809,6 +1843,9 @@ def _check_release_manifest(
         _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
         _check_build_folder_artifacts(artifacts, failures)
         _check_default_dataset_artifact(default_datasets, artifacts, failures)
+        if is_us_release(release_id):
+            _check_us_release_artifacts(manifest, artifacts, failures)
+            _check_us_release_dataset_file(artifacts, release_id, failures)
     else:
         _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
         for key, entry in artifacts.items():
@@ -1861,19 +1898,8 @@ def _check_release_manifest(
                 f"({distinct_revisions}); every artifact must pin the same "
                 "release revision."
             )
-        if release_id.startswith("populace-us-"):
-            _check_us_release_has_no_split_microdata_artifacts(
-                artifacts,
-                failures=failures,
-            )
-        if (
-            release_id.startswith("populace-us-")
-            and _artifact_by_path(manifest, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE) is None
-        ):
-            failures.append(
-                "release_manifest.json artifacts must include "
-                f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE!r} for US releases."
-            )
+        if is_us_release(release_id):
+            _check_us_release_artifacts(manifest, artifacts, failures)
         if _is_uk_exact_k_release_id(release_id):
             terminal_artifact = _artifact_by_path(
                 manifest, _UK_TERMINAL_GATE_REPORT_FILE
@@ -1890,6 +1916,42 @@ def _check_release_manifest(
                     "must have kind 'diagnostics'."
                 )
         _check_default_dataset_artifact(default_datasets, artifacts, failures)
+
+
+def _check_us_release_artifacts(
+    manifest: Mapping, artifacts: Mapping, failures: list[str]
+) -> None:
+    """A US release ships one national microdata file and its source coverage."""
+    _check_us_release_has_no_split_microdata_artifacts(artifacts, failures=failures)
+    if _artifact_by_path(manifest, US_SOURCE_COVERAGE_DIAGNOSTICS_FILE) is None:
+        failures.append(
+            "release_manifest.json artifacts must include "
+            f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE!r} for US releases."
+        )
+
+
+def _check_us_release_dataset_file(
+    artifacts: Mapping, release_id: str, failures: list[str]
+) -> None:
+    """A new build of a US release declares that release's dataset file.
+
+    So a receipt-qualified donor or an evidence-tier build can never be
+    published into the national release, and new builds use the
+    ``microcosm_`` names.
+    """
+    expected = US_RELEASE_DATASET_FILES.get(release_id)
+    if expected is None:
+        return
+    declared = sorted(
+        str(entry.get("path"))
+        for entry in artifacts.values()
+        if isinstance(entry, Mapping) and entry.get("kind") == "microdata"
+    )
+    if declared != [expected]:
+        failures.append(
+            f"release_manifest.json for release {release_id!r} must declare one "
+            f"microdata artifact, {expected!r}; it declares {declared}."
+        )
 
 
 def _check_default_dataset_artifact(
@@ -2299,7 +2361,7 @@ def _check_compatible_package_entries(
 
 
 def _expected_model_package(release_id: str) -> str | None:
-    if release_id.startswith("populace-us-"):
+    if is_us_release(release_id):
         return "policyengine-us"
     if release_id.startswith("microcosm-uk-"):
         # The national, dense and local-area releases.
@@ -4817,7 +4879,7 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
             # The shared gate check above reads only the gates a summary
             # lists; the US lane must list these two (microcosm#1034, #1263).
             # UK local-k and dense releases have neither seam.
-            if release_id.startswith("populace-us-"):
+            if is_us_release(release_id):
                 _check_us_local_area_stored_inputs_gate(
                     gate_summary,
                     release_manifest=release_manifest,
@@ -5847,6 +5909,23 @@ def _check_local_area_gates(gate_summary: Mapping, failures: list[str]) -> None:
             )
 
 
+def _release_build_details(release_manifest: object) -> Mapping | None:
+    """The fields that describe how a release's build was made.
+
+    In the tagged layout they are the release manifest's ``build`` object; in
+    the build-folder layout ``build`` is the build's ID and they are at the
+    manifest's top level.
+    """
+    if not isinstance(release_manifest, Mapping):
+        return None
+    build = release_manifest.get("build")
+    if isinstance(build, Mapping):
+        return build
+    if isinstance(build, str):
+        return release_manifest
+    return None
+
+
 def _built_with_us_engine_label(
     release_manifest: Mapping | None, failures: list[str]
 ) -> str | None:
@@ -5858,9 +5937,7 @@ def _built_with_us_engine_label(
     failure line, when the manifest does not record a policyengine-us version.
     """
 
-    build = (
-        release_manifest.get("build") if isinstance(release_manifest, Mapping) else None
-    )
+    build = _release_build_details(release_manifest)
     model = (
         build.get("built_with_model_package") if isinstance(build, Mapping) else None
     )
@@ -6443,9 +6520,7 @@ def _check_us_stored_input_evidence(
         "rebuild with tools/build_us_fiscal_refresh_release.py, whose "
         "stored-input gate writes and binds it (microcosm#1026, #1034)."
     )
-    build = (
-        release_manifest.get("build") if isinstance(release_manifest, Mapping) else None
-    )
+    build = _release_build_details(release_manifest)
     statuses: list[object] = []
     for source, holder in (
         ("build_manifest.json", build_manifest),
@@ -7179,7 +7254,7 @@ def validate_release_dir(
                 _check_uk_exact_k_diagnostics_identity(
                     diagnostics, release_id, failures
                 )
-            if release_id.startswith("populace-us-"):
+            if is_us_release(release_id):
                 _check_us_critical_target_fit(diagnostics, failures)
 
     terminal_gate_path = release_dir / _UK_TERMINAL_GATE_REPORT_FILE
@@ -7278,7 +7353,7 @@ def validate_release_dir(
         failures,
     )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
-    if release_id.startswith("populace-us-"):
+    if is_us_release(release_id):
         _check_us_stored_input_evidence(
             release_dir,
             build_manifest=build_manifest,
@@ -7288,7 +7363,7 @@ def validate_release_dir(
         )
 
     source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
-    if release_id.startswith("populace-us-") and source_coverage_path.is_file():
+    if is_us_release(release_id) and source_coverage_path.is_file():
         diagnostics = _load_json(source_coverage_path, failures)
         if diagnostics is not None:
             source_coverage_diagnostics = diagnostics
@@ -7569,7 +7644,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
             "not name its tier."
         )
 
-    if not release_id.startswith("populace-us-"):
+    if not is_us_release(release_id):
         # Without the US prefix every country-specific requirement above the
         # generic three files silently deactivates — an out-of-scope id must
         # not buy a weaker contract.
@@ -7671,7 +7746,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
             # never silently. Recompute the certified verdicts into a scratch
             # list and require each breach to be acknowledged in
             # known_failures (binding check below).
-            if release_id.startswith("populace-us-"):
+            if is_us_release(release_id):
                 _check_us_critical_target_fit(diagnostics, recomputed_critical_failures)
 
     _check_cross_manifest_consistency(
@@ -7681,7 +7756,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
         failures,
     )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
-    if release_id.startswith("populace-us-"):
+    if is_us_release(release_id):
         _check_us_stored_input_evidence(
             release_dir,
             build_manifest=build_manifest,
@@ -7691,7 +7766,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
         )
 
     source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
-    if release_id.startswith("populace-us-") and source_coverage_path.is_file():
+    if is_us_release(release_id) and source_coverage_path.is_file():
         diagnostics = _load_json(source_coverage_path, failures)
         if diagnostics is not None:
             source_coverage_diagnostics = diagnostics
