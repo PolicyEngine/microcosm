@@ -1598,22 +1598,33 @@ def _e8_band_donors(
     weights and their mass left the incumbent households of each donor's
     region in proportion; where the frame carries geographic clones, the
     region within the donor's clone, and each clone seats its own donors
-    (microcosm#931). Folding the CGT layers stacked afterwards gives the
-    frame the stage wrote; scaling each funding stratum's incumbents back to
-    the stratum's whole mass gives the weights it read. The stored layer must
-    agree with itself (one carrier per donor, each parent household copied
-    once, equal weights within a band, the mass record conserving the total)
-    and, when the tape's band propensities are supplied (they need the
-    licensed SPI tape), with the stage's own function rerun on the
-    reconstructed pre-donor frame: the same source households in the same
-    bands, the same carriers and the same band weights, in original and
-    permuted row order. The seating is keyed on person ids, so the rerun
-    needs no stage-time row order. Without the propensities the receipt says
-    the seating was not recomputed. Problems land under ``band_donor_*`` keys.
+    (microcosm#931). ``frame`` is the artifact as built. Stage 17 saw none of
+    the rows minted after it: the high-value home copies of stage 26 and the
+    CGT support copies, incidence twins and residential arms of stages 42,
+    43 and 46, the households whose ids hold an ordinal in a copy-id field
+    above ``spi_support_channel``. Dropping them with their people and
+    benefit units, each one's mass folded back onto the row it came from
+    (``_frame_as_stage_saw``), gives the frame the stage wrote at the weights
+    it left, to rounding, and the stored seats, carriers and band weights are
+    read there, so a later copy of a donor is not read as a donor. That
+    scoping also reverses the in-place rewrites of ``salary_sacrifice`` and
+    ``regional_home_values``, so ``frame`` must not be a frame already
+    scoped or reversed: a second salary-sacrifice reversal refuses. Scaling
+    each funding stratum's incumbents back to the stratum's whole mass then
+    gives the weights the stage read. The stored layer must agree with
+    itself (one carrier per donor, each parent household copied once, equal
+    weights within a band, the mass record conserving the total) and, when
+    the tape's band propensities are supplied (they need the licensed SPI
+    tape), with the stage's own function rerun on the reconstructed
+    pre-donor frame: the same source households in the same bands, the same
+    carriers and the same band weights, in original and permuted row order.
+    The seating is keyed on person ids, so the rerun needs no stage-time row
+    order. Without the propensities the receipt says the seating was not
+    recomputed. A row minted after the stage that the scoping leaves in
+    place is refused by count, since the rerun would seat it as a household
+    the stage saw. Problems land under ``band_donor_*`` keys.
     """
 
-    from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
-    from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
     from microcosm.build.uk_runtime.national_frame import (
         uk_household_weight_kind,
         uk_national_frame,
@@ -1626,9 +1637,11 @@ def _e8_band_donors(
         SPI_INCOME_BAND_DONOR_LOWER_BOUNDS,
         SPI_INCOME_BAND_DONOR_MASS_CHANGE_REASON,
         SPI_INCOME_BAND_DONOR_SEED,
+        UK_SPI_INCOME_BAND_DONORS_STAGE_NAME,
         _funding_strata,
         stack_spi_income_band_donors,
     )
+    from microcosm.build.uk_runtime.spi_support import SPI_SUPPORT_COPY_ID_FIELD
 
     if HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR not in frame.table("household").columns:
         raise ValueError(
@@ -1664,17 +1677,23 @@ def _e8_band_donors(
                 record.declared_factor,
             ]
 
-    # The frame the donor stage wrote: the CGT layers stacked after it folded
-    # back, so every remaining household carries the weight the stage left.
-    staged = _drop_stacked_layers(
-        frame,
-        [
-            flag
-            for flag in (HOUSEHOLD_IS_CGT_CLONE, HOUSEHOLD_IS_CGT_SUPPORT_COPY)
-            if flag in frame.table("household").columns
-        ],
-    )
+    # The frame the donor stage wrote: every row minted after it dropped with
+    # its people and benefit units, its mass folded back onto the row it came
+    # from, so every remaining household carries the weight the stage left,
+    # to rounding. The rerun mints its donors at ordinal 2 of the
+    # spi_support_channel field, below every later field: a later row left in
+    # scope would be seated as a household the stage saw, and break the
+    # frame's ascending ids once the donors are appended after it.
+    staged = _frame_as_stage_saw(frame, UK_SPI_INCOME_BAND_DONORS_STAGE_NAME)
     household = staged.table("household")
+    minted_later = _households_minted_after(SPI_SUPPORT_COPY_ID_FIELD, household)
+    if minted_later:
+        raise ValueError(
+            f"{minted_later} household row(s) left in the scope to the SPI "
+            "income band donor stage hold an ordinal in a copy-id field minted "
+            "after it (microcosm#931); the band-donor rerun would seat them as "
+            "households the stage saw."
+        )
     person = staged.table("person")
     benunit = staged.table("benunit")
     weights = np.asarray(staged.weights_for("household").values, dtype=float)
@@ -1925,8 +1944,11 @@ def e8_identity_receipt(
     pre-split frame with the stage's own function - the solved probability
     carried as arm weights - in original and permuted row order against the
     stored arms, indices, weights, probabilities and residential gains. The
-    clone-pair, support-split and band-donor checks run on the frame with the
-    arms folded onto their sources, the state those layers were written in.
+    clone-pair and support-split checks run on the frame with the arms folded
+    onto their sources, the state those layers were written in; the
+    band-donor check runs on the frame stage 17 wrote, every row minted after
+    it (the high-value home copies of stage 26 too) folded onto the row it
+    came from (``_frame_as_stage_saw``).
     Every CGT layer ran before ``salary_sacrifice``, whose conversion
     rewrites a converted record's pay in place, so the recomputes first
     reverse it from the stage's pre-conversion pay carrier
@@ -2006,10 +2028,13 @@ def e8_identity_receipt(
     )
 
     # (4) SPI income band donors: the seating reconstructed from ids, on the
-    # arm-free frame (the donor stage ran before the residential split).
+    # frame stage 17 wrote. The check scopes the artifact itself to it
+    # (``_frame_as_stage_saw``), every layer stacked after stage 17 folded
+    # away; that scoping reverses the salary-sacrifice conversion on its own,
+    # so it takes ``frame``, not the reversed ``cgt_frame``.
     propensity, band_taxpayers = _band_donor_seating_inputs(frame, spi_tab)
     band_donors = _e8_band_donors(
-        cgt_frame,
+        frame,
         problems,
         propensity=propensity,
         band_taxpayers=band_taxpayers,
@@ -2617,6 +2642,22 @@ def _require_copy_ids_on_the_declared_table(household: pd.DataFrame) -> None:
     off = _copy_id_rows_off_the_declared_table(household)
     if off:
         raise ValueError(f"{off} {_OFF_TABLE_REFUSAL}")
+
+
+def _households_minted_after(field: str, household: pd.DataFrame) -> int:
+    """How many household ids hold an ordinal in a copy-id field above ``field``.
+
+    The copy-id table lists its fields in the order the spine mints them, so
+    the fields above ``field`` are the copy layers stacked after every stage
+    that mints in it.
+    """
+
+    names = [spec.name for spec in copy_id_table.UK_COPY_ID_FIELDS]
+    ids = _exact_household_ids(household, what="The copy-id field scope")
+    later = np.zeros(len(ids), dtype=bool)
+    for name in names[names.index(field) + 1 :]:
+        later |= copy_id_table.ordinal(ids, name) != 0
+    return int(later.sum())
 
 
 def _copy_ordinals_and_parents(

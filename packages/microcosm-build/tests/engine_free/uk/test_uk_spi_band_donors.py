@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -10,10 +11,35 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.uk_runtime import spi_band_donors
+from microcosm.build.uk_runtime import copy_id_table, spi_band_donors
+from microcosm.build.uk_runtime.cgt_residential_split import (
+    CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
+    HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE,
+)
+from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+from microcosm.build.uk_runtime.cgt_support import (
+    CGT_SUPPORT_COPIES_COLUMN,
+    CGT_SUPPORT_COPY_INDEX_COLUMN,
+    HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.high_value_home_support import (
+    HIGH_VALUE_SUPPORT_COPIES_COLUMN,
+    split_high_value_support_households,
+)
+from microcosm.build.uk_runtime.household_lineage import (
+    HIGH_VALUE_SUPPORT_COPY_COLUMN,
+    HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+)
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.receipt_counts import UK_WITHHELD, rounded_count
+from microcosm.build.uk_runtime.regional_home_values import (
+    assign_regional_home_values,
+)
+from microcosm.build.uk_runtime.salary_sacrifice import (
+    SALSAC_OUTPUT,
+    SALSAC_PRE_CONVERSION_PAY_COLUMN,
+)
 from microcosm.build.uk_runtime.spi_band_donors import (
     HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
     PERSON_IS_SPI_INCOME_BAND_CARRIER,
@@ -58,8 +84,10 @@ from microcosm.build.uk_runtime.spi_support import (
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.frame import WeightKind, engine_tables
 from test_support.microcosm_build.uk_clone_first_frames import (
+    IdTables,
     assert_copy_ids_follow_lineage,
     clone_first_frame,
+    copy_households,
 )
 from test_support.paths import paths_for
 
@@ -1946,3 +1974,353 @@ def test_e8_receipt_replays_the_seating_of_every_clone() -> None:
     problems = {}
     tool._e8_band_donors(_reweighted(stacked, weights), problems, **arguments)
     assert problems["band_donor_layer"] == {"bands_with_unequal_donor_weights": 1}
+
+
+# The E8 receipt on the artifact as built (microcosm#931). Every layer stacked
+# after stage 17 copies rows the stage wrote, donors among them, and mints its
+# copies in a copy-id field above the one the donors take. A rerun on a frame
+# that kept those rows seated them as households the stage saw, and the donors
+# it appended sorted below their ids, which the frame refuses. The receipt
+# reruns the stage on the frame the stage wrote, every later row folded onto
+# the row it came from.
+
+#: The copy-id fields minted after stage 17, in the order the spine mints them.
+_LATER_FIELDS = (
+    "high_value_support",
+    "cgt_support_split",
+    "cgt_incidence_clone",
+    "cgt_residential_split",
+)
+
+
+def _stage_17_ids(household: pd.DataFrame) -> np.ndarray:
+    """Each household's id with every later layer's ordinal cleared."""
+
+    ids = household["household_id"].to_numpy(dtype=np.int64)
+    for field in _LATER_FIELDS:
+        ids = copy_id_table.parent(ids, field)
+    return ids
+
+
+def _minted(frame, *, field: str, index_column: str, ordinals):
+    """``frame``'s tables with copies minted in ``field``, and their lineage.
+
+    ``copy_households`` mints every id of a copy through the copy-id table,
+    as the stages do, and records the copy's ordinal in ``index_column``;
+    ``ordinals`` maps a household's position to its copies' ordinals. Returns
+    the tables and, per household, its parent's weight, its ordinal and the
+    size of its family (one for a household left whole).
+    """
+
+    copied = copy_households(
+        IdTables(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+        ),
+        field=field,
+        path_column=index_column,
+        ordinals=ordinals,
+        rule="table",
+    )
+    ids = copied.household["household_id"].to_numpy(dtype=np.int64)
+    parents = pd.Series(copy_id_table.parent(ids, field))
+    return (
+        copied,
+        _weights_by_id(frame).loc[parents.to_numpy()].to_numpy(),
+        copy_id_table.ordinal(ids, field),
+        parents.map(parents.value_counts()).to_numpy(),
+    )
+
+
+def _framed(previous, tables, weights):
+    """``tables`` as a frame at ``weights``, with ``previous``'s mass records."""
+
+    return uk_national_frame(
+        person=tables.person,
+        benunit=tables.benunit,
+        household=tables.household,
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=weights,
+        mass_log=previous.mass_log,
+    )
+
+
+def _through_the_later_layers(stacked) -> SimpleNamespace:
+    """Stage 17's output carried through every layer stacked after it.
+
+    The high-value home support (stage 26) and the regional home values (27)
+    run as built, every household an owner valued on its true source, at a
+    stratum that divides donors, SPI copies and base households alike. The
+    CGT layers are replayed by hand with ``copy_households``: the support
+    split (42) divides the households of one source in four into two or
+    three rows at equal shares, the incidence twin (43) copies every
+    household, the anchor (45) moves an eighth of the mass of two pairs in
+    three, one way or the other, and the residential split (46) divides the
+    twins of one source in five into two or four arms at product weights.
+    Salary sacrifice (48) then converts the best-paid record's pay in place.
+    Every layer keeps each household's mass. All values are invented.
+    """
+
+    household = stacked.table("household").copy()
+    source = household["source_household_id"].to_numpy()
+    household["tenure_type"] = pd.array(
+        ["OWNED_OUTRIGHT"] * len(household), dtype="string"
+    )
+    household["main_residence_value"] = 100_000.0 * (1 + source % 10)
+    household["property_wealth"] = household["main_residence_value"] + 10_000.0
+    high_value = split_high_value_support_households(
+        _with_tables(stacked, household=household), stratum_lower=0.9, copies=3
+    )
+    valued = assign_regional_home_values(high_value.frame).frame
+
+    household = valued.table("household").copy()
+    source = household["source_household_id"].to_numpy()
+    rows = np.where(source % 4 == 1, 2 + (source % 8 == 1), 1)
+    household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = False
+    household[CGT_SUPPORT_COPY_INDEX_COLUMN] = 0
+    household[CGT_SUPPORT_COPIES_COLUMN] = rows
+    tables, weights, ordinal, size = _minted(
+        _with_tables(valued, household=household),
+        field="cgt_support_split",
+        index_column=CGT_SUPPORT_COPY_INDEX_COLUMN,
+        ordinals={
+            int(position): tuple(range(1, int(rows[position])))
+            for position in np.flatnonzero(rows > 1)
+        },
+    )
+    tables.household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = ordinal != 0
+    split = _framed(valued, tables, weights / size)
+
+    household = split.table("household").copy()
+    household[HOUSEHOLD_IS_CGT_CLONE] = 0
+    tables, weights, ordinal, _ = _minted(
+        _with_tables(split, household=household),
+        field="cgt_incidence_clone",
+        index_column=HOUSEHOLD_IS_CGT_CLONE,
+        ordinals={position: (1,) for position in range(len(household))},
+    )
+    tables.household[HOUSEHOLD_IS_CGT_CLONE] = ordinal != 0
+    kept = 0.5 + 0.125 * (tables.household["source_household_id"].to_numpy() % 3 - 1)
+    twinned = _framed(split, tables, weights * np.where(ordinal == 0, kept, 1 - kept))
+
+    household = twinned.table("household").copy()
+    source = household["source_household_id"].to_numpy()
+    gainers = np.where(
+        household[HOUSEHOLD_IS_CGT_CLONE].to_numpy() & (source % 5 == 0),
+        1 + (source % 10 == 0),
+        0,
+    )
+    household[HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE] = False
+    household[CGT_RESIDENTIAL_CLONE_INDEX_COLUMN] = 0
+    tables, weights, ordinal, size = _minted(
+        _with_tables(twinned, household=household),
+        field="cgt_residential_split",
+        index_column=CGT_RESIDENTIAL_CLONE_INDEX_COLUMN,
+        ordinals={
+            int(position): tuple(range(1, 2 ** int(gainers[position])))
+            for position in np.flatnonzero(gainers)
+        },
+    )
+    tables.household[HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE] = ordinal != 0
+    # One liable gainer at 1/4, or two at 1/4 and 1/2: arms at product weights.
+    shares = {1: (1.0,), 2: (0.75, 0.25), 4: (0.375, 0.125, 0.375, 0.125)}
+    armed = _framed(
+        twinned,
+        tables,
+        weights
+        * np.asarray([shares[n][j] for n, j in zip(size, ordinal, strict=True)]),
+    )
+
+    person = armed.table("person").reset_index(drop=True)
+    pay = person["employment_income"].to_numpy(dtype=float)
+    converted = int(np.argmax(pay))
+    person["employee_pension_contributions"] = 0.0
+    person[SALSAC_OUTPUT] = 0.0
+    person[SALSAC_PRE_CONVERSION_PAY_COLUMN] = 0.0
+    person.loc[converted, SALSAC_OUTPUT] = pay[converted] / 4
+    person.loc[converted, "employment_income"] = pay[converted] * 3 / 4
+    person.loc[converted, SALSAC_PRE_CONVERSION_PAY_COLUMN] = pay[converted]
+    return SimpleNamespace(
+        artifact=_with_tables(armed, person=person), high_value=high_value
+    )
+
+
+def _stage_17_and_artifact(n_clones: int, propensity: pd.DataFrame):
+    support = (
+        _support_frame(200)
+        if n_clones == 1
+        else _clone_first_support_frame(200, n_clones)
+    )
+    stage_17 = stack_spi_income_band_donors(
+        support, propensity=propensity, **_PUBLISHED
+    )
+    return stage_17, _through_the_later_layers(stage_17.frame)
+
+
+@pytest.mark.parametrize("n_clones", [1, 3])
+def test_e8_receipt_reruns_stage_17_on_the_frame_it_wrote(n_clones: int) -> None:
+    tool = _identity_tool()
+    propensity = _propensity()
+    stage_17, built = _stage_17_and_artifact(n_clones, propensity)
+
+    # Given an artifact whose high-value copies divide donors, SPI copies and
+    # base households alike, and whose CGT layers copy donors and high-value
+    # copies too,
+    divided = built.high_value.frame.table("household")
+    copies = divided[HIGH_VALUE_SUPPORT_INDEX_COLUMN].to_numpy() != 0
+    donor = divided[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR].to_numpy()
+    spi = divided["household_support_channel"].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+    assert (copies & donor).any()
+    assert (copies & spi.to_numpy() & ~donor).any()
+    assert (copies & ~spi.to_numpy()).any()
+    household = built.artifact.table("household")
+    support_copies = household[CGT_SUPPORT_COPY_INDEX_COLUMN].to_numpy() != 0
+    for copied in (HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR, HIGH_VALUE_SUPPORT_COPY_COLUMN):
+        assert (support_copies & household[copied].to_numpy()).any()
+    assert household[HOUSEHOLD_IS_CGT_RESIDENTIAL_CLONE].any()
+
+    # its scope to stage 17 is the frame the stage wrote, row for row, at the
+    # weights it left,
+    scoped = tool._frame_as_stage_saw(built.artifact, "spi_income_band_donors")
+    for entity in ("person", "benunit", "household"):
+        assert sorted(scoped.table(entity)[f"{entity}_id"]) == sorted(
+            stage_17.frame.table(entity)[f"{entity}_id"]
+        )
+    np.testing.assert_allclose(
+        _weights_by_id(scoped).loc[_weights_by_id(stage_17.frame).index].to_numpy(),
+        _weights_by_id(stage_17.frame).to_numpy(),
+        rtol=1e-12,
+    )
+
+    # and the check scales each funding stratum back by the stage's own
+    # factor, and the stage rerun there reproduces the stored seats, carriers
+    # and band weights, with the artifact's people in either order and the
+    # pre-donor people permuted, reading each donor once.
+    stored = {row["lower_bound"]: row for row in stage_17.band_rows}
+    factors = {row["stratum"]: row["factor"] for row in stage_17.funding_rows}
+    for artifact in (built.artifact, tool._reverse_rows(built.artifact)):
+        problems: dict[str, object] = {}
+        receipt = tool._e8_band_donors(
+            artifact,
+            problems,
+            propensity=propensity,
+            band_taxpayers=TAXPAYERS,
+            permutation_seed=123,
+        )
+        assert problems == {}
+        assert receipt["seating_recomputed"] is True
+        assert receipt["donor_households"] == stage_17.donor_count
+        assert receipt["funding"] == pytest.approx(factors, rel=1e-12)
+        for row in receipt["bands"]:
+            band = stored[row["lower_bound"]]
+            assert row["donor_households"] == band["donor_households"]
+            assert row["donor_weight"] == pytest.approx(band["donor_weight"], rel=1e-12)
+            assert row["weighted_taxpayers"] == pytest.approx(
+                band["weighted_taxpayers"], rel=1e-12
+            )
+
+
+def test_e8_receipt_reads_each_donor_through_its_later_copies() -> None:
+    tool = _identity_tool()
+    propensity = _propensity()
+    _, built = _stage_17_and_artifact(1, propensity)
+    arguments = {
+        "propensity": propensity,
+        "band_taxpayers": TAXPAYERS,
+        "permutation_seed": 123,
+    }
+    # The donor the later layers divided into the most rows: its stage-17
+    # row and every row made from it.
+    household = built.artifact.table("household")
+    stems = _stage_17_ids(household)
+    rows = pd.Series(stems).value_counts()
+    donors = household.loc[
+        household[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR], "household_id"
+    ]
+    donor = min(rows.index[rows.index.isin(donors)], key=lambda s: (-rows[s], s))
+    family = np.flatnonzero(stems == donor)
+    assert len(family) > 2
+    weights = _weights_by_id(built.artifact).to_numpy().copy()
+
+    # Mass moved between the rows of a donor's family is no defect: the fold
+    # gives back the weight stage 17 left.
+    moved = weights.copy()
+    moved[family[0]] += moved[family[-1]] / 2
+    moved[family[-1]] /= 2
+    problems: dict[str, object] = {}
+    tool._e8_band_donors(_reweighted(built.artifact, moved), problems, **arguments)
+    assert problems == {}
+
+    # Reweighting the whole family is a defect: its band's donors no longer
+    # share one weight.
+    scaled = weights.copy()
+    scaled[family] *= 1.5
+    problems = {}
+    tool._e8_band_donors(_reweighted(built.artifact, scaled), problems, **arguments)
+    assert problems["band_donor_layer"] == {"bands_with_unequal_donor_weights": 1}
+
+
+def test_e8_receipt_refuses_a_later_row_its_scope_leaves_in_place() -> None:
+    # Given an artifact whose high-value copies have lost the lineage the
+    # scope reads them by, those copies stay in scope; their ids still hold
+    # an ordinal in a field minted after stage 17, so the receipt refuses by
+    # count rather than seat them.
+    tool = _identity_tool()
+    propensity = _propensity()
+    _, built = _stage_17_and_artifact(1, propensity)
+    household = built.artifact.table("household").drop(
+        columns=[
+            HIGH_VALUE_SUPPORT_COPY_COLUMN,
+            HIGH_VALUE_SUPPORT_INDEX_COLUMN,
+            HIGH_VALUE_SUPPORT_COPIES_COLUMN,
+        ]
+    )
+    unread = _with_tables(built.artifact, household=household)
+    with pytest.raises(ValueError) as caught:
+        tool._e8_band_donors(
+            unread,
+            {},
+            propensity=propensity,
+            band_taxpayers=TAXPAYERS,
+            permutation_seed=123,
+        )
+    assert str(caught.value) == (
+        f"{built.high_value.copies_created} household row(s) left in the scope "
+        "to the SPI income band donor stage hold an ordinal in a copy-id field "
+        "minted after it (microcosm#931); the band-donor rerun would seat them "
+        "as households the stage saw."
+    )
+
+
+def test_the_e8_entry_hands_the_band_donor_check_the_artifact(monkeypatch) -> None:
+    # The band-donor check scopes the artifact itself, which reverses the
+    # salary-sacrifice conversion; handed the frame the entry has already
+    # reversed, it would reverse the conversion twice and refuse. The other
+    # E8 checks need the CGT resources and stand aside here.
+    from microcosm.build.uk_runtime import cgt_imputation, student_loans
+
+    tool = _identity_tool()
+    propensity = _propensity()
+    stage_17, built = _stage_17_and_artifact(1, propensity)
+    person = built.artifact.table("person").copy()
+    person["student_loan_plan"] = "NONE"
+    artifact = _with_tables(built.artifact, person=person)
+    for check in ("_e8_residential_split", "_e8_clone_pairs", "_e8_support_split"):
+        monkeypatch.setattr(tool, check, lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        tool, "_band_donor_seating_inputs", lambda *args: (propensity, TAXPAYERS)
+    )
+    monkeypatch.setattr(cgt_imputation, "uk_cgt_policy_parameters", lambda _: None)
+    monkeypatch.setattr(
+        student_loans,
+        "assign_student_loan_plans",
+        lambda frame, **kwargs: SimpleNamespace(frame=frame),
+    )
+
+    receipt = tool.e8_identity_receipt(artifact, permutation_seed=123)
+    assert receipt["pre_salary_sacrifice_restored"] is True
+    assert receipt["stored_column_mismatches"] == {}
+    assert receipt["band_donors"]["seating_recomputed"] is True
+    assert receipt["band_donors"]["donor_households"] == stage_17.donor_count
