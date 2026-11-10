@@ -7609,8 +7609,8 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
     - the release manifest must declare
       :data:`EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION` and ``tier:
       "evidence"``, which the certified contract structurally rejects;
-    - the release id must carry the :data:`EVIDENCE_RELEASE_ID_SEGMENT`, so
-      the tier is visible in every tag and download path;
+    - the build ID must carry the :data:`EVIDENCE_RELEASE_ID_SEGMENT`, so
+      the tier is visible in every build folder's path and in every tag;
     - critical-target fit and gate-passed requirements are not enforced —
       their failures are exactly what ``known_failures`` records — but
       everything that makes the artifact *auditable* (required files, build
@@ -7623,9 +7623,21 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
     (microcosm#398, microcosm#611) and no evidence-tier semantics have been
     adjudicated for them.
 
+    Two layouts (microcosm#1570). A build that keeps only its tag is checked
+    in a directory named after its build ID. After the US switch an evidence
+    build is published into its own folder of the evidence release,
+    :data:`US_EVIDENCE_RELEASE_ID`, so its directory is named after that
+    release, both manifests name the release and the build in the
+    build-folder layout, and the segment and the US scope apply to the build
+    ID the manifests carry as ``build``. An evidence build in any other
+    release (the national release is the repository's default) is refused.
+    The evidence release's current build in ``releases.json`` takes the
+    place of the tagged layout's ``latest-evidence.json`` pointer file.
+
     Args:
-        release_dir: The local ``releases/<build_id>`` directory about to be
-            published at the evidence tier.
+        release_dir: The local ``releases/microcosm-us-2024-evidence``
+            directory about to be published at the evidence tier, or the
+            ``releases/<build_id>`` directory of a build that keeps its tag.
 
     Raises:
         ReleaseContractError: Naming every violation found.
@@ -7637,21 +7649,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
     if not release_dir.is_dir():
         raise ReleaseContractError(release_dir, [f"{release_dir} is not a directory."])
 
-    if EVIDENCE_RELEASE_ID_SEGMENT not in release_id:
-        failures.append(
-            f"evidence release ids must carry the "
-            f"{EVIDENCE_RELEASE_ID_SEGMENT!r} segment; {release_id!r} does "
-            "not name its tier."
-        )
-
-    if not is_us_release(release_id):
-        # Without the US prefix every country-specific requirement above the
-        # generic three files silently deactivates — an out-of-scope id must
-        # not buy a weaker contract.
-        failures.append(
-            "the evidence tier is scoped to US national releases "
-            f"(microcosm#506); release id {release_id!r} is out of scope."
-        )
+    build_folder = publishes_to_build_folder(release_id)
 
     if _is_uk_exact_k_release_id(release_id):
         raise ReleaseContractError(
@@ -7692,6 +7690,45 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
                         "semantics."
                     ],
                 )
+
+    # The tier and the scope are the build's. A tagged directory is named
+    # after its build; a build-folder directory is named after its release,
+    # and the build ID is the release manifest's 'build' (empty when it names
+    # none, which the identity check below records as well).
+    if build_folder:
+        named_build = (
+            manifest_probe.get("build") if isinstance(manifest_probe, Mapping) else None
+        )
+        build_id = named_build if isinstance(named_build, str) else ""
+        if release_id != US_EVIDENCE_RELEASE_ID:
+            failures.append(
+                "an evidence-tier build is published into the evidence release "
+                f"{US_EVIDENCE_RELEASE_ID!r}, never into release {release_id!r} "
+                "(microcosm#1570)."
+            )
+    else:
+        build_id = release_id
+    us_build = is_us_release(build_id)
+    # The US checks run when the build or its release is a US one, so a
+    # build-folder directory whose build ID is out of scope still gets the
+    # full list of what else is wrong.
+    us_checks = us_build or is_us_release(release_id)
+
+    if EVIDENCE_RELEASE_ID_SEGMENT not in build_id:
+        failures.append(
+            "evidence build IDs must carry the "
+            f"{EVIDENCE_RELEASE_ID_SEGMENT!r} segment; {build_id!r} does not "
+            "name its tier."
+        )
+
+    if not us_build:
+        # Without the US prefix every country-specific requirement above the
+        # generic three files silently deactivates — an out-of-scope id must
+        # not buy a weaker contract.
+        failures.append(
+            "the evidence tier is scoped to US national builds "
+            f"(microcosm#506); build {build_id!r} is out of scope."
+        )
 
     build_manifest: Mapping | None = None
     release_manifest: Mapping | None = None
@@ -7746,9 +7783,11 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
             # never silently. Recompute the certified verdicts into a scratch
             # list and require each breach to be acknowledged in
             # known_failures (binding check below).
-            if is_us_release(release_id):
+            if us_checks:
                 _check_us_critical_target_fit(diagnostics, recomputed_critical_failures)
 
+    if build_folder:
+        _check_build_folder_builds_agree(build_manifest, release_manifest, failures)
     _check_cross_manifest_consistency(
         build_manifest,
         release_manifest,
@@ -7756,7 +7795,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
         failures,
     )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
-    if is_us_release(release_id):
+    if us_checks:
         _check_us_stored_input_evidence(
             release_dir,
             build_manifest=build_manifest,
@@ -7766,7 +7805,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
         )
 
     source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
-    if is_us_release(release_id) and source_coverage_path.is_file():
+    if us_checks and source_coverage_path.is_file():
         diagnostics = _load_json(source_coverage_path, failures)
         if diagnostics is not None:
             source_coverage_diagnostics = diagnostics
