@@ -132,3 +132,65 @@ def test_a_recertification_is_handed_over_only_once_its_parent_is_published(
         release_publication.publish_release_build(
             release_dir, artifact_root=tmp_path, client=NoEmitter()
         )
+
+
+class _NoEmitter:
+    """A client that fails the test when anything is handed over."""
+
+    def __getattr__(self, name):
+        raise AssertionError(f"the build was handed over ({name})")
+
+
+def _a_recertification_build(tmp_path, monkeypatch):
+    """A national release directory whose build reads as a recertification,
+    with its checks and its parent's publication passing."""
+    from microcosm.data import compatibility_recertification
+
+    release_dir = tmp_path / "microcosm-us-2024-national"
+    release_dir.mkdir()
+    monkeypatch.setattr(
+        release_publication,
+        "build_folder_identity",
+        lambda path: (
+            "policyengine/populace-us",
+            path.name,
+            "populace-us-2024-recertified-20261201",
+        ),
+    )
+    monkeypatch.setattr(
+        release_publication, "_refuse_pointer_files", lambda _repo: None
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "prepare_build_folder_release",
+        lambda path, **_kwargs: _prepared(path),
+    )
+    monkeypatch.setattr(release_publication, "_hub_api", lambda: object())
+    monkeypatch.setattr(
+        compatibility_recertification, "is_recertification", lambda _path: True
+    )
+    monkeypatch.setattr(
+        compatibility_recertification,
+        "require_parent_publication",
+        lambda _api, _path, **_kwargs: None,
+    )
+    return release_dir
+
+
+def test_a_recertification_is_never_published_as_current(tmp_path, monkeypatch) -> None:
+    """A recertification republishes its parent's data under a wider
+    compatibility claim; as with the tagged publisher, it never becomes the
+    current build, and consumers load it with build=."""
+    release_dir = _a_recertification_build(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError, match="compatibility recertification"):
+        release_publication.publish_release_build(
+            release_dir, artifact_root=tmp_path, make_current=True, client=_NoEmitter()
+        )
+
+
+def test_a_recertification_is_never_promoted(tmp_path, monkeypatch) -> None:
+    release_dir = _a_recertification_build(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError, match="compatibility recertification"):
+        release_publication.promote_release_build(release_dir, client=_NoEmitter())
