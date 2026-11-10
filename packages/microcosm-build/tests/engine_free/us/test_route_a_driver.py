@@ -494,3 +494,14 @@ def test_route_a_sources_contain_no_machine_paths_or_credentials() -> None:
         source = path.read_text(encoding="utf-8")
         assert "/Users/" not in source, path.name
         assert not credential.search(source), path.name
+
+
+def test_route_a_preflights_the_build_in_its_release_directory() -> None:
+    """A national run writes its build into the national release's directory,
+    and the publication command that publishes into build folders runs its
+    preflight (microcosm#1570)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+
+    assert "REL_DIR=$REL_OUT/releases/microcosm-us-2024-national" in source
+    assert '"$W/.venv/bin/microcosm-publish-release-build"' in source
+    assert '"$W/.venv/bin/microcosm-publish-release" ' not in source
