@@ -2587,13 +2587,13 @@ def test_is_us_release_names_the_us_releases_and_tagged_us_builds(
 
 
 def _as_us_build_folder_release(
-    release_dir: Path, *, release: str = US_NATIONAL_RELEASE
+    release_dir: Path, *, release: str = US_NATIONAL_RELEASE, build: str = RELEASE_ID
 ) -> Path:
     """Retarget the US fixture to a US release in the build-folder layout.
 
-    The directory is named after the release and the build keeps the
-    fixture's ID. The dataset and calibration weights carry the new
-    ``microcosm_`` file names and keys that new US builds declare.
+    The directory is named after the release and the build is ``build``, the
+    fixture's ID by default. The dataset and calibration weights carry the
+    new ``microcosm_`` file names and keys that new US builds declare.
     """
     moved = release_dir.with_name(release)
     release_dir.rename(moved)
@@ -2612,14 +2612,14 @@ def _as_us_build_folder_release(
     manifest["default_datasets"] = {"national": "microcosm_us_2024"}
     manifest_path.write_text(json.dumps(manifest))
     build_path = moved / "build_manifest.json"
-    build = json.loads(build_path.read_text())
+    build_manifest = json.loads(build_path.read_text())
     for section in ("dataset", "calibration"):
-        if isinstance(build.get(section), dict):
-            build[section]["filename"] = build[section]["filename"].replace(
-                "populace_", "microcosm_"
-            )
-    build_path.write_text(json.dumps(build))
-    return to_build_folder_layout(moved, build=RELEASE_ID)
+        if isinstance(build_manifest.get(section), dict):
+            build_manifest[section]["filename"] = build_manifest[section][
+                "filename"
+            ].replace("populace_", "microcosm_")
+    build_path.write_text(json.dumps(build_manifest))
+    return to_build_folder_layout(moved, build=build)
 
 
 def _rewrite_release_manifest(release_dir: Path, rewrite) -> None:
@@ -6159,6 +6159,122 @@ def test_evidence_release_still_enforces_dirty_git_refusal(
     with pytest.raises(ReleaseContractError) as excinfo:
         validate_evidence_release_dir(evidence_release_dir)
     assert "'code.git_dirty' must be false" in "\n".join(excinfo.value.failures)
+
+
+# --- The evidence tier in the build-folder layout (microcosm#1570) ---------
+#
+# After the US switch an evidence-tier build is published into the evidence
+# release, ``releases/microcosm-us-2024-evidence/<build>/``. The directory is
+# named after the release, so the tier and the US scope are read from the
+# build ID both manifests carry as ``build``.
+
+
+def _evidence_failures(release_dir: Path) -> str:
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(release_dir)
+    return "\n".join(excinfo.value.failures)
+
+
+def test_a_build_folder_evidence_release_validates(
+    evidence_release_dir: Path,
+) -> None:
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+
+    validate_evidence_release_dir(evidence)
+
+
+def test_a_build_folder_evidence_release_fails_the_certified_contract(
+    evidence_release_dir: Path,
+) -> None:
+    """The evidence schema marker still refuses the certified tier."""
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(evidence)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert f"'schema_version' is {EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION!r}" in (
+        failures
+    )
+
+
+@pytest.mark.parametrize(
+    ("build", "expected"),
+    [
+        # A certified build's ID does not name the tier.
+        (RELEASE_ID, EVIDENCE_RELEASE_ID_SEGMENT),
+        # A build ID that is not a US build's buys no weaker contract.
+        ("acme-evidence-build", "out of scope"),
+    ],
+)
+def test_a_build_folder_evidence_release_checks_the_build_id(
+    evidence_release_dir: Path, build: str, expected: str
+) -> None:
+    """The segment and the US scope apply to the build ID, since the
+    directory is named after the release."""
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=build
+    )
+
+    failures = _evidence_failures(evidence)
+
+    assert expected in failures
+    assert repr(build) in failures
+
+
+def test_a_build_folder_evidence_release_names_its_build_in_both_manifests(
+    evidence_release_dir: Path,
+) -> None:
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+    other_build = "populace-us-2024-evidence-0000000-20260612"
+    build_path = evidence / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    build_manifest["build"] = other_build
+    build_path.write_text(json.dumps(build_manifest))
+
+    failures = _evidence_failures(evidence)
+
+    assert "name different builds" in failures
+    assert other_build in failures
+
+
+def test_an_evidence_build_is_refused_outside_the_evidence_release(
+    evidence_release_dir: Path,
+) -> None:
+    """An evidence build in the national release (the repository's default)
+    is refused, though both releases declare the same dataset file."""
+    national = _as_us_build_folder_release(
+        evidence_release_dir, release=US_NATIONAL_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+
+    failures = _evidence_failures(national)
+
+    assert US_EVIDENCE_RELEASE in failures
+    assert US_NATIONAL_RELEASE in failures
+
+
+def test_a_build_folder_evidence_release_declares_its_dataset_file(
+    evidence_release_dir: Path,
+) -> None:
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+
+    def keep_the_old_name(manifest):
+        manifest["artifacts"]["microcosm_us_2024"]["path"] = "populace_us_2024.h5"
+
+    _rewrite_release_manifest(evidence, keep_the_old_name)
+
+    failures = _evidence_failures(evidence)
+
+    assert "microcosm_us_2024.h5" in failures
+    assert "populace_us_2024.h5" in failures
 
 
 def test_breach_acknowledgment_matching_is_name_delimited() -> None:
