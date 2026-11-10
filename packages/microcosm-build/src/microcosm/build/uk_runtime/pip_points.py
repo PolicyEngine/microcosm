@@ -34,6 +34,15 @@ and pension-age recipients take the 60-and-over row, which carries them (the
 package's volumes run past State Pension age). With unchanged thresholds the
 engine's category from the points equals the stored category for every
 person, which the stage asserts. María signed these choices on 9 November 2026.
+
+A reform to the points thresholds reaches Scotland's Adult Disability Payment
+recipients, whom the FRS codes as PIP recipients, and Northern Ireland's PIP
+recipients. Their awards follow Scotland's and Northern Ireland's own
+regulations, which a DWP reform doesn't change, so the receipt counts each
+country's recipients for netting them out. The points are each component's
+total, drawn independently: they score a change to the 8 or 12 thresholds, not
+a rule on one activity's points, and they keep no link between the two
+components' points. María signed this on 10 November 2026.
 """
 
 from __future__ import annotations
