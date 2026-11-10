@@ -48,8 +48,8 @@ and :func:`latest_evidence_release` is its consumer. Since the US switch, an
 evidence-tier build is a build of
 :data:`~microcosm.data.contract.US_EVIDENCE_RELEASE_ID` instead, whose
 current build in ``releases.json`` takes the place of
-``latest-evidence.json``. The switch deleted every ``latest*.json`` file, so
-:func:`latest_evidence_release` finds no pointer in the US repository.
+``latest-evidence.json``. The switch deleted every ``latest*.json`` file, and
+:func:`latest_evidence_release` reads that current build instead.
 
 The Hub client is injected (``api=``) everywhere it is used, so the suite
 exercises the real branch, commit, tag, and pointer ordering against a fake —
@@ -87,7 +87,11 @@ from microcosm.data.contract import (
     validate_evidence_release_dir,
     validate_release_dir,
 )
-from microcosm.data.releases_record import RELEASES_RECORD_PATH
+from microcosm.data.releases_record import (
+    RELEASES_RECORD_PATH,
+    build_folder,
+    parse_releases_record,
+)
 from microcosm.data.slack import notify_release
 
 __all__ = [
@@ -159,8 +163,10 @@ class LatestPointer:
             :data:`RELEASE_TIER_CERTIFIED` for ``latest.json`` (whose payload
             predates tiers and carries no field), or
             :data:`RELEASE_TIER_EVIDENCE` for ``latest-evidence.json``.
-        revision: Immutable tag to fetch. Repository-global and evidence
-            pointers default to ``release_id``; a line pointer may name a cut tag.
+        revision: Revision to fetch. Repository-global and evidence
+            pointers default to ``release_id``, an immutable tag; a line
+            pointer may name another tag; an evidence build in a build folder
+            is read at ``main``, at which its folder never changes.
         line: Publication line for ``latest-<line>.json``; otherwise ``None``.
     """
 
@@ -1596,6 +1602,54 @@ def latest_line_release(repo_id: str, *, line: str, api=None) -> LatestPointer:
     )
 
 
+def _releases_record_bytes(api: object, *, repo_id: str) -> bytes | None:
+    """The repository's ``releases.json``, or ``None`` when the Hub says it
+    has none; any other failure to read it propagates."""
+    try:
+        local = api.hf_hub_download(
+            repo_id=repo_id, filename=RELEASES_RECORD_PATH, repo_type="dataset"
+        )
+    except Exception as exc:
+        if missing_on_hub(exc):
+            return None
+        raise
+    return Path(local).read_bytes()
+
+
+def _current_evidence_build(repo_id: str, record_bytes: bytes) -> LatestPointer:
+    """The evidence release's current build in ``releases.json``, as a pointer."""
+    try:
+        record = parse_releases_record(record_bytes)
+    except ValueError as exc:
+        raise ValueError(
+            f"{RELEASES_RECORD_PATH} in {repo_id} is not a valid release record: {exc}."
+        ) from exc
+    release = US_EVIDENCE_RELEASE_ID
+    entry = record.releases.get(release)
+    if entry is None:
+        raise ValueError(
+            f"{RELEASES_RECORD_PATH} in {repo_id} does not list the evidence "
+            f"release {release!r}."
+        )
+    build = entry.current
+    if build is None:
+        raise ValueError(
+            f"The evidence release {release!r} in {repo_id} has no current build."
+        )
+    folder = build_folder(release, build)
+    paths = {
+        stem: f"{folder}/{posixpath.basename(path)}"
+        for stem, path in latest_pointer_payload(build, updated_at="")["paths"].items()
+    }
+    return LatestPointer(
+        release_id=build,
+        updated_at=entry.builds[build].published_at,
+        paths=paths,
+        tier=RELEASE_TIER_EVIDENCE,
+        revision="main",
+    )
+
+
 def latest_evidence_release(repo_id: str, *, api=None) -> LatestPointer:
     """Read ``latest-evidence.json``: the best *current* evidence release.
 
@@ -1603,6 +1657,15 @@ def latest_evidence_release(repo_id: str, *, api=None) -> LatestPointer:
     consumers discover the best available artifact when no certified release
     carries it yet. Each evidence publish supersedes the last, so this
     pointer always names the current one.
+
+    A repository that records its builds in ``releases.json`` (the US
+    repository since its switch, microcosm#1570) has no
+    ``latest-evidence.json``: its evidence tier is
+    :data:`~microcosm.data.contract.US_EVIDENCE_RELEASE_ID`, and this returns
+    that release's current build. ``release_id`` is then the build,
+    ``paths`` are in its folder ``releases/<release>/<build>/``,
+    ``revision`` is ``main``, at which a build folder never changes, and
+    ``updated_at`` is when the build was published.
 
     Args:
         repo_id: Hub dataset repo, e.g. ``"policyengine/populace-us"``.
@@ -1613,8 +1676,14 @@ def latest_evidence_release(repo_id: str, *, api=None) -> LatestPointer:
     Raises:
         ValueError: If the pointer is malformed, does not declare the
             evidence tier, or names a release id without the
-            ``-evidence-`` segment.
+            ``-evidence-`` segment; or, with ``releases.json``, if the
+            evidence release is not listed or has no current build.
     """
+    if api is None:
+        api = _hf_api()
+    record_bytes = _releases_record_bytes(api, repo_id=repo_id)
+    if record_bytes is not None:
+        return _current_evidence_build(repo_id, record_bytes)
     payload = _read_pointer(repo_id, api, pointer_path=LATEST_EVIDENCE_POINTER_PATH)
     tier = payload.get("tier")
     if tier != RELEASE_TIER_EVIDENCE:
