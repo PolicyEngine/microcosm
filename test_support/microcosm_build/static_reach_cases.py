@@ -33,11 +33,20 @@ TARGETS = (
     "alias",
     "alias_base",
     "alias_cycle",
+    "alias_cycle_dotted",
+    "alias_cycle_dotted_first",
+    "alias_cycle_join",
     "alias_diamond",
     "alias_modules",
+    "alias_self_dotted",
     "alternative",
     "alternative_first",
+    "ann_class",
+    "ann_module",
     "attrgetter",
+    "aug_class",
+    "aug_module_effect",
+    "aug_store",
     "augassign",
     "base_attr",
     "base_dunder_import",
@@ -48,6 +57,7 @@ TARGETS = (
     "base_import",
     "base_or",
     "base_second",
+    "base_set",
     "base_starred",
     "base_subscript",
     "base_walrus",
@@ -64,6 +74,7 @@ TARGETS = (
     "body_hidden",
     "body_nested",
     "class_body_update",
+    "class_comp_fill",
     "class_fill_call",
     "class_fill_del",
     "class_fill_item",
@@ -71,11 +82,15 @@ TARGETS = (
     "class_fill_view",
     "class_global",
     "class_global_alias",
+    "class_global_aug",
     "class_global_class",
     "class_global_def",
     "class_global_hidden",
     "class_global_import",
+    "class_global_inherit",
+    "class_global_match",
     "class_header",
+    "class_iadd",
     "class_import",
     "class_import_body",
     "class_import_decorator",
@@ -83,14 +98,17 @@ TARGETS = (
     "class_member_change",
     "class_nested_fill",
     "class_scope",
+    "comp_first_iter",
     "comprehension",
     "comprehension_fill",
     "comprehension_iter",
     "conditional",
     "decorator",
     "default",
+    "del_class",
     "del_hidden",
     "del_item",
+    "del_module",
     "delattr",
     "delattr_patch",
     "dotted",
@@ -101,9 +119,20 @@ TARGETS = (
     "float",
     "for_store",
     "for_target",
+    "function_global",
+    "function_global_import",
     "getattr_alias",
     "getattr_constant",
+    "getattr_cycle_a",
+    "getattr_cycle_b",
+    "getattr_importer",
+    "getattr_renamed",
+    "getattr_self",
     "global",
+    "global_read_class",
+    "global_read_first",
+    "global_setter",
+    "global_setter_first",
     "go",
     "hasattr",
     "header_for",
@@ -126,7 +155,9 @@ TARGETS = (
     "import_renamed",
     "import_renamed_alias",
     "import_spec",
+    "kw_fill",
     "lambda",
+    "lambda_change",
     "lambda_shadow",
     "lazy",
     "lazy_assigned",
@@ -134,6 +165,7 @@ TARGETS = (
     "local",
     "local_alternative",
     "local_alternative_first",
+    "match_args_constant",
     "match_capture",
     "match_diamond",
     "match_inherited",
@@ -145,14 +177,19 @@ TARGETS = (
     "methodcaller",
     "mutation_alias",
     "namespace",
+    "nested_base_scope",
+    "nested_change",
+    "nested_global_value",
     "nested_scope",
     "nonlocal",
     "override",
+    "partial_import",
     "prop",
     "registrar",
     "registry_decorator",
     "root_base",
     "self_method",
+    "self_ref",
     "setattr",
     "setattr_patch",
     "setdefault",
@@ -161,6 +198,7 @@ TARGETS = (
     "shadow",
     "shadowed",
     "sibling",
+    "spec_name",
     "star",
     "star_clique",
     "star_diamond",
@@ -173,16 +211,27 @@ TARGETS = (
     "update",
     "value",
     "walrus",
+    "walrus_comp",
+    "with_class",
+    "with_module",
     "with_store",
     "with_target",
 )
 
 #: Targets a case binds so that a wrong walk would reach them. No walk
 #: reaches them and no run reads them: t_shadowed behind a name the class
-#: body rebinds (r_class_decorator) and behind a comprehension's target
-#: (r_comprehension_decoy), and t_body_hidden behind the function's import of
-#: nest_p, which the class in r_body_nested never reads.
-DECOYS = frozenset({"body_hidden", "shadowed"})
+#: body rebinds (r_class_decorator), behind a comprehension's target
+#: (r_comprehension_decoy) and behind a module binding of a name that a
+#: class body binds before its global's value reads it (r_class_global),
+#: t_body_hidden behind the function's import of
+#: nest_p, which the class in r_body_nested never reads, and t_ann_module and
+#: t_with_module behind a module binding that the class body has surely
+#: replaced before it reads the name (r_ann_class, r_with_class), and
+#: t_getattr_self behind a package module's ``__getattr__``, which the
+#: package's own ``__getattr__`` never stands for (r_getattr_self).
+DECOYS = frozenset(
+    {"ann_module", "body_hidden", "getattr_self", "shadowed", "with_module"}
+)
 
 #: Each target's source: reads of X or ROWS are recorded, anything else fails.
 _TARGET = """\
@@ -427,7 +476,7 @@ SOURCES: dict[str, str] = {
     # A name a class body declares global binds at module level: through an
     # assignment, an alias of a module, an import, a def and a class there.
     # In _Setup, a class nothing reaches, the assignment reads a name the
-    # class body bound.
+    # class body bound, not the module's _source.
     "cglob_alias": """
         from microcosm.walkcases import t_class_global_alias
 
@@ -449,7 +498,10 @@ SOURCES: dict[str, str] = {
             t_class_global_class,
             t_class_global_def,
             t_class_global_hidden,
+            t_shadowed,
         )
+
+        _source = t_shadowed
 
 
         class Kernel:
@@ -473,6 +525,34 @@ SOURCES: dict[str, str] = {
             global _ROWS
             _source = t_class_global_hidden
             _ROWS = _source.ROWS
+        """,
+    # A class that a class body declares global and defines takes its base's
+    # __match_args__, so a positional pattern reads the base's property.
+    "cglob_shapes": """
+        from microcosm.walkcases import t_class_global_inherit
+
+
+        class Base:
+            __match_args__ = ("left",)
+
+            @property
+            def left(self):
+                return t_class_global_inherit.X
+        """,
+    "r_class_global_inherit": """
+        from microcosm.walkcases.cglob_shapes import Base
+
+
+        class Kernel:
+            global Probe
+
+            class Probe(Base):
+                pass
+
+            def run(self):
+                match Probe():
+                    case Probe(v):
+                        return v
         """,
     # A package's lazy export, through its module-level __getattr__.
     "lazy.__init__": """
@@ -545,6 +625,48 @@ SOURCES: dict[str, str] = {
 
         def run():
             return Lazy3().go()  # noqa: F405
+        """,
+    # A walrus in a comprehension binds in the enclosing function, to what the
+    # comprehension's first iterable yields.
+    "r_walrus_comp": """
+        from microcosm.walkcases import t_walrus_comp as other
+
+
+        def run():
+            values = [(last := item) for item in (other,)]
+            return last.X, values
+        """,
+    # A class the walk doesn't reach binds a name it declares global, and a
+    # module function reads the name. Every binding of it counts, so the walk
+    # reaches the module's first binding as well.
+    "r_global_setter": """
+        from microcosm.walkcases import t_global_setter, t_global_setter_first
+
+        SOURCE = t_global_setter_first
+
+
+        class _Setter:
+            global SOURCE
+            SOURCE = t_global_setter
+
+
+        def run():
+            return SOURCE.X
+        """,
+    # The root's own class binds a name it declares global, then reads it.
+    "r_global_read": """
+        from microcosm.walkcases import t_global_read_class, t_global_read_first
+
+        SOURCE = t_global_read_first
+
+
+        class Kernel:
+            global SOURCE
+            SOURCE = t_global_read_class
+            seen = SOURCE
+
+            def run(self):
+                return self.seen.X
         """,
     # -- Scopes -----------------------------------------------------------------
     # A nested function's local leaves the enclosing scope's import alone.
@@ -785,6 +907,124 @@ SOURCES: dict[str, str] = {
 
             return inner()
         """,
+    # A comprehension's first iterable runs in the enclosing scope, so it reads
+    # the enclosing binding of a name the comprehension's target rebinds.
+    "r_comp_first_iter": """
+        from microcosm.walkcases import t_comp_first_iter as target
+
+
+        def run():
+            return [target for target in target.ROWS]
+        """,
+    # A class body's SOURCE = SOURCE.X reads the module's SOURCE: a statement
+    # binds its name only once it ends.
+    "r_self_ref": """
+        from microcosm.walkcases import t_self_ref
+
+        SOURCE = t_self_ref
+
+
+        class Kernel:
+            SOURCE = SOURCE.X
+
+            def run(self):
+                return self.SOURCE
+        """,
+    # Classes whose + reads a target: for X += 1 in a class body (Box), in a
+    # class body that declares X global (GlobalBox), and at module level
+    # where nothing reads X (BlindBox).
+    "aug_boxes": """
+        from microcosm.walkcases import (
+            t_aug_class,
+            t_aug_module_effect,
+            t_class_global_aug,
+        )
+
+
+        class Box:
+            def __add__(self, other):
+                return t_aug_class.X + other
+
+
+        class GlobalBox:
+            def __add__(self, other):
+                return t_class_global_aug.X + other
+
+
+        class BlindBox:
+            def __add__(self, other):
+                return t_aug_module_effect.X + other
+        """,
+    # X += 1 in a class body reads X before it binds it: here the module's X.
+    "r_aug_class": """
+        from microcosm.walkcases.aug_boxes import Box
+
+        X = Box()
+
+
+        class Kernel:
+            X += 1
+
+            def run(self):
+                return self.X
+        """,
+    # A del can undo a class body's binding, so a read after it reads the
+    # module's binding. The walk follows the class's own binding as well.
+    "r_del_class": """
+        from microcosm.walkcases import t_del_class, t_del_module
+
+        SOURCE = t_del_module
+
+
+        class Kernel:
+            SOURCE = t_del_class
+            del SOURCE
+            source = SOURCE
+
+            def run(self):
+                return self.source.X
+        """,
+    # A with statement and an annotated assignment at the body's top level
+    # bind for sure, so a read after either reads only the class's binding.
+    "with_ctx": """
+        class Ctx:
+            def __init__(self, value):
+                self.value = value
+
+            def __enter__(self):
+                return self.value
+
+            def __exit__(self, *exc):
+                return False
+        """,
+    "r_with_class": """
+        from microcosm.walkcases import t_with_class, t_with_module
+        from microcosm.walkcases.with_ctx import Ctx
+
+        SOURCE = t_with_module
+
+
+        class Kernel:
+            with Ctx(t_with_class) as SOURCE:
+                pass
+            source = SOURCE
+
+            def run(self):
+                return self.source.X
+        """,
+    "r_ann_class": """
+        from microcosm.walkcases import t_ann_class, t_ann_module
+
+        SOURCE = t_ann_module
+
+
+        class Kernel:
+            SOURCE: object = t_ann_class
+            source = SOURCE
+
+            def run(self):
+                return self.source.X
+        """,
     # -- Aliases ----------------------------------------------------------------
     # A constant that holds a module stands for it, through tuple unpacking,
     # and through either branch of a condition. (A module used as a value
@@ -862,7 +1102,7 @@ SOURCES: dict[str, str] = {
             pass
         """,
     # ... through each branch of a conditional (the walk follows both), each
-    # operand of or, a walrus, each element of a tuple, a starred list,
+    # operand of or, a walrus, each element of a tuple, a starred list, a set,
     # getattr, a subscript, import_module, and __import__'s top package.
     "bases": """
         from microcosm.walkcases import (
@@ -874,6 +1114,7 @@ SOURCES: dict[str, str] = {
             t_base_import,
             t_base_or,
             t_base_second,
+            t_base_set,
             t_base_starred,
             t_base_subscript,
             t_base_walrus,
@@ -931,6 +1172,11 @@ SOURCES: dict[str, str] = {
         class StarredBase:
             def run(self):
                 return t_base_starred.X
+
+
+        class SetBase:
+            def run(self):
+                return t_base_set.X
 
 
         class DunderImportBase:
@@ -996,6 +1242,15 @@ SOURCES: dict[str, str] = {
         from microcosm.walkcases import bases
 
         _Base = [*[bases.StarredBase]][0]
+
+
+        class Kernel(_Base):
+            pass
+        """,
+    "r_base_set": """
+        from microcosm.walkcases import bases
+
+        _Base = [*{bases.SetBase}][0]
 
 
         class Kernel(_Base):
@@ -1523,6 +1778,44 @@ SOURCES: dict[str, str] = {
             def run(self):
                 return self.TABLE
         """,
+    # A class body's assignment to a name it declares global runs as the class
+    # is created, though nothing reads the name: X += 1 calls GlobalBox's +.
+    "r_class_global_aug": """
+        from microcosm.walkcases.aug_boxes import GlobalBox
+
+        X = GlobalBox()
+
+
+        class Kernel:
+            global X
+            X += 1
+
+            def run(self):
+                return None
+        """,
+    # An augmented store to an attribute runs for its effect, and its value
+    # changes the table.
+    "r_aug_store": """
+        from microcosm.walkcases import t_aug_store
+
+        _TABLE = {}
+
+
+        class _Counter:
+            n = 0
+
+
+        def _fill(table):
+            table.update(t_aug_store.ROWS)
+            return 1
+
+
+        _Counter.n += _fill(_TABLE)
+
+
+        def run():
+            return _TABLE
+        """,
     # -- Changes by name --------------------------------------------------------
     # Another module re-exports the table run() reads and changes it in place.
     # The walk reads that module but reaches nothing it defines, so only the
@@ -1723,6 +2016,68 @@ SOURCES: dict[str, str] = {
             class Inner:
                 row = t_class_nested_fill.X
                 _TABLE.update({"row": row})
+
+
+        def run():
+            return _TABLE
+        """,
+    # A call statement in a class nothing reaches passes the table by keyword.
+    "r_kw_fill": """
+        from microcosm.walkcases import t_kw_fill
+
+        _TABLE = {}
+
+
+        def _fill(*, table):
+            table.update(t_kw_fill.ROWS)
+
+
+        class _Registrar:
+            _fill(table=_TABLE)
+
+
+        def run():
+            return _TABLE
+        """,
+    # A class nested in one nothing reaches changes the table directly.
+    "r_nested_change": """
+        from microcosm.walkcases import t_nested_change
+
+        _TABLE = {}
+
+
+        class _Registrar:
+            class Inner:
+                _TABLE.update(t_nested_change.ROWS)
+
+
+        def run():
+            return _TABLE
+        """,
+    # += in a class body nothing reaches reads the module's list and extends
+    # it in place.
+    "r_class_iadd": """
+        from microcosm.walkcases import t_class_iadd
+
+        _ROWS = []
+
+
+        class _Registrar:
+            _ROWS += list(t_class_iadd.ROWS)
+
+
+        def run():
+            return _ROWS
+        """,
+    # A comprehension in a class body nothing reaches changes the table.
+    "r_class_comp_fill": """
+        from microcosm.walkcases import t_class_comp_fill
+
+        _TABLE = {}
+
+
+        class _Registrar:
+            [_TABLE.update(rows) for rows in (t_class_comp_fill.ROWS,)]
 
 
         def run():
@@ -2092,6 +2447,23 @@ SOURCES: dict[str, str] = {
             first = load("microcosm.walkcases.renamed_mod").fn()
             return first, _import("microcosm.walkcases.renamed_alias_mod").fn()
         """,
+    # getattr under a module-level name.
+    "renamed_get_mod": """
+        from microcosm.walkcases import t_getattr_renamed
+
+
+        def fn():
+            return t_getattr_renamed.X
+        """,
+    "r_getattr_renamed": """
+        from microcosm.walkcases import renamed_get_mod
+
+        _get = getattr
+
+
+        def run():
+            return _get(renamed_get_mod, "fn")()
+        """,
     # -- What the walk can't see ------------------------------------------------
     # A decorator records _entry, and run() calls whatever the registry holds.
     "reg": """
@@ -2115,12 +2487,238 @@ SOURCES: dict[str, str] = {
         def run():
             return [entry() for entry in REGISTRY]
         """,
+    # An operator inside a statement that binds a name: at import, X += 1
+    # calls BlindBox's +, and nothing reads X.
+    "r_aug_module_effect": """
+        from microcosm.walkcases.aug_boxes import BlindBox
+
+        X = BlindBox()
+        X += 1
+
+
+        def run():
+            return None
+        """,
+    # A class nested in a class body binds SOURCE, which it declares global,
+    # to one of its own names. The walk reads that name at module level.
+    "r_nested_global_value": """
+        from microcosm.walkcases import t_nested_global_value
+
+        SOURCE = None
+
+
+        class _Outer:
+            class _Inner:
+                _SRC = t_nested_global_value
+                global SOURCE
+                SOURCE = _SRC
+
+
+        def run():
+            return SOURCE.X
+        """,
+    # A nested class that changes the table runs whole, and Python evaluates
+    # its base in _Outer's body, where _SRC binds the target. The walk reads
+    # _SRC at module level.
+    "r_nested_base_scope": """
+        from microcosm.walkcases import t_nested_base_scope
+
+        _TABLE = {}
+
+
+        class _Outer:
+            _SRC = t_nested_base_scope
+
+            class _Inner(_SRC.ROWS.__class__):
+                _TABLE.update(())
+
+
+        def run():
+            return _TABLE
+        """,
+    # A function binds _PAT through global. The walk reaches the function and
+    # Base, but the match class pattern reads what _PAT stands for from the
+    # module's own bindings only.
+    "fglob_shapes": """
+        from microcosm.walkcases import t_function_global
+
+
+        class Base:
+            __match_args__ = ("left",)
+
+            @property
+            def left(self):
+                return t_function_global.X
+        """,
+    "r_function_global": """
+        from microcosm.walkcases import fglob_shapes
+
+        _PAT = None
+
+
+        def _setup():
+            global _PAT
+            _PAT = fglob_shapes.Base
+
+
+        _setup()
+
+
+        def run():
+            match fglob_shapes.Base():
+                case _PAT(v):
+                    return v
+        """,
+    # ... and an attribute chain through a module that the function imports
+    # under the global name.
+    "fglob_mod": """
+        from microcosm.walkcases import t_function_global_import
+
+
+        def fn():
+            return t_function_global_import.X
+        """,
+    "r_function_global_import": """
+        _MOD = None
+
+
+        def _setup():
+            global _MOD
+            import microcosm.walkcases.fglob_mod as _MOD
+
+
+        _setup()
+
+
+        def run():
+            return _MOD.fn()
+        """,
+    # A class body binds _PAT, which it declares global, to its own import.
+    # The match class pattern reads base_cls at module level and finds no
+    # class.
+    "cglobm_shapes": """
+        from microcosm.walkcases import t_class_global_match
+
+
+        class Base:
+            __match_args__ = ("left",)
+
+            @property
+            def left(self):
+                return t_class_global_match.X
+        """,
+    "r_class_global_match": """
+        from microcosm.walkcases import cglobm_shapes
+
+        _PAT = None
+
+
+        class _Holder:
+            global _PAT
+            from microcosm.walkcases.cglobm_shapes import Base as base_cls
+            _PAT = base_cls
+
+
+        def run():
+            match cglobm_shapes.Base():
+                case _PAT(v):
+                    return v
+        """,
+    # A module that holds no reached item changes the table inside a lambda
+    # that it calls in place.
+    "lam_table": """
+        TABLE = {}
+        """,
+    "lam_fill": """
+        from microcosm.walkcases import t_lambda_change
+        from microcosm.walkcases.lam_table import TABLE
+
+        (lambda: TABLE.update(key=t_lambda_change.X))()
+        """,
+    "r_lambda_change": """
+        from microcosm.walkcases.lam_fill import TABLE
+
+
+        def run():
+            return TABLE
+        """,
+    # import_module relative to __spec__.name, which in a package's __init__
+    # names the package.
+    "r_spec_name.__init__": """
+        from importlib import import_module
+
+
+        def run():
+            return import_module(".inner", package=__spec__.name).fn()
+        """,
+    "r_spec_name.inner": """
+        from microcosm.walkcases import t_spec_name
+
+
+        def fn():
+            return t_spec_name.X
+        """,
+    # An importer that functools.partial wraps, and one that a call returns.
+    "partial_mod": """
+        from microcosm.walkcases import t_partial_import
+
+
+        def fn():
+            return t_partial_import.X
+        """,
+    "r_partial_import": """
+        from functools import partial
+        from importlib import import_module
+
+        load = partial(import_module, package=__package__)
+
+
+        def run():
+            return load(".partial_mod").fn()
+        """,
+    "getimp_mod": """
+        from microcosm.walkcases import t_getattr_importer
+
+
+        def fn():
+            return t_getattr_importer.X
+        """,
+    "r_getattr_importer": """
+        import importlib
+
+        load = getattr(importlib, "import_module")
+
+
+        def run():
+            return load("microcosm.walkcases.getimp_mod").fn()
+        """,
+    # An explicit __match_args__ that names a constant.
+    "r_match_args_constant": """
+        from microcosm.walkcases import t_match_args_constant
+
+        _FIELDS = ("left",)
+
+
+        class Point:
+            __match_args__ = _FIELDS
+
+            @property
+            def left(self):
+                return t_match_args_constant.X
+
+
+        def run():
+            match Point():
+                case Point(v):
+                    return v
+        """,
 }
 
 # -- Cost ----------------------------------------------------------------------
 # Shapes in which a walk that ran each lookup afresh wherever it met it would
 # take time exponential in a diamond's depth or factorial in a clique's size.
-# The walk runs each lookup once, so each of these takes milliseconds.
+# The walk runs each lookup outside a cycle once, and a cycle's lookups again
+# only until a pass adds nothing, so each of these takes milliseconds.
 
 #: How deep each diamond goes, and how many modules the clique holds.
 _DEPTH = 22
@@ -2311,6 +2909,203 @@ SOURCES["r_alias_pure_cycle"] = """
     def run():
         return getattr(_B, "X", None)
     """
+# A cycle through a dotted name: X stands for Y.sub, and Y, bound again in a
+# branch that never runs, for X. Python binds Y to the package and X to its
+# sub module. run() meets Y first, and X still stands for what Y.sub names:
+# the positional pattern reads the property that Base's __match_args__ names.
+SOURCES["cycd.__init__"] = ""
+SOURCES["cycd.sub"] = """
+    from microcosm.walkcases import t_alias_cycle_dotted
+
+
+    class Base:
+        __match_args__ = ("left",)
+
+        @property
+        def left(self):
+            return t_alias_cycle_dotted.X
+    """
+SOURCES["r_alias_cycle_dotted"] = """
+    import microcosm.walkcases.cycd.sub  # noqa: F401
+    from microcosm.walkcases import cycd
+
+    Y = cycd
+    X = Y.sub
+    if False:
+        Y = X
+
+
+    def run():
+        seen = Y.sub
+        match X.Base():
+            case X.Base(v):
+                return v, seen
+    """
+# The same cycle met from X: Y still stands for the package.
+SOURCES["cycf.__init__"] = """
+    from microcosm.walkcases import t_alias_cycle_dotted_first
+
+
+    class Thing:
+        __match_args__ = ("left",)
+
+        @property
+        def left(self):
+            return t_alias_cycle_dotted_first.X
+    """
+SOURCES["cycf.sub"] = """
+    class Base:
+        pass
+    """
+SOURCES["r_alias_cycle_dotted_first"] = """
+    import microcosm.walkcases.cycf.sub  # noqa: F401
+    from microcosm.walkcases import cycf
+
+    Y = cycf
+    X = Y.sub
+    if False:
+        Y = X
+
+
+    def run():
+        seen = X.Base
+        match Y.Thing():
+            case Y.Thing(v):
+                return v, seen
+    """
+# A lookup that a pass over the cycle begins, and that waits on the cycle,
+# joins it: X stands for Y.sub.A, and A, bound again in a branch that never
+# runs, for X.
+SOURCES["cycj.__init__"] = ""
+SOURCES["cycj.sub"] = """
+    from microcosm.walkcases import t_alias_cycle_join
+
+
+    class Base:
+        __match_args__ = ("left",)
+
+        @property
+        def left(self):
+            return t_alias_cycle_join.X
+
+
+    A = Base
+    if False:
+        from microcosm.walkcases.r_alias_cycle_join import X
+
+        A = X
+    """
+SOURCES["r_alias_cycle_join"] = """
+    import microcosm.walkcases.cycj.sub  # noqa: F401
+    from microcosm.walkcases import cycj
+
+    Y = cycj
+    X = Y.sub.A
+    if False:
+        Y = X
+
+
+    def run():
+        seen = Y.sub
+        match X():
+            case X(v):
+                return v, seen
+    """
+# A name bound again to its own attribute: X stands for cycs, then for its
+# sub module. Its lookup waits on itself, and a second pass reads cycs.sub.
+SOURCES["cycs.__init__"] = ""
+SOURCES["cycs.sub"] = """
+    from microcosm.walkcases import t_alias_self_dotted
+
+
+    class Base:
+        __match_args__ = ("left",)
+
+        @property
+        def left(self):
+            return t_alias_self_dotted.X
+    """
+SOURCES["r_alias_self_dotted"] = """
+    import microcosm.walkcases.cycs.sub  # noqa: F401
+    from microcosm.walkcases import cycs
+
+    X = cycs
+    X = X.sub
+
+
+    def run():
+        match X.Base():
+            case X.Base(v):
+                return v
+    """
+# Two modules that each define __getattr__ and import x from the other.
+# Whichever Python imports first, the other's ``from ... import x`` finds it
+# part-built and calls its __getattr__. Each __getattr__ answers x only: a
+# from-import asks its source for __path__ first. In r_getattr_cycle Python
+# imports gcyc_b first, so it reads t_getattr_cycle_b; the walk meets gcyc_a's
+# x first. In r_getattr_cycle_first both meet gcyc_a first. Either way the
+# walk reaches both targets, since it doesn't track import order.
+SOURCES.update(
+    {
+        f"gcyc_{first}": f"""
+            from microcosm.walkcases import t_getattr_cycle_{first}
+
+
+            def __getattr__(name):
+                if name == "x":
+                    return t_getattr_cycle_{first}.X
+                raise AttributeError(name)
+
+
+            from microcosm.walkcases.gcyc_{second} import x
+            """
+        for first, second in (("a", "b"), ("b", "a"))
+    }
+)
+SOURCES["r_getattr_cycle"] = """
+    import microcosm.walkcases.gcyc_b  # noqa: F401
+    from microcosm.walkcases.gcyc_a import x
+
+
+    def run():
+        return x
+    """
+SOURCES["r_getattr_cycle_first"] = """
+    from microcosm.walkcases.gcyc_a import x
+
+
+    def run():
+        return x
+    """
+# A package's own __getattr__, whose lookup waits on a cycle: gself_a binds
+# it, and in a branch that never runs imports it from gself_b, which imports
+# it from gself_a. Python finds a module's __getattr__ in its namespace
+# only, so gself_a.inner's __getattr__ never stands for it.
+SOURCES["gself_a.__init__"] = """
+    def __getattr__(name):
+        raise AttributeError(name)
+
+
+    if False:
+        from microcosm.walkcases.gself_b import __getattr__  # noqa: F811
+    """
+SOURCES["gself_a.inner"] = """
+    from microcosm.walkcases import t_getattr_self
+
+
+    def __getattr__(name):
+        return t_getattr_self.X
+    """
+SOURCES["gself_b"] = """
+    from microcosm.walkcases.gself_a import __getattr__  # noqa: F401
+    """
+SOURCES["r_getattr_self"] = """
+    from microcosm.walkcases.gself_a import __getattr__ as hook
+
+
+    def run():
+        return hook
+    """
 
 # A root that makes a Thing reaches every dunder Thing defines, so it reaches
 # t_add and t_float as well: the walk over-approximates there by design.
@@ -2345,6 +3140,10 @@ ROOTS: dict[tuple[str, str], set[str]] = {
         "class_global_hidden",
         "class_global_import",
     },
+    ("r_class_global_inherit", "Kernel.run"): {"class_global_inherit"},
+    ("r_walrus_comp", "run"): {"walrus_comp"},
+    ("r_global_setter", "run"): {"global_setter", "global_setter_first"},
+    ("r_global_read", "Kernel.run"): {"global_read_class", "global_read_first"},
     # Scopes
     ("r_shadow", "run"): {"shadow"},
     ("r_comprehension", "run"): {"comprehension"},
@@ -2362,6 +3161,12 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_body_nested", "run"): {"body_nested"},
     ("r_global", "run"): {"global"},
     ("r_nonlocal", "run"): {"nonlocal"},
+    ("r_comp_first_iter", "run"): {"comp_first_iter"},
+    ("r_self_ref", "Kernel.run"): {"self_ref"},
+    ("r_aug_class", "Kernel.run"): {"aug_class"},
+    ("r_del_class", "Kernel.run"): {"del_class", "del_module"},
+    ("r_with_class", "Kernel.run"): {"with_class"},
+    ("r_ann_class", "Kernel.run"): {"ann_class"},
     # Aliases
     ("r_alias", "run"): {"alias"},
     ("r_unpack", "run"): {"unpack"},
@@ -2374,6 +3179,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_base_or", "Kernel.run"): {"base_or"},
     ("r_base_walrus", "Kernel.run"): {"base_walrus"},
     ("r_base_starred", "Kernel.run"): {"base_starred"},
+    ("r_base_set", "Kernel.run"): {"base_set"},
     ("r_base_dunder_import", "Kernel.run"): {"base_dunder_import"},
     ("r_import_alias_base", "Kernel.run"): {"base_import"},
     ("r_getattr_alias", "run"): {"getattr_alias"},
@@ -2428,6 +3234,8 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_setattr_patch", "Kernel.run"): {"setattr_patch"},
     ("r_delattr_patch", "Kernel.run"): {"delattr_patch"},
     ("r_class_body_update", "Kernel.run"): {"class_body_update"},
+    ("r_class_global_aug", "Kernel.run"): {"class_global_aug"},
+    ("r_aug_store", "run"): {"aug_store"},
     # Changes by name
     ("r_update", "run"): {"update"},
     ("r_setitem", "run"): {"setitem"},
@@ -2445,6 +3253,10 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_augassign", "run"): {"augassign"},
     ("r_class_member_change", "Kernel.run"): {"class_member_change"},
     ("r_class_nested_fill", "run"): {"class_nested_fill"},
+    ("r_kw_fill", "run"): {"kw_fill"},
+    ("r_nested_change", "run"): {"nested_change"},
+    ("r_class_iadd", "run"): {"class_iadd"},
+    ("r_class_comp_fill", "run"): {"class_comp_fill"},
     # Attribute fallback
     ("r_prop", "run"): {"prop", *_THING},
     ("r_value", "run"): {"value"},
@@ -2469,6 +3281,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_import_spec", "run"): {"import_spec"},
     ("r_import_name", "run"): {"import_name"},
     ("r_import_renamed", "run"): {"import_renamed", "import_renamed_alias"},
+    ("r_getattr_renamed", "run"): {"getattr_renamed"},
     # Cost
     ("r_star_diamond", "run"): {"star_diamond"},
     ("r_star_clique", "run"): {"star_clique"},
@@ -2479,15 +3292,41 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_lazy_cycle", "run"): {"lazy_cycle"},
     ("r_alias_cycle", "run"): {"alias_cycle"},
     ("r_alias_pure_cycle", "run"): set(),
+    ("r_alias_cycle_dotted", "run"): {"alias_cycle_dotted"},
+    ("r_alias_cycle_dotted_first", "run"): {"alias_cycle_dotted_first"},
+    ("r_alias_cycle_join", "run"): {"alias_cycle_join"},
+    ("r_alias_self_dotted", "run"): {"alias_self_dotted"},
+    ("r_getattr_cycle", "run"): {"getattr_cycle_a", "getattr_cycle_b"},
+    ("r_getattr_cycle_first", "run"): {"getattr_cycle_a", "getattr_cycle_b"},
+    ("r_getattr_self", "run"): set(),
     # What the walk can't see
     ("r_registry_decorator", "run"): set(),
+    ("r_aug_module_effect", "run"): set(),
+    ("r_nested_global_value", "run"): set(),
+    ("r_nested_base_scope", "run"): set(),
+    ("r_function_global", "run"): set(),
+    ("r_function_global_import", "run"): set(),
+    ("r_class_global_match", "run"): set(),
+    ("r_lambda_change", "run"): set(),
+    ("r_spec_name", "run"): set(),
+    ("r_partial_import", "run"): set(),
+    ("r_getattr_importer", "run"): set(),
+    ("r_match_args_constant", "run"): set(),
 }
 
 #: Targets a root's walk reaches that its run doesn't read. The walk reaches
-#: every dunder of a class it references, both branches of a condition, and
-#: both operands of ``or``.
+#: every dunder of a class it references, both branches of a condition, both
+#: operands of ``or``, every binding of a module-level name (a class body's
+#: ``global`` one too), what each statement in a class body it reaches
+#: names, even a binding that a ``del`` undoes, and in a cycle of imports,
+#: each module's ``__getattr__``, whichever module Python imports first.
 OVER: dict[tuple[str, str], set[str]] = {
     ("r_alias_cycle", "run"): {"alias_cycle"},
+    ("r_getattr_cycle", "run"): {"getattr_cycle_a"},
+    ("r_getattr_cycle_first", "run"): {"getattr_cycle_b"},
+    ("r_global_setter", "run"): {"global_setter_first"},
+    ("r_global_read", "Kernel.run"): {"global_read_first"},
+    ("r_del_class", "Kernel.run"): {"del_class"},
     ("r_float", "run"): {"add"},
     ("r_add", "run"): {"float"},
     ("r_prop", "run"): _THING,
@@ -2504,6 +3343,28 @@ BLIND: dict[tuple[str, str], set[str]] = {
     ("r_factory", "run"): {"base_attr"},
     # Registration: the decorator records _entry, and run() calls it.
     ("r_registry_decorator", "run"): {"registry_decorator"},
+    # An operator inside a statement that binds a name: X += 1 runs at import.
+    ("r_aug_module_effect", "run"): {"aug_module_effect"},
+    # In a class nested in a class body, the value bound to a global name, and
+    # the bases of a nested class the walk runs whole: it reads their names at
+    # module level.
+    ("r_nested_global_value", "run"): {"nested_global_value"},
+    ("r_nested_base_scope", "run"): {"nested_base_scope"},
+    # A binding that a function makes through global: a match class pattern
+    # and an attribute chain through the name read the module's bindings only.
+    ("r_function_global", "run"): {"function_global"},
+    ("r_function_global_import", "run"): {"function_global_import"},
+    # A match class pattern through a class body's global name, which the
+    # body binds to its own import.
+    ("r_class_global_match", "run"): {"class_global_match"},
+    # A change in place inside a lambda that a module-level statement calls.
+    ("r_lambda_change", "run"): {"lambda_change"},
+    # import_module with another package, and importers that a call returns.
+    ("r_spec_name", "run"): {"spec_name"},
+    ("r_partial_import", "run"): {"partial_import"},
+    ("r_getattr_importer", "run"): {"getattr_importer"},
+    # An explicit __match_args__ other than a tuple of string literals.
+    ("r_match_args_constant", "run"): {"match_args_constant"},
 }
 
 

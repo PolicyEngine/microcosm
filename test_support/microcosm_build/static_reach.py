@@ -28,7 +28,9 @@ What the walk follows from a root, a function or a method with its class:
   only once a statement at the body's top level has bound it. Before that,
   when only a branch, a loop or a bare annotation binds it, or when a ``del``
   can undo it, Python reads the module's binding, so the walk follows that
-  one too.
+  one too. An augmented assignment (``X += 1``) reads its target before it
+  binds it, so a class body's ``X += 1`` reads the module's ``X`` until the
+  body has bound it.
 - Aliases. A module-level constant stands for each module, class or function
   its value names: ``_helper = helper_module``, ``_Base = pkg.Base``,
   ``pkg.Base[int]``, either branch of a conditional, each operand of ``and``
@@ -55,7 +57,9 @@ What the walk follows from a root, a function or a method with its class:
   statement's header there: an ``if`` or ``while`` test, what a ``for``
   iterates or a ``with`` enters and the target each stores to, a ``match``
   statement's subject, patterns and guards, and each ``except`` or
-  ``except*`` clause's types.
+  ``except*`` clause's types. In a class it reaches, it also follows each
+  assignment to a name the body declares ``global``: the name binds outside
+  the class, but the assignment runs as Python creates the class.
 - Changes by name. In any module the walk has read, a statement at module
   level or in any class body, a nested class's too, that changes a reached
   name in place runs with it: a method call on the name
@@ -79,46 +83,76 @@ What the walk follows from a root, a function or a method with its class:
   ``__spec__.parent`` or ``__name__``, and ``__import__`` with its top
   package as well, counting a ``level`` above zero from the calling
   module's package. Each of these callables counts under a module-level
-  name for it too (``load = import_module``). A module-level constant that
-  holds only strings counts as a literal.
+  name that an import or an assignment binds to it
+  (``load = import_module``, ``_get = getattr``). A module-level constant
+  that each of its bindings sets to a string counts as a literal
+  (``_NAME = "go"``).
 
-Each lookup runs once per walk: what a name binds in a module, what a
-constant stands for, a package's lazy exports, and a class's inherited
-``__match_args__``. Lookups that wait on each other in a cycle settle on the
-same items, whichever the walk met first. A walk that ran each lookup afresh
-wherever it met it would take time exponential in the depth of a diamond of
-star imports, re-exports, constants or bases, and factorial in the size of a
-clique of star imports: the Cost cases in ``static_reach_cases``. A round
-counts only what it adds: an item, a module the walk uses as a value, or a
-statement the walk hasn't run. The walk ends at the first round that adds
-nothing.
+Each lookup outside a cycle runs once per walk: what a name binds in a
+module, what a constant stands for, a package's lazy exports, and a class's
+inherited ``__match_args__``. Lookups that wait on each other in a cycle run
+again, each meeting what the others hold so far, until a pass over the cycle
+adds nothing. So each settles on what it finds once the others are complete,
+whichever the walk met first. Within a cycle, a module's ``__getattr__``
+answers for a name whose lookup hasn't settled, since Python can read the
+module part-built, before it binds the name. A walk that ran each lookup
+afresh wherever it met it would take time exponential in the depth of a
+diamond of star imports, re-exports, constants or bases, and factorial in
+the size of a clique of star imports: the Cost cases in
+``static_reach_cases``. A lookup nests inside the one that needs it, three
+to five Python frames a level. So on a chain of about 200 re-exports, 250
+star imports, or 330 constants or inherited ``__match_args__``, each naming
+the next, the walk passes Python's default recursion limit of 1,000 and
+raises ``RecursionError``; the kernels' lookups nest at most four deep. A
+round counts only what it adds: an item, a module the walk uses as a value,
+or a statement the walk hasn't run. The walk ends at the first round that
+adds nothing.
 
 What it can't see:
 
 - a name built at run time (``getattr`` or ``import_module`` with a computed
-  name, ``globals()``, ``exec``), and those callables under a name that a
-  function binds;
+  name, ``import_module`` with a package other than those "Literal names"
+  lists, ``globals()``, ``exec``), and those callables under a name that a
+  function binds or that a call returns (``partial(import_module, ...)``,
+  ``getattr(importlib, "import_module")``);
 - code reached by registration rather than by name: a function that a
   decorator records for a framework or a registry to call
   (``singledispatch``, pydantic's validators);
 - the import-time code of a module that holds no item the walk reaches, such
   as the ``__init__`` of a package above a reached module, or a module
   imported only for its effects, unless a statement there changes a reached
-  name in place in a module the walk has read;
-- the side effects of a call inside a statement that binds a name or tests a
-  value (``_X = _setup()``, ``assert _setup()``), unless the walk reaches that
-  statement another way;
+  name in place, in a way "Changes by name" lists, in a module the walk has
+  read. A change inside a function or a lambda that the statement calls
+  doesn't count (``(lambda: _TABLE.update(...))()``);
+- the side effects of a call or an operator inside a statement that binds a
+  name or tests a value (``_X = _setup()``, ``_X += 1``, ``assert _setup()``),
+  unless the walk reaches that statement another way;
 - the import-time code of a class or function the walk doesn't reach: its
   decorators, default values, class bases and class attributes, unless a
   statement in the class body changes a reached name in place;
+- what a name stands for where code in a function binds it through
+  ``global``. The walk follows the function's code where it reaches the
+  function, but reads what the name stands for from the module's own
+  bindings only. So a ``match`` class pattern through the name finds no
+  class, and an attribute chain through a module that the function imports
+  under the name (``global _MOD; import p.m as _MOD``) reaches nothing;
+- a ``match`` class pattern through a name that a class body declares
+  ``global`` and binds to one of the body's own names: the walk reads the
+  body's names at module level there and finds no class;
+- in a class nested in a class body, the value that it binds to a name it
+  declares ``global``, and the bases, keywords and decorators of a nested
+  class that the walk runs whole: the walk reads their names at module level;
+- an explicit ``__match_args__`` other than a tuple of string literals
+  (``__match_args__ = _FIELDS``);
 - a member inherited from a base that the ``class`` statement computes with a
   call;
 - code that an argument carries in from outside the walk (the executor's
   context, for one);
-- a module that only an annotation names. Before Python 3.14 a ``def``
-  statement evaluates its annotations as it runs; from 3.14 they wait until
-  something reads them (``typing.get_type_hints``); and
-  ``from __future__ import annotations`` keeps them as strings.
+- what only an annotation names or calls. Before Python 3.14, a ``def``
+  statement, a class body and a module evaluate their annotations as they
+  run; from 3.14 they wait until something reads them
+  (``typing.get_type_hints``); and ``from __future__ import annotations``
+  keeps them as strings.
 
 A :class:`Cut` leaves out one guarded branch, so a test names each exception
 it relies on rather than skipping a module.
@@ -350,6 +384,25 @@ def _effects(body: Iterable[ast.stmt]) -> Iterator[ast.AST]:
             yield from _header(node)
         elif isinstance(node, ast.Expr | ast.Delete) or _stores_into(node):
             yield node
+
+
+def _global_stores(node: ast.ClassDef) -> Iterator[ast.stmt]:
+    """Each assignment in a class body to a name the body declares ``global``.
+
+    The name binds at module level, so it isn't one of the class's members,
+    but creating the class runs the assignment.
+    """
+
+    declared = _declared_globals(node)
+    if not declared:
+        return
+    for child in _statements(node.body):
+        if isinstance(child, ast.Assign | ast.AugAssign) and any(
+            bound in declared
+            for target, _ in _assignments(child)
+            for bound in _stored(target)
+        ):
+            yield child
 
 
 def _mutations(part: ast.AST) -> Iterator[str]:
@@ -900,14 +953,17 @@ class _Walk:
         #: A top-level class member's binding statement -> its class body.
         self._body_of: dict[int, ast.ClassDef] = {}
         self._inside: dict[str, list[str]] = {}
-        # Lookups, each computed once (see _settled): what each settled one
-        # holds; when each unsettled one began, and its cut; the unsettled
-        # ones in that order; and those another lookup met unsettled.
+        # Lookups (see _settled): what each settled one holds; when each
+        # unsettled one began, what it holds so far and how to run it again;
+        # the unsettled ones in that order; and those another lookup met
+        # unsettled. How many times each lookup in a cycle ran again.
         self._done: dict[tuple[object, ...], tuple[object, ...]] = {}
         self._began: dict[tuple[object, ...], int] = {}
         self._cuts: dict[tuple[object, ...], tuple[object, ...]] = {}
+        self._computes: dict[tuple[object, ...], Callable[[], Iterable[object]]] = {}
         self._open: list[tuple[object, ...]] = []
         self._met: set[tuple[object, ...]] = set()
+        self.reruns: dict[tuple[object, ...], int] = defaultdict(int)
         self._begun = 0
         #: When the earliest unsettled lookup that the one under way met began.
         self._low: float = math.inf
@@ -968,19 +1024,21 @@ class _Walk:
         compute: Callable[[], Iterable[T]],
         cut: Iterable[T] = (),
     ) -> list[T]:
-        """``compute()``'s items for ``key``, once each, computing ``key`` once.
+        """``compute()``'s items for ``key``, once each.
 
         Lookups can wait on each other in a cycle: modules that import a name
         from each other, star imports, a lazy package's modules, constants
         that name each other, or bases. A lookup that meets one that hasn't
-        settled gets that one's ``cut``, and every lookup in the cycle
-        settles on the same items: what the cycle's first lookup ends with,
-        and each one's cut (Tarjan's strongly connected components). In a
-        cycle, each lookup's caller keeps what it found, back to the first
-        lookup, and the lookups reach each other, so each can reach every
-        item the first one ends with, whichever the walk met first. Each
-        lookup then runs once, where running it afresh at each visit costs
-        time exponential in a diamond's depth.
+        settled gets what that one holds so far, starting from its ``cut``,
+        and Tarjan's strongly connected components find the cycle. When the
+        cycle's first lookup ends, the cycle's lookups run again, each meeting
+        what the others hold so far, until a pass adds nothing (see
+        :meth:`_cycle`). So each ends with what it finds once the others are
+        complete, whichever the walk met first. That matters where a lookup
+        maps another's items rather than adding them: ``X = Y.sub`` in a
+        cycle with ``Y`` holds what ``Y.sub`` names, not what ``Y`` names. A
+        lookup outside a cycle runs once, where running each lookup afresh at
+        each visit costs time exponential in a diamond's depth.
         """
 
         if key in self._done:
@@ -992,6 +1050,7 @@ class _Walk:
         began = self._began[key] = self._begun
         self._begun += 1
         self._cuts[key] = tuple(cut)
+        self._computes[key] = compute
         self._open.append(key)
         outer, self._low = self._low, began
         # One copy of each: through a diamond, every path adds its own.
@@ -1001,19 +1060,47 @@ class _Walk:
             # It waits on a lookup that began earlier and hasn't settled.
             self._low = min(outer, low)
             return list(items)
-        self._low = outer
         start = self._open.index(key)
         members = self._open[start:]
-        del self._open[start:]
         if len(members) > 1 or key in self._met:
-            items = list(
-                dict.fromkeys([*items, *(c for m in members for c in self._cuts[m])])
-            )
+            self._cycle(members, start)
+            items = list(self._cuts[key])
+        else:
+            self._cuts[key] = tuple(items)
+        self._low = outer
+        del self._open[start:]
         for member in members:
-            del self._began[member], self._cuts[member]
+            self._done[member] = self._cuts[member]
+            del self._began[member], self._cuts[member], self._computes[member]
             self._met.discard(member)
-            self._done[member] = tuple(items)
         return list(items)
+
+    def _cycle(self, members: list[tuple[object, ...]], start: int) -> None:
+        """Run a cycle's lookups again until a pass adds nothing.
+
+        ``members`` are the cycle's lookups, ``self._open[start:]``, each
+        holding in ``_cuts`` its cut. Each pass runs every member again, the
+        last to begin first: each run meets what the others hold so far, and
+        its lookup then holds what it held and what the run found. A lookup
+        that a run begins and that waits on the cycle joins it. Items and
+        members only grow, and both are finite, so the passes end.
+        """
+
+        grew = True
+        while grew:
+            grew = False
+            for member in reversed(list(members)):
+                self.reruns[member] += 1
+                found = list(self._computes[member]())
+                joined = self._open[start + len(members) :]
+                if joined:
+                    members.extend(joined)
+                    grew = True
+                held = self._cuts[member]
+                now = tuple(dict.fromkeys([*held, *found]))
+                if len(now) > len(held):
+                    self._cuts[member] = now
+                    grew = True
 
     def resolve(self, module: str, name: str) -> list[Item]:
         """Every definition ``name`` can bind in ``module``'s top-level scope."""
@@ -1052,8 +1139,13 @@ class _Walk:
             items.append((f"{module}.{name}", "module", None))
         items.extend(self.resolve(module, name))
         found = self.module(module)
-        if items or found is None or name == "__getattr__":
+        if found is None or name == "__getattr__":
             # Python finds a module's __getattr__ in its namespace only.
+            return items
+        if items and ("resolve", module, name) in self._done:
+            # Bound for sure. A lookup that hasn't settled waits on a cycle,
+            # where Python can read the module part-built, before it binds
+            # the name, so its __getattr__ counts too.
             return items
         # A lazy export: whatever binds the module's __getattr__ and, for a
         # package, the name wherever the package's own modules bind it.
@@ -1308,7 +1400,13 @@ class _Walk:
 
         for child, here in _visits(found, node, skipped, start, {}):
             at = f"{site}:{getattr(child, 'lineno', '?')}"
-            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
+            if isinstance(child, ast.AugAssign) and isinstance(child.target, ast.Name):
+                # ``NAME += value`` reads NAME before it binds it.
+                for item in lookup(child.target.id, here, child.target):
+                    self.push(item, at)
+                    if item[1] == "module":
+                        self.values.add(item[0])
+            elif isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
                 for item in lookup(child.id, here, child):
                     self.push(item, at)
                     if item[1] == "module" and id(child) not in rooted:
@@ -1453,7 +1551,7 @@ class _Walk:
                 for part in (*node.decorator_list, *node.bases, *node.keywords):
                     self.scan(module, part, f"{module}.{name}(class)")
                 # Creating the class runs its body.
-                for part in _effects(node.body):
+                for part in (*_effects(node.body), *_global_stores(node)):
                     if id(part) not in self.ran:
                         self.ran.add(id(part))
                         self.scan(

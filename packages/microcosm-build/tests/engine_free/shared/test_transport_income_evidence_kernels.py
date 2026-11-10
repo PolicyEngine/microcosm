@@ -2060,10 +2060,15 @@ def test_property_composing_roots_loses_no_target(walk_case_tree, picked) -> Non
     )
 
 
-def test_the_walk_runs_each_lookup_once(walk_case_tree, monkeypatch) -> None:
-    # Each lookup runs once per walk and hands back each item once. A walk
-    # that ran a lookup afresh wherever it met it would take time exponential
-    # in a diamond's depth, or factorial in a clique's size, on the Cost roots.
+def test_the_walk_runs_each_lookup_once_outside_a_cycle(
+    walk_case_tree, monkeypatch
+) -> None:
+    # A lookup outside a cycle runs once per walk, and a lookup in a cycle
+    # once more for each pass that runs the cycle again. Each hands back each
+    # item once, and every lookup a walk begins settles, a lookup that joins a
+    # cycle during a pass too (r_alias_cycle_join). A walk that ran a lookup
+    # afresh wherever it met it would take time exponential in a diamond's
+    # depth, or factorial in a clique's size, on the Cost roots.
     _, paths = walk_case_tree
     settled = static_reach._Walk._settled
     runs: Counter[tuple[object, ...]] = Counter()
@@ -2071,7 +2076,6 @@ def test_the_walk_runs_each_lookup_once(walk_case_tree, monkeypatch) -> None:
     def counted(self, key, compute, cut=()):
         def counting():
             runs[key] += 1
-            assert runs[key] == 1, key
             return compute()
 
         found = settled(self, key, counting, cut)
@@ -2081,8 +2085,12 @@ def test_the_walk_runs_each_lookup_once(walk_case_tree, monkeypatch) -> None:
     monkeypatch.setattr(static_reach._Walk, "_settled", counted)
     for module, qualname in _WALK_CASE_ROOTS:
         runs.clear()
-        reach(f"{static_reach_cases.PACKAGE}.{module}", qualname, paths=paths)
+        walk = static_reach._Walk(paths, ())
+        walk.run(f"{static_reach_cases.PACKAGE}.{module}", qualname)
         assert runs, (module, qualname)
+        assert not walk._began and not walk._open, (module, qualname)
+        for key, count in runs.items():
+            assert count == 1 + walk.reruns.get(key, 0), (module, key)
 
 
 def _fresh_lookup(walk, key):
@@ -2099,10 +2107,14 @@ def _fresh_lookup(walk, key):
 
 
 def test_a_settled_lookup_holds_what_a_fresh_walk_finds(walk_case_tree) -> None:
-    # Lookups in a cycle settle on the same items, whichever the walk met
-    # first (r_star_clique, r_lazy_cycle, r_alias_cycle). So each lookup a
-    # root's walk settles holds what the same lookup finds first in a fresh
-    # walk.
+    # Each lookup in a cycle ends with what it finds once the others are
+    # complete, whichever the walk met first: r_star_clique, r_lazy_cycle and
+    # r_alias_cycle; r_alias_cycle_dotted and r_alias_cycle_dotted_first,
+    # where one lookup maps another's items through an attribute;
+    # r_alias_self_dotted, where a lookup waits on itself; and r_getattr_cycle
+    # and r_getattr_cycle_first, where a module's __getattr__ answers inside a
+    # cycle of imports. So each lookup a root's walk settles holds what the
+    # same lookup finds first in a fresh walk.
     _, paths = walk_case_tree
     for module, qualname in _WALK_CASE_ROOTS:
         walk = static_reach._Walk(paths, ())
@@ -2111,6 +2123,50 @@ def test_a_settled_lookup_holds_what_a_fresh_walk_finds(walk_case_tree) -> None:
             fresh = static_reach._Walk(paths, ())
             fresh.modules = walk.modules
             assert set(_fresh_lookup(fresh, key)) == set(items), (module, key)
+
+
+#: Cost roots on which a walk that ran each lookup afresh wherever it met it
+#: would make more than 300,000 lookups: each diamond doubles its paths at
+#: each of its 22 levels, and the clique's grow factorially with its size.
+_COST_ROOTS = [
+    ("r_alias_diamond", "run"),
+    ("r_alias_modules", "run"),
+    ("r_import_diamond", "run"),
+    ("r_match_diamond", "run"),
+    ("r_star_clique", "run"),
+    ("r_star_diamond", "run"),
+]
+_LOOKUP_BUDGET = 10_000
+
+
+@pytest.mark.parametrize(
+    ("module", "qualname"), _COST_ROOTS, ids=[f"{m}:{q}" for m, q in _COST_ROOTS]
+)
+def test_the_walk_makes_few_lookups_on_the_cost_roots(
+    walk_case_tree, monkeypatch, module, qualname
+) -> None:
+    # Each lookup method counts every call, the memo's answers too, so a
+    # lookup that skips _settled, or keys it more finely than what it looks
+    # up, fails here at the budget instead of hanging. With the memo, the
+    # most any of these walks makes is about an eighth of the budget.
+    _, paths = walk_case_tree
+    calls = 0
+
+    def counting(method):
+        def counted(self, *args, **kwargs):
+            nonlocal calls
+            calls += 1
+            assert calls <= _LOOKUP_BUDGET, (module, method.__name__)
+            return method(self, *args, **kwargs)
+
+        return counted
+
+    for name in ("resolve", "exported", "aliased", "match_args"):
+        method = getattr(static_reach._Walk, name)
+        monkeypatch.setattr(static_reach._Walk, name, counting(method))
+    walk = static_reach._Walk(paths, ())
+    walk.run(f"{static_reach_cases.PACKAGE}.{module}", qualname)
+    assert calls, module
 
 
 def test_the_module_stays_outside_the_batterys_binding_closure() -> None:
