@@ -505,3 +505,20 @@ def test_route_a_preflights_the_build_in_its_release_directory() -> None:
     assert "REL_DIR=$REL_OUT/releases/microcosm-us-2024-national" in source
     assert '"$W/.venv/bin/microcosm-publish-release-build"' in source
     assert '"$W/.venv/bin/microcosm-publish-release" ' not in source
+
+
+def test_route_a_hands_over_the_emitter_publication_commands() -> None:
+    """The hand-off record's next step publishes the build through the
+    emitter and then makes it current, in place of tools/publish_release.sh
+    (microcosm#1570)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+
+    assert "tools/publish_release.sh" not in source
+    assert (
+        "uv run microcosm-publish-release-build {rel_dir} "
+        "--repo-id policyengine/populace-us --artifact-root {art}"
+    ) in source
+    assert (
+        "uv run microcosm-publish-release-build {rel_dir} "
+        "--repo-id policyengine/populace-us --promote"
+    ) in source
