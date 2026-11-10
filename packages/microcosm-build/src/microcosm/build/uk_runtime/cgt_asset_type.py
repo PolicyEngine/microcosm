@@ -34,32 +34,38 @@ Three declared mechanisms, in order:
    weighted mean log gain of the liable population, ``h`` one for a gainer
    who shows residential stock (another residential property in the
    household, or property income) and ``s`` the declared stock log-odds
-   (microcosm#1014). ``(a, b)`` are solved by nested bisection so the
-   household-weighted expected count and gains of flagged persons equal the
-   individuals-basis Table 8a totals: residential gainers are many and
-   small relative to the whole (a fifth of the gains on a third of the
-   taxpayers), which the negative slope carries. Flags are then realised by
-   a weighted systematic walk in ascending gain order with one seeded
-   offset: the walk flags a person whenever the expected weight owed so far
-   reaches that person's weight, so the flagged weight tracks the expected
-   weight within one person's weight everywhere along the gains axis, and
-   both the realised count and the realised gains sit close to their
-   expectations on frames whose liable rows are few and heavy. The
-   Bernoulli sigma of each is reported as the envelope a gate can bound
-   with. A flagged person's whole net
-   gain is attributed to residential property (``capital_gains_residential_property``);
-   a taxpayer with both residential and other disposals is not split.
+   (microcosm#1014). ``(a, b)`` are solved by nested bisection
+   (``solve_residential_logistic``) so the household-weighted expected
+   count and gains of flagged persons equal the individuals-basis Table 8a
+   totals: residential gainers are many and small relative to the whole (a
+   fifth of the gains on a third of the taxpayers), which the negative
+   slope carries. The flag is not drawn. Since microcosm#1063 the
+   ``cgt_residential_split`` stage, which runs before this one and makes
+   that solve, carries ``p`` as weight: it splits every household carrying
+   liable gainers into arms at product weights, one per subset of
+   residential gainers, so at design weights the residential count and
+   gains are mass identities. This stage reads the arms: a person whose
+   ``capital_gains_residential_property`` is positive is a residential
+   gainer on that arm, and the whole net gain of a flagged person is
+   residential; a taxpayer with both residential and other disposals is
+   not split.
 2. **BADR and Investors' Relief claims.** Among liable gainers not flagged
    residential, each Table 4.1 band draws its claimants from the persons
    whose net gain falls inside the band's range. Below the lifetime limit a
    claimant's whole net gain qualifies, so the band's claimants are solved
    like the residential flag: a logistic in centred log gains whose
    intercept matches the band's published claimant count and whose slope
-   matches its published qualifying gains, realised by the same weighted
-   systematic walk with one identity-keyed offset per band, keyed on its
-   bounds. Each band's logistic carries the same stock shift for a gainer
-   who shows business stock (household corporate wealth, or
-   self-employment income). The open top
+   matches its published qualifying gains. Each band's logistic carries the
+   same stock shift for a gainer who shows business stock (household
+   corporate wealth, or self-employment income). The claims are realised
+   by a weighted systematic walk (``_weighted_systematic_flags``) in
+   ascending gain order, persons tied on gain in the order of a uniform
+   keyed on their person_id, with one identity-keyed offset per band,
+   keyed on its bounds: the walk flags a person whenever the expected
+   weight owed so far reaches that person's weight, so the flagged weight
+   tracks the expected weight within one person's weight along the gains
+   axis. The Bernoulli sigma of each band's count and gains is reported as
+   the envelope a gate can bound with. The open top
    band holds claimants at the lifetime limit: its probability is flat in
    gains and varies only with the stock shift, its intercept matches the
    count, the count is the published gains over the limit (the published
@@ -68,7 +74,7 @@ Three declared mechanisms, in order:
    Table 4.1's tax column to within half a percent; Table 4.1 counts gains
    before losses while the frame carries net gains, and Investors' Relief
    is merged with BADR as in the engine's input.
-3. **Main asset type.** Every liable gainer not flagged residential draws
+3. **Main asset type.** Every liable gainer not flagged residential takes
    one of five Table 7 types from a size-tilted categorical: the type
    weight times a log-normal kernel in log gains centred on the type's
    Table 7 mean gain per disposal (listed shares near £5,500, unlisted
@@ -76,15 +82,21 @@ Three declared mechanisms, in order:
    declared stock floor where the type's stock signal is absent (listed
    shares: a stocks-and-shares ISA or dividends; unlisted shares: business
    stock; other financial assets: financial wealth). A BADR or
-   Investors' Relief claimant draws only from the three types the reliefs
-   apply to (unlisted shares, business land and buildings, other
+   Investors' Relief claimant takes only one of the three types the
+   reliefs apply to (unlisted shares, business land and buildings, other
    non-financial assets), so the type follows the claim. The type weights
-   are fitted, with that restriction, by multiplicative updates until the
-   household-weighted gains shares by type reproduce Table 7's
-   non-residential gains shares, and the fit refuses if it does not
-   converge; one seeded uniform per person realises the draw. The
-   composition by gain band is reported for the evidence note; nothing is
-   fitted to it.
+   are fitted once per claimant status, with that restriction, by
+   multiplicative updates until each status's household-weighted gains
+   shares by type reach its share targets, which together restore Table
+   7's non-residential gains shares, and each fit refuses if it does not
+   converge. The types are then assigned by error diffusion
+   (``_diffuse_types``) in descending gain order, persons tied on gain in
+   the order of a uniform keyed on their person_id, the assignment's only
+   draw: each person adds its stake (weight times gain) times its type
+   probabilities to a running balance per type and takes the type it may
+   hold whose balance is largest, so the realised gains by type track the
+   fit. The composition by gain band is reported for the evidence note;
+   nothing is fitted to it.
 
 Non-gainers carry ``none``; positive gains at or below the annual exempt
 amount carry ``sub_aea`` (Table 8 describes taxpayers with a liability and
@@ -1010,11 +1022,24 @@ def _badr_band_offset(band: HMRCCGTBADRBand, *, seed: int, time_period: int) -> 
     Keyed on the band's lower and upper edges, salted with the build period,
     not on its position in the roster, so a facts revision that adds or
     drops a band leaves every other band's offset alone (microcosm#931).
+    The key formats the edges, so an edge read as the float ``50000.0``
+    would key ``50000.0`` and draw the band's offset anew, though the roster
+    check, which compares edges by value, accepts it; an edge that is not an
+    integer is refused, as ``integer_record_keys`` refuses float record ids.
     """
 
-    upper = "open" if band.upper_bound is None else band.upper_bound
+    edges = [band.lower_bound]
+    if band.upper_bound is not None:
+        edges.append(band.upper_bound)
+    for edge in edges:
+        if isinstance(edge, bool) or not isinstance(edge, (int, np.integer)):
+            raise TypeError(
+                "Table 4.1 band edges must be integers to key a band's walk "
+                f"offset, not {type(edge).__name__}."
+            )
+    upper = "open" if band.upper_bound is None else int(band.upper_bound)
     return stable_identity_uniform(
-        f"{band.lower_bound}|{upper}",
+        f"{int(band.lower_bound)}|{upper}",
         seed=seed,
         salt=f"assign_badr_qualifying_gains:offset:{int(time_period)}",
     )

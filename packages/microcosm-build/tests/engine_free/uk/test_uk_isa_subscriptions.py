@@ -694,6 +694,89 @@ def test_the_walk_offsets_and_jitters_are_the_uniforms_they_were(spec):
         assert jitter == before(["income_3:2"], seed=spec.amount_seed, salt=salt)[0]
 
 
+def test_the_selection_and_amounts_draw_the_uniforms_they_drew(
+    spec, statistics, monkeypatch
+):
+    """The uniforms the selection's cell walks and the amounts' walk read,
+    and each band jitter the amounts draw, are what the stage drew before
+    the keyed scalar moved into stochastic_assignment (microcosm#931): the
+    pre-move expressions, computed here from each call's own seed, salt and
+    key, so a call that keys or salts one of its draws otherwise fails."""
+
+    from microcosm.build import stochastic_assignment
+
+    before = stochastic_assignment.stable_identity_uniforms
+    walk, scalar = stage._walk_bands, stage.stable_identity_uniform
+    walks: list[tuple[np.ndarray, float]] = []
+    draws: list[tuple[str, str, float]] = []
+
+    def recording_walk(**kwargs):
+        walks.append((np.asarray(kwargs["ranked"]), kwargs["rng"].random()))
+        return walk(**kwargs)
+
+    def recording_scalar(key, *, seed, salt):
+        value = scalar(key, seed=seed, salt=salt)
+        draws.append((key, salt, value))
+        return value
+
+    monkeypatch.setattr(stage, "_walk_bands", recording_walk)
+    monkeypatch.setattr(stage, "stable_identity_uniform", recording_scalar)
+    isa_type = stage.CASH_ONLY
+
+    # The selection: one walk per cell with a target, its offset keyed on the
+    # cell, salted :cell.
+    _, _, recipients = _population()
+    eligible = recipients["age"].to_numpy() >= 18
+    seed, salt = spec.select_seed, f"{spec.select_salt}:{isa_type}"
+    stage.select_subscribers(
+        recipients,
+        eligible,
+        stage._margins(statistics, isa_type),
+        seed=seed,
+        salt=salt,
+    )
+    frame = recipients.loc[eligible, ["income_band", "age_band", "sex", "region"]]
+    assert len(walks) > 10
+    for ranked, offset in walks:
+        (cell,) = set(frame.iloc[ranked].itertuples(index=False, name=None))
+        key = "|".join(map(str, cell))
+        assert offset == before([key], seed=seed, salt=f"{salt}:cell")[0], key
+    assert {used for _, used, _ in draws} == {f"{salt}:cell"}
+
+    # The amounts: one walk keyed on the call's key, salted :walk, and one
+    # jitter per drawn band, keyed <key>:<band>, salted :jitter.
+    walks.clear()
+    draws.clear()
+    rng = np.random.default_rng(3)
+    rows = 400
+    seed, salt = spec.amount_seed, f"{spec.amount_salt}:{isa_type}"
+    key = f"{isa_type}|{HMRC_ISA_INCOME_BAND_IDS[3]}|base"
+    stage.draw_band_amounts(
+        np.arange(rows),
+        weights=rng.uniform(1.0, 50.0, rows),
+        balance=rng.uniform(100.0, 60_000.0, rows),
+        person_ids=np.arange(1, rows + 1, dtype=np.int64) * 1_000,
+        band_shares=np.full(len(stage.HMRC_ISA_SUBSCRIPTION_BAND_IDS), 1.0),
+        balance_rank_weight=spec.balance_rank_weight,
+        seed=seed,
+        salt=salt,
+        key=key,
+    )
+    assert [offset for _, offset in walks] == [
+        before([key], seed=seed, salt=f"{salt}:walk")[0]
+    ]
+    jitters = {label: value for label, used, value in draws if used == f"{salt}:jitter"}
+    drawn_bands = [
+        band
+        for band, (lower, upper) in enumerate(stage.SUBSCRIPTION_BANDS)
+        if lower != upper
+    ]
+    assert sorted(jitters) == sorted(f"{key}:{band}" for band in drawn_bands)
+    for label, value in jitters.items():
+        assert value == before([label], seed=seed, salt=f"{salt}:jitter")[0], label
+    assert {used for _, used, _ in draws} == {f"{salt}:walk", f"{salt}:jitter"}
+
+
 def test_the_both_split_reports_saturation():
     combined = np.full(10, 10_000.0)
     weights = np.ones(10)

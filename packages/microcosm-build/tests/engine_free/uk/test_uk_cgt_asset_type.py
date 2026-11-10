@@ -696,6 +696,44 @@ class TestBADRClaims:
         np.testing.assert_array_equal(after[outside], before[outside])
         assert (before[outside] > 0.0).any()
 
+    def test_a_band_edge_that_is_not_an_integer_is_refused(self) -> None:
+        """A band's offset key formats its edges, so a roster whose edges
+        arrived as floats (50000.0) would key every band's offset anew, and
+        the roster check, which compares edges by value, accepts it; the key
+        refuses it instead (microcosm#931)."""
+
+        gains = _synthetic_gains()
+        weights = np.full(gains.size, 60.0)
+        facts = _synthetic_facts(gains, weights)
+        floats = dataclasses.replace(
+            facts,
+            table4_bands=tuple(
+                dataclasses.replace(
+                    band,
+                    lower_bound=float(band.lower_bound),
+                    upper_bound=(
+                        None if band.upper_bound is None else float(band.upper_bound)
+                    ),
+                )
+                for band in facts.table4_bands
+            ),
+        )
+        cgt_asset_type._validate_table4(floats)
+        with pytest.raises(TypeError, match="edges must be integers"):
+            self._run(gains, weights, facts=floats)
+        # A NumPy integer edge keys as the Python integer does.
+        for band in facts.table4_bands:
+            as_numpy = dataclasses.replace(
+                band,
+                lower_bound=np.int64(band.lower_bound),
+                upper_bound=(
+                    None if band.upper_bound is None else np.int64(band.upper_bound)
+                ),
+            )
+            assert cgt_asset_type._badr_band_offset(
+                as_numpy, seed=555, time_period=2024
+            ) == cgt_asset_type._badr_band_offset(band, seed=555, time_period=2024)
+
     def test_refuses_claims_the_eligible_types_cannot_hold(self) -> None:
         tiny = tuple(
             (
@@ -1087,6 +1125,29 @@ class TestKeyedTies:
                 reordered.add(salt)
         # Both walks met the forced tie and ordered it otherwise than by id.
         assert reordered == salts
+        # And each walks the order it drew: handing one of them the id order
+        # moves the tied persons' outcome, which a walk that drew the keyed
+        # order and walked another would leave as it is.
+        keyed = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)[0].table("person")
+        tied = keyed["capital_gains"].to_numpy() == 15_000.0
+        order = cgt_asset_type.keyed_tie_order
+        for walked, column in (
+            ("assign_badr_qualifying_gains:tie", CGT_BADR_GAINS_COLUMN),
+            ("assign_main_asset_type:tie", CGT_ASSET_TYPE_COLUMN),
+        ):
+
+            def by_id_here(primary, ids, *, seed, salt, walked=walked):
+                if salt.startswith(walked):
+                    return np.lexsort((np.asarray(ids), np.asarray(primary, float)))
+                return order(primary, ids, seed=seed, salt=salt)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(cgt_asset_type, "keyed_tie_order", by_id_here)
+                result, _ = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
+            by_id = result.table("person")
+            np.testing.assert_array_equal(by_id["person_id"], keyed["person_id"])
+            moved = by_id[column].to_numpy() != keyed[column].to_numpy()
+            assert moved[tied].any(), walked
         _, reseeded = self._recorded(monkeypatch, frame, facts, badr_seed=999)
         assert {seed for _, seed, *_ in reseeded} == {999}
         declared = cgt_asset_type_operation_parameters()
