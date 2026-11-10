@@ -32,9 +32,13 @@ TARGETS = (
     "add",
     "alias",
     "alias_base",
+    "alias_cycle",
+    "alias_diamond",
+    "alias_modules",
     "alternative",
     "alternative_first",
     "attrgetter",
+    "augassign",
     "base_attr",
     "base_dunder_import",
     "base_else",
@@ -56,6 +60,7 @@ TARGETS = (
     "body_before",
     "body_conditional",
     "body_decorator",
+    "body_del",
     "body_hidden",
     "body_nested",
     "class_body_update",
@@ -64,10 +69,23 @@ TARGETS = (
     "class_fill_item",
     "class_fill_method",
     "class_fill_view",
+    "class_global",
+    "class_global_alias",
+    "class_global_class",
+    "class_global_def",
+    "class_global_hidden",
+    "class_global_import",
     "class_header",
     "class_import",
+    "class_import_body",
+    "class_import_decorator",
+    "class_import_default",
+    "class_member_change",
+    "class_nested_fill",
     "class_scope",
     "comprehension",
+    "comprehension_fill",
+    "comprehension_iter",
     "conditional",
     "decorator",
     "default",
@@ -76,10 +94,12 @@ TARGETS = (
     "delattr",
     "delattr_patch",
     "dotted",
+    "dunder_top",
     "factory",
     "fill_call",
     "fill_global",
     "float",
+    "for_store",
     "for_target",
     "getattr_alias",
     "getattr_constant",
@@ -87,6 +107,7 @@ TARGETS = (
     "go",
     "hasattr",
     "header_for",
+    "header_for_target",
     "header_guard",
     "header_if",
     "header_match",
@@ -95,17 +116,27 @@ TARGETS = (
     "header_trystar",
     "header_while",
     "header_with",
+    "header_with_target",
+    "import_diamond",
     "import_from",
+    "import_level",
     "import_module",
+    "import_name",
     "import_relative",
+    "import_renamed",
+    "import_renamed_alias",
+    "import_spec",
     "lambda",
     "lambda_shadow",
     "lazy",
     "lazy_assigned",
+    "lazy_cycle",
     "local",
     "local_alternative",
     "local_alternative_first",
     "match_capture",
+    "match_diamond",
+    "match_inherited",
     "match_keyword",
     "match_positional",
     "match_rest",
@@ -131,6 +162,8 @@ TARGETS = (
     "shadowed",
     "sibling",
     "star",
+    "star_clique",
+    "star_diamond",
     "star_lazy",
     "store_hidden",
     "subclass",
@@ -140,13 +173,15 @@ TARGETS = (
     "update",
     "value",
     "walrus",
+    "with_store",
     "with_target",
 )
 
 #: Targets a case binds so that a wrong walk would reach them. No walk
 #: reaches them and no run reads them: t_shadowed behind a name the class
-#: body rebinds (r_class_decorator), and t_body_hidden behind the function's
-#: import of nest_p, which the class in r_body_nested never reads.
+#: body rebinds (r_class_decorator) and behind a comprehension's target
+#: (r_comprehension_decoy), and t_body_hidden behind the function's import of
+#: nest_p, which the class in r_body_nested never reads.
 DECOYS = frozenset({"body_hidden", "shadowed"})
 
 #: Each target's source: reads of X or ROWS are recorded, anything else fails.
@@ -389,6 +424,56 @@ SOURCES: dict[str, str] = {
         def run():
             return VALUE
         """,
+    # A name a class body declares global binds at module level: through an
+    # assignment, an alias of a module, an import, a def and a class there.
+    # In _Setup, a class nothing reaches, the assignment reads a name the
+    # class body bound.
+    "cglob_alias": """
+        from microcosm.walkcases import t_class_global_alias
+
+
+        def fn():
+            return t_class_global_alias.X
+        """,
+    "cglob_import": """
+        from microcosm.walkcases import t_class_global_import
+
+
+        def fn():
+            return t_class_global_import.X
+        """,
+    "r_class_global": """
+        from microcosm.walkcases import (
+            cglob_alias,
+            t_class_global,
+            t_class_global_class,
+            t_class_global_def,
+            t_class_global_hidden,
+        )
+
+
+        class Kernel:
+            global _CACHE, _IMPL, _probe, Probe, imported
+            _CACHE = t_class_global.X
+            _IMPL = cglob_alias
+            import microcosm.walkcases.cglob_import as imported
+
+            def _probe():
+                return t_class_global_def.X
+
+            class Probe:
+                VALUE = t_class_global_class.X
+
+            def run(self):
+                found = _CACHE, _IMPL.fn(), imported.fn(), _probe()
+                return found, Probe.VALUE, _ROWS
+
+
+        class _Setup:
+            global _ROWS
+            _source = t_class_global_hidden
+            _ROWS = _source.ROWS
+        """,
     # A package's lazy export, through its module-level __getattr__.
     "lazy.__init__": """
         def __getattr__(name):
@@ -483,6 +568,15 @@ SOURCES: dict[str, str] = {
             values = [target for target in range(3)]
             return target.X, values
         """,
+    # ... even where the module binds the same name to another module.
+    "r_comprehension_decoy": """
+        from microcosm.walkcases import t_comprehension_iter
+        from microcosm.walkcases import t_shadowed as row
+
+
+        def run():
+            return [row.X for row in (t_comprehension_iter,)]
+        """,
     # A local import binds only in its own function, not in a sibling.
     "r_sibling": """
         from microcosm.walkcases import t_sibling as target
@@ -575,7 +669,8 @@ SOURCES: dict[str, str] = {
         """,
     # Before the body binds a name, Python reads the module's binding: a read
     # above the binding, a binding under an if that doesn't run, a bare
-    # annotation (which binds nothing), and a decorator above the binding.
+    # annotation (which binds nothing), a decorator above the binding, and a
+    # read after a del of the binding.
     "r_body_before": """
         from microcosm.walkcases import t_body_before as target
 
@@ -630,6 +725,18 @@ SOURCES: dict[str, str] = {
                 return 1
 
             target = None
+        """,
+    "r_body_del": """
+        from microcosm.walkcases import t_body_del as target
+
+
+        class Kernel:
+            target = None
+            del target
+            seen = target.X
+
+            def run(self):
+                return self.seen
         """,
     # A class inside a function reads such a name from the module too, never
     # from the function, so nest_p stays unreached.
@@ -967,8 +1074,8 @@ SOURCES: dict[str, str] = {
             pass
         """,
     # -- Self and cls -----------------------------------------------------------
-    # A method called through self. (The class-attribute fallback reaches
-    # it as well.)
+    # A method called through self, which the class-attribute fallback
+    # reaches.
     "r_self_method": """
         from microcosm.walkcases import t_self_method
 
@@ -994,6 +1101,42 @@ SOURCES: dict[str, str] = {
 
             def run(self):
                 return self.mod.fn()
+        """,
+    # ... and read where the class body runs: in the body itself, in a
+    # decorator and in a default value.
+    "cimp_body": """
+        from microcosm.walkcases import t_class_import_body
+
+
+        def fn():
+            return t_class_import_body.X
+        """,
+    "cimp_decorator": """
+        from microcosm.walkcases import t_class_import_decorator
+
+
+        def mark(function):
+            function.mark = t_class_import_decorator.X
+            return function
+        """,
+    "cimp_default": """
+        from microcosm.walkcases import t_class_import_default
+
+
+        def fn():
+            return t_class_import_default.X
+        """,
+    "r_class_import_scope": """
+        class Kernel:
+            import microcosm.walkcases.cimp_body as body_mod
+            import microcosm.walkcases.cimp_decorator as decorator_mod
+            import microcosm.walkcases.cimp_default as default_mod
+
+            seen = body_mod.fn()
+
+            @decorator_mod.mark
+            def run(self, value=default_mod.fn()):
+                return self.seen, value
         """,
     # -- Implicit calls ---------------------------------------------------------
     # Thing's dunders count wherever Thing does.
@@ -1126,6 +1269,7 @@ SOURCES: dict[str, str] = {
 
         from microcosm.walkcases import (
             t_header_for,
+            t_header_for_target,
             t_header_guard,
             t_header_if,
             t_header_match,
@@ -1134,6 +1278,7 @@ SOURCES: dict[str, str] = {
             t_header_trystar,
             t_header_while,
             t_header_with,
+            t_header_with_target,
         )
 
         if t_header_if.X:
@@ -1145,6 +1290,11 @@ SOURCES: dict[str, str] = {
         for _row in t_header_for.ROWS:
             pass
         with nullcontext(t_header_with.X):
+            pass
+        _SLOTS = {}
+        for _SLOTS[t_header_for_target.X] in (1,):
+            pass
+        with nullcontext(1) as _SLOTS[t_header_with_target.X]:
             pass
         match t_header_match.ROWS:
             case {"key": found}:
@@ -1374,25 +1524,40 @@ SOURCES: dict[str, str] = {
                 return self.TABLE
         """,
     # -- Changes by name --------------------------------------------------------
-    "r_update": """
+    # Another module re-exports the table run() reads and changes it in place.
+    # The walk reads that module but reaches nothing it defines, so only the
+    # change by name leads to the target.
+    "update_table": """
+        TABLE = {}
+        """,
+    "update_fill": """
         from microcosm.walkcases import t_update
+        from microcosm.walkcases.update_table import TABLE
 
-        _TABLE = {}
-        _TABLE.update(t_update.ROWS)
+        TABLE.update(t_update.ROWS)
+        """,
+    "r_update": """
+        from microcosm.walkcases.update_fill import TABLE
 
 
         def run():
-            return _TABLE
+            return TABLE
+        """,
+    "setitem_table": """
+        TABLE = {}
+        """,
+    "setitem_fill": """
+        from microcosm.walkcases import t_setitem
+        from microcosm.walkcases.setitem_table import TABLE
+
+        TABLE["key"] = t_setitem.X
         """,
     "r_setitem": """
-        from microcosm.walkcases import t_setitem
-
-        _TABLE = {}
-        _TABLE["key"] = t_setitem.X
+        from microcosm.walkcases.setitem_fill import TABLE
 
 
         def run():
-            return _TABLE
+            return TABLE
         """,
     # A method call inside an assignment.
     "r_setdefault": """
@@ -1436,7 +1601,8 @@ SOURCES: dict[str, str] = {
         def run():
             return _TABLE, _ROWS
         """,
-    # Another module the walk reads fills the registry run() reads.
+    # Another module re-exports the registry run() reads, and a call statement
+    # there takes the registry as an argument.
     "registry": """
         REGISTRY = []
         """,
@@ -1444,19 +1610,123 @@ SOURCES: dict[str, str] = {
         from microcosm.walkcases import t_registrar
         from microcosm.walkcases.registry import REGISTRY
 
-        REGISTRY.append(t_registrar.X)
+
+        def _register(registry, value):
+            registry.append(value)
+
+
+        _register(REGISTRY, t_registrar.X)
+        """,
+    "r_registry": """
+        from microcosm.walkcases.registrar import REGISTRY
+
+
+        def run():
+            return REGISTRY
+        """,
+    # ... with a for and a with statement there that store to an item of the
+    # table, and what each stores.
+    "store_table": """
+        TABLE = {}
+        """,
+    "store_fill": """
+        from microcosm.walkcases import t_for_store, t_with_store
+        from microcosm.walkcases.store_table import TABLE
+
+
+        class _Entered:
+            def __init__(self, value):
+                self.value = value
+
+            def __enter__(self):
+                return self.value
+
+            def __exit__(self, *exc):
+                return False
+
+
+        for TABLE["for"] in (t_for_store.X,):
+            pass
+        with _Entered(t_with_store.X) as TABLE["with"]:
+            pass
+        """,
+    "r_for_store": """
+        from microcosm.walkcases.store_fill import TABLE
+
+
+        def run():
+            return TABLE
+        """,
+    # ... with a comprehension there that changes the table.
+    "comp_table": """
+        TABLE = {}
+        """,
+    "comp_fill": """
+        from microcosm.walkcases import t_comprehension_fill
+        from microcosm.walkcases.comp_table import TABLE
+
+        [TABLE.update({key: t_comprehension_fill.X}) for key in ("key",)]
+        """,
+    "r_comprehension_fill": """
+        from microcosm.walkcases.comp_fill import TABLE
+
+
+        def run():
+            return TABLE
+        """,
+    # += on an imported list extends that list in place. The walk reaches
+    # aug_fill for helper(), but the statement only binds a name there that
+    # nothing reads, so it doesn't run for its effect.
+    "aug_table": """
+        ROWS = []
+        """,
+    "aug_fill": """
+        from microcosm.walkcases import t_augassign
+        from microcosm.walkcases.aug_table import ROWS
+
+        ROWS += [t_augassign.X]
 
 
         def helper():
             return 1
         """,
-    "r_registry": """
-        from microcosm.walkcases import registrar
-        from microcosm.walkcases.registry import REGISTRY
+    "r_augassign": """
+        from microcosm.walkcases import aug_fill
+        from microcosm.walkcases.aug_table import ROWS
 
 
         def run():
-            return REGISTRY, registrar.helper()
+            return ROWS, aug_fill.helper()
+        """,
+    # A class attribute that a statement in the class body changes, where the
+    # statement neither runs for its effect nor binds a class attribute.
+    "r_class_member_change": """
+        from microcosm.walkcases import t_class_member_change
+
+
+        class Kernel:
+            TABLE = {}
+            assert TABLE.setdefault("key", t_class_member_change.X)
+
+            def run(self):
+                return self.TABLE
+        """,
+    # A class nested in one nothing reaches runs at import too, and the names
+    # it binds resolve in its own body.
+    "r_class_nested_fill": """
+        from microcosm.walkcases import t_class_nested_fill
+
+        _TABLE = {}
+
+
+        class Outer:
+            class Inner:
+                row = t_class_nested_fill.X
+                _TABLE.update({"row": row})
+
+
+        def run():
+            return _TABLE
         """,
     # -- Attribute fallback -----------------------------------------------------
     "r_prop": """
@@ -1675,6 +1945,30 @@ SOURCES: dict[str, str] = {
                     return value
             return None
         """,
+    # A class that doesn't set __match_args__ takes its base's.
+    "made14": """
+        from microcosm.walkcases import t_match_inherited
+
+
+        class Base:
+            __match_args__ = ("left",)
+
+
+        class Point(Base):
+            @property
+            def left(self):
+                return t_match_inherited.X
+        """,
+    "r_match_inherited": """
+        from microcosm.walkcases.made14 import Point
+
+
+        def run():
+            match Point():
+                case Point(value):
+                    return value
+            return None
+        """,
     "imp_mod": """
         from microcosm.walkcases import t_import_module
 
@@ -1716,6 +2010,88 @@ SOURCES: dict[str, str] = {
             module = __import__("microcosm.walkcases.imp_leaf", fromlist=["fn"])
             return module.fn()
         """,
+    # Without a fromlist, __import__ returns the top package, and a chain from
+    # there reaches a module that the package holds.
+    "dunder_named": """
+        VALUE = 1
+        """,
+    "r_dunder_import_top": """
+        import microcosm.walkcases.t_dunder_top  # so that the attribute exists
+
+
+        def run():
+            package = __import__("microcosm.walkcases.dunder_named")
+            return package.walkcases.t_dunder_top.X
+        """,
+    # __import__ with a level above zero counts from the caller's package.
+    "level_mod": """
+        from microcosm.walkcases import t_import_level
+
+
+        def fn():
+            return t_import_level.X
+        """,
+    "r_import_level": """
+        def run():
+            return __import__("level_mod", globals(), None, ["fn"], 1).fn()
+        """,
+    # import_module relative to the package that __spec__ names.
+    "spec_mod": """
+        from microcosm.walkcases import t_import_spec
+
+
+        def fn():
+            return t_import_spec.X
+        """,
+    "r_import_spec": """
+        import importlib
+
+
+        def run():
+            return importlib.import_module(".spec_mod", package=__spec__.parent).fn()
+        """,
+    # import_module relative to the module's own name: two dots climb from
+    # the module to its package, one level short of where __package__ climbs.
+    "name_mod": """
+        from microcosm.walkcases import t_import_name
+
+
+        def fn():
+            return t_import_name.X
+        """,
+    "r_import_name": """
+        import importlib
+
+
+        def run():
+            return importlib.import_module("..name_mod", __name__).fn()
+        """,
+    # An importer under a module-level name: an import's and an assignment's.
+    "renamed_mod": """
+        from microcosm.walkcases import t_import_renamed
+
+
+        def fn():
+            return t_import_renamed.X
+        """,
+    "renamed_alias_mod": """
+        from microcosm.walkcases import t_import_renamed_alias
+
+
+        def fn():
+            return t_import_renamed_alias.X
+        """,
+    "r_import_renamed": """
+        import importlib
+        from importlib import import_module as load
+
+        _import = importlib.import_module
+
+
+        def run():
+            first = load("microcosm.walkcases.renamed_mod").fn()
+            return first, _import("microcosm.walkcases.renamed_alias_mod").fn()
+        """,
     # -- What the walk can't see ------------------------------------------------
     # A decorator records _entry, and run() calls whatever the registry holds.
     "reg": """
@@ -1740,6 +2116,201 @@ SOURCES: dict[str, str] = {
             return [entry() for entry in REGISTRY]
         """,
 }
+
+# -- Cost ----------------------------------------------------------------------
+# Shapes in which a walk that ran each lookup afresh wherever it met it would
+# take time exponential in a diamond's depth or factorial in a clique's size.
+# The walk runs each lookup once, so each of these takes milliseconds.
+
+#: How deep each diamond goes, and how many modules the clique holds.
+_DEPTH = 22
+_CLIQUE = 8
+#: The lazy packages in the cycle.
+_LAZY = 3
+
+# Each level's two modules star-import both modules of the level below, and
+# the bottom level imports the target. run() also calls len, which no module
+# binds, so the walk looks len up through every module.
+SOURCES.update(
+    {
+        f"diamond_{level}_{side}": (
+            f"from {PACKAGE} import t_star_diamond  # noqa: F401\n"
+            if level == _DEPTH - 1
+            else f"from {PACKAGE}.diamond_{level + 1}_a import *\n"
+            f"from {PACKAGE}.diamond_{level + 1}_b import *\n"
+        )
+        for level in range(_DEPTH)
+        for side in "ab"
+    }
+)
+SOURCES["r_star_diamond"] = """
+    from microcosm.walkcases.diamond_0_a import *
+
+
+    def run():
+        return len([t_star_diamond.X])
+    """
+# Each module of a clique star-imports all the others; the first imports the
+# target.
+SOURCES.update(
+    {
+        f"clique_{index}": (
+            f"from {PACKAGE} import t_star_clique  # noqa: F401\n" if index == 0 else ""
+        )
+        + "".join(
+            f"from {PACKAGE}.clique_{other} import *\n"
+            for other in range(_CLIQUE)
+            if other != index
+        )
+        for index in range(_CLIQUE)
+    }
+)
+SOURCES["r_star_clique"] = """
+    from microcosm.walkcases.clique_1 import *
+
+
+    def run():
+        return len([t_star_clique.X])
+    """
+# Constants in a diamond: each of a level's two names both of the next.
+SOURCES["r_alias_diamond"] = (
+    f"from {PACKAGE} import t_alias_diamond\n\n"
+    f"_V{_DEPTH}a = t_alias_diamond\n"
+    f"_V{_DEPTH}b = t_alias_diamond\n"
+    + "".join(
+        f"_V{level}{side} = _V{level + 1}a or _V{level + 1}b\n"
+        for level in range(_DEPTH - 1, -1, -1)
+        for side in "ab"
+    )
+    + "\n\ndef run():\n    return len([_V0a.X])\n"
+)
+# Modules in a diamond, each binding V to either module's V below it.
+SOURCES.update(
+    {
+        f"aliases_{level}_{side}": (
+            f"from {PACKAGE} import t_alias_modules\n\nV = t_alias_modules\n"
+            if level == _DEPTH - 1
+            else f"from {PACKAGE}.aliases_{level + 1}_a import V as _a\n"
+            f"from {PACKAGE}.aliases_{level + 1}_b import V as _b\n\n"
+            "V = _a or _b\n"
+        )
+        for level in range(_DEPTH)
+        for side in "ab"
+    }
+)
+SOURCES["r_alias_modules"] = """
+    from microcosm.walkcases.aliases_0_a import V
+
+
+    def run():
+        return len([V.X])
+    """
+# Classes in a diamond, and a positional class pattern on the top one: it
+# takes the bottom class's __match_args__, through each path.
+SOURCES["r_match_diamond"] = (
+    f"from {PACKAGE} import t_match_diamond\n\n\n"
+    f"class K{_DEPTH}a:\n"
+    '    __match_args__ = ("go",)\n\n'
+    "    def go(self):\n"
+    "        return t_match_diamond.X\n\n\n"
+    f"class K{_DEPTH}b:\n"
+    "    pass\n"
+    + "".join(
+        f"\n\nclass K{level}{side}(K{level + 1}a, K{level + 1}b):\n    pass\n"
+        for level in range(_DEPTH - 1, -1, -1)
+        for side in "ab"
+    )
+    + "\n\ndef run():\n"
+    "    match K0a():\n"
+    "        case K0a(go):\n"
+    "            return go()\n"
+)
+# Modules in a diamond of alternatives: each imports the target from either
+# module below it.
+SOURCES.update(
+    {
+        f"alts_{level}_{side}": (
+            f"from {PACKAGE} import t_import_diamond  # noqa: F401\n"
+            if level == _DEPTH - 1
+            else "try:\n"
+            f"    from {PACKAGE}.alts_{level + 1}_a import t_import_diamond\n"
+            "except ImportError:\n"
+            f"    from {PACKAGE}.alts_{level + 1}_b import t_import_diamond\n"
+        )
+        for level in range(_DEPTH)
+        for side in "ab"
+    }
+)
+SOURCES["r_import_diamond"] = """
+    from microcosm.walkcases.alts_0_a import t_import_diamond
+
+
+    def run():
+        return len([t_import_diamond.X])
+    """
+# Lazy packages in a cycle: each one's __getattr__ reads its inner module,
+# which imports the name from the next package. The first package's inner
+# module imports the target, or, failing that, the name from the second.
+SOURCES.update(
+    {
+        f"lazyc_{index}.__init__": """
+            def __getattr__(name):
+                from importlib import import_module
+
+                return getattr(import_module(f"{__name__}.inner"), name)
+            """
+        for index in range(_LAZY)
+    }
+)
+SOURCES.update(
+    {
+        f"lazyc_{index}.inner": (
+            f"from {PACKAGE}.lazyc_{(index + 1) % _LAZY} import t_lazy_cycle\n"
+        )
+        for index in range(1, _LAZY)
+    }
+)
+SOURCES["lazyc_0.inner"] = """
+    try:
+        from microcosm.walkcases import t_lazy_cycle
+    except ImportError:
+        from microcosm.walkcases.lazyc_1 import t_lazy_cycle
+    """
+SOURCES["r_lazy_cycle"] = """
+    from microcosm.walkcases.lazyc_1 import t_lazy_cycle
+
+
+    def run():
+        return len([t_lazy_cycle.X])
+    """
+# Constants that name each other: _B names _A and the target, and _A, bound
+# again, names _B. Python binds both to Base.
+SOURCES["r_alias_cycle"] = """
+    from microcosm.walkcases import t_alias_cycle
+
+
+    class Base:
+        X = 1
+
+
+    _A = Base
+    _B = _A or t_alias_cycle
+    _A = _B
+
+
+    def run():
+        return _A.X
+    """
+# Constants that name only each other: each stands for both.
+SOURCES["r_alias_pure_cycle"] = """
+    _A = None
+    _B = _A
+    _A = _B
+
+
+    def run():
+        return getattr(_B, "X", None)
+    """
 
 # A root that makes a Thing reaches every dunder Thing defines, so it reaches
 # t_add and t_float as well: the walk over-approximates there by design.
@@ -1766,9 +2337,18 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_lazy", "run"): {"lazy"},
     ("r_lazy_assigned", "run"): {"lazy_assigned"},
     ("r_star_lazy", "run"): {"star_lazy"},
+    ("r_class_global", "Kernel.run"): {
+        "class_global",
+        "class_global_alias",
+        "class_global_class",
+        "class_global_def",
+        "class_global_hidden",
+        "class_global_import",
+    },
     # Scopes
     ("r_shadow", "run"): {"shadow"},
     ("r_comprehension", "run"): {"comprehension"},
+    ("r_comprehension_decoy", "run"): {"comprehension_iter"},
     ("r_sibling", "run"): {"sibling", "local"},
     ("r_class_scope", "Holder.run"): {"class_scope"},
     ("r_lambda_shadow", "Kernel.run"): {"lambda_shadow"},
@@ -1778,6 +2358,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_body_conditional", "Kernel.run"): {"body_conditional"},
     ("r_body_annotation", "Kernel.run"): {"body_annotation"},
     ("r_body_decorator", "Kernel.run"): {"body_decorator"},
+    ("r_body_del", "Kernel.run"): {"body_del"},
     ("r_body_nested", "run"): {"body_nested"},
     ("r_global", "run"): {"global"},
     ("r_nonlocal", "run"): {"nonlocal"},
@@ -1802,6 +2383,11 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     # Self and cls
     ("r_self_method", "Kernel.run"): {"self_method"},
     ("r_class_import", "Kernel.run"): {"class_import"},
+    ("r_class_import_scope", "Kernel.run"): {
+        "class_import_body",
+        "class_import_decorator",
+        "class_import_default",
+    },
     # Implicit calls
     ("r_float", "run"): {"float", *_THING},
     ("r_add", "run"): {"add", *_THING},
@@ -1813,6 +2399,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     # Import-time code
     ("r_headers", "run"): {
         "header_for",
+        "header_for_target",
         "header_guard",
         "header_if",
         "header_match",
@@ -1821,6 +2408,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
         "header_trystar",
         "header_while",
         "header_with",
+        "header_with_target",
     },
     ("r_blocks", "run"): {
         "block_body",
@@ -1852,6 +2440,11 @@ ROOTS: dict[tuple[str, str], set[str]] = {
         "class_fill_view",
     },
     ("r_registry", "run"): {"registrar"},
+    ("r_for_store", "run"): {"for_store", "with_store"},
+    ("r_comprehension_fill", "run"): {"comprehension_fill"},
+    ("r_augassign", "run"): {"augassign"},
+    ("r_class_member_change", "Kernel.run"): {"class_member_change"},
+    ("r_class_nested_fill", "run"): {"class_nested_fill"},
     # Attribute fallback
     ("r_prop", "run"): {"prop", *_THING},
     ("r_value", "run"): {"value"},
@@ -1867,16 +2460,34 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_methodcaller", "run"): {"methodcaller"},
     ("r_match_keyword", "run"): {"match_keyword"},
     ("r_match_positional", "run"): {"match_positional"},
+    ("r_match_inherited", "run"): {"match_inherited"},
     ("r_import_module", "run"): {"import_module"},
     ("r_import_relative", "run"): {"import_relative"},
     ("r_import_from", "run"): {"import_from"},
+    ("r_dunder_import_top", "run"): {"dunder_top"},
+    ("r_import_level", "run"): {"import_level"},
+    ("r_import_spec", "run"): {"import_spec"},
+    ("r_import_name", "run"): {"import_name"},
+    ("r_import_renamed", "run"): {"import_renamed", "import_renamed_alias"},
+    # Cost
+    ("r_star_diamond", "run"): {"star_diamond"},
+    ("r_star_clique", "run"): {"star_clique"},
+    ("r_alias_diamond", "run"): {"alias_diamond"},
+    ("r_alias_modules", "run"): {"alias_modules"},
+    ("r_match_diamond", "run"): {"match_diamond"},
+    ("r_import_diamond", "run"): {"import_diamond"},
+    ("r_lazy_cycle", "run"): {"lazy_cycle"},
+    ("r_alias_cycle", "run"): {"alias_cycle"},
+    ("r_alias_pure_cycle", "run"): set(),
     # What the walk can't see
     ("r_registry_decorator", "run"): set(),
 }
 
 #: Targets a root's walk reaches that its run doesn't read. The walk reaches
-#: every dunder of a class it references, and both branches of a condition.
+#: every dunder of a class it references, both branches of a condition, and
+#: both operands of ``or``.
 OVER: dict[tuple[str, str], set[str]] = {
+    ("r_alias_cycle", "run"): {"alias_cycle"},
     ("r_float", "run"): {"add"},
     ("r_add", "run"): {"float"},
     ("r_prop", "run"): _THING,

@@ -16,6 +16,7 @@ import json
 import os
 import random
 import sys
+from collections import Counter
 from decimal import Decimal
 from fractions import Fraction
 from hashlib import sha256
@@ -87,7 +88,7 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.executor import Population, _project_context
 from microcosm.graph.kernel import ArtifactValue, NumericScope
-from test_support.microcosm_build import static_reach_cases
+from test_support.microcosm_build import static_reach, static_reach_cases
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.first_party_imports import hashed_module_names
 from test_support.microcosm_build.static_reach import Cut, reach
@@ -2057,6 +2058,59 @@ def test_property_composing_roots_loses_no_target(walk_case_tree, picked) -> Non
     assert reads == set().union(
         *(static_reach_cases.expected_reads(part) for part in picked)
     )
+
+
+def test_the_walk_runs_each_lookup_once(walk_case_tree, monkeypatch) -> None:
+    # Each lookup runs once per walk and hands back each item once. A walk
+    # that ran a lookup afresh wherever it met it would take time exponential
+    # in a diamond's depth, or factorial in a clique's size, on the Cost roots.
+    _, paths = walk_case_tree
+    settled = static_reach._Walk._settled
+    runs: Counter[tuple[object, ...]] = Counter()
+
+    def counted(self, key, compute, cut=()):
+        def counting():
+            runs[key] += 1
+            assert runs[key] == 1, key
+            return compute()
+
+        found = settled(self, key, counting, cut)
+        assert len(found) == len(set(found)), key
+        return found
+
+    monkeypatch.setattr(static_reach._Walk, "_settled", counted)
+    for module, qualname in _WALK_CASE_ROOTS:
+        runs.clear()
+        reach(f"{static_reach_cases.PACKAGE}.{module}", qualname, paths=paths)
+        assert runs, (module, qualname)
+
+
+def _fresh_lookup(walk, key):
+    kind, *rest = key
+    if kind == "resolve":
+        return walk.resolve(*rest)
+    if kind == "alias":
+        return walk.aliased(*rest)
+    if kind == "match":
+        return walk.match_args(*rest)
+    # A package's lazy exports, which exported() looks up.
+    walk.exported(*rest)
+    return list(walk._done[key])
+
+
+def test_a_settled_lookup_holds_what_a_fresh_walk_finds(walk_case_tree) -> None:
+    # Lookups in a cycle settle on the same items, whichever the walk met
+    # first (r_star_clique, r_lazy_cycle, r_alias_cycle). So each lookup a
+    # root's walk settles holds what the same lookup finds first in a fresh
+    # walk.
+    _, paths = walk_case_tree
+    for module, qualname in _WALK_CASE_ROOTS:
+        walk = static_reach._Walk(paths, ())
+        walk.run(f"{static_reach_cases.PACKAGE}.{module}", qualname)
+        for key, items in walk._done.items():
+            fresh = static_reach._Walk(paths, ())
+            fresh.modules = walk.modules
+            assert set(_fresh_lookup(fresh, key)) == set(items), (module, key)
 
 
 def test_the_module_stays_outside_the_batterys_binding_closure() -> None:

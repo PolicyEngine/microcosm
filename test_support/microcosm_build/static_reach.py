@@ -19,14 +19,16 @@ What the walk follows from a root, a function or a method with its class:
   ``__getattr__``, defined or assigned. Every form of assignment binds: a
   ``for`` or ``with`` target stands for what the loop iterates or the
   statement enters, a ``match`` capture for the subject, and a walrus
-  target for its value.
+  target for its value. A name that a class body declares ``global`` binds
+  at module level, whether or not the walk reaches the class.
 - Scopes. Each scope binds only its own names, as Python scopes them. A
   comprehension, lambda or nested function keeps its names to itself, a class
   body's names stay out of its methods, and ``global`` and ``nonlocal`` send a
   name outward. A class body reads a name it binds from its own namespace
-  only once a statement at the body's top level has bound it. Before that, or
-  when only a branch, a loop or a bare annotation binds it, Python reads the
-  module's binding, so the walk follows that one too.
+  only once a statement at the body's top level has bound it. Before that,
+  when only a branch, a loop or a bare annotation binds it, or when a ``del``
+  can undo it, Python reads the module's binding, so the walk follows that
+  one too.
 - Aliases. A module-level constant stands for each module, class or function
   its value names: ``_helper = helper_module``, ``_Base = pkg.Base``,
   ``pkg.Base[int]``, either branch of a conditional, each operand of ``and``
@@ -37,7 +39,9 @@ What the walk follows from a root, a function or a method with its class:
   first-party base, through aliases and subscripts (``Base[int]``).
 - Self and cls. In a method, a chain from ``self`` or ``cls`` continues
   through a module the class body imports (``self.mod.fn()``). The
-  attribute fallback reaches the member itself.
+  attribute fallback reaches the member itself. Where the class body reads
+  a name it imports, in the body itself, a default value or a decorator,
+  the name stands for that module too.
 - Implicit calls. A referenced class reaches every dunder and sunder method
   it defines, since Python calls them without naming them: operators,
   conversions, containers, descriptors, copying, pickling and Enum's
@@ -49,14 +53,18 @@ What the walk follows from a root, a function or a method with its class:
   expression statement (``_setup()``, ``setattr(Kernel, ...)``), a ``del``,
   and a store to an item or an attribute. It also follows each compound
   statement's header there: an ``if`` or ``while`` test, what a ``for``
-  iterates or a ``with`` enters, a ``match`` statement's subject, patterns
-  and guards, and each ``except`` or ``except*`` clause's types.
+  iterates or a ``with`` enters and the target each stores to, a ``match``
+  statement's subject, patterns and guards, and each ``except`` or
+  ``except*`` clause's types.
 - Changes by name. In any module the walk has read, a statement at module
-  level or in any class body that changes a reached name in place runs with
-  it: a method call on the name (``_TABLE.update(...)``, also inside an
-  assignment), a store to or a ``del`` of its item or attribute, or a call
-  statement that takes it as an argument (``_fill(_TABLE)``), also through a
-  constant that aliases it (``_VIEW = _TABLE``).
+  level or in any class body, a nested class's too, that changes a reached
+  name in place runs with it: a method call on the name
+  (``_TABLE.update(...)``, also inside an assignment or a comprehension), a
+  store to or a ``del`` of its item or attribute (a ``for`` or ``with``
+  target too, with what it stores), ``+=`` on the name, or a call statement
+  that takes it as an argument (``_fill(_TABLE)``), also through a constant
+  that aliases it (``_VIEW = _TABLE``). A nested class runs whole, so that
+  its own names resolve.
 - Attribute fallback. An attribute of an object whose type the walk can't
   tell reaches every same-named member of each class the walk has
   referenced, and every same-named definition in each module it has seen
@@ -65,16 +73,31 @@ What the walk follows from a root, a function or a method with its class:
 - Literal names. ``getattr``, ``hasattr``, ``setattr`` and ``delattr`` read
   the attribute a literal names, and so do ``attrgetter``, ``methodcaller``
   and a ``match`` class pattern (its keyword names, and an explicit
-  ``__match_args__`` for positional patterns). ``import_module`` and
-  ``__import__`` reach the module a literal names as a value:
-  ``import_module`` relative to a literal package, ``__package__`` or
-  ``__name__``, and ``__import__`` with its top package as well. A
-  module-level constant that holds only strings counts as a literal.
+  ``__match_args__`` for positional patterns, the class's own or a base's).
+  ``import_module`` and ``__import__`` reach the module a literal names as a
+  value: ``import_module`` relative to a literal package, ``__package__``,
+  ``__spec__.parent`` or ``__name__``, and ``__import__`` with its top
+  package as well, counting a ``level`` above zero from the calling
+  module's package. Each of these callables counts under a module-level
+  name for it too (``load = import_module``). A module-level constant that
+  holds only strings counts as a literal.
+
+Each lookup runs once per walk: what a name binds in a module, what a
+constant stands for, a package's lazy exports, and a class's inherited
+``__match_args__``. Lookups that wait on each other in a cycle settle on the
+same items, whichever the walk met first. A walk that ran each lookup afresh
+wherever it met it would take time exponential in the depth of a diamond of
+star imports, re-exports, constants or bases, and factorial in the size of a
+clique of star imports: the Cost cases in ``static_reach_cases``. A round
+counts only what it adds: an item, a module the walk uses as a value, or a
+statement the walk hasn't run. The walk ends at the first round that adds
+nothing.
 
 What it can't see:
 
 - a name built at run time (``getattr`` or ``import_module`` with a computed
-  name, ``globals()``, ``exec``);
+  name, ``globals()``, ``exec``), and those callables under a name that a
+  function binds;
 - code reached by registration rather than by name: a function that a
   decorator records for a framework or a registry to call
   (``singledispatch``, pydantic's validators);
@@ -104,8 +127,9 @@ it relies on rather than skipping a module.
 from __future__ import annotations
 
 import ast
+import math
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -118,6 +142,8 @@ ATTRIBUTE_BUILTINS = frozenset({"getattr", "hasattr", "setattr", "delattr"})
 ATTRIBUTE_NAMERS = frozenset({"attrgetter", "methodcaller"})
 #: Callables whose literal first argument names a module to import.
 IMPORTERS = frozenset({"import_module", "__import__"})
+#: The callables above, which a module-level name can stand for.
+_CALLABLES = ATTRIBUTE_BUILTINS | ATTRIBUTE_NAMERS | IMPORTERS
 #: The most rounds a walk may take to settle. Each round reaches a new item or
 #: value module, or runs a new statement, so a walk that needs more has a bug.
 MAX_ROUNDS = 10_000
@@ -208,9 +234,15 @@ def _header(node: ast.stmt) -> list[ast.AST]:
     if isinstance(node, ast.If | ast.While):
         return [node.test]
     if isinstance(node, ast.For | ast.AsyncFor):
-        return [node.iter]
+        # Each pass stores to the target: ``for _TABLE[key] in rows``.
+        return [node.iter, node.target]
     if isinstance(node, ast.With | ast.AsyncWith):
-        return [item.context_expr for item in node.items]
+        return [
+            part
+            for item in node.items
+            for part in (item.context_expr, item.optional_vars)
+            if part is not None
+        ]
     if isinstance(node, ast.Match):
         parts: list[ast.AST] = [node.subject]
         for case in node.cases:
@@ -324,15 +356,18 @@ def _mutations(part: ast.AST) -> Iterator[str]:
     """The names one statement (or one header) can change in place.
 
     ``_TABLE`` for ``_TABLE.update(...)``, ``_ROW = _TABLE.setdefault(...)``,
-    ``_TABLE[key] = value``, ``_TABLE.field += 1``, ``del _TABLE[key]``, and
-    for a call statement each name its arguments start from:
-    ``_fill(_TABLE)`` or ``setattr(_TABLE, ...)``.
+    ``_TABLE[key] = value``, ``_TABLE.field += 1``, ``_ROWS += rows`` (a
+    list extends in place), ``del _TABLE[key]``, any of these inside a
+    comprehension, and for a call statement each name its arguments start
+    from: ``_fill(_TABLE)`` or ``setattr(_TABLE, ...)``.
     """
 
     calls = []
     if isinstance(part, ast.Expr) and isinstance(part.value, ast.Call):
         calls.append(part.value)
-    for node in _same_scope([part]):
+    if isinstance(part, ast.AugAssign) and isinstance(part.target, ast.Name):
+        yield part.target.id
+    for node in _runs_with([part]):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             name = _root_name(node.func.value)
             if name is not None:
@@ -368,6 +403,9 @@ class _Module:
         self.mutations: list[tuple[str, ast.AST, ast.ClassDef | None]] = []
         #: What the module runs at import beyond its bindings.
         self.effects: list[ast.AST] = list(_effects(tree.body))
+        #: A value that a class body binds to a name it declares global ->
+        #: that class body.
+        self.class_values: dict[int, ast.ClassDef] = {}
         for node in _statements(tree.body):
             if isinstance(node, ast.Import | ast.ImportFrom):
                 for bound, binding in _bindings(self, node).items():
@@ -379,9 +417,33 @@ class _Module:
                 functions[node.name].append(node)
             elif isinstance(node, ast.ClassDef):
                 classes[node.name].append(node)
-                for child in _statements(node.body):
-                    if not isinstance(child, (*_DEFS, ast.Import, ast.ImportFrom)):
-                        self._changes(child, node)
+                for body in _class_bodies(node):
+                    declared = _declared_globals(body)
+                    for child in _statements(body.body):
+                        # A name the body declares global binds at module level.
+                        if isinstance(child, ast.Import | ast.ImportFrom):
+                            for bound, binding in _bindings(self, child).items():
+                                if bound in declared:
+                                    imports[bound].append(binding)
+                            continue
+                        if isinstance(child, _DEFS):
+                            if child.name in declared:
+                                table = (
+                                    classes
+                                    if isinstance(child, ast.ClassDef)
+                                    else functions
+                                )
+                                table[child.name].append(child)
+                            continue
+                        for target, value in _assignments(child):
+                            for bound in _stored(target):
+                                if bound in declared:
+                                    _add(constants[bound], value)
+                                    self.class_values[id(value)] = body
+                        if body is node:
+                            self._changes(child, node)
+                        else:
+                            self._changes(child, None, whole=body)
             else:
                 for target, value in _assignments(node):
                     for bound in _stored(target):
@@ -391,10 +453,35 @@ class _Module:
         self.functions = dict(functions)
         self.classes = dict(classes)
         self.constants = dict(constants)
+        #: Module-level names for the callables in ``_CALLABLES``:
+        #: ``from importlib import import_module as load``, ``_get = getattr``.
+        self.callees: dict[str, str] = {}
+        for bound, bindings in self.imports.items():
+            for _, attribute in bindings:
+                if attribute in _CALLABLES:
+                    self.callees[bound] = attribute
+        for bound, values in self.constants.items():
+            for value in values:
+                if (callee := _callee(value)) in _CALLABLES:
+                    self.callees[bound] = callee
 
-    def _changes(self, node: ast.stmt, body: ast.ClassDef | None) -> None:
-        for part in _parts(node):
-            for bound in dict.fromkeys(_mutations(part)):
+    def _changes(
+        self,
+        node: ast.stmt,
+        body: ast.ClassDef | None,
+        *,
+        whole: ast.ClassDef | None = None,
+    ) -> None:
+        # A compound statement's header runs as one: ``for _TABLE[key] in
+        # rows`` stores what ``rows`` holds.
+        parts = _parts(node)
+        for bound in dict.fromkeys(name for part in parts for name in _mutations(part)):
+            if whole is not None:
+                # A statement in a nested class: the walk runs that class
+                # whole, so that the names it binds resolve.
+                self.mutations.append((bound, whole, None))
+                continue
+            for part in parts:
                 self.mutations.append((bound, part, body))
 
     def absolute(self, level: int, module: str | None) -> str:
@@ -454,13 +541,31 @@ def _members(module: _Module, node: ast.ClassDef) -> dict[str, list[ast.AST]]:
             for target, _ in _assignments(child):
                 for bound in _stored(target):
                     _add(out[bound], child)
-    declared = {
+    declared = _declared_globals(node)
+    return {name: nodes for name, nodes in out.items() if name not in declared}
+
+
+def _declared_globals(node: ast.AST) -> set[str]:
+    """The names a scope declares ``global``."""
+
+    return {
         name
         for child in _same_scope(_inner_parts(node))
         if isinstance(child, ast.Global)
         for name in child.names
     }
-    return {name: nodes for name, nodes in out.items() if name not in declared}
+
+
+def _class_bodies(node: ast.ClassDef) -> Iterator[ast.ClassDef]:
+    """``node``, and each class nested in it, whose body runs as ``node``'s does.
+
+    A class inside a method runs only when the method does, so it stays out.
+    """
+
+    yield node
+    for child in _statements(node.body):
+        if isinstance(child, ast.ClassDef):
+            yield from _class_bodies(child)
 
 
 def _binds(node: ast.stmt) -> set[str]:
@@ -584,6 +689,23 @@ def _same_scope(nodes: Iterable[ast.AST]) -> Iterator[ast.AST]:
             stack.extend(ast.iter_child_nodes(node))
 
 
+def _runs_with(nodes: Iterable[ast.AST]) -> Iterator[ast.AST]:
+    """Every node under ``nodes`` that can run when they run.
+
+    That takes in each comprehension there (a generator expression runs as
+    something consumes it), but no function, lambda or class body.
+    """
+
+    stack = list(nodes)
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(node, _SCOPES) and not isinstance(node, _COMPREHENSIONS):
+            stack.extend(_outer_parts(node))
+        else:
+            stack.extend(ast.iter_child_nodes(node))
+
+
 def _walrus_targets(node: ast.AST) -> Iterator[str]:
     """A comprehension's walrus targets, which bind in its enclosing scope."""
 
@@ -597,10 +719,12 @@ def _walrus_targets(node: ast.AST) -> Iterator[str]:
 def _own_names(
     module: _Module, scope: ast.AST
 ) -> tuple[dict[str, tuple[Binding, ...]], set[str]]:
-    """The names ``scope`` binds for itself, and the names it declares global.
+    """The names ``scope`` binds, and the names it declares global.
 
     Each name maps to every import that binds it there: a name that a ``try``
-    or an ``if`` imports two ways keeps both.
+    or an ``if`` imports two ways keeps both. A ``nonlocal`` name stays out,
+    so that it keeps the enclosing function's binding; :func:`_visits` drops
+    each global one.
     """
 
     names: dict[str, tuple[Binding, ...]] = {}
@@ -638,7 +762,7 @@ def _own_names(
         elif isinstance(node, _COMPREHENSIONS):
             for target in _walrus_targets(node):
                 local(target)
-    for name in declared_global | declared_nonlocal:
+    for name in declared_nonlocal:
         names.pop(name, None)
     return names, declared_global
 
@@ -690,31 +814,32 @@ def _visits(
             stack.extend((child, here, closure) for child in reversed(children))
 
 
-def _named(value: ast.AST) -> Iterator[ast.AST]:
+def _named(value: ast.AST, callees: Mapping[str, str]) -> Iterator[ast.AST]:
     """The names and dotted names an expression's value can be.
 
     ``getattr(pkg, "mod")`` counts as ``pkg.mod``, and a literal that
     ``import_module`` or ``__import__`` takes comes back as that constant.
+    ``callees`` holds the module's names for those callables.
     """
 
     if isinstance(value, ast.Name | ast.Attribute):
         yield value
     elif isinstance(value, ast.Subscript):
-        yield from _named(value.value)
+        yield from _named(value.value, callees)
     elif isinstance(value, ast.IfExp):
-        yield from _named(value.body)
-        yield from _named(value.orelse)
+        yield from _named(value.body, callees)
+        yield from _named(value.orelse, callees)
     elif isinstance(value, ast.BoolOp):
         for part in value.values:
-            yield from _named(part)
+            yield from _named(part, callees)
     elif isinstance(value, ast.NamedExpr | ast.Starred):
-        yield from _named(value.value)
+        yield from _named(value.value, callees)
     elif isinstance(value, ast.Tuple | ast.List | ast.Set):
         # ``a, b = first, second``: over-approximate by element.
         for part in value.elts:
-            yield from _named(part)
+            yield from _named(part, callees)
     elif isinstance(value, ast.Call):
-        callee = _callee(value.func)
+        callee = _callee(value.func, callees)
         texts = [_literal(argument) for argument in value.args]
         if callee == "getattr" and len(texts) >= 2 and texts[1]:
             read = ast.Attribute(value.args[0], texts[1], ast.Load())
@@ -725,12 +850,22 @@ def _named(value: ast.AST) -> Iterator[ast.AST]:
                 yield ast.Constant(texts[0].partition(".")[0])
 
 
-def _callee(func: ast.AST) -> str | None:
+def _callee(func: ast.AST, callees: Mapping[str, str] | None = None) -> str | None:
+    """The name a call calls, or the callable a module-level name stands for."""
+
     if isinstance(func, ast.Name):
-        return func.id
+        return (callees or {}).get(func.id, func.id)
     if isinstance(func, ast.Attribute):
         return func.attr
     return None
+
+
+def _argument(call: ast.Call, position: int, keyword: str) -> ast.AST | None:
+    """A call's argument, by its position or its keyword."""
+
+    if len(call.args) > position:
+        return call.args[position]
+    return next((item.value for item in call.keywords if item.arg == keyword), None)
 
 
 def _literal(node: ast.AST) -> str | None:
@@ -765,11 +900,17 @@ class _Walk:
         #: A top-level class member's binding statement -> its class body.
         self._body_of: dict[int, ast.ClassDef] = {}
         self._inside: dict[str, list[str]] = {}
-        # The lookups in progress. A cycle of re-exports or aliases adds
-        # nothing the outer lookup doesn't already see.
-        self._resolving: set[tuple[str, str]] = set()
-        self._lazy: set[tuple[str, str]] = set()
-        self._aliasing: set[Item] = set()
+        # Lookups, each computed once (see _settled): what each settled one
+        # holds; when each unsettled one began, and its cut; the unsettled
+        # ones in that order; and those another lookup met unsettled.
+        self._done: dict[tuple[object, ...], tuple[object, ...]] = {}
+        self._began: dict[tuple[object, ...], int] = {}
+        self._cuts: dict[tuple[object, ...], tuple[object, ...]] = {}
+        self._open: list[tuple[object, ...]] = []
+        self._met: set[tuple[object, ...]] = set()
+        self._begun = 0
+        #: When the earliest unsettled lookup that the one under way met began.
+        self._low: float = math.inf
 
     def module(self, name: str) -> _Module | None:
         if name not in self.paths:
@@ -821,31 +962,80 @@ class _Walk:
             self._members[key] = dict(out)
         return self._members[key]
 
+    def _settled[T](
+        self,
+        key: tuple[object, ...],
+        compute: Callable[[], Iterable[T]],
+        cut: Iterable[T] = (),
+    ) -> list[T]:
+        """``compute()``'s items for ``key``, once each, computing ``key`` once.
+
+        Lookups can wait on each other in a cycle: modules that import a name
+        from each other, star imports, a lazy package's modules, constants
+        that name each other, or bases. A lookup that meets one that hasn't
+        settled gets that one's ``cut``, and every lookup in the cycle
+        settles on the same items: what the cycle's first lookup ends with,
+        and each one's cut (Tarjan's strongly connected components). In a
+        cycle, each lookup's caller keeps what it found, back to the first
+        lookup, and the lookups reach each other, so each can reach every
+        item the first one ends with, whichever the walk met first. Each
+        lookup then runs once, where running it afresh at each visit costs
+        time exponential in a diamond's depth.
+        """
+
+        if key in self._done:
+            return list(self._done[key])
+        if key in self._began:
+            self._low = min(self._low, self._began[key])
+            self._met.add(key)
+            return list(self._cuts[key])
+        began = self._began[key] = self._begun
+        self._begun += 1
+        self._cuts[key] = tuple(cut)
+        self._open.append(key)
+        outer, self._low = self._low, began
+        # One copy of each: through a diamond, every path adds its own.
+        items = list(dict.fromkeys(compute()))
+        low = self._low
+        if low < began:
+            # It waits on a lookup that began earlier and hasn't settled.
+            self._low = min(outer, low)
+            return list(items)
+        self._low = outer
+        start = self._open.index(key)
+        members = self._open[start:]
+        del self._open[start:]
+        if len(members) > 1 or key in self._met:
+            items = list(
+                dict.fromkeys([*items, *(c for m in members for c in self._cuts[m])])
+            )
+        for member in members:
+            del self._began[member], self._cuts[member]
+            self._met.discard(member)
+            self._done[member] = tuple(items)
+        return list(items)
+
     def resolve(self, module: str, name: str) -> list[Item]:
         """Every definition ``name`` can bind in ``module``'s top-level scope."""
 
         found = self.module(module)
-        key = (module, name)
-        if found is None or key in self._resolving:
+        if found is None:
             return []
-        self._resolving.add(key)
-        try:
-            items: list[Item] = [
-                (module, kind, name)
-                for kind, table in (
-                    ("function", found.functions),
-                    ("class", found.classes),
-                    ("constant", found.constants),
-                )
-                if name in table
-            ]
+
+        def compute() -> Iterator[Item]:
+            for kind, table in (
+                ("function", found.functions),
+                ("class", found.classes),
+                ("constant", found.constants),
+            ):
+                if name in table:
+                    yield (module, kind, name)
             for binding in found.imports.get(name, ()):
-                items.extend(self.resolve_import(*binding))
+                yield from self.resolve_import(*binding)
             for star in found.star_imports:
-                items.extend(self.exported(star, name))
-        finally:
-            self._resolving.discard(key)
-        return items
+                yield from self.exported(star, name)
+
+        return self._settled(("resolve", module, name), compute)
 
     def resolve_import(self, target: str, attribute: str | None) -> list[Item]:
         """What ``import target`` or ``from target import attribute`` binds."""
@@ -862,7 +1052,8 @@ class _Walk:
             items.append((f"{module}.{name}", "module", None))
         items.extend(self.resolve(module, name))
         found = self.module(module)
-        if items or found is None:
+        if items or found is None or name == "__getattr__":
+            # Python finds a module's __getattr__ in its namespace only.
             return items
         # A lazy export: whatever binds the module's __getattr__ and, for a
         # package, the name wherever the package's own modules bind it.
@@ -870,15 +1061,18 @@ class _Walk:
         if not getters:
             return items
         items.extend(getters)
-        key = (module, name)
-        if found.is_package and key not in self._lazy:
-            self._lazy.add(key)
-            try:
-                for inner in self.inside(module):
-                    items.extend(self.resolve(inner, name))
-            finally:
-                self._lazy.discard(key)
-        return items
+        if found.is_package:
+            items.extend(
+                self._settled(
+                    ("lazy", module, name),
+                    lambda: (
+                        item
+                        for inner in self.inside(module)
+                        for item in self.resolve(inner, name)
+                    ),
+                )
+            )
+        return list(dict.fromkeys(items))
 
     def resolve_expression(self, module: str, node: ast.AST) -> list[Item]:
         """What a name or dotted name in ``module``'s top-level scope names."""
@@ -907,22 +1101,24 @@ class _Walk:
         A constant whose values name nothing stands for itself.
         """
 
-        if item[1] != "constant" or item in self._aliasing:
+        if item[1] != "constant":
             return [item]
-        self._aliasing.add(item)
-        found: list[Item] = []
-        try:
-            for value in self.module(item[0]).constants[item[2]]:
-                for named in _named(value):
+
+        def compute() -> list[Item]:
+            module = self.module(item[0])
+            found: list[Item] = []
+            for value in module.constants[item[2]]:
+                for named in _named(value, module.callees):
                     if isinstance(named, ast.Constant):
                         if self.is_module(named.value):
                             found.append((named.value, "module", None))
                         continue
                     for resolved in self.resolve_expression(item[0], named):
                         found.extend(self.aliased(resolved))
-        finally:
-            self._aliasing.discard(item)
-        return found or [item]
+            return found or [item]
+
+        # In a cycle of constants, each stands for every one in it as well.
+        return self._settled(("alias", item), compute, cut=[item])
 
     def member_imports(self, module: str, owner: str, member: str) -> list[Item]:
         """What a top-level class member is where the class body imports it.
@@ -994,6 +1190,8 @@ class _Walk:
                     items.extend(self.resolve(module, name))
                 else:
                     items.append((module, "member", f"{binding[1]}.{name}"))
+                    # Where the class body imports the name, the module too.
+                    items.extend(self.member_imports(module, binding[1], name))
                     if body is None or not _bound_before(body, name, read):
                         items.extend(self.resolve(module, name))
             return items
@@ -1075,7 +1273,7 @@ class _Walk:
                 self.values.update(start[0] for start in starts)
 
         def call(node: ast.Call, here: Scope, at: str) -> None:
-            callee = _callee(node.func)
+            callee = _callee(node.func, found.callees)
             if callee in ATTRIBUTE_BUILTINS and len(node.args) >= 2:
                 for text in literal_names(node.args[1], here):
                     read = ast.Attribute(node.args[0], text, ast.Load())
@@ -1086,13 +1284,14 @@ class _Walk:
                         self.attributes.update(text.split("."))
             elif callee in IMPORTERS and node.args:
                 for text in literal_names(node.args[0], here):
-                    for name in self.absolute(module, text, node, here):
+                    for name in self.absolute(module, callee, text, node):
                         # import_module returns the module it names;
-                        # __import__ returns the top package, or with a
-                        # fromlist the module itself.
+                        # __import__ returns the top package (counted from
+                        # its level), or with a fromlist the module itself.
                         named = [name]
                         if callee == "__import__":
-                            named.append(name.partition(".")[0])
+                            top = text.partition(".")[0]
+                            named.append(name[: len(name) - len(text)] + top)
                         for value in named:
                             if self.is_module(value):
                                 self.push((value, "module", None), at)
@@ -1127,35 +1326,28 @@ class _Walk:
                 match_class(child, here)
 
     def absolute(
-        self, module: str, text: str, node: ast.Call, here: Scope
+        self, module: str, callee: str, text: str, node: ast.Call
     ) -> list[str]:
         """The module names an import call's literal can mean."""
 
-        if not text.startswith("."):
-            return [text]
-        level = len(text) - len(text.lstrip("."))
-        rest = text[level:]
-        if len(node.args) > 1:
-            package_node = node.args[1]
-        else:
-            package_node = next(
-                (
-                    keyword.value
-                    for keyword in node.keywords
-                    if keyword.arg == "package"
-                ),
-                None,
-            )
-        if package_node is None:
-            return []
         found = self.module(module)
-        if isinstance(package_node, ast.Name) and package_node.id == "__package__":
+        if callee == "__import__":
+            # __import__(name, globals, locals, fromlist, level) counts a level
+            # above zero from the calling module's package.
+            level_node = _argument(node, 4, "level")
+            level = 0
+            if isinstance(level_node, ast.Constant) and type(level_node.value) is int:
+                level = level_node.value
+            if level <= 0:
+                return [text]
+            rest = text
             packages = [found.package]
-        elif isinstance(package_node, ast.Name) and package_node.id == "__name__":
-            packages = [module]
         else:
-            text_node = _literal(package_node)
-            packages = [text_node] if text_node is not None else []
+            if not text.startswith("."):
+                return [text]
+            level = len(text) - len(text.lstrip("."))
+            rest = text[level:]
+            packages = self.packages(module, _argument(node, 1, "package"))
         names = []
         for package in packages:
             parts = package.split(".")
@@ -1165,17 +1357,66 @@ class _Walk:
             names.append(f"{base}.{rest}" if rest else base)
         return names
 
+    def packages(self, module: str, node: ast.AST | None) -> list[str]:
+        """The packages an ``import_module`` package argument can name."""
+
+        found = self.module(module)
+        if isinstance(node, ast.Name) and node.id == "__package__":
+            return [found.package]
+        if isinstance(node, ast.Name) and node.id == "__name__":
+            return [module]
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr == "parent"
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "__spec__"
+        ):
+            # A module's spec names its package as its parent.
+            return [found.package]
+        text = None if node is None else _literal(node)
+        return [] if text is None else [text]
+
+    def bases(self, module: str, name: str) -> list[Item]:
+        """Each first-party class a top-level class names as a base.
+
+        The walk reads a base through aliases and subscripts (``Base[int]``).
+        """
+
+        found = self.module(module)
+        out: list[Item] = []
+        for node in found.classes.get(name, ()):
+            for base in node.bases:
+                while isinstance(base, ast.Subscript):
+                    base = base.value
+                for resolved in self.resolve_expression(module, base):
+                    for start in self.aliased(resolved):
+                        if start[1] == "class":
+                            out.append(start)
+        return out
+
     def match_args(self, item: Item) -> list[str]:
         """The attributes a class's explicit ``__match_args__`` names.
 
-        A positional ``match`` class pattern reads them. A dataclass's own
-        ``__match_args__`` names its fields, which hold data, not code.
+        A positional ``match`` class pattern reads them. A class that doesn't
+        set ``__match_args__`` takes each base's, as attribute lookup does. A
+        dataclass's own ``__match_args__`` names its fields, which hold data,
+        not code.
         """
 
         module, _, name = item
+        nodes = self.members(module, name).get("__match_args__")
+        if nodes is None:
+            return self._settled(
+                ("match", item),
+                lambda: (
+                    text
+                    for base in self.bases(module, name)
+                    for text in self.match_args(base)
+                ),
+            )
         return [
             text
-            for node in self.members(module, name).get("__match_args__", ())
+            for node in nodes
             for _, value in _assignments(node)
             for element in getattr(value, "elts", ())
             if (text := _literal(element)) is not None
@@ -1191,7 +1432,21 @@ class _Walk:
                 self.scan(module, node, f"{module}.{name}", qualname=name)
         elif kind == "constant":
             for value in found.constants.get(name, ()):
-                self.scan(module, value, f"{module}.{name}=")
+                # A class body that declares the name global binds it there,
+                # in the class's scope.
+                body = found.class_values.get(id(value))
+                owner = None
+                if body is not None and any(
+                    node is body for node in found.classes.get(body.name, ())
+                ):
+                    owner = body.name
+                self.scan(
+                    module,
+                    value,
+                    f"{module}.{name}=",
+                    owner=owner,
+                    body=None if owner is None else body,
+                )
         elif kind == "class":
             self.classes.add((module, name))
             for node in found.classes.get(name, ()):
@@ -1234,17 +1489,11 @@ class _Walk:
             if nodes:
                 return
             # Inherited: the same name on each first-party base class.
-            for node in found.classes[owner]:
-                for base in node.bases:
-                    while isinstance(base, ast.Subscript):
-                        base = base.value
-                    for resolved in self.resolve_expression(module, base):
-                        for start in self.aliased(resolved):
-                            if start[1] == "class":
-                                self.push(
-                                    (start[0], "member", f"{start[2]}.{member}"),
-                                    f"{module}.{name}(base)",
-                                )
+            for base in self.bases(module, owner):
+                self.push(
+                    (base[0], "member", f"{base[2]}.{member}"),
+                    f"{module}.{name}(base)",
+                )
 
     def is_reached(self, item: Item) -> bool:
         if item[1] == "module":
