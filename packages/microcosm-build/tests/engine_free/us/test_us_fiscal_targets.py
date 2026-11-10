@@ -1656,21 +1656,29 @@ def test_snap_person_caseload_fact_is_not_compiled() -> None:
     ]
 
 
-def test_ssa_ssi_recipients_national_fact_is_a_nonbinding_reference() -> None:
-    # microcosm#508 owner adjudication (2026-07-23): the by-area national
-    # all_areas_total (7,404,820) is the *federally administered* universe —
-    # it includes ~115k state-supplement-only recipients with no federal SSI
-    # payment — while engine ``ssi`` is the federal payment. It must never
-    # bind: the national federal-payment caseload is the sum of the three
-    # by-age band targets (7,289,843, role ssa_ssi_age_band_recipients).
+def test_ssa_ssi_national_recipient_rows_are_nonbinding_references() -> None:
+    # microcosm#508 owner adjudication (2026-07-23), kept by microcosm#1558:
+    # the national federal-payment caseload binds as the three by-age band
+    # targets (7,289,843 in all, role ssa_ssi_age_band_recipients). Table
+    # 7.B3's All-areas federal count repeats their sum. Table 7.B1's
+    # All-areas total (7,423,856) counts everyone with a federally
+    # administered payment, 134,013 more, while engine ``ssi`` is the federal
+    # payment. Neither row binds.
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
             _ssa_ssi_by_area_fact(
                 measure_id="recipient_count",
-                value=7_404_820,
+                value=7_423_856,
                 record_set_concept="ssi_recipients.by_area_category",
                 area_category="all_areas_total",
+            ),
+            _ssa_supplement_by_area_fact(
+                record_set="ssi_federal_payment_recipients",
+                area="all_areas",
+                value=7_289_843,
+                geography_level="country",
+                geography_id="0100000US",
             ),
         ]
     )
@@ -1679,20 +1687,56 @@ def test_ssa_ssi_recipients_national_fact_is_a_nonbinding_reference() -> None:
         spec
         for spec in registry.specs
         if "ssi_recipients.by_area_category" in spec.name
+        or "ssi_federal_payment_recipients.by_area" in spec.name
     ]
-    assert not [
-        spec for spec in registry.specs if spec.value == pytest.approx(7_404_820)
-    ]
+    assert not [spec for spec in registry.specs if spec.value in {7_423_856, 7_289_843}]
 
 
-def test_ssa_ssi_recipients_state_fact_compiles_with_state_fips() -> None:
+def test_ssa_ssi_federal_recipients_state_fact_compiles_with_state_fips() -> None:
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _ssa_supplement_by_area_fact(
+                record_set="ssi_federal_payment_recipients",
+                area="alabama",
+                value=140_804,
+            ),
+        ]
+    )
+
+    spec = {spec.name: spec for spec in registry.specs}[
+        "ssa_supplement.month2024_12.ssi_federal_payment_recipients"
+        ".by_area.alabama.recipient_count"
+    ]
+    assert spec.family == "ssa"
+    assert spec.value == 140_804
+    assert spec.metadata["target_role"] == "ssi_recipients"
+    assert spec.metadata["measure_mode"] == "indicator_sum"
+    assert spec.metadata["base_variable"] == "ssi"
+    assert spec.metadata["state_fips"] == "01"
+    assert spec.metadata["source_period"] == "2024-12"
+
+
+def test_ssa_ssi_table_7b1_state_totals_are_not_compiled() -> None:
+    # microcosm#1558: Table 7.B1's state totals count federal SSI plus
+    # federally administered state supplementation, while engine ``ssi`` is
+    # the federal payment alone. The federal columns of Tables 7.B3 and 7.B7
+    # bind the states instead.
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
             _ssa_ssi_by_area_fact(
                 measure_id="recipient_count",
-                value=137_206,
+                value=140_808,
                 record_set_concept="ssi_recipients.by_area_category",
+                area_category="alabama_total",
+                geography_level="state",
+                geography_id="0400000US01",
+            ),
+            _ssa_ssi_by_area_fact(
+                measure_id="payment_amount",
+                value=1_150_120_000,
+                record_set_concept="ssi_payments.by_area_category",
                 area_category="alabama_total",
                 geography_level="state",
                 geography_id="0400000US01",
@@ -1700,27 +1744,19 @@ def test_ssa_ssi_recipients_state_fact_compiles_with_state_fips() -> None:
         ]
     )
 
-    spec = {spec.name: spec for spec in registry.specs}[
-        "ssa_supplement.cy2024.ssi_recipients.by_area_category"
-        ".alabama_total.recipient_count"
-    ]
-    assert spec.family == "ssa"
-    assert spec.metadata["target_role"] == "ssi_recipients"
-    assert spec.metadata["measure_mode"] == "indicator_sum"
-    assert spec.metadata["base_variable"] == "ssi"
-    assert spec.metadata["state_fips"] == "01"
+    assert not [spec for spec in registry.specs if ".by_area_category." in spec.name]
 
 
 def test_ssa_ssi_recipient_eligibility_category_subrows_are_not_compiled() -> None:
-    # PolicyEngine-US does not model the aged/blind/disabled SSI eligibility
-    # split, so only the all-category "total" is a model counterpart; the
-    # sub-rows are reviewed exclusions in the target-parity manifest.
+    # Table 7.B1's aged, blind and disabled rows compile to nothing. Since
+    # microcosm#1558 its total rows don't bind either: the federal columns of
+    # Tables 7.B3 and 7.B7 replace the whole table.
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
             _ssa_ssi_by_area_fact(
                 measure_id="recipient_count",
-                value=1_161_623,
+                value=1_190_660,
                 record_set_concept="ssi_recipients.by_area_category",
                 area_category="all_areas_aged",
             ),
@@ -1733,7 +1769,7 @@ def test_ssa_ssi_recipient_eligibility_category_subrows_are_not_compiled() -> No
 def test_ssa_aged_category_row_can_never_bind_as_the_65_plus_age_band() -> None:
     """Role-separation guard (microcosm#508 adjudication, 2026-07-23).
 
-    Table 7.B1's "aged" row (1,161,623) is the aged ELIGIBILITY CATEGORY —
+    Table 7.B1's "aged" row (1,190,660) is the aged ELIGIBILITY CATEGORY —
     people who qualified under the age-65+ pathway — while the by-age 65+
     band (2,382,142) counts people aged 65+ across all categories, mostly
     disabled-category recipients who aged past 65. Feeding both through the
@@ -1751,7 +1787,7 @@ def test_ssa_aged_category_row_can_never_bind_as_the_65_plus_age_band() -> None:
             *packaged_reference_facts(),
             _ssa_ssi_by_area_fact(
                 measure_id="recipient_count",
-                value=1_161_623,
+                value=1_190_660,
                 record_set_concept="ssi_recipients.by_area_category",
                 area_category="all_areas_aged",
             ),
@@ -1788,7 +1824,7 @@ def test_ssa_aged_category_row_can_never_bind_as_the_65_plus_age_band() -> None:
     assert aged_targets[0].value == 2_382_142
     # The category row compiled to nothing — under no role at all.
     assert not [
-        spec for spec in registry.specs if spec.value == pytest.approx(1_161_623)
+        spec for spec in registry.specs if spec.value == pytest.approx(1_190_660)
     ]
 
 
@@ -1802,7 +1838,7 @@ def test_ssa_ssi_by_age_row_with_unknown_groupby_fails_closed() -> None:
                 *packaged_reference_facts(),
                 _ssa_ssi_by_age_fact(
                     groupby_value_id="all_areas_aged",
-                    value=1_161_623,
+                    value=1_190_660,
                     universe_constraints=[
                         {
                             "operator": ">=",
@@ -1883,38 +1919,60 @@ def test_ssa_ssi_by_age_row_with_mismatched_bounds_fails_closed() -> None:
         )
 
 
-def test_ssa_ssi_state_payment_fact_compiles_as_dollar_sum() -> None:
+def test_ssa_ssi_federal_state_payment_fact_compiles_as_dollar_sum() -> None:
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
-            _ssa_ssi_by_area_fact(
-                measure_id="payment_amount",
-                value=954_623_000,
-                record_set_concept="ssi_payments.by_area_category",
-                area_category="alabama_total",
-                geography_level="state",
-                geography_id="0400000US01",
+            _ssa_supplement_by_area_fact(
+                record_set="ssi_federal_payments",
+                area="california",
+                value=7_710_463_000,
+                geography_id="0400000US06",
             ),
         ]
     )
 
     spec = {spec.name: spec for spec in registry.specs}[
-        "ssa_supplement.cy2024.ssi_payments.by_area_category"
-        ".alabama_total.payment_amount"
+        "ssa_supplement.cy2024.ssi_federal_payments.by_area.california.payment_amount"
     ]
     assert spec.family == "ssa"
+    assert spec.value == 7_710_463_000
     assert spec.metadata["target_role"] == "ssi_state_payments"
     assert spec.metadata["measure_mode"] == "sum"
     assert spec.metadata["base_variable"] == "ssi"
-    assert spec.metadata["state_fips"] == "01"
+    assert spec.metadata["state_fips"] == "06"
 
 
-def test_ssa_ssi_national_payment_by_area_is_not_double_counted() -> None:
-    # The national by-area SSI payment equals the OASDI-table ssi_payments
-    # figure already compiled as ssi_total; only the state rows are compiled.
+def test_ssa_ssi_total_binds_table_7b7_federal_payments_once() -> None:
+    # microcosm#1558: ssi_total binds Table 7.B7's All-areas federal payments
+    # ($59,665,127,000, which include the Northern Mariana Islands'
+    # $9,933,000). The OASDI table's ssi_payments row and Table 7.B1's
+    # All-areas total ($63,079,493,000 each) add Table 7.B7's federally
+    # administered state supplementation ($3,414,366,000). None of those
+    # three binds.
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
+            _ssa_supplement_by_area_fact(
+                record_set="ssi_federal_payments",
+                area="all_areas",
+                value=59_665_127_000,
+                geography_level="country",
+                geography_id="0100000US",
+            ),
+            _ssa_supplement_by_area_fact(
+                record_set="ssi_state_supplementation_payments",
+                area="all_areas",
+                value=3_414_366_000,
+                geography_level="country",
+                geography_id="0100000US",
+            ),
+            _ssa_ssi_by_area_fact(
+                measure_id="payment_amount",
+                value=63_079_493_000,
+                record_set_concept="oasdi_ssi_payments",
+                area_category="ssi_payments",
+            ),
             _ssa_ssi_by_area_fact(
                 measure_id="payment_amount",
                 value=63_079_493_000,
@@ -1924,15 +1982,28 @@ def test_ssa_ssi_national_payment_by_area_is_not_double_counted() -> None:
         ]
     )
 
+    ssi_total = [
+        spec
+        for spec in registry.specs
+        if spec.metadata.get("target_role") == "ssi_total"
+    ]
+    assert [spec.name for spec in ssi_total] == [
+        "ssa_supplement.cy2024.ssi_federal_payments.by_area.all_areas.payment_amount"
+    ]
+    assert ssi_total[0].value == 59_665_127_000
+    assert ssi_total[0].family == "ssa"
+    assert ssi_total[0].metadata["base_variable"] == "ssi"
+    assert ssi_total[0].metadata["measure_mode"] == "sum"
     assert not [
-        spec for spec in registry.specs if "ssi_payments.by_area_category" in spec.name
+        spec for spec in registry.specs if spec.value in {63_079_493_000, 3_414_366_000}
     ]
 
 
-def test_ssa_oasdi_ssi_payment_aggregates_still_compile() -> None:
-    # Regression guard: the six national OASDI + SSI payment aggregates keep the
-    # standing DIRECT_LEDGER_TARGETS mappings (family ssa) through the new SSA
-    # dispatch, so the SSI recipient/payment extension never regresses them.
+def test_ssa_oasdi_benefit_aggregates_still_compile_without_ssi() -> None:
+    # Regression guard: the OASDI benefit rows keep their standing
+    # DIRECT_LEDGER_TARGETS mappings (family ssa) through the SSA dispatch.
+    # The table's ssi_payments row, federal SSI plus federally administered
+    # state supplementation, compiles to nothing (microcosm#1558).
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
@@ -1958,12 +2029,226 @@ def test_ssa_oasdi_ssi_payment_aggregates_still_compile() -> None:
     ]
     assert social_security.metadata["target_role"] == "social_security_total"
     assert social_security.metadata["base_variable"] == "social_security"
-    ssi_payments = specs[
+    assert (
         "ssa_supplement.cy2024.oasdi_ssi_payments.ssi_payments.payment_amount"
+        not in specs
+    )
+    assert not [
+        spec
+        for spec in registry.specs
+        if spec.metadata.get("target_role") == "ssi_total"
     ]
-    assert ssi_payments.metadata["target_role"] == "ssi_total"
-    assert ssi_payments.metadata["base_variable"] == "ssi"
-    assert ssi_payments.metadata["measure_mode"] == "sum"
+
+
+_SSA_SSI_STATE_FIPS = tuple(sorted(US_STATE_FIPS_TO_POSTAL))
+#: American Samoa, Guam, the Northern Mariana Islands, Puerto Rico and the US
+#: Virgin Islands: outside the model's 50 states and DC.
+_SSA_SSI_OUTLYING_AREA_FIPS = ("60", "66", "69", "72", "78")
+
+
+def _ssa_ssi_geography_area(level: str, geography_id: str) -> str:
+    return "all_areas" if level == "country" else f"area_{geography_id[-5:]}"
+
+
+def test_ssa_ssi_full_tables_bind_one_total_and_each_state_once() -> None:
+    """Every row of Tables 7.B1, 7.B3 and 7.B7 and the OASDI SSI row, for the
+    nation, the 50 states, DC and the Northern Mariana Islands, compile to one
+    ``ssi_total`` target and one ``ssi_state_payments`` and one
+    ``ssi_recipients`` target for each of the 50 states and DC."""
+    from collections import Counter
+
+    geographies = [("country", "0100000US")] + [
+        ("state", f"0400000US{fips}") for fips in (*_SSA_SSI_STATE_FIPS, "69")
+    ]
+    facts = [
+        _ssa_supplement_by_area_fact(
+            record_set=record_set,
+            area=_ssa_ssi_geography_area(level, geography_id),
+            value=1_000.0,
+            geography_level=level,
+            geography_id=geography_id,
+        )
+        for record_set in SSA_SUPPLEMENT_BY_AREA_RECORD_SETS
+        for level, geography_id in geographies
+    ]
+    facts += [
+        _ssa_ssi_by_area_fact(
+            measure_id=measure_id,
+            value=1_000.0,
+            record_set_concept=concept,
+            area_category=(
+                f"{_ssa_ssi_geography_area(level, geography_id)}_{category}"
+            ),
+            geography_level=level,
+            geography_id=geography_id,
+        )
+        for concept, measure_id in (
+            ("ssi_recipients.by_area_category", "recipient_count"),
+            ("ssi_payments.by_area_category", "payment_amount"),
+        )
+        for level, geography_id in geographies
+        for category in ("total", "aged", "blind", "disabled")
+    ]
+    facts.append(
+        _ssa_ssi_by_area_fact(
+            measure_id="payment_amount",
+            value=1_000.0,
+            record_set_concept="oasdi_ssi_payments",
+            area_category="ssi_payments",
+        )
+    )
+
+    registry = compile_us_fiscal_target_registry([*packaged_reference_facts(), *facts])
+
+    ssa_specs = [spec for spec in registry.specs if spec.family == "ssa"]
+    assert Counter(spec.metadata["target_role"] for spec in ssa_specs) == {
+        "ssi_total": 1,
+        "ssi_state_payments": 51,
+        "ssi_recipients": 51,
+    }
+    for role, record_set in (
+        ("ssi_state_payments", ".ssi_federal_payments.by_area."),
+        ("ssi_recipients", ".ssi_federal_payment_recipients.by_area."),
+    ):
+        specs = [spec for spec in ssa_specs if spec.metadata["target_role"] == role]
+        assert sorted(spec.metadata["state_fips"] for spec in specs) == list(
+            _SSA_SSI_STATE_FIPS
+        )
+        assert all(record_set in spec.name for spec in specs)
+
+
+def test_ssa_ssi_routing_binds_only_federal_payments_and_recipients() -> None:
+    """Invariants of the SSA SSI dispatch (microcosm#1558), over generated
+    facts of every Table 7.B3 and 7.B7 record set, measure and geography:
+
+    - only Table 7.B7's federal payments and Table 7.B3's federal recipients
+      compile, each under its own measure;
+    - a state row binds only for the 50 states and DC, and carries that
+      state's FIPS;
+    - the national row binds only from Table 7.B7, as ``ssi_total``;
+    - every compiled reference binds engine ``ssi``, as a dollar sum for
+      payments and an indicator sum for recipients.
+
+    Hypothesis is a workspace dependency; the wheels job installs no test
+    extras, so it skips there."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    expected_roles = {
+        ("ssi_federal_payments", "payment_amount", "country"): "ssi_total",
+        ("ssi_federal_payments", "payment_amount", "state"): "ssi_state_payments",
+        (
+            "ssi_federal_payment_recipients",
+            "recipient_count",
+            "state",
+        ): "ssi_recipients",
+    }
+    geographies = st.one_of(
+        st.just(("country", "0100000US")),
+        st.sampled_from(_SSA_SSI_STATE_FIPS + _SSA_SSI_OUTLYING_AREA_FIPS).map(
+            lambda fips: ("state", f"0400000US{fips}")
+        ),
+        st.just(("county", "0500000US06037")),
+    )
+
+    @settings(max_examples=400, deadline=None)
+    @given(
+        record_set=st.sampled_from(sorted(SSA_SUPPLEMENT_BY_AREA_RECORD_SETS)),
+        measure_id=st.sampled_from(
+            ["recipient_count", "payment_amount", "average_monthly_payment"]
+        ),
+        geography=geographies,
+        value=st.floats(min_value=0, max_value=1e12, allow_nan=False),
+    )
+    def check(
+        record_set: str,
+        measure_id: str,
+        geography: tuple[str, str],
+        value: float,
+    ) -> None:
+        level, geography_id = geography
+        fact = _ssa_supplement_by_area_fact(
+            record_set=record_set,
+            area=_ssa_ssi_geography_area(level, geography_id),
+            value=value,
+            geography_level=level,
+            geography_id=geography_id,
+            measure_id=measure_id,
+        )
+        reference = fiscal_targets._ssa_ssi_reference_from_fact(
+            fact, target_period=2024
+        )
+        fips = geography_id.removeprefix("0400000US") if level == "state" else None
+        role = expected_roles.get((record_set, measure_id, level))
+        if role is None or (level == "state" and fips not in US_STATE_FIPS_TO_POSTAL):
+            assert reference is None
+            return
+        assert reference is not None
+        assert reference.family == "ssa"
+        assert reference.ledger_source_record_id == fact["lineage"]["source_record_id"]
+        assert reference.metadata["target_role"] == role
+        assert reference.metadata["base_variable"] == "ssi"
+        assert reference.metadata["measure_mode"] == (
+            "sum" if measure_id == "payment_amount" else "indicator_sum"
+        )
+        assert reference.metadata.get("state_fips") == fips
+
+    check()
+
+
+def test_ssa_ssi_table_7b1_and_oasdi_ssi_rows_never_bind() -> None:
+    """Over generated Table 7.B1 rows (both measures, every category, any
+    geography), and for the OASDI table's ssi_payments row, the SSA dispatch
+    returns no target: each counts federally administered state
+    supplementation, which engine ``ssi`` leaves out (microcosm#1558)."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    oasdi_ssi_row = _ssa_ssi_by_area_fact(
+        measure_id="payment_amount",
+        value=63_079_493_000,
+        record_set_concept="oasdi_ssi_payments",
+        area_category="ssi_payments",
+    )
+    assert (
+        fiscal_targets._ssa_ssi_reference_from_fact(oasdi_ssi_row, target_period=2024)
+        is None
+    )
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        concept=st.sampled_from(
+            ["ssi_recipients.by_area_category", "ssi_payments.by_area_category"]
+        ),
+        measure_id=st.sampled_from(["recipient_count", "payment_amount"]),
+        category=st.sampled_from(["total", "aged", "blind", "disabled"]),
+        fips=st.sampled_from(_SSA_SSI_STATE_FIPS + _SSA_SSI_OUTLYING_AREA_FIPS),
+        national=st.booleans(),
+    )
+    def check(
+        concept: str, measure_id: str, category: str, fips: str, national: bool
+    ) -> None:
+        level, geography_id = (
+            ("country", "0100000US") if national else ("state", f"0400000US{fips}")
+        )
+        fact = _ssa_ssi_by_area_fact(
+            measure_id=measure_id,
+            value=1_000.0,
+            record_set_concept=concept,
+            area_category=(
+                f"{_ssa_ssi_geography_area(level, geography_id)}_{category}"
+            ),
+            geography_level=level,
+            geography_id=geography_id,
+        )
+        assert (
+            fiscal_targets._ssa_ssi_reference_from_fact(fact, target_period=2024)
+            is None
+        )
+
+    check()
 
 
 def test_bea_nipa_wages_map_to_employment_income_before_lsr() -> None:

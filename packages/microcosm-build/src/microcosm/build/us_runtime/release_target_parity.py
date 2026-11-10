@@ -8,11 +8,11 @@ targets the retired us-data/eCPS pipeline calibrated to*.
 The launch failure this closes: an administrative target family the retired
 pipeline calibrated to is silently absent from the microcosm target registry.
 The motivating case is SSA SSI recipients — the retired pipeline calibrated
-``nation/ssa/ssi_recipients`` (SSA Annual Statistical Supplement, 7,404,820
-recipients in 2024), the pinned consumer feed carries the
-``ssa_supplement.ssi_recipients`` facts, yet the registry compiled only the six
-``oasdi_ssi_payments`` aggregates and dropped the recipient family with no
-record of the omission. Column *mass* parity did not catch it because a target
+``nation/ssa/ssi_recipients`` (federal-payment recipients by age, SSI Monthly
+Statistics Table 1: 7,289,843 in December 2024), the pinned consumer feed
+carried the ``ssa_supplement.ssi_recipients`` facts, yet the registry compiled
+only the six ``oasdi_ssi_payments`` aggregates and dropped the recipient family
+with no record of the omission. Column *mass* parity did not catch it because a target
 family that never compiles contributes zero rows, not wrong ones.
 
 This module is the coverage contract at *family* granularity — a family is a
@@ -101,12 +101,15 @@ SOURCE_ABSENT_CLASSIFICATION = "source_absent"
 #:   the microcosm#508 owner adjudication (2026-07-23) the three by-age band
 #:   targets are the national SSI caseload anchor, so losing this family is
 #:   losing the national SSI recipient count.
-#: - ``ssa_supplement.ssi_recipients``: the SSA by-area recipient counts
-#:   (``nation/ssa/ssi_recipients``). Its national ``all_areas_total``
-#:   (7,404,820 — the broader *federally administered* universe, including
-#:   ~115k state-supplement-only recipients) is a non-binding reference per
-#:   the same adjudication; the family stays compiled through its state
-#:   rows, the only state-grain SSI caseload signal.
+#: - ``ssa_supplement.ssi_federal_payment_recipients``: SSA Annual Statistical
+#:   Supplement Table 7.B3's federal SSI recipients by state, December 2024,
+#:   the state-grain SSI caseload (microcosm#1558). It took over from Table
+#:   7.B1's ``ssa_supplement.ssi_recipients``, whose federally administered
+#:   universe (7,423,856 nationally, 134,013 above the federal count) also
+#:   counts people who receive only a federally administered state supplement;
+#:   that family is now a reviewed exclusion. The Table 7.B3 All-areas row
+#:   stays a non-binding reference, since the age bands above carry the
+#:   national caseload.
 #: - ``bea_nipa.total_wages_salaries``: the BEA NIPA all-population wage total
 #:   (``nation/bea/nipa_wages_and_salaries``, PR #994) — economy-wide wages
 #:   including nonfilers, the ~$12.4T universe that tax-return / CPS-reported
@@ -120,7 +123,7 @@ SOURCE_ABSENT_CLASSIFICATION = "source_absent"
 #:   next IRS release after a repin, and every declared vintage must compile.
 RED_LINE_COMPILED_FAMILIES = (
     "ssa_ssi_monthly.ssi_federal_payment_recipients",
-    "ssa_supplement.ssi_recipients",
+    "ssa_supplement.ssi_federal_payment_recipients",
     "bea_nipa.total_wages_salaries",
     "irs_soi.congressional_district",
 )

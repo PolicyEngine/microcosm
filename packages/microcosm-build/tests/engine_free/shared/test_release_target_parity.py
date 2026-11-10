@@ -81,7 +81,7 @@ def _manifest(families: tuple[TargetFamily, ...]) -> TargetParityManifest:
 _CONTRACT = _manifest(
     (
         TargetFamily("ssa_ssi_monthly.ssi_federal_payment_recipients", COMPILED_STATUS),
-        TargetFamily("ssa_supplement.ssi_recipients", COMPILED_STATUS),
+        TargetFamily("ssa_supplement.ssi_federal_payment_recipients", COMPILED_STATUS),
         TargetFamily("bea_nipa.total_wages_salaries", COMPILED_STATUS),
         TargetFamily("irs_soi.congressional_district_2022", COMPILED_STATUS),
         TargetFamily("usda_snap.state_benefits", COMPILED_STATUS),
@@ -102,7 +102,7 @@ _CONTRACT_FEED = {
     "feed_sha256": "abc",
     "families": {
         "ssa_ssi_monthly.ssi_federal_payment_recipients": 4,
-        "ssa_supplement.ssi_recipients": 52,
+        "ssa_supplement.ssi_federal_payment_recipients": 52,
         "bea_nipa.total_wages_salaries": 1,
         "irs_soi.congressional_district_2022": 436,
         "usda_snap.state_benefits": 51,
@@ -112,7 +112,7 @@ _CONTRACT_FEED = {
 
 _CONTRACT_COMPILED = (
     "ssa_ssi_monthly.ssi_federal_payment_recipients",
-    "ssa_supplement.ssi_recipients",
+    "ssa_supplement.ssi_federal_payment_recipients",
     "bea_nipa.total_wages_salaries",
     "irs_soi.congressional_district_2022",
     "usda_snap.state_benefits",
@@ -127,6 +127,16 @@ class TestFamilyId:
                 ".all_areas_total.recipient_count"
             )
             == "ssa_supplement.ssi_recipients"
+        )
+
+    def test_ssa_federal_recipients_month_period(self) -> None:
+        # Table 7.B3 counts December 2024 under period identity month 2024-12.
+        assert (
+            us_target_family_id(
+                "ssa_supplement.month2024_12.ssi_federal_payment_recipients"
+                ".by_area.alabama.recipient_count"
+            )
+            == "ssa_supplement.ssi_federal_payment_recipients"
         )
 
     def test_soi_historic_table(self) -> None:
@@ -159,7 +169,7 @@ class TestGate:
         assert result.details["compiled_families"] == 5
 
     def test_missing_compiled_family_fails_named(self) -> None:
-        registry = _registry(["ssa_supplement.ssi_recipients"])
+        registry = _registry(["ssa_supplement.ssi_federal_payment_recipients"])
         result = us_release_target_parity_gate(registry, manifest=_CONTRACT)
         assert not result.passed
         assert any("usda_snap.state_benefits" in failure for failure in result.failures)
@@ -368,9 +378,25 @@ class TestShippedManifest:
             assert "--scf-education-debt" in family.reason
             assert "microcosm#1074" in family.fence.origin
 
-    def test_ssi_state_payments_family_is_compiled(self) -> None:
+    def test_ssi_federal_families_are_compiled(self) -> None:
         manifest = load_target_parity_manifest()
-        assert manifest.by_name["ssa_supplement.ssi_payments"].status == COMPILED_STATUS
+        for family in (
+            "ssa_supplement.ssi_federal_payments",
+            "ssa_supplement.ssi_federal_payment_recipients",
+        ):
+            assert manifest.by_name[family].status == COMPILED_STATUS, family
+
+    def test_federally_administered_ssi_families_are_superseded(self) -> None:
+        """Table 7.B1 counts federal SSI plus the state supplements SSA
+        administers, and engine ``ssi`` computes the federal payment alone, so
+        the federal columns of Tables 7.B3 and 7.B7 replace its two families
+        (microcosm#1558)."""
+        manifest = load_target_parity_manifest()
+        for family in ("ssa_supplement.ssi_payments", "ssa_supplement.ssi_recipients"):
+            entry = manifest.by_name[family]
+            assert entry.status == REVIEWED_EXCLUSION_STATUS, family
+            assert entry.classification == "superseded", family
+            assert "microcosm#1558" in entry.fence.verdict_basis, family
 
     def test_oasdi_family_stays_compiled(self) -> None:
         manifest = load_target_parity_manifest()
@@ -610,7 +636,9 @@ class TestRegeneration:
         result = us_release_target_parity_gate(registry)
         assert result.passed, result.failures
         assert_target_parity_manifest_current(registry=registry)
-        assert "ssa_supplement.ssi_recipients" in registry_target_family_ids(registry)
-        assert "ssa_ssi_monthly.ssi_federal_payment_recipients" in (
-            registry_target_family_ids(registry)
-        )
+        compiled_families = registry_target_family_ids(registry)
+        assert "ssa_supplement.ssi_federal_payment_recipients" in compiled_families
+        assert "ssa_supplement.ssi_federal_payments" in compiled_families
+        assert "ssa_ssi_monthly.ssi_federal_payment_recipients" in compiled_families
+        assert "ssa_supplement.ssi_recipients" not in compiled_families
+        assert "ssa_supplement.ssi_payments" not in compiled_families

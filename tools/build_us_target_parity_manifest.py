@@ -646,6 +646,159 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
             ),
         ),
     ),
+    # SSA SSI: engine ssi computes the federal payment, so SSI targets bind
+    # federal figures only (microcosm#1558). These SSA families count
+    # something else.
+    "ssa_supplement.ssi_recipients": (
+        "superseded",
+        "SSA Annual Statistical Supplement Table 7.B1 SSI recipients by area and "
+        "eligibility category, December 2024. They count the federally "
+        "administered universe (a federal payment, a federally administered "
+        "state supplement or both: 7,423,856 nationally), while engine ssi "
+        "computes the federal payment alone. The federal-payment recipient "
+        "families bind the caseload instead.",
+        "compiled ssa_supplement.ssi_federal_payment_recipients (Table 7.B3 state "
+        "rows) and ssa_ssi_monthly.ssi_federal_payment_recipients (national age "
+        "bands); sample fact ssa_supplement.cy2024.ssi_recipients."
+        "by_area_category.california_total.recipient_count",
+        _fence(
+            origin=(
+                "not a us-data calibration target: us-data calibrated SSI "
+                "recipients as nation/ssa/ssi_recipients by age from SSI Monthly "
+                "Statistics Table 1 federal-payment counts (us-data 38502471, "
+                "2026-05-21), compiled here as "
+                "ssa_ssi_monthly.ssi_federal_payment_recipients. Microcosm bound "
+                "Table 7.B1's state totals as the only state-grain SSI caseload "
+                "signal."
+            ),
+            purpose=(
+                "the state distribution of the SSI caseload, which the "
+                "microcosm#508 owner adjudication (2026-07-23) kept binding "
+                '"pending a state-level federal-payment source or a modeled '
+                'state-supplement concept" (fiscal_targets.py at 764ae3aa).'
+            ),
+            verdict_basis=(
+                "superseded by compiled "
+                "ssa_supplement.ssi_federal_payment_recipients: Table 7.B3's "
+                "state rows are that state-level federal-payment source, in the "
+                "universe engine ssi computes (microcosm#1558). The national "
+                "caseload still binds through the ssa_ssi_monthly age bands, and "
+                "the RED_LINE_COMPILED_FAMILIES entry moves to the Table 7.B3 "
+                "family."
+            ),
+        ),
+    ),
+    "ssa_supplement.ssi_payments": (
+        "superseded",
+        "SSA Annual Statistical Supplement Table 7.B1 SSI payments by area and "
+        "eligibility category, calendar 2024: federal SSI plus federally "
+        "administered state supplementation ($63.08 billion nationally), while "
+        "engine ssi computes the federal payment alone. Table 7.B7's federal "
+        "column binds SSI dollars instead.",
+        "compiled ssa_supplement.ssi_federal_payments (national ssi_total, state "
+        "ssi_state_payments); sample fact ssa_supplement.cy2024.ssi_payments."
+        "by_area_category.california_total.payment_amount",
+        _fence(
+            origin=(
+                "not a us-data calibration target: us-data calibrated SSI dollars "
+                "to CBO's SSI projection (utils/loss.py CBO_PROGRAMS, "
+                "nation/cbo/ssi). Microcosm bound Table 7.B1's state totals as "
+                "ssi_state_payments."
+            ),
+            purpose="the state distribution of SSI dollars.",
+            verdict_basis=(
+                "superseded by compiled ssa_supplement.ssi_federal_payments: "
+                "Table 7.B7's federal column carries the same states without the "
+                "state supplements engine ssi excludes (microcosm#1558)."
+            ),
+        ),
+    ),
+    "ssa_supplement.ssi_federal_average_monthly_payment": (
+        "non_linear",
+        "SSA Annual Statistical Supplement Table 7.B3 average monthly federal SSI "
+        "payment, December 2024: a ratio of payments to recipients, which no "
+        "linear target can bind. Its denominator compiles (Table 7.B3 federal "
+        "recipients), and Table 7.B7 binds calendar-year federal payments.",
+        "compiled ssa_supplement.ssi_federal_payment_recipients and "
+        "ssa_supplement.ssi_federal_payments; sample fact "
+        "ssa_supplement.month2024_12.ssi_federal_average_monthly_payment."
+        "by_area.all_areas.average_monthly_payment",
+        _fence(
+            origin=(
+                "not a us-data calibration target: chronicle#434 added Table 7.B3 "
+                "to the feed."
+            ),
+            purpose="n/a: a published ratio that checks payments per recipient.",
+            verdict_basis=(
+                "non_linear: an average is not a weighted sum. It stays a "
+                "reference that diagnostics can compare."
+            ),
+        ),
+    ),
+    "ssa_supplement.ssi_state_supplementation_recipients": (
+        "deferred",
+        "SSA Annual Statistical Supplement Table 7.B3 recipients of federally "
+        "administered state supplementation, December 2024, in the 12 areas "
+        "where SSA administers one. Engine ssi computes the federal payment, and "
+        "no Microcosm target maps a state supplement.",
+        "sample fact ssa_supplement.month2024_12."
+        "ssi_state_supplementation_recipients.by_area.california.recipient_count",
+        _fence(
+            origin=(
+                "not a us-data calibration target: chronicle#434 added Table 7.B3 "
+                "to the feed."
+            ),
+            purpose="the caseload of the state supplements SSA pays for states.",
+            verdict_basis=(
+                "deferred: binding it needs a model counterpart for each state's "
+                "federally administered supplement; until one exists the rows "
+                "stay references (microcosm#1558 binds federal SSI only)."
+            ),
+        ),
+    ),
+    "ssa_supplement.ssi_state_supplementation_average_monthly_payment": (
+        "non_linear",
+        "SSA Annual Statistical Supplement Table 7.B3 average monthly federally "
+        "administered state supplementation payment, December 2024: a ratio, "
+        "which no linear target can bind, of a payment no Microcosm target "
+        "maps.",
+        "sample fact ssa_supplement.month2024_12."
+        "ssi_state_supplementation_average_monthly_payment.by_area.california."
+        "average_monthly_payment",
+        _fence(
+            origin=(
+                "not a us-data calibration target: chronicle#434 added Table 7.B3 "
+                "to the feed."
+            ),
+            purpose="n/a: a published ratio that checks payments per recipient.",
+            verdict_basis=(
+                "non_linear: an average is not a weighted sum, and its payments "
+                "have no model counterpart yet (see "
+                "ssa_supplement.ssi_state_supplementation_recipients)."
+            ),
+        ),
+    ),
+    "ssa_supplement.ssi_state_supplementation_payments": (
+        "deferred",
+        "SSA Annual Statistical Supplement Table 7.B7 federally administered "
+        "state supplementation payments, calendar 2024 ($3.41 billion "
+        "nationally, in 12 areas). Engine ssi computes the federal payment, and "
+        "no Microcosm target maps a state supplement.",
+        "sample fact ssa_supplement.cy2024.ssi_state_supplementation_payments."
+        "by_area.california.payment_amount",
+        _fence(
+            origin=(
+                "not a us-data calibration target: chronicle#434 added Table 7.B7 "
+                "to the feed."
+            ),
+            purpose="the dollars of the state supplements SSA pays for states.",
+            verdict_basis=(
+                "deferred: binding it needs a model counterpart for each state's "
+                "federally administered supplement; until one exists the rows "
+                "stay references (microcosm#1558 binds federal SSI only)."
+            ),
+        ),
+    ),
     "usda_snap.national_average_monthly_persons": _SNAP_PERSONS_EXCLUSION,
     "usda_snap.state_average_monthly_persons": _SNAP_PERSONS_EXCLUSION,
 }
@@ -660,6 +813,12 @@ _COMPILED_FAMILY_NOTES = {
         "There is no local-versus-national surface. "
         "Congressional-district rows inform shape while national and state "
         "actuals retain control ownership."
+    ),
+    "ssa_supplement.oasdi_ssi_payments": (
+        "The five OASDI benefit rows bind. The ssi_payments row, Table 7.B7's "
+        "Total column of federal SSI plus federally administered state "
+        "supplementation, does not: ssi_total binds Table 7.B7's federal column "
+        "(ssa_supplement.ssi_federal_payments, microcosm#1558)."
     ),
 }
 
