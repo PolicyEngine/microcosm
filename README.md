@@ -543,7 +543,7 @@ uv run python -m microcosm.build.build_folder_switch copy <owner/repository> \
 uv run python -m microcosm.build.build_folder_switch switch <owner/repository> \
   [--include <tag>=<release>] [--exclude <tag>] \
   [--retire-pointer <latest file>] [--current <release>=<build>] \
-  [--default <release>] [--write]
+  [--default <release>] [--finished-branch <release-staging/ branch>] [--write]
 ```
 
 Run the switch step only while nobody publishes to the repository, and give
@@ -553,12 +553,23 @@ The copy step moves every tag of a release that publishes into build folders
 whose manifest names that tag, and each release-per-build tag that
 `--include` names (the June 2023 UK release, or a US release), and refuses a
 build any of whose files does not match its manifest, or whose release, build
-or role the emitter interface refuses; it reports both without `--write`. The
+or role the emitter interface refuses; it reports both without `--write`. It
+also copies the files a build's checksum ledger records but its manifest
+doesn't declare (each US ACS local-area build has six), checked against the
+ledger, and a manifest that declares its own `build_manifest.json` (the US
+SPM builds') declares the rewritten one. The
 switch refuses unless every such build's folder holds exactly its copied
 files, every pointer file's build moves or `--retire-pointer` deletes that
 pointer file, no other build folder is on `main`, the repository's tags did
 not change while it read them, no `release-staging/` branch shows a tagged
-publication in progress, and the emitter interface's checks pass. Each build keeps the date of its
+publication in progress, and the emitter interface's checks pass. A
+`release-staging/` branch that a finished publication left behind is
+accepted when `--finished-branch` names it, its build is tagged and the commit
+it names is on `main`; the branch stays where it is. The publisher makes no
+branch for a build that is already tagged, but one older than 2026-09-23
+(`7053b9173`) did when retrying such a build, which looks the same while it
+runs (the US leftover branch is one), so name a branch only while nobody
+publishes. Each build keeps the date of its
 tagged commit as `published_at`, and each pointer file's build becomes its
 release's current build. The module's docstring describes both steps in full.
 
