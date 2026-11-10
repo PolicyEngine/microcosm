@@ -489,13 +489,22 @@ def test_the_us_engine_script_exits_with_its_runner_status(
 ) -> None:
     """``engine-us`` runs ``bash tools/run_engine_us_tests.sh``, so the job
     passes or fails on that script's exit status. This runs a copy of the
-    script on a ``PATH`` whose only ``uv`` exits with ``status``, so no engine
-    runs. The copy drops ``/usr/bin/time -v``, which macOS lacks, and keeps
-    every other character. If the script let ``|| true`` or a later command
-    replace the runner's status, the failing cases here would fail."""
+    script with a stand-in ``uv`` first on ``PATH``, so no engine runs. The
+    stand-in exits with ``status`` when the script asks it to run the runner
+    and with 0 for any other call. The copy drops ``/usr/bin/time -v``, since
+    macOS's ``time`` has no ``-v``, and keeps every other character. If the
+    script let ``|| true`` or a later command replace the runner's status, the
+    failing cases here would fail."""
 
+    runner = "-m tools.run_engine_test_categories"
     uv = tmp_path / "uv"
-    uv.write_text(f"#!/bin/sh\nexit {status}\n", encoding="utf-8")
+    uv.write_text(
+        "#!/bin/sh\n"
+        'printf \'%s\\n\' "$*" >> "$0.calls"\n'
+        f'case "$*" in *"{runner}"*) exit {status} ;; esac\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
     uv.chmod(0o755)
     script = (ci_test_plan.ROOT / "tools/run_engine_us_tests.sh").read_text(
         encoding="utf-8"
@@ -509,7 +518,7 @@ def test_the_us_engine_script_exits_with_its_runner_status(
     run = subprocess.run(
         [bash, str(copy)],
         cwd=tmp_path,
-        env={"PATH": str(tmp_path)},
+        env={"PATH": f"{tmp_path}{os.pathsep}{os.environ.get('PATH', os.defpath)}"},
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
@@ -518,3 +527,9 @@ def test_the_us_engine_script_exits_with_its_runner_status(
     )
 
     assert run.returncode == status, run.stdout + run.stderr
+    calls = (tmp_path / "uv.calls").read_text(encoding="utf-8").splitlines()
+    assert [call for call in calls if runner in call] == [
+        f"run --no-sync python {runner} "
+        "--json-report engine-us-timings.json "
+        "--markdown-report engine-us-timings.md"
+    ]

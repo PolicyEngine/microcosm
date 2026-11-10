@@ -786,17 +786,17 @@ def verify() -> None:
 def scope_for_path(value: str) -> str | None:
     """Return ``shared``, ``us``, ``uk``, or ``None`` for documentation.
 
-    Documentation, the files in a test group's directory and the country
-    runtime packages take their scope first, wherever they sit. Any other file
-    below ``tools/`` belongs to a country when its file name holds that country
-    as a word and the other country's letters appear nowhere in its lower-cased
-    path. A word is a maximal run of ASCII letters, and the rule ignores case,
-    so ``run_engine_us_tests.sh`` holds the words run, engine, us, tests and sh.
+    The rules for documentation, test groups and the country runtime packages
+    run first, wherever a path sits. A file below ``tools/`` that none of them
+    claims belongs to a country when its file name holds that country as a word
+    and the other country's letters appear nowhere in its lower-cased path. A
+    word is a maximal run of ASCII letters, and the rule ignores case, so
+    ``run_engine_us_tests.sh`` holds the words run, engine, us, tests and sh.
     ``status.py`` holds no country as a word, ``census_uk_local_targets.py``
     holds the letters us inside census, and ``us_bundle_generation/uk_parity.py``
-    holds them in its directory, so all three scope to shared. A change to one
-    of these other files therefore never skips a country whose letters its
-    lower-cased path holds.
+    holds them in its directory, so all three scope to shared. A change to such
+    a file therefore never skips a country whose letters its lower-cased path
+    holds.
     """
 
     path = PurePosixPath(value)

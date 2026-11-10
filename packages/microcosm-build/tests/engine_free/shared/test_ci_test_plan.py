@@ -2039,12 +2039,16 @@ def test_a_tool_change_selects_the_country_its_path_holds_alone() -> None:
 @pytest.mark.parametrize(
     ("path", "scope"),
     [
-        # Documentation takes no country, whatever its name holds.
+        # The documentation rule gives no country, and it runs first.
         ("tools/us_notes.md", None),
-        # A file in a test group's directory takes the group's country.
+        ("tools/x/tests/engine_free/us/notes.md", None),
+        # The test-group rule gives the group's country, and it runs before the
+        # runtime-package rules.
         ("tools/x/tests/engine_free/us/uk_fixture.json", "us"),
         ("tools/x/tests/engine_free/shared/uk_fixture.json", "shared"),
-        # A file of a country's runtime package takes that country.
+        ("tools/x/src/microcosm/build/us_runtime/tests/engine_free/uk/data.json", "uk"),
+        # The runtime-package rules give the package's country.
+        ("tools/x/src/microcosm/build/us_runtime/uk_targets.py", "us"),
         ("tools/x/src/microcosm/build/uk_runtime/us_targets.py", "uk"),
     ],
 )
@@ -2084,12 +2088,12 @@ def test_every_tool_in_the_checkout_takes_the_scope_its_path_gives_it() -> None:
     assert files
     for path in files:
         if ci_test_plan.group_name_for_test_path(PurePosixPath(path)) is not None:
-            continue  # A file in a test group's directory takes its country.
+            continue  # The test-group rule claims it.
         if any(
             f"/src/microcosm/build/{country}_runtime/" in f"/{path}"
             for country in ("us", "uk")
         ):
-            continue  # A file of a country's runtime package takes that country.
+            continue  # A runtime-package rule claims it.
         scope = _tool_scope(path)
         assert ci_test_plan.scope_for_path(path) == scope, path
         if scope is None:
