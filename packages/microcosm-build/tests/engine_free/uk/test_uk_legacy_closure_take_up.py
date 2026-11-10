@@ -400,9 +400,12 @@ def test_the_packaged_stage_carries_the_reviewed_operations_in_order() -> None:
     order = list(stages)
     position = order.index(lc.LEGACY_CLOSURE_STAGE_NAME)
     # After the last writers of would_claim_uc (uc_take_up, microcosm#1334) and
-    # the UC receipts, before the Pension Credit redraw and any CGT clone.
+    # the UC receipts, before the Pension Credit redraw and any CGT clone. Y1's
+    # uc_limited_capability (microcosm#1095) sits between the capital check and
+    # the take-up redraw.
     assert order.index("uc_take_up") == position - 1
-    assert order.index("uc_capital_coherence") == position - 2
+    assert order.index("uc_limited_capability") == position - 2
+    assert order.index("uc_capital_coherence") == position - 3
     assert position < order.index("pension_credit_take_up")
     assert position < order.index("cgt_support_split")
 
