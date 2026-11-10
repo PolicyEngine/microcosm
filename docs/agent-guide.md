@@ -320,8 +320,8 @@ certify data artifacts.
 Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
 deliberate human step. The UK national, dense and local-area releases and the
-four US releases (`microcosm-us-2024-national`, the US default, `-local`,
-`-receipt-donor` and `-evidence`) publish each build into its own folder
+US releases (`microcosm-us-2024-national`, the US default, `-local`,
+`-receipt-donor`, `-evidence` and `-annual`) publish each build into its own folder
 through the emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's
 `releases.json`; making a published build current is a separate deliberate

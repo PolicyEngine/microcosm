@@ -483,7 +483,7 @@ side of this holds from the US repository's switch commit: Microcosm's US
 change (microcosm#1570) merges straight after that commit.
 
 **Each build is published into its own folder.** The UK national, dense and
-local-area releases and the four US releases below
+local-area releases and the US releases below
 (`microcosm.data.contract.publishes_to_build_folder`) hand each build to the
 separately installed emitter, whose release writer puts it in
 `releases/<release>/<build>/` and records it in the repository's
@@ -525,7 +525,7 @@ exact commands; the UK
 `microcosm.data.load` reads the current build of such a release from
 `releases.json`, or the listed build `build=` names.
 
-**The US releases.** `policyengine/populace-us` has four releases
+**The US releases.** `policyengine/populace-us` has five releases
 (`microcosm.data.contract.US_RELEASES`):
 
 | Release | Role in `releases.json` | Builds | Dataset file a new build declares |
@@ -534,6 +534,7 @@ exact commands; the UK
 | `microcosm-us-2024-local` | `local_area` | ACS local-area builds | `microcosm_us_2024_acs_local.h5` |
 | `microcosm-us-2024-receipt-donor` | `national`, never the default | receipt-qualified donors | `microcosm_us_2024_receipt_qualified.h5` |
 | `microcosm-us-2024-evidence` | `national`, never the default | evidence-tier builds | `microcosm_us_2024.h5` |
+| `microcosm-us-2024-annual` | `national`, never the default | annual projections of a national build: its files, one H5 per later year and the projection receipts ([the annual guide](docs/us-annual-static-aging.md)) | the base build's dataset file, and `microcosm_us_<year>.h5` for each later year |
 
 The national builder writes a build's calibration weights as
 `microcosm_us_2024_calibration.npz`, for national and evidence-tier builds
@@ -587,10 +588,10 @@ named, into its own folder as the only and current build of release
 new builds publish to that release. `populace-uk-<year>-<tier>-k<N>` releases
 have no publication path in the UK repository since its switch: the emitter
 command takes only the releases above, and the tagged publisher refuses
-a repository that has `releases.json`. A US annual-projection build
-([the annual candidate guide](docs/us-annual-static-aging.md)) pins its files
-to a tag, so it has no publication path in the US repository since its
-switch.
+a repository that has `releases.json`. A US annual-projection build publishes
+into `microcosm-us-2024-annual`, carrying its base national build's files
+([the annual guide](docs/us-annual-static-aging.md)); its base is a
+calibrated national build, not yet a source enrichment.
 
 **The switch.** `microcosm.build.build_folder_switch` moves a repository over,
 once, in two steps. Each step only reads the repository and prints, as JSON,
@@ -683,7 +684,8 @@ and an evidence release must carry each refusal line verbatim in
 release ships. No release already on the Hub carries this evidence, and none is
 exempt. Nothing re-validates a published release automatically. The two paths
 that run the contract on one again are re-certifications: a publish retry of
-its local directory, and an annual-projection cut on a national base. Every
+its local directory, and an annual build, which carries a national base's
+files into `microcosm-us-2024-annual`. Every
 published US national base already fails the unchanged calibration-diagnostics
 schema rule, and local-area releases cannot be annual bases. So publishing one
 again means rebuilding or re-packaging it, which runs the check. An

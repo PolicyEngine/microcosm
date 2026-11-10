@@ -93,9 +93,10 @@ Each build published since its repository's switch to `releases.json`, and
 each build the switch moved, lives in its own folder,
 `releases/<release>/<build>/`, on the Hub dataset repo's `main` branch. A
 build that keeps only its tag lives under `releases/<build_id>/` at that tag.
-The four US releases are `microcosm-us-2024-national` (the default),
-`microcosm-us-2024-local`, `microcosm-us-2024-receipt-donor` and
-`microcosm-us-2024-evidence` (`microcosm.data.contract.US_RELEASES`).
+The five US releases are `microcosm-us-2024-national` (the default),
+`microcosm-us-2024-local`, `microcosm-us-2024-receipt-donor`,
+`microcosm-us-2024-evidence` and `microcosm-us-2024-annual`
+(`microcosm.data.contract.US_RELEASES`).
 Each build must include `build_manifest.json` and `release_manifest.json`;
 US releases must also include `us_source_coverage.json`. A current release
 manifest contains a typed `calibration_diagnostics` status. `available` binds a
