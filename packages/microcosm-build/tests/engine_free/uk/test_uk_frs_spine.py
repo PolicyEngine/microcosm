@@ -3572,6 +3572,180 @@ def test_driver_marks_full_fixture_smoke_outputs_non_release(
     assert rows[0].gate_verdicts["pipeline"]["artifact_sha256"] == digest
 
 
+_RECORDED_SMOKE_RUN_ID = "recorded-smoke-spine"
+
+
+def _run_recorded_smoke_spine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    checkpoint_dir: Path | None,
+) -> tuple[Path, list[tuple[str, str, dict[str, bool]]]]:
+    """Run the full-fixture smoke spine and record its stage updates in order.
+
+    Each entry names one stage update, or the graph run's return, together
+    with which of the build's files existed at that moment. A test can then
+    tell which stage was open while each file was written.
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "smoke.h5"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    checkpoint_root = (
+        checkpoint_dir
+        if checkpoint_dir is not None
+        else tmp_path / f".{output.stem}.checkpoints"
+    )
+    watched_files = {
+        "graph_manifest": checkpoint_root / "spine.graph.json",
+        "evidence_capture_timing": checkpoint_root / "evidence-capture-timing.jsonl",
+        "spine_h5": output,
+        "replay_sidecar": output.with_suffix(".hmrc_replay.json"),
+        "build_sidecar": output.with_suffix(".build.json"),
+    }
+    if checkpoint_dir is not None:
+        watched_files["checkpoint_h5"] = checkpoint_dir / "frs_spine.h5"
+    timeline: list[tuple[str, str, dict[str, bool]]] = []
+
+    def existing_files() -> dict[str, bool]:
+        return {name: path.exists() for name, path in watched_files.items()}
+
+    record_stage = tool._record_stage
+    run_graph = tool.run_graph
+
+    def recording_record_stage(staging_bundle, emitter, stage_id, status, **details):
+        timeline.append((stage_id, status, existing_files()))
+        record_stage(staging_bundle, emitter, stage_id, status, **details)
+
+    def recording_run_graph(*args, **kwargs):
+        manifest = run_graph(*args, **kwargs)
+        timeline.append(("graph", "returned", existing_files()))
+        return manifest
+
+    monkeypatch.setattr(tool, "_record_stage", recording_record_stage)
+    monkeypatch.setattr(tool, "run_graph", recording_run_graph)
+    argv = [
+        "--frs-raw-dir",
+        str(raw_dir),
+        "--spine-h5",
+        str(output),
+        "--spi-tab",
+        str(spi_tab),
+        "--hmrc-ods",
+        str(hmrc_ods),
+        "--sample-seed",
+        "41",
+        "--smoke",
+        "--staging-local-only",
+        "--staging-run-id",
+        _RECORDED_SMOKE_RUN_ID,
+        "--staging-dir",
+        str(tmp_path / "staging"),
+    ]
+    if checkpoint_dir is not None:
+        argv += ["--checkpoint-dir", str(checkpoint_dir)]
+
+    assert tool.main(argv) == 0
+    return output, timeline
+
+
+@pytest.mark.parametrize("with_checkpoint_dir", [False, True])
+def test_driver_reports_work_after_the_graph_run_inside_stages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_checkpoint_dir: bool
+) -> None:
+    """Every stretch of work after the graph run belongs to a reported stage.
+
+    The staging dashboard draws one bar segment per top-level stage, so work
+    done between two stages shows as an unexplained empty stretch.
+    """
+
+    checkpoint_dir = tmp_path / "checkpoints" if with_checkpoint_dir else None
+    _output, timeline = _run_recorded_smoke_spine(
+        tmp_path, monkeypatch, checkpoint_dir=checkpoint_dir
+    )
+
+    updates = [(stage_id, status) for stage_id, status, _files in timeline]
+    after_graph = timeline[updates.index(("graph", "returned")) :]
+    checkpoint_updates = (
+        [("checkpoint_h5_creation", "started"), ("checkpoint_h5_creation", "completed")]
+        if with_checkpoint_dir
+        else []
+    )
+    assert [(stage_id, status) for stage_id, status, _files in after_graph] == [
+        ("graph", "returned"),
+        ("graph_evidence_capture", "started"),
+        ("graph_evidence_capture", "completed"),
+        ("sampling", "completed"),
+        ("validation", "started"),
+        ("validation", "completed"),
+        ("spine_h5_creation", "started"),
+        ("spine_h5_creation", "completed"),
+        *checkpoint_updates,
+        ("sidecar_creation", "started"),
+        ("sidecar_creation", "completed"),
+    ]
+    files_at = {(stage_id, status): files for stage_id, status, files in after_graph}
+    # The graph manifest and the run evidence are written inside the
+    # evidence-capture stage, which opens as soon as the graph run returns.
+    capture_started = files_at["graph_evidence_capture", "started"]
+    capture_completed = files_at["graph_evidence_capture", "completed"]
+    assert not capture_started["graph_manifest"]
+    assert not capture_started["evidence_capture_timing"]
+    assert capture_completed["graph_manifest"]
+    assert capture_completed["evidence_capture_timing"]
+    if with_checkpoint_dir:
+        assert files_at["checkpoint_h5_creation", "started"]["spine_h5"]
+        assert not files_at["checkpoint_h5_creation", "started"]["checkpoint_h5"]
+        assert files_at["checkpoint_h5_creation", "completed"]["checkpoint_h5"]
+    # The HMRC replay sidecar is written inside sidecar_creation.
+    assert not files_at["sidecar_creation", "started"]["replay_sidecar"]
+    assert files_at["sidecar_creation", "completed"]["replay_sidecar"]
+    assert files_at["sidecar_creation", "completed"]["build_sidecar"]
+
+
+def test_driver_copies_the_finished_spine_h5_into_the_checkpoint_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The checkpoint is the output file whose digest the sidecar records."""
+
+    h5py = pytest.importorskip("h5py")
+    checkpoint_dir = tmp_path / "checkpoints"
+    output, _timeline = _run_recorded_smoke_spine(
+        tmp_path, monkeypatch, checkpoint_dir=checkpoint_dir
+    )
+
+    checkpoint = checkpoint_dir / "frs_spine.h5"
+    sidecar = json.loads(output.with_suffix(".build.json").read_text())
+    digest = sidecar["output"]["sha256"]
+    assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == digest
+    # The copy keeps the smoke marking, so a non-release frame never passes
+    # as a release checkpoint.
+    with h5py.File(checkpoint, mode="r") as file:
+        assert bool(file.attrs["populace_non_release"]) is True
+        assert file.attrs["populace_release_posture"] == "smoke"
+    bundle = validate_v2_bundle(tmp_path / "staging", _RECORDED_SMOKE_RUN_ID)
+    checkpoint_events = [
+        event
+        for event in bundle["events"]
+        if (event["stage_id"], event["status"])
+        == ("checkpoint_h5_creation", "completed")
+    ]
+    assert len(checkpoint_events) == 1
+    assert checkpoint_events[0]["details"] == {
+        "sha256": digest,
+        "size_bytes": checkpoint.stat().st_size,
+    }
+
+
 def test_driver_records_sanitized_failed_staging_lifecycle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
