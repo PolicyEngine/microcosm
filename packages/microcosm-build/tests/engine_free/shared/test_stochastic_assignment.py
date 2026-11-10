@@ -217,6 +217,41 @@ def test_a_repeated_id_is_refused() -> None:
         integer_record_keys(np.array([1, 2, 1]), label="ids")
 
 
+def test_integer_record_keys_find_repeats_as_np_unique_does() -> None:
+    # The sort-based check gives np.unique's verdict on every array: random
+    # integer ids of several dtypes, narrow ranges making repeats likely,
+    # empty and single-id arrays, and the extremes of int64 (microcosm#931).
+    # Ids that are not one-dimensional are still refused by type first, and
+    # so are timedeltas, numpy integers by subtype whose NaT never repeat.
+    for refused in (
+        np.array([[1, 2], [1, 2]]),
+        np.array([1, 2], dtype="m8[ns]"),
+        np.array(["NaT", "NaT"], dtype="m8[ns]"),
+    ):
+        with pytest.raises(TypeError, match="one-dimensional"):
+            integer_record_keys(refused, label="ids")
+    rng = np.random.default_rng(23)
+    dtypes = (np.int64, np.int32, np.int8, np.uint64, np.uint16)
+    verdicts = {True: 0, False: 0}
+    extremes = np.array([np.iinfo(np.int64).min, -1, 0, np.iinfo(np.int64).max])
+    arrays = [extremes, np.append(extremes, extremes[-1]), np.array([], dtype="int64")]
+    for trial in range(400):
+        n = int(rng.integers(0, 50))
+        span = int(rng.integers(1, 120))
+        arrays.append(rng.integers(0, span, n).astype(dtypes[trial % len(dtypes)]))
+    for ids in arrays:
+        repeated = np.unique(ids).size != ids.size
+        verdicts[repeated] += 1
+        if repeated:
+            with pytest.raises(ValueError, match="each record once"):
+                integer_record_keys(ids, label="ids")
+        else:
+            keys = integer_record_keys(ids, label="ids")
+            assert keys.dtype == ids.dtype
+            np.testing.assert_array_equal(keys, ids)
+    assert min(verdicts.values()) > 50
+
+
 def test_balanced_uniforms_give_each_stratum_its_rate_to_within_half_a_record() -> None:
     # At midpoints the last record taken sits below the rate and the next one
     # at or above it, so a stratum misses by at most half its heaviest record

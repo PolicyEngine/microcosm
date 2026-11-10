@@ -19,18 +19,22 @@ module names no country's columns.
   declared copy column either.
 - :func:`copy_paths` gives every household its ordered copy path, read from
   the declared columns, never inferred from ids, weights or values.
-- :func:`replica_keys` and :func:`collapse_replicas` keep one training row per
+- :func:`replica_keys` and :func:`fold_replicas` keep one training row per
   true source and path without the named branches, with the rows' weights
   summed, so a fit trained on the frame sees each survey record once however
-  many geographic clones carry it. A frame without such replicas keeps its
-  rows and weights value for value.
+  many geographic clones carry it. The row kept is the replica that comes
+  first in the caller's order (its lowest id, say). :class:`ReplicaFold`
+  also says which row each record trains on, which records' replicas differ
+  and which records share a key; :func:`collapse_replicas` returns its rows
+  and weights alone. A frame without such replicas keeps its rows and
+  weights value for value.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -41,8 +45,10 @@ from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
 __all__ = [
     "CopyBranch",
     "CopyLineage",
+    "ReplicaFold",
     "collapse_replicas",
     "copy_paths",
+    "fold_replicas",
     "record_sources",
     "replica_keys",
 ]
@@ -329,30 +335,71 @@ def replica_keys(
     )
 
 
-def collapse_replicas(
+@dataclass(frozen=True, eq=False)
+class ReplicaFold:
+    """A fit's training rows, each record's replicas folded in.
+
+    Every field holds one value per record, in row order:
+
+    - ``kept``: the rows the fit trains on, one per variant of each key;
+    - ``weights``: on a kept row, the selected weights of its variant summed
+      exactly; every other weight as it was given;
+    - ``representative``: the row a selected record's variant trains on, and
+      -1 off the selection;
+    - ``varied``: whether a selected record's key holds more than one
+      variant, so that its replicas did not all fold into one row;
+    - ``key_group``: a code of a selected record's replica key, shared by
+      every selected record of that key, and -1 off the selection.
+
+    The fields carry per-record weights, so the representation prints none.
+    """
+
+    kept: np.ndarray = field(repr=False)
+    weights: np.ndarray = field(repr=False)
+    representative: np.ndarray = field(repr=False)
+    varied: np.ndarray = field(repr=False)
+    key_group: np.ndarray = field(repr=False)
+
+
+def fold_replicas(
     keys: np.ndarray,
     rows: np.ndarray,
     weights: np.ndarray,
     *,
     inputs: pd.DataFrame | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Keep the first of each key's ``rows``, carrying the key's summed weight.
+    order: np.ndarray | None = None,
+) -> ReplicaFold:
+    """Fold each key's selected replicas into one row per variant.
 
-    ``rows`` marks the records a fit trains on and ``weights`` their weights,
-    both over every record. The first selected record of each key, in row
-    order, stays selected with the selected weights of its key summed
-    exactly (:func:`math.fsum`, so the sum does not depend on row order); its
-    replicas leave the selection. Weights off the selection are returned
-    unchanged. When no two selected records share a key, the selection and
-    weights are returned as they were, value for value.
+    ``keys`` gives every record its replica key (:func:`replica_keys`),
+    ``rows`` marks the records a fit trains on and ``weights`` their
+    weights, all three over every record. The selected records that share a
+    key are one record's replicas.
 
     ``inputs`` holds, one row per record, what the fit reads: its predictors
-    and targets, or the columns they derive from. Replicas then fold only
-    where they agree on every one of those columns. Replicas that differ stay
-    rows of their own: each distinct variant keeps its first record, with
-    the summed weight of the replicas that share it, so the fit sees every
-    variant at its share and nothing is dropped (microcosm#931). A missing
-    value agrees only with a missing value.
+    and targets, or the columns they derive from. Replicas fold only where
+    they agree on every one of those columns, a missing value agreeing only
+    with a missing value. Replicas that agree on them form one variant of
+    the record, and each variant folds on its own, so the fit sees every
+    variant at its share and nothing is dropped (microcosm#931). Without
+    ``inputs`` a key is one variant.
+
+    Each variant trains on its representative: its selected record with the
+    least ``order``, ties going to the earlier row, or without ``order`` its
+    first selected record in row order. ``order`` holds one integer per
+    record, each record's id say, so that the replica a variant trains on
+    does not depend on the row order. The representative carries its
+    variant's selected weights summed exactly (:func:`math.fsum`, so the sum
+    does not depend on row order either), and the variant's other records
+    leave the selection. Every other weight is returned unchanged.
+
+    Variety is decided per key. When no two selected records share a key,
+    the selection and weights come back as they were, value for value, each
+    selected record its own representative and none varied. When keys
+    repeat but no two selected records share a variant, the selection and
+    weights come back as they were too, and every record of a key with more
+    than one variant is varied: replicas that all differ fold nothing, yet
+    their record varies.
     """
 
     keys = np.asarray(keys, dtype=object)
@@ -360,17 +407,37 @@ def collapse_replicas(
     values = np.asarray(weights, dtype=np.float64)
     if not (len(keys) == len(selected) == len(values)):
         raise ValueError("Replica keys, rows and weights must align.")
-    positions = np.flatnonzero(selected)
-    if inputs is None:
-        codes, uniques = pd.factorize(
-            pd.Series(keys[positions], dtype=object), sort=False
-        )
-        groups = len(uniques)
-    else:
+    ranks = None
+    if order is not None:
+        ranks = np.asarray(order)
+        # Timedeltas subclass numpy's integers but are not ids, so the kind
+        # is checked, not the subtype.
+        if ranks.shape != (len(keys),) or ranks.dtype.kind not in "iu":
+            raise ValueError(
+                "Replica order must be one integer per record: "
+                f"{ranks.size} value(s) for {len(keys)} record(s)."
+            )
+    if inputs is not None:
         if not isinstance(inputs, pd.DataFrame) or len(inputs) != len(keys):
             raise ValueError("Replica inputs must be a frame with one row per record.")
         if not inputs.columns.is_unique:
             raise ValueError("Replica inputs must name each column once.")
+    positions = np.flatnonzero(selected)
+    key_codes, key_uniques = pd.factorize(
+        pd.Series(keys[positions], dtype=object), sort=False
+    )
+    if (key_codes < 0).any():
+        raise ValueError("Replica keys must not be null on a selected record.")
+    key_group = np.full(len(keys), -1, dtype=np.int64)
+    key_group[positions] = key_codes
+    representative = np.full(len(keys), -1, dtype=np.int64)
+    varied = np.zeros(len(keys), dtype=bool)
+    if len(key_uniques) == len(positions):
+        representative[positions] = positions
+        return ReplicaFold(selected, values, representative, varied, key_group)
+    if inputs is None:
+        codes, groups = key_codes, len(key_uniques)
+    else:
         table = inputs.iloc[positions].reset_index(drop=True)
         table.columns = [f"input:{index}" for index in range(table.shape[1])]
         for column in table.columns:
@@ -382,17 +449,52 @@ def collapse_replicas(
             .ngroup()
             .to_numpy()
         )
-        groups = int(codes.max()) + 1 if len(codes) else 0
+        groups = int(codes.max()) + 1
+    # A variant lies inside one key, so a key's variants are counted by the
+    # key each variant code belongs to.
+    variant_key = np.empty(groups, dtype=np.int64)
+    variant_key[codes] = key_codes
+    variants = np.bincount(variant_key, minlength=len(key_uniques))
+    varied[positions] = variants[key_codes] > 1
     if groups == len(positions):
-        return selected, values
-    first = np.full(groups, -1, dtype=np.int64)
-    members: list[list[float]] = [[] for _ in range(groups)]
-    for position, code in zip(positions.tolist(), codes.tolist(), strict=True):
-        if first[code] < 0:
-            first[code] = position
-        members[code].append(float(values[position]))
-    kept = np.zeros(len(selected), dtype=bool)
+        representative[positions] = positions
+        return ReplicaFold(selected, values, representative, varied, key_group)
+    # Each variant's selected records by least order, then row; the first of
+    # each run is its representative. Every code from 0 to groups - 1 occurs,
+    # so the runs come in code order.
+    if ranks is None:
+        sequence = np.lexsort((positions, codes))
+    else:
+        sequence = np.lexsort((positions, ranks[positions], codes))
+    runs = np.flatnonzero(np.diff(codes[sequence], prepend=-1))
+    first = positions[sequence[runs]]
+    representative[positions] = first[codes]
+    kept = np.zeros(len(keys), dtype=bool)
     kept[first] = True
     summed = values.copy()
-    summed[first] = [math.fsum(group) for group in members]
-    return kept, summed
+    summed[first] = [
+        math.fsum(variant)
+        for variant in np.split(values[positions[sequence]], runs[1:])
+    ]
+    return ReplicaFold(kept, summed, representative, varied, key_group)
+
+
+def collapse_replicas(
+    keys: np.ndarray,
+    rows: np.ndarray,
+    weights: np.ndarray,
+    *,
+    inputs: pd.DataFrame | None = None,
+    order: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The training rows and weights of :func:`fold_replicas`, and nothing else.
+
+    Returns ``(kept, weights)`` over every record: each variant's
+    representative stays selected with its variant's summed weight, and
+    without ``order`` the representative is its first selected record in row
+    order. A selection in which no two records share a variant comes back as
+    it was, value for value.
+    """
+
+    fold = fold_replicas(keys, rows, weights, inputs=inputs, order=order)
+    return fold.kept, fold.weights

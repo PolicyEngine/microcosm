@@ -136,13 +136,17 @@ def integer_record_keys(
     The key string formats each id, so the integer ``1001`` and the float
     ``1001.0`` draw differently, and a merge that turned an id column into
     floats would silently redraw every record. A repeated id would give two
-    records the same uniforms.
+    records the same uniforms. Repeats are found on a sorted copy, where
+    equal ids sit side by side, without building the unique ids.
     """
 
     keys = np.asarray(ids)
-    if keys.ndim != 1 or not np.issubdtype(keys.dtype, np.integer):
+    # Timedeltas subclass numpy's integers but are not ids, and repeated NaT
+    # never compare equal, so the kind is checked, not the subtype.
+    if keys.ndim != 1 or keys.dtype.kind not in "iu":
         raise TypeError(f"{label} must be a one-dimensional array of integer ids.")
-    if np.unique(keys).size != keys.size:
+    ordered = np.sort(keys)
+    if (ordered[1:] == ordered[:-1]).any():
         raise ValueError(f"{label} must name each record once.")
     return keys
 
