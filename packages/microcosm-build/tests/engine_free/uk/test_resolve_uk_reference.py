@@ -94,3 +94,25 @@ def test_offline_mode_is_refused(monkeypatch, capsys) -> None:
     monkeypatch.setattr(staging_dataset, "hub_offline", lambda: True)
     assert tool.main(["--release", "microcosm-uk-2024-25-national", "--check"]) == 1
     assert "HF_HUB_OFFLINE" in capsys.readouterr().err
+
+
+def test_a_build_can_be_pinned_from_the_command_line(tmp_path, capsys) -> None:
+    hub = UKReferenceHub(tmp_path / "hub-root")
+    hub.publish(UK_NATIONAL_RELEASE, "uk-frs-calibration-attempt-older", dataset=b"o")
+    hub.publish(UK_NATIONAL_RELEASE, "uk-frs-calibration-attempt-newer", dataset=b"n")
+    assert (
+        tool.main(
+            [
+                "--release",
+                UK_NATIONAL_RELEASE,
+                "--build",
+                "uk-frs-calibration-attempt-older",
+                "--check",
+            ],
+            hub_download=hub,
+        )
+        == 0
+    )
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["build"] == "uk-frs-calibration-attempt-older"
+    assert summary["selection"] == "pinned"

@@ -999,8 +999,11 @@ _UK_CERTIFICATION_PART_EVIDENCE_FILES: Mapping[str, str] = {
 _UK_CERTIFICATION_SCORE_RECEIPT_FILE = "score_vs_reference.json"
 _UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 2
 _UK_CERTIFICATION_REFERENCE_FIELDS = frozenset(
-    {"release", "build", "filename", "sha256", "built_with_model_package"}
+    {"release", "build", "filename", "sha256", "built_with_model_package", "selection"}
 )
+#: How a cut chose its reference: the national line's current build, or a
+#: listed build pinned for a line with none (microcosm#1095).
+_UK_CERTIFICATION_REFERENCE_SELECTIONS = frozenset({"current", "pinned"})
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
 _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
@@ -3547,11 +3550,12 @@ def _check_uk_release_certification(
             or set(package) != {"name", "version"}
             or package.get("name") != "policyengine-uk"
             or not isinstance(package.get("version"), str)
+            or reference.get("selection") not in _UK_CERTIFICATION_REFERENCE_SELECTIONS
         ):
             failures.append(
                 f"{file} reference must be a build of {_UK_NATIONAL_RELEASE_ID} "
-                "with its file name, sha256 digest and built-with "
-                "policyengine-uk version."
+                "with its file name, sha256 digest, built-with policyengine-uk "
+                "version and selection (current or pinned)."
             )
     parent_spine = certification.get("parent_spine")
     parent_sha = (

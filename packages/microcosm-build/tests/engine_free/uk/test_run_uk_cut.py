@@ -1500,3 +1500,43 @@ def test_the_receipt_says_when_the_build_time_evaluation_is_superseded(tmp_path)
         "reference": f"{cut.RELEASE_ID}@earlier",
         "superseded": True,
     }
+
+
+def test_a_pinned_reference_build_is_fetched_and_never_silently_moved(tmp_path):
+    """The review of microcosm#1574 (S4): --reference-build pins a listed
+    build; a cut that already compares with another keeps it unless the
+    operator re-resolves."""
+
+    from test_support.microcosm_build.uk_cut_reference import UKReferenceHub
+
+    runner, _ = _runner(tmp_path, reference=False)
+    hub = UKReferenceHub(tmp_path / "hub-root")
+    hub.publish(cut.RELEASE_ID, "uk-frs-calibration-attempt-older", dataset=b"older")
+    hub.publish(cut.RELEASE_ID, REFERENCE_BUILD, dataset=b"current build")
+    reference = cut.run_reference(
+        runner,
+        build="uk-frs-calibration-attempt-older",
+        hub_download=hub,
+        write_evidence=_stub_evidence,
+    )
+    assert (reference.build, reference.selection) == (
+        "uk-frs-calibration-attempt-older",
+        "pinned",
+    )
+    with pytest.raises(
+        cut.CutError, match="--re-resolve-reference with --reference-build"
+    ):
+        cut.run_reference(
+            runner,
+            build=REFERENCE_BUILD,
+            hub_download=hub,
+            write_evidence=_stub_evidence,
+        )
+    moved = cut.run_reference(
+        runner,
+        re_resolve=True,
+        build=REFERENCE_BUILD,
+        hub_download=hub,
+        write_evidence=_stub_evidence,
+    )
+    assert (moved.build, moved.selection) == (REFERENCE_BUILD, "pinned")

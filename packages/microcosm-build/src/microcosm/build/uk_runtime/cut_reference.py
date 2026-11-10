@@ -91,8 +91,13 @@ _RECORD_KEYS = frozenset(
         "built_with_core_package",
         "evidence",
         "resolved_at",
+        "selection",
     }
 )
+#: How the cut chose its reference: the line's current build, or a listed
+#: build the operator pinned (``--reference-build``; the review of
+#: microcosm#1574, for a line with no current build).
+UK_CUT_REFERENCE_SELECTIONS = frozenset({"current", "pinned"})
 
 
 @dataclass(frozen=True)
@@ -110,6 +115,7 @@ class UKCutReference:
     built_with_core_package: Mapping[str, str]
     evidence: Mapping[str, str]
     resolved_at: str
+    selection: str = "current"
 
     @property
     def label(self) -> str:
@@ -132,6 +138,7 @@ class UKCutReference:
             "built_with_core_package": dict(self.built_with_core_package),
             "evidence": dict(self.evidence),
             "resolved_at": self.resolved_at,
+            "selection": self.selection,
         }
 
     @classmethod
@@ -189,6 +196,11 @@ class UKCutReference:
                 "A UK cut reference record's evidence must name the build file "
                 "its fetch read, with its sha256."
             )
+        if payload["selection"] not in UK_CUT_REFERENCE_SELECTIONS:
+            raise ValueError(
+                "A UK cut reference record's selection is one of "
+                f"{sorted(UK_CUT_REFERENCE_SELECTIONS)}, not {payload['selection']!r}."
+            )
         return cls(
             release=payload["release"],
             build=payload["build"],
@@ -201,6 +213,7 @@ class UKCutReference:
             built_with_core_package=dict(payload["built_with_core_package"]),
             evidence=dict(evidence),
             resolved_at=payload["resolved_at"],
+            selection=payload["selection"],
         )
 
 
@@ -325,6 +338,17 @@ def uk_cut_reference_withdrawal(
     ``--re-resolve-reference``.
     """
 
+    reason = _withdrawal_reason(
+        reference.repo_id, reference.release, reference.build, hub_download
+    )
+    if reason is not None and reason.endswith("has been withdrawn"):
+        return f"{reason} since the cut resolved it"
+    return reason
+
+
+def _withdrawal_reason(
+    repo_id: str, release: str, build: str, hub_download: _HubDownload | None
+) -> str | None:
     from microcosm.data.releases_record import (
         RELEASES_RECORD_PATH,
         parse_releases_record,
@@ -333,42 +357,61 @@ def uk_cut_reference_withdrawal(
     if hub_download is None:
         from huggingface_hub import hf_hub_download as hub_download
     path = hub_download(
-        repo_id=reference.repo_id, filename=RELEASES_RECORD_PATH, repo_type="dataset"
+        repo_id=repo_id, filename=RELEASES_RECORD_PATH, repo_type="dataset"
     )
     record = parse_releases_record(Path(path).read_bytes())
-    entry = record.releases.get(reference.release)
+    entry = record.releases.get(release)
     if entry is None:
-        return f"{RELEASES_RECORD_PATH} no longer lists {reference.release}"
-    build = entry.builds.get(reference.build)
-    if build is None:
-        return f"{RELEASES_RECORD_PATH} no longer lists {reference.label}"
-    if build.withdrawn:
-        return f"{reference.label} has been withdrawn since the cut resolved it"
+        return f"{RELEASES_RECORD_PATH} no longer lists {release}"
+    listed = entry.builds.get(build)
+    if listed is None:
+        return f"{RELEASES_RECORD_PATH} does not list {release}@{build}"
+    if listed.withdrawn:
+        return f"{release}@{build} has been withdrawn"
     return None
 
 
 def check_uk_cut_reference(
-    release: str, *, hub_download: _HubDownload | None = None
+    release: str,
+    *,
+    build: str | None = None,
+    hub_download: _HubDownload | None = None,
 ) -> dict[str, str]:
     """Which build a cut of ``release`` would compare with now, read-only.
 
     Reads the release record, the build's manifest and its certification
     evidence, with every check the fetch makes, but downloads no dataset.
+    ``build`` pins a listed build, as :func:`resolve_uk_cut_reference` does.
     """
+
+    import warnings
 
     from microcosm.data.loader import resolve_certified
 
     variant, evidence_key = _line(release)
-    certified = resolve_certified(
-        "uk", _REGISTRY_YEAR, variant=variant, hub_download=hub_download
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        certified = resolve_certified(
+            "uk",
+            _REGISTRY_YEAR,
+            variant=variant,
+            build=build,
+            hub_download=hub_download,
+        )
     _require_build_folder(certified, release=release)
     evidence = _checked_evidence(
         certified, release=release, evidence_key=evidence_key, hub_download=hub_download
     )
+    if build is not None:
+        withdrawn = _withdrawal_reason(
+            certified.artifact_repo_id, release, certified.build, hub_download
+        )
+        if withdrawn:
+            raise ValueError(f"{withdrawn}; a cut never compares with a build that is.")
     return {
         "release": release,
         "build": certified.build,
+        "selection": "current" if build is None else "pinned",
         "path_in_repo": certified.artifact_path,
         "sha256": certified.artifact_sha256,
         "built_with_model_package": (
@@ -389,6 +432,7 @@ def _require_build_folder(certified: Any, *, release: str) -> None:
 def resolve_uk_cut_reference(
     release: str,
     *,
+    build: str | None = None,
     hub_download: _HubDownload | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> tuple[Path, UKCutReference]:
@@ -396,15 +440,27 @@ def resolve_uk_cut_reference(
 
     Returns the verified dataset's local path and the record a cut keeps.
     Refuses a release the Hub does not record in ``releases.json`` and a
-    current build whose certification evidence does not pass.
+    build whose certification evidence does not pass. ``build`` pins a
+    listed build instead of the current one, for a line with no current
+    build (the review of microcosm#1574); a pinned build is checked like the
+    current one, refused if withdrawn, and recorded as pinned.
     """
+
+    import warnings
 
     from microcosm.data.loader import download_certified
 
     variant, evidence_key = _line(release)
-    path, certified = download_certified(
-        "uk", _REGISTRY_YEAR, variant=variant, hub_download=hub_download
-    )
+    with warnings.catch_warnings():
+        # The loader warns on a withdrawn pin; a cut refuses one below.
+        warnings.simplefilter("ignore", UserWarning)
+        path, certified = download_certified(
+            "uk",
+            _REGISTRY_YEAR,
+            variant=variant,
+            build=build,
+            hub_download=hub_download,
+        )
     _require_build_folder(certified, release=release)
     evidence = _checked_evidence(
         certified, release=release, evidence_key=evidence_key, hub_download=hub_download
@@ -428,7 +484,14 @@ def resolve_uk_cut_reference(
         },
         evidence=evidence,
         resolved_at=resolved_at,
+        selection="current" if build is None else "pinned",
     )
+    if build is not None:
+        withdrawn = _withdrawal_reason(
+            reference.repo_id, release, reference.build, hub_download
+        )
+        if withdrawn:
+            raise ValueError(f"{withdrawn}; a cut never compares with a build that is.")
     return path, reference
 
 
@@ -477,6 +540,7 @@ def fetch_uk_cut_reference(
     release: str,
     output_dir: str | Path,
     *,
+    build: str | None = None,
     hub_download: _HubDownload | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> UKCutReference:
@@ -495,7 +559,7 @@ def fetch_uk_cut_reference(
             "the reference it started with. Use a new directory to resolve again."
         )
     source, reference = resolve_uk_cut_reference(
-        release, hub_download=hub_download, now=now
+        release, build=build, hub_download=hub_download, now=now
     )
     directory.mkdir(parents=True, exist_ok=True)
     destination = directory / reference.filename

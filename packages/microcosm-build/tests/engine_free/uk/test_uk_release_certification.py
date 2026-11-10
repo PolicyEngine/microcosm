@@ -542,6 +542,7 @@ def test_certification_names_its_reference_and_summarises_the_comparison(
         "filename": GREEN_REFERENCE_RECORD["filename"],
         "sha256": GREEN_REFERENCE_RECORD["sha256"],
         "built_with_model_package": GREEN_REFERENCE_RECORD["built_with_model_package"],
+        "selection": "current",
     }
     assert certification["score_receipt"]["filename"] == "score_vs_reference.json"
     assert certification["score_receipt"]["evaluation"] == {

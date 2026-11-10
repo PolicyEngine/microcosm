@@ -142,6 +142,7 @@ GREEN_REFERENCE_RECORD = {
         "sha256": "8" * 64,
     },
     "resolved_at": "2026-11-10T12:00:00Z",
+    "selection": "current",
 }
 GREEN_REFERENCE_LABEL = (
     f"{GREEN_REFERENCE_RECORD['release']}@{GREEN_REFERENCE_RECORD['build']}"

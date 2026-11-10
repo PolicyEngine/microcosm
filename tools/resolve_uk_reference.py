@@ -46,6 +46,14 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--release", required=True, choices=sorted(UK_CUT_REFERENCE_RELEASES)
     )
+    parser.add_argument(
+        "--build",
+        help=(
+            "Pin a listed build instead of the line's current one, for a line "
+            "with no current build; checked like the current build and recorded "
+            "as pinned."
+        ),
+    )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--output-dir", type=Path)
@@ -56,6 +64,7 @@ def fetch_reference(
     release: str,
     output_dir: Path,
     *,
+    build: str | None = None,
     hub_download=None,
     write_evidence=write_uk_cut_reference_evidence,
 ) -> dict:
@@ -67,7 +76,9 @@ def fetch_reference(
     ``--input-mass-reference`` and ``--reference-surface``.
     """
 
-    reference = fetch_uk_cut_reference(release, output_dir, hub_download=hub_download)
+    reference = fetch_uk_cut_reference(
+        release, output_dir, build=build, hub_download=hub_download
+    )
     written = write_evidence(reference, output_dir / reference.filename, output_dir)
     return {
         "reference": reference.label,
@@ -98,11 +109,14 @@ def main(
         return 1
     try:
         if args.check:
-            summary = check_uk_cut_reference(args.release, hub_download=hub_download)
+            summary = check_uk_cut_reference(
+                args.release, build=args.build, hub_download=hub_download
+            )
         else:
             summary = fetch_reference(
                 args.release,
                 args.output_dir.expanduser(),
+                build=args.build,
                 hub_download=hub_download,
                 write_evidence=write_evidence,
             )

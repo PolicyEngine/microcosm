@@ -6076,6 +6076,7 @@ def _green_uk_certification(
                 "name": "policyengine-uk",
                 "version": "2.174.1",
             },
+            "selection": "current",
         },
         "parts": parts,
         "spec": {
@@ -6213,6 +6214,8 @@ def test_uk_release_certification_refusals(monkeypatch) -> None:
         {"release": "microcosm-uk-2024-25-dense"},
         {"sha256": "not-a-digest"},
         {"built_with_model_package": {"name": "policyengine-us", "version": "1"}},
+        # A pinned reference is recorded as such (the review of microcosm#1574).
+        {"selection": "latest"},
     ):
         certification = _green_uk_certification(key)
         certification["reference"].update(broken)

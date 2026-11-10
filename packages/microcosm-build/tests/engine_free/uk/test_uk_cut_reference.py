@@ -232,3 +232,47 @@ def test_a_build_withdrawn_after_the_fetch_no_longer_stands(hub) -> None:
     assert uk_cut_reference_withdrawal(reference, hub_download=hub) == (
         f"{reference.label} has been withdrawn since the cut resolved it"
     )
+
+
+def test_a_listed_build_can_be_pinned_and_is_recorded_as_pinned(hub, tmp_path) -> None:
+    """The review of microcosm#1574 (S4): a line with no current build can
+    still be cut against a listed build, checked like the current one."""
+
+    from microcosm.build.uk_runtime.cut_reference import check_uk_cut_reference
+
+    assert (
+        check_uk_cut_reference(UK_NATIONAL_RELEASE, hub_download=hub)["selection"]
+        == "current"
+    )
+    checked = check_uk_cut_reference(
+        UK_NATIONAL_RELEASE, build=EARLIER_NATIONAL_BUILD, hub_download=hub
+    )
+    assert (checked["build"], checked["selection"]) == (
+        EARLIER_NATIONAL_BUILD,
+        "pinned",
+    )
+    _, reference = resolve_uk_cut_reference(
+        UK_NATIONAL_RELEASE, build=EARLIER_NATIONAL_BUILD, hub_download=hub
+    )
+    assert reference.build == EARLIER_NATIONAL_BUILD
+    assert reference.selection == "pinned"
+    assert UKCutReference.from_record(reference.to_record()) == reference
+    # The current build withdrawn, the line has none: a pin still cuts.
+    hub.withdraw(UK_NATIONAL_RELEASE, NATIONAL_BUILD)
+    with pytest.raises(ValueError, match="no current build"):
+        resolve_uk_cut_reference(UK_NATIONAL_RELEASE, hub_download=hub)
+    assert (
+        resolve_uk_cut_reference(
+            UK_NATIONAL_RELEASE, build=EARLIER_NATIONAL_BUILD, hub_download=hub
+        )[1].selection
+        == "pinned"
+    )
+    # A withdrawn build is never a reference, pinned or not.
+    with pytest.raises(ValueError, match="has been withdrawn"):
+        resolve_uk_cut_reference(
+            UK_NATIONAL_RELEASE, build=NATIONAL_BUILD, hub_download=hub
+        )
+    with pytest.raises(ValueError, match="has been withdrawn"):
+        check_uk_cut_reference(
+            UK_NATIONAL_RELEASE, build=NATIONAL_BUILD, hub_download=hub
+        )

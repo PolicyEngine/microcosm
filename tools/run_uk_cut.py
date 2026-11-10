@@ -1531,6 +1531,7 @@ def run_reference(
     runner: Runner,
     *,
     re_resolve: bool = False,
+    build: str | None = None,
     hub_download=None,
     write_evidence=write_uk_cut_reference_evidence,
 ) -> UKCutReference:
@@ -1539,15 +1540,27 @@ def run_reference(
     Beside the dataset and its record go the evidence the gates read from it
     (its input-mass totals and carriers, and its surface: the columns it
     exports and the inputs it carries). A reference whose evidence is
-    missing gets it written again; nothing re-resolves.
+    missing gets it written again; nothing re-resolves. ``build`` pins a
+    listed build instead of the current one (``--reference-build``, for a
+    line with no current build); it is checked and recorded as pinned.
     """
 
     paths = runner.paths
+    if build is not None and not re_resolve and paths.reference_record.exists():
+        recorded = read_uk_cut_reference(paths.reference_record)
+        if recorded.build != build:
+            raise CutError(
+                f"the cut compares with {recorded.label}; pass "
+                "--re-resolve-reference with --reference-build to move it to "
+                f"{build}."
+            )
     if re_resolve and (paths.run_dir / "build_record.json").exists():
         # After the cut's own promotion the line's current build is this
         # candidate, and a comparison with itself passes every gate (the review
         # of microcosm#1574). Checked before the recorded reference moves.
-        current = check_uk_cut_reference(RELEASE_ID, hub_download=hub_download)
+        current = check_uk_cut_reference(
+            RELEASE_ID, build=build, hub_download=hub_download
+        )
         record = _read_json(paths.run_dir / "build_record.json") or {}
         if current.get("sha256") == candidate_sha256(paths) or current.get(
             "build"
@@ -1588,7 +1601,7 @@ def run_reference(
     runner.record("reference", status="running", started_at=_now())
     try:
         reference = fetch_uk_cut_reference(
-            RELEASE_ID, paths.reference_dir, hub_download=hub_download
+            RELEASE_ID, paths.reference_dir, build=build, hub_download=hub_download
         )
         write_evidence(reference, paths.reference_h5(reference), paths.reference_dir)
     except ValueError as error:
@@ -1975,6 +1988,14 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--reference-build",
+        help=(
+            "pin a listed national build as the reference instead of the "
+            "current one, for a line with no current build; checked like the "
+            "current build and recorded as pinned"
+        ),
+    )
+    parser.add_argument(
         "--logbook-prev-row-digest",
         help=(
             "the national build's Logbook predecessor (default: a new chain); "
@@ -2086,6 +2107,11 @@ def _current_build_note(
         return f"note: could not read the current build ({type(error).__name__})"
     if withdrawn:
         return f"note: {withdrawn} (--re-resolve-reference to move it)"
+    if recorded.selection == "pinned":
+        return (
+            f"note: the reference is pinned to {recorded.build}; the current "
+            f"national build is {current.get('build')}"
+        )
     if current.get("build") == recorded.build:
         return "note: the reference is still the current national build"
     return (
@@ -2140,7 +2166,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "preflight":
             return 0
         runner = Runner(paths=paths, sources=sources)
-        run_reference(runner, re_resolve=args.re_resolve_reference)
+        run_reference(
+            runner, re_resolve=args.re_resolve_reference, build=args.reference_build
+        )
         run_spine(
             runner, staging_local_only=not args.spine_telemetry, retry=args.retry_spine
         )

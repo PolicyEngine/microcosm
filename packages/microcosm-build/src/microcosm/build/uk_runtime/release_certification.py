@@ -546,6 +546,9 @@ def compose_uk_release_certification(
             "filename": reference.filename,
             "sha256": reference.sha256,
             "built_with_model_package": dict(reference.built_with_model_package),
+            # The line's current build, or a listed build the operator pinned
+            # for a line with none (the review of microcosm#1574).
+            "selection": reference.selection,
         },
         "parts": part_summaries,
         "spec": {
