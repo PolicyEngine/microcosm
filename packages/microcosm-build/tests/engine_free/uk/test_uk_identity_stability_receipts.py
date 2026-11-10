@@ -2241,10 +2241,11 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         #   or assigned from an expression that refers to one
         #   (_total = _importance_weights_with_exact_total, or a
         #   functools.partial of it).
-        # Wrappers and aliases are found to a fixed point over those four
-        # modules, so one module's wrapper or alias counts where another module
-        # refers to it, and a reference to an alias counts as a reference to a
-        # wrapper does. Only the three stages' modules' functions are counted.
+        # Aliases are found over those four modules and wrappers over the three
+        # stages' modules, together to a fixed point, so one module's wrapper
+        # or alias counts where another module refers to it, and a reference to
+        # an alias counts as a reference to a wrapper does. Only the three
+        # stages' modules' functions are counted.
         # Every function, method and nested function counts its own
         # references, not those of the functions it nests. A lambda's
         # reference counts in the function that writes it, and a local alias, a
@@ -2355,7 +2356,8 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         # are not among the counted correction sites.
         trees[spi_support.__name__] = ast.parse(inspect.getsource(spi_support))
         # The names a reference to which counts: the helpers, the wrappers'
-        # names and the aliases, to a fixed point over the four modules.
+        # names and the aliases, to a fixed point: aliases over the four
+        # modules, wrappers over the three stages' modules.
         counted = set(helpers)
         while True:
             wrappers = {

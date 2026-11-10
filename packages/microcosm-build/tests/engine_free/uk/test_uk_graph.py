@@ -2559,8 +2559,9 @@ def test_the_household_type_check_refuses_before_the_targets_compile() -> None:
 def test_every_reader_of_the_annuity_and_trust_column_hashes_its_module() -> None:
     """The annuity and trust column's name lives in annuity_trust_column,
     which holds that name alone, and every uk_runtime module that reads it
-    imports it from there, or reads it as an attribute of
-    annuity_trust_column itself, never of another module that imports it
+    imports it from there, under whatever name the import binds, or reads it
+    as an attribute of annuity_trust_column itself, never of another module
+    that imports it
     (microcosm#931, ruled 9 Nov (late)). The measure resolver reads zeros
     where a frame lacks the column, so a renamed constant would change the
     measures without re-keying them, and the name cannot be listed as
@@ -2583,6 +2584,15 @@ def test_every_reader_of_the_annuity_and_trust_column_hashes_its_module() -> Non
     holder = _module_definitions(column[0], _HELPER_SCOPE).definitions
     assert set(holder) == {column[1]}
     assert _helper_kind(*column) == "name"
+
+    def origin(node: ast.ImportFrom) -> str:
+        # Resolved as _module_definitions resolves it; every uk_runtime
+        # module's package is frs_spine's.
+        if not node.level:
+            return node.module or ""
+        base = frs_spine.__package__.rsplit(".", node.level - 1)[0]
+        return ".".join(part for part in (base, node.module) if part)
+
     runtime = Path(frs_spine.__file__).parent
     for path in sorted(runtime.glob("*.py")):
         if path.stem == "annuity_trust_column":
@@ -2593,9 +2603,20 @@ def test_every_reader_of_the_annuity_and_trust_column_hashes_its_module() -> Non
         facts = _module_definitions(name, _HELPER_SCOPE)
         assert column[1] not in facts.definitions, name
         assert facts.imports.get(column[1], column) == column, name
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        # Every import of the name, whatever name it binds: facts.imports is
+        # keyed by the bound name, so it misses an aliased import through
+        # frs_spine, and keeps only the last of two imports that bind one name.
+        origins = {
+            origin(node)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and any(alias.name == column[1] for alias in node.names)
+        }
+        assert origins <= {column[0]}, (name, sorted(origins))
         through = sorted(
             ast.unparse(node)
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            for node in ast.walk(tree)
             if isinstance(node, ast.Attribute)
             and node.attr == column[1]
             and not (
