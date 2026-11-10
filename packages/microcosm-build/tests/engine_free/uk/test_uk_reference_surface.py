@@ -167,7 +167,7 @@ def test_the_evidence_reads_a_dense_line_file(tmp_path: Path) -> None:
         clone_uk_dataset_tables_with_rowwise_geography,
         write_uk_rowwise_dataset,
     )
-    from microcosm.build.uk_runtime.weighted_integrity import (
+    from microcosm.build.uk_runtime.cut_reference import (
         uk_input_mass_reference_payload,
     )
 

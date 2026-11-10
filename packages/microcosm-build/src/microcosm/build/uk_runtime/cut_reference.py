@@ -49,6 +49,7 @@ __all__ = [
     "read_uk_cut_reference",
     "resolve_uk_cut_reference",
     "uk_cut_reference_evidence_done",
+    "uk_input_mass_reference_payload",
     "verify_uk_cut_reference_file",
     "write_uk_cut_reference",
     "write_uk_cut_reference_evidence",
@@ -475,13 +476,62 @@ def fetch_uk_cut_reference(
     return reference
 
 
+def uk_input_mass_reference_payload(
+    h5_path: str | Path,
+    *,
+    label: str,
+    filename: str,
+    revision: str,
+    sha256: str,
+    vintage: str = "2024_25",
+) -> dict[str, object]:
+    """The schema-2 input-mass reference a cut writes from its reference build.
+
+    Totals and carriers come from the build's export frame at its own solved
+    weights (:func:`~.weight_year.uk_recorded_solve_year_frame`), so a build
+    an earlier policyengine-uk wrote compares on the weights it was solved
+    with, as the candidate does.
+    """
+
+    # Here, not in weighted_integrity: the target kernels reach that module,
+    # and the dataset readers below are no part of any target's value.
+    from microcosm.build.uk_runtime.national_frame import uk_published_release_frame
+    from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
+    from microcosm.build.uk_runtime.weight_year import uk_recorded_solve_year_frame
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        UK_INPUT_MASS_REFERENCE_KIND,
+        UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION,
+        uk_input_mass_carriers,
+        uk_input_mass_totals,
+    )
+
+    # The row-wise reader opens both lines' files: the dense line's carries one
+    # ``clone_index`` name on every table, which the compact national loader
+    # refuses, and a national file carries none.
+    frame, _provenance = load_uk_rowwise_dataset(h5_path)
+    export = uk_published_release_frame(uk_recorded_solve_year_frame(frame))
+    return {
+        "schema_version": UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION,
+        "kind": UK_INPUT_MASS_REFERENCE_KIND,
+        "label": label,
+        "identity": {
+            "filename": filename,
+            "revision": revision,
+            "sha256": sha256,
+            "vintage": vintage,
+        },
+        "totals": uk_input_mass_totals(export),
+        "carriers": uk_input_mass_carriers(export),
+    }
+
+
 def write_uk_cut_reference_evidence(
     reference: UKCutReference, h5_path: str | Path, output_dir: str | Path
 ) -> dict[str, Path]:
     """Write the evidence the gates read from the reference, beside it.
 
     The input-mass totals and carriers of the build's export frame at its own
-    solved weights (:func:`~.weighted_integrity.uk_input_mass_reference_payload`),
+    solved weights (:func:`uk_input_mass_reference_payload`),
     which hold licensed-data aggregates and stay with the cut as the
     reference's dataset does, and the build's column surface, names and
     flags only (:func:`~.reference_surface.uk_reference_surface_payload`).
@@ -489,9 +539,6 @@ def write_uk_cut_reference_evidence(
 
     from microcosm.build.uk_runtime.reference_surface import (
         uk_reference_surface_payload,
-    )
-    from microcosm.build.uk_runtime.weighted_integrity import (
-        uk_input_mass_reference_payload,
     )
 
     source = verify_uk_cut_reference_file(reference, h5_path)

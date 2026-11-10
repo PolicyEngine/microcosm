@@ -506,8 +506,16 @@ def test_committed_exclusion_registers_load() -> None:
 
     # The enhanced-FRS reference's three entries (dfe_education_spending,
     # property_wealth, tax_free_savings_income) retired with it
-    # (microcosm#1095); entries are now signed for one reference build.
-    assert input_mass == {}
+    # (microcosm#1095); entries are now signed for one reference build: the
+    # gross receipts microcosm#1550 stops writing, against both current builds.
+    assert {label: set(entries) for label, entries in input_mass.items()} == {
+        "microcosm-uk-2024-25-dense@uk-local-candidate-f100-s42-20261107T173210Z-38605444": {
+            "self_employment_gross_receipts"
+        },
+        "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e": {
+            "self_employment_gross_receipts"
+        },
+    }
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()
     )

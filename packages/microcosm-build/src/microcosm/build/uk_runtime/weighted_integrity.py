@@ -158,7 +158,6 @@ __all__ = [
     "uk_default_input_mass_reviewed_exclusions",
     "uk_input_mass_carriers",
     "uk_input_mass_parity_gate",
-    "uk_input_mass_reference_payload",
     "uk_input_mass_totals",
     "uk_qrf_tail_concentration_columns",
 ]
@@ -833,7 +832,7 @@ def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
     distinct source households}}``. The revision is the build, the totals
     and carriers are :func:`uk_input_mass_totals` and
     :func:`uk_input_mass_carriers` of the build's export frame at its own
-    solved weights (:func:`uk_input_mass_reference_payload`). The file stays
+    solved weights (:func:`~.cut_reference.uk_input_mass_reference_payload`). The file stays
     beside the cut's reference: its totals are licensed-data aggregates.
     """
 
@@ -1161,47 +1160,6 @@ def uk_input_mass_carriers(
                 continue
             carriers[column] = distinct_count(sources, nonzero, weights)
     return carriers
-
-
-def uk_input_mass_reference_payload(
-    h5_path: str | Path,
-    *,
-    label: str,
-    filename: str,
-    revision: str,
-    sha256: str,
-    vintage: str = "2024_25",
-) -> dict[str, object]:
-    """The schema-2 input-mass reference a cut writes from its reference build.
-
-    Totals and carriers come from the build's export frame at its own solved
-    weights (:func:`~.weight_year.uk_recorded_solve_year_frame`), so a build
-    an earlier policyengine-uk wrote compares on the weights it was solved
-    with, as the candidate does.
-    """
-
-    from microcosm.build.uk_runtime.national_frame import uk_published_release_frame
-    from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
-    from microcosm.build.uk_runtime.weight_year import uk_recorded_solve_year_frame
-
-    # The row-wise reader opens both lines' files: the dense line's carries one
-    # ``clone_index`` name on every table, which the compact national loader
-    # refuses, and a national file carries none.
-    frame, _provenance = load_uk_rowwise_dataset(h5_path)
-    export = uk_published_release_frame(uk_recorded_solve_year_frame(frame))
-    return {
-        "schema_version": UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION,
-        "kind": UK_INPUT_MASS_REFERENCE_KIND,
-        "label": label,
-        "identity": {
-            "filename": filename,
-            "revision": revision,
-            "sha256": sha256,
-            "vintage": vintage,
-        },
-        "totals": uk_input_mass_totals(export),
-        "carriers": uk_input_mass_carriers(export),
-    }
 
 
 def _thin_columns(
