@@ -2179,3 +2179,53 @@ def test_prepare_build_folder_release_checks_an_evidence_build_with_its_contract
     assert checked == [evidence]
     assert prepared.release == "microcosm-us-2024-evidence"
     assert prepared.release_role == "national"
+
+
+def _with_release_type(release_dir: Path, release_type: str) -> Path:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["release_type"] = release_type
+    manifest_path.write_text(json.dumps(manifest))
+    return release_dir
+
+
+def test_prepare_build_folder_release_passes_parent_inputs_to_the_contract(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """A source enrichment's contract replays its parent's H5 and the tested
+    wheels, so the build-folder publisher passes them through."""
+    national = _with_release_type(
+        _as_us_national_build_folder_release(release_dir), "source_enrichment"
+    )
+    passed = {}
+
+    def contract(_path, **kwargs):
+        passed.update(kwargs)
+        return []
+
+    monkeypatch.setattr(release_module, "validate_release_dir", contract)
+    parent_h5 = tmp_path / "parent.h5"
+    wheel = tmp_path / "policyengine_us-2.2.1-py3-none-any.whl"
+
+    release_module.prepare_build_folder_release(
+        national,
+        artifact_root=_microcosm_named_artifacts(artifact_root),
+        parent_h5=parent_h5,
+        compatibility_wheels=(wheel,),
+    )
+
+    assert passed["parent_h5"] == parent_h5
+    assert passed["compatibility_wheels"] == (wheel,)
+
+
+def test_prepare_build_folder_release_refuses_parent_inputs_for_a_plain_build(
+    release_dir: Path, artifact_root: Path, tmp_path: Path
+) -> None:
+    national = _as_us_national_build_folder_release(release_dir)
+
+    with pytest.raises(ValueError, match="source_enrichment"):
+        release_module.prepare_build_folder_release(
+            national,
+            artifact_root=_microcosm_named_artifacts(artifact_root),
+            parent_h5=tmp_path / "parent.h5",
+        )

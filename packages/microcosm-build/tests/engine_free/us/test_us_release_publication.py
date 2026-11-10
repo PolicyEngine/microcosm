@@ -7,6 +7,8 @@ tests never start an emitter or reach the Hub.
 
 from __future__ import annotations
 
+import pytest
+
 from microcosm.build import release_publication
 
 #: The largest US builds, the ACS local-area ones, are about 10 GB.
@@ -41,3 +43,92 @@ def test_the_command_takes_a_us_release(tmp_path, monkeypatch, capsys) -> None:
     assert "does not publish into build folders" not in error_output
     assert exit_code == 1
     assert "HF_HUB_OFFLINE" in error_output
+
+
+def _prepared(release_dir):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        release_dir=release_dir,
+        repository="policyengine/populace-us",
+        release=release_dir.name,
+        build="populace-us-2024-recertified-20261201",
+        release_role="national",
+        contract_warnings=(),
+    )
+
+
+def test_the_command_passes_the_parent_h5_and_wheels(tmp_path, monkeypatch) -> None:
+    release_dir = tmp_path / "microcosm-us-2024-national"
+    release_dir.mkdir()
+    passed = {}
+
+    def prepare(path, **kwargs):
+        passed.update(kwargs)
+        return _prepared(path)
+
+    monkeypatch.setattr(
+        release_publication, "publication_refusal", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(release_publication, "prepare_build_folder_release", prepare)
+    parent_h5 = tmp_path / "parent.h5"
+    wheel = tmp_path / "policyengine_us-2.2.1-py3-none-any.whl"
+
+    exit_code = release_publication.main(
+        [
+            str(release_dir),
+            "--preflight-only",
+            "--parent-h5",
+            str(parent_h5),
+            "--compatibility-wheel",
+            str(wheel),
+        ]
+    )
+
+    assert exit_code == 0
+    assert passed["parent_h5"] == parent_h5
+    assert passed["compatibility_wheels"] == (wheel,)
+
+
+def test_a_recertification_is_handed_over_only_once_its_parent_is_published(
+    tmp_path, monkeypatch
+) -> None:
+    from microcosm.data import compatibility_recertification
+
+    release_dir = tmp_path / "microcosm-us-2024-national"
+    release_dir.mkdir()
+    monkeypatch.setattr(
+        release_publication,
+        "build_folder_identity",
+        lambda path: ("policyengine/populace-us", path.name, "b"),
+    )
+    monkeypatch.setattr(
+        release_publication, "_refuse_pointer_files", lambda _repo: None
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "prepare_build_folder_release",
+        lambda path, **_kwargs: _prepared(path),
+    )
+    monkeypatch.setattr(release_publication, "_hub_api", lambda: object())
+    monkeypatch.setattr(
+        compatibility_recertification, "is_recertification", lambda _path: True
+    )
+
+    def parent_not_published(_api, _path, **_kwargs):
+        raise ValueError("the parent's published manifest is not the one carried")
+
+    monkeypatch.setattr(
+        compatibility_recertification,
+        "require_parent_publication",
+        parent_not_published,
+    )
+
+    class NoEmitter:
+        def __getattr__(self, name):
+            raise AssertionError(f"the build was handed over ({name})")
+
+    with pytest.raises(ValueError, match="published manifest"):
+        release_publication.publish_release_build(
+            release_dir, artifact_root=tmp_path, client=NoEmitter()
+        )
