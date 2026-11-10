@@ -3,6 +3,12 @@
 # ruff: noqa: F403, F405
 from huggingface_hub.errors import LocalEntryNotFoundError
 
+# The annual build-folder fixtures, which build on this module's release_dir.
+from test_support.microcosm_data.annual_projections import (  # noqa: F401
+    US_ANNUAL_RELEASE,
+    annual_build_folder,
+    national_build,
+)
 from test_support.microcosm_data.hub_errors import hub_unreachable
 from test_support.microcosm_data.release import *
 
@@ -2117,6 +2123,45 @@ def test_prepare_build_folder_release_lists_a_us_national_build(
     roles = {item.name: item.role for item in prepared.files}
     assert roles["microcosm_us_2024.h5"] == "dataset"
     assert roles["microcosm_us_2024_calibration.npz"] == "calibration_weights"
+
+
+def test_prepare_build_folder_release_lists_an_annual_build(
+    annual_build_folder: Path,  # noqa: F811
+    artifact_root: Path,
+) -> None:
+    """An annual build passes its contract and publishes, as a build of the
+    annual release whose role is national, the base national build's files,
+    one H5 per projected year, the candidate manifest, its acceptance report
+    and the per-year receipts."""
+    prepared = release_module.prepare_build_folder_release(
+        annual_build_folder, artifact_root=artifact_root
+    )
+
+    assert (prepared.release, prepared.build) == (
+        US_ANNUAL_RELEASE,
+        f"{RELEASE_ID}-annual-20261110T120000Z-a1b2c3d4",
+    )
+    assert prepared.release_role == "national"
+    files = {item.name: item for item in prepared.files}
+    assert files["microcosm_us_2024.h5"].role == "dataset"
+    assert files["microcosm_us_2025.h5"].role == "dataset"
+    assert files["microcosm_us_2025.h5"].path == artifact_root / "microcosm_us_2025.h5"
+    assert {
+        "annual_manifest.json",
+        "annual_acceptance.json",
+        "projection_2025.json",
+        "microcosm_us_2024_calibration.npz",
+        "calibration_diagnostics.json",
+    } <= set(files)
+
+
+def test_the_tagged_publisher_s_advice_names_every_us_release() -> None:
+    from microcosm.data.contract import US_RELEASES
+
+    for release in US_RELEASES:
+        assert release.removeprefix("microcosm-us-2024") in (
+            release_module.TAGGED_RELEASE_ADVICE
+        )
 
 
 def test_prepare_build_folder_release_refuses_a_build_of_another_role(
