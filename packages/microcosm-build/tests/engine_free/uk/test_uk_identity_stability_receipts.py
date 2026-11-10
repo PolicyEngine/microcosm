@@ -2190,6 +2190,7 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         """
         import ast
         import inspect
+        from collections import Counter
 
         from microcosm.build.uk_runtime import (
             cgt_residential_split,
@@ -2227,14 +2228,28 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         assert boundaries == {"uk.identity@1"}
 
         # Each reference that can correct a frame's total, by the function or
-        # method making it: to spi_support's helpers, or to a function of any
-        # of the three stages' modules that wraps them (one named _exact...
-        # that refers to a helper or another wrapper), by bare name or as an
-        # attribute (spi_support._importance_weights_with_exact_total(...),
-        # cgt_support._exact_support_weights(...)), called or not, so an
-        # alias or a partial of one counts too. Every function, method and
-        # nested function counts its own references, not those of the
-        # functions it nests.
+        # method making it. A reference is a bare name or an attribute
+        # (spi_support._importance_weights_with_exact_total(...),
+        # cgt_support._exact_support_weights(...)), called or not, to one of
+        # spi_support's two helpers, a wrapper or an alias:
+        # - a wrapper is a function of any of the three stages' modules named
+        #   _exact... that refers to one;
+        # - an alias is a name one of those modules binds to one outside every
+        #   function, at module level or in a class body: imported under
+        #   another name (from ... import _importance_weights_with_exact_total
+        #   as _total), or assigned from an expression that refers to one
+        #   (_total = _importance_weights_with_exact_total, or a
+        #   functools.partial of it).
+        # Wrappers and aliases are found to a fixed point over the three
+        # modules, so one module's wrapper or alias counts where another module
+        # refers to it, and a reference to an alias counts as a reference to a
+        # wrapper does. Every function, method and nested function counts its
+        # own references, not those of the functions it nests. A lambda's
+        # reference counts in the function that writes it, and a local alias, a
+        # local partial or a local import under another name counts once, where
+        # it names the helper or wrapper. What is counted is references, not
+        # calls: a loop that corrects twice, or a local alias called twice,
+        # counts once.
         helpers = {"_exact_total_correction", "_importance_weights_with_exact_total"}
         stages = ("cgt_support_split", *weighing)
         modules = {graph_kernels._stage_module(stage) for stage in stages}
@@ -2256,7 +2271,8 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
 
         def referred(function) -> list[str]:
             """The names ``function`` refers to outside the functions it nests:
-            each bare name and each attribute read, a call's included."""
+            each bare name and each attribute read, a call's included, and each
+            name it imports under another name."""
 
             names: list[str] = []
             pending = list(ast.iter_child_nodes(function))
@@ -2268,10 +2284,57 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
                     names.append(node.id)
                 elif isinstance(node, ast.Attribute):
                     names.append(node.attr)
+                elif isinstance(node, ast.alias) and node.asname is not None:
+                    names.append(node.name)
                 pending.extend(ast.iter_child_nodes(node))
             return names
 
+        def named(node) -> set[str]:
+            """Each bare name and attribute name under ``node``, itself included."""
+
+            return {
+                item.id if isinstance(item, ast.Name) else item.attr
+                for item in ast.walk(node)
+                if isinstance(item, ast.Name | ast.Attribute)
+            }
+
+        def outside_functions(node):
+            """The statements under ``node`` outside every function: at module
+            level, in a block there, or in a class body."""
+
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, defined):
+                    continue
+                if isinstance(child, ast.stmt):
+                    yield child
+                yield from outside_functions(child)
+
+        def aliases(tree, counted: set[str]) -> set[str]:
+            """The names ``tree`` binds outside every function to a name in
+            ``counted``: imported under another name, or assigned from an
+            expression that refers to it (every name in the targets)."""
+
+            bound: set[str] = set()
+            for node in outside_functions(tree):
+                if isinstance(node, ast.ImportFrom):
+                    bound |= {
+                        alias.asname or alias.name
+                        for alias in node.names
+                        if alias.name in counted
+                    }
+                elif (
+                    isinstance(node, ast.Assign | ast.AnnAssign | ast.AugAssign)
+                    and node.value is not None
+                    and named(node.value) & counted
+                ):
+                    targets = (
+                        node.targets if isinstance(node, ast.Assign) else [node.target]
+                    )
+                    bound |= set().union(*(named(target) for target in targets))
+            return bound
+
         every: dict[str, dict[str, ast.AST]] = {}
+        trees: dict[str, ast.Module] = {}
         for module in modules:
             tree = ast.parse(inspect.getsource(module))
             functions: dict[str, ast.AST] = {}
@@ -2280,26 +2343,50 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
                 node.name for node in ast.walk(tree) if isinstance(node, defined)
             } == {function.name for function in functions.values()}
             every[module.__name__] = functions
-        # The wrappers of all three modules, to a fixed point, so a wrapper
-        # one module defines counts where another module calls it.
-        wrappers: set[str] = set()
+            trees[module.__name__] = tree
+        # The names a reference to which counts: the helpers, the wrappers'
+        # names and the aliases, to a fixed point over all three modules.
+        counted = set(helpers)
         while True:
-            more = {
-                function.name
-                for functions in every.values()
-                for function in functions.values()
+            wrappers = {
+                (module_name, name)
+                for module_name, functions in every.items()
+                for name, function in functions.items()
                 if function.name.startswith("_exact")
-                and set(referred(function)) & (helpers | wrappers)
+                and set(referred(function)) & counted
             }
-            if more == wrappers:
+            more = (
+                helpers
+                | {every[module_name][name].name for module_name, name in wrappers}
+                | set().union(*(aliases(tree, counted) for tree in trees.values()))
+            )
+            if more == counted:
                 break
-            wrappers = more
+            counted = more
+        # The wrappers are the support split's and the residential split's own
+        # exact-total corrections. Each tries _exact_total_correction on a
+        # household its split left whole (the support split on up to 64 in
+        # turn, taking the first that carries it) and falls back to
+        # _importance_weights_with_exact_total where none does. So each
+        # corrects once and refers once to each helper, and a second
+        # correction written into one fails here.
+        assert {
+            (module_name, name): Counter(
+                item for item in referred(every[module_name][name]) if item in counted
+            )
+            for module_name, name in wrappers
+        } == {
+            (cgt_support.__name__, "_exact_support_weights"): Counter(helpers),
+            (cgt_residential_split.__name__, "_exact_residential_weights"): Counter(
+                helpers
+            ),
+        }
         corrections: dict[tuple[str, str], int] = {}
         for module_name, functions in every.items():
             for name, function in functions.items():
-                if function.name in wrappers:
+                if (module_name, name) in wrappers:
                     continue
-                count = sum(item in helpers | wrappers for item in referred(function))
+                count = sum(item in counted for item in referred(function))
                 if count:
                     corrections[(module_name, name)] = count
         assert corrections == {
