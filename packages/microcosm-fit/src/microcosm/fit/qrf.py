@@ -125,11 +125,20 @@ class GateCalibration:
     #: A target that cannot be cross-fitted keeps the in-sample gate, and
     #: :meth:`FittedRegimeGatedQRF.gate_outcomes` says which (:class:`GateOutcome`).
     CROSS_FITTED = "cross_fitted"
+    #: Cross-fitted as above, with each fold gate fitted on class-balanced
+    #: weights: every class's weights are scaled to the same total, so a class
+    #: that holds a hundredth of a percent of the weight still shapes the
+    #: gate's ranking of rows. The calibration is unchanged and is fitted on
+    #: the rows' own weights, so the mapped out-of-fold probabilities' weighted
+    #: mean still equals each class's weighted rate: the fold gates say which
+    #: rows, the calibration says how many (microcosm#1276).
+    CROSS_FITTED_BALANCED = "cross_fitted_balanced"
 
 
-_GATE_CALIBRATIONS = frozenset(
-    {GateCalibration.IN_SAMPLE, GateCalibration.CROSS_FITTED}
+_CROSS_FITTED_CALIBRATIONS = frozenset(
+    {GateCalibration.CROSS_FITTED, GateCalibration.CROSS_FITTED_BALANCED}
 )
+_GATE_CALIBRATIONS = frozenset({GateCalibration.IN_SAMPLE}) | _CROSS_FITTED_CALIBRATIONS
 
 
 class GateOutcome:
@@ -524,12 +533,34 @@ def _folds_carry_every_class(
     return True
 
 
+def _class_balanced_weights(
+    labels: np.ndarray, weights: np.ndarray | None
+) -> np.ndarray:
+    """Row weights rescaled so every class carries the same total weight.
+
+    A row keeps its weight relative to the rows of its own class. The result
+    averages one, so the classifier's fit is on the scale of an unweighted one.
+    """
+    base = (
+        np.ones(len(labels), dtype=np.float64)
+        if weights is None
+        else np.asarray(weights, dtype=np.float64)
+    )
+    balanced = np.empty(len(labels), dtype=np.float64)
+    for value in np.unique(labels):
+        members = labels == value
+        balanced[members] = base[members] / base[members].sum()
+    return balanced * (len(labels) / balanced.sum())
+
+
 def _cross_fit_gate(
     features: np.ndarray,
     labels: np.ndarray,
     weights: np.ndarray | None,
     seed: int,
     groups: np.ndarray | None = None,
+    *,
+    balanced: bool = False,
 ) -> tuple[_CrossFittedGate | None, str]:
     """Fit a gate per fold and calibrate them on their out-of-fold probabilities.
 
@@ -539,7 +570,9 @@ def _cross_fit_gate(
     gate. The fold assignment and the fold gates' seeds derive from ``seed``,
     the one the in-sample gate would take, so nothing else in the fit's RNG
     stream moves. Every class must have a row in every fold
-    (:func:`_can_cross_fit`).
+    (:func:`_can_cross_fit`). With ``balanced`` each fold gate is fitted on
+    its training rows' class-balanced weights (:func:`_class_balanced_weights`);
+    the calibration always takes the rows' own weights.
 
     Returns:
         ``(gate, outcome)``. ``gate`` is ``None``, with outcome
@@ -562,11 +595,10 @@ def _cross_fit_gate(
     for fold in range(_GATE_CROSS_FIT_FOLDS):
         held = folds == fold
         gate = _make_gate(int(gate_seeds[fold]))
-        gate.fit(
-            features[~held],
-            labels[~held],
-            sample_weight=None if weights is None else weights[~held],
-        )
+        fold_weights = None if weights is None else weights[~held]
+        if balanced:
+            fold_weights = _class_balanced_weights(labels[~held], fold_weights)
+        gate.fit(features[~held], labels[~held], sample_weight=fold_weights)
         if not np.array_equal(np.asarray(gate.classes_), classes):
             raise ValueError(
                 "A cross-fitted fold gate lost a sign class although every "
@@ -2187,7 +2219,8 @@ class RegimeGatedQRF:
         ``classes_``. If sklearn ever dropped a class, drawing it at probability
         zero would silently lose that sign, so we raise instead.
 
-        Under :attr:`GateCalibration.CROSS_FITTED` the gate is instead a gate
+        Under :attr:`GateCalibration.CROSS_FITTED` (or its class-balanced
+        form, :attr:`GateCalibration.CROSS_FITTED_BALANCED`) the gate is instead a gate
         per fold, calibrated on their out-of-fold probabilities
         (:func:`_cross_fit_gate`, with whole ``groups`` dealt to folds), unless
         a class is too thin to have a row in every fold or a fold's training
@@ -2215,9 +2248,18 @@ class RegimeGatedQRF:
         seed = int(rng.integers(0, 2**31 - 1))
         gate: HistGradientBoostingClassifier | _CrossFittedGate | None = None
         outcome = GateOutcome.IN_SAMPLE
-        if self.gate_calibration == GateCalibration.CROSS_FITTED:
+        if self.gate_calibration in _CROSS_FITTED_CALIBRATIONS:
             if _can_cross_fit(labels, groups):
-                gate, outcome = _cross_fit_gate(features, labels, weights, seed, groups)
+                gate, outcome = _cross_fit_gate(
+                    features,
+                    labels,
+                    weights,
+                    seed,
+                    groups,
+                    balanced=(
+                        self.gate_calibration == GateCalibration.CROSS_FITTED_BALANCED
+                    ),
+                )
             else:
                 outcome = GateOutcome.THIN_CLASS
         if gate is None:
