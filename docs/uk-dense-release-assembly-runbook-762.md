@@ -47,12 +47,26 @@ the gates stood on. See [Optional diagnostics](#optional-diagnostics-microcosm13
 - Optionally, the incumbent extraction
   (`tools/extract_uk_local_incumbent_surface.py`), only for the opt-in
   incumbent comparison.
-- The licensed input-mass reference the national line keeps with its runs
-  (`--input-mass-reference`). `uk_input_mass_parity` is release-blocking on
-  this line too and records `evidence_absent` without it. The sidecar's totals
-  digest must match the registry's `totals_sha256`; the totals depend on the
-  installed policyengine-uk, so re-emitting them under a newer engine does not
-  reproduce the pinned file.
+- The reference: the current build of the dense line, as `releases.json` in
+  `policyengine/populace-uk-private` names it (microcosm#1095). Resolve it
+  once, into a directory the run keeps:
+
+  ```bash
+  uv run --no-sync python tools/resolve_uk_reference.py \
+    --release microcosm-uk-2024-25-dense --output-dir <reference-dir>
+  ```
+
+  This refuses a build that is withdrawn or has a failed gate in its
+  `gate_summary.json`, and writes the dataset, its record (`reference.json`),
+  `input_mass_reference.json` (its input-mass totals and carriers at its own
+  solved weights, licensed-data aggregates that stay with the run) and
+  `reference_surface.json` (the columns it exports and the inputs it carries,
+  names and flags only). The build takes the last two
+  (`--input-mass-reference`, `--reference-surface`): `uk_input_mass_parity`,
+  `uk_export_surface` and `uk_release_input_coverage` are release-blocking on
+  this line too and record `evidence_absent` without them, and the build
+  refuses the two files if they name different builds. Until microcosm#1095
+  the dense line was held to the enhanced FRS's input totals and inputs.
 
 ## 1. Pre-flight the environment
 
@@ -73,7 +87,8 @@ uv run --no-sync python tools/build_uk_full.py --release-role dense \
   --ladder build/uk/uk_oa_ladder_2021.npz --ladder-sha256 <ladder> \
   --ledger-facts <chronicle-uk-artifact-dir> --ledger-facts-sha256 <facts> \
   --ledger-manifest-sha256 <manifest> --seed 42 \
-  --input-mass-reference <licensed-input-mass-reference> \
+  --input-mass-reference <reference-dir>/input_mass_reference.json \
+  --reference-surface <reference-dir>/reference_surface.json \
   --review-date <YYYY-MM-DD> --graph-store <graph-store-dir> \
   --logbook-prev-row-digest <previous row> --out <candidate-dir>
 ```

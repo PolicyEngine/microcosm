@@ -1536,7 +1536,8 @@ def run_reference(
     """Resolve the current national build once per cut, and keep its record.
 
     Beside the dataset and its record go the evidence the gates read from it
-    (its input-mass totals and carriers). A reference whose evidence is
+    (its input-mass totals and carriers, and its surface: the columns it
+    exports and the inputs it carries). A reference whose evidence is
     missing gets it written again; nothing re-resolves.
     """
 
