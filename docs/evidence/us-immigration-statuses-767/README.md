@@ -47,7 +47,7 @@ of its `immigration.py` and of the script, and every draw call's key.
 | `receipt.main_full_keys.json` | main at `764ae3aa7` | this PR's, through `--draw-keys full` | main's method on this PR's draws; its gate passes |
 | `receipt.pre_sync_42bb166b.json` | this PR at `42bb166b1`, before it merged main `1acd884fe` | none: the stage refuses before its first draw | the stage refuses the 2026 ASEC's `PEINUSYR` code 29 |
 | `receipt.head_medicaid_reporters.json` | this PR at `4f94e489a`, from the head run's labels | its own | 0.391 million of the 0.714 million people in the restored Medicaid statuses report Medicaid at interview |
-| `receipt.stacked_supply.json` | this PR at `4f94e489a`, from `receipt.head.json` and the ACS 2024 1-year PUMS | none: it draws no rows | four draws run short of ACS candidates and a fifth may; none ends below half its target in the worst case |
+| `receipt.stacked_supply.json` | this PR at `4f94e489a`, from `receipt.head.json` and the ACS 2024 1-year PUMS | none: it draws no rows | five draws run short of ACS candidates; none ends below half its target in the worst case |
 
 The script reran main's tree and the pre-sync tree from `git archive <commit>
 packages`, so those three receipts take their commit from `--source-commit`.
@@ -131,32 +131,44 @@ weights them and scaled by the ACS arm's weight scale, 0.478.
 `receipt.stacked_supply.json` holds the aggregates, in weighted persons. The
 projected share adds to the ASEC arm as much of the ACS supply as the residual
 takes, as a share of the target, if no earlier draw takes any of the draw's
-candidates. The worst case lets earlier draws take them (below):
+candidates. The expected share lets each earlier parole or TPS draw take its
+residual from the candidates still free, each with the same chance, as the
+reconciliation's person-keyed hash draws do; it leaves out what refugee and
+asylee draws take. The worst case lets earlier draws take as much as they can
+(below):
 
-| Draw | Target | ASEC arm | ACS residual | ACS supply | Projected share | Worst case |
-|---|---:|---:|---:|---:|---:|---:|
-| Parole, Afghanistan (OAW) | 73,566 | 37,128 | 36,438 | 34,292 | 0.971 | 0.971 |
-| Parole, Ukraine (U4U) | 158,000 | 56,467 | 101,533 | 57,046 | 0.718 | 0.718 |
-| Parole, Nicaragua | 93,070 | 46,971 | 46,099 | 27,188 | 0.797 | 0.797 |
-| Parole, Venezuela | 117,330 | 59,215 | 58,115 | 152,918 | 1.000 | 1.000 |
-| Refugee | 160,000 | 80,750 | 79,250 | 363,809 | 1.000 | 0.505 |
-| Asylee | 155,000 | 78,227 | 76,773 | 2,292,045 | 1.000 | 0.505 |
-| TPS, Venezuela | 605,015 | 305,344 | 299,671 | 338,594 | 1.000 | 0.710 |
-| TPS, El Salvador | 170,125 | 85,860 | 84,265 | 114,363 | 1.000 | 1.000 |
-| TPS, Honduras | 51,225 | 25,853 | 25,372 | 22,197 | 0.938 | 0.938 |
-| TPS, Nicaragua | 2,910 | 1,469 | 1,441 | 6,960 | 1.000 | 1.000 |
-| TPS, Nepal | 7,160 | 3,614 | 3,546 | 16,986 | 1.000 | 1.000 |
-| TPS, other designated | 21,215 | 10,707 | 10,508 | 141,413 | 1.000 | 1.000 |
+| Draw | Target | ASEC arm | ACS residual | ACS supply | Projected share | Expected share | Worst case |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Parole, Afghanistan (OAW) | 73,566 | 37,128 | 36,438 | 34,292 | 0.971 | 0.971 | 0.971 |
+| Parole, Ukraine (U4U) | 158,000 | 56,467 | 101,533 | 57,046 | 0.718 | 0.718 | 0.718 |
+| Parole, Nicaragua | 93,070 | 46,971 | 46,099 | 27,188 | 0.797 | 0.797 | 0.797 |
+| Parole, Venezuela | 117,330 | 59,215 | 58,115 | 152,918 | 1.000 | 1.000 | 1.000 |
+| Refugee | 160,000 | 80,750 | 79,250 | 363,809 | 1.000 | n/a | 0.505 |
+| Asylee | 155,000 | 78,227 | 76,773 | 2,292,045 | 1.000 | n/a | 0.505 |
+| TPS, Venezuela | 605,015 | 305,344 | 299,671 | 338,594 | 1.000 | 0.983 | 0.710 |
+| TPS, El Salvador | 170,125 | 85,860 | 84,265 | 114,363 | 1.000 | 1.000 | 1.000 |
+| TPS, Honduras | 51,225 | 25,853 | 25,372 | 22,197 | 0.938 | 0.938 | 0.938 |
+| TPS, Nicaragua | 2,910 | 1,469 | 1,441 | 6,960 | 1.000 | 1.000 | 1.000 |
+| TPS, Nepal | 7,160 | 3,614 | 3,546 | 16,986 | 1.000 | 1.000 | 1.000 |
+| TPS, other designated | 21,215 | 10,707 | 10,508 | 141,413 | 1.000 | 1.000 | 1.000 |
 
-- Four draws run short of candidates: U4U, Nicaraguan parole, Honduran TPS and
-  OAW. None of the four shares a candidate with an earlier draw, so each ends
-  at its projected share in the worst case too. Under the old rule, U4U, the
-  second draw in manifest order, would have stopped every stacked build on
-  these inputs. Under the new rule the four end at 0.718 to 0.971 of their
-  targets.
-- TPS Venezuela may run short as well. Its supply exceeds its residual by
-  38,923, but earlier draws could take up to 214,138 of its candidates, which
-  would leave it at 0.710 of its target.
+- Five draws run short of candidates. Four of them, U4U, Nicaraguan parole,
+  Honduran TPS and OAW, run short even if no earlier draw takes theirs. No
+  earlier draw that takes any rows shares a candidate with them: OAW comes
+  first, U4U's and Nicaraguan parole's candidates overlap no earlier draw's,
+  and Honduran TPS's all fall inside the deportation-withheld draw's, whose
+  zero target takes none. So each of the four ends at its projected share in
+  the worst case too, 0.718 to 0.971 of its target. Under the old rule, U4U,
+  the second draw in manifest order, would have stopped every stacked build on
+  these inputs.
+- TPS Venezuela runs short because of an earlier draw. Its supply exceeds its
+  residual by 38,923, but Venezuelan parole, the fourth draw, takes its 58,115
+  from non-citizens born in Venezuela who arrived in 2022 or later, and 0.848
+  of that supply, those who arrived in 2022 or 2023, are TPS Venezuela's
+  candidates too. The parole draw takes an expected 49,300 of them, more than
+  the margin, so TPS Venezuela ends at an expected 0.983 of its target before
+  refugee and asylee draws take any of its candidates, and at 0.710 in the
+  worst case.
 - The worst case lets every earlier draw take as much of a draw's candidates as
   it can, up to its own residual. It holds for parole and TPS draws, which take
   any non-citizen SSN code. Refugee and asylee draws take only rows the transfer

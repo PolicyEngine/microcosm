@@ -46,6 +46,19 @@ Two lower bounds bracket each draw's share of its target:
   ``OTHER_NON_CITIZEN``, which PUMS cannot show, so its worst case is its
   ASEC arm share.
 
+One estimate sits between them, for parole and TPS draws only:
+
+- ``expected_share_of_target``: the ASEC arm plus the ACS mass the draw
+  expects to take when each earlier parole or TPS draw takes its residual
+  from the candidates no earlier draw took. The reconciliation selects by
+  person-keyed hash draws, which order the free candidates as a uniform
+  random order would, so each free candidate of a draw that takes mass
+  ``take`` from free mass ``available`` stays free with probability
+  ``1 - take / available``. Refugee, asylee and withholding draws take only
+  ``OTHER_NON_CITIZEN`` rows, which PUMS cannot show, so the estimate leaves
+  their takes out and overstates a later draw's share by whatever they take
+  of its candidates.
+
 The output holds aggregates only.
 """
 
@@ -218,6 +231,8 @@ achieved = receipt["humanitarian_draw_achieved"]
 draws = {}
 # Each earlier draw's candidates and residual, in manifest order.
 earlier: list[tuple[np.ndarray, float]] = []
+# Each ACS person's probability that no earlier parole or TPS draw took them.
+free = np.ones(len(acs_weight), dtype=np.float64)
 for draw in immigration.us_immigration_controls().humanitarian:
     target = float(draw.target)
     stage = float(achieved[draw.label]["population"])
@@ -240,6 +255,13 @@ for draw in immigration.us_immigration_controls().humanitarian:
     worst_supply = max(0.0, supply - removed)
     exact_ssn_rule = draw.category in {"paroled_one_year", "tps"}
     worst_reach = immutable + (min(worst_supply, residual) if exact_ssn_rule else 0.0)
+    expected_reach = None
+    if exact_ssn_rule:
+        available = kappa * float((acs_weight * free)[candidates].sum())
+        take = min(residual, available)
+        if available > 0:
+            free[candidates] *= 1.0 - take / available
+        expected_reach = immutable + take
     draws[draw.label] = {
         "target": target,
         "asec_stage_population": stage,
@@ -254,12 +276,23 @@ for draw in immigration.us_immigration_controls().humanitarian:
         ),
         "asec_arm_share_of_target": immutable / target if target > 0 else None,
         "worst_case_share_of_target": worst_reach / target if target > 0 else None,
+        "expected_share_of_target": (
+            expected_reach / target
+            if expected_reach is not None and target > 0
+            else None
+        ),
     }
     print(
         f"{draw.label:32s} target {target:9,.0f}  ASEC arm {immutable:9,.0f}  "
         f"residual {residual:9,.0f}  ACS bound {supply:9,.0f}  "
         f"short {max(0.0, residual - supply):9,.0f}  "
-        f"worst-case share {worst_reach / target if target > 0 else float('nan'):.3f}"
+        f"worst-case share {worst_reach / target if target > 0 else float('nan'):.3f}  "
+        "expected share "
+        + (
+            f"{expected_reach / target:.3f}"
+            if expected_reach is not None and target > 0
+            else "n/a"
+        )
     )
 positive = [entry for entry in draws.values() if entry["target"] > 0]
 lowest_worst_case = min(entry["worst_case_share_of_target"] for entry in positive)
