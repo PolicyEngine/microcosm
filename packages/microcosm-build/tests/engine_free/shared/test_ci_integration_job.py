@@ -68,7 +68,7 @@ def test_integration_job_is_uk_selected_and_read_only() -> None:
 
     assert "needs: select-countries" in integration
     assert "if: needs['select-countries'].outputs.run_uk == 'true'" in integration
-    assert "timeout-minutes: 15" in integration
+    assert "timeout-minutes: 20" in integration
     assert "permissions:\n      contents: read" in integration
     assert "persist-credentials: false" in integration
     assert "environment:" not in integration
