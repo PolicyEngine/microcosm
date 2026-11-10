@@ -12,6 +12,11 @@ written, in a directory named after its release, and then calls
 :func:`rewrite_release_dir`. :func:`publication_commands` gives the
 ``microcosm-publish-release-build`` commands the writer prints: one that
 publishes the build, and one that makes it its release's current build.
+
+A build that names another build (an SPM enrichment or a recertification its
+parent, an ACS build its donor) names a build in a folder by ``release`` and
+``build``, and a build that keeps only its tag by its ID and ``revision``.
+:func:`referenced_build` says where either one's files are read.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ import json
 import re
 import shlex
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -33,9 +39,11 @@ from microcosm.data.contract import (
 )
 
 __all__ = [
+    "ReferencedBuild",
     "build_folder_build_manifest",
     "build_folder_release_manifest",
     "publication_commands",
+    "referenced_build",
     "rewrite_release_dir",
 ]
 
@@ -196,3 +204,50 @@ def publication_commands(
         "publish_command": shlex.join(publish),
         "promote_command": shlex.join([*command, "--repo-id", repo_id, "--promote"]),
     }
+
+
+@dataclass(frozen=True)
+class ReferencedBuild:
+    """Where a referenced build's files are: a repository, the revision to
+    read them at, and the folder that holds its manifests."""
+
+    repo_id: str
+    revision: str
+    folder: str
+
+
+def referenced_build(reference: Mapping[str, Any]) -> ReferencedBuild:
+    """Where the build a reference names is read.
+
+    A build-folder reference has ``release`` and ``build`` and is read at
+    ``main`` from ``releases/<release>/<build>``, which never changes. A tag
+    reference has a ``revision`` and the build's ID as ``build_id`` or
+    ``release_id``, and is read at that tag from ``releases/<id>``. Both have
+    ``repo_id``; a reference with parts of both forms is refused.
+    """
+    repo_id = reference.get("repo_id")
+    release, build = reference.get("release"), reference.get("build")
+    revision = reference.get("revision")
+    build_id = reference.get("build_id") or reference.get("release_id")
+    if not isinstance(repo_id, str) or not repo_id:
+        raise ValueError(f"a build reference names no repo_id: {dict(reference)}")
+    folder_form = release is not None or build is not None
+    if folder_form:
+        if revision is not None or not (
+            isinstance(release, str) and release and isinstance(build, str) and build
+        ):
+            raise ValueError(
+                "a build-folder reference names a release and a build, and no "
+                f"revision: {dict(reference)}"
+            )
+        return ReferencedBuild(
+            repo_id=repo_id, revision="main", folder=f"releases/{release}/{build}"
+        )
+    if not (isinstance(revision, str) and revision and isinstance(build_id, str)):
+        raise ValueError(
+            "a tag reference names the build's ID (build_id or release_id) and "
+            f"its revision: {dict(reference)}"
+        )
+    return ReferencedBuild(
+        repo_id=repo_id, revision=revision, folder=f"releases/{build_id}"
+    )
