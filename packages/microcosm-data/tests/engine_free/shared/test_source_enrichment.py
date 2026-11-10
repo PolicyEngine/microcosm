@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 import warnings
@@ -12,7 +11,14 @@ import numpy as np
 import pytest
 
 from microcosm.data import source_enrichment as enrichment
-from microcosm.data.contract import ReleaseContractError, validate_release_dir
+from microcosm.data.build_folder_manifests import rewrite_release_dir
+from microcosm.data.contract import (
+    US_NATIONAL_RELEASE_ID,
+    US_RECEIPT_DONOR_RELEASE_ID,
+    US_RELEASE_DATASET_FILES,
+    ReleaseContractError,
+    validate_release_dir,
+)
 from microcosm.data.h5_enrichment import append_native_spm_role, compare_h5_enrichment
 from microcosm.data.publish_cli import main as publish_main
 from microcosm.data.release import publish_release
@@ -181,6 +187,62 @@ def candidate(tmp_path, monkeypatch):
         }
     _write(release / "release_manifest.json", manifest)
     return release, parent, artifact_root
+
+
+#: The build the build-folder candidate is, in the national release.
+_BUILD = "populace-us-2024-test-enrichment"
+
+
+@pytest.fixture
+def build_folder_candidate(candidate, tmp_path):
+    """The candidate as a build of the national release, in its build folder.
+
+    The directory is named after the release, the H5 has the release's
+    dataset file name, the parent is named as a build in the national
+    release's folder, and both manifests name the release and the build.
+    """
+    release, parent, root = candidate
+    folder_release = tmp_path / "build-folder" / US_NATIONAL_RELEASE_ID
+    shutil.copytree(release, folder_release)
+    folder_root = tmp_path / "build-folder-artifacts"
+    folder_root.mkdir()
+    h5 = folder_root / US_RELEASE_DATASET_FILES[US_NATIONAL_RELEASE_ID]
+    shutil.copyfile(root / "populace_us_2024.h5", h5)
+    dataset = {"filename": h5.name, "sha256": enrichment.sha256_file(h5)}
+    _edit(
+        folder_release,
+        enrichment.SOURCE_ENRICHMENT_FILE,
+        lambda report: report.update(
+            dataset=dataset,
+            parent=enrichment.parent_reference(
+                enrichment.PARENT_BUILD_ID,
+                dataset_sha256=enrichment.PARENT_DATASET_SHA256,
+                files=enrichment.PARENT_FILES,
+            ),
+        ),
+    )
+    _edit(
+        folder_release,
+        "build_manifest.json",
+        lambda build: build.update(dataset=dataset),
+    )
+
+    def tagged_details(manifest):
+        manifest["build"]["built_at"] = "2026-11-10T00:00:00+00:00"
+        manifest["artifacts"]["dataset"]["path"] = h5.name
+
+    _edit(folder_release, "release_manifest.json", tagged_details)
+    rewrite_release_dir(folder_release, build=_BUILD)
+    return folder_release, parent, folder_root
+
+
+def _edit(release, name, mutate):
+    """Change one JSON file of ``release`` and reseal its artifact digest."""
+    path = release / name
+    payload = json.loads(path.read_text())
+    mutate(payload)
+    _write(path, payload)
+    _refresh(release, name)
 
 
 def _validate(candidate, **kwargs):
@@ -495,104 +557,82 @@ def test_certification_writes_new_bundle_and_preflight_replays(
     assert all(call["require_wheels"] for call in calls)
 
 
-def test_certified_enrichment_publishes_complete_bundle_and_root_h5(
-    candidate, tmp_path, monkeypatch
-):
-    from test_support.microcosm_data.release import FakeHub
-
-    _, parent, root = candidate
-    release, compatibility_calls = _qualify_candidate(candidate, tmp_path, monkeypatch)
-    manifest = json.loads((release / "release_manifest.json").read_text())
-    dataset = manifest["artifacts"]["dataset"]
-    prefix = f"releases/{release.name}/"
-    release_paths = {
-        f"{prefix}{path.name}" for path in release.iterdir() if path.is_file()
-    }
-    assert f"{prefix}{dataset['path']}" not in release_paths
-    hub = FakeHub()
-    calls_before_publication = len(compatibility_calls)
-
-    pointer = publish_release(
-        release,
-        "policyengine/populace-us",
-        parent_h5=parent,
-        artifact_root=root,
-        compatibility_wheels=(tmp_path / "country.whl",),
-        api=hub,
-        notify=False,
-    )
-
-    assert len(compatibility_calls) == calls_before_publication + 1
-    assert compatibility_calls[-1] == {
-        "require_wheels": True,
-        "compatibility_wheels": (tmp_path / "country.whl",),
-    }
-    commits = [event for kind, event in hub.events if kind == "create_commit"]
-    assert [commit["revision"] for commit in commits] == [
-        f"release-staging/{release.name}",
-        "main",
-    ]
-    # Immutable staging and main promotion each upload the same bundle once.
-    # Real file collection must deduplicate contract/manifest entries and keep
-    # the H5 at the root rather than creating a second release-local copy.
-    for commit in commits:
-        paths = commit["paths"]
-        assert len(paths) == len(set(paths))
-        assert [path for path in paths if path.endswith(".h5")] == [dataset["path"]]
-        assert set(paths) - {"latest.json"} == release_paths | {dataset["path"]}
-    assert "latest.json" not in commits[0]["paths"]
-    assert commits[1]["paths"][-1] == "latest.json"
-    assert hub.tags == [{"tag": release.name, "revision": commits[0]["commit"]}]
-    assert hub.events[-1] == ("create_commit", commits[1])
-
-    expected_hashes = {
-        entry["path"] if key == "dataset" else f"{prefix}{entry['path']}": entry[
-            "sha256"
-        ]
-        for key, entry in manifest["artifacts"].items()
-    }
-    for path, expected_sha in expected_hashes.items():
-        uploaded = [content for name, content in hub.uploads if name == path]
-        assert len(uploaded) == 2  # Exactly once in each atomic commit.
-        assert all(
-            hashlib.sha256(content).hexdigest() == expected_sha for content in uploaded
-        )
-    assert hub.uploads[-1][0] == "latest.json"
-    assert sum(path == "latest.json" for path, _ in hub.uploads) == 1
-    assert json.loads(hub.uploads[-1][1]) == pointer
-    assert pointer["release_id"] == release.name
-    assert pointer["paths"] == {
-        name: f"{prefix}{name}.json"
-        for name in (
-            "build_manifest",
-            "release_manifest",
-            "calibration_diagnostics",
-            "us_source_coverage",
-        )
-    }
-
-
-def test_certified_enrichment_preflight_and_publish_reject_tag_mismatch_identically(
-    candidate, tmp_path, monkeypatch
+def test_certified_enrichment_lists_its_complete_build_folder_with_the_h5_once(
+    build_folder_candidate, tmp_path, monkeypatch
 ):
     import microcosm.data.release as release_module
 
-    _, parent, root = candidate
-    release, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    _, parent, root = build_folder_candidate
+    release, compatibility_calls = _qualify_candidate(
+        build_folder_candidate, tmp_path, monkeypatch
+    )
+    wheels = (tmp_path / "country.whl",)
+    # The release contract replays this build's H5 comparison and loader
+    # checks, which take the parent H5 and the tested wheels.
+    monkeypatch.setattr(
+        release_module,
+        "validate_release_dir",
+        lambda release_dir, **options: validate_release_dir(
+            release_dir,
+            **{"parent_h5": parent, "compatibility_wheels": wheels, **options},
+        ),
+    )
+    calls_before_preparation = len(compatibility_calls)
+
+    prepared = release_module.prepare_build_folder_release(
+        release, artifact_root=root, repository="policyengine/populace-us"
+    )
+
+    assert len(compatibility_calls) == calls_before_preparation + 1
+    assert compatibility_calls[-1] == {
+        "require_wheels": True,
+        "compatibility_wheels": wheels,
+    }
+    assert (prepared.release, prepared.build) == (US_NATIONAL_RELEASE_ID, _BUILD)
+    manifest = json.loads((release / "release_manifest.json").read_text())
+    dataset = manifest["artifacts"]["dataset"]
+    files = {item.name: item for item in prepared.files}
+    # Each file once: the two manifests the publisher adds itself, and every
+    # declared artifact, with the H5 read from the artifact root rather than
+    # from a second copy beside the manifests.
+    assert len(files) == len(prepared.files)
+    assert set(files) == {"release_manifest.json", "build_manifest.json"} | {
+        entry["path"] for entry in manifest["artifacts"].values()
+    }
+    assert set(files) == {path.name for path in release.iterdir() if path.is_file()} | {
+        dataset["path"]
+    }
+    assert [name for name in files if name.endswith(".h5")] == [dataset["path"]]
+    assert files[dataset["path"]].path == root / dataset["path"]
+    for entry in manifest["artifacts"].values():
+        assert files[entry["path"]].sha256 == entry["sha256"]
+        assert files[entry["path"]].role == entry["role"]
+    assert files[dataset["path"]].role == "dataset"
+    assert files["build_manifest.json"].role == "build_manifest"
+
+
+def test_certified_enrichment_preflight_and_publish_refuse_a_build_folder_identically(
+    build_folder_candidate, tmp_path, monkeypatch
+):
+    import microcosm.data.release as release_module
+
+    _, parent, root = build_folder_candidate
+    release, _ = _qualify_candidate(build_folder_candidate, tmp_path, monkeypatch)
     monkeypatch.setattr(
         release_module,
         "_hf_api",
-        lambda: pytest.fail("tag mismatch constructed a Hub client"),
+        lambda: pytest.fail("a build-folder release constructed a Hub client"),
     )
     wheels = (tmp_path / "country.whl",)
-    with pytest.raises(ValueError, match="tag_name must match") as published:
+    with pytest.raises(
+        ValueError, match="microcosm-publish-release-build"
+    ) as published:
         publish_release(
             release,
             "policyengine/populace-us",
             parent_h5=parent,
             artifact_root=root,
             compatibility_wheels=wheels,
-            tag_name="unmatched-tag",
             notify=False,
         )
     with pytest.raises(type(published.value)) as preflight:
@@ -605,12 +645,218 @@ def test_certified_enrichment_preflight_and_publish_reject_tag_mismatch_identica
                 str(root),
                 "--compatibility-wheel",
                 str(wheels[0]),
-                "--tag-name",
-                "unmatched-tag",
                 "--preflight-only",
             ]
         )
     assert str(preflight.value) == str(published.value)
+
+
+def test_a_build_folder_candidate_names_its_parent_as_a_build_in_a_folder(
+    build_folder_candidate,
+):
+    report = _validate(build_folder_candidate)
+
+    assert report["parent"] == {
+        "repo_id": "policyengine/populace-us",
+        "release": US_NATIONAL_RELEASE_ID,
+        "build": enrichment.PARENT_BUILD_ID,
+        "dataset_sha256": enrichment.PARENT_DATASET_SHA256,
+        "calibration_diagnostics_schema_version": 5,
+        "files": enrichment.PARENT_FILES,
+    }
+    assert enrichment.PARENT_RELEASE_ID == US_NATIONAL_RELEASE_ID
+    release, parent, root = build_folder_candidate
+    manifest = json.loads((release / "release_manifest.json").read_text())
+    assert (manifest["release"], manifest["build"]) == (US_NATIONAL_RELEASE_ID, _BUILD)
+    with pytest.raises(ReleaseContractError, match="compatibility is pending"):
+        validate_release_dir(release, parent_h5=parent, artifact_root=root)
+
+
+def test_a_tagged_candidate_keeps_naming_its_parent_by_its_tag(candidate):
+    release, _, _ = candidate
+    _edit(
+        release,
+        enrichment.SOURCE_ENRICHMENT_FILE,
+        lambda report: report.update(
+            parent=enrichment.parent_reference(
+                enrichment.PARENT_BUILD_ID,
+                dataset_sha256=enrichment.PARENT_DATASET_SHA256,
+                files=enrichment.PARENT_FILES,
+            )
+        ),
+    )
+
+    with pytest.raises(ReleaseContractError, match="reviewed BuildP identity"):
+        _validate(candidate)
+
+
+def _tag_form_parent(release, root):
+    _edit(
+        release,
+        enrichment.SOURCE_ENRICHMENT_FILE,
+        lambda report: report.update(
+            parent={
+                "build_id": enrichment.PARENT_BUILD_ID,
+                "repo_id": "policyengine/populace-us",
+                "revision": enrichment.PARENT_BUILD_ID,
+                "dataset_sha256": enrichment.PARENT_DATASET_SHA256,
+                "calibration_diagnostics_schema_version": 5,
+                "files": enrichment.PARENT_FILES,
+            }
+        ),
+    )
+    return release
+
+
+def _in_the_receipt_donor_release(release, root):
+    moved = release.with_name(US_RECEIPT_DONOR_RELEASE_ID)
+    release.rename(moved)
+    for name in ("release_manifest.json", "build_manifest.json"):
+        _edit(moved, name, lambda manifest: manifest.update(release=moved.name))
+    return moved
+
+
+def _with_the_tagged_dataset_name(release, root):
+    tagged = root / "populace_us_2024.h5"
+    (root / US_RELEASE_DATASET_FILES[US_NATIONAL_RELEASE_ID]).rename(tagged)
+    for name in (enrichment.SOURCE_ENRICHMENT_FILE, "build_manifest.json"):
+        _edit(
+            release,
+            name,
+            lambda payload: payload["dataset"].update(filename=tagged.name),
+        )
+    _edit(
+        release,
+        "release_manifest.json",
+        lambda manifest: manifest["artifacts"]["dataset"].update(path=tagged.name),
+    )
+    return release
+
+
+def _with_an_artifact_revision(release, root):
+    _edit(
+        release,
+        "release_manifest.json",
+        lambda manifest: manifest["artifacts"]["source_enrichment"].update(
+            revision=_BUILD
+        ),
+    )
+    return release
+
+
+def _declaring_the_build_manifest(release, root):
+    def declare(manifest):
+        manifest["artifacts"]["build_manifest"] = {
+            "kind": "evidence",
+            "path": "build_manifest.json",
+            "repo_id": "policyengine/populace-us",
+            "role": "build_manifest",
+            "sha256": enrichment.sha256_file(release / "build_manifest.json"),
+        }
+
+    _edit(release, "release_manifest.json", declare)
+    return release
+
+
+def _naming_another_build_in_the_build_manifest(release, root):
+    _edit(
+        release,
+        "build_manifest.json",
+        lambda build: build.update(build="populace-us-2024-another-enrichment"),
+    )
+    return release
+
+
+def _with_a_retired_build_id(release, root):
+    _edit(
+        release,
+        "release_manifest.json",
+        lambda manifest: manifest.update(build_id=_BUILD),
+    )
+    return release
+
+
+def _as_the_parent_build(release, root):
+    for name in ("release_manifest.json", "build_manifest.json"):
+        _edit(
+            release,
+            name,
+            lambda manifest: manifest.update(build=enrichment.PARENT_BUILD_ID),
+        )
+    return release
+
+
+def _copying_a_built_with_claim(release, root):
+    _edit(
+        release,
+        "release_manifest.json",
+        lambda manifest: manifest.update(
+            built_with_model_package={"name": "policyengine-us", "version": "1.764.6"}
+        ),
+    )
+    return release
+
+
+@pytest.mark.parametrize(
+    ("change", "refusal"),
+    [
+        (_tag_form_parent, "reviewed BuildP identity"),
+        (
+            _in_the_receipt_donor_release,
+            f"native SPM role enrichment is a build of {US_NATIONAL_RELEASE_ID}",
+        ),
+        (
+            _with_the_tagged_dataset_name,
+            "publishes its H5 as microcosm_us_2024.h5",
+        ),
+        (_with_an_artifact_revision, "artifact source_enrichment pins a revision"),
+        (_declaring_the_build_manifest, "publisher adds the build's manifests"),
+        (_naming_another_build_in_the_build_manifest, "build manifest must name"),
+        (_with_a_retired_build_id, "carries build_id"),
+        (_as_the_parent_build, "requires a NEW US 2024 build"),
+        (_copying_a_built_with_claim, "must not copy built-with package claims"),
+    ],
+)
+def test_a_build_folder_candidate_refuses(build_folder_candidate, change, refusal):
+    release, parent, root = build_folder_candidate
+
+    changed = change(release, root)
+
+    with pytest.raises(ReleaseContractError, match=refusal):
+        _validate((changed, parent, root))
+
+
+def test_certification_records_a_build_folders_built_with_packages_at_its_top_level(
+    build_folder_candidate, tmp_path, monkeypatch
+):
+    _, parent, root = build_folder_candidate
+
+    output, _ = _qualify_candidate(build_folder_candidate, tmp_path, monkeypatch)
+
+    manifest = json.loads((output / "release_manifest.json").read_text())
+    assert (manifest["release"], manifest["build"]) == (US_NATIONAL_RELEASE_ID, _BUILD)
+    assert manifest["built_with_model_package"] == {
+        "name": "policyengine-us",
+        "version": "1.999.0",
+    }
+    assert manifest["built_with_core_package"] == {
+        "name": "policyengine-core",
+        "version": "3.99.0",
+    }
+    assert manifest["artifacts"]["source_enrichment_compatibility"] == {
+        "kind": "diagnostics",
+        "path": enrichment.COMPATIBILITY_FILE,
+        "repo_id": "policyengine/populace-us",
+        "role": "source_enrichment_compatibility",
+        "sha256": enrichment.sha256_file(output / enrichment.COMPATIBILITY_FILE),
+    }
+    assert not any("revision" in entry for entry in manifest["artifacts"].values())
+    validate_release_dir(
+        output,
+        parent_h5=parent,
+        artifact_root=root,
+        compatibility_wheels=(tmp_path / "country.whl",),
+    )
 
 
 @pytest.mark.parametrize("duplicate", ["identical", "different", "symlink"])
