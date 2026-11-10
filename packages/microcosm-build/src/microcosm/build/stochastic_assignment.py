@@ -179,9 +179,9 @@ def keyed_tie_order(
     ``primary`` take the order of their uniforms, then of their ids. Ties
     broken on ids alone put the lowest id first every time, so where the
     copies or geographic clones of one household tie, the lowest copy
-    ordinal always won (microcosm#931). Each uniform is a function of its
-    record's id, so the order does not depend on the order of the rows. Pass
-    a negated key to walk it descending.
+    ordinal always came first (microcosm#931). Each uniform is a function
+    of its record's id, so the order does not depend on the order of the
+    rows. Pass a negated key to walk it descending.
 
     Only the records that share their ``primary`` value with another are
     drawn, since no other record's uniform can move it; NaNs tie with each

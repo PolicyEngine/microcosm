@@ -585,6 +585,63 @@ class TestReceiptsWalk:
         by_id, _ = self._allocate(ids, profit, weights, receipts_per_profit=2.0)
         assert float((tops(by_id) == 0).mean()) == 1.0
 
+    def test_unequal_weight_ties_move_no_untied_landlord_across_a_band(
+        self, monkeypatch
+    ) -> None:
+        # Half the landlords tie on 60 round profits at weights that differ,
+        # as different households reporting one amount do. The keyed order
+        # puts another tied landlord at a band boundary than the id order did,
+        # so tied landlords cross it and the bands' record counts move. An
+        # untied landlord has the same landlords above it in either order, so
+        # it keeps its band, though its receipt can move with its band's
+        # members (microcosm#931).
+        rng = np.random.default_rng((2800, 0))
+        n = 2_400
+        atoms = np.round(np.exp(rng.normal(np.log(9_000.0), 1.0, 60)), -2)
+        profit = np.where(
+            rng.random(n) < 0.5,
+            atoms[rng.integers(0, atoms.size, n)],
+            np.exp(rng.normal(np.log(9_000.0), 1.0, n)),
+        )
+        weights = rng.uniform(50.0, 900.0, n)
+        ids = np.arange(1, n + 1, dtype=np.int64) * 7
+        landlord = profit > 0.0
+        tied = pd.Series(profit).duplicated(keep=False).to_numpy() & landlord
+        assert tied.sum() > n // 3
+
+        def walked_bands() -> np.ndarray:
+            seen: dict[str, np.ndarray] = {}
+            order, walk = components.keyed_tie_order, components._walk_bands
+
+            def recording_order(primary, ids, **kwargs):
+                seen["order"] = order(primary, ids, **kwargs)
+                return seen["order"]
+
+            def recording_walk(ranked_weights, masses, offset):
+                seen["band"] = walk(ranked_weights, masses, offset)
+                return seen["band"]
+
+            with monkeypatch.context() as patch:
+                patch.setattr(components, "keyed_tie_order", recording_order)
+                patch.setattr(components, "_walk_bands", recording_walk)
+                self._allocate(ids, profit, weights, receipts_per_profit=2.0)
+            band = np.full(n, -1)
+            band[np.flatnonzero(landlord)[seen["order"]]] = seen["band"]
+            return band
+
+        keyed = walked_bands()
+        self._by_id(monkeypatch)
+        by_id = walked_bands()
+
+        crossed = keyed != by_id
+        assert not crossed[landlord & ~tied].any()
+        assert crossed[tied].sum() > 10
+        bands = len(HMRC_PROPERTY_RENTAL_RECEIPTS_BAND_LOWER_BOUNDS)
+        assert (
+            np.bincount(keyed[landlord], minlength=bands)
+            != np.bincount(by_id[landlord], minlength=bands)
+        ).any()
+
 
 class TestStageTransform:
     def _frame(self):

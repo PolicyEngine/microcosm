@@ -1518,6 +1518,10 @@ _KEYED_CELL_LABELS = (
 )
 #: A cell that walks before every other one in the lowest income band.
 _KEYED_EARLY_CELL = (20_000.0, 20, "WALES", 15)
+#: A second cell in the 37,700 income band, short of its raked target, so
+#: that band's pooled walk runs too: above band 0 a band's position and its
+#: lower bound differ, so the label test sees which one the key names.
+_KEYED_SHORT_HIGHER_CELL = (55_000.0, 70, "LONDON", 5)
 
 
 def _cells_frame(cells, *, zeroed=()) -> Frame:
@@ -1661,12 +1665,31 @@ class TestKeyedWalkOffsets:
     the change leaves alone.
     """
 
-    def test_each_walk_and_plan_reads_one_uniform_keyed_on_its_label(self) -> None:
-        _, draws = _labelled_draws(_cells_frame(_KEYED_CELLS))
+    @pytest.mark.parametrize(
+        ("cells", "added", "pools"),
+        [
+            (_KEYED_CELLS, set(), {"pool:0"}),
+            (
+                (*_KEYED_CELLS, _KEYED_SHORT_HIGHER_CELL),
+                {"cell:37700:65:london"},
+                {"pool:0", "pool:37700"},
+            ),
+        ],
+        ids=["lowest_band_pools", "a_higher_band_pools_too"],
+    )
+    def test_each_walk_and_plan_reads_one_uniform_keyed_on_its_label(
+        self, cells, added: set[str], pools: set[str]
+    ) -> None:
+        """A pooled walk is keyed on its income band's lower bound. In band 0
+        that is also the band's position, so the second frame makes the
+        37,700 band pool as well, where a key on the position (pool:1) or on
+        the lowest band (pool:0) reads another label's uniform."""
 
-        cells = {label for label in draws if label.startswith("cell:")}
-        assert cells == set(_KEYED_CELL_LABELS)
-        assert {label for label in draws if label.startswith("pool:")} == {"pool:0"}
+        _, draws = _labelled_draws(_cells_frame(cells))
+
+        walked = {label for label in draws if label.startswith("cell:")}
+        assert walked == set(_KEYED_CELL_LABELS) | added
+        assert {label for label in draws if label.startswith("pool:")} == pools
         plans = {label for label in draws if label.startswith("plan:")}
         assert {_label_band(label) for label in plans} == {"0", "37700", "50000"}
         for label, (uniforms, _) in draws.items():
