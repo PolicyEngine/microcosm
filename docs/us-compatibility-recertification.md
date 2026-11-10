@@ -322,11 +322,10 @@ recorded commit.
    which publishes it into its own folder of the national release without
    making it current. A recertification republishes its parent's data under a
    wider claim, so consumers reach it by name:
-   `microcosm.data.load("us", build="CHILD_ID")`. `--make-current`, or the
-   same command with `--promote` later, would make it the national release's
-   current build, and so the US default. The tagged publisher refused to make
-   a recertification child the default; `microcosm-publish-release-build`
-   does not check, so making one current is a separate, deliberate decision.
+   `microcosm.data.load("us", build="CHILD_ID")`. It never becomes the
+   national release's current build, and so never the US default:
+   `--make-current`, and `--promote` later, refuse a recertification, as the
+   tagged publisher refused to point `latest.json` at one.
 
 7. **Certify the bundle downstream.** policyengine.py certifies the child on
    its publisher claim (`compatibility_basis: legacy_compatible_model_package`,
