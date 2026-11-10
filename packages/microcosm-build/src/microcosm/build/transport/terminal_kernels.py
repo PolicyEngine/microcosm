@@ -43,6 +43,7 @@ import numpy as np
 import pandas as pd
 
 import microcosm.build.artifact_files as artifact_files_module
+import microcosm.build.trace as trace_module
 import microcosm.calibrate._target_loss_attribution as loss_attribution_module
 import microcosm.calibrate.artifacts as calibrate_artifacts_module
 import microcosm.calibrate.diagnostics as calibrate_diagnostics_module
@@ -231,6 +232,17 @@ class DiagnosticsCalibrationKernel(KernelBase):
             frame_bundle_module,
             frame_schema_module,
             frame_weights_module,
+            # decode_target_surface checks the surface's factor evidence and
+            # its Chronicle feed identity through the first three; the
+            # surface's targets carry their hierarchy, the rebuilt result's
+            # constraint matrix checks its monetary binding, and the
+            # diagnostics are encoded as canonical JSON (microcosm#931).
+            target_kernels.reference_factors_module,
+            target_kernels.ledger_artifact_module,
+            target_kernels.chronicle_epoch_module,
+            target_kernels.hierarchy_module,
+            target_kernels.monetary_binding_module,
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -559,6 +571,13 @@ class ExportPrepareKernel(KernelBase):
             frame_bundle_module,
             frame_schema_module,
             frame_weights_module,
+            # require_terminal_gate_reports decodes the gate reports into the
+            # manifest, phase report and result records these three define,
+            # and the descriptor is digested as canonical JSON (microcosm#931).
+            gate_kernels.country_spec_module,
+            gate_kernels.gate_battery_module,
+            gate_kernels.gates_module,
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -642,6 +661,11 @@ class ExportReadbackKernel(KernelBase):
             artifact_files_module,
             materialize_module,
             axiom_adapter_module,
+            # file_artifact digests the exported file through
+            # trace.sha256_file, and the report is encoded as canonical JSON
+            # (microcosm#931).
+            trace_module,
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -689,6 +713,13 @@ class TransportPackageKernel(KernelBase):
             graph_inputs,
             artifact_types,
             gate_kernels,
+            # require_terminal_gate_reports decodes the gate reports into the
+            # manifest, phase report and result records these three define,
+            # and the receipt is digested as canonical JSON (microcosm#931).
+            gate_kernels.country_spec_module,
+            gate_kernels.gate_battery_module,
+            gate_kernels.gates_module,
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 
