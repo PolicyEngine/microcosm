@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +15,7 @@ import pytest
 
 from microcosm.build.us_runtime.spm_role_source import SpmRoleSourceResult
 from microcosm.data import source_enrichment as contract
+from microcosm.data.contract import US_NATIONAL_RELEASE_ID
 from microcosm.data.h5_enrichment import file_sha256
 from microcosm.data.publish_cli import _staging_undelivered
 from tools import build_us_spm_role_enrichment as builder
@@ -148,7 +150,7 @@ def _build(inputs, **overrides):
 
 
 def _release(inputs):
-    return inputs.output / "releases" / inputs.release_id
+    return inputs.output / "releases" / US_NATIONAL_RELEASE_ID
 
 
 def _assert_clean_failure(inputs):
@@ -160,11 +162,23 @@ def test_builder_assembles_new_candidate_through_real_contract(inputs):
     before = inputs.parent.read_bytes()
     report = _build(inputs)
     release = _release(inputs)
-    candidate = inputs.output / "artifacts" / "populace_us_2024.h5"
+    candidate = inputs.output / "artifacts" / "microcosm_us_2024.h5"
     assert inputs.parent.read_bytes() == before
     assert inputs.calls == [(inputs.parent, inputs.source_paths, inputs.parent_sha)]
     assert report["compatibility"] == {"status": "pending"}
-    assert report["dataset"]["sha256"] == file_sha256(candidate)
+    assert report["dataset"] == {
+        "filename": "microcosm_us_2024.h5",
+        "sha256": file_sha256(candidate),
+    }
+    # The parent is a build in the national release's folder, not a tag.
+    assert report["parent"] == {
+        "repo_id": "policyengine/populace-us",
+        "release": US_NATIONAL_RELEASE_ID,
+        "build": contract.PARENT_BUILD_ID,
+        "dataset_sha256": inputs.parent_sha,
+        "calibration_diagnostics_schema_version": 5,
+        "files": contract.PARENT_FILES,
+    }
     enriched = pd.read_hdf(candidate, "person")
     pd.testing.assert_frame_equal(
         enriched.drop(columns=[contract.ROLE_VARIABLE]),
@@ -180,6 +194,11 @@ def test_builder_assembles_new_candidate_through_real_contract(inputs):
             inputs.parent_release / name.removeprefix("parent_")
         ).read_bytes()
     build = json.loads((release / "build_manifest.json").read_text())
+    assert (build["release"], build["build"]) == (
+        US_NATIONAL_RELEASE_ID,
+        inputs.release_id,
+    )
+    assert "build_id" not in build
     assert build["code"] == inputs.code
     assert build["calibration"]["mode"] == "inherited"
     assert build["calibration"]["diagnostics_schema_version"] == 5
@@ -188,14 +207,36 @@ def test_builder_assembles_new_candidate_through_real_contract(inputs):
     manifest = json.loads((release / "release_manifest.json").read_text())
     assert manifest["compatible_core_packages"] == []
     assert manifest["compatible_model_packages"] == []
-    assert manifest["build"] == {"build_id": inputs.release_id}
+    assert (manifest["release"], manifest["build"]) == (
+        US_NATIONAL_RELEASE_ID,
+        inputs.release_id,
+    )
+    assert datetime.fromisoformat(manifest["built_at"]).tzinfo is not None
+    assert "built_with_model_package" not in manifest
     assert manifest["data_package"] == {
         "name": "microcosm-data",
         "version": metadata.version("microcosm-data"),
     }
-    assert {entry["revision"] for entry in manifest["artifacts"].values()} == {
-        inputs.release_id
+    assert manifest["default_datasets"] == {"national": "microcosm_us_2024"}
+    # No artifact keeps a tag, and the build-folder publisher adds the build
+    # manifest itself, so the release manifest does not declare it.
+    assert not any("revision" in entry for entry in manifest["artifacts"].values())
+    assert {key: entry["role"] for key, entry in manifest["artifacts"].items()} == {
+        key: "dataset" if key == "microcosm_us_2024" else key
+        for key in manifest["artifacts"]
     }
+    assert sorted(entry["path"] for entry in manifest["artifacts"].values()) == sorted(
+        [
+            "microcosm_us_2024.h5",
+            "calibration_diagnostics.json",
+            "parent_build_manifest.json",
+            "parent_release_manifest.json",
+            contract.SOURCE_ENRICHMENT_FILE,
+            contract.SOURCE_EVIDENCE_FILE,
+            contract.SOURCE_PROVENANCE_FILE,
+            "us_source_coverage.json",
+        ]
+    )
     for path in (
         candidate,
         release / contract.SOURCE_EVIDENCE_FILE,
@@ -214,9 +255,10 @@ def test_reference_csv_is_optional_but_reconstruction_is_mandatory(inputs):
 
 
 def test_repeat_build_has_identical_artifacts_and_receipts(inputs):
-    first = _build(inputs)
+    built_at = "2026-11-10T12:00:00+00:00"
+    first = _build(inputs, built_at=built_at)
     second_output = inputs.output.with_name("candidate-repeat")
-    second = _build(inputs, output_dir=second_output)
+    second = _build(inputs, output_dir=second_output, built_at=built_at)
     assert first == second
     first_files = {
         str(path.relative_to(inputs.output)): path.read_bytes()
@@ -357,29 +399,27 @@ def test_producer_rejects_imported_code_from_another_checkout(monkeypatch):
         builder._producer_identity()
 
 
-def test_real_builder_manifest_certifies_prepares_and_publishes(
+def test_real_builder_manifest_certifies_and_prepares_its_build_folder(
     inputs, tmp_path, monkeypatch
 ):
     """Exercise the emitted manifest; synthetic source/runtime probes stay local."""
-    from importlib import import_module
-
     from microcosm.data import release as publisher
+    from microcosm.data.contract import validate_release_dir
 
-    fake_hub = import_module("test_support.microcosm_data.release").FakeHub
     _build(inputs)
     candidate_release = _release(inputs)
     artifact_root = inputs.output / "artifacts"
-    dataset = artifact_root / "populace_us_2024.h5"
+    dataset = artifact_root / "microcosm_us_2024.h5"
     original_files = {
         path.name: path.read_bytes()
         for path in candidate_release.iterdir()
         if path.is_file()
     }
     manifest = json.loads(original_files["release_manifest.json"])
-    assert manifest["default_datasets"] == {"national": "populace_us_2024"}
-    assert manifest["artifacts"]["build_manifest"]["kind"] == "evidence"
-    assert manifest["artifacts"]["build_manifest"]["path"] == "build_manifest.json"
-    assert manifest["artifacts"]["populace_us_2024"]["kind"] == "microdata"
+    assert manifest["default_datasets"] == {"national": "microcosm_us_2024"}
+    assert "build_manifest" not in manifest["artifacts"]
+    assert manifest["artifacts"]["microcosm_us_2024"]["kind"] == "microdata"
+    assert manifest["artifacts"]["microcosm_us_2024"]["path"] == dataset.name
 
     # Source derivation/producer identity and wheel probes have their own tests.
     # These seams keep this builder-to-publisher test independent of microdata,
@@ -411,10 +451,10 @@ def test_real_builder_manifest_certifies_prepares_and_publishes(
     monkeypatch.setattr(
         contract, "_check_producer_source_identity", check_synthetic_producer
     )
-    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("must use FakeHub"))
+    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("must not use Hub"))
     certified = contract.certify_source_enrichment(
         candidate_release,
-        tmp_path / "certified" / inputs.release_id,
+        tmp_path / "certified" / US_NATIONAL_RELEASE_ID,
         parent_h5=inputs.parent,
         artifact_root=artifact_root,
         compatibility_wheels=wheels,
@@ -424,69 +464,37 @@ def test_real_builder_manifest_certifies_prepares_and_publishes(
         for path in candidate_release.iterdir()
         if path.is_file()
     }
-    prepared = publisher.prepare_release(
-        certified,
-        parent_h5=inputs.parent,
-        artifact_root=artifact_root,
-        compatibility_wheels=wheels,
+    # The release contract replays the H5 comparison and the loader checks,
+    # which take the parent H5 and the tested wheels.
+    monkeypatch.setattr(
+        publisher,
+        "validate_release_dir",
+        lambda release_dir, **options: validate_release_dir(
+            release_dir,
+            **{"parent_h5": inputs.parent, "compatibility_wheels": wheels, **options},
+        ),
     )
-    assert prepared.filenames.count("build_manifest.json") == 1
-    assert "populace_us_2024.h5" not in prepared.filenames
-    assert prepared.root_artifacts == {"populace_us_2024.h5": file_sha256(dataset)}
-    hub = fake_hub()
-    pointer = publisher.publish_release(
-        certified,
-        "policyengine/populace-us",
-        parent_h5=inputs.parent,
-        artifact_root=artifact_root,
-        compatibility_wheels=wheels,
-        api=hub,
-        notify=False,
-        updated_at="2026-09-09T00:00:00+00:00",
+    prepared = publisher.prepare_build_folder_release(
+        certified, artifact_root=artifact_root, repository="policyengine/populace-us"
     )
-    assert (
-        len(compatibility_calls) == 4
-    )  # Certification, its replay, preflight, publish.
-    manifest = json.loads((certified / "release_manifest.json").read_text())
-    prefix = f"releases/{inputs.release_id}/"
-    expected_hashes = {
-        entry["path"]
-        if entry["kind"] == "microdata"
-        else prefix + entry["path"]: entry["sha256"]
-        for entry in manifest["artifacts"].values()
+    assert len(compatibility_calls) == 3  # Certification, its replay, preparation.
+    assert (prepared.release, prepared.build) == (
+        US_NATIONAL_RELEASE_ID,
+        inputs.release_id,
+    )
+    certified_manifest = json.loads((certified / "release_manifest.json").read_text())
+    assert certified_manifest["built_with_model_package"] == {
+        "name": "policyengine-us",
+        "version": "1.999.0",
     }
-    commits = [event for kind, event in hub.events if kind == "create_commit"]
-    assert [commit["revision"] for commit in commits] == [
-        f"release-staging/{inputs.release_id}",
-        "main",
-    ]
-    for commit in commits:
-        paths = commit["paths"]
-        assert len(paths) == len(set(paths))
-        assert [path for path in paths if path.endswith(".h5")] == [dataset.name]
-        assert set(paths) - {"latest.json"} == set(expected_hashes) | {
-            prefix + "release_manifest.json"
-        }
-    for path, expected in expected_hashes.items():
-        contents = [
-            content for uploaded_path, content in hub.uploads if uploaded_path == path
-        ]
-        assert len(contents) == 2  # Once in staging and once in main's atomic commit.
-        assert all(
-            hashlib.sha256(content).hexdigest() == expected for content in contents
-        )
-    assert hub.tags == [{"tag": inputs.release_id, "revision": commits[0]["commit"]}]
-    assert "latest.json" not in commits[0]["paths"]
-    assert commits[-1]["paths"][-1] == "latest.json"
-    assert hub.uploads[-1][0] == "latest.json"
-    assert json.loads(hub.uploads[-1][1]) == pointer
-    assert pointer["release_id"] == inputs.release_id
-    assert pointer["paths"] == {
-        name: f"{prefix}{name}.json"
-        for name in (
-            "build_manifest",
-            "release_manifest",
-            "calibration_diagnostics",
-            "us_source_coverage",
-        )
+    files = {item.name: item for item in prepared.files}
+    assert len(files) == len(prepared.files)
+    assert set(files) == {"release_manifest.json", "build_manifest.json"} | {
+        entry["path"] for entry in certified_manifest["artifacts"].values()
     }
+    assert [name for name in files if name.endswith(".h5")] == [dataset.name]
+    assert files[dataset.name].path == dataset
+    assert files[dataset.name].role == "dataset"
+    for entry in certified_manifest["artifacts"].values():
+        assert files[entry["path"]].sha256 == entry["sha256"]
+        assert files[entry["path"]].role == entry["role"]
