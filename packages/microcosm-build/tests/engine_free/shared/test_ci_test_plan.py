@@ -1885,8 +1885,9 @@ def test_country_specific_source_paths_keep_their_existing_scope(
 
 
 def _country_words(name: str) -> set[str]:
-    """Return the countries that are words of a file name, found one character
-    at a time: a word is a maximal run of ASCII letters, read without case."""
+    """Return the countries a file name holds as words. It walks the name one
+    character at a time and takes each maximal run of ASCII letters, lower-cased,
+    as a word."""
 
     words = {
         "".join(run).lower()
@@ -1900,8 +1901,8 @@ def _country_words(name: str) -> set[str]:
 
 def _tool_scope(path: str) -> str | None:
     """The scope of a file below ``tools/`` that no earlier rule claims: a
-    country when it is a word of the file name and the other country's letters
-    appear nowhere in the lower-cased path."""
+    country when the file name holds it as a word and the other country's
+    letters appear nowhere in the lower-cased path."""
 
     name = path.rsplit("/", 1)[-1]
     if PurePosixPath(name).suffix.lower() in ci_test_plan.DOC_SUFFIXES:
@@ -1948,7 +1949,7 @@ def test_a_tool_belongs_to_a_country_exactly_when_its_path_holds_it_alone(
     path: str,
 ) -> None:
     """Invariant: a file below ``tools/`` that no earlier rule claims scopes to
-    a country exactly when that country is a word of its file name and the
+    a country exactly when its file name holds that country as a word and the
     other country's letters appear nowhere in its lower-cased path, to
     ``None`` when it is documentation, and to shared otherwise."""
 

@@ -108,7 +108,7 @@ A documentation-only pull request selects neither country; a US-only or UK-only
 pull request selects that country; shared, mixed, unknown, or empty changed-path
 sets select both. Below `tools/`, documentation, test modules and the country
 runtime packages keep their usual scope. Any other file there belongs to a
-country when that country is a whole word of its file name and the other
+country when its file name holds that country as a whole word and the other
 country's letters appear nowhere in its path; every other tool takes the
 `shared` scope. Main pushes select both without querying the pull-request API.
 The UK integration job follows the same UK selection as the ordinary UK engine
