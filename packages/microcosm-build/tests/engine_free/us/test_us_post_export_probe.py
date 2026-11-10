@@ -525,6 +525,37 @@ def test_an_older_reference_manifest_is_compared_not_fatal(probe_tool) -> None:
     ]
 
 
+def test_the_target_surface_resolves_from_a_build_folder_release_manifest(
+    probe_tool,
+) -> None:
+    """A reference release's manifest in the build-folder layout names its
+    release and build as strings and records the build's details, the target
+    surface selection among them, at its top level (microcosm#1570); a
+    tagged manifest records them in its build object."""
+    selection = {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+    }
+    identity = {
+        "release": "microcosm-us-2024-national",
+        "build": "populace-us-2024-fixture",
+    }
+    for manifest, field in (
+        ({**identity, "target_surface_selection": selection}, ""),
+        ({"build": {"target_surface_selection": selection}}, "build."),
+    ):
+        surface = probe_tool.resolve_target_surface(None, None, manifest)
+        assert surface == {
+            "mode": "national_state",
+            "dropped_congressional_district_targets": 27_148,
+            "source": (
+                f"reference release_manifest.json {field}target_surface_selection"
+            ),
+        }
+
+    assert probe_tool.resolve_target_surface(None, None, identity)["mode"] == "full"
+
+
 def test_census_with_a_receipt_is_refused(
     probe_tool, builder, fake_reforms, chain, tmp_path
 ) -> None:

@@ -18352,7 +18352,12 @@ def test_national_state_surface_source_coverage_excludes_dropped_cd_sources() ->
         assert alias not in coverage["active_target_aliases"]
         reason = coverage["reviewed_exclusions"][alias]
         assert "--target-surface national_state dropped all 1 " in reason
-        assert "build.target_surface_selection" in reason
+        # Where the manifests record the selection in the build-folder layout
+        # (microcosm#1570): the release manifest's top level, and the build
+        # manifest's calibration block.
+        assert "build.target_surface_selection" not in reason
+        assert "release_manifest.json target_surface_selection" in reason
+        assert "build_manifest.json calibration.target_surface_selection" in reason
     population = coverage["hard_target_families"]["population_age_sex"]
     assert (
         "census-acs-s0101-congressional-district-age-2024"
