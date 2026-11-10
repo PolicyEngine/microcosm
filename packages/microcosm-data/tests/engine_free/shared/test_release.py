@@ -1509,6 +1509,67 @@ def test_latest_evidence_release_requires_the_id_segment(hub: FakeHub) -> None:
         latest_evidence_release("policyengine/populace-us", api=hub)
 
 
+#: An evidence-tier build of the US evidence release (microcosm#1570).
+US_EVIDENCE_BUILD = "populace-us-2024-0fb05b6-evidence-20261201T000000Z"
+
+
+def _seed_us_releases_record(hub: FakeHub, *, evidence_current: str | None) -> None:
+    """The US repository's releases.json after its switch, with the evidence
+    release's current build ``evidence_current``."""
+    from microcosm.data.contract import US_EVIDENCE_RELEASE_ID, US_NATIONAL_RELEASE_ID
+
+    record = {
+        "schema_version": 1,
+        "default": US_NATIONAL_RELEASE_ID,
+        "releases": {
+            US_NATIONAL_RELEASE_ID: {"role": "national", "current": None, "builds": {}},
+            US_EVIDENCE_RELEASE_ID: {
+                "role": "national",
+                "current": evidence_current,
+                "builds": {
+                    US_EVIDENCE_BUILD: {
+                        "published_at": "2026-12-01T00:00:00+00:00",
+                        "withdrawn": False,
+                    }
+                },
+            },
+        },
+    }
+    hub.seed_main_file("releases.json", json.dumps(record).encode())
+
+
+def test_latest_evidence_release_reads_the_evidence_releases_current_build(
+    hub: FakeHub,
+) -> None:
+    """Once the US repository records its builds in releases.json, the
+    evidence tier is the evidence release, and its current build takes the
+    place of latest-evidence.json (microcosm#1570)."""
+    from microcosm.data.contract import US_EVIDENCE_RELEASE_ID
+
+    _seed_us_releases_record(hub, evidence_current=US_EVIDENCE_BUILD)
+
+    pointer = latest_evidence_release("policyengine/populace-us", api=hub)
+
+    folder = f"releases/{US_EVIDENCE_RELEASE_ID}/{US_EVIDENCE_BUILD}"
+    assert pointer.release_id == US_EVIDENCE_BUILD
+    # A build folder never changes, so its files are read at main.
+    assert pointer.revision == "main"
+    assert pointer.tier == "evidence"
+    assert pointer.line is None
+    assert pointer.updated_at == "2026-12-01T00:00:00+00:00"
+    assert pointer.paths["release_manifest"] == f"{folder}/release_manifest.json"
+    assert pointer.paths["build_manifest"] == f"{folder}/build_manifest.json"
+
+
+def test_latest_evidence_release_refuses_an_evidence_release_without_a_current_build(
+    hub: FakeHub,
+) -> None:
+    _seed_us_releases_record(hub, evidence_current=None)
+
+    with pytest.raises(ValueError, match="no current build"):
+        latest_evidence_release("policyengine/populace-us", api=hub)
+
+
 def test_certified_latest_pointer_keeps_its_certified_shape(hub: FakeHub) -> None:
     """The certified pointer payload gains no tier field — its bytes are the
     pre-#506 shape, so existing consumers see no drift."""
