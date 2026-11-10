@@ -6,11 +6,14 @@ spine gate manifest (``graph_evidence.uk_spine_gate_manifest``) and classify
 the local gates (``full_gates.classify_full_gate_outcomes``), and the dense
 solve keys on the source preflight. So the battery's shared hash binds this
 small module instead of all of ``calibration_run`` (microcosm#931), as the
-target kernels hash ``ledger_surface`` (microcosm#1492), and an edit
-elsewhere in the runner re-keys neither the preflight nor, in the in-graph
-build, the solve keyed on it. The calibrated gates' own code still binds the
-runner, whose admin totals and CGT projection artifact their gate context is
-built with. ``calibration_run`` re-exports all three for its other callers,
+target kernels hash ``ledger_surface`` (microcosm#1492). That keeps the
+runner out of the full gate kernels' own hashes and the preflight's own
+code. The calibrated gates' own code still binds the runner, whose admin
+totals and CGT projection artifact their gate context is built with, so in
+the in-graph build an edit elsewhere in the runner re-keys only the
+calibrated gates and what follows them. On a bound spine the checkpoint,
+whose kernel hashes the runner, still re-keys the preflight and the solve
+keyed on it. ``calibration_run`` re-exports all three for its other callers,
 beside the calibration, national and local diagnostic scopes it keeps.
 """
 

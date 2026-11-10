@@ -49,10 +49,13 @@ from microcosm.build.uk_runtime.etb_services import (
     UK_NHS_SPENDING_COMPONENT_COLUMNS,
 )
 
-# Moved to gate_scopes, which the full build's gate battery hashes, so an
-# edit elsewhere in this module no longer re-keys its preflight or the solve
-# keyed on it (microcosm#931, as microcosm#1492 moved the two functions
-# below). Kept importable from here for this module's other callers.
+# Moved to gate_scopes, which the full build's gate battery hashes, so the
+# full gate kernels' own hashes and the preflight's own code leave this
+# module out (microcosm#931, as microcosm#1492 moved the two functions
+# below): in the in-graph build an edit elsewhere in it re-keys only the
+# calibrated gates and what follows them. On a bound spine the checkpoint,
+# whose kernel hashes this module, still re-keys the preflight and the solve.
+# Kept importable from here for this module's other callers.
 from microcosm.build.uk_runtime.gate_scopes import (
     UK_LOCAL_GATE_SCOPE,
     UK_SPINE_GATE_SCOPE,
