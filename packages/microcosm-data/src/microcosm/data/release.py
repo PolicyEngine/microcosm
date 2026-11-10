@@ -407,11 +407,47 @@ def build_folder_identity(release_dir: Path | str) -> tuple[str, str, str]:
     return repositories[0], release, build
 
 
+def _refuse_misplaced_parent_inputs(
+    release_dir: Path,
+    parent_h5: Path | str | None,
+    compatibility_wheels: tuple[Path | str, ...],
+) -> None:
+    """Refuse a parent H5 or tested wheels for a build whose contract takes none.
+
+    A source enrichment's contract replays its parent's H5 and the tested
+    wheels; a recertification replays its loader under its tested wheels too,
+    but its H5 is its parent's, so it takes no parent H5.
+    """
+    if parent_h5 is None and not compatibility_wheels:
+        return
+    from microcosm.data.compatibility_recertification import (
+        RECERTIFICATION_RELEASE_TYPE,
+    )
+    from microcosm.data.source_enrichment import SOURCE_ENRICHMENT_RELEASE_TYPE
+
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+    release_type = (
+        manifest.get("release_type") if isinstance(manifest, Mapping) else None
+    )
+    if not (
+        release_type == SOURCE_ENRICHMENT_RELEASE_TYPE
+        or (release_type == RECERTIFICATION_RELEASE_TYPE and parent_h5 is None)
+    ):
+        raise ValueError(
+            "parent_h5 and compatibility_wheels require a source_enrichment "
+            "release; compatibility_wheels alone also serve a "
+            "compatibility_recertification release."
+        )
+
+
 def prepare_build_folder_release(
     release_dir: Path | str,
     *,
     artifact_root: Path | str | None = None,
     repository: str | None = None,
+    parent_h5: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
 ) -> BuildFolderRelease:
     """Check a build-folder release's build and list the files it publishes.
 
@@ -420,7 +456,10 @@ def prepare_build_folder_release(
     directory, or else from ``artifact_root`` (the H5 and the calibration
     weights live beside the candidate), and must match the SHA-256 its
     manifest records. ``repository``, when given, must be the one the
-    artifacts name. Nothing on the Hub is read or written.
+    artifacts name. A source enrichment's contract also takes its parent's
+    H5 (``parent_h5``) and the tested wheels (``compatibility_wheels``), and a
+    recertification's the wheels; any other build refuses them. Nothing on
+    the Hub is read or written.
 
     Raises:
         ReleaseContractError: If the build breaks its release contract.
@@ -430,6 +469,7 @@ def prepare_build_folder_release(
     """
     release_dir = Path(release_dir)
     named_repository, release, build = build_folder_identity(release_dir)
+    _refuse_misplaced_parent_inputs(release_dir, parent_h5, compatibility_wheels)
     contract_warnings: list[str] = []
     if release == US_EVIDENCE_RELEASE_ID:
         # An evidence-tier build records the validation checks it failed, so
@@ -437,7 +477,10 @@ def prepare_build_folder_release(
         validate_evidence_release_dir(release_dir)
     else:
         contract_warnings = validate_release_dir(
-            release_dir, artifact_root=artifact_root
+            release_dir,
+            parent_h5=parent_h5,
+            artifact_root=artifact_root,
+            compatibility_wheels=tuple(compatibility_wheels),
         )
         for contract_warning in contract_warnings:
             warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
@@ -540,30 +583,7 @@ def prepare_release(
     """
     release_dir = Path(release_dir)
     _refuse_build_folder_release(release_dir.name)
-    if parent_h5 is not None or compatibility_wheels:
-        from microcosm.data.compatibility_recertification import (
-            RECERTIFICATION_RELEASE_TYPE,
-        )
-        from microcosm.data.source_enrichment import SOURCE_ENRICHMENT_RELEASE_TYPE
-
-        manifest_path = release_dir / "release_manifest.json"
-        manifest = (
-            json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
-        )
-        release_type = (
-            manifest.get("release_type") if isinstance(manifest, Mapping) else None
-        )
-        # A recertification replays its loader under its tested wheels too,
-        # but its H5 is its parent's, so it takes no parent_h5.
-        if not (
-            release_type == SOURCE_ENRICHMENT_RELEASE_TYPE
-            or (release_type == RECERTIFICATION_RELEASE_TYPE and parent_h5 is None)
-        ):
-            raise ValueError(
-                "parent_h5 and compatibility_wheels require a source_enrichment "
-                "release; compatibility_wheels alone also serve a "
-                "compatibility_recertification release."
-            )
+    _refuse_misplaced_parent_inputs(release_dir, parent_h5, compatibility_wheels)
     contract_warnings: list[str] = []
     if evidence:
         validate_evidence_release_dir(release_dir)

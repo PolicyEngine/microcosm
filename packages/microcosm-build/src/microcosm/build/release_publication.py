@@ -294,6 +294,15 @@ def _repository_files(repository: str) -> list[str]:
     return list(api.list_repo_files(repository, repo_type="dataset"))
 
 
+def _hub_api() -> Any:
+    """A Hub client with the credential :func:`_repository_files` uses (test
+    seam), for the recertification parent check."""
+    import huggingface_hub
+
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or None
+    return huggingface_hub.HfApi(token=token)
+
+
 def _listing_errors() -> tuple[type[BaseException], ...]:
     """The failures a listing raises: the Hub's, offline mode's and httpx's.
 
@@ -379,6 +388,8 @@ def publish_release_build(
     make_current: bool = False,
     client: ReleaseEmitter | None = None,
     wait_seconds: float = PUBLICATION_WAIT_SECONDS,
+    parent_h5: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
 ) -> ReleasePublication:
     """Check a build and hand it to the emitter to publish into its folder.
 
@@ -391,15 +402,30 @@ def publish_release_build(
     ``TRANSFORMERS_OFFLINE`` is set, then, before the build is checked or any
     emitter starts, when the repository still has ``latest*.json`` pointer
     files; it hands nothing over unless the emitter's write-access check
-    passes.
+    passes. A recertification is handed over only once the Hub shows its
+    parent published with the manifest it carries, as the tagged publisher
+    required.
     """
     if client is None:
         _refuse_offline()
     named_repository, _, _ = build_folder_identity(release_dir)
     _refuse_pointer_files(named_repository)
     prepared = prepare_build_folder_release(
-        release_dir, artifact_root=artifact_root, repository=repository
+        release_dir,
+        artifact_root=artifact_root,
+        repository=repository,
+        parent_h5=parent_h5,
+        compatibility_wheels=tuple(compatibility_wheels),
     )
+    from microcosm.data import compatibility_recertification
+
+    if compatibility_recertification.is_recertification(prepared.release_dir):
+        compatibility_recertification.require_parent_publication(
+            _hub_api(),
+            prepared.release_dir,
+            repo_id=prepared.repository,
+            artifact_root=artifact_root,
+        )
     return _hand_over(
         publication_request(prepared, make_current=make_current),
         client=client,
@@ -485,6 +511,21 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--parent-h5",
+        type=Path,
+        help="A source enrichment's exact parent H5, which its contract replays.",
+    )
+    parser.add_argument(
+        "--compatibility-wheel",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "An exact tested wheel a source enrichment's or recertification's "
+            "contract replays its loader under; repeat for each package."
+        ),
+    )
+    parser.add_argument(
         "--allow-missing-staging",
         action="store_true",
         help=(
@@ -541,7 +582,11 @@ def _run(args: argparse.Namespace) -> int:
             return 1
         if args.preflight_only:
             prepared = prepare_build_folder_release(
-                release_dir, artifact_root=args.artifact_root, repository=args.repo_id
+                release_dir,
+                artifact_root=args.artifact_root,
+                repository=args.repo_id,
+                parent_h5=args.parent_h5,
+                compatibility_wheels=tuple(args.compatibility_wheel),
             )
             verdict: dict[str, Any] = {
                 "valid": True,
@@ -560,6 +605,8 @@ def _run(args: argparse.Namespace) -> int:
             repository=args.repo_id,
             artifact_root=args.artifact_root,
             make_current=args.make_current,
+            parent_h5=args.parent_h5,
+            compatibility_wheels=tuple(args.compatibility_wheel),
             wait_seconds=(
                 PUBLICATION_WAIT_SECONDS
                 if args.wait_seconds is None
