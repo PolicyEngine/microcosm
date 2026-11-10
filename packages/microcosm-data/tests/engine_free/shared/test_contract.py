@@ -54,6 +54,11 @@ RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_EXACT_K_RELEASE_ID = "populace-uk-2023-frs-k535080"
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+#: The US repository's releases in the build-folder layout (microcosm#1570).
+US_NATIONAL_RELEASE = "microcosm-us-2024-national"
+US_LOCAL_RELEASE = "microcosm-us-2024-local"
+US_RECEIPT_DONOR_RELEASE = "microcosm-us-2024-receipt-donor"
+US_EVIDENCE_RELEASE = "microcosm-us-2024-evidence"
 UK_RECORD_COUNT = 535_080
 UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 UK_TERMINAL_GATE_PRODUCER = (
@@ -2518,36 +2523,175 @@ def test_uk_national_release_requires_policyengine_uk_model_pin(
         (UK_NATIONAL_RELEASE_ID, True),
         ("microcosm-uk-2024-25-dense", True),
         ("microcosm-uk-2024-25-local-k55000", True),
-        # Which stable releases US builds publish under is not agreed with
-        # the US data builder yet, so every US release keeps tags and
-        # latest.json.
+        (US_NATIONAL_RELEASE, True),
+        (US_LOCAL_RELEASE, True),
+        (US_RECEIPT_DONOR_RELEASE, True),
+        (US_EVIDENCE_RELEASE, True),
+        # A US build ID names a build, not a release; its tagged layout stays
+        # for the builds that keep only their tag.
         (RELEASE_ID, False),
         ("populace-us-2024-buildo-acs-local-abc1234-20260723T000000Z", False),
+        # Spec-engine build IDs share the release names' prefix.
+        ("microcosm-us-2024-stacked-abc1234-20261101T000000Z", False),
         (UK_RELEASE_ID, False),
         (UK_EXACT_K_RELEASE_ID, False),
         ("microcosm-uk-2024-25-local-k0", False),
     ],
 )
-def test_publishes_to_build_folder_names_only_the_uk_releases(
+def test_publishes_to_build_folder_names_the_uk_and_us_releases(
     release_id: str, publishes: bool
 ) -> None:
     assert contract.publishes_to_build_folder(release_id) is publishes
 
 
-def test_the_proposed_us_releases_are_recorded_but_not_used() -> None:
-    """The US stable releases are proposed, not agreed with the US data
-    builder: the contract records them with their roles in one place, and no
-    US release publishes into build folders until they are agreed."""
-    assert contract.PROPOSED_US_RELEASES == {
-        "populace-us-2024-national": "national",
-        "populace-us-2024-local": "local_area",
+def test_the_us_releases_have_their_roles_and_dataset_files() -> None:
+    """The US repository's four releases, each with its role in
+    ``releases.json`` and the dataset file its new builds declare: national
+    builds of every kind in the default release, ACS builds in the local
+    release, and receipt-qualified donors and evidence-tier builds in releases
+    of their own, which are never the default."""
+    assert contract.US_RELEASES == {
+        US_NATIONAL_RELEASE: "national",
+        US_LOCAL_RELEASE: "local_area",
+        US_RECEIPT_DONOR_RELEASE: "national",
+        US_EVIDENCE_RELEASE: "national",
     }
-    assert set(contract.PROPOSED_US_RELEASES.values()) <= set(
-        contract.RELEASE_ROLES.values()
+    assert contract.US_RELEASE_DATASET_FILES == {
+        US_NATIONAL_RELEASE: "microcosm_us_2024.h5",
+        US_LOCAL_RELEASE: "microcosm_us_2024_acs_local.h5",
+        US_RECEIPT_DONOR_RELEASE: "microcosm_us_2024_receipt_qualified.h5",
+        US_EVIDENCE_RELEASE: "microcosm_us_2024.h5",
+    }
+    assert set(contract.US_RELEASES.values()) <= set(contract.RELEASE_ROLES.values())
+    assert not hasattr(contract, "PROPOSED_US_RELEASES")
+
+
+@pytest.mark.parametrize(
+    ("release_id", "is_us"),
+    [
+        (US_NATIONAL_RELEASE, True),
+        (US_LOCAL_RELEASE, True),
+        (US_RECEIPT_DONOR_RELEASE, True),
+        (US_EVIDENCE_RELEASE, True),
+        (RELEASE_ID, True),
+        ("populace-us-2024-buildo-acs-local-abc1234-20260723T000000Z", True),
+        ("microcosm-us-2024-stacked-abc1234-20261101T000000Z", False),
+        (UK_NATIONAL_RELEASE_ID, False),
+        (UK_RELEASE_ID, False),
+    ],
+)
+def test_is_us_release_names_the_us_releases_and_tagged_us_builds(
+    release_id: str, is_us: bool
+) -> None:
+    assert contract.is_us_release(release_id) is is_us
+
+
+def _as_us_build_folder_release(
+    release_dir: Path, *, release: str = US_NATIONAL_RELEASE
+) -> Path:
+    """Retarget the US fixture to a US release in the build-folder layout.
+
+    The directory is named after the release and the build keeps the
+    fixture's ID. The dataset and calibration weights carry the new
+    ``microcosm_`` file names and keys that new US builds declare.
+    """
+    moved = release_dir.with_name(release)
+    release_dir.rename(moved)
+    renamed = {
+        "populace_us_2024": "microcosm_us_2024",
+        "populace_us_2024_calibration": "microcosm_us_2024_calibration",
+    }
+    manifest_path = moved / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    artifacts = {}
+    for key, entry in manifest["artifacts"].items():
+        if key in renamed:
+            entry = {**entry, "path": entry["path"].replace("populace_", "microcosm_")}
+        artifacts[renamed.get(key, key)] = entry
+    manifest["artifacts"] = artifacts
+    manifest["default_datasets"] = {"national": "microcosm_us_2024"}
+    manifest_path.write_text(json.dumps(manifest))
+    build_path = moved / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    for section in ("dataset", "calibration"):
+        if isinstance(build.get(section), dict):
+            build[section]["filename"] = build[section]["filename"].replace(
+                "populace_", "microcosm_"
+            )
+    build_path.write_text(json.dumps(build))
+    return to_build_folder_layout(moved, build=RELEASE_ID)
+
+
+def _rewrite_release_manifest(release_dir: Path, rewrite) -> None:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    rewrite(manifest)
+    manifest_path.write_text(json.dumps(manifest))
+
+
+def test_a_us_national_build_folder_release_validates(release_dir: Path) -> None:
+    validate_release_dir(_as_us_build_folder_release(release_dir))
+
+
+def test_a_us_build_folder_release_must_declare_its_source_coverage(
+    release_dir: Path,
+) -> None:
+    national = _as_us_build_folder_release(release_dir)
+    _rewrite_release_manifest(
+        national, lambda manifest: manifest["artifacts"].pop("us_source_coverage")
     )
-    for release in contract.PROPOSED_US_RELEASES:
-        assert release.startswith("populace-us-")
-        assert contract.publishes_to_build_folder(release) is False
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(national)
+
+    assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE in "\n".join(excinfo.value.failures)
+
+
+def test_a_us_build_folder_release_refuses_split_microdata(release_dir: Path) -> None:
+    national = _as_us_build_folder_release(release_dir)
+
+    def add_a_state_file(manifest):
+        entry = _split_microdata_artifact_entry(RELEASE_ID, "states/CA")
+        entry.pop("revision", None)
+        entry["role"] = "states/CA"
+        manifest["artifacts"]["states/CA"] = entry
+
+    _rewrite_release_manifest(national, add_a_state_file)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(national)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "single national microdata artifact" in failures
+    assert "states/CA" in failures
+
+
+@pytest.mark.parametrize(
+    "dataset_file",
+    [
+        # The name the builds before the switch used.
+        "populace_us_2024.h5",
+        # A receipt-qualified donor's dataset, which the national release
+        # must never list.
+        "microcosm_us_2024_receipt_qualified.h5",
+    ],
+)
+def test_a_us_build_folder_release_must_declare_its_release_s_dataset_file(
+    release_dir: Path, dataset_file: str
+) -> None:
+    national = _as_us_build_folder_release(release_dir)
+
+    def rename_the_dataset(manifest):
+        manifest["artifacts"]["microcosm_us_2024"]["path"] = dataset_file
+
+    _rewrite_release_manifest(national, rename_the_dataset)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(national)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "microcosm_us_2024.h5" in failures
+    assert dataset_file in failures
 
 
 def test_release_roles_record_national_and_local_area() -> None:
