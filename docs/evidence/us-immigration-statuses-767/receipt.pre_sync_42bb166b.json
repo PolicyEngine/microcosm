@@ -1,0 +1,42 @@
+{
+  "archives": [
+    {
+      "archive": "asecpub24csv.zip",
+      "household_weighted_persons": 320890854.43000007,
+      "income_year": 2023,
+      "marsupwt_persons": 332382485.08,
+      "peinusyr_max": 28,
+      "rows": 144265,
+      "sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09"
+    },
+    {
+      "archive": "asecpub25csv.zip",
+      "household_weighted_persons": 325952369.06,
+      "income_year": 2024,
+      "marsupwt_persons": 337689641.57,
+      "peinusyr_max": 28,
+      "rows": 142125,
+      "sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b"
+    },
+    {
+      "archive": "asecpub26csv.zip",
+      "household_weighted_persons": 329518151.84999996,
+      "income_year": 2025,
+      "marsupwt_persons": 338554893.54,
+      "peinusyr_max": 29,
+      "rows": 134729,
+      "sha256": "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93"
+    }
+  ],
+  "draw_keys": "source_year:source_household_id(PH_SEQ):source_person_id(PERIDNUM)",
+  "error": "SourceRuntimeError: PEINUSYR carries value(s) outside the 2024 ASEC domain 0..28: [29.0].",
+  "immigration_module_sha256": "df6699344c5fddbb5322baeb22f574be846e43c8c7600fd5dea798189c382042",
+  "script_sha256": "0c11b99f4c5de98e9339fe237feffe6510ee97333660006b62db07b3776c77cb",
+  "seed": 0,
+  "source_commit": "42bb166b1484df036809814434c1acf862b8cbb8",
+  "source_commit_from": "argument",
+  "source_tree_clean": null,
+  "stage_seconds": 0.2,
+  "time_period": 2024,
+  "weights": "HSUP_WGT * 0.01 by PH_SEQ, each file rescaled to one third of income year 2024's weighted person population (asec_pool.pool_asec_sources, anchor_year=2024)"
+}

@@ -1,0 +1,288 @@
+{
+  "archives": [
+    {
+      "archive": "asecpub24csv.zip",
+      "household_weighted_persons": 320890854.43000007,
+      "income_year": 2023,
+      "marsupwt_persons": 332382485.08,
+      "peinusyr_max": 28,
+      "rows": 144265,
+      "sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09"
+    },
+    {
+      "archive": "asecpub25csv.zip",
+      "household_weighted_persons": 325952369.06,
+      "income_year": 2024,
+      "marsupwt_persons": 337689641.57,
+      "peinusyr_max": 28,
+      "rows": 142125,
+      "sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b"
+    },
+    {
+      "archive": "asecpub26csv.zip",
+      "household_weighted_persons": 329518151.84999996,
+      "income_year": 2025,
+      "marsupwt_persons": 338554893.54,
+      "peinusyr_max": 29,
+      "rows": 134729,
+      "sha256": "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93"
+    }
+  ],
+  "composition": {
+    "ASYLEE": {
+      "by_income_year": {
+        "2023": 61212.7587594046,
+        "2024": 46805.7,
+        "2025": 47473.44368574968
+      },
+      "code_29_weighted": 0.0,
+      "rows": 186,
+      "under_19_weighted": 46328.961730005605,
+      "weighted": 155491.90244515426
+    },
+    "CITIZEN": {
+      "by_income_year": {
+        "2023": 100026523.85662985,
+        "2024": 99788608.02,
+        "2025": 100429092.3485838
+      },
+      "code_29_weighted": 174138.23378113355,
+      "rows": 388829,
+      "under_19_weighted": 69797402.3449544,
+      "weighted": 300244224.22521365
+    },
+    "CUBAN_HAITIAN_ENTRANT": {
+      "by_income_year": {
+        "2023": 166021.48593467462,
+        "2024": 204853.16333333333,
+        "2025": 168316.9858028873
+      },
+      "code_29_weighted": 23718.69405929822,
+      "rows": 630,
+      "under_19_weighted": 63696.40176895717,
+      "weighted": 539191.6350708952
+    },
+    "DACA": {
+      "by_income_year": {
+        "2023": 104140.60565893029,
+        "2024": 95633.99666666666,
+        "2025": 76955.79573372872
+      },
+      "code_29_weighted": 0.0,
+      "rows": 359,
+      "under_19_weighted": 4168.370981434536,
+      "weighted": 276730.39805932564
+    },
+    "LEGAL_PERMANENT_RESIDENT": {
+      "by_income_year": {
+        "2023": 3526808.2138986206,
+        "2024": 3555543.08,
+        "2025": 3344707.160514318
+      },
+      "code_29_weighted": 345716.8718042292,
+      "rows": 13141,
+      "under_19_weighted": 915650.1381589137,
+      "weighted": 10427058.454412939
+    },
+    "PAROLED_ONE_YEAR": {
+      "by_income_year": {
+        "2023": 99339.58014190361,
+        "2024": 149332.66333333333,
+        "2025": 149216.92251845784
+      },
+      "code_29_weighted": 26609.018450874144,
+      "rows": 438,
+      "under_19_weighted": 100118.51899012196,
+      "weighted": 397889.1659936948
+    },
+    "REFUGEE": {
+      "by_income_year": {
+        "2023": 47182.47778915634,
+        "2024": 53504.206666666665,
+        "2025": 59764.97282362702
+      },
+      "code_29_weighted": 25519.560004618885,
+      "rows": 176,
+      "under_19_weighted": 64043.9924089673,
+      "weighted": 160451.65727945004
+    },
+    "TPS": {
+      "by_income_year": {
+        "2023": 277924.2046921097,
+        "2024": 311935.7733333333,
+        "2025": 270260.13037578424
+      },
+      "code_29_weighted": 0.0,
+      "rows": 1081,
+      "under_19_weighted": 107278.50949508903,
+      "weighted": 860120.1084012273
+    },
+    "UNDOCUMENTED": {
+      "by_income_year": {
+        "2023": 4341636.503162008,
+        "2024": 4444573.083333333,
+        "2025": 4105001.9266283335
+      },
+      "code_29_weighted": 464004.9826060645,
+      "rows": 16279,
+      "under_19_weighted": 1583961.7706165907,
+      "weighted": 12891211.513123676
+    }
+  },
+  "draw_keys": "source_year:source_household_id(PH_SEQ):source_person_id(PERIDNUM)",
+  "error": null,
+  "gate_failures": [],
+  "gate_passed": true,
+  "humanitarian_draw_achieved": {
+    "asylee": {
+      "category": "asylee",
+      "origin": null,
+      "population": 155491.90244515426,
+      "relative": 1.0031735641622856,
+      "source": "https://ohss.dhs.gov/topics/immigration/asylees/annual-flow-report/fy24-asylees-flow-report",
+      "status": "ASYLEE",
+      "target": 155000.0
+    },
+    "deportation_withheld": {
+      "category": "deportation_withheld",
+      "origin": null,
+      "population": 0.0,
+      "relative": null,
+      "source": "https://crsreports.congress.gov/product/pdf/IN/IN12501",
+      "status": "DEPORTATION_WITHHELD",
+      "target": 0.0
+    },
+    "paroled_one_year:afghanistan": {
+      "category": "paroled_one_year",
+      "origin": "afghanistan",
+      "population": 74154.29223282929,
+      "relative": 1.007996795161206,
+      "source": "https://www.dhs.gov/sites/default/files/2023-06/PLCY%20-%20AFG%202503%20Update%202_0.pdf",
+      "status": "PAROLED_ONE_YEAR",
+      "target": 73566.0
+    },
+    "paroled_one_year:nicaragua": {
+      "category": "paroled_one_year",
+      "origin": "nicaragua",
+      "population": 93112.73319928072,
+      "relative": 1.0004591511688055,
+      "source": "https://www.cbp.gov/newsroom/national-media-release/cbp-releases-december-2024-monthly-update",
+      "status": "PAROLED_ONE_YEAR",
+      "target": 93070.0
+    },
+    "paroled_one_year:ukraine": {
+      "category": "paroled_one_year",
+      "origin": "ukraine",
+      "population": 112933.72361361884,
+      "relative": 0.7147704026178407,
+      "source": "https://www.dhs.gov/sites/default/files/2024-12/2024_1104_dmo_plcy_uniting_for_ukraine_process_overview_and_assessment.pdf",
+      "status": "PAROLED_ONE_YEAR",
+      "target": 158000.0
+    },
+    "paroled_one_year:venezuela": {
+      "category": "paroled_one_year",
+      "origin": "venezuela",
+      "population": 117688.41694796596,
+      "relative": 1.0030547766808655,
+      "source": "https://www.cbp.gov/newsroom/national-media-release/cbp-releases-december-2024-monthly-update",
+      "status": "PAROLED_ONE_YEAR",
+      "target": 117330.0
+    },
+    "refugee": {
+      "category": "refugee",
+      "origin": null,
+      "population": 160451.65727945004,
+      "relative": 1.0028228579965628,
+      "source": "https://ohss.dhs.gov/topics/immigration/refugees/annual-flow-report/fy-24-refugees-flow-report",
+      "status": "REFUGEE",
+      "target": 160000.0
+    },
+    "tps:el_salvador": {
+      "category": "tps",
+      "origin": "el_salvador",
+      "population": 170410.32409187898,
+      "relative": 1.0016771438170697,
+      "source": "https://www.everycrsreport.com/reports/RS20844.html",
+      "status": "TPS",
+      "target": 170125.0
+    },
+    "tps:honduras": {
+      "category": "tps",
+      "origin": "honduras",
+      "population": 52053.03129856825,
+      "relative": 1.0161645934322743,
+      "source": "https://www.everycrsreport.com/reports/RS20844.html",
+      "status": "TPS",
+      "target": 51225.0
+    },
+    "tps:nepal": {
+      "category": "tps",
+      "origin": "nepal",
+      "population": 7349.0149911888375,
+      "relative": 1.0263987417861504,
+      "source": "https://www.everycrsreport.com/reports/RS20844.html",
+      "status": "TPS",
+      "target": 7160.0
+    },
+    "tps:nicaragua": {
+      "category": "tps",
+      "origin": "nicaragua",
+      "population": 3192.9463618784666,
+      "relative": 1.0972324267623597,
+      "source": "https://www.everycrsreport.com/reports/RS20844.html",
+      "status": "TPS",
+      "target": 2910.0
+    },
+    "tps:other_designated": {
+      "category": "tps",
+      "origin": "other_designated",
+      "population": 21484.827706756125,
+      "relative": 1.0127187229203924,
+      "source": "https://www.everycrsreport.com/reports/RS20844.html",
+      "status": "TPS",
+      "target": 21215.0
+    },
+    "tps:venezuela": {
+      "category": "tps",
+      "origin": "venezuela",
+      "population": 605629.9639509566,
+      "relative": 1.0010164441393297,
+      "source": "https://www.everycrsreport.com/reports/RS20844.html",
+      "status": "TPS",
+      "target": 605015.0
+    }
+  },
+  "humanitarian_target_relative_band": [
+    0.35,
+    1.5
+  ],
+  "humanitarian_targets_by_status": {
+    "ASYLEE": 155000.0,
+    "DEPORTATION_WITHHELD": 0.0,
+    "PAROLED_ONE_YEAR": 441966.0,
+    "REFUGEE": 160000.0,
+    "TPS": 857650.0
+  },
+  "immigration_module_sha256": "fdb29c5cf362e1013d435222ef1b5cd0a082d6703f97e85d3b8835f2e8be1ab1",
+  "none_ssn_iff_undocumented": true,
+  "pew_labor_force": 9699442.858246539,
+  "pew_labor_force_control": 9700000.0,
+  "pew_universe": 14573640.556715064,
+  "pew_universe_anchor": 14000000.0,
+  "ratio_to_target": {
+    "ASYLEE": 1.0031735641622856,
+    "DEPORTATION_WITHHELD": null,
+    "PAROLED_ONE_YEAR": 0.9002709846316115,
+    "REFUGEE": 1.0028228579965628,
+    "TPS": 1.0028800890820582
+  },
+  "rows": 421119,
+  "script_sha256": "0c11b99f4c5de98e9339fe237feffe6510ee97333660006b62db07b3776c77cb",
+  "seed": 0,
+  "source_commit": "4b3b6a7a60c35f0ff137bff74308488c7ae71014",
+  "source_commit_from": "git",
+  "source_tree_clean": true,
+  "stage_seconds": 5.9,
+  "time_period": 2024,
+  "weights": "HSUP_WGT * 0.01 by PH_SEQ, each file rescaled to one third of income year 2024's weighted person population (asec_pool.pool_asec_sources, anchor_year=2024)"
+}

@@ -1,0 +1,101 @@
+{
+  "archives": [
+    {
+      "archive": "asecpub24csv.zip",
+      "household_weighted_persons": 320890854.43000007,
+      "income_year": 2023,
+      "marsupwt_persons": 332382485.08,
+      "peinusyr_max": 28,
+      "rows": 144265,
+      "sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09"
+    },
+    {
+      "archive": "asecpub25csv.zip",
+      "household_weighted_persons": 325952369.06,
+      "income_year": 2024,
+      "marsupwt_persons": 337689641.57,
+      "peinusyr_max": 28,
+      "rows": 142125,
+      "sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b"
+    },
+    {
+      "archive": "asecpub26csv.zip",
+      "household_weighted_persons": 329518151.84999996,
+      "income_year": 2025,
+      "marsupwt_persons": 338554893.54,
+      "peinusyr_max": 29,
+      "rows": 134729,
+      "sha256": "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93"
+    }
+  ],
+  "composition": {
+    "CITIZEN": {
+      "by_income_year": {
+        "2023": 100026523.85662985,
+        "2024": 99788608.02,
+        "2025": 100429092.3485838
+      },
+      "code_29_weighted": 174138.23378113355,
+      "rows": 388829,
+      "under_19_weighted": 69797402.3449544,
+      "weighted": 300244224.22521365
+    },
+    "CUBAN_HAITIAN_ENTRANT": {
+      "by_income_year": {
+        "2023": 188218.28306411504,
+        "2024": 216763.02666666667,
+        "2025": 176496.12279339816
+      },
+      "code_29_weighted": 23192.688342167814,
+      "rows": 676,
+      "under_19_weighted": 64619.12753444083,
+      "weighted": 581477.4325241798
+    },
+    "DACA": {
+      "by_income_year": {
+        "2023": 149258.51740021014,
+        "2024": 127492.23999999999,
+        "2025": 99016.39532075019
+      },
+      "code_29_weighted": 0.0,
+      "rows": 511,
+      "under_19_weighted": 3745.3214781583056,
+      "weighted": 375767.1527209604
+    },
+    "LEGAL_PERMANENT_RESIDENT": {
+      "by_income_year": {
+        "2023": 3915174.3808217305,
+        "2024": 4020124.2700000005,
+        "2025": 3744677.211858804
+      },
+      "code_29_weighted": 392355.07269730815,
+      "rows": 14722,
+      "under_19_weighted": 1122543.9672262375,
+      "weighted": 11679975.862680536
+    },
+    "UNDOCUMENTED": {
+      "by_income_year": {
+        "2023": 4371614.648750752,
+        "2024": 4497802.13,
+        "2025": 4201507.608109934
+      },
+      "code_29_weighted": 470021.365885609,
+      "rows": 16381,
+      "under_19_weighted": 1694338.2479112435,
+      "weighted": 13070924.386860687
+    }
+  },
+  "draw_keys": "source_year:source_household_id(PH_SEQ):source_person_id(PERIDNUM)",
+  "error": null,
+  "immigration_module_sha256": "8871df8b5f86f6bbf8541259a69d52b7db214560e5dacf5ad6db15268368f826",
+  "none_ssn_iff_undocumented": true,
+  "rows": 421119,
+  "script_sha256": "0c11b99f4c5de98e9339fe237feffe6510ee97333660006b62db07b3776c77cb",
+  "seed": 0,
+  "source_commit": "764ae3aa778cbc9030e286fabc3777e25c18f403",
+  "source_commit_from": "argument",
+  "source_tree_clean": null,
+  "stage_seconds": 2.9,
+  "time_period": 2024,
+  "weights": "HSUP_WGT * 0.01 by PH_SEQ, each file rescaled to one third of income year 2024's weighted person population (asec_pool.pool_asec_sources, anchor_year=2024)"
+}
