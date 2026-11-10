@@ -1,7 +1,7 @@
 {
  "country": "nz",
  "engine": {
-  "commit": "04315d94d04efd61e27665ab3aa300d64fdf3a66",
+  "commit": "753ce7d9ac4cfb161f6aa4f281f5a3980e67a57d",
   "repository": "TheAxiomFoundation/axiom-rules-engine",
   "surface": "dense_root_inputs",
   "version": "axiom-rules-engine 0.2.2"

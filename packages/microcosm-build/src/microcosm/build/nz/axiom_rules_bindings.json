@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "nz",
-  "description": "Axiom rules bindings for the New Zealand v0 graph build. Each binding names one rulespec-nz module by repository-relative rulespec_path and SHA-256 at the pinned commit, the Frame entity it runs on, the period label it is evaluated for, and the variables the graph requests. No code interprets these bindings yet. The planned shared composer (package G6) will build one AxiomEngine per binding and register every binding in one simulate.rules_by_ref@1 kernel (to be added by package G1), because a run's kernel registry holds one kernel per ref. The Axiom adapter raises when a module declares relations; every bound module declares none at the pin. No kernel implementation hash is to bind the whole NZ spec.",
+  "description": "Axiom rules bindings for the New Zealand v0 graph build. Each binding names one rulespec-nz module by repository-relative rulespec_path and SHA-256 at the pinned commit, the Frame entity it runs on, the period label it runs for, and the variables the graph requests. build_transport_registry (transport/registry.py) builds one AxiomEngine per binding, and one simulate.rules_by_ref@1 router serves them all, because a run's kernel registry holds one kernel per ref. A binding that declares no relations goes through assert_no_relations, which refuses a module whose dense program on the binding's entity declares relations; every bound module declares none at the pin. No kernel implementation hash is to bind the whole NZ spec.",
   "rulespec": {
     "repository": "TheAxiomFoundation/rulespec-nz",
     "commit": "8dc2507d5f10a0467c285fed54d018ee37246798",
@@ -12,9 +12,9 @@
   },
   "engine": {
     "repository": "TheAxiomFoundation/axiom-rules-engine",
-    "commit": null,
-    "wheel_sha256": null,
-    "status": "awaiting the hub engine pin at M0 (D1 method card MC1); the composer (package G6, not yet written) is to refuse to run until both pins are set"
+    "commit": "753ce7d9ac4cfb161f6aa4f281f5a3980e67a57d",
+    "wheel_sha256": "054c9196d5371f13bb7c2b28f8161ac92294e5c8543aeb6e221fde243897ed42",
+    "status": "Pinned for G8-x (D1 method card MC1). commit is the axiom-rules-engine commit that NZ's input surface and input closure record. wheel_sha256 is the SHA-256 of the dense-extension wheel the NZ hub built at that commit (maturin build --release --locked; CPython 3.14, macOS arm64). axiom_engine_ref records both as declared and hashes no installed wheel."
   },
   "entity_names": {
     "person": "Person",
