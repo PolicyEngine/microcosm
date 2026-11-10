@@ -2101,9 +2101,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "zeroed_columns",
                 "restored_columns",
                 "restored_within_earnings_limit_columns",
-                # microcosm#1063 child_benefit_take_up stage-health check.
+                # microcosm#1063 child_benefit_take_up stage-health check; its
+                # per-age standard errors from María's ruling of 2026-11-10
+                # (microcosm#931).
                 "maximum_claim_rate_deviation",
                 "maximum_age_claim_rate_deviation",
+                "maximum_age_claim_rate_standard_errors",
                 "minimum_age_child_rows",
                 "maximum_opt_out_share_deviation",
                 "minimum_eligible_family_units",
