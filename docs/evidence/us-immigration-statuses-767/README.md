@@ -47,7 +47,7 @@ of its `immigration.py` and of the script, and every draw call's key.
 | `receipt.main_full_keys.json` | main at `764ae3aa7` | this PR's, through `--draw-keys full` | main's method on this PR's draws; its gate passes |
 | `receipt.pre_sync_42bb166b.json` | this PR at `42bb166b1`, before it merged main `1acd884fe` | none: the stage refuses before its first draw | the stage refuses the 2026 ASEC's `PEINUSYR` code 29 |
 | `receipt.head_medicaid_reporters.json` | this PR at `4f94e489a`, from the head run's labels | its own | 0.391 million of the 0.714 million people in the restored Medicaid statuses report Medicaid at interview |
-| `receipt.stacked_supply.json` | this PR at `4f94e489a`, from `receipt.head.json` and the ACS 2024 1-year PUMS | none: it draws no rows | four draws run short of ACS candidates, and none ends below half its target in the worst case |
+| `receipt.stacked_supply.json` | this PR at `4f94e489a`, from `receipt.head.json` and the ACS 2024 1-year PUMS | none: it draws no rows | four draws run short of ACS candidates and a fifth may; none ends below half its target in the worst case |
 
 The script reran main's tree and the pre-sync tree from `git archive <commit>
 packages`, so those three receipts take their commit from `--source-commit`.
@@ -128,7 +128,10 @@ stacked pool. It takes the ASEC arm's labelled mass from `receipt.head.json`,
 scaled to the stacked weights, and each draw's candidates from the ACS 2024
 1-year PUMS through the kernel's own candidate rule, weighted as the frame
 weights them and scaled by the ACS arm's weight scale, 0.478.
-`receipt.stacked_supply.json` holds the aggregates, in weighted persons:
+`receipt.stacked_supply.json` holds the aggregates, in weighted persons. The
+projected share adds to the ASEC arm as much of the ACS supply as the residual
+takes, as a share of the target, if no earlier draw takes any of the draw's
+candidates. The worst case lets earlier draws take them (below):
 
 | Draw | Target | ASEC arm | ACS residual | ACS supply | Projected share | Worst case |
 |---|---:|---:|---:|---:|---:|---:|
@@ -146,9 +149,14 @@ weights them and scaled by the ACS arm's weight scale, 0.478.
 | TPS, other designated | 21,215 | 10,707 | 10,508 | 141,413 | 1.000 | 1.000 |
 
 - Four draws run short of candidates: U4U, Nicaraguan parole, Honduran TPS and
-  OAW. Under the old rule, U4U, the second draw in manifest order, would have
-  stopped every stacked build on these inputs. Under the new rule the four end
-  at 0.718 to 0.971 of their targets.
+  OAW. None of the four shares a candidate with an earlier draw, so each ends
+  at its projected share in the worst case too. Under the old rule, U4U, the
+  second draw in manifest order, would have stopped every stacked build on
+  these inputs. Under the new rule the four end at 0.718 to 0.971 of their
+  targets.
+- TPS Venezuela may run short as well. Its supply exceeds its residual by
+  38,923, but earlier draws could take up to 214,138 of its candidates, which
+  would leave it at 0.710 of its target.
 - The worst case lets every earlier draw take as much of a draw's candidates as
   it can, up to its own residual. It holds for parole and TPS draws, which take
   any non-citizen SSN code. Refugee and asylee draws take only rows the transfer
