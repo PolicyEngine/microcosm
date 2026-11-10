@@ -1,17 +1,19 @@
 """Publish a release and move its approved repository pointer.
 
-**The UK national, dense and local-area releases no longer publish
-here.** They publish each build into its own folder,
-``releases/<release>/<build>/``, through the emitter's ``publish_release``
-call (``microcosm-publish-release-build``, in ``microcosm-build``), and the
-repository's ``releases.json`` records which build is current.
-:func:`prepare_build_folder_release` checks such a build and lists its files
-with their roles; :func:`prepare_release` and :func:`publish_release` refuse
-it. Everything below describes the tagged layout that every US release
-keeps until the stable releases US builds publish under are agreed. The
-June 2023 UK release and ``populace-uk-<year>-<tier>-k<N>`` releases take no
-new builds: :func:`publish_release` refuses any repository that records its
-builds in ``releases.json``, as the UK repository does after its switch.
+**No UK or US release publishes here.** The UK national, dense and
+local-area releases and the four US releases
+(:data:`~microcosm.data.contract.US_RELEASES`) publish each build into its
+own folder, ``releases/<release>/<build>/``, through the emitter's
+``publish_release`` call (``microcosm-publish-release-build``, in
+``microcosm-build``), and the repository's ``releases.json`` records which
+build is current. :func:`prepare_build_folder_release` checks such a build
+and lists its files with their roles; :func:`prepare_release` and
+:func:`publish_release` refuse it. :func:`publish_release` also refuses any
+repository that records its builds in ``releases.json``, as the UK and US
+repositories do after their switches, so the June 2023 UK release and
+``populace-uk-<year>-<tier>-k<N>`` releases take no new builds. Everything
+below describes the tagged layout, which builds that keep only their tag
+still have.
 
 The Hub repo publishes builds under ``releases/<build_id>/``, but nothing
 identified which release is *current*: a consumer had to list the tree and
@@ -39,10 +41,15 @@ without changing the frozen repository-global ``latest.json``. Nothing
 writes them any more;
 :func:`latest_line_release` still reads them until they are deleted.
 
-The EVIDENCE tier (microcosm#506) publishes through the same producer with
+The EVIDENCE tier (microcosm#506) published through the same producer with
 ``evidence=True``: identical immutable-tag mechanics, but the pointer that
 moves is ``latest-evidence.json`` — structurally never ``latest.json`` —
-and :func:`latest_evidence_release` is its consumer.
+and :func:`latest_evidence_release` is its consumer. Since the US switch, an
+evidence-tier build is a build of
+:data:`~microcosm.data.contract.US_EVIDENCE_RELEASE_ID` instead, whose
+current build in ``releases.json`` takes the place of
+``latest-evidence.json``. The switch deleted every ``latest*.json`` file, so
+:func:`latest_evidence_release` finds no pointer in the US repository.
 
 The Hub client is injected (``api=``) everywhere it is used, so the suite
 exercises the real branch, commit, tag, and pointer ordering against a fake —
