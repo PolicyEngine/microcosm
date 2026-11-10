@@ -114,3 +114,34 @@ def test_a_non_claimant_gains_nothing_from_the_raise(profit: float) -> None:
         np.asarray(simulation.calculate("trading_allowance_deduction", 2028))[0]
     )
     assert relief == 0.0
+
+
+@pytest.mark.parametrize("profit", [1_500.0, 6_000.0])
+def test_an_allowance_above_3000_relieves_only_claimants(profit: float) -> None:
+    """microcosm#1428's receipts encoding gave every non-claimant relief once the
+    allowance passed GBP 3,000 times its index. With the status stored, a reform
+    to GBP 5,000 in 2028-29 relieves a claimant's 2025 profit, already net of the
+    nominal GBP 1,000, by min(profit, GBP 4,000), and a non-claimant's by
+    nothing."""
+
+    from policyengine_uk import Microsimulation
+
+    reform = {
+        "gov.hmrc.income_tax.allowances.trading_allowance": {
+            "2028-01-01.2100-12-31": 5_000
+        }
+    }
+    relief = {}
+    for status in ("CLAIMANT", "NON_CLAIMANT"):
+        simulation = Microsimulation(
+            dataset=_dataset(profit, status, (2025, 2028)), reform=reform
+        )
+        allowance = simulation.tax_benefit_system.parameters(
+            2028
+        ).gov.hmrc.income_tax.allowances.trading_allowance
+        assert allowance == 5_000
+        relief[status] = float(
+            np.asarray(simulation.calculate("trading_allowance_deduction", 2028))[0]
+        )
+    assert relief["CLAIMANT"] == pytest.approx(min(profit, 4_000.0))
+    assert relief["NON_CLAIMANT"] == 0.0
