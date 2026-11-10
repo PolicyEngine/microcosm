@@ -1058,9 +1058,19 @@ def _child_benefit_take_up_gate(
     published rates at the frame's own age mix, and at each single year of age
     with enough child rows to measure it; an age whose solved rate was clipped
     (reporters alone exceed the published rate, or every family claiming
-    falls short of it) is reported, not held. The opted-out share of claiming
-    families is held to the published share, or may fall short of it only
-    where the receipt shows the charged families exhausted (microcosm#1063).
+    falls short of it) is reported, not held. A measured age is held to the
+    larger of ``maximum_age_claim_rate_deviation`` and
+    ``maximum_age_claim_rate_standard_errors`` standard errors of a share
+    drawn at its published rate p over its n child rows,
+    ``sqrt(p (1 - p) / n)``, since the stage's keyed draws move each age's
+    realised rate by sampling noise that at an age with few child rows can
+    exceed the fixed deviation; an age with many rows keeps the fixed
+    deviation (María's ruling of 2026-11-10, microcosm#931). The band treats
+    the age's child rows as independent draws at p, an approximation as
+    ruled: siblings share their family's draw, reporters always claim and the
+    realised rate is weighted. The opted-out share of claiming families is
+    held to the published share, or may fall short of it only where the
+    receipt shows the charged families exhausted (microcosm#1063).
     """
 
     check = "child_benefit_take_up"
@@ -1072,6 +1082,15 @@ def _child_benefit_take_up_gate(
         parameters["maximum_age_claim_rate_deviation"],
         label=f"{stage}.maximum_age_claim_rate_deviation",
     )
+    age_standard_errors = _finite_number(
+        parameters["maximum_age_claim_rate_standard_errors"],
+        label=f"{stage}.maximum_age_claim_rate_standard_errors",
+    )
+    if age_standard_errors <= 0.0:
+        raise ValueError(
+            f"{stage}.maximum_age_claim_rate_standard_errors must be positive, "
+            f"got {age_standard_errors:g}."
+        )
     minimum_age_rows = int(parameters["minimum_age_child_rows"])
     opt_out_tolerance = _finite_number(
         parameters["maximum_opt_out_share_deviation"],
@@ -1104,13 +1123,15 @@ def _child_benefit_take_up_gate(
     worst: tuple[float, int] | None = None
     clipped: list[int] = []
     measured = 0
+    above_floor = 0
     for row in ages:
         row = _mapping(row, label=f"{stage}.claims.ages[]")
         age = int(row.get("age", -1))
         if row.get("clipped") is True:
             clipped.append(age)
             continue
-        if int(row.get("eligible_child_rows", 0)) < minimum_age_rows:
+        rows = int(row.get("eligible_child_rows", 0))
+        if rows < minimum_age_rows:
             continue
         published = _finite_number(
             row.get("published_rate"), label=f"{stage}.age {age}.published_rate"
@@ -1119,16 +1140,30 @@ def _child_benefit_take_up_gate(
             row.get("realized_rate"), label=f"{stage}.age {age}.realized_rate"
         )
         measured += 1
+        # The age's own sampling noise where it exceeds the floor. At a
+        # published rate of 0 or 1 the binomial term is 0, and a rate outside
+        # [0, 1] or an age without rows has none, so the floor holds.
+        tolerance = age_tolerance
+        if rows > 0 and 0.0 <= published <= 1.0:
+            tolerance = max(
+                age_tolerance,
+                age_standard_errors * math.sqrt(published * (1.0 - published) / rows),
+            )
+        if tolerance > age_tolerance:
+            above_floor += 1
         deviation = abs(achieved - published)
         if worst is None or deviation > worst[0]:
             worst = (deviation, age)
-        if deviation > age_tolerance:
+        if deviation > tolerance:
             failures.append(
                 f"{stage}: at age {age} {achieved:.4f} of eligible children are "
                 f"claimed for against the published {published:.4f} (tolerance "
-                f"{age_tolerance})."
+                f"{tolerance:.4f}: the larger of {age_tolerance} and "
+                f"{age_standard_errors:g} standard errors of a share at the "
+                "published rate over that age's child rows)."
             )
     details["ages_measured"] = measured
+    details["ages_tolerance_above_floor"] = above_floor
     details["clipped_ages"] = clipped
     if worst is not None:
         details["largest_age_deviation"] = {"age": worst[1], "deviation": worst[0]}

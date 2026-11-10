@@ -684,11 +684,12 @@
         "check": "child_benefit_take_up",
         "maximum_claim_rate_deviation": 0.02,
         "maximum_age_claim_rate_deviation": 0.05,
+        "maximum_age_claim_rate_standard_errors": 3,
         "minimum_age_child_rows": 200,
         "maximum_opt_out_share_deviation": 0.01,
         "minimum_eligible_family_units": 1
       },
-      "notes": "Stage-time gate over the Child Benefit take-up receipt (microcosm#1063): the share of eligible children claimed for is within 0.02 of HMRC's published claim rates by single year of age (Table 15, May 2025) at the frame's age mix, and within 0.05 at each age with at least 200 child rows whose solved rate was not clipped (clipped ages are reported); the opted-out share of claiming families is within 0.01 of the published opted-out share of registered families (August 2025), or below it only where the charged families are exhausted. The terminal take-up signal gate no longer measures would_claim_child_benefit or child_benefit_opts_out, whose rates are shares of eligible children and of claiming families, not of every benefit unit."
+      "notes": "Stage-time gate over the Child Benefit take-up receipt (microcosm#1063): the share of eligible children claimed for is within 0.02 of HMRC's published claim rates by single year of age (Table 15, May 2025) at the frame's age mix. At each age with at least 200 child rows whose solved rate was not clipped (clipped ages are reported), the share is within a tolerance of that age's published rate p: the larger of 0.05 and 3 standard errors of a share drawn at p over the age's n child rows, 3 * sqrt(p * (1 - p) / n) (maximum_age_claim_rate_standard_errors; María's ruling of 2026-11-10, microcosm#931). Each age's realised rate carries the sampling noise of the stage's keyed draws, which at an age with few child rows can exceed a fixed 0.05; because the draws are keyed, a failure from that noise would repeat on every rebuild. Three standard errors exceed 0.05 only below 3,600 * p * (1 - p) child rows, so an age with more rows keeps 0.05. The opted-out share of claiming families is within 0.01 of the published opted-out share of registered families (August 2025), or below it only where the charged families are exhausted. The terminal take-up signal gate no longer measures would_claim_child_benefit or child_benefit_opts_out, whose rates are shares of eligible children and of claiming families, not of every benefit unit."
     },
     {
       "id": "uk_stage_cgt_incidence_clone_mass",

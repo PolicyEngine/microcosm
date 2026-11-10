@@ -2703,50 +2703,69 @@ def test_spi_benefit_coherence_gate_holds_the_structural_zeros() -> None:
         assert not gate(payload).passed
 
 
-def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> None:
-    parameters = {
-        "stage": "child_benefit_take_up",
-        "check": "child_benefit_take_up",
-        "maximum_claim_rate_deviation": 0.02,
-        "maximum_age_claim_rate_deviation": 0.05,
-        "minimum_age_child_rows": 200,
-        "maximum_opt_out_share_deviation": 0.01,
-        "minimum_eligible_family_units": 1,
+_CHILD_BENEFIT_PARAMETERS = {
+    "stage": "child_benefit_take_up",
+    "check": "child_benefit_take_up",
+    "maximum_claim_rate_deviation": 0.02,
+    "maximum_age_claim_rate_deviation": 0.05,
+    "maximum_age_claim_rate_standard_errors": 3,
+    "minimum_age_child_rows": 200,
+    "maximum_opt_out_share_deviation": 0.01,
+    "minimum_eligible_family_units": 1,
+}
+
+
+def _child_benefit_age(value, published, realized, *, rows=1_000, clipped=False):
+    return {
+        "age": value,
+        "published_rate": published,
+        "realized_rate": realized,
+        "eligible_child_rows": rows,
+        # A weighted child mass far from the row count, so a gate that took it
+        # for n would fail the sampling-noise test on value.
+        "eligible_children": rows * 250.0,
+        "clipped": clipped,
     }
 
-    def age(value, published, realized, *, rows=1_000, clipped=False):
-        return {
-            "age": value,
-            "published_rate": published,
+
+def _child_benefit_gate(
+    *,
+    realized=0.868,
+    ages=None,
+    share=0.0905,
+    exhausted=False,
+    units=100,
+    parameters=_CHILD_BENEFIT_PARAMETERS,
+):
+    evidence = {
+        "stage": "child_benefit_take_up",
+        "claims": {
+            "eligible_family_units": units,
+            "target_rate": 0.871,
             "realized_rate": realized,
-            "eligible_child_rows": rows,
-            "clipped": clipped,
-        }
+            "ages": ages
+            if ages is not None
+            else [
+                _child_benefit_age(0, 0.688, 0.69),
+                _child_benefit_age(1, 0.768, 0.75),
+            ],
+        },
+        "opt_outs": {
+            "target_share": 0.0907,
+            "realized_share": share,
+            "pool_exhausted": exhausted,
+        },
+    }
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="child_benefit_take_up",
+        check="child_benefit_take_up",
+        parameters=parameters,
+    )
 
-    def gate(*, realized=0.868, ages=None, share=0.0905, exhausted=False, units=100):
-        evidence = {
-            "stage": "child_benefit_take_up",
-            "claims": {
-                "eligible_family_units": units,
-                "target_rate": 0.871,
-                "realized_rate": realized,
-                "ages": ages
-                if ages is not None
-                else [age(0, 0.688, 0.69), age(1, 0.768, 0.75)],
-            },
-            "opt_outs": {
-                "target_share": 0.0907,
-                "realized_share": share,
-                "pool_exhausted": exhausted,
-            },
-        }
-        return uk_stage_health_gate(
-            evidence=evidence,
-            stage="child_benefit_take_up",
-            check="child_benefit_take_up",
-            parameters=parameters,
-        )
 
+def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> None:
+    age, gate = _child_benefit_age, _child_benefit_gate
     result = gate()
     assert _passed(result)
     assert result.details["ages_measured"] == 2
@@ -2766,6 +2785,72 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
     assert not gate(share=0.12, exhausted=True).passed
     assert not gate(units=0).passed
     assert not gate(ages=[]).passed
+
+
+def test_child_benefit_take_up_holds_each_age_to_its_own_sampling_noise() -> None:
+    """María's ruling of 2026-11-10 (microcosm#931): a measured age is held to
+    the larger of the 0.05 floor and three standard errors of a share drawn at
+    its published rate over its child rows, so only thin ages loosen. The age,
+    rates and row counts here are invented."""
+
+    assert _gate_parameters("uk_stage_child_benefit_take_up") == (
+        _CHILD_BENEFIT_PARAMETERS
+    )
+
+    def one_age(published, realized, rows):
+        return _child_benefit_gate(
+            ages=[_child_benefit_age(3, published, realized, rows=rows)]
+        )
+
+    # At 0.6 over 240 rows p (1 - p) / n is 0.001, so three standard errors
+    # are about 0.0949: a deviation of 0.06 passes there and 0.10 fails.
+    thin = one_age(0.6, 0.66, 240)
+    assert _passed(thin), thin.failures
+    assert thin.details["ages_tolerance_above_floor"] == 1
+    assert one_age(0.6, 0.70, 240).failures == (
+        "child_benefit_take_up: at age 3 0.7000 of eligible children are "
+        "claimed for against the published 0.6000 (tolerance 0.0949: the "
+        "larger of 0.05 and 3 standard errors of a share at the published rate "
+        "over that age's child rows).",
+    )
+    # Over 2,400 rows three standard errors are 0.03, below the floor, so the
+    # age keeps 0.05 and the same deviation of 0.06 fails.
+    large = one_age(0.6, 0.66, 2_400)
+    assert large.details["ages_tolerance_above_floor"] == 0
+    assert "(tolerance 0.0500: the larger of 0.05 and 3" in " ".join(large.failures)
+    assert _passed(one_age(0.6, 0.64, 2_400))
+    # A published rate of 0 or 1 has no binomial term, so even an age with the
+    # fewest rows the gate measures keeps the floor.
+    for published, inside, outside in ((0.0, 0.04, 0.06), (1.0, 0.96, 0.94)):
+        assert _passed(one_age(published, inside, 200))
+        edge = one_age(published, outside, 200)
+        assert edge.details["ages_tolerance_above_floor"] == 0
+        assert "(tolerance 0.0500:" in " ".join(edge.failures)
+
+
+@pytest.mark.parametrize(
+    "standard_errors", ["absent", None, 0, -3, float("nan"), float("inf")]
+)
+def test_child_benefit_take_up_refuses_missing_or_non_positive_standard_errors(
+    standard_errors,
+) -> None:
+    parameters = dict(_CHILD_BENEFIT_PARAMETERS)
+    if standard_errors == "absent":
+        # The gate reads it as it reads its other parameters, so a missing key
+        # raises a KeyError that names it.
+        del parameters["maximum_age_claim_rate_standard_errors"]
+        refused = pytest.raises(
+            KeyError, match="maximum_age_claim_rate_standard_errors"
+        )
+    else:
+        parameters["maximum_age_claim_rate_standard_errors"] = standard_errors
+        refused = pytest.raises(
+            ValueError,
+            match=r"maximum_age_claim_rate_standard_errors must be (finite|positive)",
+        )
+
+    with refused:
+        _child_benefit_gate(parameters=parameters)
 
 
 _PROPERTY_COMPONENTS_PARAMETERS = {
