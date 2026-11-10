@@ -106,7 +106,12 @@ distributes files across two pytest workers with `--dist loadfile`.
 Changed-file selection only controls the more resource-intensive country jobs.
 A documentation-only pull request selects neither country; a US-only or UK-only
 pull request selects that country; shared, mixed, unknown, or empty changed-path
-sets select both. Main pushes select both without querying the pull-request API.
+sets select both. Below `tools/`, the rules for documentation, test groups and
+the country runtime packages run first. A file there that none of them claims
+belongs to a country when its file name holds that country as a whole word and
+the other country's letters appear nowhere in its lower-cased path, and takes
+the `shared` scope otherwise. Main pushes select both without querying the
+pull-request API.
 The UK integration job follows the same UK selection as the ordinary UK engine
 job.
 
@@ -130,11 +135,12 @@ its 25 slowest tests.
 Every behavioral or cross-language compatibility assertion must be a pytest
 test in a directory registered by `TEST_GROUPS` and must run through that
 category's existing workflow job. Supporting programs and data may live under
-`tools/`, but they do not receive separate workflow jobs. The test-plan verifier
-allows only registered test jobs and the explicitly declared orchestration,
-lint, wheel-building, and aggregate-result jobs. Add a test category to
-`TEST_GROUPS` before its executor; do not create a separate selection system,
-test workflow, or single-purpose behavioral test job.
+`tools/`, but they do not receive separate workflow jobs.
+`tools/ci_test_plan.py verify-workflow` allows only registered test jobs and
+the explicitly declared orchestration, lint, wheel-building, and
+aggregate-result jobs. Add a test category to `TEST_GROUPS` before its
+executor; do not create a separate selection system, test workflow, or
+single-purpose behavioral test job.
 
 The Orrery parser compatibility assertion lives in
 `packages/microcosm-graph/tests/engine_free/shared/test_graph_orrery.py`. The

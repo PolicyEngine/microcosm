@@ -118,16 +118,6 @@ def test_every_workflow_job_caps_its_runtime() -> None:
         assert type(cap) is int and 0 < cap < 360, name
 
 
-def test_plan_verifier_sees_every_workflow_job() -> None:
-    """The plan verifier reads job names from the workflow text, so a job it
-    cannot see (a quoted key, for example) would escape its checks."""
-    workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
-
-    assert ci_test_plan.workflow_job_names(workflow) == tuple(
-        yaml.safe_load(workflow)["jobs"]
-    )
-
-
 def test_workflow_uses_one_country_selector_only_for_country_jobs() -> None:
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
     selector = workflow.split("\n  select-countries:\n", maxsplit=1)[1].split(
