@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Create a local BuildP native-role candidate; never calibrate or publish."""
+"""Create a local BuildP native-role candidate; never calibrate or publish.
+
+The candidate is a new build of the national release
+(``microcosm-us-2024-national``), written to
+``<output-dir>/releases/microcosm-us-2024-national/`` with its H5 at
+``<output-dir>/artifacts/microcosm_us_2024.h5``. ``--release-id`` is the new
+build's ID (``populace-us-2024-…``). Both manifests name the release and the
+build, and the parent is named as a build in the national release's folder.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +20,7 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 
@@ -21,20 +30,27 @@ from microcosm.build.us_runtime.spm_role_source import (
     BUILDP_SPM_ROLE_INCOME_YEARS,
     derive_spm_role_source,
 )
-from microcosm.data.contract import ReleaseContractError
+from microcosm.data.build_folder_manifests import rewrite_release_dir
+from microcosm.data.contract import US_RELEASE_DATASET_FILES, ReleaseContractError
 from microcosm.data.h5_enrichment import append_native_spm_role, file_sha256
 from microcosm.data.source_enrichment import (
     PARENT_BUILD_ID,
     PARENT_DATASET_SHA256,
     PARENT_FILES,
+    REPO_ID,
     ROLE_VARIABLE,
     SOURCE_ENRICHMENT_FILE,
     SOURCE_ENRICHMENT_RELEASE_TYPE,
     SOURCE_EVIDENCE_FILE,
     SOURCE_PROVENANCE_FILE,
+    SPM_ROLE_RELEASE_ID,
+    parent_reference,
     validate_source_enrichment_candidate,
 )
 
+#: The release's dataset file, and its artifact key.
+_DATASET_FILENAME = US_RELEASE_DATASET_FILES[SPM_ROLE_RELEASE_ID]
+_DATASET_KEY = _DATASET_FILENAME.removesuffix(".h5")
 REFERENCE_EVIDENCE_SHA256 = (
     "22b5968d90fecfeef7614583e493fe10cc16bda8b5be82e6f49a5bc2102d3ce5"
 )
@@ -104,8 +120,17 @@ def build_candidate(
     output_dir: Path,
     release_id: str,
     reference_evidence_csv: Path | None = None,
+    built_at: str | None = None,
 ) -> dict:
-    """Derive, preserve, validate, then atomically expose a new private bundle."""
+    """Derive, preserve, validate, then atomically expose a new private bundle.
+
+    ``release_id`` is the new build's ID; the build is one of
+    :data:`~microcosm.data.source_enrichment.SPM_ROLE_RELEASE_ID`.
+    ``built_at`` is the time recorded as when the build was made, now unless
+    given.
+    """
+    if built_at is None:
+        built_at = datetime.now(UTC).isoformat()
     if (
         not release_id.startswith("populace-us-2024-")
         or Path(release_id).name != release_id
@@ -151,11 +176,12 @@ def build_candidate(
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".spm-enrichment-", dir=output_dir.parent))
     try:
-        release_dir = staging / "releases" / release_id
+        # Named after the release, as a build-folder release directory is.
+        release_dir = staging / "releases" / SPM_ROLE_RELEASE_ID
         release_dir.mkdir(parents=True, mode=0o700)
         artifact_root = staging / "artifacts"
         artifact_root.mkdir(mode=0o700)
-        candidate_h5 = artifact_root / "populace_us_2024.h5"
+        candidate_h5 = artifact_root / _DATASET_FILENAME
         preservation = append_native_spm_role(
             parent_h5,
             candidate_h5,
@@ -181,14 +207,12 @@ def build_candidate(
             "schema_version": 1,
             "release_type": SOURCE_ENRICHMENT_RELEASE_TYPE,
             "operation": "add_native_spm_independent_minor_role",
-            "parent": {
-                "build_id": PARENT_BUILD_ID,
-                "repo_id": "policyengine/populace-us",
-                "revision": PARENT_BUILD_ID,
-                "dataset_sha256": PARENT_DATASET_SHA256,
-                "calibration_diagnostics_schema_version": 5,
-                "files": PARENT_FILES,
-            },
+            # Build P is a build in the national release's folder.
+            "parent": parent_reference(
+                PARENT_BUILD_ID,
+                dataset_sha256=PARENT_DATASET_SHA256,
+                files=PARENT_FILES,
+            ),
             "dataset": dataset,
             "added_variable": {
                 "name": ROLE_VARIABLE,
@@ -223,11 +247,17 @@ def build_candidate(
                 "reason": "local source-enrichment candidate; no calibration",
             },
         }
+        # Every evidence file is declared now, before the build manifest is
+        # written: the build-folder publisher adds the build manifest itself
+        # and refuses a file named twice.
+        evidence = sorted(path for path in release_dir.iterdir() if path.is_file())
         _json_write(release_dir / "build_manifest.json", build)
 
+        # Written in the tagged shape, then rewritten into the build-folder
+        # layout below (no revision; each artifact gets its role).
         def artifact(path: Path, *, kind: str) -> dict:
             return {
-                "repo_id": "policyengine/populace-us",
+                "repo_id": REPO_ID,
                 "revision": release_id,
                 "path": path.name,
                 "sha256": file_sha256(path),
@@ -241,22 +271,22 @@ def build_candidate(
                 "name": "microcosm-data",
                 "version": metadata.version("microcosm-data"),
             },
-            "default_datasets": {"national": "populace_us_2024"},
-            "build": {"build_id": release_id},
+            "default_datasets": {"national": _DATASET_KEY},
+            "build": {"build_id": release_id, "built_at": built_at},
             "compatible_core_packages": [],
             "compatible_model_packages": [],
             "artifacts": {
-                "populace_us_2024": artifact(candidate_h5, kind="microdata"),
+                _DATASET_KEY: artifact(candidate_h5, kind="microdata"),
                 **{
                     path.name.removesuffix(".json").removesuffix(".csv"): artifact(
                         path, kind="evidence"
                     )
-                    for path in sorted(release_dir.iterdir())
-                    if path.is_file()
+                    for path in evidence
                 },
             },
         }
         _json_write(release_dir / "release_manifest.json", manifest)
+        rewrite_release_dir(release_dir, build=release_id)
         validate_source_enrichment_candidate(
             release_dir, parent_h5=parent_h5, artifact_root=artifact_root
         )
@@ -282,7 +312,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--parent-h5", type=Path, required=True)
     parser.add_argument("--parent-release-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--release-id", required=True)
+    parser.add_argument(
+        "--release-id",
+        required=True,
+        help=f"The new build's ID (populace-us-2024-…), a build of {SPM_ROLE_RELEASE_ID}",
+    )
     parser.add_argument("--reference-evidence-csv", type=Path)
     parser.add_argument(
         "--source-cache",
@@ -307,7 +341,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.exit(2, f"Source-enrichment candidate refused: {exc}\n")
     print(
         json.dumps(
-            {"dataset": report["dataset"], "compatibility": report["compatibility"]},
+            {
+                "release": SPM_ROLE_RELEASE_ID,
+                "build": args.release_id,
+                "dataset": report["dataset"],
+                "compatibility": report["compatibility"],
+            },
             indent=2,
         )
     )

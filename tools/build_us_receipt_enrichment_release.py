@@ -10,10 +10,19 @@ three receipt inputs, their preservation proof and their aggregate counts are
 the qualification's, carried verbatim in its receipt, and the release contract
 replays the exhaustive H5 comparison before this tool exposes anything.
 
+The candidate is a new build of the receipt-qualified donor release
+(``microcosm-us-2024-receipt-donor``), which is never the repository's
+default: it is written to
+``<output-dir>/releases/microcosm-us-2024-receipt-donor/`` with the child at
+``<output-dir>/artifacts/microcosm_us_2024_receipt_qualified.h5``.
+``--release-id`` is the new build's ID (``populace-us-2024-…``). Both
+manifests name the release and the build, and the parent is named as a build
+in the national release's folder.
+
 It never calibrates, certifies, stages or publishes. The candidate's
 compatibility is ``pending``; certification and publication are the existing
 ``python -m microcosm.data.source_enrichment --certify`` and
-``microcosm-publish-release`` steps. See
+``microcosm-publish-release-build`` steps. See
 ``docs/us-reported-receipt-source-enrichment.md``.
 """
 
@@ -30,10 +39,12 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 
 from microcosm.data import h5_boolean_append, h5_enrichment
+from microcosm.data.build_folder_manifests import rewrite_release_dir
 from microcosm.data.contract import ReleaseContractError
 from microcosm.data.h5_enrichment import file_sha256
 from microcosm.data.source_enrichment import (
@@ -45,13 +56,20 @@ from microcosm.data.source_enrichment import (
     RECEIPT_PARENT_DATASET_SHA256,
     RECEIPT_PARENT_FILES,
     RECEIPT_QUALIFICATION_FILE,
+    RECEIPT_RELEASE_ID,
     RECEIPT_RELEASE_PRODUCER_FILES,
+    REPO_ID,
     SOURCE_ENRICHMENT_FILE,
     SOURCE_ENRICHMENT_RELEASE_TYPE,
+    TAGGED_RECEIPT_DATASET_FILENAME,
+    parent_reference,
     validate_source_enrichment_candidate,
 )
 
-_REPO_ID = "policyengine/populace-us"
+#: The name the qualification gives the child of the pinned parent's
+#: ``populace_us_2024.h5``. The builder reads the child under it and publishes
+#: it as :data:`RECEIPT_DATASET_FILENAME`.
+_QUALIFIED_CHILD_FILENAME = TAGGED_RECEIPT_DATASET_FILENAME
 _ARTIFACT_KEY = RECEIPT_DATASET_FILENAME.removesuffix(".h5")
 _PRODUCER_FILES = RECEIPT_RELEASE_PRODUCER_FILES
 
@@ -125,12 +143,12 @@ def _read_qualification(qualification_dir: Path) -> tuple[bytes, dict, Path]:
             f"{RECEIPT_PARENT_BUILD_ID}"
         )
     dataset = receipt.get("dataset") if isinstance(receipt.get("dataset"), dict) else {}
-    if dataset.get("filename") != RECEIPT_DATASET_FILENAME:
+    if dataset.get("filename") != _QUALIFIED_CHILD_FILENAME:
         raise ValueError(
-            f"The qualified child must be named {RECEIPT_DATASET_FILENAME}: run the "
-            "qualification on the parent as populace_us_2024.h5"
+            f"The qualified child must be named {_QUALIFIED_CHILD_FILENAME}: run "
+            "the qualification on the parent as populace_us_2024.h5"
         )
-    child = qualification_dir / RECEIPT_DATASET_FILENAME
+    child = qualification_dir / _QUALIFIED_CHILD_FILENAME
     if not child.is_file() or file_sha256(child) != dataset.get("sha256"):
         raise ValueError("The qualified child H5 differs from its receipt")
     return receipt_bytes, receipt, child
@@ -182,9 +200,18 @@ def build_candidate(
     qualification_dir: Path,
     output_dir: Path,
     release_id: str,
+    built_at: str | None = None,
 ) -> dict:
-    """Package, validate, then atomically expose a new local candidate."""
+    """Package, validate, then atomically expose a new local candidate.
 
+    ``release_id`` is the new build's ID; the build is one of
+    :data:`~microcosm.data.source_enrichment.RECEIPT_RELEASE_ID`.
+    ``built_at`` is the time recorded as when the build was made, now unless
+    given.
+    """
+
+    if built_at is None:
+        built_at = datetime.now(UTC).isoformat()
     if (
         not release_id.startswith("populace-us-2024-")
         or Path(release_id).name != release_id
@@ -212,7 +239,8 @@ def build_candidate(
     )
     try:
         os.chmod(staging, 0o700)
-        release_dir = staging / "releases" / release_id
+        # Named after the release, as a build-folder release directory is.
+        release_dir = staging / "releases" / RECEIPT_RELEASE_ID
         release_dir.mkdir(parents=True, mode=0o700)
         artifact_root = staging / "artifacts"
         artifact_root.mkdir(mode=0o700)
@@ -235,14 +263,12 @@ def build_candidate(
             "schema_version": 1,
             "release_type": SOURCE_ENRICHMENT_RELEASE_TYPE,
             "operation": RECEIPT_OPERATION,
-            "parent": {
-                "build_id": RECEIPT_PARENT_BUILD_ID,
-                "repo_id": _REPO_ID,
-                "revision": RECEIPT_PARENT_BUILD_ID,
-                "dataset_sha256": RECEIPT_PARENT_DATASET_SHA256,
-                "calibration_diagnostics_schema_version": 5,
-                "files": RECEIPT_PARENT_FILES,
-            },
+            # The national default is a build in the national release's folder.
+            "parent": parent_reference(
+                RECEIPT_PARENT_BUILD_ID,
+                dataset_sha256=RECEIPT_PARENT_DATASET_SHA256,
+                files=RECEIPT_PARENT_FILES,
+            ),
             "dataset": dataset,
             "added_variables": [
                 {"name": name, "entity": entity, "dtype": "bool"}
@@ -276,11 +302,17 @@ def build_candidate(
                 "reason": "local source-enrichment candidate; no calibration",
             },
         }
+        # Every evidence file is declared now, before the build manifest is
+        # written: the build-folder publisher adds the build manifest itself
+        # and refuses a file named twice.
+        evidence = sorted(path for path in release_dir.iterdir() if path.is_file())
         _json_write(release_dir / "build_manifest.json", build)
 
+        # Written in the tagged shape, then rewritten into the build-folder
+        # layout below (no revision; each artifact gets its role).
         def artifact(path: Path, *, kind: str) -> dict:
             return {
-                "repo_id": _REPO_ID,
+                "repo_id": REPO_ID,
                 "revision": release_id,
                 "path": path.name,
                 "sha256": file_sha256(path),
@@ -295,19 +327,19 @@ def build_candidate(
                 "version": metadata.version("microcosm-data"),
             },
             "default_datasets": {"national": _ARTIFACT_KEY},
-            "build": {"build_id": release_id},
+            "build": {"build_id": release_id, "built_at": built_at},
             "compatible_core_packages": [],
             "compatible_model_packages": [],
             "artifacts": {
                 _ARTIFACT_KEY: artifact(candidate_h5, kind="microdata"),
                 **{
                     path.name.removesuffix(".json"): artifact(path, kind="evidence")
-                    for path in sorted(release_dir.iterdir())
-                    if path.is_file()
+                    for path in evidence
                 },
             },
         }
         _json_write(release_dir / "release_manifest.json", manifest)
+        rewrite_release_dir(release_dir, build=release_id)
         validate_source_enrichment_candidate(
             release_dir, parent_h5=parent_h5, artifact_root=artifact_root
         )
@@ -352,7 +384,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--release-id", required=True)
+    parser.add_argument(
+        "--release-id",
+        required=True,
+        help=f"The new build's ID (populace-us-2024-…), a build of {RECEIPT_RELEASE_ID}",
+    )
     args = parser.parse_args(argv)
     try:
         report = build_candidate(
@@ -366,7 +402,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.exit(2, f"Reported-receipt enrichment candidate refused: {exc}\n")
     print(
         json.dumps(
-            {"dataset": report["dataset"], "compatibility": report["compatibility"]},
+            {
+                "release": RECEIPT_RELEASE_ID,
+                "build": args.release_id,
+                "dataset": report["dataset"],
+                "compatibility": report["compatibility"],
+            },
             indent=2,
         )
     )

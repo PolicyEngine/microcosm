@@ -18,17 +18,23 @@ def test_candidate_carries_the_qualified_child_as_its_one_microdata_artifact(
     }
     child_sha = file_sha256(lineage.child)
     assert microdata == {
-        "populace_us_2024_receipt_qualified": {
+        "microcosm_us_2024_receipt_qualified": {
             "kind": "microdata",
-            "path": contract.RECEIPT_DATASET_FILENAME,
+            "path": "microcosm_us_2024_receipt_qualified.h5",
             "repo_id": "policyengine/populace-us",
-            "revision": _RELEASE_ID,
+            "role": "dataset",
             "sha256": child_sha,
         }
     }
     assert manifest["default_datasets"] == {
-        "national": "populace_us_2024_receipt_qualified"
+        "national": "microcosm_us_2024_receipt_qualified"
     }
+    assert (manifest["release"], manifest["build"]) == (
+        US_RECEIPT_DONOR_RELEASE_ID,
+        _RELEASE_ID,
+    )
+    assert not any("revision" in entry for entry in manifest["artifacts"].values())
+    assert "build_manifest" not in manifest["artifacts"]
     assert manifest["release_type"] == "source_enrichment"
     assert "dataset_role" not in manifest
     assert sorted(path.name for path in release.iterdir()) == sorted(
@@ -51,9 +57,21 @@ def test_candidate_carries_the_qualified_child_as_its_one_microdata_artifact(
     assert (release / contract.RECEIPT_QUALIFICATION_FILE).read_bytes() == receipt_bytes
     receipt = json.loads(receipt_bytes)
     assert report["preservation"] == receipt["preservation"]
-    assert report["parent"]["build_id"] == "populace-us-2024-spm-20260915"
+    # The parent is a build in the national release's folder, not a tag.
+    assert report["parent"] == {
+        "repo_id": "policyengine/populace-us",
+        "release": US_NATIONAL_RELEASE_ID,
+        "build": "populace-us-2024-spm-20260915",
+        "dataset_sha256": file_sha256(lineage.parent),
+        "calibration_diagnostics_schema_version": 5,
+        "files": contract.RECEIPT_PARENT_FILES,
+    }
     assert report["compatibility"] == {"status": "pending"}
     build = json.loads((release / "build_manifest.json").read_text())
+    assert (build["release"], build["build"]) == (
+        US_RECEIPT_DONOR_RELEASE_ID,
+        _RELEASE_ID,
+    )
     assert build["calibration"] == {
         "mode": "inherited",
         "parent_build_id": "populace-us-2024-spm-20260915",
@@ -73,10 +91,15 @@ def test_the_local_chain_accepts_the_manifest_as_a_published_donor(lineage) -> N
         manifest, file_sha256(lineage.child)
     )
 
-    assert identity["release_id"] == _RELEASE_ID
-    assert identity["revision"] == _RELEASE_ID
-    assert identity["artifact"] == "populace_us_2024_receipt_qualified"
+    # The donor is a build of its own release, named by release and build.
+    published = json.loads(manifest.read_text())
+    assert (published["release"], published["build"]) == (
+        US_RECEIPT_DONOR_RELEASE_ID,
+        _RELEASE_ID,
+    )
+    assert identity["artifact"] == "microcosm_us_2024_receipt_qualified"
     assert identity["repo_id"] == "policyengine/populace-us"
+    assert identity["sha256"] == file_sha256(lineage.child)
     with pytest.raises(SystemExit, match="does not match its release manifest"):
         _legacy_staging_module()._donor_release_identity(
             manifest, file_sha256(lineage.parent)
@@ -120,46 +143,59 @@ def test_certification_checks_the_role_and_all_three_receipts_natively(
     )
 
 
-def test_publication_is_tag_only_and_never_moves_the_default_pointer(
+def test_the_donor_is_a_build_of_its_own_release_never_the_national_default(
     lineage, monkeypatch
 ) -> None:
     _build(lineage)
     certified = _certify(lineage, monkeypatch, [])
-    options = {
-        "parent_h5": lineage.parent,
-        "artifact_root": _artifacts(lineage),
-        "compatibility_wheels": _WHEELS,
-    }
-
-    with pytest.raises(ValueError, match="never the national default pointer"):
-        publisher.prepare_release(certified, **options)
-    prepared = publisher.prepare_release(
-        certified, update_latest=False, tag_only=True, **options
+    options = {"parent_h5": lineage.parent, "compatibility_wheels": _WHEELS}
+    # The release contract replays the H5 comparison and the loader checks,
+    # which take the parent H5 and the tested wheels.
+    monkeypatch.setattr(
+        publisher,
+        "validate_release_dir",
+        lambda release_dir, **kwargs: validate_release_dir(
+            release_dir, **{**options, **kwargs}
+        ),
     )
-    assert prepared.root_artifacts == {
-        contract.RECEIPT_DATASET_FILENAME: file_sha256(lineage.child)
-    }
-    assert "populace_us_2024.h5" not in prepared.root_artifacts
+    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("use no Hub"))
 
-    hub = import_module("test_support.microcosm_data.release").FakeHub()
-    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("use FakeHub"))
-    publisher.publish_release(
+    prepared = publisher.prepare_build_folder_release(
         certified,
-        "policyengine/populace-us",
-        update_latest=False,
-        tag_only=True,
-        api=hub,
-        notify=False,
-        **options,
+        artifact_root=_artifacts(lineage),
+        repository="policyengine/populace-us",
     )
-    uploaded = {path for path, _ in hub.uploads}
-    assert "latest.json" not in uploaded
-    assert "populace_us_2024.h5" not in uploaded
-    assert contract.RECEIPT_DATASET_FILENAME in uploaded
-    assert [tag["tag"] for tag in hub.tags] == [_RELEASE_ID]
-    assert hub.repo_info(repo_id="policyengine/populace-us", repo_type="dataset") == {
-        "sha": "commit-0"
+
+    assert (prepared.release, prepared.build) == (
+        US_RECEIPT_DONOR_RELEASE_ID,
+        _RELEASE_ID,
+    )
+    assert {
+        item.name: item.path for item in prepared.files if item.role == "dataset"
+    } == {
+        contract.RECEIPT_DATASET_FILENAME: _artifacts(lineage)
+        / contract.RECEIPT_DATASET_FILENAME
     }
+    # The tag publisher, which writes latest.json, refuses it.
+    with pytest.raises(ValueError, match="microcosm-publish-release-build"):
+        publisher.prepare_release(
+            certified, artifact_root=_artifacts(lineage), **options
+        )
+    # The same build named as a build of the national release is refused: it
+    # is not that release's lineage, and its file is not that release's
+    # dataset file.
+    national = lineage.tmp / "national" / US_NATIONAL_RELEASE_ID
+    shutil.copytree(certified, national)
+    for name in ("release_manifest.json", "build_manifest.json"):
+        _rewrite(national, name, lambda payload: payload.update(release=national.name))
+    with pytest.raises(ReleaseContractError) as refusal:
+        validate_release_dir(national, artifact_root=_artifacts(lineage), **options)
+    message = str(refusal.value)
+    assert (
+        f"a reported-receipt enrichment is a build of {US_RECEIPT_DONOR_RELEASE_ID}, "
+        f"never of {US_NATIONAL_RELEASE_ID}"
+    ) in message
+    assert "must declare one microdata artifact, 'microcosm_us_2024.h5'" in message
 
 
 def test_builder_refuses_any_parent_but_the_pinned_default(
@@ -243,7 +279,7 @@ def test_contract_replays_the_h5_comparison_rather_than_trusting_the_receipt(
         release,
         "release_manifest.json",
         lambda payload: payload["artifacts"][
-            "populace_us_2024_receipt_qualified"
+            "microcosm_us_2024_receipt_qualified"
         ].update(sha256=tampered),
     )
 
@@ -459,7 +495,13 @@ def test_the_receipt_lineage_inherits_build_ps_own_calibration_bytes() -> None:
     )
     assert contract.RECEIPT_COLUMNS == qualification.QUALIFIED_COLUMNS
     assert contract.RECEIPT_QUALIFICATION_FILE == qualification.RECEIPT_FILENAME
-    assert contract.RECEIPT_DATASET_FILENAME == "populace_us_2024_receipt_qualified.h5"
+    # A new donor declares its release's dataset file; the qualification
+    # names the pinned parent's child as a tagged donor published it.
+    assert contract.RECEIPT_DATASET_FILENAME == "microcosm_us_2024_receipt_qualified.h5"
+    assert contract.TAGGED_RECEIPT_DATASET_FILENAME == (
+        "populace_us_2024_receipt_qualified.h5"
+    )
+    assert contract.RECEIPT_RELEASE_ID == US_RECEIPT_DONOR_RELEASE_ID
 
 
 def test_the_shared_verifier_is_the_one_the_qualification_calls() -> None:
