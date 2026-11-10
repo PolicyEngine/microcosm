@@ -207,3 +207,59 @@ def test_the_publication_commands_publish_then_make_current(tmp_path) -> None:
         "policyengine/populace-us",
         "--promote",
     ]
+
+
+def test_a_build_folder_reference_is_read_at_main_from_its_folder() -> None:
+    location = build_folder_manifests.referenced_build(
+        {
+            "repo_id": "policyengine/populace-us",
+            "release": "microcosm-us-2024-receipt-donor",
+            "build": "populace-us-2024-spm-receipts-20261120",
+            "sha256": "d" * 64,
+        }
+    )
+
+    assert location == build_folder_manifests.ReferencedBuild(
+        repo_id="policyengine/populace-us",
+        revision="main",
+        folder="releases/microcosm-us-2024-receipt-donor/populace-us-2024-spm-receipts-20261120",
+    )
+
+
+@pytest.mark.parametrize("id_field", ["build_id", "release_id"])
+def test_a_tag_reference_is_read_at_its_tag(id_field: str) -> None:
+    location = build_folder_manifests.referenced_build(
+        {
+            "repo_id": "policyengine/populace-us",
+            id_field: "populace-us-2024-spm-receipts-20260923",
+            "revision": "populace-us-2024-spm-receipts-20260923",
+        }
+    )
+
+    assert location == build_folder_manifests.ReferencedBuild(
+        repo_id="policyengine/populace-us",
+        revision="populace-us-2024-spm-receipts-20260923",
+        folder="releases/populace-us-2024-spm-receipts-20260923",
+    )
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        {
+            "repo_id": "policyengine/populace-us",
+            "release": "microcosm-us-2024-national",
+        },
+        {"repo_id": "policyengine/populace-us", "build_id": "populace-us-2024-x"},
+        {"release": "microcosm-us-2024-national", "build": "populace-us-2024-x"},
+        {
+            "repo_id": "policyengine/populace-us",
+            "release": "microcosm-us-2024-national",
+            "build": "populace-us-2024-x",
+            "revision": "populace-us-2024-x",
+        },
+    ],
+)
+def test_an_incomplete_or_mixed_reference_is_refused(reference: dict) -> None:
+    with pytest.raises(ValueError, match="reference"):
+        build_folder_manifests.referenced_build(reference)
