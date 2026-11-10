@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import inspect
 import json
 import os
 import random
@@ -65,6 +66,7 @@ from microcosm.build.transport.measure_kernels import (
     MEASURE_COMBINE_REF,
 )
 from microcosm.calibrate import CalibrationProblem, Target
+from microcosm.calibrate import artifacts as calibrate_artifacts
 from microcosm.calibrate.artifacts import (
     PROBLEM_TYPE,
     SOLUTION_TYPE,
@@ -87,6 +89,7 @@ from microcosm.graph.executor import Population, _project_context
 from microcosm.graph.kernel import ArtifactValue, NumericScope
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.first_party_imports import hashed_module_names
+from test_support.microcosm_build.static_reach import Cut, reach
 from test_support.microcosm_build.transport_graph import toy_fact
 from test_support.microcosm_build.transport_population import digest
 from test_support.paths import paths_for
@@ -1890,6 +1893,84 @@ def test_the_native_report_runs_the_schema_module(kernel_traces) -> None:
     assert _unlisted(NATIVE_BAND_REPORT_REF, traced, shortened) == {
         "microcosm.frame.schema"
     }
+
+
+# ---------------------------------------------------------------------------
+# Each kernel hashes every module its run() can reach (#1563 O2): the
+# constants half of the module-list rule, which no trace can see
+# ---------------------------------------------------------------------------
+
+#: The one guarded branch the static walk leaves out. Target.__post_init__
+#: names microcosm.calibrate.hierarchy only for a target that carries a
+#: hierarchy, and _read_target, which builds every target a problem decodes
+#: to, passes none (test_no_decoded_target_carries_a_hierarchy).
+HIERARCHY_GUARD = Cut(
+    "microcosm.calibrate.target", "Target.__post_init__", "self.hierarchy is not None"
+)
+
+
+def _outside_graph(modules) -> set[str]:
+    # The lists leave out microcosm.graph.kernel and microcosm.graph.decl by
+    # rule, and the trace test checks microcosm.graph.canonical.
+    return {
+        name
+        for name in modules
+        if name != "microcosm.graph" and not name.startswith("microcosm.graph.")
+    }
+
+
+def _walk(ref, cuts=(HIERARCHY_GUARD,)):
+    kernel = type(KERNELS[ref])
+    return reach(kernel.__module__, f"{kernel.__qualname__}.run", cuts=cuts)
+
+
+@pytest.mark.parametrize("ref", sorted(KERNELS))
+def test_each_kernel_hashes_every_module_its_run_can_reach(ref) -> None:
+    # A static walk of run(), over every branch with the defaults,
+    # decorators, class attributes and module-level constants it reaches,
+    # names exactly the listed modules outside microcosm.graph. The trace
+    # test sees only the modules one run executes, so a new constant read
+    # from an unlisted module would pass it and leave the hash short.
+    walked = _walk(ref)
+    listed = _outside_graph(INCOME_EVIDENCE_KERNEL_MODULES[ref])
+    reached = _outside_graph(walked.modules)
+    assert {name: walked.names(name) for name in reached - listed} == {}
+    assert listed - reached == set()
+
+
+def test_the_walk_cuts_only_the_hierarchy_guard() -> None:
+    # Without the cut, the register and the native report also reach
+    # microcosm.calibrate.hierarchy, and nothing else off their lists.
+    for ref in sorted(KERNELS):
+        extra = _outside_graph(_walk(ref, cuts=()).modules) - set(
+            INCOME_EVIDENCE_KERNEL_MODULES[ref]
+        )
+        decodes = ref != INCOME_IDENTITY_REF
+        assert extra == ({"microcosm.calibrate.hierarchy"} if decodes else set()), ref
+        assert _walk(ref).cuts_used == (
+            frozenset({HIERARCHY_GUARD}) if decodes else frozenset()
+        ), ref
+
+
+def test_no_decoded_target_carries_a_hierarchy() -> None:
+    # The cut's premise: _read_target passes no hierarchy, so every target a
+    # problem decodes to keeps the default None and the guard never opens.
+    assert "hierarchy" not in inspect.getsource(calibrate_artifacts._read_target)
+    problem = decode_problem(_encoded_problem([1, 2, 3], np.ones(3)))
+    assert [target.hierarchy for target in problem.problem.targets] == [None]
+
+
+def test_the_walk_sees_a_constant_the_trace_cant(kernel_traces) -> None:
+    # Mutant: the native report's list loses
+    # microcosm.build.transport.artifact_types, whose
+    # CALIBRATION_PREPARATION_TYPE its run() reads but never calls. The trace
+    # test still passes; the walk names the dropped module.
+    ref = NATIVE_BAND_REPORT_REF
+    dropped = "microcosm.build.transport.artifact_types"
+    shortened = dict(INCOME_EVIDENCE_KERNEL_MODULES)
+    shortened[ref] = tuple(name for name in shortened[ref] if name != dropped)
+    assert _unlisted(ref, kernel_traces[ref], shortened) == set()
+    assert _outside_graph(_walk(ref).modules) - set(shortened[ref]) == {dropped}
 
 
 def test_the_module_stays_outside_the_batterys_binding_closure() -> None:

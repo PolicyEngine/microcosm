@@ -33,9 +33,12 @@ producer hash is the kernel's own implementation hash, over the modules
 first-party module whose source its ``run()`` executes, and every first-party
 module outside ``microcosm.graph`` whose constants it reads.
 ``microcosm.graph.kernel`` and ``microcosm.graph.decl`` stay out, as in the
-evidence kernels' lists. The trace test checks the executed modules and can't
-see a constant read, so a comment marks each entry whose module a run only
-reads constants from.
+evidence kernels' lists. Two tests check each list. A trace of one run checks
+the executed modules, and can't see a constant read. A static walk of
+``run()``'s source (``test_support/microcosm_build/static_reach.py``) follows
+every branch and constant outside ``microcosm.graph``, and leaves out one
+guarded branch that no decoded target opens. A comment marks each entry whose
+module a run only reads constants from.
 ``evidence_contract`` hashes only the kernels it lists, and this module stays
 outside the gate battery's binding closure, so adding it re-keys no battery.
 
