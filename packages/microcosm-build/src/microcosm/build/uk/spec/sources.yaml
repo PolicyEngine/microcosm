@@ -1790,9 +1790,10 @@ stages:
       salt: 'spi_stage1:<target>:<sign|quantile>'
       seed: 42
     source_sampling_weight: FACT
+    sample_design: rare_carriers_certain
     sample_size: 100000
-    sample_with_replacement: true
-    post_sample_fit_weight: uniform
+    sample_with_replacement: false
+    post_sample_fit_weight: inverse_inclusion
     fit_weight_kind: design
     double_apply_source_weight: false
     source_columns:

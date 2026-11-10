@@ -128,6 +128,31 @@ FRS_ONLY_FIT_NAME = "uk_frs_only_spi_fill"
 #: layout, so moving to the additive contract redraws nothing (microcosm#1360).
 _STAGE2_SALT_NAMES = {ISA_INTEREST_COLUMN: "tax_free_savings_income"}
 DEFAULT_SPI_DONOR_SAMPLE_SIZE = 100_000
+#: How the stage-1 forest's donor frame is drawn from the prepared tape.
+#: ``fact_weighted_bootstrap`` draws rows with replacement in proportion to
+#: FACT and fits them at uniform weight, as the enhanced-FRS pipeline does.
+#: ``rare_carriers_certain`` (microcosm#1276) keeps the row count and takes
+#: every record that carries a rare output, then fills the frame from the
+#: other records in proportion to FACT without replacement; each row is fitted
+#: at FACT over its inclusion probability, so the frame's weighted incidence
+#: is the tape's and no record repeats.
+SPI_DONOR_FRAME_FACT_BOOTSTRAP = "fact_weighted_bootstrap"
+SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN = "rare_carriers_certain"
+SPI_DONOR_FRAME_DESIGNS = (
+    SPI_DONOR_FRAME_FACT_BOOTSTRAP,
+    SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN,
+)
+#: The manifest's ``post_sample_fit_weight`` for each design.
+SPI_DONOR_FRAME_FIT_WEIGHT = {
+    SPI_DONOR_FRAME_FACT_BOOTSTRAP: "uniform",
+    SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN: "inverse_inclusion",
+}
+#: Under ``rare_carriers_certain`` an output is rare when the tape records
+#: that carry it number fewer than this share of the frame's rows.
+SPI_DONOR_RARE_CARRIER_SHARE = 0.25
+#: The frame draw's seed derives from the stage seed, like stage 2's (+1), the
+#: band resample's (+2) and the reference forests' (+3).
+SPI_DONOR_FRAME_SEED_OFFSET = 4
 # Recipient guard matching the existing constructed SPI age support below.
 # SN 9422 Annex A labels the youngest band "Under 25"; it does not establish
 # a survey age minimum. Keep observed FRS inputs below the constructed lower
@@ -1135,6 +1160,9 @@ class UKSPIIncomeImputationResult:
     gift_anchor: Mapping[str, object] | None = None
     #: Each gated target's gate outcome, for the fits not on the in-sample gate.
     gate_outcomes: Mapping[str, str] | None = None
+    #: How the stage-1 donor frame was drawn, for a design other than the
+    #: FACT-weighted bootstrap.
+    donor_frame: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1245,6 +1273,7 @@ def impute_uk_spi_income_support(
     employment_pay_floor: SPIEmploymentPayFloor | None = None,
     stage1_gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
     stage2_gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
+    donor_frame_design: str = SPI_DONOR_FRAME_FACT_BOOTSTRAP,
 ) -> UKSPIIncomeImputationResult:
     """Run strict SPI-income and FRS-only QRFs on rebuilt positive support.
 
@@ -1268,7 +1297,10 @@ def impute_uk_spi_income_support(
     observed sign and the tape forest's gate that reads it are calibrated
     alike; their cross-fitted folds, like stage 2's, keep an FRS household's
     members together. The result names each gate's outcome for the fits not
-    on the in-sample gate.
+    on the in-sample gate. ``donor_frame_design`` names how the stage-1
+    forest's ``donor_sample_size`` rows are drawn from the tape
+    (:data:`SPI_DONOR_FRAME_DESIGNS`); a full-tape fit (``None`` rows) has no
+    draw.
     """
 
     if support.household_weight_kind is not WeightKind.IMPORTANCE:
@@ -1283,6 +1315,11 @@ def impute_uk_spi_income_support(
         not isinstance(donor_sample_size, int) or donor_sample_size <= 0
     ):
         raise ValueError("donor_sample_size must be a positive integer or None.")
+    if donor_frame_design not in SPI_DONOR_FRAME_DESIGNS:
+        raise ValueError(
+            f"donor_frame_design {donor_frame_design!r} is not one of "
+            f"{SPI_DONOR_FRAME_DESIGNS}."
+        )
 
     donor_path = Path(spi_tab_path).expanduser().resolve()
     if donor_table is None:
@@ -1332,7 +1369,15 @@ def impute_uk_spi_income_support(
     }
     donor_full = donor
     donor_fit_weights = donor["FACT"].to_numpy(dtype=np.float64)
-    if donor_sample_size is not None:
+    donor_frame_receipt: dict[str, object] | None = None
+    if (
+        donor_sample_size is not None
+        and donor_frame_design == SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN
+    ):
+        donor, donor_fit_weights, donor_frame_receipt = _rare_carriers_certain_frame(
+            donor, size=donor_sample_size, seed=seed + SPI_DONOR_FRAME_SEED_OFFSET
+        )
+    elif donor_sample_size is not None:
         donor = donor.sample(
             n=donor_sample_size,
             replace=True,
@@ -1902,6 +1947,7 @@ def impute_uk_spi_income_support(
         pension_coherence=pension_coherence,
         employment_pay_floor=pay_floor_receipt,
         gift_anchor=gift_anchor,
+        donor_frame=donor_frame_receipt,
         gate_outcomes={
             **(
                 {}
@@ -1926,6 +1972,98 @@ SPI_INCOME_BAND_LOWER_BOUND_COLUMN = "spi_income_band_donor_lower_bound"
 #: lineage column), falling back to ``person_id`` on a frame without lineage.
 SPI_INCOME_BAND_CARRIER_KEY_COLUMN = "person_source_id"
 SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT = "spi_income_band_donor_leaf_draw"
+
+
+def _capped_inclusion(weights: np.ndarray, size: int) -> np.ndarray:
+    """Inclusion probabilities in proportion to ``weights``, capped at one.
+
+    They sum to ``size``: a record whose share would exceed one is taken with
+    certainty and the rest share what is left.
+    """
+
+    capped = np.zeros(len(weights), dtype=bool)
+    while True:
+        scale = (size - int(capped.sum())) / float(weights[~capped].sum())
+        over = ~capped & (scale * weights >= 1.0)
+        if not over.any():
+            return np.where(capped, 1.0, scale * weights)
+        capped |= over
+
+
+def _rare_carriers_certain_frame(
+    donor: pd.DataFrame, *, size: int, seed: int
+) -> tuple[pd.DataFrame, np.ndarray, dict[str, object]]:
+    """The stage-1 donor frame with every rare output's carriers in it.
+
+    An output is rare when fewer than :data:`SPI_DONOR_RARE_CARRIER_SHARE` of
+    ``size`` tape records carry it. Every record carrying a rare output is
+    taken, at weight FACT. The other rows come from the remaining records by
+    systematic sampling in proportion to FACT without replacement, at weight
+    FACT over the inclusion probability. So the frame's weights total the
+    tape's FACT (to the rounding of the systematic draw), a rare output's
+    weighted prevalence and total are the tape's exactly, and no record
+    repeats. Rows keep the tape's order. A tape with no more records than
+    ``size`` is the frame, whole, at FACT.
+
+    Returns:
+        ``(frame, design weights, receipt)``.
+    """
+
+    fact = donor["FACT"].to_numpy(dtype=np.float64)
+    if size >= len(donor):
+        # A tape no larger than the frame is the frame, whole, at FACT.
+        return (
+            donor.reset_index(drop=True),
+            fact,
+            {
+                "design": SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN,
+                "rows": int(len(donor)),
+                "whole_tape": True,
+            },
+        )
+    rare: list[str] = []
+    certain = np.zeros(len(donor), dtype=bool)
+    for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
+        carrier = donor[column].to_numpy(dtype=np.float64) != 0.0
+        if 0 < int(carrier.sum()) < SPI_DONOR_RARE_CARRIER_SHARE * size:
+            rare.append(column)
+            certain |= carrier
+    budget = size - int(certain.sum())
+    rest = np.flatnonzero(~certain)
+    if budget <= 0 or budget > len(rest):
+        raise ValueError(
+            "The SPI donor frame cannot hold every rare output's carriers and a "
+            f"sample of the rest: {int(certain.sum())} carrier records, "
+            f"{len(rest)} others, {size} rows."
+        )
+    inclusion = _capped_inclusion(fact[rest], budget)
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(rest))
+    cumulative = np.cumsum(inclusion[order])
+    points = rng.random() + np.arange(budget, dtype=np.float64)
+    picks = np.minimum(np.searchsorted(cumulative, points, side="right"), len(rest) - 1)
+    if len(np.unique(picks)) != budget:
+        raise ValueError("The SPI donor frame's systematic draw repeated a record.")
+    chosen = order[picks]
+    weights = np.zeros(len(donor), dtype=np.float64)
+    weights[certain] = fact[certain]
+    weights[rest[chosen]] = fact[rest[chosen]] / inclusion[chosen]
+    selected = np.flatnonzero(weights > 0.0)
+    frame_weights = weights[selected]
+    receipt: dict[str, object] = {
+        "design": SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN,
+        "rows": int(len(selected)),
+        "rare_carrier_share_of_rows": SPI_DONOR_RARE_CARRIER_SHARE,
+        "rare_outputs": rare,
+        "rows_carrying_a_rare_output": int(certain.sum()),
+        "rows_sampled_in_proportion_to_fact": int(budget),
+        "sampled_rows_taken_with_certainty": int((inclusion[chosen] >= 1.0).sum()),
+        "weight_total_over_tape_fact_total": float(frame_weights.sum() / fact.sum()),
+        "kish_effective_rows": float(
+            frame_weights.sum() ** 2 / (frame_weights**2).sum()
+        ),
+    }
+    return donor.iloc[selected].reset_index(drop=True), frame_weights, receipt
 
 
 def _spi_agerange_codes(ages: np.ndarray) -> np.ndarray:
