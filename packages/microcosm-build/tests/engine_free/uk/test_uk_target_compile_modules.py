@@ -315,14 +315,22 @@ def test_an_edit_to_calibration_run_leaves_the_preflight_and_the_solve(
 ):
     """The full gates' preflight computes through the spine and local gate
     scopes and the scoped gate manifest, which moved unchanged from
-    calibration_run into gate_scopes, so its key, and with it the dense
-    solve's, hashes the small module and not the runner (microcosm#931), as
-    the target kernels hash ledger_surface. Neither full gate kernel's own
-    hash nor the preflight's own code moves on an edit to the runner. The
-    calibrated gates' own code binds it, for the admin totals and the CGT
-    projection artifact their gate context is built with, so of the two
-    phases only the calibrated gates re-key."""
-    from microcosm.build.uk_runtime import calibration_run, gate_scopes, graph_terminal
+    calibration_run into gate_scopes, so the full gate kernels hash the small
+    module and not the runner (microcosm#931), as the target kernels hash
+    ledger_surface. Neither full gate kernel's own hash nor the preflight's
+    own code moves on an edit to the runner. The calibrated gates' own code
+    binds it, for the admin totals and the CGT projection artifact their gate
+    context is built with. So in the in-graph build an edit to the runner
+    re-keys the calibrated gates and leaves the preflight and the solve keyed
+    on it. On a bound spine the checkpoint, whose kernel hashes the runner,
+    still re-keys the preflight and the solve by key chaining, which this
+    test leaves aside."""
+    from microcosm.build.uk_runtime import (
+        calibration_run,
+        gate_phase_codes,
+        gate_scopes,
+        graph_terminal,
+    )
 
     kernels = [
         kind(coverage_engine=object(), engine_identity="test")
@@ -331,8 +339,8 @@ def test_an_edit_to_calibration_run_leaves_the_preflight_and_the_solve(
             graph_terminal.UKFullGateKernel,
         )
     ]
-    preflight_code = graph_terminal.uk_preflight_only_code_hash.__wrapped__
-    terminal_code = graph_terminal.uk_terminal_only_code_hash.__wrapped__
+    preflight_code = gate_phase_codes.uk_preflight_only_code_hash.__wrapped__
+    terminal_code = gate_phase_codes.uk_terminal_only_code_hash.__wrapped__
     for kernel in kernels:
         hashed = hashed_module_names(kernel, graph_terminal)
         assert gate_scopes.__name__ in hashed, kernel.ref

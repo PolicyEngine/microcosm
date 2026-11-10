@@ -399,10 +399,12 @@ def test_full_preflight_persists_real_source_failures_without_matrix_diagnostics
 
     from microcosm.build.gate_battery import _gates_manifest_payload
     from microcosm.build.uk_runtime import full_gates
+    from microcosm.build.uk_runtime.gate_phase_codes import (
+        uk_preflight_only_code_hash,
+    )
     from microcosm.build.uk_runtime.graph_terminal import (
         UKFullPreflightGateKernel,
         decode_full_gate_report,
-        uk_preflight_only_code_hash,
     )
     from microcosm.graph.canonical import canonical_json
 
@@ -970,11 +972,9 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
 
     from microcosm.build.gate_battery import _gates_manifest_payload
     from microcosm.build.uk_runtime import full_gates, geography_ladder
+    from microcosm.build.uk_runtime.gate_phase_codes import uk_terminal_only_code_hash
     from microcosm.build.uk_runtime.graph_targets import registry_payload
-    from microcosm.build.uk_runtime.graph_terminal import (
-        UKFullGateKernel,
-        uk_terminal_only_code_hash,
-    )
+    from microcosm.build.uk_runtime.graph_terminal import UKFullGateKernel
     from microcosm.calibrate import (
         TargetRegistry,
         TargetSet,
@@ -1477,6 +1477,7 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
     # surface reads, are in the kernel's hash, and the target kernels hash it
     # too (microcosm#931 ruling 6).
     from microcosm.build.uk_runtime import (
+        gate_phase_codes,
         graph_terminal,
         high_value_home_gates,
         high_value_homes,
@@ -1490,6 +1491,7 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
         return real(*objects, **kwargs)
 
     monkeypatch.setattr(graph_terminal, "source_hash", recording)
+    monkeypatch.setattr(gate_phase_codes, "source_hash", recording)
     # The preflight kernel inherits the calibrated kernel's code hash.
     for kernel in (
         graph_terminal.UKFullGateKernel,
@@ -1503,12 +1505,12 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
     # The hash is memoised per process; its undecorated body hashes the
     # high-value homes evidence (and the diagnostics publication code, next
     # test), and not what the kernel's hash holds.
-    graph_terminal.uk_terminal_only_code_hash.__wrapped__()
+    gate_phase_codes.uk_terminal_only_code_hash.__wrapped__()
     assert high_value_home_gates.__name__ in hashed[-1]
     assert high_value_homes.__name__ not in hashed[-1]
-    first = graph_terminal.uk_terminal_only_code_hash()
+    first = gate_phase_codes.uk_terminal_only_code_hash()
     calls = len(hashed)
-    assert graph_terminal.uk_terminal_only_code_hash() == first
+    assert gate_phase_codes.uk_terminal_only_code_hash() == first
     assert len(hashed) == calls
 
 
@@ -1532,7 +1534,11 @@ def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve
     import microcosm.calibrate.hierarchy_labels as hierarchy_labels_module
     import microcosm.diagnostics.catalogs as catalogs_module
     import microcosm.diagnostics.schema as diagnostics_schema_module
-    from microcosm.build.uk_runtime import graph_terminal, high_value_home_gates
+    from microcosm.build.uk_runtime import (
+        gate_phase_codes,
+        graph_terminal,
+        high_value_home_gates,
+    )
 
     hashed_module_names: list[set[str]] = []
     real_source_hash = graph_terminal.source_hash
@@ -1542,6 +1548,7 @@ def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve
         return real_source_hash(*objects, **dependencies)
 
     monkeypatch.setattr(graph_terminal, "source_hash", record_hashed_modules)
+    monkeypatch.setattr(gate_phase_codes, "source_hash", record_hashed_modules)
     publication = {
         catalogs_module.__name__,
         diagnostics_schema_module.__name__,
@@ -1556,7 +1563,7 @@ def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve
         ).implementation_hash()
         assert not hashed_module_names[-1] & publication, kernel.__name__
         assert geography_constants_module.__name__ in hashed_module_names[-1]
-    graph_terminal.uk_terminal_only_code_hash.__wrapped__()
+    gate_phase_codes.uk_terminal_only_code_hash.__wrapped__()
     assert {high_value_home_gates.__name__, *publication} <= hashed_module_names[-1]
     assert geography_constants_module.__name__ not in hashed_module_names[-1]
 
@@ -1565,7 +1572,9 @@ def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve
 @pytest.mark.parametrize("code", ["0" * 64, None])
 def test_each_gate_phase_refuses_a_stale_or_missing_phase_code(phase, code) -> None:
     """Each full gate phase's node carries its own code, which the kernel
-    checks before it evaluates anything (microcosm#931 ruling 6)."""
+    checks before it evaluates anything (microcosm#931 ruling 6), through the
+    check the spine gates share (gate_phase_codes.require_current_phase_code;
+    ruling 3)."""
     from types import SimpleNamespace
 
     from microcosm.build.uk_runtime.graph_terminal import (
@@ -1580,14 +1589,14 @@ def test_each_gate_phase_refuses_a_stale_or_missing_phase_code(phase, code) -> N
     if code is not None:
         params[f"{phase}_code"] = code
     context = SimpleNamespace(params=params, artifacts={})
-    with pytest.raises(ValueError, match=f"{phase}-only code"):
+    with pytest.raises(ValueError, match=f"UK full gate {phase}-only code"):
         kernel.run(context)
 
 
 def test_each_full_gate_node_carries_its_own_phase_code() -> None:
     """The preflight and calibrated gate nodes each carry their phase's own
     code, and only their own (microcosm#931 ruling 6)."""
-    from microcosm.build.uk_runtime.graph_terminal import UK_FULL_GATE_PHASE_CODE
+    from microcosm.build.uk_runtime.gate_phase_codes import UK_FULL_GATE_PHASE_CODE
 
     graph = _gate_nodes()
     for node, phase in (

@@ -1132,15 +1132,6 @@ _KERNEL_CORE_NAMES: dict[tuple[str, str], str] = {
         "the executor fills, and every node's inputs pass through it, where "
         "H2 catches a changed value (graph.kernel's core reason)"
     ),
-    ("microcosm.graph.kernel", "source_hash"): (
-        "hashes the source files of the modules it is given. The full gates' "
-        "run recomputes its phase's own code through it only to refuse a node "
-        "whose <phase>_code parameter differs "
-        "(graph_terminal.UK_FULL_GATE_PHASE_CODE); that parameter is computed "
-        "through it too and node_key hashes it, so an edit that changes what "
-        "it returns changes the parameter and the check alike, and every key "
-        "(graph.kernel's core reason)"
-    ),
     ("microcosm.graph.kernel", "KernelResult"): (
         "the frozen record a kernel returns its outputs in, which holds what "
         "the kernel puts in it and computes nothing; the executor validates "
@@ -1189,6 +1180,19 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
         "reads the engine's declared country and refuses one that declares "
         "none or another; the stages that take an engine call it before "
         "computing"
+    ),
+    ("microcosm.build.uk_runtime.gate_phase_codes", "require_current_phase_code"): (
+        "reads its node's <phase>_code parameter and the phase's own code, "
+        "which it recomputes through source_hash from its battery's table, and "
+        "refuses the node unless they match; the spine gates' and the full "
+        "gates' run call it before they read anything of their node but its "
+        "parameters (test_each_gate_kernel_checks_its_phase_code_first). A "
+        "phase's own code reaches its key through that parameter, which the "
+        "graph construction computes through source_hash too and node_key "
+        "hashes, so no gate kernel's hash binds the module "
+        "(test_no_uk_graph_kernel_hashes_the_phase_codes), and an edit that "
+        "changes what source_hash returns changes the parameter and the check "
+        "alike (microcosm#931 ruling 3)"
     ),
 }
 #: Names a stage reads from a module that neither its node nor any node
@@ -1987,7 +1991,8 @@ _BATTERY_ENGINES: dict[str, tuple[tuple[str, str], frozenset[str]]] = {
 
 class _Battery(NamedTuple):
     """A gate battery: the manifest its kernels evaluate, the kernel each
-    phase runs under, and the table of each phase's own code."""
+    phase runs under, and the table of each phase's own code
+    (``gate_phase_codes``)."""
 
     gates: object
     phases: Mapping[str, str]
@@ -2000,7 +2005,7 @@ def _gate_batteries() -> MappingProxyType:
     whose one kernel runs both spine phases of the manifest it is bound to,
     and the full build's preflight and calibrated gates, each running the one
     phase it declares of the full build's manifest."""
-    from microcosm.build.uk_runtime import graph_evidence, graph_terminal
+    from microcosm.build.uk_runtime import gate_phase_codes
     from microcosm.build.uk_runtime.full_gates import uk_full_gate_manifest
 
     kernels = _uk_graph_kernels()
@@ -2011,14 +2016,14 @@ def _gate_batteries() -> MappingProxyType:
             "spine": _Battery(
                 spine.gates,
                 MappingProxyType({phase: spine.ref for phase in spine.gates.phases}),
-                graph_evidence.UK_SPINE_GATE_PHASE_CODE,
+                gate_phase_codes.UK_SPINE_GATE_PHASE_CODE,
             ),
             "full": _Battery(
                 uk_full_gate_manifest(),
                 MappingProxyType(
                     {phase: ref for ref in full for phase in kernels[ref].phases}
                 ),
-                graph_terminal.UK_FULL_GATE_PHASE_CODE,
+                gate_phase_codes.UK_FULL_GATE_PHASE_CODE,
             ),
         }
     )
@@ -2234,15 +2239,11 @@ def test_each_gate_battery_phase_keys_on_its_own_reach() -> None:
     chain on, carries nothing only the transferred phase computes through,
     and the preflight's, which the dense solve chains on, nothing only the
     terminal phase does. An edit to such a module still re-keys the sibling
-    phase where a node upstream of it hashes the module (graph_evidence's and
-    graph_terminal's phase-code docstrings name where). What a phase computes
-    through is its walk (``_battery_phase_walk``), which the kernel rule's
-    test holds each phase's key to cover."""
-    from microcosm.build.uk_runtime.graph_evidence import (
-        UK_SPINE_GATE_PHASE_CODE,
-        add_uk_spine_gate_nodes,
-    )
-
+    phase where a node upstream of it hashes the module (gate_phase_codes'
+    docstrings name where). What a phase computes through is its walk
+    (``_battery_phase_walk``), which the kernel rule's test holds each phase's
+    key to cover. That each gate node carries its own phase's code, and only
+    its own, is held in test_uk_graph_evidence and test_uk_graph_terminal."""
     kernels = _uk_graph_kernels()
     rule = _kernel_rule_walks()
     problems: dict[tuple[str, str], object] = {}
@@ -2269,19 +2270,118 @@ def test_each_gate_battery_phase_keys_on_its_own_reach() -> None:
             if (phase in battery.codes) != bool(reach - shared):
                 problems[(name, f"{phase} code")] = sorted(reach - shared)
     assert not problems, problems
-    # The spine gate nodes carry each phase's own code, and only their own;
-    # the full gate nodes' are held in test_uk_graph_terminal.
-    gated = add_uk_spine_gate_nodes(
-        uk_spine_graph(), spec=load_country_spec("uk"), engine_identity="test"
+
+
+def test_each_gate_kernel_checks_its_phase_code_first() -> None:
+    """Each gate battery's kernel refuses a stale or missing ``<phase>_code``
+    before it reads anything of its node but its parameters, as the stale-code
+    check's refusal-only reason says (microcosm#931 ruling 3): its run calls
+    gate_phase_codes.require_current_phase_code in a statement of its own, on
+    its node's parameters, the phase it evaluates and its own battery's table,
+    and no statement before that reads the context beyond its parameters (the
+    node's artifacts, sources and population). So the spine gates refuse a
+    stale code as the full gates do. A kernel that read a phase-code table
+    outside the check would compute through gate_phase_codes, which the
+    kernel rule's test would find unhashed, since the rule does not follow
+    the listed check."""
+    import ast
+
+    from microcosm.build.uk_runtime import gate_phase_codes
+
+    check = (gate_phase_codes.__name__, "require_current_phase_code")
+    assert check in _REFUSAL_ONLY_HELPERS
+    kernels = _uk_graph_kernels()
+    for ref, battery in _GATE_BATTERY_KERNELS.items():
+        ((owner, run),) = [
+            (cls, statement)
+            for cls, statement, name in _kernel_body(type(kernels[ref]))
+            if name == "run"
+        ]
+        calls = [
+            index
+            for index, item in enumerate(run.body)
+            if isinstance(item, ast.Expr)
+            and isinstance(item.value, ast.Call)
+            and _named(owner.__module__, item.value.func, _HELPER_SCOPE) == {check}
+        ]
+        assert len(calls) == 1, ref
+        (index,) = calls
+        assert ast.unparse(run.body[index].value) == (
+            f"require_current_phase_code(context.params, phase, battery={battery!r})"
+        ), ref
+        before = run.body[:index]
+        assert "phase = str(context.params['phase'])" in map(ast.unparse, before), ref
+        for item in before:
+            params = {
+                id(sub.value)
+                for sub in ast.walk(item)
+                if isinstance(sub, ast.Attribute)
+                and isinstance(sub.value, ast.Name)
+                and sub.attr == "params"
+            }
+            assert all(
+                id(sub) in params
+                for sub in ast.walk(item)
+                if isinstance(sub, ast.Name) and sub.id == "context"
+            ), (ref, ast.unparse(item))
+        # The phase the run evaluates is the one it checked.
+        evaluated = [
+            sub
+            for item in run.body[index + 1 :]
+            for sub in ast.walk(item)
+            if isinstance(sub, ast.Call)
+            and getattr(sub.func, "id", None) == "evaluate_phase"
+        ]
+        assert evaluated and all(
+            "phase" in {getattr(arg, "id", None) for arg in sub.args}
+            or any(
+                keyword.arg == "phase" and getattr(keyword.value, "id", None) == "phase"
+                for keyword in sub.keywords
+            )
+            for sub in evaluated
+        ), ref
+
+
+def test_no_uk_graph_kernel_hashes_the_phase_codes() -> None:
+    """The phase codes and their stale-code check live in gate_phase_codes,
+    which no UK graph kernel's key covers, the gate kernels' implementation
+    hashes among them (microcosm#931 ruling 3a). A phase's own code reaches
+    its key through the ``<phase>_code`` parameter alone, so an edit to what
+    one phase alone computes through moves that parameter and re-keys no node
+    whose kernel hashes graph_evidence or graph_terminal, which define the
+    gate kernels, and neither of those carries the tables, the code
+    functions or the check."""
+    from microcosm.build.uk_runtime import (
+        gate_phase_codes,
+        graph_evidence,
+        graph_terminal,
     )
-    for phase in _gate_batteries()["spine"].phases:
-        params = gated.node(f"spine.gates.{phase}").params
-        code = UK_SPINE_GATE_PHASE_CODE.get(phase)
-        assert {key for key in params if key.endswith("_code")} == (
-            {f"{phase}_code"} if code is not None else set()
-        ), phase
-        if code is not None:
-            assert params[f"{phase}_code"] == code(), phase
+
+    kernels = _uk_graph_kernels()
+    for ref in _GATE_BATTERY_KERNELS:
+        assert gate_phase_codes.__name__ not in _hashed_modules(kernels[ref]), ref
+    keyed = sorted(
+        label
+        for walks in _kernel_rule_walks().values()
+        for label, walk in walks.items()
+        if gate_phase_codes.__name__ in walk.key
+    )
+    assert not keyed, keyed
+    batteries = _gate_batteries()
+    assert batteries["spine"].codes is gate_phase_codes.UK_SPINE_GATE_PHASE_CODE
+    assert batteries["full"].codes is gate_phase_codes.UK_FULL_GATE_PHASE_CODE
+    moved = {
+        "UK_SPINE_GATE_PHASE_CODE",
+        "UK_FULL_GATE_PHASE_CODE",
+        "require_current_phase_code",
+        *(
+            code.__name__
+            for battery in batteries.values()
+            for code in battery.codes.values()
+        ),
+    }
+    for module in (graph_evidence, graph_terminal):
+        assert not moved & set(vars(module)), module.__name__
 
 
 def test_each_gate_battery_walks_the_engine_its_build_hands_it() -> None:
