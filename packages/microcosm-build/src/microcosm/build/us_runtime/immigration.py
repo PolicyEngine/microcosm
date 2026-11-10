@@ -19,38 +19,64 @@ narrowly-scoped control where the survey carries no signal at all:
 
 1. **Citizenship is measured, not imputed.** ``PRCITSHP`` in {1..4} →
    citizens; 5 → non-citizens.
-2. **Legal-status indicators (ASEC-UA residual method).** Non-citizens with
-   any indicator of authorized status — pre-1982 IRCA-cohort arrival,
-   naturalization-eligibility, Medicare/Medicaid/SSI/Social Security receipt,
+2. **Legal-status indicators (adapted ASEC-UA residual method).**
+   Non-citizens with any indicator of authorized status — pre-1982
+   IRCA-cohort arrival, Medicare/Medicaid/SSI/Social Security receipt,
    federal pensions, IHS/CHAMPVA/military coverage, government employment,
-   subsidized housing, veteran status — move to ``OTHER_NON_CITIZEN``
-   (Van Hook et al., "Are Estimates of Unauthorized Immigrants Based on
-   Residual Methods Robust?", SSRN 4662801).
+   subsidized housing, military service — move to ``OTHER_NON_CITIZEN``.
+   The indicators adapt Jamie Ryan's ASEC Undocumented Algorithm (ASEC-UA:
+   "Development of an Identification Algorithm to Impute Undocumented
+   Status in the Current Population Survey", 2023, SSRN 4662801). ASEC-UA
+   counts Medicaid only in states that require proof of status to enroll
+   or maintain coverage, and housing assistance only in states with 10 or
+   fewer assisted mixed-status households; this stage counts both in every
+   state, so it labels no one who reports Medicaid undocumented. ASEC-UA
+   counts SSI only when received on the person's own behalf, and counts
+   government work only in the Armed Forces and five public administration
+   sectors (by industry); this stage counts any SSI receipt (``SSI_YN``),
+   including SSI collected on a child's behalf, and any government class of
+   worker (``PEIO1COW``) or Armed Forces occupation. It skips
+   ASEC-UA's licensed-occupation and Cuban-birth conditions and adds the
+   IHS, CHAMPVA and federal-pension indicators. Step 1 takes reported
+   naturalization at face value, where ASEC-UA keeps reported naturalized
+   citizens who fail its residence and age tests in the likely-undocumented
+   pool, so the ``eligible_naturalized`` indicator never moves a
+   non-citizen.
 3. **Work/study authorization split.** The CPS carries no work-authorization
    variable, so among residual non-citizens the split between EAD holders and
-   the unauthorized is unidentified from the survey alone. Workers and
-   students spill to ``NON_CITIZEN_VALID_EAD`` — in deterministic seeded
-   order — until the *remaining* undocumented worker/student counts match
-   their published control totals (Pew Research Center; Higher Ed
-   Immigration Portal). This is the only forced margin.
+   the unauthorized is unidentified from the survey alone. Workers spill to
+   ``NON_CITIZEN_VALID_EAD`` first, in deterministic seeded order, until the
+   *remaining* undocumented workers match the Pew Research Center control;
+   students still undocumented then spill the same way until the remaining
+   undocumented students match the Higher Ed Immigration Portal control.
+   Working students drawn in the second pass leave the remaining workers
+   below their control. This is the only forced margin.
 4. **The total undocumented population is emergent, not forced.**
    Representation is calibration's job, not the label stage's: the release
    gate checks the emergent total against a cited published anchor with a
-   coarse plausibility band, and a follow-up calibration target (Ledger
-   facts lane) can reconcile the level in the weights. On the 2024 ASEC the
-   emergent total is ≈13M — inside the range of published 2023–24 estimates
-   — with 26.6M non-citizens, 18.0M residual after the indicators, and 4.8M
-   spilled to EAD.
-5. **Status tags carry only statutory tests the data can support.**
-   ``DACA`` applies the statutory cohort test (arrived by 2007 before age
-   16, aged 15+) to EAD holders; ``CUBAN_HAITIAN_ENTRANT`` applies the
+   coarse plausibility band. No calibration target covers any immigration
+   count, so the controls apply only to the weights this stage sees, and
+   calibration moves every count. In the build behind release
+   ``populace-us-2024-spm-20260915`` (base weights scaled to 334.2M
+   people), this stage sees 25.6M non-citizens, 17.1M of them without an
+   indicator; it spills 4.0M to EAD and labels 13.1M undocumented. The
+   release's calibrated weights carry 9.9M undocumented, including 7.2M
+   workers and 0.32M students, below both controls.
+5. **Status tags carry only rule-based tests the data can support.**
+   ``DACA`` applies three of the program's guidelines (arrived by 2007,
+   before age 16, aged 15+), but not its age ceiling (under 31 on June 15,
+   2012), to EAD holders; ``CUBAN_HAITIAN_ENTRANT`` applies the
    nationality-plus-arrival class to documented non-citizens; every other
    documented non-citizen stays ``LEGAL_PERMANENT_RESIDENT`` (the modal true
-   status). Blanket ``REFUGEE``/``TPS`` labels for recent arrivals or
-   leftover EAD holders are deliberately not emitted: they would mislabel
+   status). This stage deliberately emits no blanket ``REFUGEE``/``TPS``
+   labels for recent arrivals or leftover EAD holders: they would mislabel
    millions (true stocks are under a million each) and over-grant
-   refugee-class exemptions in benefit rules, while LPR treatment gives
-   near-identical means-tested eligibility for those populations.
+   refugee-class exemptions in benefit rules. The LPR default matters more
+   under the 2025 reconciliation law: from 2026-10-01 PolicyEngine-US
+   narrows the qualified immigration statuses for Medicaid and CHIP to LPRs
+   and Cuban/Haitian entrants, and from 2027 it drops refugees, asylees,
+   parolees and TPS holders from premium tax credit eligibility. Neither
+   limit reaches anyone this stage labels LPR.
 
 Selection draws are seeded blake2b hashes keyed by the person's stable source
 identity (``source_year``/``source_person_id`` when present), so
@@ -230,8 +256,10 @@ _ARRIVAL_YEAR_MIDPOINTS: Mapping[int, int] = {
 _CUBAN_HAITIAN_BIRTH_CODES = (327, 332)
 _CUBAN_HAITIAN_ARRIVAL_CUTOFF = 1980
 
-#: DACA statutory cohort tests (USCIS): arrived before June 15 2007 and
-#: before their 16th birthday, and at least 15 to request.
+#: DACA cohort guidelines (USCIS; a DHS policy, not a statute): arrived
+#: before June 15 2007 and before their 16th birthday, and at least 15 to
+#: request. The stage does not apply the guideline's age ceiling (under 31
+#: on June 15 2012).
 _DACA_LATEST_ARRIVAL_YEAR = 2007
 _DACA_MAX_AGE_AT_ENTRY = 16
 _DACA_MIN_CURRENT_AGE = 15
@@ -609,7 +637,8 @@ def _assign_ssn_card_codes(
     ssn_codes = np.zeros(len(person), dtype=np.int64)
     ssn_codes[citizens] = 1
 
-    # ASEC-UA legal-status indicators (Van Hook et al., SSRN 4662801): any
+    # Legal-status indicators adapted from Jamie Ryan's ASEC-UA (SSRN
+    # 4662801; the module docstring lists where they depart from it): any
     # one of them moves a non-citizen out of the likely-undocumented pool.
     arrived_before_1982, has_five_plus_years, has_three_plus_years = (
         _arrival_indicators(person, arrival_year=arrival_year, time_period=time_period)
@@ -663,9 +692,12 @@ def _assign_ssn_card_codes(
     # split inside the residual pool is unidentified from the survey. Spill
     # excess undocumented workers/students to EAD so the *remaining* counts
     # match their published controls; counts already at or below a control
-    # spill nothing. The total undocumented population is emergent — the
-    # composition gate checks it against a cited anchor, and reconciling the
-    # level is the calibration lane's job, not this label stage's.
+    # spill nothing. Workers spill first; working students drawn in the
+    # student pass then leave the remaining workers below their control.
+    # The total undocumented population is emergent — the composition gate
+    # checks it against a cited anchor. The controls apply to the weights
+    # this stage sees; no calibration target holds them, or the level,
+    # afterwards.
     worker_candidates = (ssn_codes == 0) & noncitizens & is_worker
     worker_excess = float(weights[worker_candidates].sum()) - controls.workers
     worker_draws = _stable_person_draws(
@@ -730,7 +762,7 @@ def _derive_immigration_status(
     birth_country = _integer_column(person, "PENATVTY")
 
     # Documented non-citizens default to LPR — the modal true status — and
-    # only statutory tests the data can support narrow it. Citizens stay
+    # only rule-based tests the data can support narrow it. Citizens stay
     # CITIZEN throughout and undocumented is exactly the NONE SSN pool, so
     # the two columns can never disagree.
     status = np.full(len(person), "LEGAL_PERMANENT_RESIDENT", dtype="U32")
