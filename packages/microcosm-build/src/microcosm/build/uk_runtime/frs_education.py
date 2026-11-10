@@ -50,7 +50,7 @@ FRS_TRAINEE_YES = 1
 #: student registered full-time at an educational establishment answers yes,
 #: one registered part-time no, and an apprentice is never coded as in
 #: full-time education. A yes sets policyengine-uk's
-#: ``is_in_full_time_education``, which 2.174.1 reads only for Universal
+#: ``is_in_full_time_education``, which 2.177.4 reads only for Universal
 #: Credit's condition that a claimant is not receiving education (UC Regs 2013
 #: regs 12 and 13); the course's level comes from ``current_education``, which
 #: reads the same answer.

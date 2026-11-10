@@ -2,7 +2,7 @@
 
 The stage's own rules are tested engine-free in
 tests/engine_free/uk/test_uk_trading_allowance_receipts.py. Here, on the locked
-engine (2.174.1), the three statuses relieve what the stage's notes say, and the
+engine (2.177.4), the three statuses relieve what the stage's notes say, and the
 status stays an engine input for every later lock bump (Vahid's items 1 and 3 on
 microcosm#1439).
 """

@@ -1,6 +1,6 @@
 """Universal Credit limited capability from DWP's admin-linked status (Y1 of the November event-data plan, microcosm#1095).
 
-policyengine-uk 2.174.1 decides a person's limited capability for work and
+policyengine-uk 2.177.4 decides a person's limited capability for work and
 work-related activity (``uc_limited_capability_for_WRA``) from a proxy:
 ``is_disabled_for_benefits``, which the spine sets from any reported
 disability benefit or ESA, unless the person's own ESA award lacks the support

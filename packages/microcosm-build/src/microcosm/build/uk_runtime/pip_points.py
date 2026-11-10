@@ -1,6 +1,6 @@
 """PIP assessment points for every recipient (P1 of the November event-data plan, microcosm#1095).
 
-policyengine-uk 2.174.1 decides a PIP component's rate from its points
+policyengine-uk 2.177.4 decides a PIP component's rate from its points
 (``pip_dl_points`` and ``pip_m_points``: 8 for the standard rate, 12 for the
 enhanced) wherever no category is supplied for the year (``utils/pip.py``).
 The release used to store ``pip_dl_category`` and ``pip_m_category``, which

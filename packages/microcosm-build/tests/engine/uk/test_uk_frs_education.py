@@ -12,7 +12,7 @@ import pandas as pd
 from microcosm.build.uk_runtime.frs_education import derive_frs_education
 
 YEAR = 2025
-#: The stage's outputs that policyengine-uk 2.174.1 reads as person inputs on
+#: The stage's outputs that policyengine-uk 2.177.4 reads as person inputs on
 #: the way to the Universal Credit education condition.
 ENGINE_COLUMNS = (
     "current_education",
@@ -27,7 +27,7 @@ ENGINE_COLUMNS = (
 def test_the_flag_applies_the_universal_credit_education_condition() -> None:
     """A full-time student on an advanced course claims only with an exception.
 
-    On policyengine-uk 2.174.1, a childless full-time university student with
+    On policyengine-uk 2.177.4, a childless full-time university student with
     no disability benefit receives education (UC Regs 2013 reg 12(2)(a)) and is
     not eligible for Universal Credit; one with PIP and limited capability for
     work is excepted (reg 14(1)(b)) and is eligible. A full-time

@@ -2,7 +2,7 @@
 
 The pip_points stage's own rules are tested engine-free in
 tests/engine_free/uk/test_uk_pip_points.py. Here, on the locked engine
-(2.174.1), the points it draws give back every stored category in every year
+(2.177.4), the points it draws give back every stored category in every year
 from 2024 to 2030, with no category supplied: the release drops the categories
 (UK_RELEASE_EXPORT_DROPPED_COLUMNS) and carries the points into every projected
 year, as policyengine-uk's single-year extension copies a stored column.

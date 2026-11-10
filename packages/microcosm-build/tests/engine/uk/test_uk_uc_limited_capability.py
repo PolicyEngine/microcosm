@@ -2,7 +2,7 @@
 
 The stage's rule is tested engine-free in
 tests/engine_free/uk/test_uk_uc_limited_capability.py. Here, on the locked
-engine (2.174.1), the stage asks the engine for its proxy and stores both
+engine (2.177.4), the stage asks the engine for its proxy and stores both
 flags; unlinked people keep the engine's own answer exactly, and the LCWRA
 element follows DWP's status on linked claims, in the survey year and in the
 calibration year the engine projects the stored values to.
