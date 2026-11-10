@@ -150,6 +150,7 @@ PRODUCER_SOURCE_FILES = (
     "packages/microcosm-data/src/microcosm/data/h5_enrichment.py",
     "packages/microcosm-data/src/microcosm/data/source_enrichment.py",
     "packages/microcosm-data/src/microcosm/data/contract.py",
+    "packages/microcosm-data/src/microcosm/data/build_folder_manifests.py",
 )
 #: The native SPM role lane's operation; everything above is its lineage.
 SPM_ROLE_OPERATION = "add_native_spm_independent_minor_role"
@@ -230,6 +231,7 @@ RECEIPT_RELEASE_PRODUCER_FILES = (
     "packages/microcosm-data/src/microcosm/data/h5_boolean_append.py",
     "packages/microcosm-data/src/microcosm/data/source_enrichment.py",
     "packages/microcosm-data/src/microcosm/data/contract.py",
+    "packages/microcosm-data/src/microcosm/data/build_folder_manifests.py",
 )
 #: Native inputs the loader qualification checks for a receipt child: the role
 #: it inherits from its parent, then the three receipts.

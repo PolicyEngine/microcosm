@@ -94,6 +94,7 @@ def _producer_identity() -> dict:
                 h5_boolean_append.__file__,
                 inspect.getsourcefile(validate_source_enrichment_candidate),
                 inspect.getsourcefile(ReleaseContractError),
+                inspect.getsourcefile(rewrite_release_dir),
             ),
             strict=True,
         )

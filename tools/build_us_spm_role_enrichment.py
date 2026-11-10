@@ -61,6 +61,7 @@ _PRODUCER_FILES = (
     "packages/microcosm-data/src/microcosm/data/h5_enrichment.py",
     "packages/microcosm-data/src/microcosm/data/source_enrichment.py",
     "packages/microcosm-data/src/microcosm/data/contract.py",
+    "packages/microcosm-data/src/microcosm/data/build_folder_manifests.py",
 )
 
 
@@ -83,6 +84,7 @@ def _producer_identity() -> dict:
         _PRODUCER_FILES[3]: inspect.getsourcefile(append_native_spm_role),
         _PRODUCER_FILES[4]: inspect.getsourcefile(validate_source_enrichment_candidate),
         _PRODUCER_FILES[5]: inspect.getsourcefile(ReleaseContractError),
+        _PRODUCER_FILES[6]: inspect.getsourcefile(rewrite_release_dir),
     }
     for filename, actual in loaded.items():
         if actual is None or Path(actual).resolve() != (root / filename).resolve():
