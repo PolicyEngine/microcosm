@@ -280,18 +280,19 @@ class UKFullTargetCompilationKernel(_TargetKernel):
     def implementation_hash(self) -> str:
         from microcosm.build import chronicle_epoch
 
-        from . import frs_relationships
-
         # The compilation also computes through the Chronicle schema versions
         # and fact-key epochs ledger_artifact checks the facts against and
-        # records in their provenance (chronicle_epoch), and the ONS household
-        # type domain ledger_targets checks the household-type bindings
-        # against (frs_relationships) (microcosm#931).
+        # records in their provenance (chronicle_epoch) (microcosm#931). It
+        # does not compute through the ONS household type domain
+        # (frs_relationships): ledger_targets checks the household-type
+        # bindings against it before it compiles, and that check only
+        # refuses, so test_uk_graph lists it refusal-only (microcosm#931
+        # ruling 4).
         return hashlib.sha256(
             canonical_json(
                 {
                     "targets": super().implementation_hash(),
-                    "compilation": source_hash(chronicle_epoch, frs_relationships),
+                    "compilation": source_hash(chronicle_epoch),
                 }
             )
         ).hexdigest()
@@ -498,10 +499,10 @@ class UKFullMeasureKernel(_TargetKernel):
         from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
         from . import (
+            annuity_trust_column,
             atomic_area_support,
             dfe_spring_term,
             frs_annual_income,
-            frs_spine,
             graph_population,
             hmrc_income,
             income_tax_rate_classes,
@@ -516,22 +517,28 @@ class UKFullMeasureKernel(_TargetKernel):
         # national_frame's schema (graph_population, national_frame), the
         # engine's scratch frame (atomic_area_support, frame_materialize and
         # the engine adapter's contracts), the resolver's inputs and measures
-        # (dfe_spring_term, frs_annual_income, frs_spine's annuity and trust
-        # column, hmrc_income, income_tax_rate_classes, lcfs_consumption and
+        # (dfe_spring_term, frs_annual_income, hmrc_income,
+        # income_tax_rate_classes, lcfs_consumption and
         # uc_target_measurements), the vendored facts' schema checks
         # (chronicle_epoch), the measure inputs the calibration frame adapter
         # injects (national_calibration), the national rows (local_rowwise)
-        # and the constraint matrix's monetary check (monetary_binding).
+        # and the constraint matrix's monetary check (monetary_binding). The
+        # resolver reads the annuity and trust column where the frame carries
+        # it and zeros where it does not, so the measures bind its name too.
+        # It lives in annuity_trust_column, which holds nothing else, not in
+        # frs_spine, which writes the column, so this hash leaves frs_spine
+        # out, and on a bound spine an edit there leaves the measures' key
+        # alone (microcosm#931 ruling 4).
         return hashlib.sha256(
             canonical_json(
                 {
                     "targets": super().implementation_hash(),
                     "measures": source_hash(
+                        annuity_trust_column,
                         atomic_area_support,
                         chronicle_epoch,
                         dfe_spring_term,
                         frs_annual_income,
-                        frs_spine,
                         graph_population,
                         hmrc_income,
                         income_tax_rate_classes,
