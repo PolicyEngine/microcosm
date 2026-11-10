@@ -4,6 +4,15 @@ This release type does not certify a new calibration or upgrade its schema.
 Its authority is the reviewed parent byte identity, an exhaustive H5 comparison,
 Census source reconciliation, and separately measured native-loader compatibility.
 Publication replays the latter checks before the Hub client is constructed.
+
+A new enrichment is a build of a US release in its own folder,
+``releases/<release>/<build>/`` (microcosm#1570): a native SPM role enrichment
+of :data:`SPM_ROLE_RELEASE_ID`, a reported-receipt donor of
+:data:`RECEIPT_RELEASE_ID`. Its directory is named after the release, both
+manifests name the release and the build, and it names its parent as a build in
+the national release's folder (:func:`parent_reference`). An enrichment that
+keeps only its tag is still read and validated as it was published: its
+directory is named after its build ID, and it names its parent by tag.
 """
 
 from __future__ import annotations
@@ -17,10 +26,18 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from microcosm.data.contract import (
+    CHECKSUMS_FILE,
     COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS,
     PUBLISHER_CLAIM_BASIS,
+    RETIRED_BUILD_FIELDS,
+    US_NATIONAL_RELEASE_ID,
+    US_RECEIPT_DONOR_RELEASE_ID,
+    US_RELEASE_DATASET_FILES,
     ReleaseContractError,
+    _release_build_details,
     compatibility_claim_declarer_error,
+    publishes_to_build_folder,
+    release_artifact_role,
 )
 
 SOURCE_ENRICHMENT_RELEASE_TYPE = "source_enrichment"
@@ -52,7 +69,16 @@ LOADED_SOURCE_PACKAGES = {
     "wrapper_loader": "policyengine",
     "native_role": "spm-calculator",
 }
+#: The repository every US enrichment, and each of their parents, is in.
+REPO_ID = "policyengine/populace-us"
 PARENT_BUILD_ID = "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z"
+#: The release both pinned parents (:data:`PARENT_BUILD_ID` and
+#: :data:`RECEIPT_PARENT_BUILD_ID`) are builds of since the US switch, each in
+#: its own folder, ``releases/microcosm-us-2024-national/<build>/``.
+PARENT_RELEASE_ID = US_NATIONAL_RELEASE_ID
+#: The release a new native SPM role enrichment is a build of. It declares that
+#: release's dataset file (``microcosm_us_2024.h5``).
+SPM_ROLE_RELEASE_ID = US_NATIONAL_RELEASE_ID
 PARENT_DATASET_SHA256 = (
     "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e"
 )
@@ -168,9 +194,15 @@ RECEIPT_COLUMNS = {
     "receives_snap": "spm_unit",
     "receives_tanf": "spm_unit",
 }
+#: The release a new reported-receipt donor is a build of: a release of its
+#: own, which is never the repository's default.
+RECEIPT_RELEASE_ID = US_RECEIPT_DONOR_RELEASE_ID
 #: The published root path. Never the national default's ``populace_us_2024.h5``,
 #: so no publication of this donor can overwrite the default's root file.
 RECEIPT_DATASET_FILENAME = "populace_us_2024_receipt_qualified.h5"
+#: The file name a reported-receipt donor that keeps only its tag published its
+#: H5 under, at the repository root.
+TAGGED_RECEIPT_DATASET_FILENAME = "populace_us_2024_receipt_qualified.h5"
 #: The qualification's aggregate receipt, carried verbatim as source evidence.
 RECEIPT_QUALIFICATION_FILE = "donor_receipt_qualification.json"
 #: The qualification tool's ``_PRODUCER_FILES``: every file whose code decides a
@@ -200,6 +232,94 @@ RECEIPT_RELEASE_PRODUCER_FILES = (
 #: Native inputs the loader qualification checks for a receipt child: the role
 #: it inherits from its parent, then the three receipts.
 RECEIPT_NATIVE_INPUTS = {ROLE_VARIABLE: "person", **RECEIPT_COLUMNS}
+
+
+#: The files the build-folder publisher adds to a build itself, so a release
+#: manifest in that layout never declares them as artifacts (the publisher
+#: refuses a file named twice).
+_PUBLISHER_ADDED_FILES = frozenset(
+    {"release_manifest.json", "build_manifest.json", CHECKSUMS_FILE}
+)
+#: The release manifest key of the compatibility receipt certification adds.
+_COMPATIBILITY_ARTIFACT_KEY = "source_enrichment_compatibility"
+
+
+def parent_reference(
+    build_id: str, *, dataset_sha256: str, files: Mapping[str, str]
+) -> dict:
+    """How a new enrichment names its parent: a build in its release's folder.
+
+    The parent is read from ``releases/<release>/<build>/`` at ``main``
+    (:func:`microcosm.data.build_folder_manifests.referenced_build`), so the
+    reference carries no ``revision`` and no ``build_id``.
+    """
+    return {
+        "repo_id": REPO_ID,
+        "release": PARENT_RELEASE_ID,
+        "build": build_id,
+        "dataset_sha256": dataset_sha256,
+        "calibration_diagnostics_schema_version": 5,
+        "files": dict(files),
+    }
+
+
+def _tag_parent_reference(
+    build_id: str, *, dataset_sha256: str, files: Mapping[str, str]
+) -> dict:
+    """How an enrichment that keeps only its tag named its parent: by tag."""
+    return {
+        "build_id": build_id,
+        "repo_id": REPO_ID,
+        "revision": build_id,
+        "dataset_sha256": dataset_sha256,
+        "calibration_diagnostics_schema_version": 5,
+        "files": dict(files),
+    }
+
+
+def _build_folder_build_id(
+    release_dir: Path,
+    manifest: Mapping,
+    build: Mapping,
+    *,
+    lineage_release_id: str,
+    receipts: bool,
+    failures: list[str],
+) -> object:
+    """The build a build-folder enrichment names, checking how it names it.
+
+    The directory is the lineage's release, both manifests name it and the
+    same build, and neither keeps a field that named the build before the
+    build-folder layout (:data:`RETIRED_BUILD_FIELDS`).
+    """
+    release = release_dir.name
+    if release != lineage_release_id:
+        failures.append(
+            f"a reported-receipt enrichment is a build of {lineage_release_id}, "
+            f"never of {release}"
+            if receipts
+            else f"a native SPM role enrichment is a build of "
+            f"{lineage_release_id}, not of {release}"
+        )
+    build_id = manifest.get("build")
+    if manifest.get("release") != release:
+        failures.append("release manifest must name its release directory as release")
+    if build.get("release") != release or build.get("build") != build_id:
+        failures.append(
+            "build manifest must name the release directory and the release "
+            "manifest's build"
+        )
+    for name, document in (
+        ("release_manifest.json", manifest),
+        ("build_manifest.json", build),
+    ):
+        for field in RETIRED_BUILD_FIELDS:
+            if field in document:
+                failures.append(
+                    f"{name} carries {field}; a build-folder manifest names its "
+                    "build only as 'build'"
+                )
+    return build_id
 
 
 def sha256_file(path: Path | str) -> str:
@@ -489,6 +609,14 @@ def validate_source_enrichment_candidate(
     national default. The gates are the same; only the pinned parent, the
     evidence that proves the addition and the native inputs the loader
     qualification checks differ.
+
+    A directory named after a build-folder release
+    (:func:`~microcosm.data.contract.publishes_to_build_folder`) is a build in
+    that layout: it must be the lineage's release, name its build and its
+    parent's folder (:func:`parent_reference`), declare that release's dataset
+    file, and give each artifact a role and no revision. Any other directory is
+    an enrichment that keeps only its tag, named after its build ID, whose
+    parent is named by tag.
     """
     from microcosm.data.annual_projections import validate_annual_projection_extension
     from microcosm.data.h5_boolean_append import compare_boolean_append
@@ -517,6 +645,8 @@ def validate_source_enrichment_candidate(
     reused_release_ids = (
         {PARENT_BUILD_ID, RECEIPT_PARENT_BUILD_ID} if receipts else {PARENT_BUILD_ID}
     )
+    lineage_release_id = RECEIPT_RELEASE_ID if receipts else SPM_ROLE_RELEASE_ID
+    build_folder = publishes_to_build_folder(release_dir.name)
     if manifest.get("release_type") != SOURCE_ENRICHMENT_RELEASE_TYPE:
         failures.append(
             "release_manifest.json must declare release_type=source_enrichment"
@@ -525,18 +655,34 @@ def validate_source_enrichment_candidate(
         failures.append(
             "source enrichment release manifest schema_version must equal 1"
         )
-    if _mapping(manifest.get("build")).get("build_id") != release_dir.name:
-        failures.append(
-            "release manifest build_id must match its new release directory"
+    if build_folder:
+        build_id = _build_folder_build_id(
+            release_dir,
+            manifest,
+            build,
+            lineage_release_id=lineage_release_id,
+            receipts=receipts,
+            failures=failures,
         )
-    if release_dir.name in reused_release_ids or not release_dir.name.startswith(
-        "populace-us-2024-"
+    else:
+        # A tagged enrichment: the directory name is its build ID.
+        build_id = release_dir.name
+        if _mapping(manifest.get("build")).get("build_id") != release_dir.name:
+            failures.append(
+                "release manifest build_id must match its new release directory"
+            )
+        if build.get("build_id") != release_dir.name:
+            failures.append(
+                "build manifest build_id must match the new release directory"
+            )
+    if (
+        not isinstance(build_id, str)
+        or build_id in reused_release_ids
+        or not build_id.startswith("populace-us-2024-")
     ):
-        failures.append("source enrichment requires a NEW US 2024 release id")
+        failures.append("source enrichment requires a NEW US 2024 build ID")
     if manifest.get("dataset_role", "national_default") != "national_default":
         failures.append("source enrichment supports only the national default dataset")
-    if build.get("build_id") != release_dir.name:
-        failures.append("build manifest build_id must match the new release directory")
     if build.get("release_type") != SOURCE_ENRICHMENT_RELEASE_TYPE:
         failures.append("build manifest must declare source_enrichment")
     if report.get("schema_version") != 1 or report.get("release_type") != (
@@ -548,14 +694,11 @@ def validate_source_enrichment_candidate(
     if not receipts and report.get("operation") != SPM_ROLE_OPERATION:
         failures.append("source enrichment operation must add only the native SPM role")
     parent = _mapping(report.get("parent"))
-    expected_parent = {
-        "build_id": lineage_build_id,
-        "repo_id": "policyengine/populace-us",
-        "revision": lineage_build_id,
-        "dataset_sha256": lineage_dataset_sha256,
-        "calibration_diagnostics_schema_version": 5,
-        "files": lineage_files,
-    }
+    # A build in a folder names its parent's folder; a tagged enrichment named
+    # its parent by tag, and is still read as it was published.
+    expected_parent = (parent_reference if build_folder else _tag_parent_reference)(
+        lineage_build_id, dataset_sha256=lineage_dataset_sha256, files=lineage_files
+    )
     if parent != expected_parent:
         failures.append(
             "source enrichment parent must match the pinned national default identity"
@@ -596,10 +739,23 @@ def validate_source_enrichment_candidate(
     ):
         failures.append("source enrichment dataset.filename must be a bare H5 filename")
         filename = None
-    if receipts and filename is not None and filename != RECEIPT_DATASET_FILENAME:
+    # A build declares its release's dataset file, so a receipt donor's H5 can
+    # never be the national release's; a tagged donor kept its own root name.
+    expected_filename = (
+        US_RELEASE_DATASET_FILES[lineage_release_id]
+        if build_folder
+        else TAGGED_RECEIPT_DATASET_FILENAME
+        if receipts
+        else None
+    )
+    if filename is not None and expected_filename not in (None, filename):
         failures.append(
-            f"a reported-receipt enrichment publishes its H5 as "
-            f"{RECEIPT_DATASET_FILENAME}, never over the national default's root file"
+            f"a reported-receipt enrichment publishes its H5 as {expected_filename}, "
+            "never over the national default's "
+            + ("dataset file" if build_folder else "root file")
+            if receipts
+            else f"a native SPM role enrichment of {lineage_release_id} publishes "
+            f"its H5 as {expected_filename}"
         )
     if filename:
         release_local_h5 = release_dir / filename
@@ -729,10 +885,28 @@ def validate_source_enrichment_candidate(
         if path in by_path:
             failures.append(f"source enrichment duplicate artifact path {path}")
         by_path[path] = entry
-        if (
-            entry.get("repo_id") != "policyengine/populace-us"
-            or entry.get("revision") != revision
-        ):
+        if build_folder:
+            if entry.get("repo_id") != REPO_ID:
+                failures.append(
+                    f"source enrichment artifact {key} must be in {REPO_ID}"
+                )
+            if "revision" in entry:
+                failures.append(
+                    f"source enrichment artifact {key} pins a revision; a build "
+                    "folder's files have no tag"
+                )
+            expected_role = release_artifact_role(str(key), entry.get("kind"))
+            if entry.get("role") != expected_role:
+                failures.append(
+                    f"source enrichment artifact {key} must have role {expected_role}"
+                )
+            if path in _PUBLISHER_ADDED_FILES:
+                failures.append(
+                    f"source enrichment artifact {key} declares {path}; the "
+                    "build-folder publisher adds the build's manifests and checksum "
+                    "file itself"
+                )
+        elif entry.get("repo_id") != REPO_ID or entry.get("revision") != revision:
             failures.append(
                 f"source enrichment artifact {key} must pin the new repo/tag"
             )
@@ -792,7 +966,7 @@ def validate_source_enrichment_candidate(
                 "pending source enrichment must not claim model/Core compatibility"
             )
         if any(
-            key in _mapping(manifest.get("build"))
+            key in _mapping(_release_build_details(manifest))
             for key in ("built_with_core_package", "built_with_model_package")
         ):
             failures.append(
@@ -1448,7 +1622,9 @@ def _check_compatibility(
         ):
             version = _mapping(actual.get("packages")).get(package, {}).get("version")
             if _mapping(
-                _mapping(manifest.get("build")).get(f"built_with_{field}_package")
+                _mapping(_release_build_details(manifest)).get(
+                    f"built_with_{field}_package"
+                )
             ) != {"name": package, "version": version}:
                 failures.append(_built_with_mismatch(package))
             if malformed_claims:
@@ -1540,7 +1716,9 @@ def _installed_built_with_mismatches(manifest: Mapping) -> list[str]:
         except metadata.PackageNotFoundError:
             version = None
         if _mapping(
-            _mapping(manifest.get("build")).get(f"built_with_{field}_package")
+            _mapping(_release_build_details(manifest)).get(
+                f"built_with_{field}_package"
+            )
         ) != {"name": package, "version": version}:
             lines.append(_built_with_mismatch(package))
     return lines
@@ -2072,8 +2250,11 @@ def certify_source_enrichment(
         if narrowed:
             report["compatibility"]["narrowed_claims"] = narrowed
         write(SOURCE_ENRICHMENT_FILE, report)
+        # The build object in the tagged layout; the manifest's top level in a
+        # build folder.
+        build_details = _release_build_details(manifest)
         for field, (package, version, entry) in emitted.items():
-            manifest["build"][f"built_with_{field}_package"] = {
+            build_details[f"built_with_{field}_package"] = {
                 "name": package,
                 "version": version,
             }
@@ -2085,13 +2266,19 @@ def certify_source_enrichment(
         for entry in manifest["artifacts"].values():
             if entry["path"] == SOURCE_ENRICHMENT_FILE:
                 entry["sha256"] = sha256_file(staged / SOURCE_ENRICHMENT_FILE)
-        manifest["artifacts"]["source_enrichment_compatibility"] = {
+        compatibility_artifact = {
             "kind": "diagnostics",
             "path": COMPATIBILITY_FILE,
-            "repo_id": "policyengine/populace-us",
-            "revision": release_dir.name,
+            "repo_id": REPO_ID,
             "sha256": sha256_file(staged / COMPATIBILITY_FILE),
         }
+        if publishes_to_build_folder(release_dir.name):
+            compatibility_artifact["role"] = release_artifact_role(
+                _COMPATIBILITY_ARTIFACT_KEY, "diagnostics"
+            )
+        else:
+            compatibility_artifact["revision"] = release_dir.name
+        manifest["artifacts"][_COMPATIBILITY_ARTIFACT_KEY] = compatibility_artifact
         write("release_manifest.json", manifest)
         validate_source_enrichment_candidate(
             staged,

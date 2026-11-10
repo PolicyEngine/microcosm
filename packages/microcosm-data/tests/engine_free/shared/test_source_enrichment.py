@@ -415,9 +415,10 @@ def _qualify_candidate(candidate, tmp_path, monkeypatch, **claim):
     from importlib import metadata
 
     release, parent, root = candidate
+    report = json.loads((release / enrichment.SOURCE_ENRICHMENT_FILE).read_text())
     receipt = {
         "status": "passed",
-        "dataset_sha256": enrichment.sha256_file(root / "populace_us_2024.h5"),
+        "dataset_sha256": enrichment.sha256_file(root / report["dataset"]["filename"]),
         "packages": {
             "policyengine-us": {"version": "1.999.0"},
             "policyengine-core": {"version": "3.99.0"},
