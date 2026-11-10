@@ -526,7 +526,7 @@ def acs_transfer_execution_contract_identity(
                 "mutable_rows": "newly_imputed_paired_cells_only",
                 "target_basis": "manifest_residual_after_immutable_asec_mass",
                 "selection": "stable_person_hash_in_manifest_draw_order",
-                "candidate_shortfall": "error",
+                "candidate_shortfall": "take_every_candidate_error_below_composition_band_floor",
             },
             "passive_partnership_s_corp": {
                 "enabled": passive_enabled,

@@ -1548,8 +1548,9 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
         == sum(spec.in_sample for spec in specs)
         == 12
     )
-    # The microcosm#767 H.R.1 probes add aca_ptc 2026 and 2027 and medicaid
-    # 2027; their snap 2026 key is shared with the Texas vehicle probe.
+    # The microcosm#767 H.R.1 probes add aca_ptc 2026 and 2027 and
+    # medicaid_enrolled 2027; their snap 2026 key is shared with the Texas
+    # vehicle probe.
     assert counts["baseline_keys"] == {
         "reform_coverage_smoke": 23,
         "reform_validation": 75,

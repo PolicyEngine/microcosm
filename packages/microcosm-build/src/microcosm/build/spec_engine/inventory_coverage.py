@@ -363,12 +363,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "7cdedd5bf056f1407910eddcd40ad0660bd7ef2d6defe224612c02b3476cbf15",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "d78292684ed4507dcc924e52e4eaff2b0bd826c1ddd2bc053696b0673fc9d8ce",
+    "full_checkpoint": "6aefc9bd351e4ca81998012de0eceacab9c802334d1ae2582f29cde4a6cd5036",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "2606b852c3ecdc7ae0f7ff5b30c24a5ce6834b218db0898b44b18b906daa9558",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "7857518a5327a816acae80d55a04f43e7445a5e47be822d3ccb747bcb375e199",
-    "late_resource_semantics": "f794523ccebcbfa98197078a5bc9e7fdf4b1483d88decfab9363b00af3ff809e",
+    "late_resource_semantics": "5653131d24487b1779e7c0a60deaed10d3a2a0b5a876c65dda40a6df0ef4e436",
     "late_schedule": "46cea046d2fb8223d32772bd6a7807c52791640943949154982dcc52d93fa9eb",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
@@ -396,8 +396,8 @@ EXPECTED_HASHES = {
     # microcosm#767 moves the seed map, the protocol and the source manifest:
     # the attested immigration kernel gains the humanitarian status draws and
     # the immigration stage gains cited humanitarian stock targets.
-    "seed_map": "cabadb3f2eeb49a1527c6bb4348d31e90b0a9ec8f836aa2cbe2b5d4ac6608798",
-    "seed_protocol": "f0105714b03a3bef5cbc464519680e4fff3a9c2e758eece360a51cbfc656af8a",
+    "seed_map": "4556389f3383a2d2600857cf7117b9306f8f45a9a6231ce2a8fe62bb6a5e388c",
+    "seed_protocol": "0f4550f80efd0273589b533a4a453e74b06aa71b9ed1e08fdc016ef3d9d27fef",
     "source_manifest": "e9a70a60c3db9250066ee607d5e1fb07cd9d6a54424ab9eb9405f5e65b5a59b8",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

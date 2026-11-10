@@ -277,9 +277,12 @@ def test_shipped_baseline_plans_match_whole_file_policyengine_us(
     path = _write_engine_h5(builder, tmp_path, _GUARD_HOUSEHOLDS)
     plans, _, counts = sweep._record_requests(builder)
     # The four H.R.1 humanitarian-eligibility probes (#767) add three new
-    # baseline keys: aca_ptc 2026 and 2027 and medicaid 2027 (their snap 2026
-    # key is shared with the Texas vehicle probe). microcosm#1251's passive
-    # partnership/S-corp probe adds one smoke baseline key.
+    # baseline keys: aca_ptc 2026 and 2027 and medicaid_enrolled 2027 (their
+    # snap 2026 key is shared with the Texas vehicle probe). The Medicaid
+    # probe counts enrollees because Medicaid dollars divide by a file-wide
+    # state denominator, which the household-batched scorer refuses
+    # (microcosm#956). microcosm#1251's passive partnership/S-corp probe
+    # adds one smoke baseline key.
     assert counts["baseline_keys"] == {
         "reform_coverage_smoke": 23,
         "reform_validation": 75,

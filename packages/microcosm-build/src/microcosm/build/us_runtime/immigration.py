@@ -343,18 +343,20 @@ _PAROLE_ASEC_ARRIVAL_CODES: Mapping[str, tuple[int, ...]] = {
     "nicaragua": _POST_2021_ARRIVAL_CODES,
     "venezuela": _POST_2021_ARRIVAL_CODES,
 }
-#: First exact (ACS YOEP) arrival year of each parole program. The windows
-#: have no end year, although Operation Allies Welcome ended in 2022: the
-#: stacked transfer asks the ACS arm for its own mass share of each national
-#: target and refuses a candidate shortfall, and at the ACS's own weights the
-#: 2024 1-year holds 70,123 Afghan-born non-citizens who arrived in 2021-2022,
-#: fewer than the 73,566 OAW target. So, like the 2024 ASEC's code 28
-#: (2022-2024), the Afghan window also takes 2023-2024 arrivals.
+#: First exact (ACS YOEP) arrival year of each parole program.
 _PAROLE_ACS_MIN_ARRIVAL_YEAR: Mapping[str, int] = {
     "afghanistan": 2021,
     "ukraine": 2022,
     "nicaragua": 2023,
     "venezuela": 2022,
+}
+#: Last exact (ACS YOEP) arrival year of each parole program that ended
+#: before the period. Operation Allies Welcome paroled Afghans who arrived in
+#: 2021 and 2022, so exact-year rows take only those arrivals. ASEC rows keep
+#: their coarser codes: the 2024 ASEC's code 28 spans 2022-2024. A program
+#: missing here has no last year.
+_PAROLE_ACS_MAX_ARRIVAL_YEAR: Mapping[str, int] = {
+    "afghanistan": 2022,
 }
 #: Asylum grants lag arrival by filing queues plus court backlog; grantees
 #: in 2022-2024 overwhelmingly arrived 2016+ (OHSS asylee flow reports). The
@@ -484,7 +486,8 @@ _UNDOCUMENTED_ANCHOR_RELATIVE_BAND = (0.5, 1.6)
 #: The draw forces the target when candidates suffice, so the band only
 #: bites on pool exhaustion (the ASEC undercovers 2022-24 arrivals — the
 #: Ukraine parole pool saturates below its admin count) or collapse. A
-#: category with an explicit zero target must emit exactly zero.
+#: category with an explicit zero target must emit exactly zero. The stacked
+#: transfer's reconciliation refuses an exhausted draw below the band's floor.
 _HUMANITARIAN_TARGET_RELATIVE_BAND = (0.35, 1.5)
 
 
@@ -1453,6 +1456,10 @@ def _humanitarian_draw_candidates(
             acs_window = profile.exact_arrival & (
                 profile.arrival_year >= _PAROLE_ACS_MIN_ARRIVAL_YEAR[origin]
             )
+            if origin in _PAROLE_ACS_MAX_ARRIVAL_YEAR:
+                acs_window &= (
+                    profile.arrival_year <= _PAROLE_ACS_MAX_ARRIVAL_YEAR[origin]
+                )
             cohort |= origin_match & (asec_window | acs_window)
         return noncitizen & np.isin(ssn_codes, (0, 3)) & cohort & ~excluded
     if draw.category == "refugee":
@@ -1695,11 +1702,16 @@ def reconcile_us_immigration_humanitarian_transfer(
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Reconcile a transferred immigration pair to manifest draw targets.
 
-    Immutable rows are the ASEC source contribution. Only rows whose paired
-    target cells were imputed may be repaired or selected. Each manifest draw
-    receives the residual of its national target after its compatible,
-    immutable contribution, in manifest order; candidate exhaustion is a hard
-    error rather than permission to ship a wrong-origin label.
+    Immutable rows carry the ASEC source contribution; the reconciliation
+    repairs or selects only rows whose paired target cells the transfer
+    imputed. In manifest order, each draw asks those rows for the residual of
+    its national target after its compatible, immutable contribution, and
+    only rows its origin, arrival and SSN rules admit can take its label.
+    When the admitted rows hold less weight than the residual, the draw takes
+    every one of them, as the ASEC stage's own draws do, and its receipt
+    records the shortfall. The reconciliation refuses only a draw that then
+    reaches less than the floor of the composition gate's band
+    (``_HUMANITARIAN_TARGET_RELATIVE_BAND``) of its target.
     """
 
     result = person.copy()
@@ -1817,6 +1829,7 @@ def reconcile_us_immigration_humanitarian_transfer(
     draw_receipts: dict[str, object] = {}
     largest_target = max((draw.target for draw in controls.humanitarian), default=0.0)
     tolerance = max(1e-6, largest_target * 1e-12)
+    band_floor = _HUMANITARIAN_TARGET_RELATIVE_BAND[0]
     for draw in controls.humanitarian:
         immutable_draw = (
             _humanitarian_emitted_mask(
@@ -1848,13 +1861,8 @@ def reconcile_us_immigration_humanitarian_transfer(
             & ~selected_once
         )
         available_population = float(weights[candidates].sum())
-        if available_population + tolerance < residual_target:
-            raise ValueError(
-                "Humanitarian transfer candidate shortfall for "
-                f"{draw.label!r}: residual_target={residual_target:,.6f}, "
-                f"eligible_recipient_population={available_population:,.6f}, "
-                f"immutable_population={immutable_population:,.6f}."
-            )
+        # Short of candidates, the selection below takes every one of them.
+        exhausted = available_population + tolerance < residual_target
         stable_draws = _stable_person_draws(
             result,
             seed=seed,
@@ -1866,8 +1874,13 @@ def reconcile_us_immigration_humanitarian_transfer(
             stable_draws,
             residual_target,
         )
+        if exhausted and not np.array_equal(selected, candidates):
+            raise RuntimeError(
+                f"Humanitarian transfer selection for {draw.label!r} left "
+                "candidates unselected although they hold less than its residual."
+            )
         selected_population = float(weights[selected].sum())
-        if selected_population + tolerance < residual_target:
+        if not exhausted and selected_population + tolerance < residual_target:
             raise RuntimeError(
                 f"Humanitarian transfer selection underfilled {draw.label!r}."
             )
@@ -1884,21 +1897,46 @@ def reconcile_us_immigration_humanitarian_transfer(
         )
         compatible_humanitarian |= achieved_mask
         achieved_population = float(weights[achieved_mask].sum())
+        # An exhausted draw crosses no threshold: it takes every candidate.
         threshold_tie_population = 0.0
-        if selected.any():
+        if selected.any() and not exhausted:
             threshold = float(np.max(stable_draws[selected]))
             threshold_tie_population = float(
                 weights[candidates & (stable_draws == threshold)].sum()
             )
         residual_selection_error = abs(selected_population - residual_target)
-        if residual_selection_error > threshold_tie_population + tolerance:
+        if (
+            not exhausted
+            and residual_selection_error > threshold_tie_population + tolerance
+        ):
             raise RuntimeError(
                 f"Humanitarian transfer residual selection for {draw.label!r} "
                 "missed its target by more than the threshold tie mass."
             )
+        candidate_shortfall = (
+            residual_target - available_population if exhausted else 0.0
+        )
+        if exhausted and achieved_population + tolerance < band_floor * float(
+            draw.target
+        ):
+            raise ValueError(
+                "Humanitarian transfer candidate shortfall for "
+                f"{draw.label!r} leaves it below {band_floor} of its target, "
+                "the floor of the composition gate's band: "
+                f"target={float(draw.target):,.6f}, "
+                f"achieved_population={achieved_population:,.6f}, "
+                f"residual_target={residual_target:,.6f}, "
+                f"eligible_recipient_population={available_population:,.6f}, "
+                f"immutable_population={immutable_population:,.6f}."
+            )
         absolute_error = abs(achieved_population - float(draw.target))
         immutable_overshoot = max(0.0, immutable_population - float(draw.target))
         discrete_bound = immutable_overshoot + threshold_tie_population + tolerance
+        if not exhausted and absolute_error > discrete_bound:
+            raise RuntimeError(
+                f"Humanitarian transfer reconciliation for {draw.label!r} "
+                "missed its target by more than the discrete selection bound."
+            )
         draw_receipts[draw.label] = {
             "target": float(draw.target),
             "immutable_population": immutable_population,
@@ -1909,15 +1947,12 @@ def reconcile_us_immigration_humanitarian_transfer(
             "absolute_error": absolute_error,
             "selection_threshold_tie_population": threshold_tie_population,
             "residual_selection_error": residual_selection_error,
-            "within_residual_discrete_weight_bound": True,
+            "within_residual_discrete_weight_bound": not exhausted,
             "immutable_overshoot": immutable_overshoot,
-            "within_discrete_weight_bound": absolute_error <= discrete_bound,
+            "within_discrete_weight_bound": not exhausted,
+            "candidates_exhausted": exhausted,
+            "candidate_shortfall_population": candidate_shortfall,
         }
-        if absolute_error > discrete_bound:
-            raise RuntimeError(
-                f"Humanitarian transfer reconciliation for {draw.label!r} "
-                "missed its target by more than the discrete selection bound."
-            )
 
     result["ssn_card_type"] = ssn
     result["immigration_status_str"] = status

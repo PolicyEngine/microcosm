@@ -101,6 +101,7 @@ from microcosm.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.immigration import (
+    _HUMANITARIAN_TARGET_RELATIVE_BAND,
     us_immigration_controls,
     us_immigration_humanitarian_draw_mask,
     us_immigration_humanitarian_transfer_selection_masks,
@@ -4203,6 +4204,15 @@ _IMMIGRATION_RECONCILIATION_DRAW_FIELDS = frozenset(
         "within_residual_discrete_weight_bound",
         "immutable_overshoot",
         "within_discrete_weight_bound",
+        "candidates_exhausted",
+        "candidate_shortfall_population",
+    }
+)
+_IMMIGRATION_RECONCILIATION_BOOLEAN_DRAW_FIELDS = frozenset(
+    {
+        "within_residual_discrete_weight_bound",
+        "within_discrete_weight_bound",
+        "candidates_exhausted",
     }
 )
 
@@ -4428,10 +4438,11 @@ def _validate_immigration_post_transfer_reconciliation(
         raise ValueError(
             f"{boundary}: immigration reconciliation draw order is non-canonical."
         )
-    numeric_fields = _IMMIGRATION_RECONCILIATION_DRAW_FIELDS - {
-        "within_residual_discrete_weight_bound",
-        "within_discrete_weight_bound",
-    }
+    numeric_fields = (
+        _IMMIGRATION_RECONCILIATION_DRAW_FIELDS
+        - _IMMIGRATION_RECONCILIATION_BOOLEAN_DRAW_FIELDS
+    )
+    band_floor = _HUMANITARIAN_TARGET_RELATIVE_BAND[0]
     for label in expected_order:
         draw = draws[label]
         if not isinstance(draw, Mapping) or set(draw) != (
@@ -4441,17 +4452,27 @@ def _validate_immigration_post_transfer_reconciliation(
                 f"{boundary}: immigration reconciliation draw {label!r} schema "
                 "is invalid."
             )
-        if any(
-            not isinstance(draw.get(field), (int, float))
-            or isinstance(draw[field], bool)
-            or not np.isfinite(float(draw[field]))
-            or draw[field] < 0
-            for field in numeric_fields
-        ) or any(
-            draw.get(field) is not True
-            for field in (
-                "within_residual_discrete_weight_bound",
-                "within_discrete_weight_bound",
+        # A draw meets both selection bounds exactly when its candidates hold
+        # its residual; an exhausted draw takes every candidate instead.
+        exhausted_flag = draw.get("candidates_exhausted")
+        if (
+            any(
+                not isinstance(draw.get(field), (int, float))
+                or isinstance(draw[field], bool)
+                or not np.isfinite(float(draw[field]))
+                or draw[field] < 0
+                for field in numeric_fields
+            )
+            or any(
+                not isinstance(draw.get(field), bool)
+                for field in _IMMIGRATION_RECONCILIATION_BOOLEAN_DRAW_FIELDS
+            )
+            or any(
+                draw[field] is exhausted_flag
+                for field in (
+                    "within_residual_discrete_weight_bound",
+                    "within_discrete_weight_bound",
+                )
             )
         ):
             raise ValueError(
@@ -4494,12 +4515,31 @@ def _validate_immigration_post_transfer_reconciliation(
                 f"{boundary}: immigration reconciliation draw {label!r} has "
                 "immutable mass against an explicit-zero target."
             )
-        if eligible + tolerance < residual:
+        exhausted = eligible + tolerance < residual
+        if exhausted and not exhausted_flag:
             raise ValueError(
                 f"{boundary}: immigration reconciliation draw {label!r} "
                 "conceals a recipient candidate shortfall."
             )
-        if selected + tolerance < residual:
+        if exhausted_flag and not exhausted:
+            raise ValueError(
+                f"{boundary}: immigration reconciliation draw {label!r} "
+                "claims a candidate shortfall its eligible population covers."
+            )
+        shortfall = residual - eligible if exhausted else 0.0
+        if exhausted:
+            # Every candidate is taken; the draw keeps the gate's floor.
+            if abs(selected - eligible) > tolerance or tie > tolerance:
+                raise ValueError(
+                    f"{boundary}: immigration reconciliation draw {label!r} "
+                    "leaves candidates unselected after exhausting them."
+                )
+            if achieved + tolerance < band_floor * target:
+                raise ValueError(
+                    f"{boundary}: immigration reconciliation draw {label!r} "
+                    "falls below the floor of the composition gate's band."
+                )
+        elif selected + tolerance < residual:
             raise ValueError(
                 f"{boundary}: immigration reconciliation draw {label!r} "
                 "underfills its residual target."
@@ -4511,10 +4551,17 @@ def _validate_immigration_post_transfer_reconciliation(
             or tie > eligible + tolerance
             or abs(achieved - (immutable + selected)) > tolerance
             or abs(float(draw["residual_selection_error"]) - residual_error) > tolerance
-            or residual_error > tie + tolerance
+            or abs(float(draw["candidate_shortfall_population"]) - shortfall)
+            > tolerance
             or abs(float(draw["absolute_error"]) - absolute_error) > tolerance
             or abs(float(draw["immutable_overshoot"]) - immutable_overshoot) > tolerance
-            or absolute_error > immutable_overshoot + tie + tolerance
+            or (
+                not exhausted
+                and (
+                    residual_error > tie + tolerance
+                    or absolute_error > immutable_overshoot + tie + tolerance
+                )
+            )
         ):
             raise ValueError(
                 f"{boundary}: immigration reconciliation draw {label!r} "

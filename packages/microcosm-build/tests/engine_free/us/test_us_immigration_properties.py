@@ -45,7 +45,10 @@ Invariants checked, by function:
   exactly the rows the gate counts as Pew-unauthorized.
 - ``reconcile_us_immigration_humanitarian_transfer``: its output satisfies the
   gate's structural contract; each receipt's achieved population is its
-  immutable plus selected population; and
+  immutable plus selected population; a draw whose candidates hold less than
+  its residual takes every candidate no earlier draw took, and its receipt
+  records the shortfall; a draw that then reaches less than the composition
+  band's floor of its target is refused; and
   ``us_immigration_humanitarian_transfer_selection_masks`` replays the
   reconciliation's mutable-row selections exactly (differential).
 
@@ -1825,21 +1828,34 @@ class _TransferCase:
     mutable: np.ndarray
     controls: immigration.ImmigrationControls
     seed: int
+    #: Each draw's recipient candidates before earlier draws remove theirs.
+    pools: Mapping[str, np.ndarray]
+    #: The draw whose target no selection can bring to the band floor.
+    floor_breaker: str | None = None
+
+
+#: Exhausting cases keep each draw at this share of its target or more, above
+#: the composition band's floor, so only the floor test reaches the refusal.
+_FLOOR_SAFE_SHARE = immigration._HUMANITARIAN_TARGET_RELATIVE_BAND[0] + 0.01
 
 
 @st.composite
-def _transfer_cases(draw) -> _TransferCase:
+def _transfer_cases(draw, *, floor_breaker: bool = False) -> _TransferCase:
     """ASEC rows labeled by the stage (immutable) stacked with ACS recipients
     carrying unconstrained donor labels (mutable), as in the ACS transfer.
 
-    Reconciliation targets are feasible by construction, so the documented
-    refusal ("candidate exhaustion is a hard error") never applies and any
-    error is a finding. Each draw's target is at least half its immutable ASEC
-    mass (so a draw with immutable rows never has an explicit-zero target)
-    plus a share of the recipient mass that this draw, and no earlier draw,
-    can claim; ``selected_once`` can only remove rows an earlier draw claims.
-    Some recipients are ACS twins of ASEC rows (same origin, age and the
-    ASEC bin's midpoint year), so a draw often has both an immutable
+    Each draw's target is at least half its immutable ASEC mass (so a draw
+    with immutable rows never has an explicit-zero target) plus a share of
+    the recipient mass that this draw, and no earlier draw, can claim;
+    ``selected_once`` can only remove rows an earlier draw claims. Some
+    targets then add an excess the candidates cannot fill, so those draws
+    exhaust them. The excess keeps the immutable mass plus the exclusive
+    recipient mass at ``_FLOOR_SAFE_SHARE`` of the target or more, so the
+    refusal below the composition band's floor never applies and any error is
+    a finding. With ``floor_breaker``, one draw instead takes a target that
+    even its immutable mass plus every one of its candidates leaves below the
+    floor. Some recipients are ACS twins of ASEC rows (same origin, age and
+    the ASEC bin's midpoint year), so a draw often has both an immutable
     contribution and recipients to select.
     """
 
@@ -1894,6 +1910,15 @@ def _transfer_cases(draw) -> _TransferCase:
     codes = np.where(~profile.is_citizen & (codes == 1), 3, codes)
     claimed = np.zeros(len(person), dtype=bool)
     targets: dict[str, float] = {}
+    pools: dict[str, np.ndarray] = {}
+    breaker = (
+        draw(
+            st.sampled_from([c.label for c in stage.controls.humanitarian]),
+            label="floor breaker",
+        )
+        if floor_breaker
+        else None
+    )
     for control in stage.controls.humanitarian:
         immutable_mass = float(
             weights[
@@ -1913,6 +1938,16 @@ def _transfer_cases(draw) -> _TransferCase:
         )
         exclusive = float(weights[pool & ~claimed].sum())
         claimed |= pool
+        pools[control.label] = pool
+        if control.label == breaker:
+            reachable = immutable_mass + float(weights[pool].sum())
+            floor = immigration._HUMANITARIAN_TARGET_RELATIVE_BAND[0]
+            targets[control.label] = (
+                (reachable + 1.0)
+                / floor
+                * draw(st.floats(1.05, 3.0), label="floor breach")
+            )
+            continue
         immutable_share = draw(
             st.one_of(st.just(1.0), st.floats(0.5, 1.0)), label="immutable share"
         )
@@ -1920,9 +1955,15 @@ def _transfer_cases(draw) -> _TransferCase:
             st.one_of(st.just(0.0), st.just(1.0), st.floats(0.0, 1.0)),
             label="exclusive share",
         )
-        targets[control.label] = (
-            immutable_share * immutable_mass + exclusive_share * exclusive
+        base_target = immutable_share * immutable_mass + exclusive_share * exclusive
+        headroom = max(
+            0.0, (immutable_mass + exclusive) / _FLOOR_SAFE_SHARE - base_target
         )
+        excess_share = draw(
+            st.one_of(st.just(0.0), st.just(1.0), st.floats(0.0, 1.0)),
+            label="excess share",
+        )
+        targets[control.label] = base_target + excess_share * headroom
     return _TransferCase(
         person=person,
         weights=weights,
@@ -1936,6 +1977,8 @@ def _transfer_cases(draw) -> _TransferCase:
             )
         ),
         seed=draw(st.integers(0, 2**31 - 1)),
+        pools=pools,
+        floor_breaker=breaker,
     )
 
 
@@ -1997,12 +2040,17 @@ def test_reconciliation_receipts_obey_their_accounting_identities(case) -> None:
     masks, and must equal immutable + selected; a zero target selects
     nothing; the selection never exceeds the eligible pool.
 
+    A draw whose eligible candidates hold less than its residual "takes every
+    one of them and its receipt records the shortfall": its selection equals
+    its eligible pool, it crosses no threshold, its shortfall is the residual
+    less the pool, and it keeps the composition band's floor.
+
     Receipt consistency only (not independent evidence): the function raises
-    ``RuntimeError`` before returning a receipt whose selection misses its
-    residual by more than its threshold tie mass or whose achieved error
-    exceeds the discrete bound, and it hard-codes
-    ``within_residual_discrete_weight_bound``. Those assertions confirm the
-    receipt records the quantities it checked."""
+    ``RuntimeError`` before returning a receipt whose unexhausted selection
+    misses its residual by more than its threshold tie mass or whose achieved
+    error exceeds the discrete bound, and it sets both bound flags to the
+    negation of ``candidates_exhausted``. Those assertions confirm the receipt
+    records the quantities it checked."""
 
     _, receipt = _reconcile(case)
     tolerance = float(receipt["floating_tolerance"])
@@ -2028,15 +2076,26 @@ def test_reconciliation_receipts_obey_their_accounting_identities(case) -> None:
             assert selected == 0.0
         # Receipt consistency with the function's own guards.
         assert entry["target"] == target
-        assert entry["residual_target"] == pytest.approx(
-            max(0.0, target - immutable), abs=tolerance
-        )
-        assert abs(selected - entry["residual_target"]) <= tie + tolerance
-        assert abs(achieved - target) <= (
-            max(0.0, immutable - target) + tie + tolerance
-        )
-        assert entry["within_residual_discrete_weight_bound"] is True
-        assert entry["within_discrete_weight_bound"] is True
+        residual = entry["residual_target"]
+        eligible = entry["eligible_recipient_population"]
+        assert residual == pytest.approx(max(0.0, target - immutable), abs=tolerance)
+        exhausted = eligible + tolerance < residual
+        assert entry["candidates_exhausted"] is exhausted
+        assert entry["within_residual_discrete_weight_bound"] is not exhausted
+        assert entry["within_discrete_weight_bound"] is not exhausted
+        if exhausted:
+            event("a draw exhausted its candidates")
+            assert selected == eligible
+            assert tie == 0.0
+            assert entry["candidate_shortfall_population"] == residual - eligible
+            floor = immigration._HUMANITARIAN_TARGET_RELATIVE_BAND[0]
+            assert achieved + tolerance >= floor * target
+        else:
+            assert entry["candidate_shortfall_population"] == 0.0
+            assert abs(selected - residual) <= tie + tolerance
+            assert abs(achieved - target) <= (
+                max(0.0, immutable - target) + tie + tolerance
+            )
 
 
 @_TRANSFER
@@ -2068,3 +2127,59 @@ def test_selection_replay_reproduces_the_reconciled_mutable_rows(case) -> None:
         np.testing.assert_array_equal(
             replay[draw.label], emitted & case.mutable, err_msg=draw.label
         )
+
+
+@_TRANSFER
+@given(_transfer_cases())
+def test_exhausted_draws_take_every_candidate_no_earlier_draw_took(case) -> None:
+    """A draw whose candidates hold less than its residual "takes every one of
+    them". Independent evidence: each draw's candidate pool comes from the
+    strategy, computed before any selection, and the rows earlier draws took
+    come from the replay that ``test_selection_replay_reproduces_the_reconciled_
+    mutable_rows`` checks against the emitted labels. An exhausted draw's
+    selection is exactly its pool less those rows, and its receipt's eligible
+    population is their weight."""
+
+    result, receipt = _reconcile(case)
+    replay = immigration.us_immigration_humanitarian_transfer_selection_masks(
+        _frame(result, case.weights),
+        mutable_rows=case.mutable,
+        seed=case.seed,
+        time_period=_TIME_PERIOD,
+        controls=case.controls,
+    )
+    taken = np.zeros(len(case.person), dtype=bool)
+    for draw in case.controls.humanitarian:
+        remaining = case.pools[draw.label] & ~taken
+        entry = receipt["draws"][draw.label]
+        assert entry["eligible_recipient_population"] == pytest.approx(
+            float(case.weights[remaining].sum()),
+            abs=float(receipt["floating_tolerance"]),
+        )
+        if entry["candidates_exhausted"]:
+            event("an exhausted draw took its remaining candidates")
+            np.testing.assert_array_equal(
+                replay[draw.label], remaining, err_msg=draw.label
+            )
+            assert (
+                result.loc[remaining, "immigration_status_str"] == draw.status
+            ).all()
+        taken |= replay[draw.label]
+
+
+@_TRANSFER
+@given(_transfer_cases(floor_breaker=True))
+def test_reconciliation_refuses_a_draw_exhausted_below_the_band_floor(case) -> None:
+    """The reconciliation "refuses only a draw that then reaches less than the
+    floor of the composition gate's band of its target". The strategy gives
+    one draw a target that its immutable mass plus every one of its
+    candidates leaves below that floor, and keeps every other draw above it:
+    the reconciliation must refuse that draw, by name."""
+
+    floor = immigration._HUMANITARIAN_TARGET_RELATIVE_BAND[0]
+    with pytest.raises(ValueError) as refusal:
+        _reconcile(case)
+    assert str(refusal.value).startswith(
+        "Humanitarian transfer candidate shortfall for "
+        f"{case.floor_breaker!r} leaves it below {floor} of its target"
+    )

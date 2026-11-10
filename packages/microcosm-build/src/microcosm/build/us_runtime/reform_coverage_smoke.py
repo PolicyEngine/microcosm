@@ -132,6 +132,7 @@ def us_reform_coverage_smoke_gate(
             "effect": effect,
             "expected_sign": probe.expected_sign,
             "min_abs_effect": probe.min_abs_effect,
+            "measure_unit": probe.measure_unit,
             "binding_inputs": list(probe.binding_inputs),
             "issue": probe.issue,
             "passed": passed,
@@ -142,11 +143,16 @@ def us_reform_coverage_smoke_gate(
                 if probe.expected_sign == "either"
                 else f"a {probe.expected_sign} effect"
             )
+            if probe.measure_unit == "persons":
+                effect_text = f"{effect:+,.0f} persons"
+                floor_text = f"{probe.min_abs_effect:,.0f} persons"
+            else:
+                effect_text = f"{effect:+,.0f}"
+                floor_text = f"${probe.min_abs_effect:,.0f}"
             scored = (
-                f"{probe.id}: '{probe.name}' scores {effect:+,.0f} on "
+                f"{probe.id}: '{probe.name}' scores {effect_text} on "
                 f"{probe.budget_measure} for {probe_period}; expected "
-                f"{expectation} with magnitude at least "
-                f"${probe.min_abs_effect:,.0f}."
+                f"{expectation} with magnitude at least {floor_text}."
             )
             # A wrong-signed effect that clears the floor proves the reform
             # binds, so the inputs are carried; what disagrees is the probe's

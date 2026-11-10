@@ -254,7 +254,7 @@ known violations at run time:
 
 Tests pin the watched lists against the installed engine's formula sources,
 exercise each guard on a real engine, and compare the shipped baseline plans
-(18 smoke keys, 75 validation keys and 1 demographics key) against whole-file
+(23 smoke keys, 75 validation keys and 1 demographics key) against whole-file
 values on a small written H5 in three batches.
 
 On 2026-09-24, the sweep below completed on a written fixture containing eight

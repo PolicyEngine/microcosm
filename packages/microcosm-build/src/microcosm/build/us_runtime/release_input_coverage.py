@@ -339,9 +339,16 @@ class ReleaseInputColumn:
                 )
 
 
+#: What a reform-coverage probe's weighted budget-measure total counts.
+#: ``usd`` measures carry PolicyEngine-US's ``currency-USD`` unit;
+#: ``persons`` measures are person-level booleans, whose weighted sum
+#: counts people.
+REFORM_COVERAGE_MEASURE_UNITS = frozenset({"usd", "persons"})
+
+
 @dataclass(frozen=True)
 class ReformCoverageProbe:
-    """A pinned reform whose $0 score on the export signals a coverage hole.
+    """A pinned reform whose zero score on the export signals a coverage hole.
 
     A reform that mechanically binds through named input leaves must move its
     budget measure. If it scores ~$0 on the release, the leaves it binds through
@@ -357,6 +364,12 @@ class ReformCoverageProbe:
         neutralized_variable: Input leaf neutralized by a
             structural reform when no parameter change isolates the leaf.
         budget_measure: The variable whose weighted total change is scored.
+        measure_unit: What the budget measure's weighted total counts:
+            ``"usd"`` (dollars, the default) or ``"persons"`` (people,
+            for a person-level boolean measure). The smoke gate states
+            ``min_abs_effect`` in this unit, and the engine half of
+            :func:`assert_release_input_coverage_manifest_current` checks
+            it against the measure's PolicyEngine-US metadata.
         effect_direction: ``"reform_minus_baseline"`` or
             ``"baseline_minus_reform"``.
         period: Optional probe-specific scoring year. OBBBA probes use 2026
@@ -384,6 +397,7 @@ class ReformCoverageProbe:
     period: int | None = None
     expected_sign: str = "positive"
     neutralized_variable: str | None = None
+    measure_unit: str = "usd"
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -419,6 +433,11 @@ class ReformCoverageProbe:
         if self.expected_sign not in {"positive", "negative", "either"}:
             raise ValueError(
                 f"{self.id}: expected_sign must be 'positive', 'negative', or 'either'."
+            )
+        if self.measure_unit not in REFORM_COVERAGE_MEASURE_UNITS:
+            raise ValueError(
+                f"{self.id}: measure_unit must be one of "
+                f"{sorted(REFORM_COVERAGE_MEASURE_UNITS)}."
             )
 
 
@@ -564,6 +583,7 @@ def load_release_input_coverage_manifest(
                     if raw_probe.get("neutralized_variable") is None
                     else str(raw_probe["neutralized_variable"])
                 ),
+                measure_unit=str(raw_probe.get("measure_unit", "usd")),
             )
         )
 
@@ -718,6 +738,37 @@ def _coverage_engine() -> Any | None:
         return None
 
 
+def _probe_measure_drift(engine: Any, probe: ReformCoverageProbe) -> list[str]:
+    """Why ``probe``'s budget measure disagrees with its ``measure_unit``.
+
+    Empty when the measure is a live PolicyEngine-US variable of the declared
+    unit: a ``currency-USD`` variable for ``usd``, a person-level boolean for
+    ``persons``.
+    """
+    try:
+        metadata = engine.variable_metadata(probe.budget_measure)
+        unit = engine.variable_unit(probe.budget_measure)
+    except ValueError:
+        return [
+            f"probe {probe.id!r}: budget_measure {probe.budget_measure!r} is "
+            "not a PolicyEngine-US variable."
+        ]
+    if probe.measure_unit == "persons":
+        if (metadata.entity, metadata.dtype) != ("person", "bool"):
+            return [
+                f"probe {probe.id!r}: measure_unit 'persons' counts people, so "
+                "its budget_measure must be a person-level boolean; "
+                f"{probe.budget_measure!r} is a {metadata.dtype} on "
+                f"{metadata.entity}."
+            ]
+    elif unit != "currency-USD":
+        return [
+            f"probe {probe.id!r}: measure_unit 'usd' needs a dollar "
+            f"budget_measure; {probe.budget_measure!r} declares unit {unit!r}."
+        ]
+    return []
+
+
 def _ecps_populated_layers() -> frozenset[str]:
     payload = _resource_payload(_ECPS_PARITY_REFERENCE_RESOURCE)
     shares = payload.get("nonzero_shares")
@@ -803,9 +854,12 @@ def assert_release_input_coverage_manifest_current(
       given) under either its live or its historical spelling: the parity gate
       honours both, so a restored input filed as a gap would be exempted there
       even while this manifest still requires it.
-    - Every declared column must be a real PolicyEngine-US input leaf, and every
-      probe's ``binding_inputs`` / ``budget_measure`` must resolve on the live
-      engine, so the contract cannot guard names the engine no longer has.
+    - Every declared column must be a real PolicyEngine-US input leaf, every
+      probe's ``binding_inputs`` must be live input leaves, and every probe's
+      ``budget_measure`` must be a live variable in its ``measure_unit``
+      (``currency-USD`` for ``usd``, a person-level boolean for
+      ``persons``), so the contract cannot guard names the engine no longer
+      has or state a floor in the wrong unit.
 
     A no-op for the engine-graph half when no engine is available (the workspace
     test environment); the checked-in-facts half always runs.
@@ -921,6 +975,7 @@ def assert_release_input_coverage_manifest_current(
                         f"probe {probe.id!r}: binding_inputs are not "
                         f"PolicyEngine-US input leaves: {bad_inputs}."
                     )
+                failures.extend(_probe_measure_drift(engine, probe))
 
     if failures:
         raise ValueError(

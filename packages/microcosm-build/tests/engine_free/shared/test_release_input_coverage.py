@@ -184,6 +184,72 @@ class TestReformCoverageSmokeGate:
         assert not structural_zero.passed
         assert "an effect in either direction" in structural_zero.failures[0]
 
+    def test_dollar_probe_states_its_floor_in_dollars(self, monkeypatch) -> None:
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+        result = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(10.0e9), probes=[_probe()]
+        )
+        assert not result.passed
+        assert (
+            "scores +0 on ssi for 2024; expected a positive effect with "
+            "magnitude at least $1,000,000,000." in result.failures[0]
+        )
+        assert result.details["results"]["ssi_probe"]["measure_unit"] == "usd"
+
+    def test_people_count_probe_states_effect_and_floor_in_people(
+        self, monkeypatch
+    ) -> None:
+        # A person-level boolean measure (medicaid_enrolled) sums weighted
+        # people, so the gate must state the effect and floor as people, not
+        # print a dollar floor (microcosm#767).
+        monkeypatch.setattr(smoke_module, "_build_reform", lambda changes: "REFORM")
+        probe = ReformCoverageProbe(
+            id="enrollment_probe",
+            name="Status-list restoration",
+            parameter_changes={
+                "gov.example.statuses": {"2027-01-01.2100-12-31": ["REFUGEE"]}
+            },
+            budget_measure="medicaid_enrolled",
+            binding_inputs=("immigration_status_str",),
+            min_abs_effect=10_000.0,
+            reason="The restoration binds through the status leaf.",
+            issue="PolicyEngine/microcosm#767",
+            period=2027,
+            measure_unit="persons",
+        )
+
+        undersized = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(2_000.0 if reform else 0.0),
+            probes=[probe],
+        )
+        assert not undersized.passed
+        failure = undersized.failures[0]
+        assert "scores +2,000 persons on medicaid_enrolled for 2027" in failure
+        assert "magnitude at least 10,000 persons." in failure
+        assert "$" not in failure
+        result = undersized.details["results"]["enrollment_probe"]
+        assert result["measure_unit"] == "persons"
+
+        passing = us_reform_coverage_smoke_gate(
+            simulate=lambda reform: _Sim(250_000.0 if reform else 0.0),
+            probes=[probe],
+        )
+        assert passing.passed
+
+    def test_probe_rejects_unknown_measure_unit(self) -> None:
+        with pytest.raises(ValueError, match="measure_unit must be one of"):
+            ReformCoverageProbe(
+                id="bad_unit",
+                name="Bad unit",
+                parameter_changes={"gov.example.switch": {"2026": 0}},
+                budget_measure="medicaid_enrolled",
+                binding_inputs=("x",),
+                min_abs_effect=1.0,
+                reason="r.",
+                issue="PolicyEngine/microcosm#1",
+                measure_unit="households",
+            )
+
     def test_probe_rejects_unknown_expected_sign(self) -> None:
         with pytest.raises(ValueError, match="expected_sign must be"):
             ReformCoverageProbe(
@@ -545,6 +611,23 @@ class TestShippedManifest:
         assert probe.parameter_changes == {}
         assert probe.neutralized_variable == output
         assert probe.binding_inputs == (output,)
+
+    def test_only_the_hr1_medicaid_probe_counts_people(self) -> None:
+        # The household-batched post-export scorer refuses Medicaid dollars,
+        # which PolicyEngine-US prices through a file-wide state denominator
+        # (microcosm#956), so the H.R.1 Medicaid probe counts enrollees. Every
+        # other probe sums dollars, the loader's default unit.
+        counted = {
+            probe.id: (probe.budget_measure, probe.min_abs_effect)
+            for probe in us_release_reform_coverage_probes()
+            if probe.measure_unit != "usd"
+        }
+        assert counted == {
+            "hr1_medicaid_humanitarian_eligibility_restoration": (
+                "medicaid_enrolled",
+                10_000.0,
+            )
+        }
 
     def test_shipped_ssi_probe_binds_through_the_assets(self) -> None:
         probes = us_release_reform_coverage_probes()

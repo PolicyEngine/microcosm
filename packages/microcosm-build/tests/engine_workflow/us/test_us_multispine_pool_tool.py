@@ -380,7 +380,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # through the bundle's source stages.
             # microcosm#767's humanitarian immigration controls, its attested
             # immigration kernel and its frozen legacy schedule move it.
-            "spec_sha256": "c414c985f6da4c8d623c79f15bce4c35a5fa32246fbfed941390b24fee41f429",
+            "spec_sha256": "783ff9a423a3de4db335c5886e37139ac94b0ae619528433e08a273c17bb111f",
         },
     }
 

@@ -26,8 +26,8 @@ composition gate on its output and writes a JSON receipt of aggregates.
 - Seed 0 and period 2024, Route A's ``--target-year``.
 
 A refusal is recorded as the receipt's ``error`` instead of raised. Main's tree
-has no humanitarian controls, Pew universe or composition gate, so its receipt
-carries the composition only.
+has no humanitarian controls or Pew universe, so its receipt carries the
+composition and its own composition gate's verdict only.
 
 The archives are Census's public-use ASEC CSV releases, at the URLs
 ``education_assistance_source.py`` names:
@@ -379,8 +379,35 @@ if error is None:
             ),
         }
     )
-    # This PR's controls, Pew universe and gate; main's tree has none of them.
-    if hasattr(immigration, "us_immigration_controls"):
+    # Every tree runs its own composition gate. This PR's tree also defines the
+    # humanitarian controls and the Pew universe; main's has neither.
+    gate_person = output.drop(columns=["person_weight"]).reset_index(drop=True).copy()
+    ids = np.arange(1, len(gate_person) + 1, dtype=np.int64)
+    for entity in US_SCHEMA.group_entities:
+        gate_person[US_SCHEMA.membership_column(entity)] = ids
+    frame = Frame(
+        {
+            "person": gate_person,
+            **{
+                entity: pd.DataFrame({US_SCHEMA.id_column(entity): ids})
+                for entity in US_SCHEMA.group_entities
+            },
+        },
+        US_SCHEMA,
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    gate_parameters = inspect.signature(
+        immigration.us_immigration_composition_gate
+    ).parameters
+    gate_kwargs: dict[str, object] = {}
+    if "time_period" in gate_parameters:
+        gate_kwargs["time_period"] = PERIOD
+    if not hasattr(immigration, "us_immigration_controls"):
+        gate = immigration.us_immigration_composition_gate(frame, **gate_kwargs)
+        receipt.update(
+            {"gate_passed": bool(gate.passed), "gate_failures": list(gate.failures)}
+        )
+    else:
         labor_force = np.isin(output["A_LFSR"].to_numpy(), [1, 2, 3, 4]) & (age >= 16)
         controls = immigration.us_immigration_controls()
         targets: dict[str, float] = {}
@@ -389,25 +416,8 @@ if error is None:
         pew = np.isin(status, immigration._PEW_UNAUTHORIZED_STATUS_VALUES) | (
             (status == "CUBAN_HAITIAN_ENTRANT") & (ssn == "NON_CITIZEN_VALID_EAD")
         )
-        gate_person = (
-            output.drop(columns=["person_weight"]).reset_index(drop=True).copy()
-        )
-        ids = np.arange(1, len(gate_person) + 1, dtype=np.int64)
-        for entity in US_SCHEMA.group_entities:
-            gate_person[US_SCHEMA.membership_column(entity)] = ids
-        frame = Frame(
-            {
-                "person": gate_person,
-                **{
-                    entity: pd.DataFrame({US_SCHEMA.id_column(entity): ids})
-                    for entity in US_SCHEMA.group_entities
-                },
-            },
-            US_SCHEMA,
-            {"household": Weights(weights, WeightKind.DESIGN)},
-        )
         gate = immigration.us_immigration_composition_gate(
-            frame, time_period=PERIOD, controls=controls
+            frame, controls=controls, **gate_kwargs
         )
         receipt.update(
             {
@@ -467,11 +477,11 @@ for value, row in composition.items():
         f"  u19 {row['under_19_weighted'] / 1e6:.3f}M"
     )
 print("NONE ssn iff UNDOCUMENTED:", receipt["none_ssn_iff_undocumented"])
-if "gate_passed" in receipt:
+if "pew_universe" in receipt:
     print(
         f"Pew universe {receipt['pew_universe'] / 1e6:.3f}M vs anchor "
         f"{receipt['pew_universe_anchor'] / 1e6:.1f}M; labor force "
         f"{receipt['pew_labor_force'] / 1e6:.3f}M vs control "
         f"{receipt['pew_labor_force_control'] / 1e6:.1f}M"
     )
-    print("gate passed:", receipt["gate_passed"], "failures:", receipt["gate_failures"])
+print("gate passed:", receipt["gate_passed"], "failures:", receipt["gate_failures"])

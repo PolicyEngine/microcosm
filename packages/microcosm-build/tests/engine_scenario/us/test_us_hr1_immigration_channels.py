@@ -4,7 +4,7 @@ The release-blocking reform-coverage smoke gate scores the pinned probe
 reforms on the full export; these tests prove the same channels move,
 nonzero and sign-correct, on synthetic households whose
 ``immigration_status_str`` carries the humanitarian values the source stage
-now imputes. A probe whose channel dies here would score $0 on every
+now imputes. A probe whose channel dies here would score zero on every
 release, so this is the PR-CI early warning for the engine side of the
 silent-zero failure — without needing restricted microdata.
 
@@ -86,8 +86,13 @@ def _effect(probe, situation: dict, year: int) -> tuple[float, float]:
 
 def test_medicaid_restoration_reenrolls_refugee_family(hr1_probes) -> None:
     # At 2027 law refugees are outside the §71109-narrowed qualified list;
-    # restoring the pre-H.R.1 list must re-enroll the anchored taker.
+    # restoring the pre-H.R.1 list must enroll the anchored taker. The probe
+    # counts enrollees (medicaid_enrolled), so the totals here are people.
     probe = hr1_probes["hr1_medicaid_humanitarian_eligibility_restoration"]
+    assert (probe.budget_measure, probe.measure_unit) == (
+        "medicaid_enrolled",
+        "persons",
+    )
     situation = _household(
         "REFUGEE",
         25_000.0,
@@ -152,9 +157,10 @@ def test_snap_restoration_reincludes_refugee_members(hr1_probes) -> None:
 def test_probe_magnitude_floors_sit_far_below_plausible_scale(hr1_probes) -> None:
     # The floors are release-scale guards: far above numerical noise, far
     # below the plausible aggregate effect of the imputed stocks (about
-    # 1.6M weighted persons across the humanitarian categories).
+    # 1.6M weighted persons across the humanitarian categories). The
+    # Medicaid floor counts people; the others are dollars.
     floors = {
-        "hr1_medicaid_humanitarian_eligibility_restoration": 50_000_000.0,
+        "hr1_medicaid_humanitarian_eligibility_restoration": 10_000.0,
         "hr1_aca_below_fpl_exception_restoration": 5_000_000.0,
         "hr1_aca_lawful_presence_restoration": 10_000_000.0,
         "hr1_snap_humanitarian_eligibility_restoration": 25_000_000.0,
@@ -162,6 +168,11 @@ def test_probe_magnitude_floors_sit_far_below_plausible_scale(hr1_probes) -> Non
     for probe_id, floor in floors.items():
         probe = hr1_probes[probe_id]
         assert probe.min_abs_effect == floor
+        assert probe.measure_unit == (
+            "persons"
+            if probe_id == "hr1_medicaid_humanitarian_eligibility_restoration"
+            else "usd"
+        )
         assert probe.expected_sign == "positive"
         assert probe.binding_inputs == ("immigration_status_str",)
         assert probe.issue == "PolicyEngine/microcosm#767"

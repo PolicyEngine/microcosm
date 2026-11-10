@@ -1219,6 +1219,8 @@ def test_humanitarian_reconciliation_uses_residual_targets_and_records_receipt(
         "within_residual_discrete_weight_bound": True,
         "immutable_overshoot": 0.0,
         "within_discrete_weight_bound": True,
+        "candidates_exhausted": False,
+        "candidate_shortfall_population": 0.0,
     }
     assert draws["paroled_one_year:ukraine"]["residual_target"] == 60.0
     assert draws["paroled_one_year:ukraine"]["achieved_population"] == 60.0
@@ -1226,9 +1228,7 @@ def test_humanitarian_reconciliation_uses_residual_targets_and_records_receipt(
     assert all(draw["within_discrete_weight_bound"] for draw in draws.values())
 
 
-def test_humanitarian_reconciliation_fails_on_candidate_shortfall(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _transfer_mixed_immigration(ukraine_target: float, monkeypatch) -> object:
     donor = _with_columns(
         _donor_frame(),
         "person",
@@ -1241,28 +1241,85 @@ def test_humanitarian_reconciliation_fails_on_candidate_shortfall(
     monkeypatch.setattr(
         immigration_module,
         "us_immigration_controls",
-        lambda: _small_immigration_controls(ukraine_target=61.0),
+        lambda: _small_immigration_controls(ukraine_target=ukraine_target),
+    )
+    return transfer_acs_inputs(
+        _mixed_immigration_recipient(),
+        donor,
+        target_families={
+            "person": {
+                "source_operator_immigration": (
+                    "ssn_card_type",
+                    "immigration_status_str",
+                )
+            }
+        },
+        donor_channel=None,
+        seed=19,
+        n_estimators=1,
     )
 
+
+def test_humanitarian_reconciliation_takes_every_candidate_when_they_fall_short(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The Ukrainian candidates hold 60 weighted persons against a residual of
+    # 61, as a stacked pool's ACS arm can hold fewer recent arrivals than a
+    # draw's residual: the draw takes them all and records the gap.
+    result = _transfer_mixed_immigration(61.0, monkeypatch)
+
+    person = result.frame.person
+    assert person["immigration_status_str"].tolist() == [
+        "PAROLED_ONE_YEAR",
+        "CITIZEN",
+        "PAROLED_ONE_YEAR",
+        "CITIZEN",
+        "CITIZEN",
+        "TPS",
+    ]
+    receipt = next(
+        item.reconciliation
+        for item in result.imputed_inputs
+        if item.column == "immigration_status_str"
+    )
+    assert receipt is not None
+    ukraine = receipt["draws"]["paroled_one_year:ukraine"]
+    assert ukraine == {
+        "target": 61.0,
+        "immutable_population": 0.0,
+        "residual_target": 61.0,
+        "eligible_recipient_population": 60.0,
+        "selected_recipient_population": 60.0,
+        "achieved_population": 60.0,
+        "absolute_error": 1.0,
+        "selection_threshold_tie_population": 0.0,
+        "residual_selection_error": 1.0,
+        "within_residual_discrete_weight_bound": False,
+        "immutable_overshoot": 0.0,
+        "within_discrete_weight_bound": False,
+        "candidates_exhausted": True,
+        "candidate_shortfall_population": 1.0,
+    }
+    others = [
+        draw
+        for label, draw in receipt["draws"].items()
+        if label != "paroled_one_year:ukraine"
+    ]
+    assert all(not draw["candidates_exhausted"] for draw in others)
+    assert all(draw["within_discrete_weight_bound"] for draw in others)
+
+
+def test_humanitarian_reconciliation_refuses_a_shortfall_below_the_band_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 60 candidates reach 0.30 of a 200 target, under the composition gate's
+    # floor of 0.35.
     with pytest.raises(
         ValueError,
-        match="candidate shortfall.*paroled_one_year:ukraine",
+        match=r"candidate shortfall for 'paroled_one_year:ukraine' leaves it "
+        r"below 0\.35 of its target",
     ):
-        transfer_acs_inputs(
-            _mixed_immigration_recipient(),
-            donor,
-            target_families={
-                "person": {
-                    "source_operator_immigration": (
-                        "ssn_card_type",
-                        "immigration_status_str",
-                    )
-                }
-            },
-            donor_channel=None,
-            seed=19,
-            n_estimators=1,
-        )
+        _transfer_mixed_immigration(200.0, monkeypatch)
 
 
 def test_large_target_family_is_split_to_bound_retained_qrf_forests(
@@ -3387,13 +3444,13 @@ def test_adult_care_qualifying_rows_fails_closed_on_missing_structure(
 #: (schema 3, #767). Every caller that passes none (the shared plan, the
 #: pool lane, banked checkpoints and the spec projection) must keep these.
 _DEFAULT_CONTRACT_SHA256 = (
-    "4403aefd1de03d28b68fa9b653d5a7e9e6df9a133b4afde22f7f1673b58db63e"
+    "30eb194ad1ce1f2f76ed06c299195e6e2d556fca3ec1fe95b8b6cd70f752fe6f"
 )
 _DECLARED_PLAN_CONTRACT_SHA256 = (
-    "ce27d25196cd8bfbd108cb6beb7e1d9f48334df874e32173ea73ef4d1ce18a0c"
+    "cce290dc5454df6818aa25eb087642049b4574446e1c9a61a8aef74aa8df1d69"
 )
 _PREGNANCY_CONTRACT_SHA256 = (
-    "061d8f1000065e43b2a5bac09a9d4e1b8ec81d123944222d99c42a5f3597045e"
+    "e5b4d7c3187e640e8a30d2f938e4d0e7fc179664b801b1f618d8e882bb052e0c"
 )
 _EXTENSION_FEATURE = "__acs_transfer_fixture_interest_total"
 _EXTENSION_FAMILIES = {

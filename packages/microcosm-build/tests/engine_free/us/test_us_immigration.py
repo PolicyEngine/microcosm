@@ -1774,3 +1774,41 @@ class TestCompositionGate:
         assert ssn["population"]["CITIZEN"] == 3.0
         assert ssn["population"]["NONE"] == 1.0
         assert summary["person_population"] == 5.0
+
+
+def test_exact_year_parole_windows_close_when_their_program_closed() -> None:
+    # Operation Allies Welcome paroled Afghans who arrived in 2021 and 2022, so
+    # an exact-year (ACS YOEP) row is its candidate only in those years.
+    # Uniting for Ukraine began in 2022 and has no last year.
+    years = [2020.0, 2021.0, 2022.0, 2023.0, 2024.0]
+    person = pd.DataFrame(
+        {
+            "CIT": [5.0] * 10,
+            "POBP": [200.0] * 5 + [164.0] * 5,
+            "YOEP": years * 2,
+            "age": [30.0] * 10,
+        }
+    )
+    profile = immigration_module._source_aware_immigration_profile(
+        person, time_period=2024
+    )
+    draws = {
+        draw.label: draw
+        for draw in immigration_module.us_immigration_controls().humanitarian
+    }
+
+    def candidates(label: str) -> list[bool]:
+        return immigration_module._humanitarian_draw_candidates(
+            draws[label],
+            ssn_codes=np.full(len(person), 3),
+            profile=profile,
+        ).tolist()
+
+    assert candidates("paroled_one_year:afghanistan") == [
+        *(False, True, True, False, False),
+        *([False] * 5),
+    ]
+    assert candidates("paroled_one_year:ukraine") == [
+        *([False] * 5),
+        *(False, False, True, True, True),
+    ]

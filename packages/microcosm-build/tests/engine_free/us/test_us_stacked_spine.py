@@ -5680,9 +5680,11 @@ def test_immigration_reconciliation_replays_receipt_and_downstream_live_frame(
         )
 
 
-def test_immigration_live_replay_rejects_equal_weight_selection_identity_swap(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _ukrainian_parole_stack() -> tuple[
+    Frame, pd.DataFrame, np.ndarray, np.ndarray, float
+]:
+    """One ASEC citizen household stacked on two equal-weight ACS U4U candidates."""
+
     asec = _source_frame(
         household_ids=[11],
         weights=[2.0],
@@ -5726,14 +5728,11 @@ def test_immigration_live_replay_rejects_equal_weight_selection_identity_swap(
     weights = np.asarray(base.resolve_weights("person").values, dtype=np.float64)
     mutable_weight = float(weights[mutable][0])
     assert weights[mutable].tolist() == [mutable_weight, mutable_weight]
-    draw = immigration_module.HumanitarianDraw(
-        category="paroled_one_year",
-        origin="ukraine",
-        status="PAROLED_ONE_YEAR",
-        target=mutable_weight,
-        source="https://example.com/u4u",
-    )
-    controls = immigration_module.ImmigrationControls(
+    return base, person, weights, mutable, mutable_weight
+
+
+def _ukrainian_parole_controls(target: float) -> immigration_module.ImmigrationControls:
+    return immigration_module.ImmigrationControls(
         undocumented=immigration_module.UndocumentedControls(
             workers=1.0,
             students=1.0,
@@ -5744,8 +5743,37 @@ def test_immigration_live_replay_rejects_equal_weight_selection_identity_swap(
                 "undocumented_population_anchor": "https://example.com/population",
             },
         ),
-        humanitarian=(draw,),
+        humanitarian=(
+            immigration_module.HumanitarianDraw(
+                category="paroled_one_year",
+                origin="ukraine",
+                status="PAROLED_ONE_YEAR",
+                target=target,
+                source="https://example.com/u4u",
+            ),
+        ),
     )
+
+
+def _with_person(frame: Frame, replacement: pd.DataFrame) -> Frame:
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = replacement
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def test_immigration_live_replay_rejects_equal_weight_selection_identity_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base, person, weights, mutable, mutable_weight = _ukrainian_parole_stack()
+    immutable = ~mutable
+    controls = _ukrainian_parole_controls(mutable_weight)
     reconciled_person, reconciliation = (
         immigration_module.reconcile_us_immigration_humanitarian_transfer(
             person,
@@ -5757,19 +5785,7 @@ def test_immigration_live_replay_rejects_equal_weight_selection_identity_swap(
         )
     )
 
-    def with_person(frame: Frame, replacement: pd.DataFrame) -> Frame:
-        tables = {entity: frame.table(entity) for entity in frame.entities}
-        tables["person"] = replacement
-        return Frame(
-            tables,
-            frame.schema,
-            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-            frame.strata,
-            mass_log=frame.mass_log,
-            metadata=frame.metadata,
-        )
-
-    reconciled = with_person(base, reconciled_person)
+    reconciled = _with_person(base, reconciled_person)
     target_receipt = {
         "producer_rows": int(immutable.sum()),
         "authorized_null_rows": int(mutable.sum()),
@@ -5804,7 +5820,7 @@ def test_immigration_live_replay_rejects_equal_weight_selection_identity_swap(
         "LEGAL_PERMANENT_RESIDENT"
     )
     swapped_person.loc[unselected_index, "immigration_status_str"] = "PAROLED_ONE_YEAR"
-    swapped = with_person(reconciled, swapped_person)
+    swapped = _with_person(reconciled, swapped_person)
     assert float(
         swapped.resolve_weights("person")
         .values[
@@ -5823,6 +5839,158 @@ def test_immigration_live_replay_rejects_equal_weight_selection_identity_swap(
             target_receipt,
             boundary="equal-weight selection identity swap",
             frame=swapped,
+        )
+
+
+def _exhausted_ukrainian_parole(
+    monkeypatch: pytest.MonkeyPatch,
+    target_multiple: float,
+) -> tuple[Frame, dict[str, object], float]:
+    """Reconcile the two-candidate stack to ``target_multiple`` candidate weights."""
+
+    base, person, weights, mutable, mutable_weight = _ukrainian_parole_stack()
+    controls = _ukrainian_parole_controls(target_multiple * mutable_weight)
+    reconciled_person, reconciliation = (
+        immigration_module.reconcile_us_immigration_humanitarian_transfer(
+            person,
+            weights=weights,
+            mutable_rows=mutable,
+            seed=0,
+            time_period=2024,
+            controls=controls,
+        )
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "us_immigration_controls",
+        lambda: controls,
+    )
+    target_receipt = {
+        "producer_rows": int((~mutable).sum()),
+        "authorized_null_rows": int(mutable.sum()),
+        "imputed_rows": int(mutable.sum()),
+        "unmodeled_rows": 0,
+        "residual_null_rows": 0,
+        "post_transfer_reconciliation": reconciliation,
+    }
+    return _with_person(base, reconciled_person), target_receipt, mutable_weight
+
+
+def test_immigration_reconciliation_takes_every_candidate_of_an_exhausted_draw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame, target_receipt, weight = _exhausted_ukrainian_parole(monkeypatch, 2.5)
+    draw = target_receipt["post_transfer_reconciliation"]["draws"][
+        "paroled_one_year:ukraine"
+    ]
+    assert draw["candidates_exhausted"] is True
+    assert draw["within_residual_discrete_weight_bound"] is False
+    assert draw["within_discrete_weight_bound"] is False
+    assert draw["eligible_recipient_population"] == pytest.approx(2 * weight)
+    assert draw["selected_recipient_population"] == pytest.approx(2 * weight)
+    assert draw["selection_threshold_tie_population"] == 0.0
+    assert draw["candidate_shortfall_population"] == pytest.approx(0.5 * weight)
+    person = frame.table("person")
+    channel = person[support_channel_column("person")].astype(str)
+    assert person.loc[channel.eq("acs"), "immigration_status_str"].tolist() == [
+        "PAROLED_ONE_YEAR",
+        "PAROLED_ONE_YEAR",
+    ]
+    for live in (frame, None):
+        stacked_spine_module._validate_immigration_post_transfer_reconciliation(
+            target_receipt,
+            boundary="exhausted draw",
+            frame=live,
+        )
+
+
+def _forged(target_receipt: dict[str, object], **fields: object) -> dict[str, object]:
+    forged = deepcopy(target_receipt)
+    forged["post_transfer_reconciliation"]["draws"]["paroled_one_year:ukraine"].update(
+        fields
+    )
+    return forged
+
+
+def test_immigration_reconciliation_rejects_forged_candidate_shortfalls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame, target_receipt, weight = _exhausted_ukrainian_parole(monkeypatch, 2.5)
+    validate = stacked_spine_module._validate_immigration_post_transfer_reconciliation
+
+    concealed = _forged(
+        target_receipt,
+        candidates_exhausted=False,
+        within_residual_discrete_weight_bound=True,
+        within_discrete_weight_bound=True,
+    )
+    with pytest.raises(ValueError, match="conceals a recipient candidate shortfall"):
+        validate(concealed, boundary="concealed shortfall", frame=None)
+
+    covered = _forged(target_receipt, eligible_recipient_population=2.5 * weight)
+    with pytest.raises(
+        ValueError,
+        match="claims a candidate shortfall its eligible population covers",
+    ):
+        validate(covered, boundary="covered shortfall", frame=None)
+
+    inconsistent = _forged(target_receipt, within_discrete_weight_bound=True)
+    with pytest.raises(ValueError, match="values are invalid"):
+        validate(inconsistent, boundary="inconsistent bound flag", frame=None)
+
+    unselected = _forged(target_receipt, selected_recipient_population=weight)
+    with pytest.raises(ValueError, match="leaves candidates unselected"):
+        validate(unselected, boundary="unselected candidate", frame=None)
+
+    person = frame.table("person").copy()
+    channel = person[support_channel_column("person")].astype(str)
+    dropped = person.index[channel.eq("acs").to_numpy()][0]
+    person.loc[dropped, "immigration_status_str"] = "LEGAL_PERMANENT_RESIDENT"
+    with pytest.raises(
+        ValueError,
+        match="differs from the live ASEC/ACS weighted population",
+    ):
+        validate(
+            target_receipt,
+            boundary="live candidate left unselected",
+            frame=_with_person(frame, person),
+        )
+
+
+def test_immigration_reconciliation_rejects_exhaustion_below_the_band_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Two candidates reach 0.2 of a ten-candidate target, under the
+    # composition gate's floor of 0.35: the reconciliation refuses it.
+    with pytest.raises(
+        ValueError,
+        match=r"leaves it below 0\.35 of its target",
+    ):
+        _exhausted_ukrainian_parole(monkeypatch, 10.0)
+
+    # A receipt that claims such a draw is refused too.
+    _frame, target_receipt, weight = _exhausted_ukrainian_parole(monkeypatch, 2.5)
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "us_immigration_controls",
+        lambda: _ukrainian_parole_controls(10 * weight),
+    )
+    below_floor = _forged(
+        target_receipt,
+        target=10 * weight,
+        residual_target=10 * weight,
+        residual_selection_error=8 * weight,
+        absolute_error=8 * weight,
+        candidate_shortfall_population=8 * weight,
+    )
+    with pytest.raises(
+        ValueError,
+        match="falls below the floor of the composition gate's band",
+    ):
+        stacked_spine_module._validate_immigration_post_transfer_reconciliation(
+            below_floor,
+            boundary="exhausted below the band floor",
+            frame=None,
         )
 
 
