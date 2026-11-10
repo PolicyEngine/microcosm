@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import sys
 import time
 import uuid
@@ -969,6 +970,26 @@ def _mark_non_release_h5(path: Path, *, build_id: str) -> None:
         file.attrs["populace_non_release"] = True
         file.attrs["populace_release_posture"] = "smoke"
         file.attrs["populace_smoke_build_id"] = build_id
+
+
+def _copy_spine_checkpoint(output: Path, checkpoint: Path) -> None:
+    """Atomically copy the finished spine H5 into the checkpoint directory.
+
+    A byte copy, made after any smoke marking, so the checkpoint has the digest
+    the sidecar records as ``output.sha256`` and keeps the non-release marking.
+    Serializing the frame again takes as long as the first write and, on a
+    smoke build, gave an unmarked file with a different digest.
+    """
+
+    checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = checkpoint.with_name(
+        f".{checkpoint.name}.{uuid.uuid4().hex}.tmp.h5"
+    )
+    try:
+        shutil.copyfile(output, temporary_path)
+        temporary_path.replace(checkpoint)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def _nonzero_shares(frame, columns: list[str]) -> dict[str, float]:
@@ -2236,6 +2257,10 @@ def _main(argv: list[str] | None = None) -> int:
             ),
             _population_observer_detach=False,
         )
+        # Saving the graph's manifest, schema and run evidence and reading the
+        # stored stage artifacts back takes seconds on a full-scale spine, so
+        # it is a stage of its own rather than time between two stages.
+        _record_stage(staging_bundle, emitter, "graph_evidence_capture", "started")
         graph_manifest.save(checkpoint_root / "spine.graph.json")
         save_uk_graph_schema(graph, checkpoint_root, scope="raw_spine", spec=spec)
         import resource
@@ -2291,6 +2316,7 @@ def _main(argv: list[str] | None = None) -> int:
             graph_manifest, graph_store, stage_names=stage_names
         )
         stored_evidence = spine_sidecar_evidence(stored_stages)
+        _record_stage(staging_bundle, emitter, "graph_evidence_capture", "completed")
         sampling = stored_evidence["sampling"]
         sample = _telemetry_sample(args, sampling)
         if staging_bundle is not None and sample is not None:
@@ -2347,9 +2373,18 @@ def _main(argv: list[str] | None = None) -> int:
         )
         append_phase(state, "spine_written")
         if args.checkpoint_dir is not None:
-            args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-            write_uk_national_frame(frame, args.checkpoint_dir / "frs_spine.h5")
+            _record_stage(staging_bundle, emitter, "checkpoint_h5_creation", "started")
+            _copy_spine_checkpoint(output, args.checkpoint_dir / "frs_spine.h5")
+            _record_stage(
+                staging_bundle,
+                emitter,
+                "checkpoint_h5_creation",
+                "completed",
+                size_bytes=int(output_file["size_bytes"]),
+                sha256=output_file["sha256"],
+            )
             append_phase(state, "checkpoint_written")
+        _record_stage(staging_bundle, emitter, "sidecar_creation", "started")
         sidecar_path = output.with_suffix(".build.json")
         replay_sidecar_path = output.with_suffix(".hmrc_replay.json")
         replay_metadata = stored_stages["hmrc_spi_income_spine"]["checkpoint_metadata"]
@@ -2366,7 +2401,6 @@ def _main(argv: list[str] | None = None) -> int:
             "report_kind": str(json.loads(replay_bytes).get("report_kind", "")),
             "sha256": hashlib.sha256(replay_bytes).hexdigest(),
         }
-        _record_stage(staging_bundle, emitter, "sidecar_creation", "started")
         sidecar = _build_sidecar(
             frame=frame,
             stages=stages,

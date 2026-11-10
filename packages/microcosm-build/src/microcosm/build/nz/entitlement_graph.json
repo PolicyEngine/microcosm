@@ -1031,5 +1031,22 @@
   },
   "checkpoints": [
     "nz.as.bands"
+  ],
+  "gate_evidence": [
+    {
+      "name": "scenario_vsi",
+      "scenario": "VSI",
+      "phase": "terminal"
+    },
+    {
+      "name": "scenario_vex",
+      "scenario": "VEX",
+      "phase": "terminal"
+    },
+    {
+      "name": "scenario_vpt",
+      "scenario": "VPT",
+      "phase": "terminal"
+    }
   ]
 }

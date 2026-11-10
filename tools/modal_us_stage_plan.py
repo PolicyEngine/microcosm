@@ -248,6 +248,12 @@ _TOKEN_ENV_NAMES = frozenset(COLLECTOR_TOKEN_ENV) | frozenset(RUNNER_TOKEN_SECRE
 TELEMETRY_RUN_ID_ENV = "MICROCOSM_TELEMETRY_RUN_ID"
 TELEMETRY_PARENT_PID_ENV = "MICROCOSM_TELEMETRY_PARENT_PID"
 _TELEMETRY_RUN_ENV_NAMES = frozenset({TELEMETRY_RUN_ID_ENV, TELEMETRY_PARENT_PID_ENV})
+#: The resource class the stage's container requested, as JSON (``class``,
+#: ``cpu``, ``cpu_limit`` and ``memory_mib``), which the build reports in its
+#: runtime identity (``microcosm.build.telemetry_identity``, whose name this
+#: must stay). Only the runner sets it, from the plan's tool; a plan may not,
+#: and the runner removes it from whatever else the container holds.
+MODAL_RESOURCES_ENV = "MICROCOSM_MODAL_RESOURCES"
 #: Where the build's interface finds the emitter command, and where the
 #: launch looks first for the operator's emitter on the operator's machine
 #: (then ``PATH``). In the container the image sets it (IMAGE_ENVIRONMENT) to
@@ -1468,6 +1474,11 @@ def parse_plan(data: object) -> Plan:
                 "and the build programs set themselves (the run is "
                 "<plan run_id>.<stage>)"
             )
+        if key == MODAL_RESOURCES_ENV:
+            raise PlanError(
+                f"env {key!r} names the container's resource class, which the "
+                "runner sets from the plan's tool"
+            )
         if key == EMITTER_COMMAND_ENV:
             raise PlanError(
                 f"env {key!r} would start another emitter than the image's "
@@ -1791,6 +1802,7 @@ def tool_environment(
     plan_env: Mapping[str, str],
     *,
     telemetry_run_id: str | None = None,
+    resources: Resources | None = None,
 ) -> tuple[dict[str, str], list[str]]:
     """The stage tool's environment, and the names removed from ``base``.
 
@@ -1815,6 +1827,11 @@ def tool_environment(
     (``telemetry_run_id(plan)``); without it the tool makes its own attempt
     ID. A plan may not set that variable or TELEMETRY_PARENT_PID_ENV, and
     both are removed from ``base``.
+
+    The tool gets the stage container's resource class ``resources`` in
+    MODAL_RESOURCES_ENV, which the runner always passes (``plan.resources``),
+    for the build to report. A plan may not set it, and it is removed from
+    ``base``.
     """
 
     for key in plan_env:
@@ -1824,6 +1841,7 @@ def tool_environment(
             or key in _TOKEN_ENV_NAMES
             or key in _TELEMETRY_RUN_ENV_NAMES
             or key == EMITTER_COMMAND_ENV
+            or key == MODAL_RESOURCES_ENV
         ):
             raise PlanError(f"env {key!r} may not be passed to the tool")
     if plan_env.get(TELEMETRY_REQUIRED_ENV, "0") != "0":
@@ -1835,6 +1853,7 @@ def tool_environment(
         or key == HASH_SEED_ENV
         or key in _TOKEN_ENV_NAMES
         or key in _TELEMETRY_RUN_ENV_NAMES
+        or key == MODAL_RESOURCES_ENV
     )
     dropped = set(removed)
     env = {key: value for key, value in base.items() if key not in dropped}
@@ -1842,6 +1861,15 @@ def tool_environment(
     env[TELEMETRY_REQUIRED_ENV] = "1"
     if telemetry_run_id is not None:
         env[TELEMETRY_RUN_ID_ENV] = telemetry_run_id
+    if resources is not None:
+        env[MODAL_RESOURCES_ENV] = json.dumps(
+            {
+                "class": resources.name,
+                "cpu": resources.cpu,
+                "cpu_limit": resources.cpu_limit,
+                "memory_mib": resources.memory_mib,
+            }
+        )
     given = _runner_token_values(base) if telemetry_required(plan_env) else None
     if given is not None:
         env.update(

@@ -53,6 +53,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from microcosm_emitter_interface.telemetry import OuterProgress
 
 from microcosm.build.calibration_epoch_telemetry import (
     CALIBRATION_EPOCH_EVERY,
@@ -2145,6 +2146,87 @@ def _finite_or_none(value: float) -> float | None:
 
     value = float(value)
     return value if math.isfinite(value) else None
+
+
+def _scf_wealth_gate_record(
+    gate: GateResult, household_ids: Iterable[object]
+) -> dict[str, object]:
+    """The SCF-wealth gate's verdict and summary, as release evidence.
+
+    The summary carries the SIPP/SCF blend audit (``financial_asset_blend``:
+    seed, period, per-source household counts, bank-asset medians and
+    low-tail shares). The stage keeps that audit in ``DataFrame.attrs``,
+    which the H5 writer drops, so without this record no release artifact
+    says whether the SIPP half ran (microcosm#1216).
+
+    Every count and share describes the frame at the blend stage, before
+    calibration and before any subset export. ``financial_asset_source_is_scf``
+    draws one uniform per household in sorted order of the blend-stage
+    household ids, so a household's draw depends on that whole id set. The
+    record pins the set: its count and the SHA-256 of the sorted unique
+    household ids, as little-endian int64 when every id is integral (every
+    release so far) and as float64 otherwise. ``encoding`` names which, and
+    the two encodings share one digest space, so a verifier compares
+    ``encoding`` as well as ``sha256``. Every household has one head, so this
+    is the set the draw sorts: when a published H5's household ids give the
+    same encoding and digest, the seed and period reproduce each household's
+    source. A subset release (L0, exact-k) exports part of the set and cannot
+    be audited that way from the file alone. Ids that are neither integers
+    nor floats, and unsigned ids beyond int64, are refused.
+
+    Unlike the sibling gate records, this one is scrubbed: its details carry
+    floats that are NaN on a degenerate frame, and both artifacts serialize
+    strict JSON, so NumPy scalars become Python values and non-finite floats
+    become null.
+    """
+
+    def finite(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {str(key): finite(nested) for key, nested in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [finite(nested) for nested in value]
+        if isinstance(value, (bool, np.bool_)):
+            return bool(value)
+        if isinstance(value, (int, np.integer)):
+            return int(value)
+        if isinstance(value, (float, np.floating)):
+            return _finite_or_none(value)
+        return value
+
+    values = pd.to_numeric(pd.Series(list(household_ids)), errors="raise").to_numpy()
+    if values.size == 0:
+        values = values.astype(np.int64)
+    # Neither encoding holds booleans, complex values or unsigned ids beyond
+    # int64 without collisions, so those are refused rather than recorded.
+    if values.dtype.kind not in "iuf":
+        raise TypeError(
+            f"blend-stage household ids must be integers or floats, not {values.dtype}"
+        )
+    ids = np.unique(values)
+    if ids.dtype.kind == "u" and ids.size and int(ids.max()) > np.iinfo(np.int64).max:
+        raise ValueError("a blend-stage household id exceeds the int64 range")
+    # Integral ids (every release so far) hash as int64; anything else keeps
+    # its float64 value, so distinct ids never collapse into one digest.
+    integral = ids.dtype.kind in "iu" or bool(
+        np.isfinite(ids).all()
+        and (ids == np.round(ids)).all()
+        and ((ids >= -(2**63)) & (ids < 2**63)).all()
+    )
+    id_bytes = (ids.astype("<i8") if integral else ids.astype("<f8")).tobytes()
+    return {
+        "passed": bool(gate.passed),
+        "failures": list(gate.failures),
+        "scope": "blend_stage_frame",
+        "blend_household_ids": {
+            "count": int(ids.size),
+            "sha256": hashlib.sha256(id_bytes).hexdigest(),
+            "encoding": (
+                "sorted unique household_id, little-endian "
+                + ("int64" if integral else "float64")
+            ),
+        },
+        "details": finite(dict(gate.details)),
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -4736,25 +4818,41 @@ class _RecordingPostExportSimulation:
         return _PostExportValues(np.zeros(0), np.zeros(0))
 
 
+def _record_post_export_requests(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[tuple[PostExportKey, ...], int]:
+    """Learn a consumer's baseline keys and reform pass count from recorders.
+
+    No engine is constructed: ``simulate(None)`` returns a recorder that
+    logs every baseline request, and each ``simulate(reform)`` a recorder of
+    its own. The consumers ask for the same keys whatever values they get
+    back, and the served baseline refuses any key this dry run did not see,
+    so a value-dependent request cannot slip past the plan.
+
+    When the consumer runs for real, each key a reformed simulation is first
+    asked for is one batched pass (``_BatchedPostExportReform``), so the pass
+    count is the distinct keys asked of each reformed simulation, summed.
+    Progress reporting alone uses it: a consumer that runs more passes than
+    counted reports no outer counter on the extra ones.
+    """
+    keys: dict[PostExportKey, None] = {}
+    reform_keys: list[dict[PostExportKey, None]] = []
+
+    def simulate(reform):
+        if reform is None:
+            return _RecordingPostExportSimulation(keys)
+        reform_keys.append({})
+        return _RecordingPostExportSimulation(reform_keys[-1])
+
+    consumer(simulate)
+    return _ascending_period_plan(keys), sum(len(asked) for asked in reform_keys)
+
+
 def _record_post_export_baseline_plan(
     consumer: Callable[[Callable[[Any], Any]], object],
 ) -> tuple[PostExportKey, ...]:
-    """Learn a consumer's baseline keys by running it against recorders.
-
-    No engine is constructed: ``simulate(None)`` returns a recorder that
-    logs every request, ``simulate(reform)`` a recorder that logs nothing
-    (reforms are scored key by key when the consumer runs for real). The
-    consumers ask for the same keys whatever values they get back, and the
-    served baseline refuses any key this dry run did not see, so a
-    value-dependent request cannot slip past the plan.
-    """
-    keys: dict[PostExportKey, None] = {}
-
-    def simulate(reform):
-        return _RecordingPostExportSimulation(keys if reform is None else None)
-
-    consumer(simulate)
-    return _ascending_period_plan(keys)
+    """Learn a consumer's baseline keys (``_record_post_export_requests``)."""
+    return _record_post_export_requests(consumer)[0]
 
 
 class _AscendingPeriodEngine:
@@ -4920,6 +5018,7 @@ class _PostExportScoringPlan:
         n_households: int,
         maximum_batch_size: int | None,
         baseline_plans: Mapping[str, tuple[PostExportKey, ...]],
+        reform_passes: Mapping[str, int] | None = None,
         error: str | None = None,
     ) -> None:
         self.n_households = int(n_households)
@@ -4927,6 +5026,7 @@ class _PostExportScoringPlan:
         self.baseline_plans = {
             consumer: tuple(plan) for consumer, plan in baseline_plans.items()
         }
+        self.reform_passes = dict(reform_passes or {})
         self.error = error
 
     @property
@@ -4945,6 +5045,16 @@ class _PostExportScoringPlan:
                 f"{self.error}"
             )
         return self.baseline_plans[consumer]
+
+    def planned_reform_passes(self, consumer: str) -> int | None:
+        """The reform passes the dry run counted for ``consumer``, if any.
+
+        Progress reporting reads it as each pass's outer counter; the record
+        of the plan leaves it out, so the diagnostics keep their shape.
+        """
+        if self.error is not None:
+            return None
+        return self.reform_passes.get(consumer)
 
     def terminal_failures(self) -> list[str]:
         """The plan's own failure, as a line of the batched terminal raise."""
@@ -4978,13 +5088,15 @@ def _post_export_scoring_plan(
     maximum_microsim_batch_size: int | None,
     consumers: Mapping[str, Callable[[Callable[[Any], Any]], object]],
 ) -> _PostExportScoringPlan:
+    requests = {
+        name: _record_post_export_requests(consumer)
+        for name, consumer in consumers.items()
+    }
     return _PostExportScoringPlan(
         n_households=int(n_households),
         maximum_batch_size=maximum_microsim_batch_size,
-        baseline_plans={
-            name: _record_post_export_baseline_plan(consumer)
-            for name, consumer in consumers.items()
-        },
+        baseline_plans={name: plan for name, (plan, _) in requests.items()},
+        reform_passes={name: passes for name, (_, passes) in requests.items()},
     )
 
 
@@ -5150,10 +5262,22 @@ class _HouseholdBatchedPostExportScorer:
         self.consumer_records: dict[str, dict[str, object]] = {}
 
     def open_consumer(
-        self, name: str, baseline_plan: Sequence[PostExportKey]
+        self,
+        name: str,
+        baseline_plan: Sequence[PostExportKey],
+        planned_reform_passes: int | None = None,
     ) -> _PostExportConsumer:
-        """Score ``baseline_plan`` now; return the consumer's simulate seam."""
-        return _PostExportConsumer(self, name, tuple(baseline_plan))
+        """Score ``baseline_plan`` now; return the consumer's simulate seam.
+
+        With ``planned_reform_passes``, each reform pass reports its number of
+        that count as its progress's outer counter.
+        """
+        return _PostExportConsumer(
+            self,
+            name,
+            tuple(baseline_plan),
+            planned_reform_passes=planned_reform_passes,
+        )
 
     def finish_consumer(self, scoring: _PostExportConsumer) -> dict[str, object]:
         """Record a consumer that has finished scoring and return its record."""
@@ -5258,8 +5382,13 @@ class _HouseholdBatchedPostExportScorer:
         *,
         label: str,
         reform_system=None,
+        outer: OuterProgress | None = None,
     ) -> dict[PostExportKey, _PostExportValues]:
-        """One batch-outer pass: one engine per batch scores every key."""
+        """One batch-outer pass: one engine per batch scores every key.
+
+        ``outer`` is the pass's place among its consumer's passes, sent with
+        each batch's progress.
+        """
         batches = self._batches()
         batched = len(batches) > 1
         watched = _post_export_watched_variables(
@@ -5279,6 +5408,7 @@ class _HouseholdBatchedPostExportScorer:
             stage_id="post_export_scoring",
             unit="scoring_batch",
             total=len(batches),
+            outer=outer,
         )
         for batch, batch_frame in enumerate(batches, start=1):
             with _automatic_gc_suspended():
@@ -5358,6 +5488,8 @@ class _PostExportConsumer:
         scorer: _HouseholdBatchedPostExportScorer,
         name: str,
         baseline_plan: tuple[PostExportKey, ...],
+        *,
+        planned_reform_passes: int | None = None,
     ) -> None:
         ordered = _ascending_period_plan(baseline_plan)
         if ordered != baseline_plan:
@@ -5370,6 +5502,7 @@ class _PostExportConsumer:
         self.baseline_plan = baseline_plan
         self.baseline_passes = 1 if baseline_plan else 0
         self.reform_passes = 0
+        self.planned_reform_passes = planned_reform_passes
         self.reform_systems = 0
         self._baseline = (
             scorer._score(baseline_plan, label=f"{name} baseline plan")
@@ -5414,7 +5547,15 @@ class _PostExportConsumer:
             reform_system, key, label=label
         )
         self.reform_passes += 1
-        scored = self._scorer._score((key,), label=label, reform_system=reform_system)
+        planned = self.planned_reform_passes
+        outer = (
+            OuterProgress(self.reform_passes, planned, "reform_pass")
+            if planned is not None and self.reform_passes <= planned
+            else None
+        )
+        scored = self._scorer._score(
+            (key,), label=label, reform_system=reform_system, outer=outer
+        )
         return scored[key]
 
 
@@ -9900,6 +10041,7 @@ def _write_release_calibration_diagnostics(
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
@@ -10064,6 +10206,9 @@ def _write_release_calibration_diagnostics(
                 }
                 if validation_input_coverage_gate is not None
                 else None
+            ),
+            "scf_wealth_signal": (
+                dict(scf_wealth_signal) if scf_wealth_signal is not None else None
             ),
             "support_value_repairs": support_value_repairs,
             "warm_start_calibration": (
@@ -10412,13 +10557,15 @@ def _score_post_export_consumer(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None,
     baseline_plan: Sequence[PostExportKey] | None,
     maximum_microsim_batch_size: int | None,
+    planned_reform_passes: int | None = None,
 ):
     """Run one post-export consumer through the household-batched scorer.
 
     ``_main`` passes the scorer it opened on the written H5 and the plan it
-    recorded in the calibration diagnostics. A direct caller may pass neither:
-    the scorer is then opened (and closed) here, and the plan is recorded by
-    the same engine-free dry run.
+    recorded in the calibration diagnostics, with the plan's reform pass
+    count for progress reporting. A direct caller may pass neither: the
+    scorer is then opened (and closed) here, and the plan and the count are
+    recorded by the same engine-free dry run.
     """
     scorer = post_export_scorer
     if scorer is None:
@@ -10427,12 +10574,13 @@ def _score_post_export_consumer(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
     try:
-        plan = (
-            _record_post_export_baseline_plan(consumer)
-            if baseline_plan is None
-            else tuple(baseline_plan)
+        if baseline_plan is None:
+            plan, planned_reform_passes = _record_post_export_requests(consumer)
+        else:
+            plan = tuple(baseline_plan)
+        scoring = scorer.open_consumer(
+            name, plan, planned_reform_passes=planned_reform_passes
         )
-        scoring = scorer.open_consumer(name, plan)
         output = consumer(scoring.simulate)
         record = scorer.finish_consumer(scoring)
         print(
@@ -10460,6 +10608,7 @@ def _write_reform_validation(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
     baseline_plan: Sequence[PostExportKey] | None = None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    planned_reform_passes: int | None = None,
 ) -> None:
     """Emit reform_validation.json: microcosm budget effects vs JCT scores.
 
@@ -10496,6 +10645,7 @@ def _write_reform_validation(
             post_export_scorer=post_export_scorer,
             baseline_plan=baseline_plan,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            planned_reform_passes=planned_reform_passes,
         )
     write_reform_validation(payload, release_dir / "reform_validation.json")
 
@@ -10669,6 +10819,7 @@ def _build_manifests(
     scored_dataset_sha256: str | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -10859,6 +11010,13 @@ def _build_manifests(
                 else {}
             ),
             "target_compilation": dropped,
+            # The SIPP/SCF blend audit (microcosm#1216): written with the
+            # manifest a release cannot ship without, beside the diagnostics.
+            **(
+                {"scf_wealth_signal": dict(scf_wealth_signal)}
+                if scf_wealth_signal is not None
+                else {}
+            ),
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
                 "failures": list(target_profile_gate.failures),
@@ -11846,17 +12004,29 @@ _ACTIVE_PROGRESS: _BuildProgress | None = None
 class _WorkCounter:
     """Report completed independent work units through the emitter service."""
 
-    def __init__(self, *, stage_id: str, unit: str, total: int) -> None:
+    def __init__(
+        self,
+        *,
+        stage_id: str,
+        unit: str,
+        total: int,
+        outer: OuterProgress | None = None,
+    ) -> None:
         self.stage_id = stage_id
         self.unit = unit
         self.total = max(0, int(total))
         self.done = 0
         self.started = time.monotonic()
+        # The counter one level above, such as the reform pass these batches
+        # belong to; sent with every report when set.
+        self.outer = outer
 
     def advance(self, units: int = 1, **details: object) -> None:
         self.done = min(self.total, self.done + max(0, int(units)))
         if _ACTIVE_EMITTER is None:
             return
+        if self.outer is not None:
+            details["outer"] = self.outer
         _ACTIVE_EMITTER.progress(
             self.stage_id,
             done=self.done,
@@ -14340,6 +14510,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in scf_wealth_gate.failures
             )
         )
+    scf_wealth_signal = _scf_wealth_gate_record(
+        scf_wealth_gate, base_frame.table("household")["household_id"]
+    )
     sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
@@ -15852,6 +16025,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
+        scf_wealth_signal=scf_wealth_signal,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,
@@ -16378,6 +16552,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         smoke_scoring = post_export_scorer.open_consumer(
             "reform_coverage_smoke",
             post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_coverage_smoke"
+            ),
         )
         reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
             simulate=smoke_scoring.simulate,
@@ -16470,6 +16647,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 None
                 if args.skip_out_of_sample_reforms
                 else post_export_scoring_plan.baseline_plan("reform_validation")
+            ),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_validation"
             ),
         )
         if telemetry is not None:
@@ -16724,6 +16904,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scored_dataset_sha256=scored_dataset_sha256,
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
+        scf_wealth_signal=scf_wealth_signal,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")

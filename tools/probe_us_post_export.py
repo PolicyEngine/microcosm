@@ -1533,13 +1533,17 @@ def _timed_scorer_class(builder, passes_path: Path, clock: StageClock):
     base = builder._HouseholdBatchedPostExportScorer
 
     class TimedScorer(base):
-        def _score(self, keys, *, label, reform_system=None):
+        def _score(self, keys, *, label, reform_system=None, **options):
+            # ``options`` is whatever else the release scorer takes, such as a
+            # reform pass's outer progress counter.
             sampler = clock.sampler
             before = sampler.reset() if sampler else 0
             wall = time.perf_counter()
             cpu = time.process_time()
             try:
-                return super()._score(keys, label=label, reform_system=reform_system)
+                return super()._score(
+                    keys, label=label, reform_system=reform_system, **options
+                )
             finally:
                 row = {
                     "stage": clock.current,

@@ -1,0 +1,1 @@
+Raise four job timeouts to at least 1.5 times each job's slowest successful leg on 2026-11-09: engine-free from 120 to 165 minutes (its slowest leg took 109), engine-us from 90 to 110 (73), engine-uk from 60 to 90 (45) and integration-uk from 15 to 20 (8).
