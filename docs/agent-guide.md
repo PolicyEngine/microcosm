@@ -106,11 +106,12 @@ distributes files across two pytest workers with `--dist loadfile`.
 Changed-file selection only controls the more resource-intensive country jobs.
 A documentation-only pull request selects neither country; a US-only or UK-only
 pull request selects that country; shared, mixed, unknown, or empty changed-path
-sets select both. Below `tools/`, documentation, test modules and the country
-runtime packages keep their usual scope. Any other file there belongs to a
-country when its file name holds that country as a whole word and the other
-country's letters appear nowhere in its path; every other tool takes the
-`shared` scope. Main pushes select both without querying the pull-request API.
+sets select both. Below `tools/`, documentation, the files in a test group's
+directory and the country runtime packages keep their usual scope. Any other
+file there belongs to a country when its file name holds that country as a
+whole word and the other country's letters appear nowhere in its lower-cased
+path; every other tool takes the `shared` scope. Main pushes select both
+without querying the pull-request API.
 The UK integration job follows the same UK selection as the ordinary UK engine
 job.
 

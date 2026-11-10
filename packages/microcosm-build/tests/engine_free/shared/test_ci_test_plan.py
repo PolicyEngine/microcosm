@@ -1584,7 +1584,9 @@ def test_aggregate_names_each_job_that_did_not_pass(
     assert _errors(needs) == expected
 
 
-# The same examples on every run, so a required check never fails by chance.
+# ``derandomize`` seeds each property from its own source, so a rerun draws no
+# new seed. Hypothesis also draws on constants of the local modules loaded at
+# that point, so two runs that load different modules can draw differently.
 _PROPERTY = settings(
     max_examples=300,
     deadline=None,
@@ -1933,14 +1935,20 @@ def _tool_names(draw: st.DrawFn) -> str:
     return name
 
 
+# Now and then a suffix that makes the file documentation.
+_SUFFIXES = st.sampled_from([*[""] * 17, ".md", ".rst", ".MD"])
+
+
 @st.composite
 def _tool_paths(draw: st.DrawFn) -> str:
-    """A file below ``tools/`` and up to two directories, which no earlier rule
-    claims: a test module sits three parts below a ``tests`` directory, and a
-    runtime package four directories down."""
+    """A file below ``tools/`` and up to two directories. Only the documentation
+    rule can claim it before the tool rule: a test group's file sits three
+    parts below a ``tests`` directory, and a runtime package four directories
+    down."""
 
     directories = draw(st.lists(_tool_names(), max_size=2))
-    return "/".join(["tools", *directories, draw(_tool_names())])
+    name = draw(_tool_names()) + draw(_SUFFIXES)
+    return "/".join(["tools", *directories, name])
 
 
 @_PROPERTY
@@ -2058,7 +2066,7 @@ def test_every_tool_in_the_checkout_takes_the_scope_its_path_gives_it() -> None:
     assert files
     for path in files:
         if ci_test_plan.group_name_for_test_path(PurePosixPath(path)) is not None:
-            continue  # A test module takes its group's country.
+            continue  # A file in a test group's directory takes its country.
         if any(
             f"/src/microcosm/build/{country}_runtime/" in f"/{path}"
             for country in ("us", "uk")

@@ -173,7 +173,9 @@ def test_runner_uses_two_fresh_process_slots_for_workflows(
     assert calls == [(light, 2), (workflows, 2)]
 
 
-# The same examples on every run, so a required check never fails by chance.
+# ``derandomize`` seeds the property from its own source, so a rerun draws no
+# new seed. Hypothesis also draws on constants of the local modules loaded at
+# that point, so two runs that load different modules can draw differently.
 _PROPERTY = settings(
     max_examples=300,
     deadline=None,
@@ -238,11 +240,12 @@ def test_the_runner_runs_each_listed_file_once_or_refuses_to_start(
     contract_batch_size: int,
     scenario_batch_size: int,
 ) -> None:
-    """Invariant: the runner's tasks hold each file the plan lists for
-    engine-us once and no other file, or the runner refuses before it starts
-    any task. It refuses, naming the group, when an engine-us group holds no
-    file. Otherwise it refuses exactly when ``verify`` names a group the
-    runner never runs, and its refusal names each file of those groups.
+    """Invariant, for a plan with an engine-us group: the runner's tasks hold
+    each file the plan lists for engine-us once and no other file, or the
+    runner refuses before it starts any task. It refuses, naming the group,
+    when an engine-us group holds no file. Otherwise it refuses exactly when
+    ``verify`` names a group the runner never runs, and its refusal names each
+    file of those groups.
 
     The rule, stated here: for each category it runs, the runner runs the last
     engine-us group that reports the category."""
@@ -478,3 +481,41 @@ def test_the_runner_exits_with_its_tests_result_when_run_as_ci_runs_it(
         for path in task["paths"]
     )
     assert (tmp_path / "engine-us-timings.md").read_text(encoding="utf-8") in run.stdout
+
+
+@pytest.mark.parametrize("status", [0, 1, 3])
+def test_the_us_engine_script_exits_with_its_runner_status(
+    tmp_path: Path, status: int
+) -> None:
+    """``engine-us`` runs ``bash tools/run_engine_us_tests.sh``, so the job
+    passes or fails on that script's exit status. This sources the script in a
+    shell whose only ``uv`` exits with ``status``, so no engine runs. If the
+    script let ``|| true`` or a later command replace the runner's status, the
+    failing cases here would fail."""
+
+    uv = tmp_path / "uv"
+    uv.write_text(f"#!/bin/sh\nexit {status}\n", encoding="utf-8")
+    uv.chmod(0o755)
+    bash = shutil.which("bash")
+    assert bash is not None
+
+    run = subprocess.run(
+        [
+            bash,
+            "-c",
+            # A function stands in for ``/usr/bin/time``, whose ``-v`` macOS
+            # lacks, and runs the command it times.
+            'function /usr/bin/time { shift; "$@"; }; source "$1"',
+            "bash",
+            str(ci_test_plan.ROOT / "tools/run_engine_us_tests.sh"),
+        ],
+        cwd=tmp_path,
+        env={"PATH": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        check=False,
+        timeout=60,
+    )
+
+    assert run.returncode == status, run.stdout + run.stderr
