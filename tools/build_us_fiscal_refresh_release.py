@@ -9385,7 +9385,9 @@ def _source_coverage_aliases(
     release calibrates to them. A surface that dropped every CD-classified
     target (``target_surface_selection`` is recorded only for such surfaces)
     lists them as reviewed exclusions naming the drop, so the coverage artifact
-    agrees with ``build.target_surface_selection`` in the manifests.
+    agrees with ``target_surface_selection`` in the manifests: at the release
+    manifest's top level and in the build manifest's ``calibration`` block
+    (microcosm#1570).
     """
 
     if target_surface_selection is None:
@@ -9396,7 +9398,8 @@ def _source_coverage_aliases(
         f"{target_surface_selection['mode']} dropped all {dropped:,} "
         "congressional-district-classified targets after the target-parity and "
         "profile-coverage gates ran on the full compiled surface; see "
-        "build.target_surface_selection in the manifests."
+        "release_manifest.json target_surface_selection and "
+        "build_manifest.json calibration.target_surface_selection."
     )
     return DIRECT_ACTIVE_ALIASES, {
         alias: reason for alias in CONGRESSIONAL_DISTRICT_SOURCE_ALIASES
