@@ -131,7 +131,7 @@
    "central": 1.0,
    "values": [],
    "method_card_row": "MC8",
-   "note": "The central rent factor holds at 1.0. H7 removes the lodged-bond stock sensitivity; G8-d1 must resolve C1 Census-rent ageing before the rent quantile producer can activate."
+   "note": "The central rent factor holds at 1.0. H7 removes the lodged-bond stock sensitivity. The rent quantile producer maps rent at Census 2023 levels while the C1 Census-rent ageing ruling stays open: under the hub's B6 ruling (2026-11-08, stated in #1547), C1 blocks publication but not a run, and the transport graph's pending_outputs names it."
   }
  ],
  "entries": [

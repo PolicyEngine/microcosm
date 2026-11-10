@@ -24,15 +24,17 @@ sim.calculate("household_net_income", 2024).sum()
 tag, verifies the artifact SHA-256, and refuses model or Core versions outside
 the release's certified compatibility specifiers.
 
-A UK release can also be published into build folders,
-`releases/<release>/<build>/`, once its repository switches to a
-`releases.json` record of each release's builds and current build. The UK
-2025 national and dense entries name their release: where the repository
-has `releases.json`, `load("uk")` reads the current build there, then that
-build's `release_manifest.json` and dataset, with the same SHA-256 and
-engine checks, and `load("uk", build="<build>")` loads a listed build (a
-withdrawn one with a warning). Where it has none, the loader follows the
-entry's pointer file (`latest-national.json`) exactly as before. `available()` lists
+The UK national, dense and local-area releases publish each build into its
+own folder, `releases/<release>/<build>/`, and the repository's
+`releases.json` records which build of each release is current. `load("uk")`
+(the 2025 national release) and the 2025 dense variant read that record, then
+the current build's `release_manifest.json`, then the dataset it names, all
+from the build's folder, and check the SHA-256 and engine versions the same
+way. `load("uk", build="<build>")` loads a listed build instead (a withdrawn
+one with a warning). `load("uk", 2023)` reads release `populace-uk-2023` the
+same way: the UK repository's switch moved the June 2023 build into it as its
+only and current build. An entry whose repository has no `releases.json`
+follows its pointer file, as US releases do. `available()` lists
 the default-variant `(country, year)` pairs (the ones a bare ``load(country, year)``
 resolves); `available_variants()` lists every published
 `(country, year, variant)`, non-default lines included.
@@ -80,7 +82,9 @@ benchmark comparisons live outside this package.
 
 ## Release contract
 
-Published releases live under `releases/<release_id>/` in the Hub dataset repo.
+Published US releases, and the UK releases that keep tags, live under
+`releases/<release_id>/` in the Hub dataset repo, and builds of the UK
+national, dense and local-area releases under `releases/<release>/<build>/`.
 Each release must include `build_manifest.json` and `release_manifest.json`;
 US releases must also include `us_source_coverage.json`. A current release
 manifest contains a typed `calibration_diagnostics` status. `available` binds a

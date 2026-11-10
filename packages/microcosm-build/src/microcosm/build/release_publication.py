@@ -11,11 +11,15 @@ contract; the emitter's release writer puts the files in
 rules in ``microcosm_emitter_interface.releases``. Nothing here commits,
 tags or writes a pointer file.
 
-Until a repository switches to ``releases.json``, its releases still publish
-and promote through their ``latest*.json`` pointer files with
-``tools/publish_release.sh``. So the command lists the repository's files
-first and refuses, before any emitter starts, while any pointer file is
-there; the tagged publisher refuses a repository that has ``releases.json``.
+A repository's switch to ``releases.json`` deletes its ``latest*.json``
+pointer files in the same commit, and the emitter changes no current build
+while one exists. So the command lists the repository's files first and
+refuses, before any emitter starts, while any pointer file is there: in a
+repository without ``releases.json`` it says the switch has not run, since
+the loader follows those files and the switch reads them, and in one with
+it, that the file appeared after the switch and should be removed. The
+tagged publisher refuses these releases, and any repository that has
+``releases.json``.
 
 A build is current only when the emitter's receipt says so: ``status`` is
 ``published`` and ``current`` is the build. A publication with
@@ -58,10 +62,12 @@ from microcosm.build.telemetry_emitter import start_bundle_emitter
 from microcosm.data.contract import publishes_to_build_folder
 from microcosm.data.publish_cli import publication_refusal
 from microcosm.data.release import (
+    TAGGED_RELEASE_ADVICE,
     BuildFolderRelease,
     build_folder_identity,
     prepare_build_folder_release,
 )
+from microcosm.data.releases_record import RELEASES_RECORD_PATH
 
 if TYPE_CHECKING:
     from microcosm_emitter_interface import EmitterStartupError, RequestFailure
@@ -90,9 +96,11 @@ PROMOTION_WAIT_SECONDS = 300.0
 #: message does not say what to do next.
 _REFUSAL_ADVICE = {
     "POINTER_FILES_PRESENT": (
-        "The repository has latest*.json pointer files again, so its releases "
-        "publish and promote through them with tools/publish_release.sh until "
-        "it switches to releases.json; nothing was changed."
+        "A latest*.json pointer file appeared in the repository after this "
+        "command checked it. Nothing writes those files once a repository "
+        "records its builds in releases.json, and the emitter changes no "
+        "current build while one exists, so find the commit that added it, "
+        "remove it, then run the command again; nothing was changed."
     ),
     "BUILD_FOLDER_EXISTS": (
         "Another build with this name was published already, with a different "
@@ -298,13 +306,16 @@ def _listing_errors() -> tuple[type[BaseException], ...]:
 
 
 def _refuse_pointer_files(repository: str) -> None:
-    """Refuse a repository whose releases still publish through pointer files.
+    """Refuse a repository that has any ``latest*.json`` pointer file.
 
-    While any ``latest*.json`` file is in the repository (the interface's
-    ``is_pointer_file`` rule, which the emitter applies too), its releases
-    publish and are made current with tools/publish_release.sh, and only its
-    switch to ``releases.json`` moves them here. A repository whose files
-    cannot be listed is refused too.
+    The interface's ``is_pointer_file`` rule says which files those are, and
+    the emitter applies it too. A repository's switch to ``releases.json``
+    deletes them, and nothing writes them after it. Without ``releases.json``
+    the repository has not switched: the loader follows its pointer files
+    and the switch reads them, so the refusal says to run the switch and
+    keeps them. With it, a pointer file appeared after the switch, and the
+    refusal says to remove it. A repository whose files cannot be listed is
+    refused too.
     """
     try:
         paths = _repository_files(repository)
@@ -316,12 +327,22 @@ def _refuse_pointer_files(repository: str) -> None:
             "and run the command again"
         ) from error
     pointer_files = sorted(path for path in paths if is_pointer_file(path))
+    if pointer_files and RELEASES_RECORD_PATH not in paths:
+        raise ValueError(
+            f"{repository} has not switched to releases.json: it has no "
+            f"releases.json and has the pointer file(s) {', '.join(pointer_files)}, "
+            "which the loader follows and the switch reads. Its builds publish "
+            "here only after the switch, which the `copy` and then `switch` "
+            "steps of `python -m microcosm.build.build_folder_switch` make with "
+            "--write; keep the files in place and run the command again once "
+            "the switch has run"
+        )
     if pointer_files:
         raise ValueError(
-            f"{repository} still has the pointer file(s) "
-            f"{', '.join(pointer_files)}, so its releases publish and are made "
-            "current through them with tools/publish_release.sh until it "
-            "switches to releases.json"
+            f"{repository} has the pointer file(s) {', '.join(pointer_files)}. "
+            "Its builds publish here only once its switch to releases.json has "
+            "deleted them, and nothing writes them after it, so remove the "
+            "file(s) that appeared, then run the command again"
         )
 
 
@@ -419,10 +440,7 @@ def _parser() -> argparse.ArgumentParser:
         description=(
             "Publish a build of a release whose builds publish into their own "
             "folders (the UK national, dense and local-area releases) through "
-            "the emitter, or make a published build current. Releases that "
-            "publish with tags and latest.json (every US release, the June "
-            "2023 UK release and populace-uk-<year>-<tier>-k<N> releases) use "
-            "tools/publish_release.sh."
+            "the emitter, or make a published build current. " + TAGGED_RELEASE_ADVICE
         ),
     )
     parser.add_argument("release_dir", type=Path, help="The local release directory.")
@@ -489,8 +507,8 @@ def main(argv: list[str] | None = None) -> int:
     release_dir: Path = args.release_dir
     if not publishes_to_build_folder(release_dir.name):
         parser.error(
-            f"release {release_dir.name!r} publishes with tags and latest.json; "
-            "publish it with tools/publish_release.sh."
+            f"release {release_dir.name!r} does not publish into build folders. "
+            + TAGGED_RELEASE_ADVICE
         )
     try:
         return _run(args)

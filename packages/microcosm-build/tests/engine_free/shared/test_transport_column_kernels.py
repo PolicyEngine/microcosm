@@ -129,11 +129,12 @@ def _binding(name, entity, concept, *, group_rule=None, module=None, transform=N
     )
 
 
-def _mapping_with(bindings):
+def _mapping_with(bindings, correspondence=None):
     return ConceptMapping(
         engine="axiom:xx",
         engine_version="synthetic",
-        entity_correspondence={"person": "Person", "household": "Household"},
+        entity_correspondence=correspondence
+        or {"person": "Person", "household": "Household"},
         input_declaration=InputDeclaration.USAGE_INFERRED,
         bindings=tuple(bindings),
         unmapped={
@@ -289,6 +290,7 @@ CLOSURE = InputClosure(
 )
 CHILD_PATH = "xx/child.yaml"
 CHILD_DEFAULTS_PATH = "xx/child_defaults.yaml"
+DEPENDANT_PATH = "xx/dependant.yaml"
 
 
 def _default(module, entity, name, value):
@@ -303,8 +305,8 @@ def _default(module, entity, name, value):
     )
 
 
-# A person_role entity, as Axiom's Child: one module binds an input and
-# defaults another, and a second module only defaults.
+# Two person_role entities: Child has a module that binds an input and
+# defaults another, and a second module that only defaults.
 ROLE_MAPPING = _mapping_with(
     (
         *BINDINGS,
@@ -315,6 +317,13 @@ ROLE_MAPPING = _mapping_with(
             group_rule="person_role",
             module=CHILD_PATH,
         ),
+        _binding(
+            "dependant_age",
+            "Dependant",
+            "fact:person.age",
+            group_rule="person_role",
+            module=DEPENDANT_PATH,
+        ),
     )
 )
 CHILD_ENCODED = ClosureEntry(
@@ -324,18 +333,28 @@ CHILD_ENCODED = ClosureEntry(
     closure_class="encoded",
     encoded_by="concept_binding",
 )
+DEPENDANT_ENCODED = ClosureEntry(
+    module=DEPENDANT_PATH,
+    entity="Dependant",
+    input="dependant_age",
+    closure_class="encoded",
+    encoded_by="concept_binding",
+)
 ROLE_CLOSURE = replace(
     CLOSURE,
     modules={
         **CLOSURE.modules,
         CHILD_PATH: RESOURCE_SHA,
         CHILD_DEFAULTS_PATH: RESOURCE_SHA,
+        DEPENDANT_PATH: RESOURCE_SHA,
     },
     entries=(
         *CLOSURE.entries,
         CHILD_ENCODED,
+        DEPENDANT_ENCODED,
         _default(CHILD_PATH, "Child", "child_in_care", False),
         _default(CHILD_DEFAULTS_PATH, "Child", "child_rate", 0.5),
+        _default(DEPENDANT_PATH, "Dependant", "dependant_in_care", False),
     ),
 )
 
@@ -628,11 +647,13 @@ def test_person_role_bindings_and_defaults_go_on_the_person_table(tables):
         Owned("person", "child_age", "int64"),
         Owned("person", "child_in_care", "bool"),
         Owned("person", "child_rate", "float64"),
+        Owned("person", "dependant_age", "int64"),
+        Owned("person", "dependant_in_care", "bool"),
     )
     params = _encode_params(
         mapping=ROLE_MAPPING,
         closure=ROLE_CLOSURE,
-        paths=(PERSON_PATH, CHILD_PATH, CHILD_DEFAULTS_PATH),
+        paths=(PERSON_PATH, CHILD_PATH, CHILD_DEFAULTS_PATH, DEPENDANT_PATH),
     )
     result = CONCEPTS_ENCODE.run(_context(CONCEPTS_ENCODE, frame, params, outputs))
     rows = len(frame.person)
@@ -642,6 +663,8 @@ def test_person_role_bindings_and_defaults_go_on_the_person_table(tables):
         "child_age": frame.person["age"],
         "child_in_care": pd.Series([False] * rows),
         "child_rate": pd.Series([0.5] * rows),
+        "dependant_age": frame.person["age"],
+        "dependant_in_care": pd.Series([False] * rows),
     }
     for output in outputs:
         _assert_column(result, frame, "person", output.column, expected[output.column])
@@ -659,12 +682,16 @@ def test_without_person_role_defaults_encoding_matches_the_old_gather(
     # Before person_role entities joined the person table's entities, the
     # kernel gathered defaults for the correspondence's entities only. With
     # no closure root on a person_role entity, it writes the same bytes. This
-    # checks the gather's non-Child part; the merge property below checks its
-    # Child part.
+    # checks the correspondence defaults; the test above and the merge
+    # property below check the person_role defaults.
     frame = _generated_frame(tables)
     mapping = ROLE_MAPPING if role else MAPPING
     closure = replace(
-        ROLE_CLOSURE, entries=(*CLOSURE.entries, *((CHILD_ENCODED,) if role else ()))
+        ROLE_CLOSURE,
+        entries=(
+            *CLOSURE.entries,
+            *((CHILD_ENCODED, DEPENDANT_ENCODED) if role else ()),
+        ),
     )
     others = sorted({binding.module for binding in mapping.bindings} - {PERSON_PATH})
     chosen = data.draw(st.lists(st.sampled_from(others), unique=True))
@@ -674,6 +701,11 @@ def test_without_person_role_defaults_encoding_matches_the_old_gather(
         Owned("person", "input_income", "float64"),
         Owned("person", "eligibility_code", "int64"),
         *((Owned("person", "child_age", "int64"),) if CHILD_PATH in paths else ()),
+        *(
+            (Owned("person", "dependant_age", "int64"),)
+            if DEPENDANT_PATH in paths
+            else ()
+        ),
     )
     params = _encode_params(mapping=mapping, closure=closure, paths=paths)
     result = CONCEPTS_ENCODE.run(_context(CONCEPTS_ENCODE, frame, params, outputs))
@@ -689,6 +721,36 @@ def test_without_person_role_defaults_encoding_matches_the_old_gather(
 MERGE_NAMES = ("role_flag", "role_count", "role_share")
 MERGE_VALUES = st.sampled_from([False, True, 0, 1, 0.0, 0.5])
 DTYPE_TOKENS = {bool: "bool", int: "int64", float: "float64"}
+
+
+@pytest.mark.parametrize(
+    ("person_value", "child_value"),
+    [(0, False), (0, 0.0), (False, 0.0), (1, True)],
+    ids=["int-bool-zero", "int-float-zero", "bool-float-zero", "int-bool-one"],
+)
+@pytest.mark.parametrize(
+    "child_first", [False, True], ids=["person-first", "child-first"]
+)
+def test_person_and_child_type_only_defaults_conflict(
+    tmp_path, person_value, child_value, child_first
+):
+    # Pin the merge property's type-only refusal on every run, including
+    # bool's subclass relationship with int in both gather orders.
+    sources = write_population_sources(tmp_path / "sources")
+    frame = _donor_frame(sources)
+    closure = replace(
+        ROLE_CLOSURE,
+        entries=(
+            *ROLE_CLOSURE.entries,
+            _default(PERSON_PATH, "Person", "role_flag", person_value),
+            _default(CHILD_DEFAULTS_PATH, "Child", "role_flag", child_value),
+        ),
+    )
+    paths = (PERSON_PATH, CHILD_DEFAULTS_PATH)[:: -1 if child_first else 1]
+    params = _encode_params(mapping=ROLE_MAPPING, closure=closure, paths=paths)
+    outputs = (Owned("person", "role_flag", DTYPE_TOKENS[type(person_value)]),)
+    with pytest.raises(ValueError, match="conflicting defaults"):
+        CONCEPTS_ENCODE.run(_context(CONCEPTS_ENCODE, frame, params, outputs))
 
 
 @PROPERTY
@@ -760,14 +822,87 @@ def test_group_kernels_refuse_a_person_role_entity(tables):
         paths=(GROUP_PATH, CHILD_PATH),
     )
     family = (Owned("family", "input_assets", "float64", rewrite=True),)
-    child = {**params, "engine_entity": "Child", "rulespec_paths": (CHILD_PATH,)}
-    in_care = (Owned("family", "child_in_care", "bool", rewrite=True),)
     for kernel in (CONCEPTS_ENCODE_GROUPS, TRANSPORT_SCENARIO_OVERRIDE):
         # The same mapping still encodes its built units.
         result = kernel.run(_context(kernel, frame, params, family))
         assert list(result.columns) == [("family", "input_assets")]
-        with pytest.raises(ValueError, match="'Child' holds persons in a role"):
-            kernel.run(_context(kernel, frame, child, in_care))
+        for entity, path, column, dtype in (
+            ("Child", CHILD_PATH, "child_in_care", "bool"),
+            ("Child", CHILD_DEFAULTS_PATH, "child_rate", "float64"),
+            ("Dependant", DEPENDANT_PATH, "dependant_in_care", "bool"),
+        ):
+            role = {**params, "engine_entity": entity, "rulespec_paths": (path,)}
+            output = (Owned("family", column, dtype, rewrite=True),)
+            with pytest.raises(ValueError, match=f"'{entity}' holds persons in a role"):
+                kernel.run(_context(kernel, frame, role, output))
+
+
+@pytest.mark.parametrize(
+    "kernel",
+    [CONCEPTS_ENCODE_GROUPS, TRANSPORT_SCENARIO_OVERRIDE],
+    ids=["encode-groups", "scenario-override"],
+)
+@pytest.mark.parametrize(
+    ("frame_entity", "column", "dtype"),
+    [
+        ("person", "eligibility_code", "int64"),
+        ("household", "household_flag", "bool"),
+    ],
+    ids=["person", "household"],
+)
+# The refusal follows the names the mapping declares, whatever they are.
+@pytest.mark.parametrize(
+    ("person", "household"),
+    [("Person", "Household"), ("Individual", "Residence")],
+    ids=["usual-names", "other-names"],
+)
+def test_group_kernels_refuse_a_correspondence_entity(
+    tmp_path, kernel, frame_entity, column, dtype, person, household
+):
+    sources = write_population_sources(tmp_path / "sources")
+    frame = _donor_frame(sources)
+
+    def named(entity):
+        return {"Person": person, "Household": household}.get(entity, entity)
+
+    mapping = _mapping_with(
+        tuple(
+            replace(
+                item,
+                engine_entity=named(item.engine_entity),
+                canonical_input=f"xx:{named(item.engine_entity)}"
+                f"#input.{item.engine_input}",
+            )
+            for item in BINDINGS
+        ),
+        {"person": person, "household": household},
+    )
+    # Both entities have a default the unguarded kernel could write on
+    # family rows, even though concepts.encode@1 owns their input tables.
+    closure = replace(
+        CLOSURE,
+        entries=(
+            *(replace(item, entity=named(item.entity)) for item in CLOSURE.entries),
+            _default(PERSON_PATH, household, "household_flag", True),
+        ),
+    )
+    engine_entity = mapping.entity_correspondence[frame_entity]
+    params = {
+        **_encode_params(
+            groups=True,
+            knobs={},
+            mapping=mapping,
+            closure=closure,
+            paths=(PERSON_PATH,),
+        ),
+        "engine_entity": engine_entity,
+    }
+    outputs = (Owned("family", column, dtype, rewrite=True),)
+    with pytest.raises(
+        ValueError,
+        match=f"'{engine_entity}' belongs on the {frame_entity} table, not built units",
+    ):
+        kernel.run(_context(kernel, frame, params, outputs))
 
 
 def test_person_role_defaults_share_the_person_table_with_person_inputs(tmp_path):

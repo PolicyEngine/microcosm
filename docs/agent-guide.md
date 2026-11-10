@@ -42,7 +42,55 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, `wheels`, and `installed-emitter` jobs, plus the
-`select-countries` orchestration job.
+`select-countries` orchestration job and the `ci` job.
+
+`ci` gives the `main` ruleset one check that covers the country jobs. It fails
+unless every other job passed, or skipped because `select-countries` succeeded
+and reported `false` for its country. A skipped matrix job reports under its
+unexpanded name, so a ruleset cannot require `engine-us` or `engine-uk` by
+name. The ruleset also names each other check that runs on every pull
+request: `lint`, `wheels`, `select-countries`, `installed-emitter` and both
+`engine-free` legs. When `engine-free`'s matrix changes, change the ruleset
+too, because a leg's check name holds its Python version.
+
+The workflow runs on a pull request only when it targets `main`. Retargeting a
+pull request to `main` starts no run, because GitHub reports a base change as
+an `edited` event, which the workflow doesn't run on. After a stacked pull
+request retargets, push a commit or close and reopen it, then merge once its
+checks pass.
+
+The plan names the jobs the selection may leave out: each job whose test
+groups all need the same country's engine. The lint job runs
+`tools/ci_test_plan.py verify-workflow`, which parses the workflow with PyYAML
+and refuses:
+
+- two keys that PyYAML reads as one, a merge key (`<<`), and U+0085, U+2028
+  or U+2029, which YAML 1.1 reads as line breaks and YAML 1.2 doesn't;
+- a job outside the plan, a plan job the workflow lacks, and a job whose `if`
+  differs from the one the plan gives it;
+- a job the selection may leave out that doesn't need `select-countries`, and
+  a job that needs one the selection may leave out, unless both follow the
+  same country's selection;
+- a `ci` job that lacks `if: always()`, omits a job from `needs`, or does
+  anything but check out the repository and run `require-results` on its
+  `needs` context;
+- a `select-countries` job that doesn't publish the outputs its `plan` step
+  writes;
+- `continue-on-error` on any job or step, a step `if` other than `always()`,
+  `success()` or `!cancelled()`, and a job-level `name`;
+- a workflow `defaults` other than `run: shell: bash`, a job-level `defaults`
+  and a step `shell`. GitHub runs an explicit `shell: bash` as
+  `bash -eo pipefail`, so a pipe cannot hide a failed command.
+
+The plan's tests in `test_ci_test_plan.py` run the same checks and test the
+code `ci` runs. The ruleset reads `engine-free` without `ci`, so those tests
+stay in that job, and `tools/ci_test_plan.py verify` refuses a plan that moves
+them out. After editing the workflow, run
+`uv run python tools/ci_test_plan.py verify-workflow`. A pull request's run
+takes the workflow and the plan from the pull request's own merge with `main`,
+so a pull request that rewrites them can pass itself, and review has to catch
+that.
+
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
 changed-path country selection. Its `TEST_GROUPS` registry defines every valid
@@ -84,9 +132,9 @@ test in a directory registered by `TEST_GROUPS` and must run through that
 category's existing workflow job. Supporting programs and data may live under
 `tools/`, but they do not receive separate workflow jobs. The test-plan verifier
 allows only registered test jobs and the explicitly declared orchestration,
-lint, and wheel-building jobs. Add a test category to `TEST_GROUPS` before its
-executor; do not create a separate selection system, test workflow, or
-single-purpose behavioral test job.
+lint, wheel-building, and aggregate-result jobs. Add a test category to
+`TEST_GROUPS` before its executor; do not create a separate selection system,
+test workflow, or single-purpose behavioral test job.
 
 The Orrery parser compatibility assertion lives in
 `packages/microcosm-graph/tests/engine_free/shared/test_graph_orrery.py`. The
@@ -271,17 +319,32 @@ no secret. Green PR checks mean the code contracts hold — they do **not**
 certify data artifacts.
 Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
-deliberate human step (`tools/publish_release.sh` →
-`microcosm-publish-release`), gated by `tools/preflight_us_release_gates.py`;
-reviewed line promotion is a separate deliberate call to the same CLI with
-`--promote-line`. See README "Releasing & alerts". Before launching a US
+deliberate human step. A US release publishes with tags and `latest.json`
+(`tools/publish_release.sh` → `microcosm-publish-release`), checked by
+`tools/preflight_us_release_gates.py`. The UK repository's switch moved the
+June 2023 UK build into release `populace-uk-2023`, which takes no new builds,
+and `populace-uk-<year>-<tier>-k<N>` releases have no publication path there.
+The UK national, dense and
+local-area releases publish each build into its own folder through the
+emitter (`microcosm-publish-release-build`, from
+`microcosm.build.release_publication`), which records it in the repository's
+`releases.json`; making a published build current is a separate deliberate
+call to the same command with `--promote`. The emitter refuses that while any
+`latest*.json` pointer file exists; the UK repository's switch to
+`releases.json` deleted them. Tests hand release changes to the
+in-memory client (`client.release_requests`), which applies them to
+`hub_files` with the interface's shared `releases.json` checks. See README
+"Releasing & alerts". Before launching a US
 release, dry-run it with `tools/dry_run_us_release_gates.py` (or the release
 tool's `--dry-run-gates-report`). It replays the release's own input stages and
 grades every waiver register on the staged frame before the solve; see README
 "Dry-running the release's registers". Publication also refuses a
 release whose build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
-publishes without the flag. Never publish or promote artifacts as a side
+publishes without the flag. A UK national cut runs end to end with
+`tools/run_uk_cut.py` ([uk-cut-anyone.md](uk-cut-anyone.md)): inputs fetched
+by pin, a signing key registered in `microcosm.data.gate_signing_keys`, and
+an inspection-only `--publish`. Never publish or promote artifacts as a side
 effect of another task. A UK rowwise run's **staged** bundle
 (`staged/<run_id>/` in the private repository, written by the build itself)
 is inspection evidence, not a release: it never moves `releases/` or

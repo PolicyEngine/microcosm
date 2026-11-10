@@ -53,6 +53,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from microcosm_emitter_interface.telemetry import OuterProgress
 
 from microcosm.build.calibration_epoch_telemetry import (
     CALIBRATION_EPOCH_EVERY,
@@ -261,6 +262,18 @@ from microcosm.build.us_runtime.fiscal_targets import (
     AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS,
     AGE_BOUND_STAMP_SOURCE_KEY,
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
+)
+from microcosm.build.us_runtime.fsa_student_loan_targets import (
+    FSA_BALANCE_LOWER_BOUND_KEY,
+    FSA_BALANCE_UPPER_BOUND_KEY,
+    FSA_BOUND_TABLES,
+    FSA_MATERIALIZER,
+    FSA_SOURCE_NAME,
+    FSA_TARGET_FAMILY,
+    FsaTargetPlan,
+    fsa_student_loan_household_values,
+    fsa_student_loan_target_receipt,
+    plan_fsa_student_loan_targets,
 )
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
@@ -798,6 +811,7 @@ RESTATED_LEDGER_FILTER_CONCEPTS = {
     "us:statutes/26/62#adjusted_gross_income": "agi_band",
     "us.tax.earned_income_credit_qualifying_children": "eitc_child_count",
     "age": "age_band",
+    "federal_student_loan_balance": "student_loan_balance_band",
 }
 
 #: Bound-side suffixes a restated constraint key may carry. A key with no
@@ -880,7 +894,20 @@ RESTATED_AGE_BAND_COMPILED_KEYS = {
 #: household-variable measures) never reads an age bound, so a restated age
 #: bound there would be silently ignored however well it agreed with metadata
 #: the materializer also ignores; it is refused instead.
-RESTATED_AGE_BAND_MATERIALIZERS = frozenset({"population_age", "policyengine_variable"})
+RESTATED_AGE_BAND_MATERIALIZERS = frozenset(
+    {"population_age", "policyengine_variable", FSA_MATERIALIZER}
+)
+
+#: Compiled edges of a Federal Student Aid debt-size band, by bound side, and
+#: the one materializer that slices on them
+#: (:func:`microcosm.build.us_runtime.fsa_student_loan_targets.fsa_student_loan_household_values`,
+#: ``lower <= balance < upper`` on the person's own plus Parent PLUS balance,
+#: microcosm#1074). A restated ``federal_student_loan_balance`` bound on any
+#: other materializer would be ignored, so it refuses.
+RESTATED_STUDENT_LOAN_BALANCE_BAND_COMPILED_KEYS = {
+    "lower": FSA_BALANCE_LOWER_BOUND_KEY,
+    "upper": FSA_BALANCE_UPPER_BOUND_KEY,
+}
 
 #: The exact-value age key the dimension stamp writes when ``age`` is itself
 #: a dimension of the fact.
@@ -903,6 +930,7 @@ FISCAL_TARGET_SOURCE_KEYS = {
     "cms_aca": "CMS ACA marketplace enrollment public use files",
     "cms_medicaid": "CMS Medicaid enrollment and expenditure sources",
     "cms_medicare": "CMS Medicare Trustees Report Part B premium income",
+    "ed_fsa": "Federal Student Aid federal student loan portfolio",
     "hhs_acf_tanf": "HHS ACF TANF administrative data",
     "irs_soi": "IRS Statistics of Income public tables",
     "jct": "Joint Committee on Taxation tax expenditure estimates",
@@ -1022,6 +1050,14 @@ US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
     "reported_has_subsidized_marketplace_health_coverage_at_interview"
 )
 US_ACA_REPORTED_MARKETPLACE_COVERAGE = "has_marketplace_health_coverage_at_interview"
+#: The SCF education-debt fit table (microcosm#1073), in the artifacts
+#: directory of a ``--scf-education-debt`` build: at the staged frame's
+#: pre-calibration weights, and at the release's calibrated weights before any
+#: post-export scoring (microcosm#1074).
+US_SCF_EDUCATION_DEBT_FIT_FILENAME = "us_scf_education_debt_fit.json"
+US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME = (
+    "us_scf_education_debt_calibrated_fit.json"
+)
 US_ACA_APTC_TARGET_TABLE = "cms_aca_aptc_recipients_by_state"
 US_ACA_TARGET_ROLE_TABLES = {
     "aca_ptc_recipients": US_ACA_APTC_TARGET_TABLE,
@@ -2105,6 +2141,87 @@ def _finite_or_none(value: float) -> float | None:
 
     value = float(value)
     return value if math.isfinite(value) else None
+
+
+def _scf_wealth_gate_record(
+    gate: GateResult, household_ids: Iterable[object]
+) -> dict[str, object]:
+    """The SCF-wealth gate's verdict and summary, as release evidence.
+
+    The summary carries the SIPP/SCF blend audit (``financial_asset_blend``:
+    seed, period, per-source household counts, bank-asset medians and
+    low-tail shares). The stage keeps that audit in ``DataFrame.attrs``,
+    which the H5 writer drops, so without this record no release artifact
+    says whether the SIPP half ran (microcosm#1216).
+
+    Every count and share describes the frame at the blend stage, before
+    calibration and before any subset export. ``financial_asset_source_is_scf``
+    draws one uniform per household in sorted order of the blend-stage
+    household ids, so a household's draw depends on that whole id set. The
+    record pins the set: its count and the SHA-256 of the sorted unique
+    household ids, as little-endian int64 when every id is integral (every
+    release so far) and as float64 otherwise. ``encoding`` names which, and
+    the two encodings share one digest space, so a verifier compares
+    ``encoding`` as well as ``sha256``. Every household has one head, so this
+    is the set the draw sorts: when a published H5's household ids give the
+    same encoding and digest, the seed and period reproduce each household's
+    source. A subset release (L0, exact-k) exports part of the set and cannot
+    be audited that way from the file alone. Ids that are neither integers
+    nor floats, and unsigned ids beyond int64, are refused.
+
+    Unlike the sibling gate records, this one is scrubbed: its details carry
+    floats that are NaN on a degenerate frame, and both artifacts serialize
+    strict JSON, so NumPy scalars become Python values and non-finite floats
+    become null.
+    """
+
+    def finite(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {str(key): finite(nested) for key, nested in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [finite(nested) for nested in value]
+        if isinstance(value, (bool, np.bool_)):
+            return bool(value)
+        if isinstance(value, (int, np.integer)):
+            return int(value)
+        if isinstance(value, (float, np.floating)):
+            return _finite_or_none(value)
+        return value
+
+    values = pd.to_numeric(pd.Series(list(household_ids)), errors="raise").to_numpy()
+    if values.size == 0:
+        values = values.astype(np.int64)
+    # Neither encoding holds booleans, complex values or unsigned ids beyond
+    # int64 without collisions, so those are refused rather than recorded.
+    if values.dtype.kind not in "iuf":
+        raise TypeError(
+            f"blend-stage household ids must be integers or floats, not {values.dtype}"
+        )
+    ids = np.unique(values)
+    if ids.dtype.kind == "u" and ids.size and int(ids.max()) > np.iinfo(np.int64).max:
+        raise ValueError("a blend-stage household id exceeds the int64 range")
+    # Integral ids (every release so far) hash as int64; anything else keeps
+    # its float64 value, so distinct ids never collapse into one digest.
+    integral = ids.dtype.kind in "iu" or bool(
+        np.isfinite(ids).all()
+        and (ids == np.round(ids)).all()
+        and ((ids >= -(2**63)) & (ids < 2**63)).all()
+    )
+    id_bytes = (ids.astype("<i8") if integral else ids.astype("<f8")).tobytes()
+    return {
+        "passed": bool(gate.passed),
+        "failures": list(gate.failures),
+        "scope": "blend_stage_frame",
+        "blend_household_ids": {
+            "count": int(ids.size),
+            "sha256": hashlib.sha256(id_bytes).hexdigest(),
+            "encoding": (
+                "sorted unique household_id, little-endian "
+                + ("int64" if integral else "float64")
+            ),
+        },
+        "details": finite(dict(gate.details)),
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -4696,25 +4813,41 @@ class _RecordingPostExportSimulation:
         return _PostExportValues(np.zeros(0), np.zeros(0))
 
 
+def _record_post_export_requests(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[tuple[PostExportKey, ...], int]:
+    """Learn a consumer's baseline keys and reform pass count from recorders.
+
+    No engine is constructed: ``simulate(None)`` returns a recorder that
+    logs every baseline request, and each ``simulate(reform)`` a recorder of
+    its own. The consumers ask for the same keys whatever values they get
+    back, and the served baseline refuses any key this dry run did not see,
+    so a value-dependent request cannot slip past the plan.
+
+    When the consumer runs for real, each key a reformed simulation is first
+    asked for is one batched pass (``_BatchedPostExportReform``), so the pass
+    count is the distinct keys asked of each reformed simulation, summed.
+    Progress reporting alone uses it: a consumer that runs more passes than
+    counted reports no outer counter on the extra ones.
+    """
+    keys: dict[PostExportKey, None] = {}
+    reform_keys: list[dict[PostExportKey, None]] = []
+
+    def simulate(reform):
+        if reform is None:
+            return _RecordingPostExportSimulation(keys)
+        reform_keys.append({})
+        return _RecordingPostExportSimulation(reform_keys[-1])
+
+    consumer(simulate)
+    return _ascending_period_plan(keys), sum(len(asked) for asked in reform_keys)
+
+
 def _record_post_export_baseline_plan(
     consumer: Callable[[Callable[[Any], Any]], object],
 ) -> tuple[PostExportKey, ...]:
-    """Learn a consumer's baseline keys by running it against recorders.
-
-    No engine is constructed: ``simulate(None)`` returns a recorder that
-    logs every request, ``simulate(reform)`` a recorder that logs nothing
-    (reforms are scored key by key when the consumer runs for real). The
-    consumers ask for the same keys whatever values they get back, and the
-    served baseline refuses any key this dry run did not see, so a
-    value-dependent request cannot slip past the plan.
-    """
-    keys: dict[PostExportKey, None] = {}
-
-    def simulate(reform):
-        return _RecordingPostExportSimulation(keys if reform is None else None)
-
-    consumer(simulate)
-    return _ascending_period_plan(keys)
+    """Learn a consumer's baseline keys (``_record_post_export_requests``)."""
+    return _record_post_export_requests(consumer)[0]
 
 
 class _AscendingPeriodEngine:
@@ -4880,6 +5013,7 @@ class _PostExportScoringPlan:
         n_households: int,
         maximum_batch_size: int | None,
         baseline_plans: Mapping[str, tuple[PostExportKey, ...]],
+        reform_passes: Mapping[str, int] | None = None,
         error: str | None = None,
     ) -> None:
         self.n_households = int(n_households)
@@ -4887,6 +5021,7 @@ class _PostExportScoringPlan:
         self.baseline_plans = {
             consumer: tuple(plan) for consumer, plan in baseline_plans.items()
         }
+        self.reform_passes = dict(reform_passes or {})
         self.error = error
 
     @property
@@ -4905,6 +5040,16 @@ class _PostExportScoringPlan:
                 f"{self.error}"
             )
         return self.baseline_plans[consumer]
+
+    def planned_reform_passes(self, consumer: str) -> int | None:
+        """The reform passes the dry run counted for ``consumer``, if any.
+
+        Progress reporting reads it as each pass's outer counter; the record
+        of the plan leaves it out, so the diagnostics keep their shape.
+        """
+        if self.error is not None:
+            return None
+        return self.reform_passes.get(consumer)
 
     def terminal_failures(self) -> list[str]:
         """The plan's own failure, as a line of the batched terminal raise."""
@@ -4938,13 +5083,15 @@ def _post_export_scoring_plan(
     maximum_microsim_batch_size: int | None,
     consumers: Mapping[str, Callable[[Callable[[Any], Any]], object]],
 ) -> _PostExportScoringPlan:
+    requests = {
+        name: _record_post_export_requests(consumer)
+        for name, consumer in consumers.items()
+    }
     return _PostExportScoringPlan(
         n_households=int(n_households),
         maximum_batch_size=maximum_microsim_batch_size,
-        baseline_plans={
-            name: _record_post_export_baseline_plan(consumer)
-            for name, consumer in consumers.items()
-        },
+        baseline_plans={name: plan for name, (plan, _) in requests.items()},
+        reform_passes={name: passes for name, (_, passes) in requests.items()},
     )
 
 
@@ -5110,10 +5257,22 @@ class _HouseholdBatchedPostExportScorer:
         self.consumer_records: dict[str, dict[str, object]] = {}
 
     def open_consumer(
-        self, name: str, baseline_plan: Sequence[PostExportKey]
+        self,
+        name: str,
+        baseline_plan: Sequence[PostExportKey],
+        planned_reform_passes: int | None = None,
     ) -> _PostExportConsumer:
-        """Score ``baseline_plan`` now; return the consumer's simulate seam."""
-        return _PostExportConsumer(self, name, tuple(baseline_plan))
+        """Score ``baseline_plan`` now; return the consumer's simulate seam.
+
+        With ``planned_reform_passes``, each reform pass reports its number of
+        that count as its progress's outer counter.
+        """
+        return _PostExportConsumer(
+            self,
+            name,
+            tuple(baseline_plan),
+            planned_reform_passes=planned_reform_passes,
+        )
 
     def finish_consumer(self, scoring: _PostExportConsumer) -> dict[str, object]:
         """Record a consumer that has finished scoring and return its record."""
@@ -5218,8 +5377,13 @@ class _HouseholdBatchedPostExportScorer:
         *,
         label: str,
         reform_system=None,
+        outer: OuterProgress | None = None,
     ) -> dict[PostExportKey, _PostExportValues]:
-        """One batch-outer pass: one engine per batch scores every key."""
+        """One batch-outer pass: one engine per batch scores every key.
+
+        ``outer`` is the pass's place among its consumer's passes, sent with
+        each batch's progress.
+        """
         batches = self._batches()
         batched = len(batches) > 1
         watched = _post_export_watched_variables(
@@ -5239,6 +5403,7 @@ class _HouseholdBatchedPostExportScorer:
             stage_id="post_export_scoring",
             unit="scoring_batch",
             total=len(batches),
+            outer=outer,
         )
         for batch, batch_frame in enumerate(batches, start=1):
             with _automatic_gc_suspended():
@@ -5318,6 +5483,8 @@ class _PostExportConsumer:
         scorer: _HouseholdBatchedPostExportScorer,
         name: str,
         baseline_plan: tuple[PostExportKey, ...],
+        *,
+        planned_reform_passes: int | None = None,
     ) -> None:
         ordered = _ascending_period_plan(baseline_plan)
         if ordered != baseline_plan:
@@ -5330,6 +5497,7 @@ class _PostExportConsumer:
         self.baseline_plan = baseline_plan
         self.baseline_passes = 1 if baseline_plan else 0
         self.reform_passes = 0
+        self.planned_reform_passes = planned_reform_passes
         self.reform_systems = 0
         self._baseline = (
             scorer._score(baseline_plan, label=f"{name} baseline plan")
@@ -5374,7 +5542,15 @@ class _PostExportConsumer:
             reform_system, key, label=label
         )
         self.reform_passes += 1
-        scored = self._scorer._score((key,), label=label, reform_system=reform_system)
+        planned = self.planned_reform_passes
+        outer = (
+            OuterProgress(self.reform_passes, planned, "reform_pass")
+            if planned is not None and self.reform_passes <= planned
+            else None
+        )
+        scored = self._scorer._score(
+            (key,), label=label, reform_system=reform_system, outer=outer
+        )
         return scored[key]
 
 
@@ -5922,6 +6098,32 @@ def _restated_age_band_refusal(
     )
 
 
+def _restated_student_loan_balance_band_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side is None:
+        return (
+            f"{key}={value} restates an exact federal student loan balance, but "
+            "the materializer slices a half-open balance band"
+        )
+    materializer = metadata.get("materializer")
+    if materializer != FSA_MATERIALIZER:
+        return (
+            f"{key}={value} restates a federal student loan balance bound on a "
+            f"spec whose materializer ({materializer!r}) applies no balance band"
+        )
+    return _restated_band_edge_refusal(
+        key,
+        value,
+        metadata,
+        compiled_key=RESTATED_STUDENT_LOAN_BALANCE_BAND_COMPILED_KEYS[side],
+    )
+
+
 def _restated_eitc_child_count_refusal(
     key: str,
     value: str,
@@ -6023,6 +6225,10 @@ def _restated_ledger_filter_refusal(
         return _restated_eitc_child_count_refusal(key, value, metadata, side=side)
     if rule == "age_band":
         return _restated_age_band_refusal(key, value, metadata, side=side)
+    if rule == "student_loan_balance_band":
+        return _restated_student_loan_balance_band_refusal(
+            key, value, metadata, side=side
+        )
     raise ValueError(
         f"RESTATED_LEDGER_FILTER_CONCEPTS maps {concept!r} to rule {rule!r}, "
         "which has no comparison implemented."
@@ -6311,6 +6517,17 @@ def _base_simulation_household_columns(
         variable="state_income_tax",
         tax_unit_positions=tax_unit_positions,
     )
+    # Federal Student Aid portfolio targets (microcosm#1074) read the SCF
+    # education-debt stage's stored person balances, not an engine variable:
+    # the pinned engine does not define them yet, and a stored input is what
+    # the engine would read anyway. A frame without the columns materializes
+    # nothing, so the targets report as dropped.
+    for spec in target_specs:
+        if spec.metadata.get("materializer") != FSA_MATERIALIZER:
+            continue
+        fsa_values = fsa_student_loan_household_values(frame, spec.metadata)
+        if fsa_values is not None:
+            columns[spec.measure] = fsa_values
     population_age_target_specs = [
         spec
         for spec in target_specs
@@ -7943,9 +8160,22 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "ABOVE the true SOI level: a correctly calibrated column cannot pass "
         "this parity check. The reference value is an incidental artifact of "
         "the incumbent weight solve (nothing pinned this column before Build "
-        "H). estate_income does not feed AGI in PolicyEngine-US (loss-cap "
-        "input only), so pinning it identifies the export dimension without "
-        "moving revenue (PolicyEngine/microcosm#299 Build H)."
+        "H). Pinning it can move revenue, because estate_income feeds "
+        "federal income tax. In policyengine-us 2.2.1 it "
+        "is not a gross-income source, but loss_ald deducts its negative "
+        "part above the line under the section 461(l) limit, whose ceiling "
+        "its positive part raises, and it counts toward qualified business "
+        "income while estate_income_would_be_qualified is true. From "
+        "policyengine-us 2.23.2 (PolicyEngine/policyengine-us#9633) a "
+        "non-dependent's positive estate_income is also gross income and "
+        "AGI, and a non-dependent's signed estate_income plus the Schedule "
+        "K-1 (Form 1041) box 14 code H adjustment input is net investment "
+        "income for the NIIT (estate_net_investment_income). The exclusion "
+        "rests on the band math above, not on revenue neutrality "
+        "(PolicyEngine/microcosm#299 Build H). That math holds only for the "
+        "$98.434B reference. The build applies this entry for any reference, "
+        "so re-adjudicate it if --export-input-mass-reference-h5 names a file "
+        "with a different level."
     ),
     "non_sch_d_capital_gains": (
         "Identified by SOI Table 1.4 capital gain distributions reported on "
@@ -9806,6 +10036,7 @@ def _write_release_calibration_diagnostics(
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
@@ -9971,6 +10202,9 @@ def _write_release_calibration_diagnostics(
                 if validation_input_coverage_gate is not None
                 else None
             ),
+            "scf_wealth_signal": (
+                dict(scf_wealth_signal) if scf_wealth_signal is not None else None
+            ),
             "support_value_repairs": support_value_repairs,
             "warm_start_calibration": (
                 dict(warm_start_calibration)
@@ -10132,6 +10366,9 @@ US_RELEASE_GATE_EVIDENCE_FILES: dict[str, str] = {
 #: reference it by file sha and key; ``present`` stays false until the
 #: compiler writes the receipt.
 US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY = "fiscal_target_exclusion_receipt"
+#: us_source_coverage.json key of the FSA portfolio receipt, written only by a
+#: build that compiles those targets (``--scf-education-debt``, microcosm#1074).
+US_FSA_STUDENT_LOAN_TARGET_RECEIPT_KEY = "fsa_student_loan_target_receipt"
 
 
 def _gate_evidence_artifacts(release_dir: Path, *, revision: str) -> dict[str, dict]:
@@ -10315,13 +10552,15 @@ def _score_post_export_consumer(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None,
     baseline_plan: Sequence[PostExportKey] | None,
     maximum_microsim_batch_size: int | None,
+    planned_reform_passes: int | None = None,
 ):
     """Run one post-export consumer through the household-batched scorer.
 
     ``_main`` passes the scorer it opened on the written H5 and the plan it
-    recorded in the calibration diagnostics. A direct caller may pass neither:
-    the scorer is then opened (and closed) here, and the plan is recorded by
-    the same engine-free dry run.
+    recorded in the calibration diagnostics, with the plan's reform pass
+    count for progress reporting. A direct caller may pass neither: the
+    scorer is then opened (and closed) here, and the plan and the count are
+    recorded by the same engine-free dry run.
     """
     scorer = post_export_scorer
     if scorer is None:
@@ -10330,12 +10569,13 @@ def _score_post_export_consumer(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
     try:
-        plan = (
-            _record_post_export_baseline_plan(consumer)
-            if baseline_plan is None
-            else tuple(baseline_plan)
+        if baseline_plan is None:
+            plan, planned_reform_passes = _record_post_export_requests(consumer)
+        else:
+            plan = tuple(baseline_plan)
+        scoring = scorer.open_consumer(
+            name, plan, planned_reform_passes=planned_reform_passes
         )
-        scoring = scorer.open_consumer(name, plan)
         output = consumer(scoring.simulate)
         record = scorer.finish_consumer(scoring)
         print(
@@ -10363,6 +10603,7 @@ def _write_reform_validation(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
     baseline_plan: Sequence[PostExportKey] | None = None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    planned_reform_passes: int | None = None,
 ) -> None:
     """Emit reform_validation.json: microcosm budget effects vs JCT scores.
 
@@ -10399,6 +10640,7 @@ def _write_reform_validation(
             post_export_scorer=post_export_scorer,
             baseline_plan=baseline_plan,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            planned_reform_passes=planned_reform_passes,
         )
     write_reform_validation(payload, release_dir / "reform_validation.json")
 
@@ -10541,6 +10783,7 @@ def _build_manifests(
     scored_dataset_sha256: str | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -10731,6 +10974,13 @@ def _build_manifests(
                 else {}
             ),
             "target_compilation": dropped,
+            # The SIPP/SCF blend audit (microcosm#1216): written with the
+            # manifest a release cannot ship without, beside the diagnostics.
+            **(
+                {"scf_wealth_signal": dict(scf_wealth_signal)}
+                if scf_wealth_signal is not None
+                else {}
+            ),
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
                 "failures": list(target_profile_gate.failures),
@@ -11706,17 +11956,29 @@ _ACTIVE_PROGRESS: _BuildProgress | None = None
 class _WorkCounter:
     """Report completed independent work units through the emitter service."""
 
-    def __init__(self, *, stage_id: str, unit: str, total: int) -> None:
+    def __init__(
+        self,
+        *,
+        stage_id: str,
+        unit: str,
+        total: int,
+        outer: OuterProgress | None = None,
+    ) -> None:
         self.stage_id = stage_id
         self.unit = unit
         self.total = max(0, int(total))
         self.done = 0
         self.started = time.monotonic()
+        # The counter one level above, such as the reform pass these batches
+        # belong to; sent with every report when set.
+        self.outer = outer
 
     def advance(self, units: int = 1, **details: object) -> None:
         self.done = min(self.total, self.done + max(0, int(units)))
         if _ACTIVE_EMITTER is None:
             return
+        if self.outer is not None:
+            details["outer"] = self.outer
         _ACTIVE_EMITTER.progress(
             self.stage_id,
             done=self.done,
@@ -12550,6 +12812,22 @@ def main(argv: Sequence[str] | None = None) -> None:
         _ACTIVE_EMITTER.complete()
 
 
+def _without_opt_in_student_loan_targets(registry: TargetRegistry) -> TargetRegistry:
+    """The registry the target-parity contract reads: no FSA portfolio rows.
+
+    The parity manifest describes one target surface for every build, but the
+    FSA family compiles only with ``--scf-education-debt`` (microcosm#1074):
+    the rows bind columns a default build does not carry. Until that stage is
+    default the family is outside the contract, and the manifest may declare
+    it a reviewed exclusion without either build failing the other.
+    """
+
+    return TargetRegistry(
+        tuple(spec for spec in registry.specs if spec.family != FSA_TARGET_FAMILY),
+        country=registry.country,
+    )
+
+
 def _check_committed_us_ledger_feed_pin(
     facts_sha256: str,
     *,
@@ -12640,24 +12918,37 @@ def _with_scf_education_debt_stage(
             )
         )
     if fit_path is not None:
-        # Design-weight fit of the staged frame against the SCF; the receipt
-        # tool tabulates the calibrated export the same way (microcosm#1073).
-        fit_path.parent.mkdir(parents=True, exist_ok=True)
-        fit_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "weights": "pre_calibration_household_weights",
-                    "fit": us_scf_education_debt_fit_table(base_frame),
-                },
-                indent=2,
-                sort_keys=True,
-                default=float,
-            )
-            + "\n",
-            encoding="utf-8",
+        # Design-weight fit of the staged frame against the SCF; the release
+        # writes the same table at its calibrated weights after the solve
+        # (US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME, microcosm#1074).
+        _write_us_scf_education_debt_fit(
+            fit_path, base_frame, weights="pre_calibration_household_weights"
         )
     return base_frame
+
+
+def _write_us_scf_education_debt_fit(path: Path, frame: Frame, *, weights: str) -> None:
+    """Write the microcosm#1073 fit table of ``frame`` at its household weights.
+
+    ``weights`` names those weights in the payload: the staged frame's
+    pre-calibration weights, or the release's calibrated weights.
+    """
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "weights": weights,
+                "fit": us_scf_education_debt_fit_table(frame),
+            },
+            indent=2,
+            sort_keys=True,
+            default=float,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def _check_us_ledger_feed_row_contracts(
@@ -12711,6 +13002,38 @@ def _check_us_esi_anchor_against_feed(
             "for an explicitly reviewed diagnostic run"
         )
     return mismatches
+
+
+def _check_us_feed_carries_fsa_facts(
+    facts: Sequence[Mapping[str, Any]],
+    *,
+    scf_education_debt: bool,
+) -> FsaTargetPlan | None:
+    """Refuse a ``--scf-education-debt`` build on a feed with no FSA facts.
+
+    microcosm#1074: the flag's stage imputes the federal student loan balances
+    and Federal Student Aid's portfolio calibrates them. On a feed with no
+    ``ed_fsa`` facts the plan is empty, so the compile would bind no FSA
+    target and the build would ship the balances uncalibrated, raising
+    nothing. The build stops here instead, before any stage runs. Without the
+    flag the facts are inert and nothing is planned. Returns the plan, which
+    the ``us_source_coverage.json`` receipt reuses.
+    """
+
+    if not scf_education_debt:
+        return None
+    plan = plan_fsa_student_loan_targets(facts, target_period=PERIOD)
+    if plan.status == "no_fsa_facts":
+        raise SystemExit(
+            "error: --scf-education-debt calibrates the stage's federal student "
+            "loan balances to Federal Student Aid's portfolio, but the "
+            f"Chronicle feed carries no {FSA_SOURCE_NAME} facts (the "
+            f"{', '.join(FSA_BOUND_TABLES)} tables), so no FSA target would "
+            "compile (microcosm#1074). Build on a feed with the six "
+            "packages/ed_fsa packages of PolicyEngine/chronicle#347, as the "
+            "US pin carries from microcosm#1506, or drop the flag."
+        )
+    return plan
 
 
 def _main(argv: Sequence[str] | None = None) -> int | None:
@@ -12945,6 +13268,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if dry_run is not None:
         dry_run.esi_anchor_feed_mismatches = list(esi_anchor_feed_mismatches)
+    # A --scf-education-debt build on a feed with no FSA facts would compile
+    # no FSA target; refuse it before the compile (microcosm#1074).
+    fsa_target_plan = _check_us_feed_carries_fsa_facts(
+        ledger_artifact.facts, scf_education_debt=args.scf_education_debt
+    )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -12953,6 +13281,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         ),
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
+        # FSA's portfolio binds the stage's balances, so only a build that
+        # imputes them compiles the targets (microcosm#1074).
+        student_loan_targets=args.scf_education_debt,
+    )
+    # Every FSA fact's disposition (bound, allocated, out of scope,
+    # diagnostic) and the in-scope controls, for us_source_coverage.json.
+    fsa_target_receipt = (
+        fsa_student_loan_target_receipt(
+            ledger_artifact.facts, target_period=PERIOD, plan=fsa_target_plan
+        )
+        if fsa_target_plan is not None
+        else None
     )
     # The exclusion register's keys do not say which feed facts a compile
     # dropped or let through by vintage (microcosm#956), so record the concrete
@@ -12984,8 +13324,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # diagnostic JCT skip — so the gate sees the true family surface, and
     # hard-fails the build on a silently dropped family or a rotted manifest,
     # exactly like the release input-coverage gate on the export frame.
-    assert_target_parity_manifest_current(registry=target_registry)
-    target_parity_gate = us_release_target_parity_gate(target_registry)
+    # The FSA portfolio family is opt-in (it binds only the
+    # --scf-education-debt stage's balances, microcosm#1074), so it stays off
+    # the one-surface parity contract until that stage is default.
+    parity_registry = _without_opt_in_student_loan_targets(target_registry)
+    assert_target_parity_manifest_current(registry=parity_registry)
+    target_parity_gate = us_release_target_parity_gate(parity_registry)
     if not target_parity_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
@@ -14118,6 +14462,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in scf_wealth_gate.failures
             )
         )
+    scf_wealth_signal = _scf_wealth_gate_record(
+        scf_wealth_gate, base_frame.table("household")["household_id"]
+    )
     sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
@@ -14316,7 +14663,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             args=args,
             telemetry=telemetry,
             fit_path=(
-                artifact_root / "us_scf_education_debt_fit.json"
+                artifact_root / US_SCF_EDUCATION_DEBT_FIT_FILENAME
                 if dry_run is None
                 else None
             ),
@@ -15232,6 +15579,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if isinstance(ladder_outcome, ExactKLadderCalibration):
         ladder_outcome = dataclasses.replace(ladder_outcome, result=result)
+    if args.scf_education_debt:
+        # microcosm#1074: the stage's fit table at the weights the release
+        # ships, before any scoring or terminal gate, so a build that binds
+        # the FSA family reports the borrower-household share at those weights. It
+        # follows the export and cleanup statements, which
+        # test_us_post_export_scoring runs on their own.
+        _write_us_scf_education_debt_fit(
+            artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
+            export_frame,
+            weights="calibrated_household_weights",
+        )
     compilation = dict(compilation)
     final_uncapped_ssi = _ssi_person_uncapped_amount(
         export_frame,
@@ -15619,6 +15977,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
+        scf_wealth_signal=scf_wealth_signal,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,
@@ -16145,6 +16504,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         smoke_scoring = post_export_scorer.open_consumer(
             "reform_coverage_smoke",
             post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_coverage_smoke"
+            ),
         )
         reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
             simulate=smoke_scoring.simulate,
@@ -16238,6 +16600,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 if args.skip_out_of_sample_reforms
                 else post_export_scoring_plan.baseline_plan("reform_validation")
             ),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_validation"
+            ),
         )
         if telemetry is not None:
             telemetry.attach_artifact(
@@ -16325,6 +16690,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     ]
     coverage[US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY] = fiscal_target_exclusion_receipt
+    if fsa_target_receipt is not None:
+        coverage[US_FSA_STUDENT_LOAN_TARGET_RECEIPT_KEY] = fsa_target_receipt
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
@@ -16474,6 +16841,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scored_dataset_sha256=scored_dataset_sha256,
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
+        scf_wealth_signal=scf_wealth_signal,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
