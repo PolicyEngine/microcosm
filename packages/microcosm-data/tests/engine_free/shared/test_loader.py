@@ -721,7 +721,9 @@ def test_uk_2023_loads_the_june_build_from_its_folder_after_the_switch(
 
 @pytest.mark.parametrize("pointer_path", ["current.json", "latest-local-k0.json"])
 def test_resolve_refuses_an_unsupported_pointer_path(pointer_path: str) -> None:
-    spec = replace(resolve("us", 2024), pointer_path=pointer_path)
+    # An entry that names no release follows only its pointer; one that names
+    # a release reads releases.json first, so the US entry drops its release.
+    spec = replace(resolve("us", 2024), release=None, pointer_path=pointer_path)
 
     def unexpected_download(**_kwargs) -> str:
         pytest.fail("an unsupported pointer path must fail before a Hub request")
