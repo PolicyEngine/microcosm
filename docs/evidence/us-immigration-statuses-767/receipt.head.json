@@ -129,7 +129,98 @@
       "weighted": 12891211.513123676
     }
   },
-  "draw_keys": "source_year:source_household_id(PH_SEQ):source_person_id(PERIDNUM)",
+  "draw_keys": {
+    "calls": [
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:paroled_one_year:afghanistan"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:paroled_one_year:ukraine"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:paroled_one_year:nicaragua"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:paroled_one_year:venezuela"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:refugee"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:asylee"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:tps:venezuela"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:tps:el_salvador"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:tps:honduras"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:tps:nicaragua"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:tps:nepal"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:tps:other_designated"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:ead_students"
+      },
+      {
+        "forced": false,
+        "key": "full",
+        "rows": 421119,
+        "salt": "immigration:ead_workers"
+      }
+    ],
+    "requested": "native",
+    "used": {
+      "full": "source_year:source_household_id(PH_SEQ):source_person_id(PERIDNUM)"
+    }
+  },
   "error": null,
   "gate_failures": [],
   "gate_passed": true,
@@ -263,7 +354,7 @@
     "REFUGEE": 160000.0,
     "TPS": 857650.0
   },
-  "immigration_module_sha256": "fdb29c5cf362e1013d435222ef1b5cd0a082d6703f97e85d3b8835f2e8be1ab1",
+  "immigration_module_sha256": "c4d81501e63917595bae9cd976ab8068187d78cbb42d7146d5ecd1416209a4b8",
   "none_ssn_iff_undocumented": true,
   "pew_labor_force": 9699442.858246539,
   "pew_labor_force_control": 9700000.0,
@@ -277,12 +368,12 @@
     "TPS": 1.0028800890820582
   },
   "rows": 421119,
-  "script_sha256": "0c11b99f4c5de98e9339fe237feffe6510ee97333660006b62db07b3776c77cb",
+  "script_sha256": "6d1a8899979617dc3d53ec1d776a1825f0d55caf00abfe037e806aebbdc8d8eb",
   "seed": 0,
-  "source_commit": "4b3b6a7a60c35f0ff137bff74308488c7ae71014",
+  "source_commit": "e3b2c8ce9404d177a5424b2dd3b1acb6cf385e6f",
   "source_commit_from": "git",
   "source_tree_clean": true,
-  "stage_seconds": 5.9,
+  "stage_seconds": 8.3,
   "time_period": 2024,
   "weights": "HSUP_WGT * 0.01 by PH_SEQ, each file rescaled to one third of income year 2024's weighted person population (asec_pool.pool_asec_sources, anchor_year=2024)"
 }

@@ -85,17 +85,36 @@
       "weighted": 13070924.386860687
     }
   },
-  "draw_keys": "source_year:source_household_id(PH_SEQ):source_person_id(PERIDNUM)",
+  "draw_keys": {
+    "calls": [
+      {
+        "forced": false,
+        "key": "legacy",
+        "rows": 421119,
+        "salt": "immigration:ead_workers"
+      },
+      {
+        "forced": false,
+        "key": "legacy",
+        "rows": 421119,
+        "salt": "immigration:ead_students"
+      }
+    ],
+    "requested": "native",
+    "used": {
+      "legacy": "source_year:source_person_id(PERIDNUM)"
+    }
+  },
   "error": null,
   "immigration_module_sha256": "8871df8b5f86f6bbf8541259a69d52b7db214560e5dacf5ad6db15268368f826",
   "none_ssn_iff_undocumented": true,
   "rows": 421119,
-  "script_sha256": "0c11b99f4c5de98e9339fe237feffe6510ee97333660006b62db07b3776c77cb",
+  "script_sha256": "6d1a8899979617dc3d53ec1d776a1825f0d55caf00abfe037e806aebbdc8d8eb",
   "seed": 0,
   "source_commit": "764ae3aa778cbc9030e286fabc3777e25c18f403",
   "source_commit_from": "argument",
   "source_tree_clean": null,
-  "stage_seconds": 2.9,
+  "stage_seconds": 1.1,
   "time_period": 2024,
   "weights": "HSUP_WGT * 0.01 by PH_SEQ, each file rescaled to one third of income year 2024's weighted person population (asec_pool.pool_asec_sources, anchor_year=2024)"
 }

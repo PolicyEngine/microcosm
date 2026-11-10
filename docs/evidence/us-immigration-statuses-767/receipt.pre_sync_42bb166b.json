@@ -28,15 +28,19 @@
       "sha256": "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93"
     }
   ],
-  "draw_keys": "source_year:source_household_id(PH_SEQ):source_person_id(PERIDNUM)",
+  "draw_keys": {
+    "calls": [],
+    "requested": "native",
+    "used": {}
+  },
   "error": "SourceRuntimeError: PEINUSYR carries value(s) outside the 2024 ASEC domain 0..28: [29.0].",
   "immigration_module_sha256": "df6699344c5fddbb5322baeb22f574be846e43c8c7600fd5dea798189c382042",
-  "script_sha256": "0c11b99f4c5de98e9339fe237feffe6510ee97333660006b62db07b3776c77cb",
+  "script_sha256": "6d1a8899979617dc3d53ec1d776a1825f0d55caf00abfe037e806aebbdc8d8eb",
   "seed": 0,
   "source_commit": "42bb166b1484df036809814434c1acf862b8cbb8",
   "source_commit_from": "argument",
   "source_tree_clean": null,
-  "stage_seconds": 0.2,
+  "stage_seconds": 0.1,
   "time_period": 2024,
   "weights": "HSUP_WGT * 0.01 by PH_SEQ, each file rescaled to one third of income year 2024's weighted person population (asec_pool.pool_asec_sources, anchor_year=2024)"
 }
