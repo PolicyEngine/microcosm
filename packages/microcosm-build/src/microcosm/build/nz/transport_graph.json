@@ -4564,7 +4564,13 @@
           ],
           "encoding": "value"
         },
-        "measurement": "ird_taxable_income_ty2027_v1",
+        "measurement": {
+          "resource": "income_measurements",
+          "path": [
+            "measurement_id"
+          ],
+          "encoding": "value"
+        },
         "identities": {
           "resource": "income_measurements",
           "path": [
@@ -4636,7 +4642,13 @@
           ],
           "encoding": "value"
         },
-        "measurement": "ird_taxable_income_ty2027_v1",
+        "measurement": {
+          "resource": "income_measurements",
+          "path": [
+            "measurement_id"
+          ],
+          "encoding": "value"
+        },
         "weight_entity": "household"
       },
       "artifact_inputs": [
@@ -4644,6 +4656,11 @@
           "name": "problem",
           "producer": "nz.targets.problem",
           "artifact": "problem"
+        },
+        {
+          "name": "solution",
+          "producer": "nz.calibrate",
+          "artifact": "solution"
         }
       ],
       "artifact_outputs": [
@@ -4702,7 +4719,13 @@
           "encoding": "json"
         },
         "weight_entity": "household",
-        "measurement": "ird_taxable_income_ty2027_v1"
+        "measurement": {
+          "resource": "income_measurements",
+          "path": [
+            "measurement_id"
+          ],
+          "encoding": "value"
+        }
       },
       "artifact_inputs": [
         {
