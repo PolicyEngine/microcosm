@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.177.4. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.177.7. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -475,7 +475,7 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "funding and whom no exception covers. It is understated for an 18- or "
         "19-year-old on the FRS adult table on such a course who reports no "
         "Universal Credit, JSA or ESA of their own and is without parental "
-        "support: policyengine-uk 2.177.4 has no input for parental support, "
+        "support: policyengine-uk 2.177.7 has no input for parental support, "
         "so it doesn't apply reg. 14(1)(a), and such a person counts as a "
         "qualifying young person. Such records are mostly young people living "
         "away from their parents (microcosm#1095, microcosm#1535; for María's "
@@ -546,7 +546,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.177.4",
+    engine_version="2.177.7",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
