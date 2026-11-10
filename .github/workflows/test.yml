@@ -16,12 +16,19 @@ env:
   OPENBLAS_NUM_THREADS: "1"
   MKL_NUM_THREADS: "1"
 
+# GitHub runs an explicit `shell: bash` as `bash -eo pipefail`, and a step
+# with no shell as `bash -e`, where a pipe hides the exit status of the command
+# that feeds it.
+defaults:
+  run:
+    shell: bash
+
 # Every job sets timeout-minutes (GitHub's default is 360) so a hung test
-# frees its runner from the org's shared 60-runner pool. The engine-free and
-# engine-us caps are about 1.5x their slowest successful leg on 2026-10-07..08;
-# the engine-uk cap is about twice its slowest successful leg after the
-# policyengine-uk 2.162.3 bump (29 minutes, microcosm#1400); shorter jobs get
-# at least 5 minutes and at least twice their slowest run.
+# frees its runner from the org's shared 60-runner pool. Each cap follows the
+# job's slowest successful leg on 2026-11-09, rounded up to a multiple of 5
+# minutes: 1.5 times it for engine-free (109 minutes) and engine-us (73), twice
+# for engine-uk (45) and integration-uk (8), and for each shorter job at least
+# 5 minutes and at least twice its slowest run.
 
 jobs:
   select-countries:
@@ -55,14 +62,14 @@ jobs:
         run: uv run python tools/graph_acceptance_burndown.py --verify
       - name: Sync workspace
         run: uv sync --all-packages --locked
+      - name: Verify the workflow against the test plan
+        run: uv run --no-sync python tools/ci_test_plan.py verify-workflow
       - name: Lint
         run: uv run --no-sync ruff check .
 
   engine-free:
     runs-on: ubuntu-latest
-    # Successful legs took 64-74 min on 2026-10-26, and a Python 3.14 leg on
-    # microcosm#1404 hit the old 75-minute cap; 120 is about 1.6x the slowest.
-    timeout-minutes: 120
+    timeout-minutes: 165
     strategy:
       fail-fast: false
       matrix:
@@ -86,8 +93,7 @@ jobs:
     needs: select-countries
     if: needs['select-countries'].outputs.run_us == 'true'
     runs-on: ubuntu-latest
-    # Successful legs took 40-60 min on 2026-10-07..08 (n=23).
-    timeout-minutes: 90
+    timeout-minutes: 110
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +124,7 @@ jobs:
     needs: select-countries
     if: needs['select-countries'].outputs.run_uk == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -139,7 +145,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -185,3 +191,34 @@ jobs:
         run: uv sync --all-packages --locked
       - name: Run installed-emitter tests
         run: bash tools/run_installed_emitter_tests.sh
+
+  ci:
+    # ci gives the main ruleset one check that covers the country jobs. It
+    # fails unless every other job passed, or skipped because select-countries
+    # succeeded and reported `false` for its country. A skipped matrix job
+    # reports under its unexpanded name, so a ruleset cannot require engine-us
+    # or engine-uk by name. GitHub reports a skipped required check as passing,
+    # so ci runs with `if: always()`. verify-workflow refuses any other shape
+    # of this job, and the plan's tests, which engine-free runs, fail on one.
+    if: always()
+    needs:
+      - select-countries
+      - lint
+      - engine-free
+      - engine-us
+      - engine-uk
+      - integration-uk
+      - wheels
+      - installed-emitter
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require every job to pass, or the selection to leave it out
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 tools/ci_test_plan.py require-results
