@@ -1,7 +1,7 @@
 """Publish a release and move its approved repository pointer.
 
 **No UK or US release publishes here.** The UK national, dense and
-local-area releases and the four US releases
+local-area releases and the US releases
 (:data:`~microcosm.data.contract.US_RELEASES`) publish each build into its
 own folder, ``releases/<release>/<build>/``, through the emitter's
 ``publish_release`` call (``microcosm-publish-release-build``, in
@@ -325,7 +325,8 @@ BUILD_FOLDER_PUBLICATION_COMMAND = "microcosm-publish-release-build"
 #: ``populace-uk-2023``.
 TAGGED_RELEASE_ADVICE = (
     "US builds publish into microcosm-us-2024-national, -local, "
-    "-receipt-donor or -evidence, in a directory named after the release; "
+    "-receipt-donor, -evidence or -annual, in a directory named after the "
+    "release; "
     "the June 2023 UK release and populace-uk-<year>-<tier>-k<N> releases "
     "take no new builds once the UK repository records its builds in "
     "releases.json."

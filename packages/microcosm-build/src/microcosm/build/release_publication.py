@@ -1,7 +1,7 @@
 """Publish a release build into its own folder through the emitter.
 
 A release whose builds can publish into their own folders (the UK
-national, dense and local-area releases and the four US releases, which
+national, dense and local-area releases and the US releases, which
 ``microcosm.data.contract.publishes_to_build_folder`` names) is handed to the
 separately installed emitter with the interface's ``publish_release`` call.
 Microcosm decides what the build contains and checks it with the release
@@ -296,7 +296,7 @@ def _repository_files(repository: str) -> list[str]:
 
 def _hub_api() -> Any:
     """A Hub client with the credential :func:`_repository_files` uses (test
-    seam), for the recertification parent check."""
+    seam), for the recertification parent check and the annual base check."""
     import huggingface_hub
 
     token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or None
@@ -425,6 +425,15 @@ def publish_release_build(
             prepared.release_dir,
             repo_id=prepared.repository,
             artifact_root=artifact_root,
+        )
+    from microcosm.data import annual_projections
+
+    if annual_projections.is_annual_build(prepared.release_dir):
+        # An annual build projects a published national build: the Hub must
+        # show that build with the same base-year H5 before anything is
+        # handed over.
+        annual_projections.require_base_publication(
+            _hub_api(), prepared.release_dir, repo_id=prepared.repository
         )
     return _hand_over(
         publication_request(prepared, make_current=make_current),

@@ -18,7 +18,9 @@ build ID is the base build's ID followed by
 ``-annual-<YYYYMMDDTHHMMSSZ>-<hex8>``, and its release manifest names the base
 build in ``metadata.annual_projection_base`` as ``repo_id``, ``release``,
 ``build``, ``path`` and ``sha256``. In that layout only builds of the annual
-release declare ``metadata.dataset_years``, and each of them must.
+release declare ``metadata.dataset_years``, and each of them must. Before an
+annual build is handed to the emitter, :func:`require_base_publication` checks
+on the Hub that its base build is published with the same base-year H5.
 """
 
 from __future__ import annotations
@@ -626,3 +628,104 @@ def validate_annual_projection_extension(
     return AnnualProjectionExtension(
         revision, additional_artifacts, frozenset(projected_artifacts)
     )
+
+
+def is_annual_build(release_dir: Path | str) -> bool:
+    """Whether ``release_dir`` is a build of the annual release, by its name."""
+    return Path(release_dir).name == US_ANNUAL_RELEASE_ID
+
+
+def require_base_publication(
+    api: object, release_dir: Path | str, *, repo_id: str
+) -> None:
+    """Refuse unless the annual build's base national build is published.
+
+    The publisher calls this after the build passes its contract and before
+    anything is handed over. The base build's ``release_manifest.json`` is read
+    where :func:`microcosm.data.build_folder_manifests.referenced_build` says
+    for ``metadata.annual_projection_base``: at ``main`` from
+    ``releases/microcosm-us-2024-national/<base build>/``, which never
+    changes. It must name that release and build, and its default dataset
+    must be the folder's base-year H5: the same file name and SHA-256. An
+    absent manifest refuses; any other Hub failure propagates. ``api`` needs
+    ``hf_hub_download``.
+    """
+    from microcosm.data.build_folder_manifests import referenced_build
+    from microcosm.data.release import (
+        _is_absent_entry_error,
+        _is_absent_revision_error,
+    )
+
+    manifest = _read_json(Path(release_dir) / "release_manifest.json")
+    reference = _object(
+        _object(manifest.get("metadata"), "release metadata").get(
+            "annual_projection_base"
+        ),
+        "metadata.annual_projection_base",
+    )
+    location = referenced_build(reference)
+    if location.repo_id != repo_id:
+        raise ValueError(
+            f"the annual build's base build is in {location.repo_id!r}, not the "
+            f"publication repository {repo_id!r}"
+        )
+    base_key = _object(manifest.get("default_datasets"), "release defaults").get(
+        "national"
+    )
+    local = _object(
+        _object(manifest.get("artifacts"), "release artifacts").get(base_key),
+        f"artifact {base_key!r}",
+    )
+    base_build = reference.get("build")
+    path_in_repo = f"{location.folder}/release_manifest.json"
+    try:
+        downloaded = api.hf_hub_download(
+            repo_id=repo_id,
+            filename=path_in_repo,
+            repo_type="dataset",
+            revision=location.revision,
+        )
+    except Exception as exc:
+        if not (_is_absent_entry_error(exc) or _is_absent_revision_error(exc)):
+            raise
+        raise ValueError(
+            f"base build {base_build!r} is not published: {path_in_repo} is "
+            f"absent at {location.revision!r} in {repo_id} ({exc}). An annual "
+            "build is published only after the build it projects."
+        ) from exc
+    published = _read_json(Path(downloaded))
+    if (published.get("release"), published.get("build")) != (
+        reference.get("release"),
+        base_build,
+    ):
+        raise ValueError(
+            f"{path_in_repo} names release {published.get('release')!r} and "
+            f"build {published.get('build')!r}, not the base build "
+            f"{base_build!r} of {reference.get('release')!r}"
+        )
+    published_defaults = published.get("default_datasets")
+    published_key = (
+        published_defaults.get("national")
+        if isinstance(published_defaults, Mapping)
+        else None
+    )
+    published_artifacts = published.get("artifacts")
+    dataset = (
+        published_artifacts.get(published_key)
+        if isinstance(published_artifacts, Mapping) and isinstance(published_key, str)
+        else None
+    )
+    if (
+        not isinstance(dataset, Mapping)
+        or dataset.get("kind") != "microdata"
+        or dataset.get("sha256") != local.get("sha256")
+        or dataset.get("path") != local.get("path")
+    ):
+        published_dataset = dataset if isinstance(dataset, Mapping) else {}
+        raise ValueError(
+            f"the published base build's dataset ({path_in_repo}) is "
+            f"{published_dataset.get('path')!r} with sha256 "
+            f"{published_dataset.get('sha256')!r}, not the base-year H5 "
+            f"{local.get('path')!r} with sha256 {local.get('sha256')!r}; an "
+            "annual build projects exactly the published base build's bytes"
+        )
