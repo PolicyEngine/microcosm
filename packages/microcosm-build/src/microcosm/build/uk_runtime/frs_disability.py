@@ -405,8 +405,9 @@ def derive_carer_link(
 ) -> tuple[np.ndarray, dict[str, object]]:
     """The carer link for every person, and its evidence (see :data:`CARER_LINK_COLUMN`).
 
-    ``person`` carries the spine's ``person_id`` (household id times 1,000 plus
-    the FRS person number) and ``person_household_id``, the care carriers and
+    ``person`` carries ``person_id`` (the FRS person number is ``person_id``
+    modulo 1,000 on spine rows and copies alike) and ``person_household_id``, the
+    care carriers and
     the categories this stage derives; ``weights`` are the persons' household
     design weights. The evidence gives each route's records in rounded counts
     and support bands, and the share the drawn route takes.
@@ -425,13 +426,21 @@ def derive_carer_link(
     qualifies = np.zeros(len(person), dtype=bool)
     for column, categories in CARER_LINK_QUALIFYING.items():
         qualifies |= person[column].astype(str).isin(categories).to_numpy()
-    qualifying_ids = set(ids[qualifies].tolist())
+    # A household member is keyed by household and FRS person number: the
+    # spine's person_id is household id times 1,000 plus the number, and the
+    # SPI and CGT copies shift both ids by a power of ten above every id, so
+    # the number is person_id modulo 1,000 on every row.
+    numbers = ids % 1000
+    qualifying = set(
+        zip(households[qualifies].tolist(), numbers[qualifies].tolist(), strict=True)
+    )
     member_qualifies = np.zeros(len(person), dtype=bool)
     for number in range(1, FRS_CARE_OUTSIDE_BIT):
         holds = ((mask >> number) & 1) == 1
         if holds.any():
-            member_ids = households[holds] * 1000 + number
-            member_qualifies[holds] |= np.isin(member_ids, list(qualifying_ids))
+            member_qualifies[holds] |= np.asarray(
+                [(int(h), number) in qualifying for h in households[holds]], dtype=bool
+            )
     outside = ((mask >> FRS_CARE_OUTSIDE_BIT) & 1) == 1
     carer = mask != 0
     linked = carer & member_qualifies

@@ -291,3 +291,27 @@ def test_the_carer_link_draw_is_reproducible() -> None:
     first_by_id = dict(zip(people["person_id"], first, strict=True))
     second_by_id = dict(zip(people["person_id"].iloc[::-1], second, strict=True))
     assert first_by_id == second_by_id
+
+
+def test_the_carer_link_reads_a_copy_households_members_by_person_number() -> None:
+    """SPI and CGT copies shift person and household ids by a power of ten, so
+    the link keys a member on household and person_id modulo 1,000. The outside
+    draw is keyed on identity, so only the other routes are compared."""
+
+    from microcosm.build.uk_runtime import frs_disability
+
+    people = _carer_link_people()
+    shift = 10**8
+    copies = people.assign(
+        person_id=people["person_id"] + shift,
+        person_household_id=people["person_household_id"] + shift,
+    )
+    link, _ = frs_disability.derive_carer_link(
+        copies, weights=np.ones(len(copies)), min_hours=35.0
+    )
+    original, _ = frs_disability.derive_carer_link(
+        people, weights=np.ones(len(people)), min_hours=35.0
+    )
+    not_drawn = ~people["person_household_id"].isin([5, 6, 7, 8]).to_numpy()
+    assert link[not_drawn].tolist() == original[not_drawn].tolist()
+    assert link[people["person_id"].eq(1001).to_numpy()].all()
