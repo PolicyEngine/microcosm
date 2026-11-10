@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import sparse
 
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
@@ -225,6 +226,8 @@ def _round_trip_nullable_us_h5(tmp_path: Path, nullable_case: str) -> BooleanRou
 def _round_trip_uk_single_year(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip:
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
+    from microcosm.frame.adapters.policyengine_uk import UK_ISA_INCOME_CONTRACT
+
     source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     path = tmp_path / "uk-single-year.h5"
@@ -241,6 +244,8 @@ def _round_trip_uk_single_year(tmp_path: Path, nullable_case: str) -> BooleanRou
         time_period="2023",
         weight_kind=WeightKind.DESIGN,
         mass_log=(),
+        # Every UK H5 declares its ISA income contract (microcosm#1360).
+        isa_income_contract=UK_ISA_INCOME_CONTRACT,
         path=path,
     )
     loaded = _read_uk_national_tables(path)[0]["person"]
@@ -307,13 +312,10 @@ def _round_trip_acs_lean(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip
         },
         "weights": np.asarray([1.0, 2.0, 3.0]),
     }
-    path, _targets = tool.write_lean_checkpoint(
+    path, _registry, _digests = tool.write_lean_checkpoint(
         struct,
-        np.empty((3, 0), dtype=np.float64),
-        [],
-        [],
-        [],
-        [],
+        sparse.csr_array((0, 3), dtype=np.float32),
+        (),
         [],
         tmp_path / "acs-lean",
     )

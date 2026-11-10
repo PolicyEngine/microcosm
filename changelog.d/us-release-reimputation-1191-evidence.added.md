@@ -1,0 +1,1 @@
+Record which release-time re-runs of base stages change stored PUF-half inputs and why (the Social Security rescale and the build platform), with stage-level tests that replay the release builder's stage calls: idempotence and weight-scale invariance hold, and base-input preservation is a strict expected failure pending a ruling. No build behavior changes.

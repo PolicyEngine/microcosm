@@ -435,9 +435,17 @@ class TestSSNCardAssignment:
         with pytest.raises(SourceRuntimeError, match="PRCITSHP"):
             _run(_person_table([{"PRCITSHP": 7}]))
 
-    def test_2024_asec_rejects_nonexistent_peinusyr_29(self) -> None:
-        with pytest.raises(SourceRuntimeError, match=r"PEINUSYR.*0\.\.28"):
-            _run(_person_table([_noncitizen(PEINUSYR=29)]))
+    def test_2026_asec_peinusyr_29_is_in_the_domain(self) -> None:
+        # The 2026 ASEC (income year 2025, in the default pool) codes
+        # 2024-2026 arrivals as 29. A Medicaid-reporting arrival there is a
+        # documented non-citizen like any other.
+        output = _run(_person_table([_noncitizen(PEINUSYR=29, CAID=1)]))
+        assert output.loc[0, "immigration_status_str"] == "LEGAL_PERMANENT_RESIDENT"
+        assert output.loc[0, "ssn_card_type"] == "OTHER_NON_CITIZEN"
+
+    def test_peinusyr_past_the_2026_asec_domain_raises(self) -> None:
+        with pytest.raises(SourceRuntimeError, match=r"PEINUSYR.*0\.\.29"):
+            _run(_person_table([_noncitizen(PEINUSYR=30)]))
 
     def test_missing_required_column_raises(self) -> None:
         person = _person_table([_noncitizen()]).drop(columns=["PEINUSYR"])
@@ -564,6 +572,26 @@ class TestHumanitarianDraws:
             humanitarian=_humanitarian_block(paroled_one_year={"ukraine": 5.0}),
         )
         assert output.loc[0, "immigration_status_str"] == "LEGAL_PERMANENT_RESIDENT"
+
+    def test_2026_asec_code_29_draws_only_programs_running_in_2024(self) -> None:
+        # Code 29 is the 2026 ASEC's 2024-2026 bin: inside the U4U, CHNV and
+        # FY2023-FY2024 refugee windows, after Operation Allies Welcome, the
+        # FY2022-FY2024 asylum grants and every TPS residence date.
+        def status_at_29(birth: int, **block) -> str:
+            person = _person_table([_noncitizen(PENATVTY=birth, PEINUSYR=29, CAID=1)])
+            output = _run(person, humanitarian=_humanitarian_block(**block))
+            return output.loc[0, "immigration_status_str"]
+
+        drawn = "PAROLED_ONE_YEAR"
+        assert status_at_29(164, paroled_one_year={"ukraine": 1.0}) == drawn
+        assert status_at_29(315, paroled_one_year={"nicaragua": 1.0}) == drawn
+        assert status_at_29(373, paroled_one_year={"venezuela": 1.0}) == drawn
+        assert status_at_29(412, refugee=1.0) == "REFUGEE"
+        kept = "LEGAL_PERMANENT_RESIDENT"
+        assert status_at_29(200, paroled_one_year={"afghanistan": 1.0}) == kept
+        assert status_at_29(207, asylee=1.0) == kept
+        assert status_at_29(373, tps={"venezuela": 1.0}) == kept
+        assert status_at_29(205, tps={"other_designated": 1.0}) == kept
 
     def test_u4u_rejects_2020_2021_ukrainian_arrivals(self) -> None:
         person = _person_table(

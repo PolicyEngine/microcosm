@@ -39,6 +39,7 @@ def test_source_coordinates_and_operation_contract_are_exact() -> None:
     assert SIPP_HEAD_START_FIT_PARAMETERS["seed_from_build_config"] is True
     assert "rate" not in " ".join(map(str, SIPP_HEAD_START_FIT_PARAMETERS.values()))
 
+
 def test_loader_keeps_only_strict_reported_labels(tmp_path: Path) -> None:
     rows = [
         _source_row("yes", 1, head_start_answer=1),
@@ -104,6 +105,7 @@ def test_loader_keeps_only_strict_reported_labels(tmp_path: Path) -> None:
     assert audit["reported_other_grade_rows"] == 1
     assert audit["pinned_transform"] is False
 
+
 def test_loader_refuses_missing_upstream_status(tmp_path: Path) -> None:
     path = _write_source(tmp_path, [_source_row("one", 1)])
     source = pd.read_csv(path, sep="|").drop(columns=["AED_SCRNR"])
@@ -115,6 +117,7 @@ def test_loader_refuses_missing_upstream_status(tmp_path: Path) -> None:
             expected_sha256=None,
             expected_size_bytes=None,
         )
+
 
 def test_pinned_full_file_audit_constants_are_exact() -> None:
     # The 740 negatives are the strict upstream-observed set. A looser
@@ -132,6 +135,7 @@ def test_pinned_full_file_audit_constants_are_exact() -> None:
     assert module._PINNED_WEIGHT_SUM == pytest.approx(7_978_494.5412483)
     assert module._PINNED_POSITIVE_WEIGHT_SUM == pytest.approx(491_970.1041311)
     assert module._PINNED_WEIGHTED_TRUE_SHARE == pytest.approx(0.06166202177461505)
+
 
 def test_imputer_weights_qrf_and_fans_one_asec_decision_to_source_clones(
     monkeypatch: pytest.MonkeyPatch,
@@ -174,6 +178,7 @@ def test_imputer_weights_qrf_and_fans_one_asec_decision_to_source_clones(
     # An off-domain adult is always false even if the QRF would draw true.
     assert not values[values["source"] == 40]["value"].any()
 
+
 def test_imputer_fails_closed_on_provenance_and_clone_age(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -200,6 +205,7 @@ def test_imputer_fails_closed_on_provenance_and_clone_age(
     with pytest.raises(ValueError, match="disagree on age"):
         impute_us_sipp_head_start(inconsistent, _donor(), seed=0)
 
+
 def test_imputer_rejects_conflicting_duplicate_asec_source_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -213,6 +219,7 @@ def test_imputer_rejects_conflicting_duplicate_asec_source_rows(
     with pytest.raises(ValueError, match="source clones disagree on age"):
         impute_us_sipp_head_start(duplicate, _donor(), seed=0)
 
+
 def test_imputer_rejects_identical_duplicate_same_role_source_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -225,6 +232,7 @@ def test_imputer_rejects_identical_duplicate_same_role_source_rows(
 
     with pytest.raises(ValueError, match="duplicated support copies"):
         impute_us_sipp_head_start(duplicate, _donor(), seed=0)
+
 
 def test_assembled_clone_two_uses_lowest_clone_and_fans_to_every_clone(
     monkeypatch: pytest.MonkeyPatch,
@@ -260,6 +268,7 @@ def test_assembled_clone_two_uses_lowest_clone_and_fans_to_every_clone(
     materialized.loc[materialized["person_support_clone_index"].eq(2), _OUTPUT] ^= True
     mismatch = us_sipp_head_start_summary(_replace_person(frame, materialized))
     assert mismatch["clone_mismatch_count"] == 2
+
 
 def test_historical_tail_copy_fans_the_source_decision_to_every_copy(
     monkeypatch: pytest.MonkeyPatch,
@@ -309,6 +318,7 @@ def test_historical_tail_copy_fans_the_source_decision_to_every_copy(
     mismatch = us_sipp_head_start_summary(_replace_person(frame, materialized))
     assert mismatch["clone_mismatch_count"] == 1
 
+
 def test_historical_puf_only_survivor_predicts_from_the_primary_detail_copy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -346,6 +356,7 @@ def test_historical_puf_only_survivor_predicts_from_the_primary_detail_copy(
     # Copy rank, not row order or role, picks the primary PUF-detail copy.
     assert predicted[source_ten].tolist() == [True, True]
 
+
 def test_historical_duplicate_clone_index_still_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -359,6 +370,7 @@ def test_historical_duplicate_clone_index_still_fails_closed(
 
     with pytest.raises(ValueError, match=r"duplicated support copies.*\('10', 1\)"):
         impute_us_sipp_head_start(duplicated, _donor(), seed=3)
+
 
 @pytest.mark.parametrize("clone_index", [3, 7, 2**62])
 @pytest.mark.parametrize("dtype", [np.int64, np.float64])
@@ -377,6 +389,7 @@ def test_historical_out_of_domain_copy_refused_before_prediction(
     with pytest.raises(ValueError, match="historical support clone indices.*0, 1, 2"):
         impute_us_sipp_head_start(_replace_person(frame, person), _donor(), seed=3)
     assert not _FakeQRF.instances
+
 
 @pytest.mark.parametrize("assembled", [True, False], ids=["assembled", "historical"])
 @pytest.mark.parametrize(
@@ -424,6 +437,7 @@ def test_malformed_clone_index_fails_closed_before_canonical_selection(
         impute_us_sipp_head_start(_replace_person(frame, person), _donor(), seed=3)
     assert not _FakeQRF.instances
 
+
 def test_assembled_frame_without_clone_indices_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -446,6 +460,7 @@ def test_assembled_frame_without_clone_indices_fails_closed(
     ):
         impute_us_sipp_head_start(_replace_person(frame, person), _donor(), seed=3)
     assert not _FakeQRF.instances
+
 
 @pytest.mark.parametrize(
     ("source_ids", "clone_indices", "missing"),
@@ -500,6 +515,7 @@ def test_assembled_frame_missing_support_provenance_fails_closed(
         impute_us_sipp_head_start(stripped, _donor(), seed=3)
     assert not _FakeQRF.instances
 
+
 @pytest.mark.parametrize("entry", ["predictors", "impute", "gate"])
 def test_assembled_provenance_checked_before_other_receiver_inputs(
     monkeypatch: pytest.MonkeyPatch, entry: str
@@ -526,6 +542,7 @@ def test_assembled_provenance_checked_before_other_receiver_inputs(
             else:
                 impute_us_sipp_head_start(stripped, pd.DataFrame(), seed=3)
         assert not _FakeQRF.instances
+
 
 @pytest.mark.parametrize(
     "channels",
@@ -556,6 +573,7 @@ def test_gate_flags_assembled_frame_missing_clone_indices(
     assert not gate.passed
     assert f"{_OUTPUT}: support-channel provenance is invalid" in gate.failures
 
+
 def test_gate_flags_clone_index_past_int64() -> None:
     # float(2**63) is the first float past int64; the base let it wrap to
     # INT64_MAX. The gate now flags it as invalid provenance.
@@ -571,6 +589,7 @@ def test_gate_flags_clone_index_past_int64() -> None:
     assert summary["support_channel_invalid"] is True
     gate = us_sipp_head_start_signal_gate(_replace_person(frame, person))
     assert f"{_OUTPUT}: support-channel provenance is invalid" in gate.failures
+
 
 def test_wrapper_heals_stale_output_and_is_exactly_idempotent(
     monkeypatch: pytest.MonkeyPatch,
@@ -599,6 +618,7 @@ def test_wrapper_heals_stale_output_and_is_exactly_idempotent(
 
     assert healed.table("person")[_OUTPUT].tolist() == [True, False, True, False]
     assert twice is healed
+
 
 def test_summary_and_gate_require_nonconstant_clone_consistent_domain_signal() -> None:
     sources = [source for source in range(20) for _ in range(2)]

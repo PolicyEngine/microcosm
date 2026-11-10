@@ -20,12 +20,16 @@ from microcosm.build.uk_runtime.advani_summers import (
 )
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_AGE_GROUP_LOWER_BOUNDS,
+    UK_CGT_INVESTABLE_WEALTH_COLUMNS,
+    UK_CGT_PLACEMENT_ROW_TYPES,
     UK_CGT_REGION_GROUP_LABELS,
     UK_CGT_REGION_GROUPS,
     UK_CGT_REMAINDER_POLICY,
     UK_CGT_SPINE_MASS_CONSERVATION_REASON,
     UK_CGT_SPINE_STAGE_NAME,
+    UK_CGT_SUPPORT_COPIES_COLUMN,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
+    UK_CGT_WEALTH_RANK_WEIGHT,
     UKCGTPolicyParameters,
     _band_plans,
     _CellPlan,
@@ -43,6 +47,10 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     uk_cgt_component_sum_income,
     uk_cgt_spine_stage_transform,
     uk_cgt_taxable_income_proxy,
+)
+from microcosm.build.uk_runtime.cgt_support import (
+    CGT_SUPPORT_COPIES_COLUMN,
+    HOUSEHOLD_IS_CGT_SUPPORT_COPY,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
@@ -142,6 +150,28 @@ def _distribution(
     )
 
 
+def _support_copy_flags(copies: np.ndarray) -> np.ndarray:
+    """The split stage's flag: False on roots and unsplit households, True on copies.
+
+    A family of ``n`` copies is ``n`` consecutive households carrying ``n``;
+    the first is the root and the rest are the copies the stage created.
+    """
+
+    flags = np.zeros(len(copies), dtype=bool)
+    index = 0
+    while index < len(copies):
+        count = int(copies[index])
+        if count <= 1:
+            index += 1
+            continue
+        member = index + 1
+        while member < min(index + count, len(copies)) and copies[member] == count:
+            flags[member] = True
+            member += 1
+        index = member
+    return flags
+
+
 def _frame(
     person_rows: int,
     *,
@@ -150,6 +180,8 @@ def _frame(
     ages=None,
     regions=None,
     weights=None,
+    wealth=None,
+    support_copies=None,
 ) -> Frame:
     person = pd.DataFrame(
         {
@@ -183,6 +215,26 @@ def _frame(
             ),
         }
     )
+    # The allocation ranks gainers on household investable wealth
+    # (microcosm#1014); ``wealth`` lands in the first declared column and the
+    # rest stay zero, so equal wealth leaves the prior ranking in charge.
+    for column in UK_CGT_INVESTABLE_WEALTH_COLUMNS:
+        household[column] = 0.0
+    if wealth is not None:
+        household[UK_CGT_INVESTABLE_WEALTH_COLUMNS[0]] = np.asarray(wealth, dtype=float)
+    # The support split (microcosm#1045) writes the family's copy count on
+    # every member of a split household and flags the copies it created; the
+    # redraw reads the count for its placement receipts. ``support_copies``
+    # lists one count per household, a family of ``n`` copies being ``n``
+    # consecutive households carrying ``n`` with the root first.
+    if support_copies is not None:
+        copies = np.asarray(support_copies, dtype="int64")
+        if copies.shape != (person_rows,) or (copies < 1).any():
+            raise ValueError(
+                "support_copies needs one count of at least 1 per household."
+            )
+        household[CGT_SUPPORT_COPIES_COLUMN] = copies
+        household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = _support_copy_flags(copies)
     benunit = pd.DataFrame({"benunit_id": np.arange(person_rows, dtype="int64")})
     return uk_national_frame(
         person=person,

@@ -900,10 +900,15 @@ def test_declared_plan_carries_the_23_stage_base_surface() -> None:
     person = declared_acs_transfer_target_families()["person"]
     itemization = set(person["puf_tax_itemization"])
     # The 23-stage base observes partnership SE earnings (buildl's exclusion
-    # is stale there) but still carries s_corp_income as an all-zero schema
-    # column, so only the SE-earnings leg returns to the plan.
+    # is stale there), and since microcosm#1258 the donor carries Schedule E
+    # line 32 by entity, so both entity shares and their passive subset
+    # travel to the ACS spine.
     assert "partnership_self_employment_net_earnings" in itemization
-    assert "s_corp_income" not in itemization
+    assert {
+        "partnership_income",
+        "s_corp_income",
+        "passive_partnership_s_corp_income",
+    } <= itemization
     # The Schedule D capital-gain-distributions memo leg is DERIVED from its
     # transferred parents (route exclusivity at the packaged share), never
     # fitted: an independent fit would break the base's accounting identity.
@@ -3370,3 +3375,615 @@ def test_adult_care_qualifying_rows_fails_closed_on_missing_structure(
 
     with pytest.raises(ValueError, match=missing_column):
         acs_adult_care_qualifying_rows(person)
+
+
+# ---------------------------------------------------------------------------
+# Opt-in person predictor extensions (microcosm#1056 review): the shared
+# execution contract, and the shared transfer's draws, are unchanged unless a
+# caller opts in; the ACS local income pass is the only caller that does.
+# ---------------------------------------------------------------------------
+
+#: The execution contract's SHA-256 with no person predictor extensions
+#: (schema 3, #767). Every caller that passes none (the shared plan, the
+#: pool lane, banked checkpoints and the spec projection) must keep these.
+_DEFAULT_CONTRACT_SHA256 = (
+    "4403aefd1de03d28b68fa9b653d5a7e9e6df9a133b4afde22f7f1673b58db63e"
+)
+_DECLARED_PLAN_CONTRACT_SHA256 = (
+    "ce27d25196cd8bfbd108cb6beb7e1d9f48334df874e32173ea73ef4d1ce18a0c"
+)
+_PREGNANCY_CONTRACT_SHA256 = (
+    "061d8f1000065e43b2a5bac09a9d4e1b8ec81d123944222d99c42a5f3597045e"
+)
+_EXTENSION_FEATURE = "__acs_transfer_fixture_interest_total"
+_EXTENSION_FAMILIES = {
+    "person": {
+        "dividends": ("qualified_dividend_income",),
+        "medicaid": ("takes_up_medicaid_if_eligible",),
+    }
+}
+
+
+def _interest_extension(**overrides):
+    fields = {
+        "feature": _EXTENSION_FEATURE,
+        "donor_components": ("taxable_interest_income",),
+        "recipient_source": "taxable_interest_income",
+        "families": ("dividends",),
+    }
+    fields.update(overrides)
+    return acs_transfer_module.AcsPersonPredictorExtension(**fields)
+
+
+def _extension_transfer(target_families=None, **kwargs) -> AcsTransferResult:
+    return transfer_acs_inputs(
+        _recipient_frame(),
+        _donor_frame(),
+        target_families=target_families or _EXTENSION_FAMILIES,
+        donor_spine="asec_puf_test",
+        seed=17,
+        n_estimators=5,
+        **kwargs,
+    )
+
+
+def _assert_same_transfer(left: AcsTransferResult, right: AcsTransferResult) -> None:
+    for entity in left.frame.entities:
+        pd.testing.assert_frame_equal(
+            left.frame.table(entity), right.frame.table(entity)
+        )
+    assert left.imputed_inputs == right.imputed_inputs
+    assert left.fit_records == right.fit_records
+    assert left.resolved_donor_channel == right.resolved_donor_channel
+
+
+def test_default_execution_contract_identity_is_pinned() -> None:
+    identity = acs_transfer_module.acs_transfer_execution_contract_identity
+    default = identity()
+    assert default["sha256"] == _DEFAULT_CONTRACT_SHA256
+    assert "person_predictor_extensions" not in default
+    assert (
+        identity(targets=[], derive_schedule_d=False)["sha256"]
+        == _DEFAULT_CONTRACT_SHA256
+    )
+    declared = [
+        target
+        for families in declared_acs_transfer_target_families().values()
+        for targets in families.values()
+        for target in targets
+    ]
+    assert identity(targets=declared)["sha256"] == _DECLARED_PLAN_CONTRACT_SHA256
+    assert (
+        identity(targets=("is_pregnant",), derive_schedule_d=False)["sha256"]
+        == _PREGNANCY_CONTRACT_SHA256
+    )
+    for empty in (None, (), []):
+        assert identity(person_predictor_extensions=empty) == default
+        assert identity(
+            targets=declared, person_predictor_extensions=empty
+        ) == identity(targets=declared)
+
+
+def test_person_predictor_extension_binds_the_contract_only_when_used() -> None:
+    identity = acs_transfer_module.acs_transfer_execution_contract_identity
+    bound = identity(person_predictor_extensions=(_interest_extension(),))
+    assert bound["sha256"] != _DEFAULT_CONTRACT_SHA256
+    assert bound["person_predictor_extensions"] == [
+        {
+            "feature": _EXTENSION_FEATURE,
+            "donor_components": ["taxable_interest_income"],
+            "recipient_source": "taxable_interest_income",
+            "families": ["dividends"],
+            "replaces": None,
+        }
+    ]
+    rest = {
+        key: value
+        for key, value in bound.items()
+        if key not in {"person_predictor_extensions", "sha256"}
+    }
+    assert rest == {key: value for key, value in identity().items() if key != "sha256"}
+
+
+def test_transfer_without_an_extension_is_byte_identical() -> None:
+    """Omitted, ``None`` and ``()`` all run the exact shared transfer."""
+
+    baseline = _extension_transfer()
+    for empty in (None, ()):
+        _assert_same_transfer(
+            baseline, _extension_transfer(person_predictor_extensions=empty)
+        )
+
+
+def test_an_extension_changes_only_the_family_it_names() -> None:
+    baseline = _extension_transfer()
+    extended = _extension_transfer(person_predictor_extensions=(_interest_extension(),))
+    before = {entry.column: entry for entry in baseline.imputed_inputs}
+    after = {entry.column: entry for entry in extended.imputed_inputs}
+
+    # The family the extension does not name keeps its predictors, seeds,
+    # patterns and draws exactly.
+    assert (
+        after["takes_up_medicaid_if_eligible"]
+        == before["takes_up_medicaid_if_eligible"]
+    )
+    pd.testing.assert_series_equal(
+        extended.frame.table("person")["takes_up_medicaid_if_eligible"],
+        baseline.frame.table("person")["takes_up_medicaid_if_eligible"],
+    )
+    # The named family is fit with the feature, after the shared predictors.
+    dividends = after["qualified_dividend_income"]
+    assert dividends.predictors[-1] == _EXTENSION_FEATURE
+    assert _EXTENSION_FEATURE not in before["qualified_dividend_income"].predictors
+    assert all(
+        _EXTENSION_FEATURE in pattern.observed_optional_predictors
+        for pattern in dividends.patterns
+    )
+    assert {pattern.seed for pattern in dividends.patterns}.isdisjoint(
+        pattern.seed for pattern in before["qualified_dividend_income"].patterns
+    )
+    # Model-only: the feature never becomes a frame column.
+    assert _EXTENSION_FEATURE not in extended.frame.table("person")
+
+
+def test_a_stand_in_extension_takes_the_replaced_predictors_place() -> None:
+    investment = "__acs_transfer_interest_dividend_rental_income"
+    extension = _interest_extension(replaces=investment)
+    extended = _extension_transfer(person_predictor_extensions=(extension,))
+    (dividends,) = [
+        entry
+        for entry in extended.imputed_inputs
+        if entry.column == "qualified_dividend_income"
+    ]
+    predictors = list(dividends.predictors)
+    assert investment not in predictors
+    assert (
+        predictors.index("__acs_transfer_self_employment_income")
+        < predictors.index(_EXTENSION_FEATURE)
+        < predictors.index("__acs_transfer_is_household_head")
+    )
+
+
+def test_a_bound_default_contract_refuses_an_unbound_extension() -> None:
+    targets = ["qualified_dividend_income", "takes_up_medicaid_if_eligible"]
+    identity = acs_transfer_module.acs_transfer_execution_contract_identity
+    default = identity(targets=targets)
+    with pytest.raises(ValueError, match="differs from its bound input"):
+        _extension_transfer(
+            execution_contract=default,
+            person_predictor_extensions=(_interest_extension(),),
+        )
+    _assert_same_transfer(
+        _extension_transfer(), _extension_transfer(execution_contract=default)
+    )
+    bound = identity(
+        targets=targets, person_predictor_extensions=(_interest_extension(),)
+    )
+    _extension_transfer(
+        execution_contract=bound,
+        person_predictor_extensions=(_interest_extension(),),
+    )
+
+
+_MORTGAGE_FAMILIES = {
+    **_EXTENSION_FAMILIES,
+    "tax_unit": {"mortgage": ("first_home_mortgage_balance",)},
+}
+
+
+@pytest.mark.parametrize(
+    ("overrides", "target_families", "expected"),
+    [
+        (
+            {"donor_components": ("taxable_interest_income", "veterans_benefits")},
+            None,
+            r"needs donor component\(s\) \['veterans_benefits'\], which the donor",
+        ),
+        (
+            {"recipient_source": "acs_fixture_total"},
+            None,
+            "needs recipient source column 'acs_fixture_total', which the recipient",
+        ),
+        (
+            {"families": ("mortgage",)},
+            _MORTGAGE_FAMILIES,
+            "names family 'mortgage' on group entity 'tax_unit'",
+        ),
+        ({"families": ("unknown",)}, None, "not a requested person family"),
+        (
+            {"feature": "__acs_transfer_retirement_income"},
+            None,
+            "clashes with a shared transfer predictor",
+        ),
+        (
+            {"feature": "__acs_transfer_group_head_count"},
+            None,
+            "clashes with a shared transfer predictor",
+        ),
+        ({"feature": "interest_total"}, None, "must be a model-only name"),
+        (
+            {"replaces": "__acs_transfer_is_household_head"},
+            None,
+            "may replace only a shared combined predictor",
+        ),
+        (
+            {"recipient_source": "qualified_dividend_income"},
+            None,
+            "a target of family 'dividends'",
+        ),
+        ({"donor_components": ()}, None, "distinct donor component column names"),
+        ({"families": ("dividends", "dividends")}, None, "distinct family names"),
+    ],
+    ids=[
+        "missing-donor-component",
+        "missing-recipient-source",
+        "group-entity",
+        "unknown-family",
+        "clash-shared-optional",
+        "clash-group-name",
+        "not-model-only",
+        "replace-non-combined",
+        "source-is-a-target",
+        "no-components",
+        "duplicate-family",
+    ],
+)
+def test_person_predictor_extension_refusals(
+    overrides, target_families, expected
+) -> None:
+    with pytest.raises(ValueError, match=expected):
+        _extension_transfer(
+            target_families=target_families,
+            person_predictor_extensions=(_interest_extension(**overrides),),
+        )
+
+
+def test_person_predictor_extension_refuses_clashing_pairs_and_non_extensions() -> None:
+    with pytest.raises(ValueError, match="clashes with a shared transfer predictor"):
+        _extension_transfer(
+            person_predictor_extensions=(
+                _interest_extension(),
+                _interest_extension(families=("medicaid",)),
+            )
+        )
+    investment = "__acs_transfer_interest_dividend_rental_income"
+    with pytest.raises(ValueError, match="replacing the same shared predictor"):
+        _extension_transfer(
+            person_predictor_extensions=(
+                _interest_extension(replaces=investment),
+                _interest_extension(
+                    feature="__acs_transfer_fixture_second", replaces=investment
+                ),
+            )
+        )
+    with pytest.raises(TypeError, match="sequence of AcsPersonPredictorExtension"):
+        _extension_transfer(person_predictor_extensions=_interest_extension())
+    with pytest.raises(TypeError, match="only AcsPersonPredictorExtension"):
+        _extension_transfer(
+            person_predictor_extensions=({"feature": _EXTENSION_FEATURE},)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Passive partnership/S-corp coherence after the late transfer (microcosm#1239)
+# ---------------------------------------------------------------------------
+
+
+def _passive_people(**columns: list[float]) -> pd.DataFrame:
+    base = {
+        "person_tax_unit_id": [1, 1, 2, 3, 3, 4],
+        "partnership_income": [500.0, 0.0, 0.0, -200.0, 0.0, 300.0],
+        "s_corp_income": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        "passive_partnership_s_corp_income": [
+            900.0,  # passive above a positive total: lawful, kept
+            40.0,  # no own line 32, unit has one: cleared
+            25.0,  # no line 32 anywhere: cleared
+            150.0,  # passive gain under a net loss: lawful, kept
+            0.0,
+            10.0,  # immutable below: kept even though it is only checked
+        ],
+    }
+    base.update(columns)
+    return pd.DataFrame(base)
+
+
+def test_passive_reconciliation_clears_only_newly_imputed_subsets_without_line_32() -> (
+    None
+):
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    person = _passive_people()
+    mutable = np.asarray([True, True, True, True, True, False])
+
+    passive, counts = reconcile_acs_passive_partnership_s_corp(
+        person, mutable_rows=mutable
+    )
+
+    assert passive.tolist() == [900.0, 0.0, 0.0, 150.0, 0.0, 10.0]
+    assert counts == {
+        "cleared_subset_without_line_32": 2,
+        "remaining_nonzero_subset_rows": 2,
+    }
+
+    # A pre-existing (immutable) subset is preserved even with no line 32.
+    person.loc[5, "partnership_income"] = 0.0
+    passive, _ = reconcile_acs_passive_partnership_s_corp(person, mutable_rows=mutable)
+    assert passive.iloc[5] == 10.0
+
+
+def test_passive_reconciliation_clears_a_unit_whose_line_32_cancels() -> None:
+    """Both people carry line 32, but the unit's total is zero.
+
+    A rule that looked only at each person's own amount would keep both
+    subsets (review of microcosm#1251).
+    """
+
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [7, 7],
+            "partnership_income": [100.0, 0.0],
+            "s_corp_income": [0.0, -100.0],
+            "passive_partnership_s_corp_income": [30.0, 40.0],
+        }
+    )
+
+    passive, counts = reconcile_acs_passive_partnership_s_corp(
+        person, mutable_rows=np.ones(2, dtype=bool)
+    )
+
+    assert passive.tolist() == [0.0, 0.0]
+    assert counts == {
+        "cleared_subset_without_line_32": 2,
+        "remaining_nonzero_subset_rows": 0,
+    }
+
+
+@pytest.mark.parametrize("missing", ["partnership_income", "person_tax_unit_id"])
+def test_passive_reconciliation_refuses_missing_structure(missing: str) -> None:
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    person = _passive_people().drop(columns=[missing])
+    with pytest.raises(ValueError, match=missing):
+        reconcile_acs_passive_partnership_s_corp(
+            person, mutable_rows=np.ones(len(person), dtype=bool)
+        )
+
+
+def test_passive_reconciliation_property_holds_for_random_draws() -> None:
+    """For every draw: no imputed subset survives without a line-32 total."""
+
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    # Equal and opposite amounts make units whose line 32 cancels common.
+    amount = st.sampled_from([0.0, 0.0, -100.0, 100.0, 1_250.0])
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        st.lists(
+            st.tuples(
+                st.integers(min_value=1, max_value=6),
+                amount,
+                amount,
+                st.floats(-5e5, 5e5, allow_nan=False),
+                st.booleans(),
+            ),
+            min_size=1,
+            max_size=30,
+        )
+    )
+    def check(rows) -> None:
+        person = pd.DataFrame(
+            rows,
+            columns=[
+                "person_tax_unit_id",
+                "partnership_income",
+                "s_corp_income",
+                "passive_partnership_s_corp_income",
+                "mutable",
+            ],
+        )
+        mutable = person.pop("mutable").to_numpy()
+        before = person["passive_partnership_s_corp_income"].copy()
+        passive, _ = reconcile_acs_passive_partnership_s_corp(
+            person, mutable_rows=mutable
+        )
+        own = person["partnership_income"] + person["s_corp_income"]
+        unit = own.groupby(person["person_tax_unit_id"]).transform("sum")
+        has_line_32 = (own != 0) & (unit != 0)
+        # Immutable cells and imputed cells under a line-32 total are untouched.
+        untouched = ~mutable | has_line_32.to_numpy()
+        pd.testing.assert_series_equal(
+            passive[untouched], before[untouched], check_names=False
+        )
+        # No imputed subset survives without a line-32 total under it.
+        assert (passive[mutable & ~has_line_32.to_numpy()] == 0.0).all()
+
+    check()
+
+
+@pytest.mark.parametrize("missing", ["partnership_income", "s_corp_income"])
+def test_passive_reconciliation_requires_both_line_32_components(missing: str) -> None:
+    """Line 32 is the sum of both entity leaves; one alone understates it.
+
+    Before microcosm#1258 an absent ``s_corp_income`` read as zero, which was
+    harmless only while the S-corp leaf was an exact-zero universe. Now an
+    S-corporation-only person would look line-32-free and lose a lawful
+    passive amount, so the reconciliation refuses instead.
+    """
+
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    person = _passive_people().drop(columns=[missing])
+
+    with pytest.raises(ValueError, match="both transferred line-32 components"):
+        reconcile_acs_passive_partnership_s_corp(
+            person, mutable_rows=np.ones(len(person), dtype=bool)
+        )
+
+
+def test_passive_reconciliation_keeps_s_corporation_only_carriers() -> None:
+    """A passive subset under an S-corporation-only line 32 is kept."""
+
+    from microcosm.build.us_runtime.acs_transfer import (
+        reconcile_acs_passive_partnership_s_corp,
+    )
+
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [5, 6],
+            "partnership_income": [0.0, 0.0],
+            "s_corp_income": [2_000.0, 0.0],
+            "passive_partnership_s_corp_income": [300.0, 300.0],
+        }
+    )
+
+    passive, counts = reconcile_acs_passive_partnership_s_corp(
+        person, mutable_rows=np.ones(2, dtype=bool)
+    )
+
+    assert passive.tolist() == [300.0, 0.0]
+    assert counts == {
+        "cleared_subset_without_line_32": 1,
+        "remaining_nonzero_subset_rows": 1,
+    }
+
+
+def test_passive_reconciliation_is_bound_into_transfer_execution_identity() -> None:
+    enabled = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=("partnership_income", "passive_partnership_s_corp_income"),
+        derive_schedule_d=False,
+    )
+    disabled = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=("partnership_income",),
+        derive_schedule_d=False,
+    )
+
+    contract = enabled["post_transfer_structure"]["passive_partnership_s_corp"]
+    assert contract == {
+        "enabled": True,
+        "subset": "passive_partnership_s_corp_income",
+        "line_32": ["partnership_income", "s_corp_income"],
+        "tax_unit_link": "person_tax_unit_id",
+        "rule": "zero_subset_where_person_or_tax_unit_line_32_is_zero",
+        "mutable_rows": "newly_imputed_subset_cells_only",
+    }
+    assert (
+        disabled["post_transfer_structure"]["passive_partnership_s_corp"]["enabled"]
+        is False
+    )
+    assert enabled["sha256"] != disabled["sha256"]
+
+
+def test_transfer_reconciles_imputed_passive_subsets_and_records_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public transfer applies the rule to the cells it fills.
+
+    Every imputed passive cell gets the donor mean; only the one under a
+    nonzero own and unit line 32 keeps it. The measured cell is kept as it
+    is, and the provenance carries the reconciliation counts.
+    """
+
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "partnership_income": [
+                4_000.0,
+                0.0,
+                -1_000.0,
+                0.0,
+                2_000.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+            "s_corp_income": [0.0] * 8,
+            "passive_partnership_s_corp_income": [
+                800.0,
+                0.0,
+                -200.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ],
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            # Measured line 32: unit 110 carries 500 on its first person,
+            # unit 120 has none, and unit 130's two amounts cancel.
+            "partnership_income": [500.0, 0.0, 0.0, 100.0, 0.0, 0.0],
+            "s_corp_income": [0.0, 0.0, 0.0, 0.0, -100.0, 0.0],
+            "passive_partnership_s_corp_income": [
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
+                7.0,
+            ],
+        },
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {
+                "pass_through": (
+                    "partnership_income",
+                    "s_corp_income",
+                    "passive_partnership_s_corp_income",
+                ),
+            },
+        },
+        n_estimators=1,
+    )
+
+    person = result.frame.person
+    passive = person["passive_partnership_s_corp_income"]
+    # The transfer fits one mean model per recipient predictor pattern, so the
+    # surviving cell holds one of those fits' donor means.
+    fitted_means = {
+        float(call["targets"]["passive_partnership_s_corp_income"].mean())
+        for call in _MeanQRF.calls
+        if "passive_partnership_s_corp_income" in call["targets"]
+    }
+    assert passive.iloc[0] in fitted_means
+    assert passive.iloc[0] != 0.0
+    assert passive.iloc[1:].tolist() == [0.0, 0.0, 0.0, 0.0, 7.0]
+    pd.testing.assert_series_equal(
+        person["partnership_income"], recipient.person["partnership_income"]
+    )
+    provenance = next(
+        item
+        for item in result.imputed_inputs
+        if item.column == "passive_partnership_s_corp_income"
+    )
+    assert provenance.imputed_recipient_rows == 5
+    assert provenance.reconciliation == {
+        "cleared_subset_without_line_32": 4,
+        "remaining_nonzero_subset_rows": 1,
+    }

@@ -1,6 +1,10 @@
 """Tests split from packages/microcosm-build/tests/test_uk_graph.py."""
 
 # ruff: noqa: F403, F405
+import hashlib
+
+from microcosm.graph import graph_schema, orrery_document
+from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.uk_graph import *
 
 
@@ -40,14 +44,26 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     graph = uk_spine_graph(spec)
     ids = {node.id for node in graph.nodes}
 
-    # 34 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
+    # 35 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
     # #791 frs_relationships, #725 hmrc_cgt_asset_type_spine, #970
     # cgt_incidence_anchor, #930 nts_bus_travel and the income-anchor lane's
-    # (PolicyEngine/chronicle#280) spi_income_band_donors stages and the #1012
-    # spi_housing_shell; the frs_hmrc_retained_leaves / hmrc_spi_income
-    # certified-pair alternatives are retired (#901), so the manifest roster is
-    # the graph roster.
-    assert len(expected) == 34
+    # (PolicyEngine/chronicle#280) spi_income_band_donors stages, the #1012
+    # spi_housing_shell, the #1003 was_lisa, the microcosm#1069
+    # pension_credit_take_up and the microcosm#1063 child_benefit_take_up; the
+    # frs_hmrc_retained_leaves / hmrc_spi_income certified-pair alternatives
+    # are retired (#901), so the manifest roster is the graph roster.
+    # microcosm#1063 also adds cgt_residential_split after the anchor,
+    # microcosm#1095 the spi_benefit_coherence pass after uc_reporter_redraw,
+    # microcosm#1106 property_components after the regional uprating, and
+    # microcosm#1240 high_value_home_support between those two; microcosm#1095
+    # adds property_purchases and uc_legacy_closure_take_up, microcosm#1112
+    # regional_home_values, microcosm#1319 carers_allowance_take_up, the
+    # copies' childcare re-draw childcare_copy_take_up, and microcosm#1334
+    # uc_take_up and frs_annual_income_spells; microcosm#1428 the last stage,
+    # trading_allowance_receipts; and company_cars after hmrc_spi_income_spine
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316); and microcosm#1490
+    # spi_employment_shell after company_cars, then aps_occupation.
+    assert len(expected) == 54
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -86,7 +102,11 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert compile_graph(reversed_declaration).order == compiled.order
     assert "frs_employment" in compiled.predecessors["frs_legacy_proxies"]
     assert "was_wealth" in compiled.predecessors["regional_property_uprating.boundary"]
-    assert "regional_property_uprating" in compiled.predecessors["lcfs_consumption"]
+    assert (
+        "regional_property_uprating" in compiled.predecessors["high_value_home_support"]
+    )
+    assert "high_value_home_support" in compiled.predecessors["property_components"]
+    assert "property_components" in compiled.predecessors["lcfs_consumption"]
     assert "spi_support_channel" in compiled.predecessors["spi_income_band_donors"]
     assert "spi_income_band_donors" in compiled.predecessors["hmrc_spi_income_spine"]
 
@@ -101,21 +121,30 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
     assert {source.name for source in graph.sources} == {
         "frs",
         "was",
+        "was_person",
         "nts_household",
         "nts_individual",
         "nts_trip",
         "nts_stage",
         "nts_ticket",
+        "nts_vehicle",
         "lcfs_household",
         "lcfs_person",
         "etb",
+        "aps",
         "spi",
         "hmrc_income",
     }
+    # The NTS household and vehicle tabs feed the zero-emission share by income
+    # fifth and the household-paid road-fuel mix (microcosm#1095 B3).
     assert graph.node("lcfs_consumption").sources == (
         "lcfs_household",
         "lcfs_person",
+        "nts_household",
+        "nts_vehicle",
     )
+    assert graph.node("was_lisa").sources == ("was", "was_person")
+    assert graph.node("aps_occupation").sources == ("aps",)
     assert graph.node("hmrc_spi_income_spine").sources == (
         "spi",
         "hmrc_income",
@@ -172,6 +201,63 @@ def test_uc_relationship_helper_changes_affected_kernel_hashes(monkeypatch) -> N
     assert registry.implementation_hash(control_ref) == before[control_ref]
 
 
+def test_spi_income_source_changes_invalidate_the_stages_that_run_it(monkeypatch):
+    # The SPI income stage's module only imports the imputation, the band-donor
+    # resample and its receipt from spi_income, so spi_income is bound as the
+    # stage's helper; the landlords' stage already binds it (microcosm#1278).
+    from microcosm.build.uk_runtime import spi_income
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    affected = [
+        graph.node(stage).kernel
+        for stage in ("hmrc_spi_income_spine", "property_components")
+    ]
+    control = graph.node("frs_council_tax").kernel
+    before = {ref: registry.implementation_hash(ref) for ref in (*affected, control)}
+    helper_path = Path(spi_income.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref]
+    assert registry.implementation_hash(control) == before[control]
+
+
+def test_isa_statistics_source_changes_invalidate_the_stages_that_read_them(
+    monkeypatch,
+):
+    # The ISA subscriptions and the Lifetime ISA anchor read HMRC's ISA tables
+    # through the typed loader, so it is bound as both stages' helper
+    # (microcosm#1415).
+    from microcosm.build.uk_runtime import hmrc_isa_statistics
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    affected = [graph.node(stage).kernel for stage in ("isa_subscriptions", "was_lisa")]
+    control = graph.node("frs_council_tax").kernel
+    before = {ref: registry.implementation_hash(ref) for ref in (*affected, control)}
+    helper_path = Path(hmrc_isa_statistics.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref]
+    assert registry.implementation_hash(control) == before[control]
+
+
 def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
     from microcosm.frame.adapters import policyengine_uk
 
@@ -182,6 +268,7 @@ def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
         "frs_education_grant_split",
         "frs_brma",
         "was_wealth",
+        "was_lisa",
         "nts_bus_travel",
         "lcfs_consumption",
         "etb_vat",
@@ -218,6 +305,62 @@ def test_uk_graph_json_round_trip_is_canonical() -> None:
 
     assert graph_from_json(serialized) == graph
     assert graph_to_json(graph_from_json(serialized)) == serialized
+
+
+def test_uk_spine_exports_complete_orrery_document() -> None:
+    compiled = compile_graph(uk_spine_graph())
+    schema = graph_schema(compiled)
+    materialized_claims = [
+        binding
+        for binding in schema["input_bindings"]
+        if binding["kind"] == "materialized_expand_output"
+    ]
+
+    document = orrery_document(compiled, title="UK spine")
+    nodes = {node["id"]: node for node in document["nodes"]}
+    materialized_reads = [
+        edge
+        for edge in document["edges"]
+        if edge["kind"] == "declared_read"
+        and edge["data"]["read_kind"] == "materialized_expand_output"
+    ]
+    expected_reads = {
+        (
+            binding["node"],
+            binding["population"],
+            binding["entity"],
+            binding["column"],
+            binding["provider"],
+            binding["declared_in"],
+            binding["rows"],
+        )
+        for binding in materialized_claims
+    }
+    actual_reads = {
+        (
+            nodes[edge["target"]]["label"],
+            nodes[edge["source"]]["data"]["population"],
+            nodes[edge["source"]]["data"]["entity"],
+            nodes[edge["source"]]["data"]["column"],
+            nodes[edge["source"]]["data"]["provider"],
+            nodes[edge["source"]]["data"]["declared_in"],
+            edge["data"]["rows"],
+        )
+        for edge in materialized_reads
+    }
+
+    assert materialized_claims
+    assert actual_reads == expected_reads
+    assert document["schemaVersion"] == "graph-explorer/v1"
+    summary = document["metadata"]["microcosm"]
+    assert summary["graph_sha256"] == schema["graph_sha256"]
+    assert (
+        summary["schema_sha256"] == hashlib.sha256(canonical_json(schema)).hexdigest()
+    )
+    assert summary["counts"]["operations"] == len(schema["graph"]["nodes"])
+    assert summary["counts"]["fields"] == len(schema["fields"])
+    assert "graph" not in summary
+    assert document["metadata"]["truncated"] is False
 
 
 def test_conserve_rejects_a_mass_shift_across_household_sizes() -> None:
@@ -265,8 +408,8 @@ def test_spi_support_channel_declares_its_mass_change_and_cgt_clones_conserve() 
     graph = uk_spine_graph(load_country_spec("uk"))
 
     assert graph.node("spi_support_channel").mass == "declared"
+    assert graph.node("cgt_support_split").mass == "conserve"
     assert graph.node("cgt_incidence_clone").mass == "conserve"
-    assert graph.node("cgt_band_donors").mass == "free"
     assert graph.node("cgt_incidence_anchor").mass == "conserve"
     assert graph.node("cgt_incidence_anchor").params["expand_cells"] == ()
     assert "cgt_incidence_anchor.owned" not in {node.id for node in graph.nodes}
@@ -308,3 +451,46 @@ def test_zero_row_expand_still_refuses_a_shift_across_household_sizes() -> None:
             _zero_row_expand_node(),
             _zero_row_expand_result([0.5, 2.5], total=3.0),
         )
+
+
+def test_property_components_reads_cover_the_stage_inputs() -> None:
+    """A node receives its declared cells alone, so the declaration must name
+    every person column the landlord stage requires (the recipient flag joined
+    them with microcosm#840; the 13 October twin build failed at the node
+    before the declaration followed)."""
+    from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
+    from microcosm.build.uk_runtime.property_components import (
+        PROPERTY_COMPONENTS_PERSON_INPUTS,
+    )
+
+    declared = _STAGE_CONSUMES["property_components"]
+    assert declared is not None
+    required = {("person", column) for column in PROPERTY_COMPONENTS_PERSON_INPUTS}
+    assert required <= declared, sorted(required - declared)
+
+
+def test_spi_benefit_coherence_reads_cover_its_work_tests() -> None:
+    """The contributory awards' work tests read the copy's earnings and its
+    twin's hours, and the receipt reads its pension payments and counts by
+    source household: the node gets only its declared cells (the 4 November
+    b5j spine failed at the node before the hours followed)."""
+    from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES
+    from microcosm.build.uk_runtime.spi_benefit_coherence import (
+        SPI_PENSION_PAYMENTS_COLUMN,
+        SPI_WITHIN_LIMIT_EARNINGS_COLUMNS,
+        SPI_WITHIN_LIMIT_HOURS_COLUMN,
+        SPI_WITHIN_LIMIT_REPORT_COLUMNS,
+    )
+
+    declared = _STAGE_CONSUMES["spi_benefit_coherence"]
+    assert declared is not None
+    required = {
+        ("person", column)
+        for column in (
+            *SPI_WITHIN_LIMIT_REPORT_COLUMNS,
+            *SPI_WITHIN_LIMIT_EARNINGS_COLUMNS,
+            SPI_WITHIN_LIMIT_HOURS_COLUMN,
+            SPI_PENSION_PAYMENTS_COLUMN,
+        )
+    } | {("household", "household_source_id")}
+    assert required <= declared, sorted(required - declared)

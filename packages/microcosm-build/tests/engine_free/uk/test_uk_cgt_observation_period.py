@@ -2,6 +2,7 @@
 
 # ruff: noqa: F403, F405
 from test_support.microcosm_build.uk_cgt_observation_period import *
+from test_support.microcosm_build.uk_local_rowwise import COMMITTED_BINDING_NOW
 
 
 @pytest.mark.parametrize("route", ["national", "local"])
@@ -26,20 +27,36 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
 
     registry = _registry()
     if route == "national":
-        resolver = resolver_factory(
-            frame=original, scratch_dir=tmp_path / "engine", year=2025
-        )
-        stage = UKNationalCalibrationStage(
+        from microcosm.calibrate import build_constraint_matrix, calibrate
+
+        # The graph's national route: resolve on the bound frame, materialise,
+        # compile the rows, solve under the doctrine, restore the pristine
+        # tables around the calibrated weights.
+        prepared, restore, rows, evidence = materialize_uk_national_rows(
+            original,
             registry,
-            band_edge_registry=registry,
             period=2025,
-            doctrine=UKNationalSolveDoctrine(epochs=2),
-            measure_resolver=resolver,
+            band_edge_registry=registry,
+            resolver_factory=resolver_factory,
+            scratch_dir=tmp_path / "engine",
         )
-        fitted = stage(original)
-        receipt = stage.manifest["measure_resolution"]["provider"][
-            "cgt_period_contract"
-        ]
+        problem = build_constraint_matrix(prepared, rows.targets, "household")
+        assert not problem.skipped
+        doctrine = UKNationalSolveDoctrine(epochs=2)
+        result = calibrate(
+            prepared,
+            rows.targets,
+            weight_entity="household",
+            epochs=doctrine.epochs,
+            learning_rate=doctrine.learning_rate,
+            seed=doctrine.seed,
+            mass="free",
+            mass_reason="national doctrine calibration (test)",
+            max_weight_ratio=doctrine.max_weight_ratio,
+            target_loss_cap=doctrine.target_loss_cap,
+        )
+        fitted = restore(result.frame)
+        receipt = evidence["cgt_period_contract"]
     else:
         from microcosm.build.uk_runtime import full_measure
         from microcosm.build.uk_runtime.local_rowwise import (
@@ -50,7 +67,7 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
         monkeypatch.setattr(
             full_measure,
             "compute_household_metrics",
-            lambda _sim, _area, *, period, household_ids: pd.DataFrame(
+            lambda _sim, _area, *, period, input_period, household_ids: pd.DataFrame(
                 {"households": np.ones(len(household_ids))}, index=household_ids
             ),
         )
@@ -76,6 +93,7 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
             national_rows=national,
             restore=restore,
             epochs=2,
+            now=COMMITTED_BINDING_NOW,
         )
         fitted = result.frame
     assert all(spec.period == 2025 for spec in registry.specs)
@@ -88,6 +106,16 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
         },
         "cgt_2024_tax": {
             "model_variable": "capital_gains_tax",
+            "measurement_period": 2024,
+        },
+        # Table 4.1 bands and filters on the BADR measure, and Table 3's
+        # margin bands on the engine's CGT taxable income (microcosm#1014).
+        "cgt_2024_badr_gains": {
+            "model_variable": "capital_gains_badr",
+            "measurement_period": 2024,
+        },
+        "cgt_2024_taxable_income": {
+            "model_variable": "cgt_taxable_income",
             "measurement_period": 2024,
         },
     }

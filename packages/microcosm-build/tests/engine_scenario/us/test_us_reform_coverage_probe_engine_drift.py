@@ -13,8 +13,10 @@ definitions predated PolicyEngine-US 2.2.1, not on missing inputs:
 
 These tests pin the invariants that would have caught both before a release:
 each list-valued probe differs from the engine's own baseline list by exactly
-the one item it means to change, and each source/deduction probe moves only
-its own leaf on a household that also carries the neighbouring channels.
+the items it declares (the one item a source/deduction probe means to change,
+or the pre-H.R.1 status set an H.R.1 restoration probe restores), and each
+source/deduction probe moves only its own leaf on a household that also
+carries the neighbouring channels.
 """
 
 import pytest
@@ -36,8 +38,38 @@ _REMOVED_ITEM = {
     "workers_compensation_snap_exclusion": "workers_compensation",
     "educator_expense_ald_abolition": "educator_expense",
     "alimony_expense_ald_abolition": "alimony_expense_ald",
+    "niit_passive_pass_through_exclusion": "passive_partnership_s_corp_income",
 }
 _ADDED_ITEM = {"domestic_production_ald_reactivation": "domestic_production_ald"}
+# The H.R.1 restoration probes (microcosm#767) restore a pre-H.R.1 status list,
+# so each changes a declared set, not one item: SS71109 (Medicaid) and SS10108
+# (SNAP) dropped these humanitarian statuses from the eligible lists, and
+# SS71301 (ACA) added the humanitarian statuses to the ineligible list.
+_PRE_HR1_ELIGIBLE = frozenset(
+    {
+        "REFUGEE",
+        "ASYLEE",
+        "DEPORTATION_WITHHELD",
+        "PAROLED_ONE_YEAR",
+        "CONDITIONAL_ENTRANT",
+    }
+)
+_RESTORED_ITEMS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "hr1_medicaid_humanitarian_eligibility_restoration": (
+        frozenset(),
+        _PRE_HR1_ELIGIBLE,
+    ),
+    "hr1_snap_humanitarian_eligibility_restoration": (
+        frozenset(),
+        _PRE_HR1_ELIGIBLE,
+    ),
+    "hr1_aca_lawful_presence_restoration": (
+        frozenset(
+            {"REFUGEE", "ASYLEE", "DEPORTATION_WITHHELD", "PAROLED_ONE_YEAR", "TPS"}
+        ),
+        frozenset(),
+    ),
+}
 
 _SNAP_SOURCE_PROBES = {
     "child_support_received_snap_exclusion": "child_support_received",
@@ -89,7 +121,7 @@ def test_every_list_valued_probe_declares_its_one_item() -> None:
     # Guards the parametrization below against silently collecting nothing, and
     # makes a new list-valued probe declare the item it means to change.
     ids = {probe_id for probe_id, *_ in _list_valued_changes()}
-    assert ids == set(_REMOVED_ITEM) | set(_ADDED_ITEM)
+    assert ids == set(_REMOVED_ITEM) | set(_ADDED_ITEM) | set(_RESTORED_ITEMS)
     assert set(_SNAP_SOURCE_PROBES) <= set(_REMOVED_ITEM)
 
 
@@ -106,11 +138,12 @@ def test_list_probe_differs_from_engine_baseline_by_exactly_one_item(
     assert len(value) == len(set(value)), f"{probe_id}: duplicate items in {path}"
     removed = set(baseline) - set(value)
     added = set(value) - set(baseline)
-    expected = (
-        (set(), {_ADDED_ITEM[probe_id]})
-        if probe_id in _ADDED_ITEM
-        else ({_REMOVED_ITEM[probe_id]}, set())
-    )
+    if probe_id in _RESTORED_ITEMS:
+        expected = tuple(set(items) for items in _RESTORED_ITEMS[probe_id])
+    elif probe_id in _ADDED_ITEM:
+        expected = (set(), {_ADDED_ITEM[probe_id]})
+    else:
+        expected = ({_REMOVED_ITEM[probe_id]}, set())
     assert (removed, added) == expected, (
         f"{probe_id}: {path} must equal the installed engine's baseline with "
         f"only {expected} changed (removed, added); got removed "

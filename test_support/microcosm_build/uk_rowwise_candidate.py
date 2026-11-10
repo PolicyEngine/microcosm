@@ -11,7 +11,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -66,6 +66,28 @@ def _empty_support_exclusions_for_synthetic_rosters(
 
     monkeypatch.setattr(
         battery_bindings, "load_uk_local_area_support_exclusion_register", _loader
+    )
+
+
+@pytest.fixture(autouse=True)
+def _empty_local_target_fit_register_for_synthetic_cells(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthetic candidates never stand on the committed local cell receipts.
+
+    ``local_target_fit_reviewed_exclusions.json`` signs real local cells
+    after a build (microcosm#1301); evaluated on a synthetic candidate at a
+    fixed clock, an entry could read as not yet in force and fail a test
+    about the machinery. The register is pinned empty here; its committed
+    form is covered by ``test_uk_terminal_gates.py``.
+    """
+
+    import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+    monkeypatch.setattr(
+        battery_bindings,
+        "uk_default_local_target_fit_reviewed_exclusions",
+        lambda: MappingProxyType({}),
     )
 
 
@@ -270,10 +292,20 @@ def _write_staging_h5(
                 f"2023:{source_id}" for source_id in source_household_ids
             ],
             "household_source_id": source_household_ids,
+            # The support channel the identity kernel keys on (microcosm#932)
+            # agrees with the support clone index: a non-zero index is an
+            # SPI support copy.
+            "household_support_channel": pd.array(
+                ["spi" if index else "frs" for index in support_clone_indices],
+                dtype="string",
+            ),
             "household_support_clone_index": support_clone_indices,
             "household_is_spi_synthetic": spi_flags,
             "household_is_capital_gains_clone": [False] * len(household_ids),
-            "household_is_cgt_band_donor": [False] * len(household_ids),
+            "household_is_cgt_support_copy": [False] * len(household_ids),
+            "cgt_support_copy_index": [0] * len(household_ids),
+            "household_is_cgt_residential_clone": [False] * len(household_ids),
+            "cgt_residential_clone_index": [0] * len(household_ids),
         }
     )
     person_ids = [10_000 + household_id for household_id in household_ids]
@@ -479,9 +511,11 @@ class _FakeHub:
             raise RuntimeError("403 Forbidden token=do-not-record")
         assert parent_commit == self.sha
         for operation in operations:
-            self.files[(repo_id, operation.path_in_repo)] = Path(
-                operation.path_or_fileobj
-            ).read_bytes()
+            # The emitter commits copied files from their bytes.
+            content = operation.path_or_fileobj
+            self.files[(repo_id, operation.path_in_repo)] = (
+                content if isinstance(content, bytes) else Path(content).read_bytes()
+            )
         self.commits.append(
             {
                 "repo_id": repo_id,
@@ -525,6 +559,40 @@ def _staging_run_setup(builder, monkeypatch, tmp_path, *, remote: bool = False):
     return input_h5, ladder_path, flags
 
 
+#: Unread stand-in atomic-area supports (microcosm#932): every dense request
+#: names the three, and these runs refuse or stub before the supports are read.
+_SUPPORT_FLAGS = (
+    "--atomic-support-ew",
+    "supports/ew.npz",
+    "--atomic-support-scotland",
+    "supports/scotland.npz",
+    "--atomic-support-ni",
+    "supports/ni.npz",
+)
+_SUPPORT_PINS = (
+    "--atomic-support-sha256-ew",
+    "c" * 64,
+    "--atomic-support-sha256-scotland",
+    "d" * 64,
+    "--atomic-support-sha256-ni",
+    "e" * 64,
+)
+
+
+def _toy_support_flags(tmp_path: Path) -> list[str]:
+    """The three toy supports written to disk, for a preparation that reads them."""
+    from test_support.microcosm_build.uk_atomic_support_fixtures import (
+        write_toy_supports,
+    )
+
+    _, paths = write_toy_supports(tmp_path / "supports")
+    flags = []
+    # ``write_toy_supports`` keeps ``SYSTEMS`` order: E&W, Scotland, NI.
+    for system, label in zip(paths, ("ew", "scotland", "ni"), strict=True):
+        flags += [f"--atomic-support-{label}", str(paths[system])]
+    return flags
+
+
 def _build_args(input_h5, ladder_path, flags, out, *extra):
     return [
         "--input-h5",
@@ -533,6 +601,7 @@ def _build_args(input_h5, ladder_path, flags, out, *extra):
         "dense",
         "--ladder",
         str(ladder_path),
+        *_SUPPORT_FLAGS,
         *flags,
         "--out",
         str(out),
@@ -542,7 +611,6 @@ def _build_args(input_h5, ladder_path, flags, out, *extra):
         "7",
         "--epochs",
         "2",
-        "--skip-holdout",
         *extra,
     ]
 
@@ -575,6 +643,7 @@ def _dense_argv(tmp_path: Path, *extra: str) -> list[str]:
         str(tmp_path / "ladder.npz"),
         "--ladder-sha256",
         "3" * 64,
+        *_SUPPORT_FLAGS,
         *extra,
     )
 

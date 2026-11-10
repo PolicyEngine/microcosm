@@ -10,34 +10,80 @@ ACS 2024 1-year spine, nullable, simulation-ready except calibration).
 Stages (``--stage all`` runs materialize -> calibrate -> qa -> finalize ->
 package; each is separately resumable):
 
-  materialize : compile the state-level administrative surface from the
-                Ledger feed exactly like the production path
+  materialize : compile the administrative surface from the Ledger feed
+                exactly like the production path
                 (``compile_us_fiscal_target_registry`` -> RI Medicaid
                 substitution -> state {usda_snap, cms_medicaid[enrollment],
                 irs_soi}; ``--soi-mode state`` by default -- Build O's
-                state-geography SOI contract -- with ``totals`` and ``full``
-                as explicit opt-ins), run the household-chunked engine pass under the
-                nullable-artifact contract (input-schema projection +
-                reviewed-null fill), add PUMA-ladder population marginals
-                (state + congressional district), and write a lean float32
-                target-frame checkpoint + targets.json. Heavy stage; a crash
-                in calibrate never re-runs the microsim.
-  calibrate   : epoch-batched warm-start calibrate on the lean checkpoint
-                (adam, mass conserved, hard weight-ratio cap; resumable with
-                --resume), write diagnostics and the calibrated weights onto
-                a copy of the staging H5.
+                state-geography SOI contract -- with ``totals``, ``full`` and
+                ``state_cd`` (district SOI rows, one vintage per state
+                concept) as explicit opt-ins), refuse a staging run that
+                records no passing ACS local immigration stage
+                (microcosm#1020), no passing native ACS work/disability
+                stage (microcosm#1021), no passing ACS local income
+                transfer or no passing ACS local SSI disability-criteria
+                stage (microcosm#1022), seed ACS-row SNAP/TANF take-up on
+                the full staging frame (microcosm#1019) and fill the ACS
+                rows' discretionary ABAWD exemption (a cap-based
+                upper-bound proxy), housing-assistance receipt, Medicare
+                take-up and Head Start take-up without the engine (native
+                VEH is recorded as vehicle availability only)
+                (microcosm#1022; the consumer export re-derives the same
+                values), assign the
+                ACS rows' SSI and Medicaid take-up after a
+                household-batched engine pre-pass over the drawn rung's
+                ACS households (microcosm#1022; the consumer export
+                applies the recorded assignment), run the
+                household-chunked
+                engine pass under the nullable-artifact contract (input-schema
+                projection + reviewed-null fill), add PUMA-ladder population
+                marginals (state + congressional district), assign the CD
+                holdout, and write the lean checkpoint: a structure-only H5,
+                target_registry.json, a sparse (targets x households) float32
+                CSR target matrix row-aligned with it (target_matrix.npz) and
+                target_roles.json. ``--sample-fraction`` draws a development
+                rung.
+                Heavy stage; a crash in calibrate never re-runs the microsim.
+  calibrate   : epoch-batched warm-start calibrate on the checkpoint's
+                training targets (adam, mass conserved, hard weight-ratio cap,
+                optional L2 penalty --l2-lambda of form --l2-basis under
+                --mass-parametrization; resumable with --resume; each
+                target's loss weighted with the national release's formula
+                under the ACS local row mapping, by
+                ``microcosm.build.us_runtime.target_loss_weights``, with
+                ``--target-family-loss-multiplier``), score the held-out
+                district targets against the pro-rata baseline, record ESS
+                over rows and distinct households, and write the calibrated
+                weights onto a copy of the staging H5.
   qa          : chunked engine probe of the calibrated artifact recording
                 per-spine SSI incidence and intensity (the microcosm#403
-                signature, measured rather than assumed).
+                signature, measured rather than assumed) and an
+                informational December-eligible SNAP take-up snapshot
+                (unit- and person-weighted; not the FNS fiscal-year
+                participation rate).
   finalize    : release-style gate report (PUMA-ladder gate, calibration
                 gate, spine-composition evidence) + the reviewed-limitations
                 register for this lineage (inherited #507 SSI aged-band
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
-                sub-PUMA coverage), and flip the summary simulation-ready.
+                sub-PUMA coverage), grade the reviewed default fills both
+                engine passes applied against their means-tested consumer
+                register (microcosm#1022,
+                ``acs_local_reviewed_fill_consumers.yaml``), and flip the
+                summary simulation-ready.
   package     : refuse a calibrated H5 that stores a model input the
                 installed policyengine-us does not define (microcosm#1026;
-                ``microcosm.data.stored_inputs``), then
+                ``microcosm.data.stored_inputs``) or on which that engine's
+                SPM measurement would refuse a unit with no classified adult
+                (microcosm#1263;
+                ``microcosm.build.us_runtime.spm_measurement_gate``), or that
+                lacks complete occupation, industry and worked-last-year
+                inputs on any person (microcosm#719), refuse ACS persons
+                made SSI-criteria-positive while the run records no SSI
+                take-up handling for ACS rows (the SSI take-up release
+                block, microcosm#1022), re-grade the packaged fill manifests
+                against the reviewed-fill consumer register (microcosm#1022),
+                then
                 assemble releases/<id>/ with the non-default local-area
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
@@ -45,6 +91,14 @@ package; each is separately resumable):
                 a separate reviewed step (``microcosm-publish-release
                 <dir> --no-latest``); this tool never uploads and never
                 touches latest.json.
+
+Telemetry: after parsing its arguments the tool starts the emitter
+(``microcosm.build.program_telemetry``, pipeline ``us_acs_local_release``),
+records each stage it runs and then completion, or failure with the error.
+With ``MICROCOSM_TELEMETRY_REQUIRED=1``, which the Modal stage runner sets, an
+emitter that cannot be used stops the tool before any stage. The runner also
+names the telemetry run (``MICROCOSM_TELEMETRY_RUN_ID``); run by hand, the tool
+makes its own attempt ID.
 """
 
 from __future__ import annotations
@@ -59,13 +113,101 @@ import subprocess
 import sys
 import threading
 import time
+from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.program_telemetry import program_telemetry
+from microcosm.build.us_runtime import target_loss_weights as loss_weighting
+from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
+from microcosm.build.us_runtime.acs_local_immigration import (
+    ACS_LOCAL_IMMIGRATION_COLUMNS,
+    ACS_LOCAL_IMMIGRATION_GATE_NAME,
+    ACS_LOCAL_IMMIGRATION_ISSUE,
+    acs_local_immigration_receipt_failures,
+    acs_local_immigration_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_income import (
+    ACS_LOCAL_INCOME_DONOR_CHANNEL,
+    ACS_LOCAL_INCOME_SHARED_RETIREMENT_COMPONENTS,
+    ACS_LOCAL_INCOME_TRANSFER_COLUMNS,
+    ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
+    ACS_LOCAL_INCOME_TRANSFER_ISSUE,
+    ACS_LOCAL_INCOME_TRANSFER_METHOD,
+    acs_local_income_transfer_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_receipt_anchors import (
+    ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME,
+    ACS_LOCAL_RECEIPT_ANCHOR_ISSUE,
+    ACS_LOCAL_RECEIPT_ANCHOR_METHOD,
+    acs_local_receipt_anchor_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
+    ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME,
+    ACS_LOCAL_REVIEWED_FILL_CONSUMERS_ISSUE,
+    acs_local_reviewed_fill_consumer_gate,
+    load_reviewed_fill_consumer_register,
+    reviewed_fill_register_summary,
+)
+from microcosm.build.us_runtime.acs_local_ssi_disability import (
+    ACS_LOCAL_SSI_DISABILITY_COLUMN,
+    ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
+    ACS_LOCAL_SSI_DISABILITY_ISSUE,
+    ACS_LOCAL_SSI_DISABILITY_METHOD,
+    acs_local_ssi_disability_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up import (
+    ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS,
+    ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
+    ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE,
+    ACS_LOCAL_SSI_MEDICAID_TAKE_UP_METHOD,
+    acs_local_ssi_medicaid_take_up_assignment,
+    acs_local_ssi_medicaid_take_up_signal_gate,
+    with_acs_local_ssi_medicaid_take_up,
+    with_recorded_acs_local_ssi_medicaid_take_up,
+)
+from microcosm.build.us_runtime.acs_local_take_up import (
+    ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
+    ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE,
+    ACS_LOCAL_TAKE_UP_COLUMNS,
+    ACS_LOCAL_TAKE_UP_GATE_NAME,
+    ACS_VEHICLES_AVAILABLE_RECEIPT,
+    acs_local_take_up_signal_gate,
+    with_acs_local_take_up_inputs,
+)
+from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
+    US_VEHICLES_OWNED_COLUMN,
+    US_VEHICLES_VALUE_COLUMN,
+)
+from microcosm.build.us_runtime.acs_local_work_disability import (
+    ACS_LOCAL_DISABILITY_COLUMNS,
+    ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
+    ACS_LOCAL_WORK_DISABILITY_ISSUE,
+    ACS_NATIVE_PROVENANCE,
+    WEEKS_WORKED_EXPORT_BLOCKER,
+    acs_local_work_disability_signal_gate,
+)
+from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.esi_premiums import refuse_unassigned_us_esi_premiums
+from microcosm.build.us_runtime.org_wages import (
+    US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
+    require_us_occupation_and_work_experience_inputs,
+)
+from microcosm.build.us_runtime.ssi_disability_criteria import (
+    SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
+)
+from microcosm.data.contract import (
+    US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
+    US_LOCAL_AREA_STORED_INPUTS_STAGE,
+    US_SPM_MEASUREMENT_EVIDENCE_KEY,
+    US_STORED_INPUTS_EVIDENCE_KEY,
+    us_engine_scopes_spm_universe,
+)
 
 _TOOLS_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _TOOLS_DIR.parent
@@ -73,6 +215,9 @@ if str(_TOOLS_DIR) not in sys.path:
     # The chunked materializer reuses the production target-frame seam from
     # the sibling release tool rather than forking it.
     sys.path.insert(0, str(_TOOLS_DIR))
+
+import us_acs_local_cd_surface as cd_surface  # noqa: E402 - needs tools/ on sys.path
+import us_acs_local_county_surface as county_surface  # noqa: E402
 
 PERIOD = 2024
 RELEASE_NAMESPACE = "buildo_acs_local"
@@ -104,17 +249,45 @@ LEGACY_STAGING_REFRESH_RECIPE = (
 #: ``totals`` keeps only the specs whose ``target_role`` is not
 #: ``soi_fiscal_distribution`` -- on the pinned feed, ACA premium tax credit
 #: rows and no state AGI, income-tax or EITC total. ``full`` keeps every
-#: state-bearing spec, including the TY2023 congressional-district file, which
-#: needs a dense matrix too large for one 128 GB machine. Both are explicit
-#: opt-ins. docs/us-acs-local-soi-target-surface.md has the measured surfaces.
+#: state-bearing spec, including the congressional-district file, with both
+#: vintages of each state concept. Both are explicit opt-ins.
+#:
+#: ``state_cd`` (explicit opt-in) binds the congressional-district file's
+#: district rows on top of ``state``, keeping one vintage per state concept:
+#: Historic Table 2 gives a state concept's level, the district file only
+#: each district's share of it (``us_acs_local_cd_surface.state_cd_soi_surface``).
+#: A hash-assigned block of its district targets is held out of calibration
+#: and scored against a pro-rata baseline. The target matrix is sparse in
+#: every mode. docs/us-acs-local-soi-target-surface.md has the surfaces.
 SOI_MODE_STATE = "state"
 SOI_MODE_TOTALS = "totals"
 SOI_MODE_FULL = "full"
-SOI_MODES = (SOI_MODE_STATE, SOI_MODE_TOTALS, SOI_MODE_FULL)
+SOI_MODE_STATE_CD = "state_cd"
+SOI_MODE_STATE_COUNTY = county_surface.SOI_MODE
+SOI_MODES = (
+    SOI_MODE_STATE,
+    SOI_MODE_TOTALS,
+    SOI_MODE_FULL,
+    SOI_MODE_STATE_CD,
+    SOI_MODE_STATE_COUNTY,
+)
 DEFAULT_SOI_MODE = SOI_MODE_STATE
 #: Ledger record-set specs from a congressional-district file start with this;
 #: ``state`` mode excludes them, which is what Build O's switch did.
 CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_"
+
+#: The kernel's ``l2_basis`` and ``mass_parametrization`` values
+#: (``microcosm.calibrate.L2_BASES`` / ``MASS_PARAMETRIZATIONS``), spelled here
+#: so parsing arguments never imports torch; a test pins them equal.
+L2_BASIS_CHOICES = ("chi_square", "record")
+MASS_PARAMETRIZATION_CHOICES = ("projection", "softmax")
+#: The penalty settings every solve had before they were options: a solver
+#: stamp or summary that lacks them was solved with these.
+HISTORICAL_PENALTY = {
+    "l2_lambda": 0.0,
+    "l2_basis": "record",
+    "mass_parametrization": "projection",
+}
 
 
 def _require_soi_mode(soi_mode: str) -> str:
@@ -126,19 +299,60 @@ def _require_soi_mode(soi_mode: str) -> str:
     return soi_mode
 
 
-def release_refresh_recipe(soi_mode: str) -> str:
+def release_refresh_recipe(
+    soi_mode: str,
+    cd_holdout_fraction: float | None = None,
+    penalty: dict | None = None,
+    target_family_loss_multipliers: dict | None = None,
+) -> str:
     """The one-command release refresh, pinned to the SOI surface it built.
 
     The recipe names ``--soi-mode`` explicitly so re-running it reproduces
-    the recorded surface even if the parser default changes again.
+    the recorded surface even if the parser default changes again, and, for
+    every ``state_cd`` build, ``--cd-holdout-fraction`` at the recorded value
+    (0 included, full precision), since ``state_cd`` otherwise defaults to a
+    10% holdout. It names ``--l2-lambda``, ``--l2-basis`` and
+    ``--mass-parametrization`` at the recorded ``penalty`` (a legacy summary
+    that records none reads as the historical solve) for the same reason: the
+    recipe rebuilds the recorded solve even after a default changes. Each
+    recorded target family loss multiplier is one
+    ``--target-family-loss-multiplier`` (none by default, as recorded).
     """
 
     _require_soi_mode(soi_mode)
+    holdout = (
+        f"--cd-holdout-fraction {float(cd_holdout_fraction)!r} "
+        if soi_mode == SOI_MODE_STATE_CD and cd_holdout_fraction is not None
+        else ""
+    )
+    flags = {
+        "l2_lambda": "--l2-lambda",
+        "l2_basis": "--l2-basis",
+        "mass_parametrization": "--mass-parametrization",
+    }
+    recorded = {
+        key: HISTORICAL_PENALTY[key]
+        if (penalty or {}).get(key) is None
+        else (penalty or {})[key]
+        for key in flags
+    }
+    solve = "".join(
+        f"{flag} {float(recorded[key])!r} "
+        if key == "l2_lambda"
+        else f"{flag} {recorded[key]} "
+        for key, flag in flags.items()
+    )
+    solve += "".join(
+        f"--target-family-loss-multiplier {family}={float(multiplier)!r} "
+        for family, multiplier in sorted((target_family_loss_multipliers or {}).items())
+    )
     return (
         "uv run tools/build_us_acs_local_release.py --stage all "
         "--staging-h5 <run>/acs_multispine_staging.h5 "
         "--feed <ledger-facts.jsonl> --feed-sha256 <sha> "
         f"--soi-mode {soi_mode} "
+        f"{holdout}"
+        f"{solve}"
         "--ladder build/us/us_puma_ladder_2020.npz "
         "--checkpoint-dir <run>/checkpoints "
         "--out-h5 <run>/populace_us_2024_acs_local.h5 "
@@ -214,9 +428,15 @@ def soi_surface_predicate(soi_mode: str):
       AGI-band slices: every SOI fact without a named role gets it, which at
       state level includes the all-income-range state and district rows.
     - ``full`` keeps them all.
+    - ``state_cd`` is not a filter: this returns the ``full`` candidates it
+      starts from, and :func:`state_admin_surface` reconciles them.
     """
 
     _require_soi_mode(soi_mode)
+    if soi_mode == SOI_MODE_STATE_CD:
+        soi_mode = SOI_MODE_FULL
+    elif soi_mode == SOI_MODE_STATE_COUNTY:
+        soi_mode = SOI_MODE_STATE
 
     def selected(spec) -> bool:
         metadata = spec.metadata
@@ -240,16 +460,72 @@ def soi_surface_predicate(soi_mode: str):
     return selected
 
 
+def _compiled_fiscal_registry(feed: str | Path):
+    """The production compile path and its reviewed substitution records.
+
+    feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
+    ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44).
+    """
+
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime import (
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+    )
+    from microcosm.build.us_runtime.fiscal_targets import (
+        compile_us_fiscal_target_registry,
+    )
+    from microcosm.build.us_runtime.medicaid_take_up import (
+        apply_us_medicaid_enrollment_substitutions,
+    )
+
+    artifact = load_ledger_consumer_artifact(str(feed))
+    registry = compile_us_fiscal_target_registry(
+        artifact.facts,
+        target_period=PERIOD,
+        congressional_district_vintage_crosswalk=(
+            load_congressional_district_vintage_crosswalk(
+                default_congressional_district_vintage_crosswalk_path()
+            )
+        ),
+        age_targets=True,
+    )
+    return apply_us_medicaid_enrollment_substitutions(registry)
+
+
 def state_admin_specs(
     feed: str | Path, families: list[str], soi_mode: str = DEFAULT_SOI_MODE
 ):
     """Select the state-level admin surface from the production compile path.
 
+    Returns ``(registry, ri_substitutions)``; :func:`state_admin_surface`
+    also returns the SOI surface receipt.
+    """
+
+    surface = state_admin_surface(feed, families, soi_mode=soi_mode)
+    return surface.registry, surface.ri_substitutions
+
+
+class AdminSurface:
+    """The compiled admin registry plus how its SOI slice was chosen."""
+
+    def __init__(self, registry, ri_substitutions, soi_receipt: dict) -> None:
+        self.registry = registry
+        self.ri_substitutions = ri_substitutions
+        self.soi_receipt = soi_receipt
+
+
+def state_admin_surface(
+    feed: str | Path, families: list[str], soi_mode: str = DEFAULT_SOI_MODE
+) -> AdminSurface:
+    """Select the admin surface from the production compile path.
+
     feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
     ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44) -> state-level
     {usda_snap, cms_medicaid[enrollment], irs_soi}. The SOI slice follows
-    :func:`soi_surface_predicate`: ``state`` (the default), ``totals`` or
-    ``full``.
+    :func:`soi_surface_predicate` for ``state`` (the default), ``totals`` and
+    ``full``; ``state_cd`` adds the reconciled congressional-district rows
+    (:func:`us_acs_local_cd_surface.state_cd_soi_surface`).
     """
 
     # Refuse an unknown mode before loading the feed and compiling the registry.
@@ -269,14 +545,12 @@ def state_admin_specs(
     from microcosm.calibrate.registry import TargetRegistry
 
     artifact = load_ledger_consumer_artifact(str(feed))
+    crosswalk_path = default_congressional_district_vintage_crosswalk_path()
+    crosswalk = load_congressional_district_vintage_crosswalk(crosswalk_path)
     registry = compile_us_fiscal_target_registry(
         artifact.facts,
         target_period=PERIOD,
-        congressional_district_vintage_crosswalk=(
-            load_congressional_district_vintage_crosswalk(
-                default_congressional_district_vintage_crosswalk_path()
-            )
-        ),
+        congressional_district_vintage_crosswalk=crosswalk,
         age_targets=True,
     )
     registry, ri_substitutions = apply_us_medicaid_enrollment_substitutions(registry)
@@ -295,11 +569,54 @@ def state_admin_specs(
                 and spec.metadata.get("target_role") == "medicaid_enrollment"
             ),
         ).specs
+    soi_receipt: dict = {"soi_mode": soi_mode}
     if "soi" in families:
-        picked += registry.select(
+        candidates = registry.select(
             family="irs_soi", predicate=soi_surface_predicate(soi_mode)
         ).specs
-    return TargetRegistry(list(picked), country="us"), ri_substitutions
+        if soi_mode == SOI_MODE_STATE_CD:
+            surface = cd_surface.state_cd_soi_surface(
+                candidates,
+                state_surface_predicate=soi_surface_predicate(SOI_MODE_STATE),
+                crosswalk=crosswalk,
+                crosswalk_sha256=_sha256(crosswalk_path),
+            )
+            picked += list(surface.specs)
+            soi_receipt.update(surface.receipt)
+        else:
+            picked += candidates
+            soi_receipt["counts"] = {"total": len(candidates)}
+    return AdminSurface(
+        TargetRegistry(list(picked), country="us"), ri_substitutions, soi_receipt
+    )
+
+
+def acs_local_ssi_medicaid_take_up_targets(feed: str | Path) -> dict[str, object]:
+    """The counts the ACS SSI/Medicaid take-up stage scales (microcosm#1022).
+
+    Compiled from the same feed and path as :func:`state_admin_specs` (a
+    second compile, run before the staging frame is loaded) and read exactly
+    as the fiscal lane's take-up stages read them: the SSA age-band SSI
+    recipient counts, and the post-substitution CMS state Medicaid enrollment
+    table with its reviewed substitution records.
+    """
+
+    import build_us_fiscal_refresh_release as release_tool
+
+    registry, substitutions = _compiled_fiscal_registry(feed)
+    try:
+        ssi = release_tool._ssi_take_up_band_targets_from_registry(registry.specs)
+        medicaid = release_tool._medicaid_source_target_table(registry.specs)
+    except RuntimeError as exc:
+        raise SystemExit(
+            "The ledger feed cannot supply the ACS local SSI/Medicaid take-up "
+            f"counts ({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}): {exc}"
+        ) from exc
+    return {
+        "ssi_band_targets": ssi,
+        "medicaid_state_targets": medicaid,
+        "medicaid_substitutions": [dict(record) for record in substitutions],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +626,159 @@ def state_admin_specs(
 
 class UnregisteredNullError(ValueError):
     """NaN in an engine-input column NOT in reviewed_engine_input_nulls."""
+
+
+class DeniedDefaultFillError(ValueError):
+    """NaN in an engine input whose engine default must never be the fill."""
+
+
+#: Why each runtime-owned input must never take its engine default, and what
+#: fills it instead. A missing cell is a build defect even when the staging
+#: register lists the column.
+_NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
+    # microcosm#1019: the take-up default, True, is universal take-up; this
+    # tool's ACS take-up stage fills them first.
+    **{
+        ("spm_unit", column): (
+            "the engine default is universal take-up (microcosm#1019); run the "
+            "ACS local take-up stage first"
+        )
+        for column in ACS_LOCAL_TAKE_UP_COLUMNS
+    },
+    # microcosm#1020: the immigration defaults are a citizen with a valid SSN
+    # and 5 years since entry; staging's ACS local immigration stage fills
+    # them.
+    **{
+        ("person", column): (
+            "the engine default is a citizen with a valid SSN, 5 years since "
+            f"entry ({ACS_LOCAL_IMMIGRATION_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column in ACS_LOCAL_IMMIGRATION_COLUMNS
+    },
+    # microcosm#1021: the disability default, False, removes every disability
+    # exemption; staging maps ACS rows natively and the donor release carries
+    # its own, so neither spine should ever reach the fill.
+    **{
+        ("person", column): (
+            "the engine default False removes every disability exemption "
+            f"({ACS_LOCAL_WORK_DISABILITY_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column in ACS_LOCAL_DISABILITY_COLUMNS
+    },
+    # microcosm#1022: the first three defaults bias SNAP on ACS rows and the
+    # last ignores donor evidence; this tool's ACS take-up stage fills them
+    # first, without the engine. household_vehicles_owned is not one: ACS
+    # VEH counts vehicles available, not owned, so the owned count keeps
+    # its reviewed default (microcosm#1064 review).
+    **{
+        key: f"{reason} ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}); run the ACS local "
+        "take-up stage first"
+        for key, reason in zip(
+            ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
+            (
+                "the engine default False switches the cap-based discretionary "
+                "ABAWD exemption proxy (drawn at the 8% statutory cap) off for "
+                "every ACS adult",
+                "the engine default False drops every ACS housing-assistance "
+                "recipient the transferred take-up flag records",
+                "the engine default True enrolls every Medicare-eligible ACS "
+                "person regardless of measured HINS3 coverage",
+                "the engine default True enrolls every Head Start-eligible ACS "
+                "child aged 3-5",
+            ),
+            strict=True,
+        )
+    },
+    # microcosm#1022: the income default, 0, drops every ACS recipient's
+    # income; staging's separate ASEC-channel pass fills the ACS rows and the
+    # donor release carries its own measured or imputed amounts.
+    **{
+        ("person", column): (
+            f"the engine default 0 drops {reason} for every ACS recipient "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column, reason in zip(
+            ACS_LOCAL_INCOME_TRANSFER_COLUMNS,
+            (
+                "child support received, SNAP and SSI unearned income",
+                "child support paid, the SNAP child-support deduction",
+                "workers' compensation, SNAP and SSI unearned income",
+                "non-SSA disability benefits, SNAP and SSI unearned income",
+                "401(k) distributions, gross and SNAP unearned income",
+                "403(b) distributions, gross and SNAP unearned income",
+                "SEP distributions, gross and SNAP unearned income",
+                "Keogh distributions, gross and SNAP unearned income",
+                "Roth-IRA distributions, SNAP and SSI unearned income",
+            ),
+            strict=True,
+        )
+    },
+    # microcosm#1022: the SSI disability default, False, fails every ACS
+    # person under 65 who is not blind; staging runs the donor's SIPP model on
+    # the ACS rows and the donor release carries its own values.
+    ("person", ACS_LOCAL_SSI_DISABILITY_COLUMN): (
+        "the engine default False fails the SSI disability test for every ACS "
+        f"person under 65 who is not blind ({ACS_LOCAL_SSI_DISABILITY_ISSUE}); "
+        "re-run staging with the current builder"
+    ),
+    # microcosm#1022: the SSI and Medicaid take-up default, True, is universal
+    # take-up; materialize assigns the ACS rows after an engine pre-pass and
+    # the consumer export applies the recorded assignment.
+    **{
+        ("person", column): (
+            f"the engine default is universal {program} take-up "
+            f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}); run the ACS local "
+            "SSI/Medicaid take-up stage first"
+        )
+        for column, program in zip(
+            ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS, ("SSI", "Medicaid"), strict=True
+        )
+    },
+}
+NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
+
+#: The checkpoint file holding the ACS rows' SSI and Medicaid take-up that
+#: materialize assigned (microcosm#1022); the consumer export applies it.
+ACS_SSI_MEDICAID_TAKE_UP_FILENAME = "acs_local_ssi_medicaid_take_up.npz"
+
+
+def _formula_owned_columns(base_frame) -> set[str]:
+    """The present non-structural columns ``formula_owned_outputs`` classifies
+    as engine outputs: what the engine pass holds back."""
+
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    adapter = PolicyEngineUSEngine()
+    structural = set(adapter._structural_columns())
+    present = {
+        column
+        for entity in base_frame.entities
+        for column in base_frame.table(entity).columns
+    }
+    return set(adapter.formula_owned_outputs(present)) - structural
+
+
+class DeclaredSourceInputNullError(UnregisteredNullError):
+    """A declared dataset source input is null or registered for a default fill.
+
+    ``policyengine_us.spm.DATASET_SOURCE_INPUTS`` "does not permit
+    synthesizing a default value when data are absent", so no register entry
+    can authorize a fill for one.
+    """
+
+
+#: The remedy a staging artifact without the ACS SPM role is told to take.
+_DECLARED_SOURCE_INPUT_REMEDY = (
+    "Rebuild the ACS multispine staging (tools/build_us_acs_multispine_base.py): "
+    "it derives is_spm_independent_minor_role for ACS persons from RELSHIPP on "
+    "the household SPM partition "
+    "(microcosm.build.us_runtime.acs_inputs.with_acs_spm_independence_role) "
+    "and refuses to register it as a reviewed null. Staging built before that "
+    "carries the role only on donor rows."
+)
 
 
 def project_input_only(base_frame, period: int = PERIOD):
@@ -324,13 +794,8 @@ def project_input_only(base_frame, period: int = PERIOD):
     """
 
     from microcosm.frame import Frame
-    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
-    adapter = PolicyEngineUSEngine()
-    structural = set(adapter._structural_columns())
-    tables = {entity: base_frame.table(entity) for entity in base_frame.entities}
-    present = {column for table in tables.values() for column in table.columns}
-    formula_owned = set(adapter.formula_owned_outputs(present)) - structural
+    formula_owned = _formula_owned_columns(base_frame)
     dropped: dict[str, list[str]] = {}
     if not formula_owned:
         return base_frame, dropped
@@ -378,19 +843,46 @@ def fill_reviewed_nulls(
     summary_path: Path,
     manifest_path: Path | None = None,
     period: int = PERIOD,
+    *,
+    engine=None,
+    system=None,
 ):
     """Apply the nullable-artifact contract for the engine pass (H5 untouched).
 
     Every registered (entity, column) has its NaN filled with the pe-us
     variable's own default; NaN in any engine-input column NOT in the
     register is a hard error with a per-spine diagnostic — an artifact
-    defect, surfaced not filled.
+    defect, surfaced not filled. NaN in a :data:`NEVER_DEFAULT_FILLED`
+    column is refused before anything is filled, registered or not. A
+    declared dataset source input is never filled: a register that names
+    one, or a null one, raises :class:`DeclaredSourceInputNullError`. Nor
+    is the ESI employer premium input, registered or not: a null there
+    refuses the build. ``engine`` and ``system`` default to the
+    PolicyEngine-US adapter and tax-benefit system.
     """
 
-    from policyengine_us import CountryTaxBenefitSystem
+    denied = [
+        f"{entity}.{column} ({int(frame.table(entity)[column].isna().sum())} null "
+        f"rows): {_NEVER_DEFAULT_FILLED_REASONS[(entity, column)]}"
+        for entity, column in sorted(NEVER_DEFAULT_FILLED)
+        if column in frame.table(entity) and frame.table(entity)[column].isna().any()
+    ]
+    if denied:
+        raise DeniedDefaultFillError(
+            f"Refusing to default-fill runtime-owned input(s): {'; '.join(denied)}."
+        )
+
+    # microcosm#454: the ESI employer premium exists only where the
+    # meps_esi_premiums stage ran (the ASEC donor rows). Refuse before any
+    # fill: a registered null here would become a silent zero on the ACS spine.
+    refuse_unassigned_us_esi_premiums(
+        frame, consumer="ACS local release (fill_reviewed_nulls)"
+    )
 
     from microcosm.build.us_runtime.base_pool import spine_column
-    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+    from microcosm.build.us_runtime.spm_independence_role import (
+        us_declared_dataset_source_inputs,
+    )
 
     summary = json.loads(Path(summary_path).read_text())
     register = {
@@ -402,9 +894,25 @@ def fill_reviewed_nulls(
             f"{summary_path} carries no reviewed_engine_input_nulls register; "
             "cannot apply the nullable-artifact engine-pass contract."
         )
-    adapter = PolicyEngineUSEngine()
-    input_names = set(adapter.variables())
-    system = CountryTaxBenefitSystem()
+    if engine is None:
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+        engine = PolicyEngineUSEngine()
+    if system is None:
+        from policyengine_us import CountryTaxBenefitSystem
+
+        system = CountryTaxBenefitSystem()
+    declared = us_declared_dataset_source_inputs(engine)
+    registered_declared = sorted(
+        f"{entity}.{column}" for entity, column in register if column in declared
+    )
+    if registered_declared:
+        raise DeclaredSourceInputNullError(
+            f"{summary_path} registers declared dataset source input(s) "
+            f"{registered_declared} for a default fill; policyengine_us.spm "
+            "forbids synthesizing them. " + _DECLARED_SOURCE_INPUT_REMEDY
+        )
+    input_names = set(engine.variables())
 
     fills, drift_warnings, violations = [], [], []
     for entity in frame.entities:
@@ -422,7 +930,7 @@ def fill_reviewed_nulls(
                     for spine in sorted(map(str, table[tag].dropna().unique()))
                     if int((missing & table[tag].eq(spine)).sum())
                 }
-            if (entity, column) not in register:
+            if column in declared or (entity, column) not in register:
                 violations.append(
                     {
                         "entity": entity,
@@ -430,6 +938,7 @@ def fill_reviewed_nulls(
                         "missing_rows": n_missing,
                         "rows": len(table),
                         "missing_rows_by_spine": by_spine,
+                        "declared_dataset_source_input": column in declared,
                     }
                 )
                 continue
@@ -491,12 +1000,118 @@ def fill_reviewed_nulls(
             f"by spine {v['missing_rows_by_spine']})"
             for v in violations
         )
-        raise UnregisteredNullError(
+        message = (
             f"{len(violations)} engine-input column(s) carry NaN but are NOT "
             "in the reviewed_engine_input_nulls register — artifact defect, "
             f"refusing to fill: {detail}"
         )
+        if any(v["declared_dataset_source_input"] for v in violations):
+            raise DeclaredSourceInputNullError(
+                f"{message}. A declared dataset source input may not be "
+                "defaulted. " + _DECLARED_SOURCE_INPUT_REMEDY
+            )
+        raise UnregisteredNullError(message)
     return fills, drift_warnings
+
+
+class MaterializedSurface:
+    """The sparse admin surface one engine pass produced."""
+
+    def __init__(self, matrix, compiled_specs, chunk_stats, carrier_check) -> None:
+        #: (compiled specs x households) CSR, float32 data, declared order.
+        self.matrix = matrix
+        self.compiled_specs = compiled_specs
+        self.chunk_stats = chunk_stats
+        #: Direct-vs-carrier evidence from the first chunk (district rows).
+        self.carrier_check = carrier_check
+
+    @property
+    def names(self) -> list[str]:
+        return [spec.measure for spec in self.compiled_specs]
+
+
+def _check_district_rows_against_parents(
+    parents, captured, target_households, measure_of, *, n_chunk: int, tally: dict
+) -> None:
+    """Every chunk: each stored district row against its state parent's column.
+
+    ``parents`` comes from ``cd_surface.district_row_parents``. A strict
+    (``state_cd``) block's district rows partition the parent's state, so the
+    float32 values stored for them, laid side by side, must equal the parent's
+    directly materialized column on every household of the chunk, bit for bit.
+    A fallback parent (another mode's same-concept state row) is compared on
+    the row's own households. Unlike the first-chunk row check, this covers
+    every household each concept touches, so it cannot be vacuous.
+    """
+
+    strict_blocks: dict[str, list[int]] = defaultdict(list)
+    fallback_rows = fallback_nonzero = 0
+    for index in sorted(captured):
+        if index not in parents:
+            continue
+        parent_name, strict = parents[index]
+        if strict:
+            strict_blocks[parent_name].append(index)
+            continue
+        positions, values = captured[index]
+        direct = target_households[measure_of[parent_name]].to_numpy(dtype=np.float32)
+        if not np.array_equal(values, direct[positions]):
+            differing = int((values != direct[positions]).sum())
+            raise RuntimeError(
+                f"A stored district row differs from its same-concept state "
+                f"row {parent_name} on {differing} of its household(s); the "
+                "carrier split is not exact for this surface."
+            )
+        fallback_rows += 1
+        fallback_nonzero += int(np.count_nonzero(values))
+    checked = nonzero = 0
+    for parent_name, rows in strict_blocks.items():
+        rebuilt = np.zeros(n_chunk, dtype=np.float32)
+        written = np.zeros(n_chunk, dtype=bool)
+        for index in rows:
+            positions, values = captured[index]
+            if written[positions].any():
+                raise RuntimeError(
+                    f"District rows of {parent_name} overlap on a household."
+                )
+            written[positions] = True
+            rebuilt[positions] = values
+        direct = target_households[measure_of[parent_name]].to_numpy(dtype=np.float32)
+        if not np.array_equal(rebuilt, direct):
+            outside = np.flatnonzero(~written & (direct != 0))
+            if len(outside):
+                household_ids = target_households["household_id"].to_numpy()
+                raise RuntimeError(
+                    f"{len(outside)} household(s) (household_id "
+                    f"{household_ids[outside[:5]].tolist()}) carry {parent_name} "
+                    "but sit in no district of its block: their congressional "
+                    "district is not one of their state's current-plan "
+                    "districts, or the block is missing that district's row."
+                )
+            differing = int((rebuilt != direct).sum())
+            raise RuntimeError(
+                f"The stored district rows of {parent_name} do not rebuild its "
+                f"directly materialized column ({differing} household(s)); the "
+                "carrier split is not exact for this surface."
+            )
+        checked += 1
+        nonzero += int(np.count_nonzero(direct))
+    for key, value in (
+        ("parent_blocks_checked", checked),
+        ("parent_block_nonzero_households", nonzero),
+        ("fallback_rows_checked", fallback_rows),
+        ("fallback_row_nonzero_households", fallback_nonzero),
+    ):
+        tally[key] = tally.get(key, 0) + value
+
+
+def _household_codes(release_tool, households, column: str) -> np.ndarray:
+    return np.asarray(
+        release_tool._integer_geography_codes(
+            households[column].to_numpy(), column=column
+        ),
+        dtype=np.int64,
+    )
 
 
 def materialize_chunked(
@@ -509,15 +1124,24 @@ def materialize_chunked(
     dropped_manifest_path: Path | None = None,
     summary_path: Path | None = None,
     fills_manifest_path: Path | None = None,
-    matrix_path: Path | None = None,
-):
-    """Household-chunked production materialization (memory-bounded).
+) -> MaterializedSurface:
+    """Household-chunked production materialization into a sparse matrix.
 
     One full-frame Microsimulation caches the entire dependency closure of
     the SOI components (the 1.6M-row jetsam class), so the unchanged
     production ``_materialize_target_frame`` runs on whole-household
-    sub-frames; each chunk's calc cache dies with its simulation and the
-    float32 measure matrix accumulates on disk when ``matrix_path`` is set.
+    sub-frames; each chunk's calc cache dies with its simulation. Each
+    chunk's measure columns go straight into a (targets x households) CSR
+    matrix with float32 values (``SparseTargetAssembler``): no dense
+    households x targets matrix exists at any point.
+
+    District SOI rows are not materialized one column each. The engine pass
+    materializes one geography-free carrier per distinct SOI concept, and
+    each district row is its carrier restricted to the district's households
+    (``us_acs_local_cd_surface.plan_carriers``). That equals the direct
+    materialization because the SOI slice masks a tax unit by its household's
+    state and district. The first chunk also materializes one district row
+    per carrier directly and refuses any difference.
     """
 
     import build_us_fiscal_refresh_release as release_tool
@@ -561,9 +1185,12 @@ def materialize_chunked(
             "table; frame is invalid."
         )
 
-    measure_names = None
-    compiled_specs = None
-    matrix = None
+    plan = cd_surface.plan_carriers(specs)
+    by_name = {spec.name: spec for spec in plan.declared}
+    assembler = cd_surface.SparseTargetAssembler(plan.n_rows, n_households)
+    compiled_names: set[str] | None = None
+    carrier_check: dict[str, object] = {"district_rows": len(plan.split)}
+    parents: dict[int, tuple[str, bool]] | None = None
     chunk_stats = []
     n_chunks = (n_households + hh_chunk - 1) // hh_chunk
     if n_chunks > 1:
@@ -574,32 +1201,36 @@ def materialize_chunked(
         started = time.time()
         mask = (person_position >= low) & (person_position < high)
         sub_frame = projected.select(mask)
+        chunk_households = sub_frame.table("household")
+        state_codes = district_codes = None
+        if plan.split:
+            state_codes = _household_codes(release_tool, chunk_households, "state_fips")
+            district_codes = _household_codes(
+                release_tool, chunk_households, "congressional_district_geoid"
+            )
+        check_specs = (
+            cd_surface.carrier_check_specs(plan, district_codes)
+            if chunk_index == 0 and plan.split
+            else ()
+        )
         target_frame, compiled_registry, _ = release_tool._materialize_target_frame(
             sub_frame,
-            tuple(specs),
+            plan.engine_specs + check_specs,
             maximum_microsim_batch_size=batch,
             refuse_population_aggregates=True if n_chunks > 1 else None,
         )
-        names = [spec.measure for spec in compiled_registry.specs]
-        if measure_names is None:
-            measure_names = names
-            compiled_specs = list(compiled_registry.specs)
-            if matrix_path is not None:
-                matrix = np.memmap(
-                    matrix_path,
-                    dtype=np.float32,
-                    mode="w+",
-                    shape=(n_households, len(names)),
-                )
-            else:
-                matrix = np.zeros((n_households, len(names)), dtype=np.float32)
-        elif names != measure_names:
+        compiled = {spec.name for spec in compiled_registry.specs}
+        engine_compiled = compiled - {spec.name for spec in check_specs}
+        if compiled_names is None:
+            compiled_names = engine_compiled
+        elif engine_compiled != compiled_names:
             raise RuntimeError(
                 f"chunk {chunk_index} compiled a different measure set "
-                f"({len(names)} vs {len(measure_names)}); refusing to assemble."
+                f"({len(engine_compiled)} vs {len(compiled_names)}); refusing "
+                "to assemble."
             )
-        chunk_households = target_frame.table("household")
-        got_ids = chunk_households["household_id"].to_numpy()
+        target_households = target_frame.table("household")
+        got_ids = target_households["household_id"].to_numpy()
         if len(got_ids) != high - low or not np.array_equal(
             got_ids, household_ids[low:high]
         ):
@@ -607,11 +1238,91 @@ def materialize_chunked(
                 f"chunk {chunk_index} household order/id mismatch; refusing "
                 "to assemble."
             )
-        for j, measure in enumerate(measure_names):
-            matrix[low:high, j] = chunk_households[measure].to_numpy(dtype=np.float32)
-        if matrix_path is not None:
-            matrix.flush()
-        del target_frame, compiled_registry, chunk_households, sub_frame, got_ids
+        for index, measure in plan.direct_rows:
+            if plan.declared[index].name in compiled_names:
+                assembler.add_column(
+                    index,
+                    low,
+                    target_households[measure].to_numpy(dtype=np.float64),
+                    name=plan.declared[index].name,
+                )
+        if plan.split:
+            carriers = {
+                carrier: target_households[carrier].to_numpy(dtype=np.float64)
+                for carrier in sorted(set(plan.carrier_of.values()))
+                if carrier in compiled_names
+            }
+            split = tuple(row for row in plan.split if row[3] in carriers)
+            index_of = {spec.name: index for index, spec in enumerate(plan.declared)}
+            captured = cd_surface.split_carriers_into(
+                assembler,
+                cd_surface.CarrierPlan(
+                    declared=plan.declared,
+                    engine_specs=plan.engine_specs,
+                    direct_rows=plan.direct_rows,
+                    split=split,
+                    carrier_of=plan.carrier_of,
+                ),
+                carriers,
+                low=low,
+                state_codes=state_codes,
+                district_codes=district_codes,
+                capture=frozenset(index for index, *_rest in split),
+            )
+            if parents is None:
+                parents, unchecked = cd_surface.district_row_parents(
+                    plan, compiled_names
+                )
+                carrier_check["rows_without_parent_check"] = len(unchecked)
+            _check_district_rows_against_parents(
+                parents,
+                captured,
+                target_households,
+                {name: by_name[name].measure for name, _strict in parents.values()},
+                n_chunk=high - low,
+                tally=carrier_check,
+            )
+            if check_specs:
+                checked = []
+                for spec in check_specs:
+                    carrier = plan.carrier_of[spec.name]
+                    if spec.name not in compiled or carrier not in carriers:
+                        raise RuntimeError(
+                            f"carrier check spec {spec.name} or its carrier "
+                            f"{carrier} did not materialize."
+                        )
+                    direct = target_households[spec.measure].to_numpy(dtype=np.float64)
+                    positions, values = captured[index_of[spec.name]]
+                    stored = np.zeros(high - low, dtype=np.float32)
+                    stored[positions] = values
+                    if not np.array_equal(stored, direct.astype(np.float32)):
+                        differing = int((stored != direct.astype(np.float32)).sum())
+                        raise RuntimeError(
+                            f"District row {spec.name} materialized directly "
+                            "differs from the row stored from its carrier "
+                            f"({differing} household(s)); the carrier split is "
+                            "not exact for this surface."
+                        )
+                    checked.append(
+                        {
+                            "target": spec.name,
+                            "carrier": carrier,
+                            "nonzero_households": int(np.count_nonzero(direct)),
+                        }
+                    )
+                carrier_check.update(
+                    {
+                        "carriers": len(carriers),
+                        "checked_district_rows": len(checked),
+                        "checked_nonzero_households": sum(
+                            entry["nonzero_households"] for entry in checked
+                        ),
+                        "compared": "stored CSR row vs direct materialization",
+                        "all_equal": True,
+                        "checked": checked,
+                    }
+                )
+        del target_frame, compiled_registry, target_households, sub_frame, got_ids
         gc.collect()
         stat = {
             "chunk": chunk_index + 1,
@@ -624,7 +1335,27 @@ def materialize_chunked(
         log(f"materialize chunk {chunk_index + 1}/{n_chunks}: {stat['wall_s']}s")
     del projected
     gc.collect()
-    return matrix, measure_names, compiled_specs, chunk_stats
+    matrix = assembler.to_csr()
+    keep = [
+        index
+        for index, spec in enumerate(plan.declared)
+        if spec.name in compiled_names
+        or plan.carrier_of.get(spec.name) in (compiled_names or set())
+    ]
+    compiled_specs = [by_name[plan.declared[index].name] for index in keep]
+    if len(keep) != plan.n_rows:
+        matrix = sparse_rows(matrix, keep)
+    return MaterializedSurface(matrix, compiled_specs, chunk_stats, carrier_check)
+
+
+def sparse_rows(matrix, rows):
+    """The CSR rows ``rows`` of ``matrix`` (float32 data preserved)."""
+
+    from scipy import sparse
+
+    selected = sparse.csr_array(matrix[rows])
+    selected.sort_indices()
+    return selected
 
 
 # ---------------------------------------------------------------------------
@@ -653,7 +1384,7 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
     ladder = load_us_puma_ladder(ladder_path)
     puma_states = (ladder.puma // 100_000).astype(int)
     populations: dict[str, dict[int, float]] = {}
-    if "state" in geographies:
+    if "state" in geographies or "county" in geographies:
         populations["state"] = {
             int(state): float(ladder.puma_population[puma_states == state].sum())
             for state in np.unique(puma_states)
@@ -665,50 +1396,56 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
             )
             for cd in np.unique(ladder.cd_overlap_cd)
         }
-    return populations
+    return county_surface.with_county_populations(ladder, populations, geographies)
 
 
-def population_measure_arrays(frame, ladder_populations, geographies: list[str]):
-    """Household-grain population measures as float32 arrays.
+def household_sizes(frame) -> np.ndarray:
+    """Persons per household, aligned to the household table (float32)."""
+
+    households = frame.table("household")
+    size = frame.table("person").groupby("person_household_id").size()
+    return households["household_id"].map(size).fillna(0).to_numpy(np.float32)
+
+
+def population_targets(
+    frame, ladder_populations, geographies: list[str], *, county_column="county_fips"
+):
+    """Household-grain population marginals as sparse target rows.
 
     Population in a geography = sum over persons-in-geo of household weight;
     every person shares its household's geography, so the household-grain
     measure is household_size x 1[household geo == value]. No engine
     involved. A ladder cell with no supporting household is DROPPED from the
-    surface and returned in the fourth element — the caller decides whether
-    a shrunken surface is acceptable (a capped smoke) or a defect (release).
+    surface and returned in the third element: the caller decides whether a
+    shrunken surface is acceptable (a capped smoke) or a defect (release).
+    Returns ``(target records, CSR rows, dropped cell names)``.
     """
 
-    households = frame.table("household")
-    persons = frame.table("person")
-    size = persons.groupby("person_household_id").size()
-    household_size = households["household_id"].map(size).fillna(0).to_numpy(np.float32)
-    names, arrays, values, dropped = [], [], [], []
-    column_map = {
-        "state": ("state_fips", "state"),
-        "cd": ("congressional_district_geoid", "cd"),
-    }
-    for geography in geographies:
-        column, key = column_map[geography]
-        geo_values = pd.to_numeric(households[column]).to_numpy()
-        for value, population in sorted(ladder_populations[key].items()):
-            present = geo_values == value
-            width = 2 if geography == "state" else 4
-            name = f"pop_{geography}_{value:0{width}d}"
-            if not present.any():
-                dropped.append(name)
-                continue
-            names.append(name)
-            arrays.append((household_size * present).astype(np.float32))
-            values.append(float(population))
-    return names, arrays, values, dropped
+    return cd_surface.population_rows(
+        frame.table("household"),
+        household_sizes(frame),
+        ladder_populations,
+        geographies,
+        county_column=county_column,
+    )
 
 
 def population_target_specs(names, values):
-    """Declare ladder population targets with the shared diagnostics hierarchy."""
+    """Declare ladder population targets with the shared diagnostics hierarchy.
 
+    Each geography carries the label the release's other targets give the
+    same id: a state its Census name, the name the ledger targets take from
+    their facts ("Maine"), and a district the Census Bureau's name, which
+    the IRS SOI district rows carry too. A registry refuses one US geography
+    with two labels (microcosm#1335).
+    """
+
+    from microcosm.build.us_runtime.congressional_district_vintage import (
+        CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
+        congressional_district_label,
+    )
     from microcosm.calibrate import TargetSpec
-    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
+    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
     from microcosm.calibrate.hierarchy import (
         CalibrationHierarchy,
         HierarchyCategory,
@@ -724,20 +1461,24 @@ def population_target_specs(names, values):
     )
     specs = []
     for name, value in zip(names, values, strict=True):
+        if name.startswith("pop_county_"):
+            specs.append(county_surface.population_spec(name, value, period=PERIOD))
+            continue
         if name.startswith("pop_state_"):
             fips = name.removeprefix("pop_state_")
-            label = US_STATE_FIPS_TO_POSTAL.get(fips, f"State {fips}")
+            label = US_STATE_FIPS_TO_NAME.get(fips)
+            if label is None:
+                raise ValueError(
+                    f"Population target {name!r} names no US state FIPS code."
+                )
             geography = HierarchyGeography(f"0400000US{fips}", label, "state")
         elif name.startswith("pop_cd_"):
             geoid = name.removeprefix("pop_cd_")
-            state_fips, district = geoid[:2], geoid[2:]
-            state = US_STATE_FIPS_TO_POSTAL.get(state_fips, state_fips)
-            district_label = (
-                "at-large" if district == "00" else f"district {int(district)}"
-            )
-            label = f"{state} congressional {district_label}"
+            # The ladder's districts are the 119th Congress plan.
+            geography_id = f"{CURRENT_CONGRESSIONAL_DISTRICT_PREFIX}{geoid}"
+            label = congressional_district_label(geography_id)
             geography = HierarchyGeography(
-                f"5001800US{geoid}", label, "congressional_district"
+                geography_id, label, "congressional_district"
             )
         else:  # pragma: no cover - names originate in population_measure_arrays
             raise ValueError(f"Unknown population target name {name!r}.")
@@ -763,20 +1504,72 @@ def population_target_specs(names, values):
     return tuple(specs)
 
 
-def extract_struct_tables(frame):
+def ladder_population_target_specs(ladder_populations, geographies):
+    """Every population target the ladder declares, before a household is read.
+
+    :func:`population_targets` later drops a ladder cell no staged household
+    supports, so its targets are a subset of these with the same labels.
+    """
+
+    cells = [
+        (cd_surface.population_target_name(geography, code), float(population))
+        for geography in geographies
+        for code, population in sorted(ladder_populations[geography].items())
+    ]
+    return population_target_specs(
+        [name for name, _population in cells],
+        [population for _name, population in cells],
+    )
+
+
+def require_one_label_per_geography(admin_registry, ladder_populations, geographies):
+    """Refuse admin and population targets that label one geography two ways.
+
+    The two first share a registry in the lean checkpoint, after the engine
+    pass over every staged household; assembling them here moves the
+    registry's geography-label refusal (microcosm#1335) to the start of the
+    materialize stage.
+    """
+
+    from microcosm.calibrate import TargetRegistry
+
+    return TargetRegistry(
+        (
+            *admin_registry.specs,
+            *ladder_population_target_specs(ladder_populations, geographies),
+        ),
+        country="us",
+    )
+
+
+#: Household columns the lean checkpoint keeps: identity, geography, and the
+#: origin tags the distinct-household ESS and spine shares need.
+LEAN_HOUSEHOLD_COLUMNS = (
+    "household_id",
+    "state_fips",
+    "congressional_district_geoid",
+    "county_fips",
+    "household_spine",
+    "household_source_id",
+)
+#: The checkpoint's sparse target matrix: (targets x households) CSR with
+#: float32 values, row ``i`` of which is ``target_registry.json`` spec ``i``.
+TARGET_MATRIX_FILENAME = "target_matrix.npz"
+#: Per-target build roles, row-aligned with the registry: train or holdout,
+#: geography, sigma, and a district row's state parent and populations.
+TARGET_ROLES_FILENAME = "target_roles.json"
+
+
+def extract_struct_tables(frame, *, county_column="county_fips"):
     """Small structural/geography copies so the big frame can be freed early."""
 
     households = frame.table("household")
     struct_columns = [
-        column
-        for column in (
-            "household_id",
-            "state_fips",
-            "congressional_district_geoid",
-            "county_fips",
-        )
-        if column in households.columns
+        column for column in LEAN_HOUSEHOLD_COLUMNS if column in households.columns
     ]
+    struct_columns += county_surface.struct_columns(
+        households, struct_columns, county_column=county_column
+    )
     person_columns = [
         column for column in PERSON_STRUCT if column in frame.table("person").columns
     ]
@@ -793,33 +1586,41 @@ def extract_struct_tables(frame):
 
 def write_lean_checkpoint(
     struct,
-    admin_matrix,
-    admin_names,
-    admin_specs,
-    pop_names,
-    pop_arrays,
-    pop_values,
+    matrix,
+    specs,
+    roles: list[dict],
     checkpoint_dir: Path,
 ):
-    """Assemble the lean target frame and its versioned target registry."""
+    """Write the lean checkpoint: structure H5, registry, sparse matrix, roles.
+
+    ``target_frame_lean.h5`` holds only structure (household identity,
+    geography, origin tags and design weights; person memberships; group
+    ids). ``target_registry.json`` holds every target, held-out ones
+    included; ``target_matrix.npz`` is a (targets x households) CSR with
+    float32 values whose row ``i`` is registry spec ``i``;
+    ``target_roles.json`` is row-aligned with both. Returns
+    ``(h5 path, registry, digests)``.
+    """
+
+    from scipy import sparse
 
     from microcosm.calibrate import TargetRegistry
     from microcosm.frame import put_frame_table
 
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    if isinstance(admin_matrix, np.memmap):
-        admin_matrix = np.array(admin_matrix)
-    parts = {
-        column: struct["household_struct"][column]
-        for column in struct["household_struct"].columns
-    }
-    for j, name in enumerate(admin_names):
-        parts[name] = admin_matrix[:, j]
-    for name, array in zip(pop_names, pop_arrays, strict=True):
-        parts[name] = array
-    lean_households = pd.DataFrame(parts)
-    del parts
-    gc.collect()
+    specs = tuple(specs)
+    matrix = sparse.csr_array(matrix)
+    n_households = len(struct["household_struct"])
+    if matrix.shape != (len(specs), n_households):
+        raise ValueError(
+            f"target matrix shape {matrix.shape} does not pair with "
+            f"{len(specs)} targets x {n_households} households."
+        )
+    if [role["name"] for role in roles] != [spec.name for spec in specs]:
+        raise ValueError("target roles are not row-aligned with the target specs.")
+    if matrix.data.dtype != np.float32:
+        matrix = sparse.csr_array(matrix, dtype=np.float32)
+    lean_households = struct["household_struct"].copy()
     lean_households["household_weight"] = struct["weights"]
     checkpoint_h5 = checkpoint_dir / "target_frame_lean.h5"
     with pd.HDFStore(checkpoint_h5, mode="w") as store:
@@ -843,17 +1644,28 @@ def write_lean_checkpoint(
                 preferred_format="fixed",
             )
         store.put("_time_period", pd.Series([PERIOD]), format="table")
-    registry = TargetRegistry(
-        (*admin_specs, *population_target_specs(pop_names, pop_values)),
-        country="us",
-    )
+    registry = TargetRegistry(specs, country="us")
     registry.to_json(checkpoint_dir / "target_registry.json")
-    log(
-        f"checkpoint: {checkpoint_h5.name} ({len(lean_households)} hh, "
-        f"{len(admin_names) + len(pop_names)} measures), target_registry.json "
-        f"({len(registry)} targets)"
+    matrix_sha = cd_surface.save_target_matrix(
+        checkpoint_dir / TARGET_MATRIX_FILENAME, matrix
     )
-    return checkpoint_h5, registry
+    (checkpoint_dir / TARGET_ROLES_FILENAME).write_text(json.dumps(roles, indent=1))
+    log(
+        f"checkpoint: {checkpoint_h5.name} ({n_households} hh), "
+        f"target_registry.json ({len(registry)} targets), "
+        f"{TARGET_MATRIX_FILENAME} ({matrix.shape[0]} x {matrix.shape[1]}, "
+        f"nnz {matrix.nnz:,})"
+    )
+    return (
+        checkpoint_h5,
+        registry,
+        {
+            "target_registry_sha256": _sha256(checkpoint_dir / "target_registry.json"),
+            "target_matrix_sha256": matrix_sha,
+            "target_roles_sha256": _sha256(checkpoint_dir / TARGET_ROLES_FILENAME),
+            "lean_h5_sha256": _sha256(checkpoint_h5),
+        },
+    )
 
 
 def load_lean_frame(checkpoint_h5: Path):
@@ -892,24 +1704,370 @@ def _load_staging_frame(path: Path):
     return _load_base_frame(Path(path))
 
 
+def _with_local_take_up(frame, *, seed: int):
+    """Seed ACS-row SNAP/TANF take-up (#1019) and the engine-free fills
+    (#1022) before any reviewed-null fill."""
+
+    frame, receipt = with_acs_local_take_up_inputs(frame, seed=seed)
+    for column, entry in receipt["programs"].items():
+        log(
+            f"ACS take-up {column}: filled {entry['filled_rows']:,} rows, "
+            f"weighted ACS share {entry['weighted_take_up_share']:.3f}"
+        )
+    for column, entry in receipt["engine_free_fills"]["columns"].items():
+        log(f"ACS engine-free fill {column}: filled {entry['filled_rows']:,} rows")
+    available = receipt["engine_free_fills"][ACS_VEHICLES_AVAILABLE_RECEIPT]
+    log(
+        "ACS VEH (vehicle availability; written to no engine input): "
+        f"{available['housing_units']:,} housing units, "
+        f"{available['top_coded_rows']:,} top-coded, weighted share with a "
+        "vehicle available "
+        f"{available['weighted_housing_unit_share_with_vehicle_available']:.3f}"
+    )
+    audit = receipt["engine_free_fills"]["columns"]["takes_up_medicare_if_eligible"][
+        "hins3_audit"
+    ]
+    for kind in ("blank", "invalid"):
+        counts = audit[kind]
+        log(
+            f"ACS HINS3 {kind} (read as not covered; informational): "
+            f"{counts['rows']:,} rows, weight {counts['weight']:,.0f}; at 65+ "
+            f"{counts['rows_65_plus']:,} rows, weight {counts['weight_65_plus']:,.0f}"
+        )
+    return frame, receipt
+
+
+def _recorded_take_up(identity: dict) -> dict:
+    """The ACS take-up assignment materialize calibrated against, or refuse.
+
+    The consumer export re-derives the flags with the recorded seed and must
+    reproduce the recorded digest, so both engine passes see the same flags.
+    A receipt without the engine-free fills is a pre-#1022 checkpoint, whose
+    ACS rows reached the engine pass with three SNAP-relevant defaults; one
+    whose fills omit a column (Head Start take-up) predates that fill. One
+    whose fills record ``household_vehicles_owned``, or carry no ACS ``VEH``
+    availability receipt, wrote ``VEH`` (vehicles available, leased and
+    employer-provided ones included) as the owned count, which the #1064
+    review withdrew. Its engine pass and digest cover counts this build no
+    longer writes, so it is refused here, before calibration, rather than at
+    the export's digest check.
+    """
+
+    receipt = identity.get("acs_local_take_up")
+    fills = receipt.get("engine_free_fills") if isinstance(receipt, dict) else None
+    if (
+        not isinstance(receipt, dict)
+        or type(receipt.get("seed")) is not int
+        or not isinstance(receipt.get("assigned_sha256"), str)
+    ):
+        raise SystemExit(
+            "run_identity.json records no ACS local take-up assignment "
+            "(microcosm#1019): the checkpoint was materialized with every ACS "
+            "SPM unit default-filled to take up SNAP and TANF. Re-run --stage "
+            "materialize."
+        )
+    if (
+        not isinstance(fills, dict)
+        or fills.get("issue") != ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE
+    ):
+        raise SystemExit(
+            "run_identity.json records no ACS engine-free fills "
+            f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}): the checkpoint was "
+            "materialized with every ACS row's discretionary ABAWD exemption, "
+            "housing-assistance receipt and Medicare take-up at the engine "
+            "default. Re-run --stage materialize."
+        )
+    columns = fills.get("columns")
+    if not isinstance(columns, dict) or any(
+        column not in columns for _, column in ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS
+    ):
+        raise SystemExit(
+            "run_identity.json records ACS engine-free fills without Head Start "
+            f"take-up ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}): the checkpoint was "
+            "materialized with every Head Start-eligible ACS child taking Head "
+            "Start up. Re-run --stage materialize."
+        )
+    if US_VEHICLES_OWNED_COLUMN in columns or not isinstance(
+        fills.get(ACS_VEHICLES_AVAILABLE_RECEIPT), dict
+    ):
+        raise SystemExit(
+            "run_identity.json records ACS VEH written as the owned vehicle "
+            f"count ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}, #1064 review): VEH "
+            "counts vehicles available, leased and employer-provided ones "
+            "included, and the checkpoint was materialized with it as "
+            f"{US_VEHICLES_OWNED_COLUMN}, which San Francisco CAAP, Los "
+            "Angeles General Relief and lives_in_vehicle read as an owned "
+            "count. Re-run --stage materialize."
+        )
+    return receipt
+
+
+def _acs_engine_values(
+    view, *, variable: str, summary_path: Path, hh_chunk: int
+) -> np.ndarray:
+    """One household-batched engine pass over a pre-pass view (microcosm#1022).
+
+    The stage calls this on the donor households first, to measure the donor
+    rows' pooled contribution that sets each ACS residual target, then on the
+    ACS households. The view gets materialize's own engine-pass contract
+    (input-schema projection plus reviewed-null fill), then the fiscal lane's
+    batched helper evaluates ``variable`` in chunks of ``hh_chunk``
+    households, so the pre-pass holds one chunk's simulation at a time. The
+    view is the stage's own copy of those households, so both contract steps
+    edit it in place (the classifier of :func:`project_input_only`, without
+    its copy): the pre-pass never holds a second copy of the rows, and the
+    donor view (about 5% of persons) is freed before the ACS view is built.
+    """
+
+    import build_us_fiscal_refresh_release as release_tool
+
+    helpers = {
+        "uncapped_ssi": release_tool._ssi_person_uncapped_amount,
+        "is_medicaid_eligible": release_tool._medicaid_person_eligibility,
+    }
+    helper = helpers[variable]
+    started = time.time()
+    formula_owned = _formula_owned_columns(view)
+    for entity in view.entities:
+        table = view.table(entity)
+        held = sorted(set(table.columns) & formula_owned)
+        if held:
+            table.drop(columns=held, inplace=True)
+    fill_reviewed_nulls(view, summary_path, period=PERIOD)
+    if view.n("household") > hh_chunk:
+        release_tool._assert_group_entities_nest_in_households(view)
+        release_tool._assert_medicaid_claiming_tax_units_local(view)
+    values = helper(view, maximum_microsim_batch_size=hh_chunk)
+    gc.collect()
+    log(
+        f"Engine pre-pass {variable}: {len(values):,} persons "
+        f"({time.time() - started:.1f}s, peak RSS {rss():.2f}GB)"
+    )
+    return values
+
+
+def _with_local_ssi_medicaid_take_up(
+    frame, *, seed: int, targets: dict, summary_path: Path, hh_chunk: int
+):
+    """Assign and gate ACS-row SSI and Medicaid take-up (microcosm#1022).
+
+    Runs before materialize's engine pass, so the CMS enrollment targets
+    select enrollees among eligible ACS persons instead of shrinking the
+    eligible population; a failed gate stops the stage before the hours of
+    materialization. The ACS targets are what the donor rows leave of the SSA
+    and CMS counts on the pooled weights, measured with the same two engine
+    passes over the donor households (microcosm#1060 review).
+    """
+
+    started = time.time()
+    try:
+        frame, receipt = with_acs_local_ssi_medicaid_take_up(
+            frame,
+            seed=seed,
+            ssi_band_targets=targets["ssi_band_targets"],
+            medicaid_state_targets=targets["medicaid_state_targets"],
+            medicaid_substitutions=targets["medicaid_substitutions"],
+            uncapped_ssi=lambda view: _acs_engine_values(
+                view,
+                variable="uncapped_ssi",
+                summary_path=summary_path,
+                hh_chunk=hh_chunk,
+            ),
+            medicaid_eligibility=lambda view: _acs_engine_values(
+                view,
+                variable="is_medicaid_eligible",
+                summary_path=summary_path,
+                hh_chunk=hh_chunk,
+            ),
+        )
+    except ValueError as exc:
+        raise SystemExit(
+            "ACS local SSI/Medicaid take-up stage failed "
+            f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}): {exc}"
+        ) from exc
+    receipt["engine_prepass"].update(
+        stage_wall_s=round(time.time() - started, 1),
+        hh_chunk=hh_chunk,
+        peak_rss_gb=round(rss(), 2),
+    )
+    gate = acs_local_ssi_medicaid_take_up_signal_gate(frame, receipt=receipt)
+    receipt["gate"] = {
+        "name": gate.name,
+        "passed": gate.passed,
+        "failures": list(gate.failures),
+    }
+    if not gate.passed:
+        raise SystemExit(
+            "ACS local SSI/Medicaid take-up gate failed: " + "; ".join(gate.failures)
+        )
+    for program in ("ssi", "medicaid"):
+        entry = receipt[program]
+        log(
+            f"ACS take-up {entry['column']}: filled {entry['filled_rows']:,} rows, "
+            f"weighted ACS share {entry['weighted_take_up_share']:.3f}"
+        )
+    return frame, receipt
+
+
+def _write_ssi_medicaid_take_up(frame, path: Path) -> str:
+    """Record the ACS persons' SSI/Medicaid take-up; return the file sha256."""
+
+    assignment = acs_local_ssi_medicaid_take_up_assignment(frame)
+    person_ids = assignment["person_id"].to_numpy()
+    if person_ids.dtype == object:
+        person_ids = person_ids.astype(str)
+    with Path(path).open("wb") as handle:
+        np.savez(
+            handle,
+            person_id=person_ids,
+            **{
+                column: assignment[column].to_numpy(dtype=bool)
+                for column in ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS
+            },
+        )
+    return _sha256(path)
+
+
+def _recorded_ssi_medicaid_take_up(identity: dict, checkpoint_dir: Path):
+    """The ACS SSI/Medicaid take-up materialize assigned, or refuse.
+
+    Returns the run-identity receipt and the recorded assignment file. A
+    checkpoint without a passing receipt, or whose file is missing or changed,
+    was materialized with every eligible ACS person taking SSI and Medicaid
+    up (the engine default), or cannot prove what it calibrated against.
+    """
+
+    receipt = identity.get("acs_local_ssi_medicaid_take_up")
+    recorded = receipt.get("assignment_file") if isinstance(receipt, dict) else None
+    gate = receipt.get("gate") if isinstance(receipt, dict) else None
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("issue") != ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE
+        or receipt.get("method") != ACS_LOCAL_SSI_MEDICAID_TAKE_UP_METHOD
+        or type(receipt.get("seed")) is not int
+        or not isinstance(receipt.get("assigned_sha256"), str)
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+        or not isinstance(recorded, dict)
+        or recorded.get("name") != ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+        or not isinstance(recorded.get("sha256"), str)
+    ):
+        raise SystemExit(
+            "run_identity.json records no passing ACS local SSI/Medicaid take-up "
+            f"assignment ({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}): the checkpoint "
+            "was materialized with every eligible ACS person taking SSI and "
+            "Medicaid up (the engine default). Re-run --stage materialize."
+        )
+    path = Path(checkpoint_dir) / ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+    if not path.is_file() or _sha256(path) != recorded["sha256"]:
+        raise SystemExit(
+            f"The recorded ACS SSI/Medicaid take-up assignment {path} is missing "
+            f"or changed since materialize ({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE})."
+            " Re-run --stage materialize."
+        )
+    return receipt, path
+
+
+def _with_recorded_ssi_medicaid_take_up(frame, receipt: dict, path: Path):
+    """Apply the recorded ACS SSI/Medicaid take-up; refuse a mismatch."""
+
+    columns = ("person_id", *ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS)
+    try:
+        with np.load(path, allow_pickle=False) as recorded:
+            table = pd.DataFrame({column: recorded[column] for column in columns})
+        return with_recorded_acs_local_ssi_medicaid_take_up(
+            frame, table, assigned_sha256=receipt["assigned_sha256"]
+        )
+    except (KeyError, OSError, ValueError) as exc:
+        raise SystemExit(
+            "The consumer export cannot reproduce the ACS SSI/Medicaid take-up "
+            f"materialize calibrated against ({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}):"
+            f" {exc} Re-run --stage materialize against this staging file."
+        ) from exc
+
+
+def _cd_holdout_fraction(args) -> float:
+    """The CD holdout fraction this run draws (0 when there is no CD surface)."""
+
+    fraction = getattr(args, "cd_holdout_fraction", None)
+    if fraction is None:
+        return (
+            cd_surface.DEFAULT_STATE_CD_HOLDOUT_FRACTION
+            if args.soi_mode == SOI_MODE_STATE_CD
+            else 0.0
+        )
+    return float(fraction)
+
+
+def _attach_pro_rata_populations(targets: list[dict], cd_populations: dict) -> None:
+    """Give each district SOI target its district and state populations.
+
+    The pro-rata baseline allocates the state parent by these; both come
+    from the PUMA ladder's 119th-plan district overlap populations, so a
+    state's district shares sum to one.
+    """
+
+    state_population: dict[int, float] = {}
+    for district, population in cd_populations.items():
+        state = int(district) // 100
+        state_population[state] = state_population.get(state, 0.0) + float(population)
+    for target in targets:
+        geoid = target.get("congressional_district_geoid")
+        if target.get("family") != "irs_soi" or not geoid:
+            continue
+        district = int(geoid)
+        target["cd_population"] = float(cd_populations.get(district, 0.0))
+        target["state_population"] = float(state_population.get(district // 100, 0.0))
+
+
+def _require_pro_rata_populations(targets: list[dict]) -> None:
+    """Refuse, before any solve, a district row the baseline cannot score."""
+
+    unpopulated = [
+        target["name"]
+        for target in targets
+        if target.get("family") == "irs_soi"
+        and target.get("congressional_district_geoid")
+        and not (
+            target.get("cd_population", 0) > 0 and target.get("state_population", 0) > 0
+        )
+    ]
+    if unpopulated:
+        raise SystemExit(
+            f"{len(unpopulated)} district SOI target(s) have no positive "
+            "ladder district or state population for the pro-rata "
+            f"baseline (e.g. {unpopulated[:3]}); refusing before the solve."
+        )
+
+
 def do_materialize(args) -> None:
+    from scipy import sparse
+
     families = [item.strip() for item in args.families.split(",") if item.strip()]
     geographies = [item.strip() for item in args.geographies.split(",") if item.strip()]
+    holdout_fraction = _cd_holdout_fraction(args)
+    if holdout_fraction and args.soi_mode != SOI_MODE_STATE_CD:
+        raise SystemExit(
+            f"--cd-holdout-fraction {holdout_fraction} needs --soi-mode "
+            f"{SOI_MODE_STATE_CD}; no other surface binds district SOI targets."
+        )
     started = time.time()
     if args.feed_sha256:
-        actual = _sha256(args.feed)
+        actual = _sha256(county_surface.feed_path(args.feed))
         if actual != args.feed_sha256:
             raise SystemExit(
                 f"Ledger feed sha256 mismatch: {args.feed} is {actual}, "
                 f"expected {args.feed_sha256}."
             )
-    registry, ri_substitutions = state_admin_specs(
-        args.feed, families, soi_mode=args.soi_mode
-    )
+    surface = state_admin_surface(args.feed, families, soi_mode=args.soi_mode)
+    registry = surface.registry
     log(
         f"admin specs: {len(registry)} ({families}, soi_mode={args.soi_mode}); "
-        f"RI substitution records={len(ri_substitutions)}"
+        f"RI substitution records={len(surface.ri_substitutions)}"
     )
+    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
+    county_surface.prepare_run(args, geographies, populations, surface=surface)
+    require_one_label_per_geography(registry, populations, geographies)
     summary_path = _staging_summary_path(args)
     if not summary_path.exists():
         raise SystemExit(
@@ -917,20 +2075,66 @@ def do_materialize(args) -> None:
             "nullable-artifact engine-pass contract requires its "
             "reviewed_engine_input_nulls register."
         )
+    staging_summary = _load_json(summary_path)
+    # microcosm#1020/#1021/#1022: refuse a pre-change staging run
+    # (including one without the native SNAP receipt anchor) before hashing
+    # or loading.
+    _require_local_immigration(staging_summary)
+    _require_local_work_disability(staging_summary)
+    _require_local_income_transfer(staging_summary)
+    _require_local_ssi_disability(staging_summary)
+    _require_local_receipt_anchors(staging_summary)
+    # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
+    # and compile path, before the staging frame is loaded.
+    ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(args.feed)
     log("hashing staging inputs for the run identity …")
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
-    _require_local_hours(frame, _load_json(summary_path))
+    _require_local_hours(frame, staging_summary)
+    _require_acs_self_employment_identity(frame)
+    # microcosm#1019: seed ACS take-up on the full staging frame, before
+    # any development rung is drawn, so a rung keeps the flags the full
+    # build assigns and the export can re-derive them the same way.
+    frame, take_up = _with_local_take_up(frame, seed=args.seed)
+    frame, sampling = cd_surface.sample_staging_frame(
+        frame, fraction=args.sample_fraction, seed=args.sample_seed
+    )
+    gc.collect()
     log(
         f"loaded staging frame households={frame.n('household')} "
-        f"({time.time() - started:.1f}s)"
+        f"(rung {sampling['rung']}; {time.time() - started:.1f}s)"
     )
+    # microcosm#1022: assign the ACS rows' SSI and Medicaid take-up after a
+    # household-batched engine pre-pass over the ACS households, before the
+    # engine pass materializes the Medicaid enrollment targets, and record the
+    # assignment for the consumer export.
+    args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    frame, ssi_medicaid = _with_local_ssi_medicaid_take_up(
+        frame,
+        seed=args.seed,
+        targets=ssi_medicaid_targets,
+        summary_path=summary_path,
+        hh_chunk=args.hh_chunk,
+    )
+    del ssi_medicaid_targets
+    ssi_medicaid["assignment_file"] = {
+        "name": ACS_SSI_MEDICAID_TAKE_UP_FILENAME,
+        "sha256": _write_ssi_medicaid_take_up(
+            frame, args.checkpoint_dir / ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+        ),
+    }
+    gc.collect()
 
     started = time.time()
-    matrix_path = args.checkpoint_dir / "measures_f32.mmap"
     args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    matrix, admin_names, compiled_specs, chunk_stats = materialize_chunked(
+    (args.checkpoint_dir / "measures_f32.mmap").unlink(missing_ok=True)
+    for name in CALIBRATION_OUTPUT_FILENAMES:
+        (args.checkpoint_dir / name).unlink(missing_ok=True)
+    if getattr(args, "gate_report", None) is not None:
+        Path(args.gate_report).unlink(missing_ok=True)
+    county_surface.check_support(frame, populations, args)
+    materialized = materialize_chunked(
         frame,
         registry.specs,
         hh_chunk=args.hh_chunk,
@@ -939,21 +2143,34 @@ def do_materialize(args) -> None:
         dropped_manifest_path=args.checkpoint_dir / "held_back_columns.json",
         summary_path=summary_path,
         fills_manifest_path=args.checkpoint_dir / "reviewed_null_fills.json",
-        matrix_path=matrix_path,
     )
+    admin_matrix = materialized.matrix
+    compiled_specs = materialized.compiled_specs
+    chunk_stats = materialized.chunk_stats
     log(
-        f"materialized admin: {len(admin_names)} measures over "
-        f"{len(chunk_stats)} chunks ({time.time() - started:.1f}s)"
+        f"materialized admin: {len(compiled_specs)} measures over "
+        f"{len(chunk_stats)} chunks, nnz {admin_matrix.nnz:,} "
+        f"({time.time() - started:.1f}s)"
     )
-    if len(admin_names) != len(registry):
+    if len(compiled_specs) != len(registry):
         raise SystemExit(
-            f"Compiled admin surface has {len(admin_names)} measures but "
+            f"Compiled admin surface has {len(compiled_specs)} measures but "
             f"{len(registry)} specs were declared; admin targets must never "
             "disappear silently between compile and materialization."
         )
-    populations = ladder_population(args.ladder, geographies)
-    pop_names, pop_arrays, pop_values, pop_dropped = population_measure_arrays(
-        frame, populations, geographies
+    compiled_specs, admin_matrix = county_surface.attach_surface(
+        surface, materialized, frame, populations, args
+    )
+    admin_roles = [county_surface.target_record(spec) for spec in compiled_specs]
+
+    if args.soi_mode == SOI_MODE_STATE_CD:
+        _attach_pro_rata_populations(admin_roles, populations["cd"])
+        _require_pro_rata_populations(admin_roles)
+    pop_roles, pop_matrix, pop_dropped = population_targets(
+        frame,
+        populations,
+        geographies,
+        county_column=getattr(args, "county_column", "county_fips"),
     )
     if pop_dropped:
         message = (
@@ -967,38 +2184,71 @@ def do_materialize(args) -> None:
                 "--allow-partial-geography only for capped smokes."
             )
         log("WARNING " + message + " Continuing (--allow-partial-geography).")
-    log(f"population measures: {len(pop_names)} ({geographies})")
-    struct = extract_struct_tables(frame)
+    pop_specs = population_target_specs(
+        [record["name"] for record in pop_roles],
+        [record["value"] for record in pop_roles],
+    )
+    log(f"population measures: {len(pop_specs)} ({geographies})")
+    roles = admin_roles + pop_roles
+    holdout = cd_surface.assign_target_roles(roles, fraction=holdout_fraction)
+    county_holdout = county_surface.assign_roles(roles, args)
+    log(
+        f"CD holdout: {holdout['held_units']}/{holdout['eligible_units']} units, "
+        f"{holdout['held_targets']} district targets held out of calibration"
+    )
+    matrix = sparse.vstack([admin_matrix, pop_matrix], format="csr")
+    del admin_matrix, pop_matrix
+    struct = extract_struct_tables(
+        frame, county_column=getattr(args, "county_column", "county_fips")
+    )
     n_households = frame.n("household")
     del frame
     gc.collect()
 
-    write_lean_checkpoint(
+    _checkpoint_h5, _registry, digests = write_lean_checkpoint(
         struct,
         matrix,
-        admin_names,
-        compiled_specs,
-        pop_names,
-        pop_arrays,
-        pop_values,
+        (*compiled_specs, *pop_specs),
+        roles,
         args.checkpoint_dir,
     )
-    del matrix, struct, pop_arrays
+    matrix_shape = [int(value) for value in matrix.shape]
+    matrix_nnz = int(matrix.nnz)
+    del matrix, struct
     gc.collect()
-    matrix_path.unlink(missing_ok=True)
-    registry_digest = _sha256(args.checkpoint_dir / "target_registry.json")
+    holdout_identity = {
+        key: holdout[key]
+        for key in ("unit", "salt", "fraction", "held_units", "held_targets")
+    }
     (args.checkpoint_dir / "run_identity.json").write_text(
         json.dumps(
             {
                 "staging_h5": str(Path(args.staging_h5).resolve()),
+                "feed": str(Path(args.feed).resolve()),
+                "feed_sha256": _sha256(county_surface.feed_path(args.feed)),
                 "staging_sha256": staging_sha,
                 "ladder_sha256": ladder_sha,
                 "households": n_households,
-                "n_targets": len(admin_names) + len(pop_names),
-                "target_registry_sha256": registry_digest,
+                "n_targets": len(roles),
+                "target_registry_sha256": digests["target_registry_sha256"],
+                "target_roles_sha256": digests["target_roles_sha256"],
+                "lean_h5_sha256": digests["lean_h5_sha256"],
+                "target_matrix": {
+                    "file": TARGET_MATRIX_FILENAME,
+                    "sha256": digests["target_matrix_sha256"],
+                    "format": "csr_float32",
+                    "shape": matrix_shape,
+                    "nnz": matrix_nnz,
+                },
                 "declared_admin_specs": len(registry),
-                "compiled_admin_specs": len(admin_names),
+                "compiled_admin_specs": len(compiled_specs),
                 "population_cells_dropped": pop_dropped,
+                "soi_mode": args.soi_mode,
+                "cd_holdout": holdout_identity,
+                **county_surface.run_metadata(args, county_holdout),
+                "sampling": sampling,
+                "acs_local_take_up": take_up,
+                "acs_local_ssi_medicaid_take_up": ssi_medicaid,
             },
             indent=2,
         )
@@ -1008,11 +2258,17 @@ def do_materialize(args) -> None:
             {
                 "soi_mode": args.soi_mode,
                 "families": families,
-                "n_admin": len(admin_names),
-                "n_population": len(pop_names),
+                "n_admin": len(compiled_specs),
+                "n_population": len(pop_specs),
                 "population_cells_dropped": pop_dropped,
                 "hh_chunk": args.hh_chunk,
                 "chunk_stats": chunk_stats,
+                "target_matrix": {"shape": matrix_shape, "nnz": matrix_nnz},
+                "carrier_check": materialized.carrier_check,
+                "soi_surface": surface.soi_receipt,
+                "cd_holdout": holdout,
+                **county_surface.run_metadata(args, county_holdout),
+                "sampling": sampling,
                 "materialize_peak_rss_gb": round(rss(), 3),
             },
             indent=2,
@@ -1043,49 +2299,514 @@ def _verify_run_identity(args, *, require: bool = True) -> dict:
     return identity
 
 
-def do_calibrate(args) -> None:
-    from microcosm.calibrate import (
-        TargetRegistry,
-        calibrate,
-        write_calibration_diagnostics,
-    )
+#: Outputs of the calibrate stage that describe one materialization; a new
+#: materialize removes them so none can outlive the surface it described.
+CALIBRATION_OUTPUT_FILENAMES = (
+    "weights_latest.npz",
+    "calibration_summary.json",
+    "calibration_diagnostics.json",
+    "county_reliability.json",
+    "consumer_export.json",
+    "consumer_reviewed_null_fills.json",
+    "spine_qa.json",
+)
 
-    identity = _verify_run_identity(args)
-    checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
-    registry_path = args.checkpoint_dir / "target_registry.json"
-    registry_sha = _sha256(registry_path)
-    if registry_sha != identity.get("target_registry_sha256"):
-        raise SystemExit(
-            "target_registry.json changed since materialize; the checkpoint and "
-            "surface no longer agree. Re-run --stage materialize."
+
+#: The fixed solver settings, shared by the solve and the stamp describing it.
+SOLVER_METHOD = "adam"
+SOLVER_LEARNING_RATE = 0.02
+SOLVER_MASS = "conserve"
+
+# Starting values from microcosm#1377's county pilot. The calibrator accepts
+# only one scalar loss cap, so these apply to the joint run, not county rows
+# individually. Ordinary ACS-local builds retain their historical settings.
+COUNTY_TARGET_LOSS_CAP = 10.0
+COUNTY_MAX_WEIGHT_RATIO = 5.0
+
+
+def _apply_county_solver_profile(args, *, identity=None) -> None:
+    """Resolve the opt-in profile against the checkpoint for later stages."""
+    for key in ("target_loss_cap", "max_weight_ratio"):
+        requested = f"_requested_{key}"
+        if not hasattr(args, requested):
+            setattr(args, requested, getattr(args, key))
+        setattr(args, key, getattr(args, requested))
+    # A checkpoint decides alone: an identity from before the county rung
+    # records no geographies and loaded no county rows, whatever the CLI says.
+    if identity:
+        geographies = identity.get("geographies", "")
+        soi_mode = identity.get("soi_mode", DEFAULT_SOI_MODE)
+    else:
+        geographies = getattr(args, "geographies", "")
+        soi_mode = getattr(args, "soi_mode", DEFAULT_SOI_MODE)
+    county_requested = "county" in {item.strip() for item in geographies.split(",")}
+    county_requested |= soi_mode == SOI_MODE_STATE_COUNTY
+    args.county_solver_profile = None
+    if county_requested:
+        args.target_loss_cap = getattr(
+            args, "county_target_loss_cap", COUNTY_TARGET_LOSS_CAP
         )
-    registry = TargetRegistry.from_json(registry_path)
-    frame, design_weights = load_lean_frame(checkpoint_h5)
+        args.max_weight_ratio = getattr(
+            args, "county_max_weight_ratio", COUNTY_MAX_WEIGHT_RATIO
+        )
+        args.county_solver_profile = {
+            "scope": "run",
+            "target_loss_cap": args.target_loss_cap,
+            "max_weight_ratio": args.max_weight_ratio,
+        }
+
+
+def _solver_settings(args, target_loss: dict) -> dict:
+    """The calibrate-stage settings a resume or reuse must share.
+
+    ``target_loss`` is the stamp :func:`release_target_loss_weights` returns,
+    so weights calibrated under another loss weighting, or under none (a run
+    from before the weights), are never warm-started from.
+    """
+
+    return {
+        "method": SOLVER_METHOD,
+        "learning_rate": SOLVER_LEARNING_RATE,
+        "mass": SOLVER_MASS,
+        "max_weight_ratio": args.max_weight_ratio,
+        "target_loss_cap": args.target_loss_cap,
+        "l2_lambda": args.l2_lambda,
+        "l2_basis": args.l2_basis,
+        "mass_parametrization": args.mass_parametrization,
+        "seed": args.seed,
+        "epoch_batch": args.epoch_batch,
+        "target_loss": target_loss,
+        **(
+            {"county_solver_profile": args.county_solver_profile}
+            if getattr(args, "county_solver_profile", None) is not None
+            else {}
+        ),
+    }
+
+
+def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
+    """The loss weights of the training targets, and the stamp describing them.
+
+    The national release's formula under the ACS local row mapping
+    (:data:`loss_weighting.US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING`), over the
+    training specs only, row-aligned with the calibration TargetSet. The
+    stamp names the formula, the mapping and the multipliers and digests the
+    (name, weight) vector.
+    """
+
+    multipliers = dict(args.target_family_loss_multipliers)
+    try:
+        weights = county_surface.target_loss_weights(train_specs, multipliers)
+    except ValueError as error:
+        raise SystemExit(f"Target loss weights: {error}") from error
+    stamp = {
+        "weighting": loss_weighting.US_FISCAL_TARGET_LOSS_WEIGHTING,
+        "row_mapping": county_surface.loss_row_mapping(train_specs).mapping_id,
+        "family_multipliers": {
+            family: float(multiplier)
+            for family, multiplier in sorted(multipliers.items())
+        },
+        "n_targets": len(train_specs),
+        "weights_sha256": loss_weighting.target_loss_weights_sha256(
+            [loss_weighting.target_row_name(spec) for spec in train_specs], weights
+        ),
+    }
+    return weights, stamp
+
+
+def _stamped_settings(settings: dict | None) -> dict | None:
+    """A recorded solver stamp, with the penalty keys it predates filled in.
+
+    A stamp written before ``l2_basis`` and ``mass_parametrization`` existed
+    was solved with their historical values, so it compares equal to a request
+    for those values and to nothing else.
+    """
+
+    if settings is None:
+        return None
+    return {
+        **{
+            key: value
+            for key, value in HISTORICAL_PENALTY.items()
+            if key != "l2_lambda"
+        },
+        **settings,
+    }
+
+
+def _weights_digest(weights) -> str:
+    """Digest of a calibrated household weight vector (float64 bytes)."""
+
+    return hashlib.sha256(
+        np.ascontiguousarray(weights, dtype=np.float64).tobytes()
+    ).hexdigest()
+
+
+def _run_identity_digest(identity: dict) -> str:
+    """Content digest of a run identity (canonical JSON)."""
+
+    return hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _verify_checkpoint_digests(checkpoint_dir: Path, identity: dict) -> None:
+    """Refuse a registry, roles file or matrix whose bytes changed."""
+
+    checks = (
+        (
+            checkpoint_dir / "target_registry.json",
+            identity.get("target_registry_sha256"),
+        ),
+        (checkpoint_dir / TARGET_ROLES_FILENAME, identity.get("target_roles_sha256")),
+        (
+            checkpoint_dir / TARGET_MATRIX_FILENAME,
+            (identity.get("target_matrix") or {}).get("sha256"),
+        ),
+    )
+    if "lean_h5_sha256" in identity:
+        checks += (
+            (checkpoint_dir / "target_frame_lean.h5", identity["lean_h5_sha256"]),
+        )
+    for path, recorded in checks:
+        if not path.exists() or _sha256(path) != recorded:
+            raise SystemExit(
+                f"{path.name} changed since materialize (or the run identity "
+                "records none); the checkpoint and surface no longer agree. "
+                "Re-run --stage materialize."
+            )
+
+
+def _require_current_artifact(
+    identity: dict,
+    *,
+    consumer_export: dict,
+    summary: dict,
+    spine_qa: dict | None,
+    out_h5: Path,
+    out_h5_sha256: str,
+    stage: str,
+) -> None:
+    """Refuse a calibrated H5, or evidence about it, from another calibration.
+
+    The H5's bytes must be the ones ``consumer_export.json`` records; that
+    export and the calibration summary must name the same materialization and
+    the same weights; and QA evidence, when given, must be of these bytes and
+    this materialization. The path is not compared: the sha binds the bytes
+    wherever they are reached from.
+    """
+
+    if "target_roles_sha256" not in identity:
+        return
+    digest = _run_identity_digest(identity)
+    if consumer_export.get("run_identity_sha256") != digest:
+        raise SystemExit(
+            "consumer_export.json was written for another materialization "
+            f"(or records none); re-run --stage calibrate before --stage {stage}."
+        )
+    if consumer_export.get("out_h5_sha256") != out_h5_sha256:
+        raise SystemExit(
+            f"{out_h5} is not the calibrated H5 this checkpoint's calibrate stage "
+            f"wrote; re-run --stage calibrate before --stage {stage}."
+        )
+    weights_sha = consumer_export.get("weights_sha256")
+    if weights_sha is None or summary.get("weights_sha256") != weights_sha:
+        raise SystemExit(
+            "The calibrated H5 and calibration_summary.json describe different "
+            "weights (an interrupted recalibration?); re-run --stage calibrate "
+            f"before --stage {stage}."
+        )
+    if spine_qa is not None:
+        if spine_qa.get("run_identity_sha256") != digest:
+            raise SystemExit(
+                "spine_qa.json was written for another materialization; re-run "
+                f"--stage qa before --stage {stage}."
+            )
+        if spine_qa.get("artifact_sha256") != out_h5_sha256:
+            raise SystemExit(
+                "spine_qa.json certifies other bytes than the calibrated H5 "
+                f"({str(spine_qa.get('artifact_sha256'))[:12]}… vs "
+                f"{out_h5_sha256[:12]}…); re-run --stage qa before --stage "
+                f"{stage}."
+            )
+
+
+def _require_current_calibration(identity: dict, summary: dict, *, stage: str) -> None:
+    """Refuse a calibration summary from another materialization.
+
+    A sparse-era run identity (one that records ``target_roles_sha256``)
+    binds its calibration: the summary must carry that identity's digest.
+    Pre-sparse checkpoints stay readable (finalize's read-only path); package
+    refuses them separately (no sampling block).
+    """
+
+    if "target_roles_sha256" not in identity:
+        return
+    if summary.get("run_identity_sha256") != _run_identity_digest(identity):
+        raise SystemExit(
+            "calibration_summary.json does not belong to this checkpoint's "
+            "materialization (its run identity differs or is not recorded); "
+            f"re-run --stage calibrate before --stage {stage}."
+        )
+
+
+def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
+    """The lean frame, design weights, registry, roles and matrix of a checkpoint.
+
+    With ``identity`` (the materialize-time run identity) the registry, the
+    roles and the matrix must still be the bytes materialize wrote. A
+    checkpoint from before the sparse matrix (dense measure columns in the
+    lean H5) is refused: re-run ``--stage materialize``.
+    A checkpoint whose registry gives one geography two labels (written
+    before microcosm#1335) is refused the same way.
+    Returns ``(frame, design_weights, registry, roles, matrix)``.
+    """
+
+    from microcosm.calibrate import TargetRegistry
+    from microcosm.calibrate.registry import GeographyLabelConflictError
+
+    matrix_path = checkpoint_dir / TARGET_MATRIX_FILENAME
+    roles_path = checkpoint_dir / TARGET_ROLES_FILENAME
+    registry_path = checkpoint_dir / "target_registry.json"
+    if not matrix_path.exists() or not roles_path.exists():
+        raise SystemExit(
+            f"{checkpoint_dir} has no {TARGET_MATRIX_FILENAME} or "
+            f"{TARGET_ROLES_FILENAME}: it predates the sparse target matrix "
+            "(its measures are dense H5 columns). Re-run --stage materialize "
+            "with the current tool."
+        )
+    if identity is not None:
+        _verify_checkpoint_digests(checkpoint_dir, identity)
+    try:
+        registry = TargetRegistry.from_json(registry_path)
+    except GeographyLabelConflictError as error:
+        # A materialize stage from before microcosm#1335 labelled a state's
+        # population target with its postal code ("ME") and the ledger
+        # targets with the state's name ("Maine").
+        raise SystemExit(
+            f"{registry_path} gives one geography more than one label, as "
+            "checkpoints written before microcosm#1335 do. Re-run --stage "
+            f"materialize with the current tool. {error}"
+        ) from error
+    roles = json.loads(roles_path.read_text())
+    matrix = cd_surface.load_target_matrix(matrix_path)
+    frame, design_weights = load_lean_frame(checkpoint_dir / "target_frame_lean.h5")
     n_households = frame.n("household")
-    if n_households != identity.get("households"):
+    if identity is not None and n_households != identity.get("households"):
         raise SystemExit(
             f"Lean checkpoint has {n_households} households but the run "
             f"identity pins {identity.get('households')}."
         )
-    target_set = registry.to_target_set()
+    if [role["name"] for role in roles] != [spec.name for spec in registry.specs]:
+        raise SystemExit(
+            f"{TARGET_ROLES_FILENAME} is not row-aligned with target_registry.json."
+        )
+    if matrix.shape != (len(registry), n_households):
+        raise SystemExit(
+            f"{TARGET_MATRIX_FILENAME} is {matrix.shape}, not "
+            f"{len(registry)} targets x {n_households} households."
+        )
+    return frame, design_weights, registry, roles, matrix
+
+
+def calibrate_surface(
+    frame,
+    target_set,
+    *,
+    epochs: int,
+    epoch_batch: int,
+    max_weight_ratio: float,
+    target_loss_cap: float,
+    l2_lambda: float,
+    seed: int,
+    target_loss_weights: np.ndarray | None = None,
+    warm: np.ndarray | None = None,
+    done: int = 0,
+    on_batch=None,
+    l2_basis: str = HISTORICAL_PENALTY["l2_basis"],
+    mass_parametrization: str = HISTORICAL_PENALTY["mass_parametrization"],
+):
+    """Epoch-batched warm-start calibration of ``target_set``.
+
+    ``target_set`` comes from ``cd_surface.calibration_target_set``, which
+    builds only the training targets, each a callable row of the checkpoint
+    CSR. Each batch calls the kernel's ``calibrate``, which compiles those
+    rows into its own CSR constraint matrix. ``target_loss_weights`` is
+    row-aligned with ``target_set``; ``do_calibrate`` always passes the
+    release weights (:func:`release_target_loss_weights`), and ``None`` (equal
+    weights) is for harnesses. Returns ``(result, epochs_done)``.
+    """
+
+    from microcosm.calibrate import calibrate
+
+    batch = epoch_batch if epoch_batch > 0 else epochs
+    result = None
+    while done < epochs:
+        this_batch = min(batch, epochs - done)
+        batch_started = time.time()
+        result = calibrate(
+            frame,
+            target_set,
+            weight_entity="household",
+            method=SOLVER_METHOD,
+            epochs=this_batch,
+            learning_rate=SOLVER_LEARNING_RATE,
+            mass=SOLVER_MASS,
+            max_weight_ratio=max_weight_ratio,
+            target_loss_cap=target_loss_cap,
+            l2_lambda=l2_lambda,
+            l2_basis=l2_basis,
+            mass_parametrization=mass_parametrization,
+            seed=seed,
+            target_loss_weights=target_loss_weights,
+            warm_start_weights=warm,
+        )
+        done += this_batch
+        warm = result.weights.copy()
+        if on_batch is not None:
+            on_batch(warm, done)
+        log(
+            f"batch -> {done}/{epochs} ep, "
+            f"{time.time() - batch_started:.1f}s, "
+            f"loss={result.final_loss:.5f}, "
+            f"within10%={result.fraction_within_10pct:.2%}, "
+            f"ESS={result.effective_sample_size:,.0f}"
+        )
+    return result, done
+
+
+def _origin_columns(frame) -> dict:
+    """The household columns ``weight_origin_summary`` groups by, if present."""
+
+    households = frame.table("household")
+    columns = {
+        "spine": "household_spine",
+        "source_id": "household_source_id",
+        "state": "state_fips",
+        "district": "congressional_district_geoid",
+    }
+    return {
+        key: households[column].to_numpy() if column in households.columns else None
+        for key, column in columns.items()
+    }
+
+
+def calibration_evidence(
+    *,
+    frame,
+    roles: list[dict],
+    matrix,
+    design_weights: np.ndarray,
+    weights: np.ndarray,
+    target_loss_cap: float,
+) -> dict:
+    """The sparse-surface evidence the calibration summary adds.
+
+    The CD holdout scored against the pro-rata baseline, and ESS over rows
+    and distinct households with household-weight share by spine, at the
+    design and the calibrated weights.
+    """
+
+    origin = _origin_columns(frame)
+    return {
+        "n_targets_on_surface": len(roles),
+        "n_holdout_targets": len(cd_surface.holdout_rows(roles)),
+        "checkpoint_matrix": {
+            "format": "csr_float32",
+            "shape": [int(x) for x in matrix.shape],
+            "nnz": int(matrix.nnz),
+        },
+        "weight_origin": {
+            "design": cd_surface.weight_origin_summary(design_weights, **origin),
+            "calibrated": cd_surface.weight_origin_summary(weights, **origin),
+        },
+        "cd_holdout": cd_surface.score_cd_holdout(
+            roles,
+            matrix,
+            design_weights=design_weights,
+            final_weights=weights,
+            cap=target_loss_cap,
+        ),
+        **county_surface.calibration_evidence(
+            frame, roles, matrix, design_weights, weights, target_loss_cap
+        ),
+    }
+
+
+def do_calibrate(args) -> None:
+    from microcosm.calibrate import write_calibration_diagnostics
+
+    identity = _verify_run_identity(args)
+    # Refuse a pre-#1019 checkpoint before hours of solving, not at export.
+    _recorded_take_up(identity)
+    # Likewise a checkpoint materialized from a pre-#1020, pre-#1021 or
+    # pre-#1022 (income or SSI disability) staging run: the consumer export at
+    # the end of this stage would refuse its summary.
+    staging_summary = _load_json(_staging_summary_path(args))
+    _require_local_immigration(staging_summary)
+    _require_local_work_disability(staging_summary)
+    _require_local_income_transfer(staging_summary)
+    _require_local_ssi_disability(staging_summary)
+    _require_local_receipt_anchors(staging_summary)
+    # microcosm#1022: and a checkpoint without the recorded ACS SSI/Medicaid
+    # take-up the export must apply.
+    _recorded_ssi_medicaid_take_up(identity, args.checkpoint_dir)
+    _apply_county_solver_profile(args, identity=identity)
+    frame, design_weights, registry, roles, matrix = load_checkpoint_surface(
+        args.checkpoint_dir, identity
+    )
+    n_households = frame.n("household")
+    target_set = cd_surface.calibration_target_set(
+        roles, matrix, n_households, specs=registry.specs
+    )
+    train_specs = [registry.specs[index] for index in cd_surface.train_rows(roles)]
+    if [target.name for target in target_set] != [spec.name for spec in train_specs]:
+        raise SystemExit(
+            "The calibration TargetSet is not row-aligned with the training "
+            "specs, so their loss weights would attach to the wrong targets."
+        )
+    loss_weights, target_loss = release_target_loss_weights(args, train_specs)
+    loss_distribution = loss_weighting.target_loss_weight_distribution(
+        train_specs,
+        loss_weights,
+        row_mapping=county_surface.loss_row_mapping(train_specs),
+    )
     log(
-        f"calibrate: households={n_households}, targets={len(target_set)}, "
-        f"design_total={design_weights.sum():,.0f}"
+        f"calibrate: households={n_households}, targets={len(target_set)} "
+        f"trained + {len(roles) - len(target_set)} held out, "
+        f"nnz={matrix.nnz:,}, design_total={design_weights.sum():,.0f}"
+    )
+    log(
+        "target loss shares: "
+        + ", ".join(
+            f"{cell['family']}/{cell['geography_level']}/{cell['basis']} "
+            f"{cell['loss_share']:.1%} (equal {cell['equal_share']:.1%})"
+            for cell in loss_distribution["by_family_level_basis"]
+        )
     )
 
+    stamp = _run_identity_digest(identity)
+    settings = _solver_settings(args, target_loss)
     resume_npz = args.checkpoint_dir / "weights_latest.npz"
     warm, done = None, 0
     if args.resume and resume_npz.exists():
         saved = np.load(resume_npz)
-        saved_identity = (
-            str(saved["staging_sha256"]) if "staging_sha256" in saved else None
+        saved_stamp = (
+            str(saved["run_identity_sha256"])
+            if "run_identity_sha256" in saved
+            else None
         )
-        if saved_identity is not None and saved_identity != identity.get(
-            "staging_sha256"
-        ):
+        saved_settings = (
+            json.loads(str(saved["solver_settings"]))
+            if "solver_settings" in saved
+            else None
+        )
+        if saved_stamp != stamp or _stamped_settings(saved_settings) != settings:
             raise SystemExit(
-                "weights_latest.npz was produced against a different staging "
-                "H5; refusing to warm-start from a foreign checkpoint."
+                "weights_latest.npz was calibrated for a different "
+                "materialization (staging, surface, holdout or sample) or "
+                "under different solver settings, or predates the stamp; "
+                "refusing to warm-start from it. Delete it to recalibrate."
             )
         warm, done = saved["weights"], int(saved["epochs_done"])
         if len(warm) != n_households:
@@ -1096,57 +2817,67 @@ def do_calibrate(args) -> None:
         log(f"RESUME from {done} epochs")
     if done >= args.epochs:
         summary_path = args.checkpoint_dir / "calibration_summary.json"
-        if summary_path.exists():
+        previous = _load_json(summary_path)
+        if (
+            previous.get("run_identity_sha256") == stamp
+            and _stamped_settings(previous.get("solver_settings")) == settings
+            and previous.get("weights_sha256") == _weights_digest(warm)
+        ):
             log(
                 f"calibration already complete at {done} epochs and "
                 "the calibration summary exists; nothing to do (delete "
                 "weights_latest.npz to recalibrate)."
             )
             _write_calibrated_artifact(
-                args, np.asarray(warm, dtype=np.float64), identity
+                args, np.asarray(warm, dtype=np.float64), identity, settings
+            )
+            county_surface.write_reports(
+                args.checkpoint_dir, previous, identity=identity
             )
             return
         raise SystemExit(
             f"weights_latest.npz reports {done} epochs (>= --epochs "
-            f"{args.epochs}) but calibration_summary.json is missing. "
-            "Delete the checkpoint to recalibrate, or raise --epochs."
+            f"{args.epochs}) but calibration_summary.json is missing or "
+            "belongs to another materialization, solver settings or weights "
+            "(a summary written before the weights digest). Delete "
+            "weights_latest.npz or run without --resume to recalibrate, or "
+            "raise --epochs."
         )
-    batch = args.epoch_batch if args.epoch_batch > 0 else args.epochs
-    result = None
-    started = time.time()
-    while done < args.epochs:
-        this_batch = min(batch, args.epochs - done)
-        batch_started = time.time()
-        result = calibrate(
-            frame,
-            target_set,
-            weight_entity="household",
-            method="adam",
-            epochs=this_batch,
-            learning_rate=0.02,
-            mass="conserve",
-            max_weight_ratio=args.max_weight_ratio,
-            target_loss_cap=args.target_loss_cap,
-            l2_lambda=args.l2_lambda,
-            seed=args.seed,
-            warm_start_weights=warm,
-        )
-        done += this_batch
-        warm = result.weights.copy()
+
+    # A solve replaces every output describing the calibration: none of the
+    # previous ones may outlive it if this run stops part way.
+    for name in CALIBRATION_OUTPUT_FILENAMES:
+        if name != "weights_latest.npz":
+            (args.checkpoint_dir / name).unlink(missing_ok=True)
+
+    def save(weights: np.ndarray, epochs_done: int) -> None:
         np.savez(
             resume_npz,
-            weights=warm,
-            epochs_done=done,
+            weights=weights,
+            epochs_done=epochs_done,
             initial_weights=design_weights,
             staging_sha256=np.str_(identity["staging_sha256"]),
+            run_identity_sha256=np.str_(stamp),
+            solver_settings=np.str_(json.dumps(settings, sort_keys=True)),
         )
-        log(
-            f"batch -> {done}/{args.epochs} ep, "
-            f"{time.time() - batch_started:.1f}s, "
-            f"loss={result.final_loss:.5f}, "
-            f"within10%={result.fraction_within_10pct:.2%}, "
-            f"ESS={result.effective_sample_size:,.0f}"
-        )
+
+    started = time.time()
+    result, done = calibrate_surface(
+        frame,
+        target_set,
+        epochs=args.epochs,
+        epoch_batch=args.epoch_batch,
+        max_weight_ratio=args.max_weight_ratio,
+        target_loss_cap=args.target_loss_cap,
+        l2_lambda=args.l2_lambda,
+        l2_basis=args.l2_basis,
+        mass_parametrization=args.mass_parametrization,
+        seed=args.seed,
+        target_loss_weights=loss_weights,
+        warm=warm,
+        done=done,
+        on_batch=save,
+    )
 
     if result.problem.skipped:
         skipped = [getattr(item, "name", str(item)) for item in result.problem.skipped]
@@ -1156,34 +2887,58 @@ def do_calibrate(args) -> None:
             "measures or the targets before shipping."
         )
     summary = {
+        "run_identity_sha256": stamp,
+        "solver_settings": settings,
+        "weights_sha256": _weights_digest(result.weights),
         "households": n_households,
         "n_targets": result.problem.n_targets,
         "families": args.families,
-        "geographies": args.geographies,
+        "geographies": identity.get("geographies", args.geographies),
+        "soi_mode": identity.get("soi_mode"),
         "matrix_format": result.options["matrix_format"],
         "matrix_shape": [int(x) for x in result.problem.matrix.shape],
         "matrix_nnz": int(result.problem.matrix.nnz),
         "epochs": args.epochs,
         "epoch_batch": args.epoch_batch,
         "max_weight_ratio": args.max_weight_ratio,
+        "target_loss_cap": args.target_loss_cap,
+        "target_loss": {**target_loss, "distribution": loss_distribution},
         "l2_lambda": args.l2_lambda,
+        "l2_basis": args.l2_basis,
+        "mass_parametrization": args.mass_parametrization,
         "seed": args.seed,
         "initial_loss": round(result.initial_loss, 6),
         "final_loss": round(result.final_loss, 6),
         "fraction_within_10pct": round(result.fraction_within_10pct, 4),
         "effective_sample_size": round(result.effective_sample_size, 1),
         "ess_fraction": round(result.effective_sample_size / n_households, 4),
+        "chi_square_distance": round(result.chi_square_distance, 6),
+        # Softmax only: epochs whose cap rounds ran out (the last epoch batch).
+        "softmax_cap_rounds_exhausted_epochs": (
+            result.options.get("iterate_selection_receipt") or {}
+        ).get("softmax_cap_rounds_exhausted_epochs"),
         "realized_max_weight_ratio": round(result.realized_max_weight_ratio, 4),
         "mass_conserved_ratio": round(
             float(result.weights.sum()) / float(design_weights.sum()), 6
         ),
+        "sampling": identity.get("sampling"),
+        **calibration_evidence(
+            frame=frame,
+            roles=roles,
+            matrix=matrix,
+            design_weights=design_weights,
+            weights=np.asarray(result.weights, dtype=np.float64),
+            target_loss_cap=args.target_loss_cap,
+        ),
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
     }
+    county_surface.write_reports(args.checkpoint_dir, summary, identity=identity)
     _write_calibrated_artifact(
-        args, np.asarray(result.weights, dtype=np.float64), identity
+        args, np.asarray(result.weights, dtype=np.float64), identity, settings
     )
 
+    holdout = summary["cd_holdout"]
     outcome = write_calibration_diagnostics(
         result,
         args.checkpoint_dir / "calibration_diagnostics.json",
@@ -1191,13 +2946,24 @@ def do_calibrate(args) -> None:
         build={
             "dataset_role": "non_default_local_area",
             "families": args.families,
-            "geographies": args.geographies,
+            "geographies": identity.get("geographies", args.geographies),
+            "soi_mode": identity.get("soi_mode"),
             "epochs": args.epochs,
             "epoch_batch": args.epoch_batch,
             "total_wall_seconds": summary["total_wall_seconds"],
             "peak_rss_gb": summary["peak_rss_gb"],
             "ess_fraction": summary["ess_fraction"],
             "mass_conserved_ratio": summary["mass_conserved_ratio"],
+            "n_holdout_targets": summary["n_holdout_targets"],
+            "sampling_rung": (identity.get("sampling") or {}).get("rung"),
+            # The fields the calibration dashboard reads, as the national
+            # release names them, plus the ACS local row mapping and digest.
+            "target_loss_weighting": target_loss["weighting"],
+            "target_loss_family_multipliers": target_loss["family_multipliers"] or None,
+            "target_loss_cap": args.target_loss_cap,
+            "target_loss_row_mapping": target_loss["row_mapping"],
+            "target_loss_weights_sha256": target_loss["weights_sha256"],
+            "target_loss_distribution": loss_distribution,
         },
     )
     summary["calibration_diagnostics"] = (
@@ -1221,10 +2987,88 @@ def do_calibrate(args) -> None:
         f"calibrate stage complete: loss={summary['final_loss']}, "
         f"within10%={summary['fraction_within_10pct']:.2%}, "
         f"diagnostics={outcome.status}"
+        + (
+            f"; CD holdout {holdout['n_targets']} targets: calibrated "
+            f"{holdout['calibrated']['mean_abs_rel_error']:.2%} vs pro-rata "
+            f"{holdout['pro_rata_baseline']['mean_abs_rel_error']:.2%} mean "
+            "abs rel error"
+            if holdout.get("n_targets")
+            else ""
+        )
     )
 
 
-def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> None:
+def _resample_like_materialize(frame, identity: dict):
+    """Re-draw the development rung materialize drew, or refuse.
+
+    A full-rung (or pre-sampling) identity returns the frame unchanged. A
+    sampled one re-draws with the recorded fraction and seed and must select
+    exactly the recorded households.
+    """
+
+    sampling = identity.get("sampling") or {}
+    if not sampling.get("sampled"):
+        return frame
+    sampled, receipt = cd_surface.sample_staging_frame(
+        frame,
+        fraction=float(sampling["sample_fraction"]),
+        seed=int(sampling["sample_seed"]),
+    )
+    recorded = sampling.get("selected_household_ids_sha256")
+    if receipt.get("selected_household_ids_sha256") != recorded:
+        raise SystemExit(
+            "Re-drawing the recorded development rung selected different "
+            "households than materialize did; refusing to attach weights."
+        )
+    return sampled
+
+
+def _with_live_stored_inputs(frame):
+    """Move the donor's retired stored inputs to the installed engine's live ones.
+
+    :func:`microcosm.build.us_runtime.retired_stored_inputs.with_live_stored_inputs`
+    owns the rule; the engine is the installed policyengine-us, the one the
+    package stage checks the artifact against and records as built-with. Only
+    ACS-spine people may lack a WIC take-up decision: the staging builder
+    generates none for them (microcosm#1154), and every donor row carries its
+    own.
+    """
+
+    from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.build.us_runtime.retired_stored_inputs import (
+        with_live_stored_inputs,
+    )
+    from microcosm.data import stored_inputs
+
+    person = frame.table("person")
+    tag = spine_column("person")
+    if tag not in person.columns:
+        raise SystemExit(
+            f"Refusing to write the consumer artifact: the person table has no "
+            f"{tag!r}, so it cannot show which people may lack a WIC decision."
+        )
+    acs_spine = person[tag].eq(ACS_2024_1YR_SPINE).fillna(False).to_numpy(dtype=bool)
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+    except ImportError as error:
+        raise SystemExit(
+            "Refusing to write the consumer artifact: the installed "
+            "policyengine-us cannot be imported, so its retired stored inputs "
+            f"cannot be moved to the live ones: {error}"
+        ) from error
+    try:
+        return with_live_stored_inputs(
+            frame, engine_variables=engine.variables, may_lack_decision=acs_spine
+        )
+    except ValueError as error:
+        raise SystemExit(f"Refusing to write the consumer artifact: {error}") from error
+
+
+def _write_calibrated_artifact(
+    args, weights: np.ndarray, identity: dict, settings: dict
+) -> None:
     """Write the consumer-ready calibrated H5 with verified attachment.
 
     The weights attach by verified household-id vector equality between the
@@ -1243,8 +3087,30 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
 
     from microcosm.frame import Frame, WeightKind, Weights
 
+    recorded_take_up = _recorded_take_up(identity)
+    staging_summary = _load_json(_staging_summary_path(args))
+    _require_local_immigration(staging_summary)
+    _require_local_work_disability(staging_summary)
+    _require_local_income_transfer(staging_summary)
+    _require_local_ssi_disability(staging_summary)
+    _require_local_receipt_anchors(staging_summary)
+    ssi_medicaid, ssi_medicaid_path = _recorded_ssi_medicaid_take_up(
+        identity, args.checkpoint_dir
+    )
     frame = _load_staging_frame(args.staging_h5)
-    _require_local_hours(frame, _load_json(_staging_summary_path(args)))
+    _require_local_hours(frame, staging_summary)
+    _require_acs_self_employment_identity(frame)
+    frame, take_up = _with_local_take_up(frame, seed=recorded_take_up["seed"])
+    if take_up["assigned_sha256"] != recorded_take_up["assigned_sha256"]:
+        raise SystemExit(
+            "The consumer export's ACS take-up assignment differs from the one "
+            "materialize calibrated against (microcosm#1019). Re-run --stage "
+            "materialize against this staging file."
+        )
+    frame = _resample_like_materialize(frame, identity)
+    # microcosm#1022: apply the ACS SSI/Medicaid take-up materialize recorded
+    # on the same rung; it must reproduce the recorded digest.
+    frame = _with_recorded_ssi_medicaid_take_up(frame, ssi_medicaid, ssi_medicaid_path)
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
         lean_ids = store["household"]["household_id"].to_numpy()
@@ -1260,6 +3126,12 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
             f"{len(staging_ids)} households."
         )
 
+    # TODO(policyengine-us#9660): the staging ACS rows carry native
+    # weeks_worked (microcosm#1021), but the pinned policyengine-us gives it a
+    # formula_2025, so this projection holds it back as formula-owned. Once
+    # #9660 part A1 deletes that formula and the pin/ABI lock are bumped, it
+    # becomes an input and ships; the donor rows then need weeks_worked from
+    # WKSWORK too (US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS).
     projected, dropped = project_input_only(frame, period=PERIOD)
     del frame
     gc.collect()
@@ -1269,6 +3141,11 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
         manifest_path=args.checkpoint_dir / "consumer_reviewed_null_fills.json",
         period=PERIOD,
     )
+    # microcosm#1263: the donor stores two retired engine inputs that the
+    # stored-inputs contract refuses at package time; store them as its
+    # register prescribes.
+    live_inputs = _with_live_stored_inputs(projected)
+    projected = live_inputs.frame
     calibrated = Frame(
         {entity: projected.table(entity) for entity in projected.entities},
         projected.schema,
@@ -1286,11 +3163,21 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
         json.dumps(
             {
                 "out_h5": str(Path(args.out_h5).resolve()),
+                "out_h5_sha256": _sha256(args.out_h5),
+                "run_identity_sha256": _run_identity_digest(identity),
+                "weights_sha256": _weights_digest(weights),
+                "solver_settings": settings,
                 "staging_sha256": identity.get("staging_sha256"),
                 "held_back_formula_owned": dropped,
                 "held_back_total": sum(len(v) for v in dropped.values()),
                 "filled_columns": len(fills),
                 "total_values_filled": sum(f["filled_rows"] for f in fills),
+                "acs_local_take_up": take_up,
+                "acs_local_ssi_medicaid_take_up": {
+                    "assigned_sha256": ssi_medicaid["assigned_sha256"],
+                    "assignment_file": ssi_medicaid["assignment_file"],
+                },
+                "live_stored_inputs": live_inputs.provenance,
                 "note": (
                     "The engine-pass contract (input-schema projection + "
                     "reviewed-null default fill) is applied to the published "
@@ -1344,13 +3231,207 @@ def spine_composition(households: pd.DataFrame, persons: pd.DataFrame, weights):
     return composition
 
 
-def do_qa(args) -> None:
-    """Chunked engine probe: per-spine SSI incidence on the calibrated artifact.
+#: Engine variables the QA probe reads for its December-eligible SNAP take-up
+#: snapshot (microcosm#1051 review). Informational only.
+_QA_SNAP_VARIABLES: tuple[str, ...] = (
+    "is_snap_eligible",
+    "takes_up_snap_if_eligible",
+    "snap",
+    "has_usda_elderly_disabled",
+    "spm_unit_count_children",
+    "snap_earned_income",
+)
+#: Household types of the SNAP snapshot. They overlap (a unit with
+#: children and earnings is in both); ``childless_adults`` units have neither
+#: children nor an elderly or disabled member.
+_QA_SNAP_HOUSEHOLD_TYPES: tuple[str, ...] = (
+    "elderly_or_disabled",
+    "with_children",
+    "childless_adults",
+    "with_earnings",
+)
+_QA_SNAP_UNIT_COLUMNS: tuple[str, ...] = (
+    "spine",
+    "state",
+    "weight",
+    "persons",
+    "takes_up",
+    "receives",
+    *_QA_SNAP_HOUSEHOLD_TYPES,
+)
+#: What the QA's SNAP table is, and what it is not (microcosm#1051 review).
+SNAP_DECEMBER_SNAPSHOT_LABEL = "December-eligible snapshot (unit- and person-weighted)"
+SNAP_DECEMBER_SNAPSHOT_NOT_FNS = (
+    "Not the FNS fiscal-year participation rate. USDA FNS participation "
+    "rates are among eligible people over a federal fiscal year; this "
+    "snapshot counts the SPM units the engine finds SNAP-eligible in "
+    "December of the calendar year, and the people in them, and its "
+    "receiving rates count a positive annual modeled benefit. It is "
+    "informational and never graded."
+)
 
-    Loads the packaged artifact bytes PLAIN — no private projection or fill —
-    so the probe doubles as the proof that ordinary
-    ``USSingleYearDataset``/``Microsimulation`` consumers can load the file
-    (the engine-pass contract was applied at export).
+
+def _qa_snap_eligible_units(
+    sub_frame,
+    values,
+    *,
+    household_weights: np.ndarray,
+    position_by_id: pd.Series,
+) -> pd.DataFrame:
+    """One row per SPM unit of a QA chunk that is SNAP-eligible in December.
+
+    PolicyEngine reads the monthly ``is_snap_eligible`` at a year period as
+    its last month. Each row carries the unit's spine, state, household
+    weight, member count (``persons``; every member carries the household
+    weight, as the frame weights people), stored take-up flag, whether its
+    annual modeled ``snap`` is positive, and the household-type flags of
+    :data:`_QA_SNAP_HOUSEHOLD_TYPES`.
+    """
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+
+    person = sub_frame.table("person")
+    spm_unit = sub_frame.table("spm_unit")
+    unit_household = (
+        pd.Series(
+            person["person_household_id"].to_numpy(),
+            index=person["person_spm_unit_id"].to_numpy(),
+        )
+        .groupby(level=0)
+        .first()
+        .reindex(spm_unit["spm_unit_id"].to_numpy())
+    )
+    if unit_household.isna().any():
+        raise ValueError("QA: an SPM unit has no member person.")
+    persons = (
+        person["person_spm_unit_id"]
+        .value_counts()
+        .reindex(spm_unit["spm_unit_id"].to_numpy(), fill_value=0)
+        .to_numpy(dtype=np.int64)
+    )
+    household_ids = unit_household.to_numpy()
+    positions = position_by_id.reindex(household_ids).to_numpy()
+    state = (
+        pd.Series(
+            np.asarray(values["state_code_str"]).astype(str),
+            index=sub_frame.table("household")["household_id"].to_numpy(),
+        )
+        .reindex(household_ids)
+        .to_numpy()
+    )
+    tag = spine_column("spm_unit")
+    spine = (
+        spm_unit[tag].astype(str).to_numpy()
+        if tag in spm_unit
+        else np.full(len(spm_unit), "unknown")
+    )
+    children = np.asarray(values["spm_unit_count_children"], dtype=np.float64) > 0
+    elderly_or_disabled = np.asarray(values["has_usda_elderly_disabled"], dtype=bool)
+    units = pd.DataFrame(
+        {
+            "spine": spine,
+            "state": state,
+            "weight": household_weights[positions.astype(np.int64)],
+            "persons": persons,
+            "takes_up": np.asarray(values["takes_up_snap_if_eligible"], dtype=bool),
+            "receives": np.asarray(values["snap"], dtype=np.float64) > 0,
+            "elderly_or_disabled": elderly_or_disabled,
+            "with_children": children,
+            "childless_adults": ~children & ~elderly_or_disabled,
+            "with_earnings": (
+                np.asarray(values["snap_earned_income"], dtype=np.float64) > 0
+            ),
+        },
+        columns=list(_QA_SNAP_UNIT_COLUMNS),
+    )
+    eligible = np.asarray(values["is_snap_eligible"], dtype=np.float64) > 0
+    return units.loc[eligible].reset_index(drop=True)
+
+
+def snap_december_eligible_snapshot(units: pd.DataFrame) -> dict[str, object]:
+    """SNAP take-up in a December-eligible snapshot, unit- and person-weighted.
+
+    ``units`` holds one row per SPM unit that is SNAP-eligible in December
+    (:func:`_qa_snap_eligible_units`). Every cell reports two rates over
+    that population:
+
+    - ``unit_take_up_rate``: the household weight of eligible units whose
+      stored ``takes_up_snap_if_eligible`` is true, over all eligible unit
+      weight;
+    - ``person_take_up_rate``: eligible persons who take up over eligible
+      persons, weighting each unit by its weight times its member count, as
+      the frame weights people.
+
+    The ``*_receiving_rate`` fields count a positive annual modeled ``snap``
+    instead. This is not the FNS participation rate, which is among
+    eligible people over a federal fiscal year
+    (:data:`SNAP_DECEMBER_SNAPSHOT_NOT_FNS`). Reported overall, by household
+    type, by spine (and type) and by state. Never graded (microcosm#1051
+    review).
+    """
+
+    def cell(rows: pd.DataFrame) -> dict[str, object]:
+        unit_weights = rows["weight"].to_numpy(dtype=np.float64)
+        members = rows["persons"].to_numpy(dtype=np.float64)
+        takes_up = rows["takes_up"].to_numpy(dtype=bool)
+        receives = rows["receives"].to_numpy(dtype=bool)
+        result: dict[str, object] = {
+            "eligible_units": int(len(rows)),
+            "eligible_persons": int(members.sum()),
+        }
+        for basis, weights in (
+            ("unit", unit_weights),
+            ("person", unit_weights * members),
+        ):
+            weight = float(weights.sum())
+            taking_up = float(weights[takes_up].sum())
+            receiving = float(weights[receives].sum())
+            result.update(
+                {
+                    f"eligible_{basis}_weight": weight,
+                    f"{basis}_take_up_weight": taking_up,
+                    f"{basis}_take_up_rate": (
+                        taking_up / weight if weight > 0 else None
+                    ),
+                    f"{basis}_receiving_weight": receiving,
+                    f"{basis}_receiving_rate": (
+                        receiving / weight if weight > 0 else None
+                    ),
+                }
+            )
+        return result
+
+    def by_type(rows: pd.DataFrame) -> dict[str, object]:
+        return {
+            kind: cell(rows.loc[rows[kind].to_numpy(dtype=bool)])
+            for kind in _QA_SNAP_HOUSEHOLD_TYPES
+        }
+
+    return {
+        "label": SNAP_DECEMBER_SNAPSHOT_LABEL,
+        "graded": False,
+        "all": cell(units),
+        "by_household_type": by_type(units),
+        "by_spine": {
+            str(spine): {"all": cell(rows), "by_household_type": by_type(rows)}
+            for spine, rows in units.groupby("spine", sort=True)
+        },
+        "by_state": {
+            str(state): cell(rows) for state, rows in units.groupby("state", sort=True)
+        },
+    }
+
+
+def do_qa(args) -> None:
+    """Chunked engine probe on the calibrated artifact.
+
+    Records per-spine SSI incidence and, informationally, a December-eligible
+    SNAP take-up snapshot (unit- and person-weighted; not the FNS fiscal-year
+    participation rate) by spine, state and household type (microcosm#1051
+    review). Loads the packaged artifact bytes PLAIN — no
+    private projection or fill — so the probe doubles as the proof that
+    ordinary ``USSingleYearDataset``/``Microsimulation`` consumers can load
+    the file (the engine-pass contract was applied at export).
     """
 
     from microcosm.build.us_runtime.base_pool import spine_column
@@ -1371,14 +3452,23 @@ def do_qa(args) -> None:
 
     adapter = PolicyEngineUSEngine()
     per_spine: dict[str, dict[str, float]] = {}
+    snap_units: list[pd.DataFrame] = []
     n_chunks = (n_households + args.hh_chunk - 1) // args.hh_chunk
     for chunk_index, low in enumerate(range(0, n_households, args.hh_chunk)):
         high = min(low + args.hh_chunk, n_households)
         mask = (person_position >= low) & (person_position < high)
         sub_frame = projected.select(mask)
-        ssi = np.asarray(
-            adapter.materialize(sub_frame, ["ssi"], PERIOD)["ssi"],
-            dtype=np.float64,
+        values = adapter.materialize(
+            sub_frame, ["ssi", *_QA_SNAP_VARIABLES, "state_code_str"], PERIOD
+        )
+        ssi = np.asarray(values["ssi"], dtype=np.float64)
+        snap_units.append(
+            _qa_snap_eligible_units(
+                sub_frame,
+                values,
+                household_weights=household_weights,
+                position_by_id=position_by_id,
+            )
         )
         sub_person_household = sub_frame.table("person")[
             "person_household_id"
@@ -1402,7 +3492,7 @@ def do_qa(args) -> None:
             entry["ssi_dollars"] += float(
                 (ssi[recipients] * person_weight[recipients]).sum()
             )
-        del sub_frame
+        del sub_frame, values
         gc.collect()
         log(f"qa chunk {chunk_index + 1}/{n_chunks}")
 
@@ -1412,18 +3502,48 @@ def do_qa(args) -> None:
             if entry["person_weight"]
             else 0.0
         )
+    # Recorded, not re-verified: finalize and package verify the identity.
+    qa_identity = _load_json(args.checkpoint_dir / "run_identity.json")
     payload = {
+        "run_identity_sha256": (
+            _run_identity_digest(qa_identity) if qa_identity else None
+        ),
         "period": PERIOD,
         "variable": "ssi",
         "artifact": str(Path(args.out_h5).resolve()),
         "artifact_sha256": _sha256(args.out_h5),
         "plain_consumption": True,
         "per_spine": per_spine,
+        "snap_december_eligible_snapshot": {
+            "issue": "microcosm#1051 review",
+            "not_fns_participation_rate": SNAP_DECEMBER_SNAPSHOT_NOT_FNS,
+            "definition": (
+                "SPM units with is_snap_eligible in December (PolicyEngine "
+                "reads a monthly boolean at a year period as its last month) "
+                "and the people in them. unit_* fields weight each unit by "
+                "its household weight; person_* fields weight it by household "
+                "weight times member count, so person_take_up_rate is "
+                "eligible persons who take up over eligible persons. "
+                "*_take_up_rate reads the stored takes_up_snap_if_eligible; "
+                "*_receiving_rate counts a positive annual modeled snap, a "
+                "different window from the December eligibility. Household "
+                "types overlap; childless_adults have no children and no "
+                "elderly or disabled member."
+            ),
+            **snap_december_eligible_snapshot(
+                pd.concat(snap_units, ignore_index=True)
+                if snap_units
+                else pd.DataFrame(columns=list(_QA_SNAP_UNIT_COLUMNS))
+            ),
+        },
         "note": (
             "microcosm#403 re-measure: per-spine SSI incidence and intensity, "
             "computed by loading the packaged artifact bytes PLAIN (no "
             "private projection or fill) — the probe doubles as the "
-            "consumer-loadability proof. Recorded as evidence, not gated."
+            "consumer-loadability proof. A December-eligible SNAP take-up "
+            "snapshot (unit- and person-weighted; not the FNS fiscal-year "
+            "participation rate) is reported alongside (microcosm#1051 "
+            "review). Recorded as evidence, not gated."
         ),
     }
     (args.checkpoint_dir / "spine_qa.json").write_text(json.dumps(payload, indent=2))
@@ -1449,10 +3569,154 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
     return {"sha": sha, "dirty": dirty, "branch": _git("branch", "--show-current")}
 
 
+def _ess_concentration_limitation(diagnostics: dict) -> dict:
+    """The lineage's weight-concentration entry, true to the solve it describes.
+
+    Only the historical solve (no penalty, projection mass parametrization,
+    every target weighted equally) keeps the reviewed entry. A summary from
+    before the loss weights records no ``target_loss``, which reads as equal
+    weights. Any other solve, including an unpenalized softmax one or any
+    loss-weighted one, records its own settings instead: its concentration is
+    measured, but whether it is acceptable is a separate review this register
+    cannot claim.
+    """
+
+    ess = diagnostics.get("effective_sample_size")
+    ess_fraction = diagnostics.get("ess_fraction", 0.0)
+    households = diagnostics.get("households") or 0
+    l2_lambda = float(diagnostics.get("l2_lambda") or 0.0)
+    parametrization = diagnostics.get(
+        "mass_parametrization", HISTORICAL_PENALTY["mass_parametrization"]
+    )
+    target_loss = diagnostics.get("target_loss")
+    if (
+        l2_lambda == 0.0
+        and parametrization == HISTORICAL_PENALTY["mass_parametrization"]
+        and target_loss is None
+    ):
+        return {
+            "id": "low_effective_sample_size_lambda_zero",
+            "status": "reviewed_concentration",
+            "reason": (
+                f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
+                "households under the hard 5x weight cap with l2_lambda=0 "
+                "(kept for consistency with the certified default and the "
+                "Build L doctrine; no new calibration knobs per "
+                "microcosm#492)."
+            ),
+            "calibration_blocker": False,
+        }
+    return {
+        "id": "effective_sample_size_under_nondefault_solve",
+        "status": "recorded_concentration",
+        "reason": (
+            f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
+            f"households with max_weight_ratio="
+            f"{diagnostics.get('max_weight_ratio')}, l2_lambda={l2_lambda:g}, "
+            f"l2_basis="
+            f"{diagnostics.get('l2_basis', HISTORICAL_PENALTY['l2_basis'])!r} and "
+            f"mass_parametrization={parametrization!r}; chi-square distance "
+            f"from the design weights {diagnostics.get('chi_square_distance')}"
+            + (
+                "; target loss weights "
+                f"{target_loss.get('weighting')!r} under row mapping "
+                f"{target_loss.get('row_mapping')!r} with family multipliers "
+                f"{target_loss.get('family_multipliers') or {}}."
+                if isinstance(target_loss, dict)
+                else "; every target weighted equally."
+            )
+        ),
+        "calibration_blocker": False,
+    }
+
+
+#: Donor releases verified free of the microcosm#1178 Social Security erasure.
+#: Before microcosm#1186 (merged 980282520), the PUF-support finalizer replaced
+#: CPS-reported Social Security with the PUF prediction, so a zero prediction
+#: erased a CPS reporter's benefit; on the national default
+#: populace-us-2024-spm-20260915 that erased 4,495 PUF-support records. The
+#: fix runs where a national base is built. The ACS staging takes its donor
+#: as a finished H5 and never re-runs it, so a release inherits whatever its
+#: donor carries. The register is empty: every published US national release
+#: predates #1186. Add a donor's release id only after checking its
+#: PUF-support CPS reporters keep their reported benefit; until then the
+#: release discloses the inherited erasure.
+DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE: frozenset[str] = frozenset()
+
+
+def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
+    """The inherited microcosm#1178 erasure, unless the donor is verified free."""
+
+    release_id = donor_release.get("release_id")
+    if release_id in DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE:
+        return None
+    return {
+        "id": "social_security_cps_reporters_erased_inherited",
+        "status": "reviewed_inherited_defect",
+        "issue": "microcosm#1178",
+        "fixed_by": "microcosm#1186 (980282520), in the national base build",
+        "donor_release": release_id,
+        "affected_spines": ["asec_puf", "acs_2024_1yr"],
+        "reason": (
+            "The donor was built before microcosm#1186, so its PUF-support "
+            "records carry the microcosm#1178 erasure of CPS-reported Social "
+            "Security: on the national default populace-us-2024-spm-20260915 "
+            "(the parent of the reported-receipt donor, which keeps every "
+            "existing field's bytes and adds three receipt columns), 4,495 "
+            "PUF-support records lost "
+            "their reported benefit, while no ASEC-arm record did. Donor rows "
+            "enter this artifact as they are, and the ACS transfer learns the "
+            "Social Security components from those donor rows, so ACS rows "
+            "can inherit the distortion; its size on this artifact is not "
+            "measured."
+        ),
+        "treatment": (
+            "Refresh this artifact against the first national release built "
+            "after microcosm#1186 (its refresh_recipe re-runs the chain with "
+            "that release as the donor), then add the donor's release id to "
+            "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE once its PUF-support CPS "
+            "reporters are checked."
+        ),
+        "calibration_blocker": False,
+    }
+
+
+def _acs_wic_takeup_limitation(consumer_export: dict | None) -> dict | None:
+    """The interim WIC take-up assumption for ACS people, when it was applied."""
+
+    wic = ((consumer_export or {}).get("live_stored_inputs") or {}).get("wic") or {}
+    assumed = wic.get("people_assumed_true")
+    if not assumed:
+        return None
+    return {
+        "id": "acs_wic_takeup_assumed_interim",
+        "status": "reviewed_interim_assumption",
+        "issue": "microcosm#1154",
+        "affected_spines": ["acs_2024_1yr"],
+        "column": wic.get("to"),
+        "people_assumed_true": assumed,
+        "reason": (
+            "The staging builder generates no WIC take-up decision for ACS "
+            "people, and the donor stores its decisions under the retired "
+            f"input name {wic.get('from')!r}, which the installed "
+            "policyengine-us ignores. The consumer artifact stores them as "
+            f"{wic.get('to')!r}: every donor decision is kept, and every ACS "
+            "person is set to take WIC up when eligible. That is the engine's "
+            "default and the assumption policyengine.py applies to the same "
+            "cells today; it is a modelling assumption, not observed "
+            "participation."
+        ),
+        "treatment": wic.get("flip_condition"),
+        "calibration_blocker": False,
+    }
+
+
 def finalize_reviewed_limitations(
     staging_summary: dict,
     diagnostics: dict,
     spine_qa: dict,
+    *,
+    consumer_export: dict | None = None,
 ) -> list[dict]:
     """The reviewed-limitations register for the buildo-acs-local lineage.
 
@@ -1462,12 +3726,10 @@ def finalize_reviewed_limitations(
     duplicates.
     """
 
-    ess = diagnostics.get("effective_sample_size")
-    ess_fraction = diagnostics.get("ess_fraction", 0.0)
-    households = diagnostics.get("households") or 0
     donor_release = (staging_summary.get("base") or {}).get("donor_release") or {}
     limitations = list(staging_summary.get("reviewed_limitations", []))
     aged_ssi = (spine_qa or {}).get("per_spine", {})
+    register = reviewed_fill_register_summary(load_reviewed_fill_consumer_register())
     limitations += [
         {
             "id": "ssi_aged_band_collapse_inherited",
@@ -1519,6 +3781,487 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
         {
+            "id": "acs_take_up_engine_defaults",
+            "status": "reviewed_known_gap",
+            "affected_spines": ["acs_2024_1yr"],
+            "reason": (
+                "SNAP and TANF take-up on ACS rows are seeded by the local "
+                "runtime and gated by acs_local_take_up_signal "
+                "(microcosm#1019; its SNAP reporters are the native household "
+                "FS anchor, acs_snap_receipt_anchor), Medicare take-up is "
+                "native ACS HINS3 and Head Start take-up a keyed draw at the "
+                "donor spine's share among ages 3-5 "
+                "(acs_engine_free_default_fills), and SSI and Medicaid "
+                "take-up are assigned after an engine pre-pass "
+                "(acs_local_ssi_medicaid_take_up). The other runtime-owned "
+                "takes_up_* flags (EITC, ACA, Early Head Start and the rest) "
+                "are neither transferred nor seeded on ACS rows, so they ship "
+                "at the engine default, universal take-up; the reviewed-fill "
+                "consumer register records their known biases "
+                "(acs_reviewed_default_fill_consumers). The QA "
+                "probe's SNAP take-up table is a December-eligible snapshot "
+                "(unit- and person-weighted), informational and never "
+                "graded; it is not the FNS fiscal-year participation rate, "
+                "which is among eligible people over a federal fiscal year."
+            ),
+            "treatment": "Tracked via microcosm#1022.",
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_engine_free_default_fills",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [column for _, column in ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS],
+            "reason": (
+                "Four inputs are filled on ACS rows without the engine "
+                f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}) instead of taking their "
+                "engine defaults; the first three bias SNAP. "
+                "is_snap_abawd_discretionary_exempt "
+                "mirrors the donor seeding: every person aged 18-64 draws "
+                "against the snap_abawd_discretionary_exemption manifest rate "
+                "(the statutory cap), keyed on acs_2024_1yr:SERIALNO:SPORDER. "
+                "It is a cap-based proxy, not an observed exemption assignment: "
+                "seeding all adults rather than covered individuals only, at "
+                "the cap rather than actual state usage, makes it an "
+                "upper-bound propensity, as on the donor. "
+                "receives_housing_assistance copies the transferred "
+                "takes_up_housing_assistance_if_eligible (equal on the donor by "
+                "construction) and is False in TYPEHUGQ 2/3 group quarters, "
+                "whose transferred take-up flag is the open transfer-side fix "
+                "microcosm#975. takes_up_medicare_if_eligible is ACS HINS3 == 1 "
+                "(coverage at interview), as the donor maps ASEC MCARE == 1; a "
+                "blank or invalid HINS3 reads as not covered. "
+                "takes_up_head_start_if_eligible is True for a person aged 3-5 "
+                "whose stable draw, keyed on acs_2024_1yr:SERIALNO:SPORDER, "
+                "falls below the donor spine's weighted take-up share at those "
+                "ages, the output of the donor's measured SIPP model "
+                "(sipp_head_start) at its population rate but without its "
+                "household and earnings conditioning; it is False at every "
+                "other age, as on the donor, and the engine applies Head Start "
+                "eligibility. ACS VEH is not filled into household_vehicles_owned "
+                "(microcosm#1064 review): it counts vehicles available, long-term "
+                "leased and employer-provided ones included, while the donor's "
+                "SIPP TVEH_NUM counts vehicles owned, so the receipt records it "
+                "as availability only and both vehicle columns keep their "
+                "default (acs_household_vehicle_value_default)."
+            ),
+            "treatment": (
+                "Filled by the release tool before both reviewed-null fills, "
+                "digested in run_identity.json and re-derived at export; gated "
+                "by acs_local_take_up_signal (exempt share of ages 18-64 around "
+                "the manifest rate, receipt equal to the transferred take-up, "
+                "Medicare equal to HINS3 with a high share at 65+, no ACS "
+                "owned vehicle count but the default, Head Start "
+                "take-up only at ages 3-5 and within half to one and a half "
+                "times the donor spine's share there). Blank and invalid HINS3 "
+                "counts (unweighted, weighted and at 65+) are reported in the "
+                "receipt and the gate detail, not graded."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_household_vehicle_value_default",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [US_VEHICLES_OWNED_COLUMN, US_VEHICLES_VALUE_COLUMN],
+            "reason": (
+                "Both ACS vehicle columns stay at the reviewed engine default, "
+                f"0, on ACS rows ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}). The ACS "
+                "asks how many vehicles a household keeps (VEH) but not what "
+                f"they are worth, so {US_VEHICLES_VALUE_COLUMN} has no ACS "
+                f"source. {US_VEHICLES_OWNED_COLUMN} is not taken from VEH "
+                "either (microcosm#1064 review): VEH counts the vehicles kept "
+                "at home and available to the household, long-term leased and "
+                "employer-provided ones included, while the donor's SIPP "
+                "TVEH_NUM and the engine count vehicles owned. policyengine-us "
+                "2.2.1 reads the owned count on its own in San Francisco CAAP's "
+                "one-vehicle limit for a single person "
+                "(ca_sf_caap_vehicle_eligible), Los Angeles General Relief's "
+                "vehicle cap (la_general_relief_motor_vehicle_value_eligible) "
+                "and lives_in_vehicle, which Los Angeles and Marin General "
+                "Relief read, so VEH as the owned count would deny a single San "
+                "Francisco applicant who leases two cars and owns none. The "
+                "engine has no vehicles-available input, so VEH is recorded in "
+                "the take-up receipt as availability only. A zero count always "
+                "passes the San Francisco CAAP and Los Angeles General Relief "
+                "count caps, so they overstate eligibility for households that "
+                "own more vehicles than the cap, the same direction as the zero "
+                "value; lives_in_vehicle is never true on ACS rows, which only "
+                "picks Los Angeles's value limit and Marin's vehicle exemption, "
+                "both applied to the zero value. In policyengine-us 2.2.1 the "
+                "value's only SNAP consumer is Texas's broad-based categorical "
+                "eligibility asset test (meets_tanf_non_cash_asset_test), which "
+                "counts vehicle value above $22,500 for the first vehicle and "
+                "$8,700 for each other against a $5,000 limit; SNAP's own asset "
+                "test reads no vehicle, and the count there only scales the "
+                "per-vehicle exclusions, so a zero count is harmless for SNAP. "
+                "The value also feeds the TANF resource tests of Texas, "
+                "Washington, Montana, Tennessee, California and Wisconsin (TANF "
+                "is SNAP unearned income), Illinois AABD, California CAPI and "
+                "California county general assistance. A zero value counts no "
+                "vehicle equity, so those tests pass more often on ACS rows "
+                "than on donor rows, whose count and value are the SIPP model's "
+                "(sipp_vehicles). Through Illinois AABD it also passes the asset "
+                "test of Illinois's Medicaid buy-in for workers with "
+                "disabilities (HBWD), so modeled Medicaid eligibility is "
+                "overstated there and, because Medicaid eligibility bars the "
+                "premium tax credit (pays_aca_premium), the PTC is understated: "
+                "an otherwise eligible Illinois Marketplace adult it reaches "
+                "loses the whole credit (microcosm#1071 review)."
+            ),
+            "treatment": (
+                "Reviewed-null fill to 0 for both, recorded in the consumer fill "
+                "manifest; their per-program notes are in the reviewed-fill "
+                "consumer register (acs_reviewed_default_fill_consumers). "
+                "acs_local_take_up_signal fails on an ACS owned count other "
+                "than 0, and the take-up receipt keeps VEH as "
+                f"availability (engine_free_fills.{ACS_VEHICLES_AVAILABLE_RECEIPT}: "
+                "code counts, top-coded rows and the weighted share of housing "
+                "units with a vehicle available). If the count-limited county "
+                "programs or the Texas asset test matter, the follow-up is the "
+                "donor stage's SIPP vehicle model run at staging on the ACS rows "
+                "for the owned count and value, with VEH as a predictor rather "
+                "than the count, after reviewing the available-to-owned "
+                "crosswalk and the 6-or-more top code."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_immigration_status_method",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr", "asec_puf"],
+            "columns": list(ACS_LOCAL_IMMIGRATION_COLUMNS),
+            "reason": (
+                "ACS rows run the ASEC immigration stage's cited residual "
+                "method through a CPS-named view of native ACS fields "
+                "(microcosm#1020): CIT for citizenship, the exact YOEP entry "
+                "year for the PEINUSYR bins, POBP for nativity, and HINS3-7 / "
+                "COW / ESR / MIL / SSP / SSIP / SCHG for the legal-status "
+                "indicators. ACS coverage is at interview (CPS: any time last "
+                "year), and the federal-pension, Social Security reason and "
+                "housing-subsidy indicators have no ACS field, so the ACS "
+                "residual (likely undocumented) pool can only be as large or "
+                "larger than the ASEC method would find for the same people. "
+                "The ACS rows target the Pew worker and Higher Ed student "
+                "controls less the donor rows' pooled delivered counts, "
+                "floored at zero, so the pooled file meets each control "
+                "whenever the ACS rows have the capacity. "
+                "years_since_us_entry is an arrival-based status-duration "
+                "proxy: the period minus the measured arrival year (age for "
+                "the US-born). Known limitation: neither the ACS nor the "
+                "ASEC donor records the date qualified status was granted, "
+                "so the clock runs from arrival, while 8 U.S.C. 1613(a) "
+                "starts it at entry with qualified status. It can clear the "
+                "five-year bar early for people who adjusted status after "
+                "arriving (arrival in 2014 and status in 2023 gives 10 "
+                "modeled years in 2024, against one qualifying year; "
+                "policyengine-us#9658). That affects the policyengine-us "
+                "2.2.1 tests that read the clock: Medicaid (CHIP follows "
+                "it) and Washington TANF read it against a five-year bar, "
+                "so the long clock can clear the bar early; Washington RCA "
+                "reads it as a window that closes (years_since_us_entry < "
+                "window_years), so the long clock can wrongly exclude a "
+                "recently qualified person from RCA. Under the statute the "
+                "SNAP five-year bar also runs from entry with qualified "
+                "status, but the pinned engine's federal SNAP status test "
+                "reads the status, not this clock, so any SNAP effect is "
+                "indirect. The receipt "
+                "reports the size of the affected group under each lag of "
+                "one to ten, 15 and 20 years; the real-data check is "
+                "microcosm#1093."
+            ),
+            "treatment": (
+                "Gated by acs_local_immigration_signal; the staging summary's "
+                "acs_local_immigration receipt records the mapping, the "
+                "per-status control, donor delivered, residual, ACS assigned "
+                "and pooled counts, the adjustment-lag sensitivity of the "
+                "entry clock (affected bar-status weight and its cumulative "
+                "share for lags of one to ten, 15 and 20 years, and the "
+                "largest observed clock), and an assignment digest. "
+                "Packaging refuses a "
+                "receipt whose targets are not the donor residual."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_work_disability_inputs",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": list(ACS_LOCAL_DISABILITY_COLUMNS),
+            "reason": (
+                "ACS rows read is_disabled and is_blind from their own "
+                "disability-difficulty items (microcosm#1021), not the ASEC "
+                "transfer: is_disabled is any of DEAR/DEYE/DOUT/DPHY/DREM/DDRS "
+                "== 1, or SSIP > 0 under age 65 (the ASEC eligibility-inputs "
+                "definition), and is_blind is DEYE == 1. An item below its "
+                "minimum question age (5 for DPHY/DREM/DDRS, 15 for DOUT) is "
+                "blank and reads as no difficulty. Native ACS weeks_worked "
+                "(WKWN, under the WKHP universe rules) is carried on the "
+                "staging ACS spine only: the pinned policyengine-us gives "
+                "weeks_worked a formula_2025, so the export holds it back as "
+                f"formula-owned until {WEEKS_WORKED_EXPORT_BLOCKER}. is_veteran "
+                "(ACS MIL == 2) is not exported because policyengine-us "
+                "computes it from veterans_benefits for every year; "
+                "is_incapable_of_self_care stays on the ASEC transfer."
+            ),
+            "treatment": (
+                "Gated by acs_local_work_disability_signal at staging and "
+                "finalize; the staging summary's acs_local_work_disability "
+                "receipt records the definitions, item universes, SSI "
+                "increment, zero transfer-imputed cells and the weeks-worked "
+                "counts."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_local_income_transfer",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": list(ACS_LOCAL_INCOME_TRANSFER_COLUMNS),
+            "reason": (
+                "ACS rows get child support received and paid, workers' "
+                "compensation, non-SSA disability benefits and 401(k)/403(b)/"
+                "SEP/Keogh/Roth-IRA distributions from a separate local-lane "
+                f"QRF pass ({ACS_LOCAL_INCOME_TRANSFER_ISSUE}), outside the "
+                "shared declared transfer plan and its execution contract. "
+                "The ACS asks none of them separately (OIP and RETP are "
+                "combined amounts), so the pass fits on the donor's ASEC "
+                "observation role, the measured CPS values, never the PUF "
+                "clone role's CPS-trained predictions. It uses the existing "
+                "transfer predictors plus two local-only predictor "
+                "extensions of its own transfer call, which leave the shared "
+                "execution contract and the shared transfer's draws "
+                "unchanged: ACS OIP (times ADJINC) for the child support "
+                "family only, against a donor analog of UC, workers' "
+                "compensation, VA, child support, alimony, strike and other "
+                "ASEC other income (ASEC FIN_VAL, contributions from outside "
+                "the household, is not carried); and, for the "
+                "work/disability and retirement-distribution families, an "
+                "ACS-aligned RETP analog that adds the five account "
+                "distributions and disability benefits to the shared pension "
+                "and regular-IRA analog (survivor income and other-account "
+                "distributions are not carried). OIP is withheld from "
+                "workers' compensation pending review. The shared plan "
+                "already transfers "
+                + ", ".join(ACS_LOCAL_INCOME_SHARED_RETIREMENT_COMPONENTS)
+                + ", so this pass transfers only the other account types and "
+                "refuses any overlap with the shared plan."
+            ),
+            "treatment": (
+                "Gated by acs_local_income_transfer_signal at staging and "
+                "finalize (complete, non-negative amounts on both spines, "
+                "ACS signal where the donor has recipients, a complete "
+                "ASEC-channel receipt with the reviewed method, each "
+                "predictor extension on exactly its own families, and ACS "
+                "OIP and donor coverage); ACS/donor recipient-share and "
+                "recipient-mean ratios outside the review band are "
+                "reported, not failed."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_local_ssi_disability_criteria",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [ACS_LOCAL_SSI_DISABILITY_COLUMN],
+            "reason": (
+                "ACS rows get meets_ssi_disability_criteria from the donor "
+                "release's archived SIPP QRF (the same pinned full SIPP 2023 "
+                "file, screens, predictors, weighted sample and fixed forest), "
+                "run on a CPS-named view of each ACS person "
+                f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}). The six ACS difficulty "
+                "items stand in for the ASEC PEDIS* items, and a blank below "
+                "an item's minimum question age reads as no difficulty; age, "
+                "sex, wages and marriage are native; interest, dividend and "
+                "rental income, liquid assets and Social Security disability "
+                "come from the shared transfer, and disability benefits from "
+                "the local income pass. ACS persons under 65 who report SSI "
+                "(SSIP) are anchored, and the draws are keyed on "
+                "acs_2024_1yr:SERIALNO:SPORDER and the build seed. SSI take-up "
+                "on ACS rows is then assigned against these criteria "
+                "(acs_local_ssi_medicaid_take_up)."
+            ),
+            "treatment": (
+                "Gated by acs_local_ssi_disability_signal at staging and "
+                "finalize (a complete boolean on both spines, non-constant with "
+                "a positive weighted share among ACS persons aged 18-64, and a "
+                "receipt pinned to the SIPP file with no unfilled ACS row); the "
+                "ACS/donor 18-64 share ratio outside the review band and "
+                "under-65 SSI reporters without the criteria are reported, not "
+                "failed. Packaging is blocked while any ACS person meets the "
+                "criteria and the run records no SSI take-up handling for ACS "
+                "rows (the SSI take-up release block); the recorded "
+                "acs_local_ssi_medicaid_take_up assignment is that handling."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_local_ssi_medicaid_take_up",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": list(ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS),
+            "reason": (
+                "ACS rows get takes_up_ssi_if_eligible and "
+                "takes_up_medicaid_if_eligible from the donor stages' own "
+                "methods at materialize "
+                f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}), after a "
+                "household-batched engine pre-pass over the ACS households "
+                "(December 2024 uncapped_ssi > 0 as the SSI candidates, then "
+                "is_medicaid_eligible with the SSI flags assigned). Each "
+                "target is the residual of the donor stage's count (the SSA "
+                "federal-payment recipients by age band; the CMS December "
+                "2024 state enrollment) after the donor rows' pooled "
+                "recipients: the donor H5 was assigned against the full "
+                "count and pool assembly scaled its weights by 1 - acs_share, "
+                "so the stage measures the donor's contribution with the same "
+                "two engine passes over the donor households (stored flag x "
+                "candidacy or eligibility x pre-calibration person weight) "
+                "and targets count minus contribution, floored at zero "
+                "(microcosm#1060 review). SSI: ssi_reported (SSIP, asked from "
+                "age 15) reporters always take up, as a floor even above the "
+                "residual, and everyone else draws at the ssi_take_up band "
+                "prior; where the ACS candidate capacity is below the "
+                "residual every candidate takes up and the shortfall is "
+                "recorded. The under-18 band draws but is fenced from "
+                "grading, as on the donor. Medicaid: the medicaid_take_up "
+                "manifest stage fills and greedily calibrates each state to "
+                "its residual among eligible non-anchored persons. ACS HINS4 "
+                "== 1 is the anchor, but HINS4 also covers CHIP and "
+                "state-funded means-tested plans, so it is not forced "
+                "wholesale: where a state's anchored eligible weight exceeds "
+                "its residual, each HINS4 record there stays anchored with "
+                "probability residual / anchored eligible weight on a keyed "
+                "draw, and the state's excess is recorded. The treatment is "
+                "state-level because the CMS counts carry no child/adult "
+                "split; policyengine-us 2.2.1 keeps CHIP take-up separate "
+                "and CHIP eligibility exclusive of Medicaid eligibility. "
+                "Draws are keyed on acs_2024_1yr:SERIALNO:SPORDER and the "
+                "build seed. The targets bind the pre-calibration frame; the "
+                "release solve does not carry the SSA band counts."
+            ),
+            "treatment": (
+                "Gated by acs_local_ssi_medicaid_take_up_signal at "
+                "materialize and finalize: both flags complete and "
+                "non-constant on both spines, every ACS SSIP reporter taking "
+                "up and every HINS4 anchor outside the thinned states taking "
+                "up, every band and state target equal to its count minus "
+                "the donor contribution, the 18-64 and 65+ SSI bands within "
+                "5% of their residuals wherever the prior was count-truthful "
+                "(every candidate assigned where saturated), and the donor "
+                "medicaid_take_up gate passing on the ACS state diagnostics "
+                "at the residuals. The under-18 band, SSI bands the donor "
+                "meets or whose anchors exceed the residual, saturated "
+                "Medicaid states and every shortfall and excess are "
+                "reported, not failed. The consumer export applies the "
+                "recorded assignment and must reproduce its digest."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_snap_receipt_anchor",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": ["receives_snap", "receives_tanf"],
+            "reason": (
+                "receives_snap on ACS rows is anchored by native household FS "
+                "(anyone in the household received SNAP in the past 12 "
+                "months), not left to the QRF transfer, whose predictors carry "
+                f"no receipt signal ({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}). FS "
+                "names the housing unit, not the SNAP household, so FS == 1 "
+                "is a constraint that at least one SPM unit of the housing "
+                "unit received SNAP (microcosm#1062 review): the only SPM "
+                "unit of a single-unit housing unit is True. The ACS loader "
+                "makes each ACS housing unit one SPM unit, so in this build "
+                "FS decides that unit directly. Known limitation: that unit "
+                "also holds any unrelated adult roommate (RELSHIPP 34/36) who "
+                "buys and prepares food apart, a SNAP household of their own "
+                "(7 U.S.C. 2012(m)(1)) and a separate Census SPM unit, so when "
+                "FS == 1 the combined unit is anchored as receiving SNAP and "
+                "takes it up, and the roommate's income and size enter the "
+                "recipient's SNAP test, which can change its eligibility and "
+                "benefit. This is the loader's household fallback "
+                "(microcosm#1023). The held adult-nonrelative split (microcosm#1061) "
+                "would give every roommate or housemate (RELSHIPP 34) aged 15+ a unit "
+                "of their own, and an other nonrelative (36) one too unless an "
+                "unmarried partner is present and the two are at least 15 years apart. "
+                "microcosm#1353 would replace that age-gap rule for code-36 adults in "
+                "partner households with an ASEC-estimated probability once a split is "
+                "restored. The size of this one-unit roommate error is unmeasured; "
+                "microcosm#1093 lists it. If a reconstructed SPM "
+                "partition puts several SPM units in a housing unit (a "
+                "roommate's own unit, say), each unit keeps its transferred "
+                "QRF value, which is conditioned on the unit's own size, "
+                "ages, income and tenure, and the reference person's unit is "
+                "set True when the QRF names none, so a roommate who buys and "
+                "prepares food apart is not forced to report the family's "
+                "receipt. Census "
+                "prorates a household SNAP amount to every SPM unit (the "
+                "donor's SPM_SNAPSUB > 0) to measure poverty resources, which "
+                "does not establish that every unit enrolled. FS == 2 marks "
+                "none; group quarters, outside the FS universe, are False. FS "
+                "under-reports administrative SNAP, so the anchor is a floor "
+                "the take-up draw (microcosm#1019) fills to the FNS rate. "
+                "receives_tanf keeps its QRF transfer: ACS PAP covers TANF and "
+                "general assistance together, and PAP > 0 is not TANF receipt "
+                "(microcosm#591); PAP is loaded and its overlap with the "
+                "transferred receives_tanf is recorded, not applied, and the "
+                "SNAP x TANF cross-tab of ACS units before and after the "
+                "override is recorded beside the donor spine's."
+            ),
+            "treatment": (
+                "Applied at staging after the transfer, whose declared plan "
+                "is unchanged, and before pooling, so donor rows keep their "
+                "ASEC receipt. Gated by acs_local_receipt_anchor_signal at "
+                "staging and finalize: no unit of an FS == 2 housing unit or "
+                "of group quarters reports SNAP, the only SPM unit of an FS "
+                "== 1 housing unit does, every FS == 1 housing unit with "
+                "several SPM units has at least one reporting unit, every ACS "
+                "housing unit carries FS 1 or 2, and the staging receipt "
+                "counts the households, units, anchors, non-reference "
+                "reporters, resolution paths and PAP recipients the packaged "
+                "ACS rows hold. The "
+                "weighted FS == 1 share of ACS housing units is reported "
+                "against the 2023 ACS figure (12.2%), not graded."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_reviewed_default_fill_consumers",
+            "status": "reviewed_modeling_decision",
+            "register": register["register"],
+            "register_sha256": register["sha256"],
+            "reason": (
+                "The engine inputs the lane still fills with their "
+                f"policyengine-us defaults are listed in {register['register']} "
+                f"({register['entries']} entries, reviewed against "
+                "policyengine-us "
+                f"{register['reviewed_against']['policyengine_us']}; "
+                f"{ACS_LOCAL_REVIEWED_FILL_CONSUMERS_ISSUE}), each with the "
+                "means-tested programs that read it in the engine's static "
+                "dependency graph and, for every one of them, a note that the "
+                "default is harmless there (and why) or biases it in a stated "
+                "direction. Known biases: "
+                + "; ".join(
+                    f"{column} ({', '.join(programs)})"
+                    for column, programs in register["known_bias"].items()
+                )
+                + "."
+            ),
+            "treatment": (
+                "Gated by acs_local_reviewed_fill_consumers at finalize and "
+                "package: a fill either engine pass applied without an entry, "
+                "an entry whose fill value or spines differ from the fill "
+                "manifests, a declared consumer without a note, a Medicaid, "
+                "CHIP, SSI or TANF known bias that leaves the PTC or SNAP "
+                "harmless, and a policyengine-us other than the one the "
+                "register was reviewed against fail; an entry the release did "
+                "not use is reported. The engine-tier test recomputes every "
+                "entry's consumers from the installed engine."
+            ),
+            "known_bias": register["known_bias"],
+            "calibration_blocker": False,
+        },
+        {
             "id": "cd_population_marginal_vintage_2020",
             "status": "reviewed_vintage",
             "reason": (
@@ -1529,18 +4272,7 @@ def finalize_reviewed_limitations(
             ),
             "calibration_blocker": False,
         },
-        {
-            "id": "low_effective_sample_size_lambda_zero",
-            "status": "reviewed_concentration",
-            "reason": (
-                f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
-                "households under the hard 5x weight cap with l2_lambda=0 "
-                "(kept for consistency with the certified default and the "
-                "Build L doctrine; no new calibration knobs per "
-                "microcosm#492)."
-            ),
-            "calibration_blocker": False,
-        },
+        _ess_concentration_limitation(diagnostics),
         {
             "id": "donor_sparse_selection_training_set",
             "status": "reviewed_construction",
@@ -1575,10 +4307,103 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
     ]
+    social_security = _social_security_erasure_limitation(donor_release)
+    if social_security is not None:
+        limitations.append(social_security)
+    acs_wic = _acs_wic_takeup_limitation(consumer_export)
+    if acs_wic is not None:
+        limitations.append(acs_wic)
     deduped: dict[str, dict] = {}
     for limitation in limitations:
         deduped[limitation["id"]] = limitation
     return list(deduped.values())
+
+
+def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
+    """Reviewed limitations a ``state_cd`` surface adds to the register."""
+
+    if materialize_rss.get("soi_mode") != SOI_MODE_STATE_CD:
+        return []
+    surface = materialize_rss.get("soi_surface") or {}
+    holdout = materialize_rss.get("cd_holdout") or {}
+    excluded = surface.get("excluded_cd_states") or {}
+    exclusion = (
+        " District rows of state(s) "
+        + ", ".join(sorted(excluded))
+        + " are excluded: "
+        + "; ".join(f"{state}: {why}" for state, why in sorted(excluded.items()))
+        if excluded
+        else " No state's district rows are excluded for the mapping."
+    )
+    return [
+        {
+            "id": "cd_soi_117th_plan_population_crosswalk",
+            "status": "reviewed_construction",
+            "reason": (
+                "The SOI congressional-district file (22incd.csv, TY2022) is "
+                "tabulated on the 117th-Congress plan. Its district rows are "
+                "mapped onto the households' 119th-plan districts by the "
+                "packaged 2020-block population crosswalk (built from the "
+                "block plan registry since #1043), so each 119th district "
+                "target assumes returns spread with population inside every "
+                "117th/119th intersection." + exclusion
+            ),
+            "treatment": (
+                "A household 117th-plan district column "
+                "(congressional_district_geoid__117th_congress, from the "
+                "location v1 block draw with the plan registry attached) lets "
+                "these targets bind as exact block sums with no crosswalk."
+            ),
+            "excluded_states": surface.get("excluded_cd_states"),
+            "crosswalk": surface.get("crosswalk"),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "cd_soi_one_vintage_per_state_concept",
+            "status": "reviewed_construction",
+            "reason": surface.get("vintage_rule_description"),
+            "rebase_factor_by_measure": surface.get("rebase_factor_by_measure"),
+            "level_bridges": surface.get("level_bridges"),
+            "level_bridge_factor_by_measure": surface.get(
+                "level_bridge_factor_by_measure"
+            ),
+            "dropped": surface.get("dropped"),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "cd_soi_defective_district_columns_excluded",
+            "status": "reviewed_exclusion",
+            "reason": (
+                "District-file measures that read the wrong IRS column are "
+                "off the surface at both geographies (microcosm#1038)."
+            ),
+            "measures": surface.get("defective_cd_file_measures"),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "cd_holdout_sealed",
+            "status": "reviewed_construction",
+            "reason": (
+                f"{holdout.get('held_targets')} district SOI targets in "
+                f"{holdout.get('held_units')} (state x concept family) units "
+                f"(fraction {holdout.get('fraction')}, salt "
+                f"{holdout.get('salt')}) never reach the calibrator; they are "
+                "scored against a pro-rata baseline in calibration_summary.json "
+                "(cd_holdout) and gate_summary.json (gates.cd_holdout)."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "cd_soi_sigma_absent",
+            "status": "reviewed_data_gap",
+            "reason": (
+                "The pinned facts feed carries no uncertainty for any IRS SOI "
+                "fact, so no target carries sigma and the loss is unchanged "
+                "(fixed-scale capped relative error)."
+            ),
+            "calibration_blocker": False,
+        },
+    ]
 
 
 def _local_hours_gate(frame, staging_summary: dict):
@@ -1592,6 +4417,345 @@ def _require_local_hours(frame, staging_summary: dict) -> None:
     gate = _local_hours_gate(frame, staging_summary)
     if not gate.passed:
         raise SystemExit("Local hours coverage failed: " + "; ".join(gate.failures))
+
+
+def _require_local_immigration(staging_summary: dict) -> dict:
+    """The staging immigration receipt (microcosm#1020), or refuse the staging.
+
+    Staging runs the ACS local immigration stage and its gate before writing
+    the H5. A summary without both is a pre-#1020 staging run, whose ACS
+    persons would all be default-filled citizens with a valid SSN and whose
+    entry clocks would all be the engine default of 5 years. A receipt whose
+    targets are not the donor residuals
+    (:func:`acs_local_immigration_receipt_failures`) predates the #1052
+    review or the microcosm#767 humanitarian residuals and is refused too.
+    """
+
+    receipt = staging_summary.get("acs_local_immigration")
+    gate = staging_summary.get("acs_local_immigration_gate")
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("issue") != ACS_LOCAL_IMMIGRATION_ISSUE
+        or not isinstance(receipt.get("assigned_sha256"), str)
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing ACS local immigration stage "
+            f"({ACS_LOCAL_IMMIGRATION_ISSUE}): every ACS person would reach the "
+            "engine as a citizen with a valid SSN and every years_since_us_entry "
+            "as the engine default. Re-run staging "
+            "(tools/build_us_acs_multispine_base.py) with the current builder."
+        )
+    failures = acs_local_immigration_receipt_failures(receipt)
+    if failures:
+        raise SystemExit(
+            "The staging summary's ACS local immigration receipt does not "
+            "target the donor residuals (microcosm#1052 review, microcosm#767): "
+            + "; ".join(failures)
+            + ". Re-run staging (tools/build_us_acs_multispine_base.py) with "
+            "the current builder."
+        )
+    return receipt
+
+
+def _require_local_work_disability(staging_summary: dict) -> dict:
+    """The staging work/disability receipt (microcosm#1021), or refuse it.
+
+    Staging maps ACS ``is_disabled``/``is_blind``/``weeks_worked`` natively
+    before the transfer and gates them before writing the H5. A summary
+    without a passing receipt and gate is a pre-#1021 staging run, whose ACS
+    disability flags were imputed from ASEC donors and whose ACS rows carry
+    no weeks worked.
+    """
+
+    receipt = staging_summary.get("acs_local_work_disability")
+    gate = staging_summary.get("acs_local_work_disability_gate")
+    native = isinstance(receipt, dict) and all(
+        isinstance(receipt.get(column), dict)
+        and receipt[column].get("source") == ACS_NATIVE_PROVENANCE
+        and type(receipt[column].get("imputed_rows")) is int
+        and receipt[column]["imputed_rows"] == 0
+        for column in ACS_LOCAL_DISABILITY_COLUMNS
+    )
+    if (
+        not native
+        or receipt.get("issue") != ACS_LOCAL_WORK_DISABILITY_ISSUE
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing native ACS work/disability "
+            f"stage ({ACS_LOCAL_WORK_DISABILITY_ISSUE}): the ACS rows' "
+            "is_disabled and is_blind would be ASEC-imputed rather than read "
+            "from the ACS difficulty items, and weeks_worked would be absent. "
+            "Re-run staging (tools/build_us_acs_multispine_base.py) with the "
+            "current builder."
+        )
+    return receipt
+
+
+def _require_local_income_transfer(staging_summary: dict) -> dict:
+    """The staging income-transfer receipt (microcosm#1022), or refuse it.
+
+    Staging runs a separate ASEC-channel QRF pass for the SNAP-relevant income
+    leaves the shared plan does not carry, and gates them before writing the
+    H5. A summary without a passing receipt and gate is a pre-#1022 staging
+    run, whose ACS rows reach the reviewed-null fill with no child support,
+    workers' compensation, disability benefits or account distributions. A
+    receipt with another method predates the reviewed OIP and aligned-RETP
+    predictors and is refused too.
+    """
+
+    receipt = staging_summary.get("acs_local_income_transfer")
+    gate = staging_summary.get("acs_local_income_transfer_gate")
+    columns = receipt.get("columns") if isinstance(receipt, dict) else None
+    complete = isinstance(columns, dict) and all(
+        isinstance(columns.get(column), dict)
+        and type(columns[column].get("imputed_rows")) is int
+        and columns[column].get("unmodeled_rows") == 0
+        for column in ACS_LOCAL_INCOME_TRANSFER_COLUMNS
+    )
+    if (
+        not complete
+        or receipt.get("issue") != ACS_LOCAL_INCOME_TRANSFER_ISSUE
+        or receipt.get("method") != ACS_LOCAL_INCOME_TRANSFER_METHOD
+        or receipt.get("donor_channel") != ACS_LOCAL_INCOME_DONOR_CHANNEL
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing ACS local income transfer "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}): the ACS rows' child support, "
+            "workers' compensation, disability benefits and 401(k)/403(b)/SEP/"
+            "Keogh/Roth-IRA distributions would be the engine default 0. Re-run "
+            "staging (tools/build_us_acs_multispine_base.py) with the current "
+            "builder."
+        )
+    return receipt
+
+
+def _require_local_ssi_disability(staging_summary: dict) -> dict:
+    """The staging SSI disability-criteria receipt (microcosm#1022), or refuse it.
+
+    Staging runs the donor release's archived SIPP model on the ACS rows and
+    gates it before writing the H5. A summary without a passing receipt and
+    gate, pinned to the SIPP file, is a pre-change staging run, whose ACS rows
+    reach the reviewed-null fill with ``meets_ssi_disability_criteria`` False.
+    """
+
+    receipt = staging_summary.get("acs_local_ssi_disability")
+    gate = staging_summary.get("acs_local_ssi_disability_gate")
+    donor = receipt.get("sipp_donor") if isinstance(receipt, dict) else None
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("issue") != ACS_LOCAL_SSI_DISABILITY_ISSUE
+        or receipt.get("column") != ACS_LOCAL_SSI_DISABILITY_COLUMN
+        or receipt.get("method") != ACS_LOCAL_SSI_DISABILITY_METHOD
+        or type(receipt.get("filled_rows")) is not int
+        or receipt.get("unfilled_acs_rows") != 0
+        or not isinstance(donor, dict)
+        or donor.get("sha256") != SIPP_2023_SSI_DISABILITY_DONOR_SHA256
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing ACS local SSI "
+            f"disability-criteria stage ({ACS_LOCAL_SSI_DISABILITY_ISSUE}): "
+            "every ACS person under 65 who is not blind would fail the SSI "
+            "disability test (the engine default False). Re-run staging "
+            "(tools/build_us_acs_multispine_base.py) with the current builder "
+            "and the pinned SIPP donor."
+        )
+    return receipt
+
+
+def _require_local_receipt_anchors(staging_summary: dict) -> dict:
+    """The staging ACS receipt-anchor receipt (microcosm#1022), or refuse it.
+
+    Staging constrains the transferred ``receives_snap`` on ACS SPM units by
+    native household ``FS`` (at least one unit of an FS == 1 housing unit,
+    none of an FS == 2 one) and gates it before writing the H5. A summary
+    without a passing receipt and gate is a pre-change staging run, whose ACS
+    SNAP reporters are the QRF transfer's; one with an earlier method marked
+    every SPM unit of an FS == 1 housing unit, not at least one.
+    """
+
+    receipt = staging_summary.get("acs_local_receipt_anchors")
+    gate = staging_summary.get("acs_local_receipt_anchors_gate")
+    snap = receipt.get("snap") if isinstance(receipt, dict) else None
+    counted = isinstance(snap, dict) and all(
+        type(snap.get(key)) is int for key in ("fs_yes_households", "units_anchored")
+    )
+    if (
+        not counted
+        or receipt.get("issue") != ACS_LOCAL_RECEIPT_ANCHOR_ISSUE
+        or receipt.get("method") != ACS_LOCAL_RECEIPT_ANCHOR_METHOD
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing native SNAP receipt anchor "
+            f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}): the ACS rows' receives_snap "
+            "would be the QRF transfer, not household FS. Re-run staging "
+            "(tools/build_us_acs_multispine_base.py) with the current builder."
+        )
+    return receipt
+
+
+#: The fill manifests of the two engine passes: materialize's (the calibrated
+#: surface) and the consumer export's (the published H5).
+REVIEWED_FILL_MANIFESTS = (
+    "reviewed_null_fills.json",
+    "consumer_reviewed_null_fills.json",
+)
+
+
+def _installed_engine_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("policyengine-us")
+    except Exception:
+        return "unknown"
+
+
+def _reviewed_fill_consumer_gate(
+    manifests: dict[str, object], document: object | None = None
+):
+    """microcosm#1022: grade the reviewed default fills the manifests record.
+
+    Every fill an engine pass applied must have an entry in the packaged
+    register ``acs_local_reviewed_fill_consumers.yaml`` (or ``document``) whose
+    fill value and spines match, and every means-tested consumer the entry
+    declares must carry a harmless or known-bias note. The installed
+    policyengine-us, the engine the release runs and records as
+    ``built_with_model_package``, must be the register's ``reviewed_against``
+    (microcosm#1071 review). Engine-free otherwise.
+    """
+
+    return acs_local_reviewed_fill_consumer_gate(
+        manifests,
+        document=document,
+        never_default_filled=NEVER_DEFAULT_FILLED,
+        installed_engine_version=_installed_engine_version(),
+    )
+
+
+def _checkpoint_fill_manifests(checkpoint_dir: Path) -> dict[str, object]:
+    return {name: _load_json(checkpoint_dir / name) for name in REVIEWED_FILL_MANIFESTS}
+
+
+def _recorded_ssi_take_up_handling(identity: dict, checkpoint_dir: Path) -> dict | None:
+    """The run's recorded SSI take-up handling for ACS rows, or ``None``.
+
+    The ACS SSI/Medicaid take-up stage assigns ``takes_up_ssi_if_eligible`` on
+    ACS rows at materialize (microcosm#1022) and records the assignment in
+    ``run_identity.json``. That receipt, with its assignment file unchanged,
+    is the handling; a run without it has none. A present receipt that is
+    not a passing one, or whose file changed, is refused outright. Packaging
+    separately requires the ``acs_local_ssi_medicaid_take_up_signal``
+    finalize gate bound to the packaged bytes.
+    """
+
+    if "acs_local_ssi_medicaid_take_up" not in identity:
+        return None
+    receipt, _ = _recorded_ssi_medicaid_take_up(identity, checkpoint_dir)
+    return {
+        "stage": "acs_local_ssi_medicaid_take_up",
+        "issue": receipt["issue"],
+        "method": receipt["method"],
+        "assigned_sha256": receipt["assigned_sha256"],
+        "assignment_file": dict(receipt["assignment_file"]),
+        "finalize_gate": ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
+    }
+
+
+def _require_ssi_take_up_handling(
+    staging_summary: dict, identity: dict, checkpoint_dir: Path
+) -> dict:
+    """Refuse to package SSI criteria that universal SSI take-up would pay.
+
+    The SSI disability-criteria stage makes ACS persons under 65
+    criteria-positive. With ``takes_up_ssi_if_eligible`` at the engine default
+    ``True``, every one of them who passes the income and resource tests
+    receives SSI, which overstates ACS SSI under 65 and moves SNAP through SSI
+    income, the elderly-or-disabled definition and categorical eligibility.
+    Packaging is therefore blocked while the staged ACS rows carry any
+    criteria-positive person (the staging receipt's ``outcome.acs_true_rows``)
+    and the run records no SSI take-up handling (microcosm#1022, review of
+    PR #1058). A summary that cannot count those persons is refused too.
+
+    Returns the block's evidence for the build manifest.
+    """
+
+    receipt = staging_summary.get("acs_local_ssi_disability")
+    outcome = receipt.get("outcome") if isinstance(receipt, dict) else None
+    positive = outcome.get("acs_true_rows") if isinstance(outcome, dict) else None
+    if type(positive) is not int or positive < 0:
+        raise SystemExit(
+            "The staging summary's acs_local_ssi_disability receipt records no "
+            "count of criteria-positive ACS persons (outcome.acs_true_rows), so "
+            "packaging cannot show that no ACS person ships SSI disability "
+            f"criteria at universal SSI take-up ({ACS_LOCAL_SSI_DISABILITY_ISSUE})."
+            " Re-run staging with the current builder."
+        )
+    block: dict[str, object] = {
+        "criteria_positive_acs_rows": positive,
+        "filled_true_rows": outcome.get("filled_true_rows"),
+        "take_up_handling": None,
+    }
+    if positive == 0:
+        return block
+    handling = _recorded_ssi_take_up_handling(identity, checkpoint_dir)
+    if handling is None:
+        raise SystemExit(
+            f"Refusing to package: {positive:,} ACS person(s) meet "
+            f"{ACS_LOCAL_SSI_DISABILITY_COLUMN} after the SSI disability-criteria "
+            "stage, but the run records no SSI take-up handling for ACS rows. "
+            "takes_up_ssi_if_eligible would ship at the engine default True, so "
+            "every one of them who passes the income and resource tests would "
+            "receive SSI and ACS SSI under 65 would be overstated "
+            f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}). Land the ACS SSI/Medicaid "
+            "take-up stage (microcosm PR #1060), then re-run --stage "
+            "materialize through --stage finalize before packaging."
+        )
+    return {**block, "take_up_handling": handling}
+
+
+def _require_acs_self_employment_identity(frame):
+    """Refuse a frame whose ACS self-employment leaves add to SEMP (#1380).
+
+    Staging built before the ACS transfer zeroed donor self-employment
+    components carries them on top of SEMP, and so does any checkpoint
+    calibrated from it. Materialize and calibrate check the staging frame;
+    package checks the calibrated H5 it ships, so a historical checkpoint
+    cannot reach a release through qa and finalize alone. Returns the
+    passing gate.
+    """
+
+    person = frame.table("person")
+    tag = spine_column("person")
+    if tag not in person.columns:
+        raise SystemExit(
+            f"The frame has no {tag}; cannot select the ACS rows the "
+            "self-employment identity covers."
+        )
+    gate = acs_self_employment_identity_gate(
+        person,
+        rows=(
+            person[tag]
+            .astype("string")
+            .eq(ACS_2024_1YR_SPINE)
+            .fillna(False)
+            .to_numpy(dtype=bool)
+        ),
+    )
+    if not gate.passed:
+        raise SystemExit(
+            "ACS self-employment identity failed: " + "; ".join(gate.failures)
+        )
+    return gate
 
 
 def do_finalize(args) -> None:
@@ -1613,6 +4777,9 @@ def do_finalize(args) -> None:
             "--stage calibrate first."
         )
     identity = _verify_run_identity(args)
+    _require_current_calibration(identity, diagnostics, stage="finalize")
+    if "target_roles_sha256" in identity:
+        _verify_checkpoint_digests(args.checkpoint_dir, identity)
     ladder_sha = _sha256(args.ladder)
     if ladder_sha != identity.get("ladder_sha256"):
         raise SystemExit(
@@ -1622,7 +4789,10 @@ def do_finalize(args) -> None:
         )
     materialize_rss = _load_json(args.checkpoint_dir / "materialize_rss.json")
     registry_path = args.checkpoint_dir / "target_registry.json"
-    if registry_path.is_file():
+    roles_path = args.checkpoint_dir / TARGET_ROLES_FILENAME
+    if roles_path.is_file():
+        targets = json.loads(roles_path.read_text())
+    elif registry_path.is_file():
         registry = TargetRegistry.from_json(registry_path)
         targets = [
             {"name": spec.name, "family": spec.family} for spec in registry.specs
@@ -1641,6 +4811,15 @@ def do_finalize(args) -> None:
     if not args.out_h5.exists():
         raise SystemExit(f"Calibrated H5 not found: {args.out_h5}.")
     hours_artifact_sha = _sha256(args.out_h5)
+    _require_current_artifact(
+        identity,
+        consumer_export=consumer_export,
+        summary=diagnostics,
+        spine_qa=spine_qa or None,
+        out_h5=args.out_h5,
+        out_h5_sha256=hours_artifact_sha,
+        stage="finalize",
+    )
     frame = _load_staging_frame(args.out_h5)
     local_hours_gate = _local_hours_gate(frame, staging_summary)
     households = frame.table("household")
@@ -1656,6 +4835,49 @@ def do_finalize(args) -> None:
     hours_gate = us_hours_worked_signal_gate(
         frame, required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
     )
+    # microcosm#1019: likewise refuse SNAP/TANF take-up that is missing or
+    # constant (the engine-default universal take-up) on either spine, or
+    # unanchored or out of band on the ACS spine this tool seeds.
+    take_up_gate = acs_local_take_up_signal_gate(frame)
+    # microcosm#1020: refuse immigration labels or entry clocks that are
+    # missing, all-CITIZEN or all at the engine default on either spine,
+    # labels that contradict measured ACS CIT citizenship, and a file outside
+    # the non-citizen, undocumented-anchor and humanitarian-stock bands
+    # (microcosm#767).
+    immigration_gate = acs_local_immigration_signal_gate(frame, time_period=PERIOD)
+    # microcosm#1021: refuse ACS disability flags that are missing, constant,
+    # or not the native ACS difficulty items on the packaged bytes, or a
+    # staging receipt that shows them imputed. weeks_worked is graded at
+    # staging only: the export holds it back until policyengine-us#9660.
+    work_disability_gate = acs_local_work_disability_signal_gate(
+        frame,
+        receipt=staging_summary.get("acs_local_work_disability"),
+        require_weeks_worked=False,
+    )
+    # microcosm#1022: refuse transferred ACS income leaves that are missing,
+    # negative or carry no signal on the packaged bytes, or a staging receipt
+    # that is not the complete ASEC-channel pass.
+    income_gate = acs_local_income_transfer_signal_gate(
+        frame, receipt=staging_summary.get("acs_local_income_transfer")
+    )
+    # microcosm#1022: refuse ACS SSI disability criteria that are missing or
+    # carry no working-age signal on the packaged bytes, or a staging receipt
+    # that is not the complete SIPP-pinned pass.
+    ssi_disability_gate = acs_local_ssi_disability_signal_gate(
+        frame, receipt=staging_summary.get("acs_local_ssi_disability")
+    )
+    # microcosm#1022: refuse ACS SSI or Medicaid take-up that is missing,
+    # constant or unanchored on the packaged bytes, or a materialize receipt
+    # whose enforced SSI bands or Medicaid states miss their donor residuals.
+    ssi_medicaid_gate = acs_local_ssi_medicaid_take_up_signal_gate(
+        frame, receipt=identity.get("acs_local_ssi_medicaid_take_up")
+    )
+    # microcosm#1022: refuse ACS SNAP reporters that are not the native
+    # household FS on the packaged bytes, or a staging receipt that counts
+    # other households, units or anchors.
+    receipt_anchor_gate = acs_local_receipt_anchor_signal_gate(
+        frame, receipt=staging_summary.get("acs_local_receipt_anchors")
+    )
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -1664,10 +4886,23 @@ def do_finalize(args) -> None:
             "Re-run --stage qa and --stage finalize against the current artifact."
         )
 
+    # microcosm#1022: refuse a reviewed default fill either engine pass applied
+    # without a register entry, or a declared means-tested consumer of one
+    # without a harmless or known-bias note.
+    reviewed_fill_gate = _reviewed_fill_consumer_gate(
+        _checkpoint_fill_manifests(args.checkpoint_dir)
+    )
+
     breakdown: dict[str, int] = {}
     for target in targets:
         name = target["name"]
-        if name.startswith("pop_state"):
+        if target.get("role") == cd_surface.ROLE_HOLDOUT:
+            key = "cd_holdout"
+        elif name.startswith("irs_soi") and (
+            target.get("geography_level") == cd_surface.GEOGRAPHY_CD
+        ):
+            key = "soi_congressional_district"
+        elif name.startswith("pop_state"):
             key = "population_state"
         elif name.startswith("pop_cd"):
             key = "population_cd"
@@ -1702,6 +4937,54 @@ def do_finalize(args) -> None:
             "detail": dict(hours_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
+        ACS_LOCAL_TAKE_UP_GATE_NAME: {
+            "passed": bool(take_up_gate.passed),
+            "failures": list(take_up_gate.failures),
+            "detail": dict(take_up_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_IMMIGRATION_GATE_NAME: {
+            "passed": bool(immigration_gate.passed),
+            "failures": list(immigration_gate.failures),
+            "detail": dict(immigration_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_WORK_DISABILITY_GATE_NAME: {
+            "passed": bool(work_disability_gate.passed),
+            "failures": list(work_disability_gate.failures),
+            "detail": dict(work_disability_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_INCOME_TRANSFER_GATE_NAME: {
+            "passed": bool(income_gate.passed),
+            "failures": list(income_gate.failures),
+            "detail": dict(income_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_SSI_DISABILITY_GATE_NAME: {
+            "passed": bool(ssi_disability_gate.passed),
+            "failures": list(ssi_disability_gate.failures),
+            "detail": dict(ssi_disability_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME: {
+            "passed": bool(ssi_medicaid_gate.passed),
+            "failures": list(ssi_medicaid_gate.failures),
+            "detail": dict(ssi_medicaid_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME: {
+            "passed": bool(receipt_anchor_gate.passed),
+            "failures": list(receipt_anchor_gate.failures),
+            "detail": dict(receipt_anchor_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME: {
+            "passed": bool(reviewed_fill_gate.passed),
+            "failures": list(reviewed_fill_gate.failures),
+            "detail": dict(reviewed_fill_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
         "calibration": {
             # The cap criterion alone is near-tautological (the solver clips
             # per-row losses at the same cap); the solve must also have
@@ -1710,7 +4993,8 @@ def do_finalize(args) -> None:
             # per-target error bars) are maintainer-adjudicated surface
             # policy (#398-class), recorded here rather than invented.
             "passed": bool(
-                diagnostics.get("final_loss", 1.0) < args.target_loss_cap
+                diagnostics.get("final_loss", 1.0)
+                < diagnostics.get("target_loss_cap", args.target_loss_cap)
                 and diagnostics.get("final_loss", 1.0)
                 < diagnostics.get("initial_loss", 0.0)
                 and abs(mass - 1.0) < 1e-3
@@ -1728,8 +5012,34 @@ def do_finalize(args) -> None:
                 "n_targets": len(targets),
                 "n_admin": materialize_rss.get("n_admin"),
                 "n_population": materialize_rss.get("n_population"),
+                "n_trained": diagnostics.get("n_targets"),
+                "n_holdout": diagnostics.get("n_holdout_targets"),
                 "breakdown": breakdown,
+                "target_matrix": materialize_rss.get("target_matrix"),
+                "rung": (identity.get("sampling") or {}).get("rung"),
             },
+        },
+        "cd_holdout": {
+            # Report-only: held-out district targets never reach the solve;
+            # the comparison with the pro-rata baseline is evidence, not a
+            # bound (d487 asks whether district fidelity beats pro-rata).
+            "passed": True,
+            "report_only": True,
+            "detail": {
+                key: value
+                for key, value in (diagnostics.get("cd_holdout") or {}).items()
+                if key != "targets"
+            },
+        },
+        "weight_origin": {
+            "passed": True,
+            "report_only": True,
+            "note": (
+                "Household-weight share by spine and Kish ESS over rows and "
+                "over distinct households (household_spine, "
+                "household_source_id), at design and calibrated weights."
+            ),
+            "detail": diagnostics.get("weight_origin"),
         },
         "input_coverage": {
             # Enforced upstream: the staging driver's donor-coverage gate
@@ -1741,7 +5051,67 @@ def do_finalize(args) -> None:
                 "before transfer; the ACS spine inherits required inputs via "
                 "QRF transfer. ACS native GQ-housing / source-universe nulls "
                 "are reviewed_limitations (calibration_blocker: false) and "
-                "are NOT re-imposed on the ACS spine."
+                "are NOT re-imposed on the ACS spine. Take-up draws are not "
+                "transferred: ACS SNAP/TANF take-up is seeded by this tool "
+                "and gated by acs_local_take_up_signal (microcosm#1019). The "
+                "same stage fills the ACS rows' discretionary ABAWD exemption "
+                "(a cap-based proxy: the donor's seeded 18-64 draw at the "
+                "statutory-cap manifest rate, not an observed assignment), "
+                "housing-assistance receipt (the transferred housing take-up "
+                "flag; False in group quarters), Medicare take-up (native "
+                "HINS3) and Head Start take-up (a keyed draw at the donor "
+                "spine's share among ages 3-5) without the engine, gated by the "
+                f"same gate ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}; reviewed "
+                "limitation acs_engine_free_default_fills); ACS VEH is recorded "
+                "as vehicle availability only and the ACS vehicle count and "
+                "value keep their default, 0 (reviewed limitation "
+                "acs_household_vehicle_value_default); the other ACS "
+                "take-up flags are the reviewed limitation "
+                "acs_take_up_engine_defaults. "
+                "Immigration "
+                "labels are not transferred either: staging derives ACS "
+                "ssn_card_type/immigration_status_str from native ACS fields "
+                "and years_since_us_entry on both spines, gated by "
+                "acs_local_immigration_signal (microcosm#1020; reviewed "
+                "limitation acs_immigration_status_method). ACS "
+                "is_disabled/is_blind are not transferred: staging reads them "
+                "from the native ACS difficulty items (and SSIP) on every ACS "
+                "row, gated by acs_local_work_disability_signal "
+                "(microcosm#1021; reviewed limitation "
+                "acs_work_disability_inputs). Native ACS weeks_worked is "
+                "staged but held back from the export until "
+                f"{WEEKS_WORKED_EXPORT_BLOCKER}. ACS child support "
+                "received/paid, workers' compensation, disability benefits "
+                "and 401(k)/403(b)/SEP/Keogh/Roth-IRA distributions come from "
+                "a separate local QRF pass on the donor's ASEC observation "
+                "role, outside the shared transfer plan, gated by "
+                "acs_local_income_transfer_signal "
+                f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}; reviewed limitation "
+                "acs_local_income_transfer). ACS "
+                "meets_ssi_disability_criteria is not transferred: staging "
+                "runs the donor release's archived SIPP SSI disability model "
+                "on the ACS rows, with the native ACS difficulty items as its "
+                "difficulty predictors, gated by "
+                "acs_local_ssi_disability_signal "
+                f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}; reviewed limitation "
+                "acs_local_ssi_disability_criteria). ACS SSI and Medicaid "
+                "take-up are not transferred either: materialize assigns them "
+                "on the ACS rows after an engine pre-pass, against the SSA "
+                "band and CMS state counts scaled to the ACS rows' weight "
+                "share, gated by acs_local_ssi_medicaid_take_up_signal "
+                f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}; reviewed limitation "
+                "acs_local_ssi_medicaid_take_up). ACS receives_snap is not "
+                "the transfer's either: staging replaces it with native "
+                "household FS on every ACS SPM unit before pooling, gated by "
+                "acs_local_receipt_anchor_signal "
+                f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}; reviewed limitation "
+                "acs_snap_receipt_anchor). The inputs that remain reviewed "
+                "engine-default fills are listed, with each means-tested "
+                "consumer and a harmless or known-bias note, in "
+                "acs_local_reviewed_fill_consumers.yaml, gated by "
+                "acs_local_reviewed_fill_consumers "
+                f"({ACS_LOCAL_REVIEWED_FILL_CONSUMERS_ISSUE}; reviewed limitation "
+                "acs_reviewed_default_fill_consumers)."
             ),
         },
         "spine_composition": {
@@ -1782,13 +5152,24 @@ def do_finalize(args) -> None:
         "artifact_sha256": spine_qa.get("artifact_sha256"),
     }
 
-    limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
+    limitations = finalize_reviewed_limitations(
+        staging_summary, diagnostics, spine_qa, consumer_export=consumer_export
+    )
+    limitations += state_cd_reviewed_limitations(materialize_rss)
     hard_failures = [
         name
         for name in (
             "us_puma_ladder_gate",
             "hours_worked_signal",
             "acs_local_hours_signal",
+            ACS_LOCAL_TAKE_UP_GATE_NAME,
+            ACS_LOCAL_IMMIGRATION_GATE_NAME,
+            ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
+            ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
+            ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
+            ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
+            ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME,
+            ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -1884,6 +5265,29 @@ def _require_recorded_soi_mode(materialize_rss: dict) -> str:
     return soi_mode
 
 
+def _require_full_rung(identity: dict) -> dict:
+    """Refuse to package a development rung, or a run that cannot show its rung.
+
+    ``--sample-fraction`` below 1 is for development runs (DESIGN.md
+    "Production US stacked spine"); a release is always full scale.
+    """
+
+    sampling = identity.get("sampling")
+    if not isinstance(sampling, dict) or "sampled" not in sampling:
+        raise SystemExit(
+            "run_identity.json records no sampling block, so packaging cannot "
+            "establish that the surface was materialized at full scale. "
+            "Re-run --stage materialize with the current tool."
+        )
+    if sampling.get("sampled") or sampling.get("rung") != "f100":
+        raise SystemExit(
+            f"The checkpoint was materialized on the {sampling.get('rung')} "
+            "development rung; a release is packaged only at full scale "
+            "(--sample-fraction 1)."
+        )
+    return sampling
+
+
 def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
     """Refuse an artifact that stores a model input the installed engine lacks.
 
@@ -1918,6 +5322,87 @@ def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
     return {"passed": True, "failures": [], "engine": engine.label, **summary}
 
 
+def _require_bound_finalize_gate(gates: object, name: str, h5_sha: str) -> None:
+    """Refuse packaging unless the finalize report's ``name`` gate passed on
+    exactly the H5 bytes being packaged.
+
+    A report finalized before the gate existed, a failed gate, or one bound to
+    other bytes (a recalibrate without re-running finalize) cannot vouch for
+    the packaged surface.
+    """
+
+    gate = gates.get(name) if isinstance(gates, dict) else None
+    if (
+        not isinstance(gate, dict)
+        or gate.get("passed") is not True
+        or gate.get("artifact_sha256") != h5_sha
+    ):
+        raise SystemExit(
+            f"Packaging requires a present, passing {name} gate bound to the "
+            "packaged H5; an old simulation_ready summary is insufficient. "
+            "Re-run --stage finalize against the current artifact."
+        )
+
+
+def _require_spm_measurement(frame) -> dict[str, object]:
+    """Refuse an artifact on which an SPM measurement would crash.
+
+    microcosm#1263: spm-calculator refuses a whole simulation's SPM measurement
+    when one unit it measures has no classified adult, and every US state
+    region on the 2026-09-23 release did. The gate
+    (:func:`microcosm.build.us_runtime.spm_measurement_gate.check_release_spm_measurement`)
+    grades the calibrated frame against the installed policyengine-us, the
+    engine the release records as built-with: it measures every unit unless it
+    scopes SPM by measurement universe. The gate also requires the stored SPM
+    independence role to be complete. Whether the engine scopes is read from
+    its variables and must agree with the publisher's reviewed register
+    (``microcosm.data.contract.US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS``).
+
+    Returns the gate entry the release's gate summary records.
+    """
+
+    from microcosm.build.us_runtime import spm_measurement_gate
+    from microcosm.data import stored_inputs
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+    except ImportError as error:
+        raise SystemExit(
+            "Refusing to package: the installed policyengine-us cannot be "
+            "imported, so the SPM measurement cannot be graded against the "
+            f"engine the release records as built-with: {error}"
+        ) from error
+    scopes = spm_measurement_gate.engine_scopes_spm_universe(engine.variables)
+    reviewed = us_engine_scopes_spm_universe(engine.label)
+    if scopes != reviewed:
+        # The publisher reads JSON only and trusts the reviewed register, so
+        # the engine's behaviour and the register must agree before a verdict
+        # graded on either is recorded.
+        raise SystemExit(
+            f"Refusing to package: {engine.label} "
+            f"{'defines' if scopes else 'does not define'} "
+            "spm_unit_spm_universe_status, but the reviewed register "
+            "microcosm.data.contract.US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS "
+            f"says it {'scopes' if reviewed else 'does not scope'} SPM "
+            "measurement by universe. Read that engine's scoped threshold "
+            "formulas and update the register before packaging against it."
+        )
+    result = spm_measurement_gate.check_release_spm_measurement(
+        frame, engine_scopes_universe=scopes
+    )
+    if not result.passed:
+        raise SystemExit(
+            "Refusing to package: the SPM measurement gate failed: "
+            + "; ".join(result.failures)
+        )
+    return {
+        "passed": True,
+        "failures": [],
+        "engine": engine.label,
+        "details": dict(result.details),
+    }
+
+
 def do_package(args) -> dict:
     diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     diagnostics_status = diagnostics.get("calibration_diagnostics")
@@ -1946,6 +5431,8 @@ def do_package(args) -> dict:
     # Before any release directory exists: a refused smoke leaves nothing.
     staging_orchestration = _require_uncapped_staging(staging_summary)
     soi_mode = _require_recorded_soi_mode(materialize_rss)
+    _require_full_rung(identity)
+    _require_current_calibration(identity, diagnostics, stage="package")
     calibrated_h5 = Path(args.out_h5)
     if not calibrated_h5.exists():
         raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")
@@ -1953,15 +5440,15 @@ def do_package(args) -> dict:
     # as build.built_with_model_package, so the artifact may store no model
     # input that engine does not define. A refused artifact leaves nothing.
     stored_inputs_gate = _require_stored_inputs(calibrated_h5)
-
-    code = _repo_code_identity(args.allow_dirty)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
-    release_dir = args.out / "releases" / release_id
-    release_dir.mkdir(parents=True, exist_ok=True)
-
+    # microcosm#1022 (review of #1058): ACS persons the SSI disability-criteria
+    # stage made criteria-positive must not ship at universal SSI take-up.
+    ssi_take_up_block = _require_ssi_take_up_handling(
+        staging_summary, identity, args.checkpoint_dir
+    )
     log("hashing calibrated H5 …")
     h5_sha = _sha256(calibrated_h5)
+    # The H5 and its evidence must come from this checkpoint's calibration;
+    # a refused artifact leaves no release directory behind.
     # The gate report certifies specific artifact bytes: the QA probe
     # recorded the sha it loaded plain. Packaging different bytes (a
     # recalibrate without re-running qa+finalize) is refused.
@@ -1992,6 +5479,21 @@ def do_package(args) -> dict:
             f"certified ({h5_sha[:12]}… vs {str(qa_sha)[:12]}…). Re-run "
             "--stage qa and --stage finalize against the current artifact."
         )
+    _require_current_artifact(
+        identity,
+        consumer_export=consumer_export,
+        summary=diagnostics,
+        spine_qa=spine_qa,
+        out_h5=calibrated_h5,
+        out_h5_sha256=h5_sha,
+        stage="package",
+    )
+
+    code = _repo_code_identity(args.allow_dirty)
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
+    release_dir = args.out / "releases" / release_id
+
     gates = gate_report.get("gates")
     hours_gate = gates.get("hours_worked_signal") if isinstance(gates, dict) else None
     if not isinstance(hours_gate, dict) or hours_gate.get("passed") is not True:
@@ -2005,6 +5507,34 @@ def do_package(args) -> dict:
             "certifies different H5 bytes. Re-run --stage finalize against the "
             "current artifact."
         )
+    # microcosm#1019: a report finalized before the take-up gate existed (or
+    # against other bytes) cannot vouch for the packaged ACS take-up surface.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_TAKE_UP_GATE_NAME, h5_sha)
+    # microcosm#1020: nor, before the immigration gate existed, for the
+    # packaged immigration labels and years_since_us_entry clock.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_IMMIGRATION_GATE_NAME, h5_sha)
+    # microcosm#1021: nor, before the work/disability gate existed, for the
+    # packaged native ACS disability flags.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_WORK_DISABILITY_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the income-transfer gate existed, for the
+    # packaged ACS child support, disability and distribution income.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_INCOME_TRANSFER_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the SSI disability gate existed, for the
+    # packaged ACS SSI disability criteria.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_SSI_DISABILITY_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the SSI/Medicaid take-up gate existed, for
+    # the packaged ACS SSI and Medicaid take-up.
+    _require_bound_finalize_gate(
+        gates, ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME, h5_sha
+    )
+    # microcosm#1022: nor, before the receipt-anchor gate existed, for the
+    # packaged ACS SNAP reporters.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the reviewed-fill consumer gate existed, for
+    # the notes on the packaged fills.
+    _require_bound_finalize_gate(
+        gates, ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME, h5_sha
+    )
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
     # bind that result to the bytes being packaged: the finalize-time report
@@ -2017,18 +5547,69 @@ def do_package(args) -> dict:
             "an old simulation_ready summary is insufficient. Re-run --stage "
             "finalize."
         )
-    hours_frame = _load_staging_frame(calibrated_h5)
-    package_hours_gate = _local_hours_gate(hours_frame, staging_summary)
-    del hours_frame
+    artifact_frame = _load_staging_frame(calibrated_h5)
+    # Historical staging can predate the donor/native work-experience gates.
+    # Grade the actual final rows, even when its old summary is green.
+    try:
+        require_us_occupation_and_work_experience_inputs(
+            artifact_frame.table("person"), label="ACS local-area release"
+        )
+    except ValueError as error:
+        raise SystemExit(
+            f"Refusing to package: {error} Rebuild staging with a complete "
+            "ASEC donor and the native ACS occupation/work-experience mapping."
+        ) from error
+    work_experience_rows = artifact_frame.n("person")
+    # microcosm#1263: the bytes must also be measurable by the engine the
+    # release records as built-with.
+    spm_measurement_gate = _require_spm_measurement(artifact_frame)
+    package_hours_gate = _local_hours_gate(artifact_frame, staging_summary)
+    # microcosm#1380: a checkpoint calibrated from pre-fix staging stacks
+    # donor self-employment on SEMP; grade the bytes being packaged.
+    self_employment_gate = _require_acs_self_employment_identity(artifact_frame)
+    del artifact_frame
     gc.collect()
     if not package_hours_gate.passed:
         raise SystemExit(
             "Local hours coverage failed: " + "; ".join(package_hours_gate.failures)
         )
+    consumer_fills = _load_json(
+        args.checkpoint_dir / "consumer_reviewed_null_fills.json"
+    )
+    if not consumer_fills:
+        raise SystemExit(
+            "The per-column consumer fill ledger "
+            "(consumer_reviewed_null_fills.json) is missing; the published "
+            "fills must ship with their evidence."
+        )
+    # microcosm#1022: re-grade the manifests being packaged against the
+    # register being packaged; the finalize verdict covered earlier copies.
+    fill_register = load_reviewed_fill_consumer_register()
+    package_fill_gate = _reviewed_fill_consumer_gate(
+        {
+            "reviewed_null_fills.json": null_fills,
+            "consumer_reviewed_null_fills.json": consumer_fills,
+        },
+        fill_register,
+    )
+    if not package_fill_gate.passed:
+        raise SystemExit(
+            "Refusing to package: reviewed default fills without their "
+            f"means-tested consumer notes ({ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME}): "
+            + "; ".join(package_fill_gate.failures)
+        )
     gate_report = {
         **gate_report,
         "gates": {
             **gate_report.get("gates", {}),
+            "work_experience_inputs": {
+                "passed": True,
+                "failures": [],
+                "columns": list(US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS),
+                "person_rows": work_experience_rows,
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
             "acs_local_hours_signal": {
                 "passed": True,
                 "failures": [],
@@ -2036,8 +5617,32 @@ def do_package(args) -> dict:
                 "artifact_sha256": h5_sha,
                 "checked_at_stage": "package",
             },
-            "stored_inputs": {
+            self_employment_gate.name: {
+                "passed": True,
+                "failures": [],
+                "detail": dict(self_employment_gate.details),
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
+            # microcosm#1034: the publisher requires this gate of every US
+            # local-area release, bound to the built-with engine and to the
+            # microdata sha the manifest below pins.
+            US_STORED_INPUTS_EVIDENCE_KEY: {
                 **stored_inputs_gate,
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": US_LOCAL_AREA_STORED_INPUTS_STAGE,
+            },
+            # microcosm#1263: the publisher requires this gate of every US
+            # local-area release too, bound to the same bytes.
+            US_SPM_MEASUREMENT_EVIDENCE_KEY: {
+                **spm_measurement_gate,
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
+            },
+            ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME: {
+                "passed": True,
+                "failures": [],
+                "detail": dict(package_fill_gate.details),
                 "artifact_sha256": h5_sha,
                 "checked_at_stage": "package",
             },
@@ -2069,12 +5674,30 @@ def do_package(args) -> dict:
             "unchanged."
         ),
         "staging": LEGACY_STAGING_REFRESH_RECIPE,
-        "release": release_refresh_recipe(soi_mode),
+        "release": release_refresh_recipe(
+            soi_mode,
+            (identity.get("cd_holdout") or {}).get("fraction"),
+            penalty={key: diagnostics.get(key) for key in HISTORICAL_PENALTY},
+            target_family_loss_multipliers=(diagnostics.get("target_loss") or {}).get(
+                "family_multipliers"
+            ),
+        ),
         "publish": (
             "tools/publish_release.sh <release_dir> --no-latest "
             f"--artifact-root <run> --repo-id {HF_REPO_ID}"
         ),
     }
+    refresh_recipe["release"] = county_surface.refresh_recipe(
+        refresh_recipe["release"], materialize_rss
+    )
+    county_profile = (diagnostics.get("solver_settings") or {}).get(
+        "county_solver_profile"
+    )
+    if county_profile is not None:
+        refresh_recipe["release"] += (
+            f" --county-target-loss-cap {float(county_profile['target_loss_cap'])!r}"
+            f" --county-max-weight-ratio {float(county_profile['max_weight_ratio'])!r}"
+        )
 
     build_manifest = {
         "build_id": release_id,
@@ -2098,8 +5721,10 @@ def do_package(args) -> dict:
             or ["acs_2024_1yr", "asec_puf"],
             "donor_release": donor_release,
         },
+        # A summary from before the penalty settings were recorded was solved
+        # with the historical ones, the only solve that existed then.
         "calibration": {
-            key: diagnostics.get(key)
+            key: diagnostics.get(key, HISTORICAL_PENALTY.get(key))
             for key in (
                 "families",
                 "geographies",
@@ -2107,17 +5732,28 @@ def do_package(args) -> dict:
                 "epochs",
                 "max_weight_ratio",
                 "l2_lambda",
+                "l2_basis",
+                "mass_parametrization",
                 "seed",
+                "target_loss",
                 "final_loss",
                 "fraction_within_10pct",
                 "effective_sample_size",
                 "ess_fraction",
+                "chi_square_distance",
+                "softmax_cap_rounds_exhausted_epochs",
                 "realized_max_weight_ratio",
                 "mass_conserved_ratio",
             )
         },
         "materialize": {
             "soi_mode": soi_mode,
+            "soi_surface_counts": (materialize_rss.get("soi_surface") or {}).get(
+                "counts"
+            ),
+            "target_matrix": identity.get("target_matrix"),
+            "cd_holdout": identity.get("cd_holdout"),
+            "sampling": identity.get("sampling"),
             "peak_rss_gb": materialize_rss.get("materialize_peak_rss_gb"),
             "hh_chunk": materialize_rss.get("hh_chunk"),
             "engine_pass": (
@@ -2129,8 +5765,18 @@ def do_package(args) -> dict:
         "gates": gate_report.get("gates", {}),
         "run_identity": identity,
         "staging_orchestration": staging_orchestration,
+        "ssi_take_up_release_block": ssi_take_up_block,
+        "reviewed_fill_consumer_register": reviewed_fill_register_summary(
+            fill_register
+        ),
         "refresh_recipe": refresh_recipe,
     }
+
+    if county_profile is not None:
+        build_manifest["calibration"].update(
+            target_loss_cap=diagnostics["target_loss_cap"],
+            county_solver_profile=county_profile,
+        )
 
     source_coverage = {
         "schema_version": 1,
@@ -2151,17 +5797,14 @@ def do_package(args) -> dict:
         "run_identity.json": identity,
     }
     contract_files["spine_qa.json"] = spine_qa
+    county_surface.package_reports(contract_files, args.checkpoint_dir, identity)
     contract_files["consumer_export.json"] = consumer_export
-    consumer_fills = _load_json(
-        args.checkpoint_dir / "consumer_reviewed_null_fills.json"
-    )
-    if not consumer_fills:
-        raise SystemExit(
-            "The per-column consumer fill ledger "
-            "(consumer_reviewed_null_fills.json) is missing; the published "
-            "fills must ship with their evidence."
-        )
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
+    # microcosm#1022: the notes the fills were graded against ship beside them.
+    contract_files["reviewed_fill_consumer_register.json"] = fill_register
+    # Created only after every gate above has passed, so a refused artifact
+    # leaves no release directory behind.
+    release_dir.mkdir(parents=True, exist_ok=True)
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
     if diagnostics_status["status"] == "available":
@@ -2319,27 +5962,113 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=_REPO_ROOT / "build" / "us" / "us_puma_ladder_2020.npz",
     )
     parser.add_argument("--families", default="snap,medicaid,soi")
-    parser.add_argument("--geographies", default="state,cd")
+    parser.add_argument("--geographies", default="state,cd", help="state, cd, county")
+    county_surface.add_arguments(parser)
     parser.add_argument(
         "--soi-mode",
         choices=SOI_MODES,
         default=DEFAULT_SOI_MODE,
         help=(
-            "State SOI target surface for --stage materialize. 'state' "
-            "(default) is Build O's contract: every state-geography SOI spec "
-            "outside the congressional-district file. 'totals' drops every "
+            "SOI target surface for --stage materialize. 'state' (default) "
+            "is Build O's contract: every state-geography SOI spec outside "
+            "the congressional-district file. 'totals' drops every "
             "soi_fiscal_distribution spec (no state AGI, income-tax or EITC "
-            "total); 'full' keeps every state-bearing spec, including the "
-            "district file, and needs a much larger dense admin matrix "
-            "(contents and sizes in docs/us-acs-local-soi-target-surface.md). "
-            "Later stages use the mode the checkpoint recorded."
+            "total); 'full' keeps every state-bearing spec, both vintages "
+            "of each state concept included. 'state_cd' adds the district "
+            "file's district rows to 'state' with one vintage per state "
+            "concept, and holds a hash-assigned block of them out. "
+            "'state_county' adds county shares of the state SOI targets "
+            "(docs/us-acs-local-soi-target-surface.md). Later stages use the "
+            "mode the checkpoint recorded."
         ),
+    )
+    parser.add_argument(
+        "--cd-holdout-fraction",
+        type=float,
+        default=None,
+        help=(
+            "Share of (state x SOI concept family) district-target units held "
+            "out of calibration and scored against a pro-rata baseline "
+            f"(state_cd only; default {cd_surface.DEFAULT_STATE_CD_HOLDOUT_FRACTION}"
+            f" there, max {cd_surface.MAX_CD_HOLDOUT_FRACTION}; 0 disables)."
+        ),
+    )
+    parser.add_argument(
+        "--sample-fraction",
+        type=float,
+        default=1.0,
+        help=(
+            "Development rung: sample whole staging households at this "
+            f"fraction ({sorted(cd_surface.SAMPLE_RUNG_TOKENS)}), stratified "
+            "by spine x district and normalized to each spine's full mass. "
+            "Recorded in the run identity; package refuses anything below 1."
+        ),
+    )
+    parser.add_argument(
+        "--sample-seed", type=int, default=cd_surface.DEFAULT_SAMPLE_SEED
     )
     parser.add_argument("--epochs", type=int, default=800)
     parser.add_argument("--epoch-batch", type=int, default=400)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument("--target-loss-cap", type=float, default=1.0)
+    parser.add_argument(
+        "--county-target-loss-cap",
+        type=float,
+        default=COUNTY_TARGET_LOSS_CAP,
+        help=(
+            "Run-level loss cap when county rows are requested (default 10); "
+            "overrides --target-loss-cap only for county builds."
+        ),
+    )
+    parser.add_argument(
+        "--county-max-weight-ratio",
+        type=float,
+        default=COUNTY_MAX_WEIGHT_RATIO,
+        help=(
+            "Per-record weight cap for a county solve (default 5; pilot also "
+            "tested 20); overrides --max-weight-ratio only for county builds."
+        ),
+    )
+    parser.add_argument(
+        "--target-family-loss-multiplier",
+        action="append",
+        default=[],
+        metavar="FAMILY=MULTIPLIER",
+        help=(
+            "Multiply the loss weight of every training target in FAMILY "
+            "(e.g. usda_snap=2) on top of the national release's weighting, "
+            "then renormalize to mean 1 (repeatable). Calibrate fails if FAMILY "
+            "matches no training target. Recorded in the solver settings, the "
+            "calibration summary and the diagnostics."
+        ),
+    )
     parser.add_argument("--l2-lambda", type=float, default=0.0)
+    parser.add_argument(
+        "--l2-basis",
+        choices=L2_BASIS_CHOICES,
+        default=HISTORICAL_PENALTY["l2_basis"],
+        help=(
+            "Form of the --l2-lambda penalty (microcosm.calibrate l2_basis). "
+            "'record' (default) is the historical mean((w / d) ** 2); "
+            "'chi_square' is GREG's design-weighted chi-square distance "
+            "sum(d * (w / d - 1) ** 2) / sum(d), which pulls toward the "
+            "design weights d themselves."
+        ),
+    )
+    parser.add_argument(
+        "--mass-parametrization",
+        choices=MASS_PARAMETRIZATION_CHOICES,
+        default=HISTORICAL_PENALTY["mass_parametrization"],
+        help=(
+            "How the mass-conserving Adam solve holds the total "
+            "(microcosm.calibrate mass_parametrization). 'projection' "
+            "(default) is the historical per-step uniform shift; 'softmax' "
+            "optimizes total * softmax(log_w). At the ACS release's scale "
+            "softmax's per-step cap rounds run out on most epochs, so it "
+            "optimizes past the cap until the closing projection; the summary "
+            "records the count (docs/calibration-l2-basis.md)."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--batch", type=int, default=5_000)
@@ -2386,6 +6115,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    try:
+        args.target_family_loss_multipliers = (
+            loss_weighting.parse_target_family_loss_multipliers(
+                args.target_family_loss_multiplier
+            )
+        )
+    except ValueError as error:
+        parser.error(str(error))
 
     stages = (
         ["materialize", "calibrate", "qa", "finalize", "package"]
@@ -2404,34 +6141,62 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         args.out_summary = args.out_h5.with_suffix(".summary.json")
     if args.gate_report is None:
         args.gate_report = args.checkpoint_dir / "gate_summary.json"
+    try:
+        cd_surface.rung_token(args.sample_fraction)
+    except ValueError as error:
+        parser.error(str(error))
+    if args.cd_holdout_fraction is not None and not (
+        0.0 <= args.cd_holdout_fraction <= cd_surface.MAX_CD_HOLDOUT_FRACTION
+    ):
+        parser.error(
+            "--cd-holdout-fraction must be in "
+            f"[0, {cd_surface.MAX_CD_HOLDOUT_FRACTION}]."
+        )
     args.stages = stages
+    county_surface.validate_arguments(args, parser)
+    for flag in ("county_target_loss_cap", "county_max_weight_ratio"):
+        value = getattr(args, flag)
+        if not np.isfinite(value) or value <= 0:
+            parser.error(f"--{flag.replace('_', '-')} must be positive and finite.")
+    _apply_county_solver_profile(args)
+
     return args
+
+
+#: The telemetry pipeline this tool reports under.
+TELEMETRY_PIPELINE = "us_acs_local_release"
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    sampler = RssSampler()
-    sampler.start()
-    started = time.time()
-    try:
-        if "materialize" in args.stages:
-            do_materialize(args)
-        if "calibrate" in args.stages:
-            do_calibrate(args)
-        if "qa" in args.stages:
-            do_qa(args)
-        if "finalize" in args.stages:
-            do_finalize(args)
-        if "package" in args.stages:
-            do_package(args)
-    finally:
-        sampler.stop()
-        sampler.join(timeout=5)
-        (args.checkpoint_dir / "rss_samples.json").write_text(
-            json.dumps(sampler.samples[-2000:])
-        )
-    log(f"DONE stages={args.stages} ({time.time() - started:.1f}s)")
+    with program_telemetry(pipeline=TELEMETRY_PIPELINE) as telemetry:
+        args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        sampler = RssSampler()
+        sampler.start()
+        started = time.time()
+        try:
+            if "materialize" in args.stages:
+                telemetry.transition_stage("materialize")
+                do_materialize(args)
+            if "calibrate" in args.stages:
+                telemetry.transition_stage("calibrate")
+                do_calibrate(args)
+            if "qa" in args.stages:
+                telemetry.transition_stage("qa")
+                do_qa(args)
+            if "finalize" in args.stages:
+                telemetry.transition_stage("finalize")
+                do_finalize(args)
+            if "package" in args.stages:
+                telemetry.transition_stage("package")
+                do_package(args)
+        finally:
+            sampler.stop()
+            sampler.join(timeout=5)
+            (args.checkpoint_dir / "rss_samples.json").write_text(
+                json.dumps(sampler.samples[-2000:])
+            )
+        log(f"DONE stages={args.stages} ({time.time() - started:.1f}s)")
     return 0
 
 

@@ -403,7 +403,7 @@ def main() -> int:
     base = household[
         (household["household_support_channel"] == "frs")
         & ~household["household_is_capital_gains_clone"].astype(bool)
-        & ~household["household_is_cgt_band_donor"].astype(bool)
+        & ~household["household_is_cgt_support_copy"].astype(bool)
     ]
     person = person[person["person_household_id"].isin(base["household_id"])]
     predictors = household_housing_predictors(person, base)

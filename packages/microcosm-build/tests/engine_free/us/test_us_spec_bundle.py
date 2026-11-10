@@ -71,15 +71,15 @@ def test_constant_derived_domain_counts_are_complete(
     }
     assert target_counts == {
         "gap_fill_stacked_spine": 48,
-        "primary_puf_qrf": 65,
-        "late_producer_dag": 70,
+        "primary_puf_qrf": 66,
+        "late_producer_dag": 72,
     }
     assert "primary_effective_predictor_tuples" not in imputation["chaining"]
-    assert len(derive_primary_effective_predictor_tuples(imputation)) == 65
+    assert len(derive_primary_effective_predictor_tuples(imputation)) == 66
     itemization_batches = [
         family for family in families if "puf_tax_itemization__batch_" in family["id"]
     ]
-    assert [len(family["targets"]) for family in itemization_batches] == [8, 8, 8, 8, 5]
+    assert [len(family["targets"]) for family in itemization_batches] == [8, 8, 8, 8, 7]
     modeled_output_scopes = {
         stage: Counter(
             target["output_coverage_scope"]
@@ -90,8 +90,8 @@ def test_constant_derived_domain_counts_are_complete(
         for stage in ("primary_puf_qrf", "late_producer_dag")
     }
     assert modeled_output_scopes == {
-        "primary_puf_qrf": {"puf_clone": 64, "whole_pool": 1},
-        "late_producer_dag": {"whole_pool": 70},
+        "primary_puf_qrf": {"puf_clone": 66},
+        "late_producer_dag": {"whole_pool": 72},
     }
     assert all(
         "output_coverage_scope" not in target
@@ -142,11 +142,11 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "88bc9243a3518982ae951c3de21bd55877e296ce4fcb183b9bee420d3a684b10"
+        == "46cea046d2fb8223d32772bd6a7807c52791640943949154982dcc52d93fa9eb"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "d35ebb433f16e976c0d6e2210c99a36ca042a52c422c0968128678932d999735"
+        == "3f1daff0b5840d70d818e256515b2cf5d0a28bf4ad9f932deece3a56964047e0"
     )
 
     assert len(take_up["programs"]) == 17
@@ -199,7 +199,7 @@ def test_constant_derived_domain_counts_are_complete(
         for step in local_steps
     )
     assert all(step["kernel"].startswith("kernel:") for step in take_up_steps)
-    assert len(battery["metric_registry"]) == 134
+    assert len(battery["metric_registry"]) == 136
     assert len(battery["joint_metric_registry"]) == 1
     assert "metric_counts" not in battery
     assert "declared_surface" not in battery
@@ -208,7 +208,7 @@ def test_constant_derived_domain_counts_are_complete(
     assert battery_views["metric_counts"] == {
         "boolean_incidence": 51,
         "categorical_tvd": 4,
-        "monetary_sign_separated": 79,
+        "monetary_sign_separated": 81,
     }
     assert set(calibration["targets"]) == {
         "cd_policy",
@@ -232,8 +232,8 @@ def test_constant_derived_domain_counts_are_complete(
     for knob in ("k", "pi_hi", "seed"):
         assert selection["exact_k"][knob]["required"] is True
         assert selection["exact_k"][knob]["default"] is None
-    assert len(catalogs["columns"]) == 176
-    assert len(resolved_us_spec.columns) == 176
+    assert len(catalogs["columns"]) == 177
+    assert len(resolved_us_spec.columns) == 177
     assert Counter(artifact.kind for artifact in resolved_us_spec.artifacts) == {
         "producer_node": 38,
         "virtual_output": 18,

@@ -39,6 +39,7 @@ from microcosm.build.us_runtime.late_producer_dag import (
     ProducerInputColumn,
     ProducerOutput,
     ProducerSchedule,
+    _contract_payload,
     derive_producer_schedule,
 )
 from microcosm.build.us_runtime.multispine_pool import (
@@ -105,10 +106,12 @@ __all__ = [
 ]
 
 # v17 binds the ASEC and ACS source-scoped evidence read by constrained
-# immigration transfer and reconciliation. v16 declares person.s_corp_income
-# as a whole-pool primary-PUF output: its
-# certified combined-source semantics are carried by partnership_income, while
-# the separate S-corporation leaf is an exact-zero universe. v15 content-binds
+# immigration transfer and reconciliation. v16 declared person.s_corp_income
+# as a whole-pool primary-PUF output while the donor carried Schedule E line
+# 32 combined in partnership_income; since microcosm#1258 the S-corporation
+# share is its own donor leaf, so it is an ordinary PUF-clone output that the
+# late transfer carries to native rows (a content change under the same
+# registry schema). v15 content-binds
 # the complete late dual-producer ownership matrix and
 # validates that it exhausts the primary/source/transfer intersection. v14
 # scopes origin-exclusive raw requirements independently of their inventory
@@ -1486,11 +1489,11 @@ CANONICAL_US_LATE_TRANSFER_GROUPS = _bounded_transfer_groups(
 )
 if (
     len(CANONICAL_US_LATE_TRANSFER_GROUPS) != 19
-    or sum(len(group.targets) for group in CANONICAL_US_LATE_TRANSFER_GROUPS) != 70
+    or sum(len(group.targets) for group in CANONICAL_US_LATE_TRANSFER_GROUPS) != 72
 ):
     raise RuntimeError(
         "Canonical US late transfer must contain exactly 19 bounded groups "
-        "and 70 ordered targets."
+        "and 72 ordered targets."
     )
 _canonical_late_targets = {
     target for group in CANONICAL_US_LATE_TRANSFER_GROUPS for target in group.targets
@@ -1499,11 +1502,11 @@ if (
     len(_BOOLEAN_LATE_TARGETS) != 17
     or len(_STRING_LATE_TARGETS) != 2
     or not (_BOOLEAN_LATE_TARGETS | _STRING_LATE_TARGETS) <= _canonical_late_targets
-    or len(_canonical_late_targets - _BOOLEAN_LATE_TARGETS - _STRING_LATE_TARGETS) != 51
+    or len(_canonical_late_targets - _BOOLEAN_LATE_TARGETS - _STRING_LATE_TARGETS) != 53
 ):
     raise RuntimeError(
-        "Canonical US late target kinds must partition 70 targets into "
-        "51 numeric, 17 boolean, and 2 string inputs."
+        "Canonical US late target kinds must partition 72 targets into "
+        "53 numeric, 17 boolean, and 2 string inputs."
     )
 US_LATE_TRANSFER_INPUT_INVENTORIES: Mapping[str, SourceInputInventory] = (
     MappingProxyType(
@@ -1691,23 +1694,16 @@ def _build_registry(
 ) -> dict[str, ProducerContract]:
     """Derive every late producer contract from its effective input inventories.
 
-    The inventories are arguments so attested legacy scoring can rebuild the
-    contracts a historical schedule sealed from that schedule's own frozen
-    inventories; everything else is derived exactly as for the live registry.
+    The inventories are arguments so attested legacy scoring can derive
+    microcosm #767's two immigration producers from the schema-16 inventories
+    those pools sealed; everything else is derived exactly as for the live
+    registry.
     """
     late_surface = pool_post_puf_transfer_target_families()
     late_keys = _target_key_rows(late_surface)
     puf_keys = _target_key_rows(pool_post_puf_puf_producer_target_families())
     declared_primary_outputs = tuple(
-        ProducerOutput(
-            entity,
-            column,
-            (
-                _WHOLE_POOL_SCOPE
-                if (entity, column) == ("person", "s_corp_income")
-                else _PUF_CLONE_SCOPE
-            ),
-        )
+        ProducerOutput(entity, column, _PUF_CLONE_SCOPE)
         for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
             "primary_puf_qrf"
         ].items()
@@ -2253,12 +2249,34 @@ def us_late_producer_schedule_receipt() -> Mapping[str, object]:
 
 
 #: Content hash of the schema-16 schedule that attested schema-9 pools sealed.
-#: History is data: the receipt is loaded from a frozen resource and checked
-#: against this digest, never rebuilt from the current registry, so a later
-#: contract change (microcosm #767 changed the immigration stage's inputs and
-#: transfer evidence) cannot silently redefine what a historical pool sealed.
+#: The schedule is a frozen resource checked against this digest. Attested
+#: legacy scoring takes two things from it: the schema-16 execution receipt
+#: contract, and the input inventories of the two producers microcosm #767
+#: changed (the immigration source stage and its transfer group). Every other
+#: legacy contract follows today's registry, as on main, where microcosm #1239
+#: and #1258 changed the primary-PUF and PUF-itemization contracts after
+#: schema 16; restoring those to sealed history is separate work.
 LEGACY_SCHEMA16_LATE_PRODUCER_SCHEDULE_PAYLOAD_SHA256 = (
     "02e618cc656eb39990ed99dca2b30a52794e01e2b06a3c2df87ca4a7d85ab086"
+)
+#: Source operators and transfer groups whose schema-16 inventories the legacy
+#: contracts take from the frozen schedule (microcosm #767).
+LEGACY_SCHEMA16_SEALED_SOURCE_INVENTORIES = ("with_us_immigration_inputs",)
+LEGACY_SCHEMA16_SEALED_TRANSFER_INVENTORIES = (
+    "transfer:person/source_operator_immigration",
+)
+#: Canonical-JSON SHA-256 of each of those producers' contracts as the
+#: schema-16 registry derived them (measured at main 7c4a5ac08, whose registry
+#: reproduces the frozen schedule's ``schedule_sha256``).
+_LEGACY_SCHEMA16_SEALED_CONTRACT_SHA256 = MappingProxyType(
+    {
+        "source:with_us_immigration_inputs": (
+            "8ffdcf5128e54956ea63669033cddcb894af93333fdf61e2262d9f54105ec5af"
+        ),
+        "transfer:person/source_operator_immigration": (
+            "81c5bdc4567090d8c68aac8101214b9f2db3a16485cc14521b81e530a0860f96"
+        ),
+    }
 )
 _LEGACY_SCHEDULE_DERIVED_KEYS = frozenset(
     {
@@ -2304,16 +2322,6 @@ def _verified_legacy_schedule_json() -> str:
     return text
 
 
-def legacy_us_late_producer_schedule_receipt() -> Mapping[str, object]:
-    """Load the frozen schema-16 schedule for attested legacy scoring.
-
-    Only the verified text is cached; every caller gets its own parse, so no
-    caller can alter the nested content another one validates against.
-    """
-
-    return MappingProxyType(json.loads(_verified_legacy_schedule_json()))
-
-
 def _inventory_from_payload(payload: Mapping[str, object]) -> SourceInputInventory:
     """Invert :func:`_inventory_payload` exactly."""
 
@@ -2339,72 +2347,129 @@ def _inventory_from_payload(payload: Mapping[str, object]) -> SourceInputInvento
     )
 
 
+def _canonical_sha256(payload: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 @dataclass(frozen=True)
 class LegacyLateProducerContracts:
-    """The late producer contracts an attested schema-16 schedule sealed."""
+    """The late producer contracts attested schema-9 pools are scored against."""
 
     registry: Mapping[str, ProducerContract]
     schedule: ProducerSchedule
+    source_inventories: Mapping[str, SourceInputInventory]
+    transfer_inventories: Mapping[str, SourceInputInventory]
+
+
+def _sealed_inventories(
+    live: Mapping[str, SourceInputInventory],
+    sealed_rows: Sequence[Mapping[str, object]],
+    names: Sequence[str],
+) -> dict[str, SourceInputInventory]:
+    sealed = {str(row["operator"]): row for row in sealed_rows}
+    inventories = dict(live)
+    for name in names:
+        row = sealed.get(name)
+        if name not in inventories or row is None:
+            raise ValueError(
+                f"frozen schema-16 schedule has no {name!r} inventory to restore."
+            )
+        inventory = _inventory_from_payload(row)
+        if _inventory_payload(inventory) != row:
+            raise ValueError(
+                f"frozen schema-16 {name!r} inventory does not round-trip."
+            )
+        inventories[name] = inventory
+    return inventories
 
 
 @cache
 def legacy_us_late_producer_contracts() -> LegacyLateProducerContracts:
-    """Rebuild the contracts attested schema-9 pools sealed, fail-closed.
+    """Derive the legacy contracts, with #767's two producers at schema 16.
 
-    The frozen schedule serializes every source and transfer input inventory.
-    Feeding those historical inventories to the live contract derivation must
-    reproduce both the frozen ``schedule_sha256`` -- which hashes every
-    contract's full inputs and outputs -- and the sealed payload hash. Any
-    other drift in the derivation since schema 16 therefore refuses here,
-    instead of validating a historical pool's execution rows against today's
-    contracts.
+    Today's derivation runs over today's inventories, except the immigration
+    source stage and its transfer group, whose inventories come from the frozen
+    schema-16 schedule. Each of those two contracts must hash to the digest the
+    schema-16 registry derived, so any drift in their derivation refuses here
+    instead of scoring a historical pool's execution rows against it.
     """
 
     frozen = json.loads(_verified_legacy_schedule_json())
-    source_inventories = {
-        inventory.operator: inventory
-        for inventory in map(
-            _inventory_from_payload, frozen["source_input_inventories"]
-        )
-    }
-    transfer_inventories = {
-        inventory.operator: inventory
-        for inventory in map(
-            _inventory_from_payload, frozen["transfer_input_inventories"]
-        )
-    }
+    source_inventories = _sealed_inventories(
+        US_LATE_SOURCE_INPUT_INVENTORIES,
+        frozen["source_input_inventories"],
+        LEGACY_SCHEMA16_SEALED_SOURCE_INVENTORIES,
+    )
+    transfer_inventories = _sealed_inventories(
+        US_LATE_TRANSFER_INPUT_INVENTORIES,
+        frozen["transfer_input_inventories"],
+        LEGACY_SCHEMA16_SEALED_TRANSFER_INVENTORIES,
+    )
     registry = _build_registry(
         source_inventories=source_inventories,
         transfer_inventories=transfer_inventories,
     )
-    schedule = derive_producer_schedule(
-        registry,
-        external_stages=US_LATE_EXTERNAL_STAGES,
+    for name, expected in _LEGACY_SCHEMA16_SEALED_CONTRACT_SHA256.items():
+        contract = registry.get(name)
+        if contract is None or _canonical_sha256(_contract_payload(contract)) != (
+            expected
+        ):
+            raise ValueError(
+                f"legacy late-producer contract {name!r} no longer matches the "
+                "schema-16 contract attested schema-9 pools sealed."
+            )
+    return LegacyLateProducerContracts(
+        registry=MappingProxyType(registry),
+        schedule=derive_producer_schedule(
+            registry,
+            external_stages=US_LATE_EXTERNAL_STAGES,
+        ),
+        source_inventories=MappingProxyType(source_inventories),
+        transfer_inventories=MappingProxyType(transfer_inventories),
     )
+
+
+@cache
+def _legacy_schedule_receipt_json() -> str:
+    frozen = json.loads(_verified_legacy_schedule_json())
+    legacy = legacy_us_late_producer_contracts()
     payload = _schedule_payload(
         schema_version=frozen["schema_version"],
         execution_receipt_contract=frozen["execution_receipt_contract"],
-        schedule=schedule,
-        source_inventories=source_inventories,
-        transfer_inventories=transfer_inventories,
+        schedule=legacy.schedule,
+        source_inventories=legacy.source_inventories,
+        transfer_inventories=legacy.transfer_inventories,
     )
-    canonical = json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
+    return json.dumps(
+        {
+            **payload,
+            "payload_sha256": _canonical_sha256(payload),
+            "producer_count": len(legacy.registry),
+            "source_producer_count": len(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER),
+            "transfer_group_count": len(CANONICAL_US_LATE_TRANSFER_GROUPS),
+            "transfer_target_count": sum(
+                len(group.targets) for group in CANONICAL_US_LATE_TRANSFER_GROUPS
+            ),
+            "status": "derived_and_import_validated",
+        },
         allow_nan=False,
-    ).encode("utf-8")
-    if (
-        schedule.sha256 != frozen["schedule_sha256"]
-        or hashlib.sha256(canonical).hexdigest()
-        != LEGACY_SCHEMA16_LATE_PRODUCER_SCHEDULE_PAYLOAD_SHA256
-    ):
-        raise ValueError(
-            "the live late-producer contract derivation no longer reproduces "
-            "the frozen schema-16 schedule; attested legacy scoring cannot "
-            "rebuild the contracts those pools sealed."
-        )
-    return LegacyLateProducerContracts(
-        registry=MappingProxyType(registry),
-        schedule=schedule,
     )
+
+
+def legacy_us_late_producer_schedule_receipt() -> Mapping[str, object]:
+    """Return the schema-16 schedule receipt attested legacy scoring checks.
+
+    It carries the frozen schedule's schema version and execution receipt
+    contract over the legacy contracts. Only the text is cached; every caller
+    gets its own parse, so no caller can alter the nested content another one
+    validates against.
+    """
+
+    return MappingProxyType(json.loads(_legacy_schedule_receipt_json()))

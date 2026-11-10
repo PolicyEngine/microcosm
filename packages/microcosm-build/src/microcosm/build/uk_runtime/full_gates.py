@@ -18,9 +18,16 @@ from scipy import sparse
 
 from microcosm.build.country_spec import GatesManifest, load_country_spec
 from microcosm.build.gate_battery import EvidenceContext
-from microcosm.build.uk_runtime.calibration_run import uk_aggregate_admin_totals
+from microcosm.build.uk_runtime.calibration_run import (
+    uk_aggregate_admin_totals,
+    uk_cgt_projection_artifact,
+)
+from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
 from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_artifacts
+from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
 from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
+from microcosm.build.uk_runtime.support_floor import uk_support_floor_names
+from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.artifacts import OrderedProblem, OrderedSolution
 from microcosm.calibrate.solve import CalibrationResult, _build_diagnostics
@@ -30,7 +37,7 @@ from microcosm.graph.canonical import canonical_json
 _LOCAL_FIT_GATES = frozenset(
     {"uk_local_target_fit", "uk_local_per_family_fit", "uk_local_area_support"}
 )
-_LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la"})
+_LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la", "brma"})
 
 
 def _scope(selection_receipt: Mapping[str, Any] | None) -> tuple[bool, dict[str, str]]:
@@ -233,8 +240,14 @@ def build_full_gate_context(
         raise ValueError(
             "Full-build gates require the complete approved national reference registry."
         )
+    # The support floor's drops (microcosm#1095 U3) left the problem after
+    # selection; the problem binds them, and the reference side and the
+    # activated count lose them too.
+    floor_drops = uk_support_floor_names(bindings.get("measure_exclusions") or {})
     selected = {
-        (str(row["name"]), row["period"]) for row in selection_receipt["included"]
+        (str(row["name"]), row["period"])
+        for row in selection_receipt["included"]
+        if str(row["name"]) not in floor_drops
     }
     national_reference = {
         spec.to_target().row_name
@@ -245,21 +258,33 @@ def build_full_gate_context(
     manifest = uk_full_gate_manifest(selection_receipt)
     admin_totals, admin_receipt = uk_aggregate_admin_totals(frame, manifest)
     artifacts = dict(supporting_evidence)
+    # The spine checkpoint's build state stands in for the certifier's spine
+    # frame: the input-coverage gate's build-state half reads the stages'
+    # importance weights and mass receipts from it, never from the calibrated
+    # release frame (found by the first graph dense build: every required
+    # family failed on weight kind alone).
+    spine_build_state = artifacts.pop("spine_build_state", None)
+    if spine_build_state is not None:
+        artifacts.setdefault("spine_frame", spine_build_state)
+    # The entrants fence needs the projection; the national seam computes it
+    # in its calibration kernel, the dense battery computes it here.
+    if UK_CGT_PROJECTION_ARTIFACT_KEY not in artifacts:
+        artifacts[UK_CGT_PROJECTION_ARTIFACT_KEY] = uk_cgt_projection_artifact(
+            frame, manifest
+        )
     artifacts.update(
         {
             "stage_evidence": dict(stage_evidence),
             "build_stage_names": tuple(stage_evidence),
             "national_calibration": {
-                "activated_reference_count": len(selection_receipt["included"]),
+                "activated_reference_count": len(selected),
                 "resolved_reference_count": len(problem.targets),
                 "matrix_target_count": len(problem.names),
             },
             "parity_evidence": SimpleNamespace(
-                candidate_columns={
-                    f"{entity}.{column}"
-                    for entity in frame.entities
-                    for column in frame.table(entity).columns
-                },
+                candidate_columns=uk_export_candidate_columns(
+                    uk_release_export_frame(frame)
+                ),
                 reference_columns={
                     f"{entity}.{name}"
                     for name, entity in reference.input_entities.items()
@@ -273,6 +298,9 @@ def build_full_gate_context(
             "aggregate_admin": admin_totals,
             "aggregate_admin_measurement": admin_receipt,
             "full_gate_scope": uk_full_gate_scope_receipt(selection_receipt),
+            # The full build is the local line's K-clone pool; line-scoped
+            # register entries earned on the national seam stand aside here.
+            "release_line": "local",
         }
     )
     if "rules_engine" not in artifacts and "coverage_engine" in artifacts:
@@ -293,7 +321,8 @@ def classify_full_gate_outcomes(
 
     The combined driver exports a diagnostic candidate after failures of its
     five local fit/support/weight checks, but stops on a non-passing geography
-    ladder. Below f100 those five checks are recorded without enforcement.
+    ladder or local BRMA domain check. Below f100 those five checks are
+    recorded without enforcement.
     All newly included national/source checks keep the shared battery's own
     BLOCKS_ARTIFACT policy, including its declared missing-evidence rules.
     """
@@ -304,8 +333,11 @@ def classify_full_gate_outcomes(
         raise TypeError("Classify a validated GatePhaseReport, not unbound JSON.")
     if not 0.0 < sample_fraction <= 1.0:
         raise ValueError("sample_fraction must be in (0, 1].")
-    geography = "uk_local_geography_ladder_post_calibration"
-    local_export_exception = set(UK_LOCAL_GATE_SCOPE) - {geography}
+    structural_local = {
+        "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
+    }
+    local_export_exception = set(UK_LOCAL_GATE_SCOPE) - structural_local
     blocking = {
         outcome.entry.id
         for outcome in report.blocking_outcomes(release_candidate=release_candidate)
@@ -313,7 +345,7 @@ def classify_full_gate_outcomes(
     stop, exported_failures, unenforced, diagnostic = [], [], [], []
     for outcome in report.outcomes:
         gate_id = outcome.entry.id
-        if gate_id == geography and outcome.status is not GateStatus.PASSED:
+        if gate_id in structural_local and outcome.status is not GateStatus.PASSED:
             stop.append(gate_id)
             continue
         if outcome.status not in {GateStatus.FAILED, GateStatus.EVIDENCE_ABSENT}:

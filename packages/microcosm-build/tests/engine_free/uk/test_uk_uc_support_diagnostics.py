@@ -206,8 +206,10 @@ def write_saved_run(tmp_path, **overrides):
                 *sorted(support_tool.FIVE_PLUS),
                 *sorted(support_tool.KNOWN_ZERO_ROWS),
                 "obr.income_tax",
-                "obr.ni",
-                "obr.state_pension",
+                "obr.ni_employee",
+                "obr.ni_employer",
+                "obr.ni_self_employed",
+                "dwp.state_pension.amount",
                 "obr.child_benefit",
                 "hmrc/employment_income_count_income_band_0_to_5000",
             ]

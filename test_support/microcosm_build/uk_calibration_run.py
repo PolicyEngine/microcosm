@@ -28,8 +28,6 @@ from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
     UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS,
     UK_SPINE_GATE_SCOPE,
-    UKCalibrationRunPaths,
-    run_uk_calibration,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import (
@@ -133,6 +131,7 @@ def _frame():
         household=pd.DataFrame(
             {
                 "household_id": ids,
+                "source_household_id": ids,
                 "region": "LONDON",
                 "household_weight": [10.0, 10.0, 10.0, 10.0],
                 "household_is_spi_synthetic": [False, False, False, False],
@@ -185,16 +184,6 @@ def _registry():
             )
         ],
         country="uk",
-    )
-
-
-def _paths(tmp_path: Path) -> UKCalibrationRunPaths:
-    return UKCalibrationRunPaths(
-        input_h5=tmp_path / "input.h5",
-        staging_h5=tmp_path / "staged.h5",
-        diagnostics_json=tmp_path / "diagnostics.json",
-        build_record_json=tmp_path / "build_record.json",
-        terminal_gate_json=tmp_path / "terminal_gates.json",
     )
 
 

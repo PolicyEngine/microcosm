@@ -293,6 +293,8 @@ from microcosm.build.uk_runtime.local_authority_input import (
     LOCAL_AUTHORITY_ENGINE_KEY_ALIASES,
     UK_LOCAL_AUTHORITY_CODE_COLUMN,
     UK_LOCAL_AUTHORITY_INPUT_COLUMN,
+    UK_LOCAL_AUTHORITY_LADDER_VINTAGE,
+    UK_LOCAL_AUTHORITY_LADDER_VINTAGES,
     UK_LOCAL_AUTHORITY_NAMES_KIND,
     UK_LOCAL_AUTHORITY_NAMES_RESOURCE,
     UK_LOCAL_AUTHORITY_NAMES_SCHEMA_VERSION,
@@ -308,10 +310,12 @@ from microcosm.build.uk_runtime.local_authority_input import (
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_CLONE_COUNT,
     UK_LOCAL_MAX_WEIGHT_RATIO,
+    UK_LOCAL_ROW_METADATA_RULES,
     UK_LOCAL_SOLVE_DOCTRINE,
     UK_LOCAL_SOLVE_EPOCHS,
     UK_LOCAL_TARGET_LOSS_CAP,
     UK_LOCAL_TARGET_WEIGHT_RULE,
+    UK_LOCAL_TARGET_WEIGHT_RULES,
     UKLocalSolveDoctrine,
     uk_local_doctrine_with_overrides,
     uk_local_target_loss_weights,
@@ -398,7 +402,6 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
     write_uk_national_frame,
 )
-from microcosm.build.uk_runtime.national_role import run_national_role
 from microcosm.build.uk_runtime.national_sampling import (
     sample_uk_spine_frame,
     uk_spine_source_family_units,
@@ -415,6 +418,7 @@ from microcosm.build.uk_runtime.parity_reference import (
     EfrsParityKnownGap,
     EfrsParityReference,
     EfrsParitySource,
+    load_efrs_engine_derived_exclusions,
     load_efrs_parity_known_gaps,
     load_efrs_parity_reference,
 )
@@ -573,14 +577,12 @@ from microcosm.build.uk_runtime.terminal_gates import (
 from microcosm.build.uk_runtime.weighted_integrity import (
     UKInputMassParityPolicy,
     UKInputMassReference,
-    UKQRFTailConcentrationPolicy,
     load_uk_input_mass_reference,
     load_uk_local_area_support_exclusion_register,
     load_uk_reviewed_exclusion_register,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
-    uk_qrf_tail_concentration_gate,
 )
 
 __all__ = [
@@ -605,6 +607,8 @@ __all__ = [
     "UK_LOCAL_MAX_WEIGHT_RATIO",
     "UK_LOCAL_SOLVE_EPOCHS",
     "UK_LOCAL_TARGET_WEIGHT_RULE",
+    "UK_LOCAL_TARGET_WEIGHT_RULES",
+    "UK_LOCAL_ROW_METADATA_RULES",
     "UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE",
     "UK_LOCAL_HOLDOUT_FOLDS",
     "UK_LOCAL_HOLDOUT_SEED",
@@ -783,7 +787,6 @@ __all__ = [
     "UK_NATIONAL_TARGET_WEIGHT_RULE",
     "uk_doctrine_with_overrides",
     "uk_national_target_loss_weights",
-    "run_national_role",
     "UKNationalStage",
     "UKRowwiseDatasetResult",
     "UKReleaseInputColumn",
@@ -887,6 +890,7 @@ __all__ = [
     "load_england_wales_oa_population",
     "load_england_wales_oa_ward_lookup",
     "load_ew_oa_lad23_lookup",
+    "load_efrs_engine_derived_exclusions",
     "load_efrs_parity_known_gaps",
     "load_efrs_parity_reference",
     "load_lad_itl_lookup",
@@ -1019,7 +1023,6 @@ __all__ = [
     "UK_EDUCATION_GRANT_CAPACITY_PREDICTORS",
     "UK_LEGACY_PROXY_PREDICTORS",
     "UK_YEAR_RULES",
-    "UKQRFTailConcentrationPolicy",
     "UKZeroWeightStratumDeclaration",
     "load_uk_frs_release",
     "load_uk_input_mass_reference",
@@ -1030,7 +1033,6 @@ __all__ = [
     "uk_input_mass_parity_gate",
     "uk_input_mass_totals",
     "uk_qrf_tail_concentration_columns",
-    "uk_qrf_tail_concentration_gate",
     "uk_target_fit_gate",
     "uk_target_surface_gate",
     "uk_weight_ess_gate",
@@ -1049,6 +1051,8 @@ __all__ = [
     "UK_LOCAL_AUTHORITY_NAMES_KIND",
     "UK_LOCAL_AUTHORITY_NAMES_RESOURCE",
     "UK_LOCAL_AUTHORITY_NAMES_SCHEMA_VERSION",
+    "UK_LOCAL_AUTHORITY_LADDER_VINTAGE",
+    "UK_LOCAL_AUTHORITY_LADDER_VINTAGES",
     "UK_LOCAL_AUTHORITY_VINTAGE",
     "load_uk_local_authority_names_resource",
     "local_authority_consistency_failures",

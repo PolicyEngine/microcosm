@@ -19,6 +19,9 @@ from microcosm.build.uk_runtime import (
     graph_targets,
     ledger_targets,
 )
+from microcosm.build.uk_runtime.atomic_area_support import (
+    uk_atomic_assignment_definition,
+)
 from microcosm.build.uk_runtime.graph_build import (
     UKFullBuildConfig,
     register_uk_full_kernels,
@@ -29,6 +32,7 @@ from microcosm.build.uk_runtime.graph_terminal import FULL_GATE_REPORT_TYPE
 from microcosm.build.uk_runtime.local_rowwise import UKRowwiseNationalRows
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import decode_problem
+from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import Frame
 from microcosm.graph import (
     ArtifactInput,
@@ -44,10 +48,19 @@ from microcosm.graph import (
     compile_graph,
     run_graph,
 )
+from test_support.microcosm_build.uk_atomic_support_fixtures import (
+    toy_support_sources,
+    write_toy_brma_area_layer,
+    write_toy_private_rent_resources,
+    write_toy_property_resources,
+    write_toy_rfdr_area_layer,
+    write_toy_supports,
+)
 from test_support.microcosm_build.uk_full_calibration_graph import (
     preflight_payload,
 )
 from test_support.microcosm_build.uk_full_population_graph import (
+    SOURCE_VINTAGE,
     Source,
     graph_and_registry,
 )
@@ -139,13 +152,19 @@ def target_inputs(monkeypatch, toy_ladder):
         "ledger_provenance": {"fixture": True},
         "uk_ledger_compiled_registries": {2026: national},
         "uk_ledger_compiled_local_registries": {2026: local},
+        "uk_ledger_compile_unsupported": {2026: ()},
+        "uk_ledger_compile_local_unsupported": {2026: ()},
     }
     monkeypatch.setattr(
         full_targets, "load_uk_full_target_inputs", lambda *args, **kwargs: inputs
     )
     reference = {"value": 33.0, "period": 2026}
+    # #1123: the census household level is the nations' controls summed; the
+    # fixture's national register carries none, so the reference is stood in.
     monkeypatch.setattr(
-        graph_targets, "uk_ledger_households_total", lambda *args, **kwargs: reference
+        graph_targets,
+        "uk_nation_households_reference",
+        lambda *args, **kwargs: reference,
     )
 
     def surface():
@@ -162,13 +181,14 @@ def target_inputs(monkeypatch, toy_ladder):
             ),
         )
 
-    def measures(frame, national_registry, *, local_grains, **kwargs):
+    def prepared_for(frame):
+        """The pool with the fixture's two national measures materialized."""
         tables = {e: frame.table(e).copy() for e in frame.entities}
         tables["household"]["test_ones"] = 1.0
         tables["household"]["test_london"] = (
             tables["household"]["region"] == "LONDON"
         ).astype(float)
-        prepared = Frame(
+        return Frame(
             tables,
             frame.schema,
             {"household": frame.weights_for("household")},
@@ -176,12 +196,22 @@ def target_inputs(monkeypatch, toy_ladder):
             mass_log=frame.mass_log,
             metadata=frame.metadata,
         )
+
+    def measures(frame, national_registry, *, local_grains, **kwargs):
+        prepared = prepared_for(frame)
+        rows = UKRowwiseNationalRows(
+            national_registry.to_target_set(), national_registry, ("fixture",)
+        )
+        # The kernel receives the compiled national problem, as the per-block
+        # resolver returns it; the fixture compiles its two columns here.
+        problem = (
+            build_constraint_matrix(prepared, rows.targets, "household")
+            if len(rows.targets)
+            else None
+        )
         return (
-            prepared,
-            lambda _: frame,
-            UKRowwiseNationalRows(
-                national_registry.to_target_set(), national_registry, ("fixture",)
-            ),
+            problem,
+            rows,
             {
                 g: pd.DataFrame(
                     {"households": np.ones(frame.n("household"))},
@@ -192,13 +222,14 @@ def target_inputs(monkeypatch, toy_ladder):
             {"fixture": True},
         )
 
-    monkeypatch.setattr(graph_targets, "resolve_uk_full_measures", measures)
+    monkeypatch.setattr(graph_targets, "resolve_uk_full_national_problem", measures)
     return {
         "national": national,
         "local": local,
         "inputs": inputs,
         "surface": surface,
         "measures": measures,
+        "prepared": prepared_for,
     }
 
 
@@ -225,6 +256,7 @@ def build(
     dataset_households=None,
     resume="auto",
     forbid_execution=False,
+    geography_assignment="atomic",
 ):
     primitive, _ = graph_and_registry(1)
     base = Graph(
@@ -239,11 +271,24 @@ def build(
         n_clones=n_clones,
         geography_levels=levels,
         seed=seed,
+        geography_assignment=geography_assignment,
+        source_vintage=SOURCE_VINTAGE,
         calibration=UKGraphCalibrationConfig(
             epochs=8, seed=seed, dataset_households=dataset_households
         ),
     )
-    full = uk_full_graph(config, spine=base, spine_population="source")
+    payloads, support_paths = write_toy_supports(tmp_path / "supports")
+    definition = (
+        uk_atomic_assignment_definition(payloads, seed=seed)
+        if geography_assignment == "atomic"
+        else None
+    )
+    full = uk_full_graph(
+        config,
+        spine=base,
+        spine_population="source",
+        atomic_geography_definition=definition,
+    )
     preflight = Node(
         "fixture.preflight",
         Preflight.ref,
@@ -300,6 +345,19 @@ def build(
             "fixture": ladder_path,
             "uk_ladder": ladder_path,
             "uk_ledger_facts": ladder_path,
+            **(
+                {
+                    **toy_support_sources(support_paths),
+                    # microcosm#1240: the atomic assignment runs the value
+                    # and band nodes, which read the toy knots and band mix.
+                    **write_toy_property_resources(tmp_path / "property"),
+                    **write_toy_brma_area_layer(tmp_path / "brma"),
+                    **write_toy_private_rent_resources(tmp_path / "rent"),
+                    **write_toy_rfdr_area_layer(tmp_path / "rfdr"),
+                }
+                if geography_assignment == "atomic"
+                else {}
+            ),
         },
         store=store,
         kernels=registry,

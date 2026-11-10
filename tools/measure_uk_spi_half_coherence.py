@@ -34,6 +34,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
+# Not the disclosure floor (receipt_counts.UK_DISCLOSURE_FLOOR): the cell
+# floor of the correlations, medians and weighted quantiles here, since a
+# median or quantile of a few records is one record's own value.
 MIN_CELL = 10
 INCOME_COLUMNS = (
     "employment_income",
@@ -147,7 +150,7 @@ def split_halves(
             column
             for column in (
                 "household_is_capital_gains_clone",
-                "household_is_cgt_band_donor",
+                "household_is_cgt_support_copy",
             )
             if column in household.columns
         ]

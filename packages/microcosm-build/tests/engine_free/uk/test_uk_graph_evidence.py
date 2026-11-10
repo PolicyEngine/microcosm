@@ -127,6 +127,14 @@ def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions():
     assert "spine.gates.assembled" in compiled.predecessors[admitted]
     assert graph.node(admitted).params["spine_gate_phase"] == "assembled"
     assert "spine_gate_phase" not in graph.node("was_wealth").params
+    # Only the transferred phase evaluates the energy rake, so it alone keys
+    # on the module that sets the level; the assembled gate, which every later
+    # spine stage waits on, does not (the re-review of microcosm#1420, E).
+    from microcosm.build.uk_runtime import energy_pricing
+    from microcosm.graph.kernel import source_hash
+
+    assert transferred.params["energy_pricing_code"] == source_hash(energy_pricing)
+    assert "energy_pricing_code" not in assembled.params
     # The blocking posture travels with the gate and the admission it guards.
     assert assembled.params["synthetic_smoke"] is False
     assert graph.node(admitted).params["spine_gate_synthetic_smoke"] is False
@@ -243,6 +251,9 @@ def test_sample_admission_carries_the_transferred_gate_posture(synthetic_smoke):
         weight_kind="importance",
         sample_fraction=0.1,
         n_clones=2,
+        # The admission under test sits on the sample node, before any
+        # assignment; the legacy law needs no atomic definition here.
+        geography_assignment="legacy",
     )
     gate = graph.node("spine.gates.transferred")
     sample = graph.node("uk.full.sample")
@@ -253,3 +264,81 @@ def test_sample_admission_carries_the_transferred_gate_posture(synthetic_smoke):
     )
     assert sample.params["spine_gate_synthetic_smoke"] is synthetic_smoke
     assert gate.params["synthetic_smoke"] is synthetic_smoke
+
+
+@pytest.mark.parametrize("synthetic_smoke", [False, True])
+def test_sample_admission_holds_under_the_default_atomic_law(synthetic_smoke):
+    """The same admission composed under the default law (microcosm#932): the
+    identity-keyed assignment follows the sample node and does not move the
+    transferred-gate parameters the sample admission reads."""
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        uk_atomic_assignment_definition,
+    )
+    from microcosm.build.uk_runtime.graph_population import append_uk_population_nodes
+    from test_support.microcosm_build.uk_atomic_support_fixtures import (
+        toy_support_payloads,
+    )
+    from test_support.microcosm_build.uk_full_population_graph import SOURCE_VINTAGE
+
+    country = load_country_spec("uk")
+    spine = uk_spine_graph(country)
+    gated = add_uk_spine_gate_nodes(
+        spine,
+        spec=country,
+        engine_identity="test-engine",
+        synthetic_smoke=synthetic_smoke,
+    )
+    graph = append_uk_population_nodes(
+        gated,
+        population=uk_spine_endpoint(spine).population,
+        time_period="2024",
+        weight_kind="importance",
+        sample_fraction=0.1,
+        n_clones=2,
+        seed=7,
+        atomic_geography_definition=uk_atomic_assignment_definition(
+            toy_support_payloads(), seed=7
+        ),
+        source_vintage=SOURCE_VINTAGE,
+    )
+    gate = graph.node("spine.gates.transferred")
+    sample = graph.node("uk.full.sample")
+    assert {edge.producer for edge in sample.artifact_inputs} >= {gate.id}
+    assert sample.params["spine_gate_phase"] == "transferred"
+    assert sample.params["spine_gate_release_candidate"] is bool(
+        gate.params["release_candidate"]
+    )
+    assert sample.params["spine_gate_synthetic_smoke"] is synthetic_smoke
+    assert graph.node("uk.full.identity").kernel == "uk.full.identity@1"
+    compiled = compile_graph(graph)
+    assert compiled.order.index("uk.full.sample") < compiled.order.index(
+        "uk.full.identity"
+    )
+
+
+def test_the_spine_gate_kernel_keys_on_its_checks_not_the_energy_level(monkeypatch):
+    # The re-review of microcosm#1420, E: one kernel hash serves both phases,
+    # so it covers the modules both read and not energy_pricing, which only
+    # the transferred phase's node param carries.
+    from microcosm.build.uk_runtime import (
+        battery_bindings,
+        energy_pricing,
+        graph_evidence,
+        stage_health,
+    )
+
+    seen = []
+    real = graph_evidence.source_hash
+
+    def recording(*objects):
+        seen.append(objects)
+        return real(*objects)
+
+    monkeypatch.setattr(graph_evidence, "source_hash", recording)
+    kernel = graph_evidence.UKSpineGateKernel(
+        gates=load_country_spec("uk").gates, engine=None, engine_identity="test"
+    )
+    kernel.implementation_hash()
+    (modules,) = seen
+    assert {stage_health, battery_bindings, graph_evidence.gate_battery} <= set(modules)
+    assert energy_pricing not in modules

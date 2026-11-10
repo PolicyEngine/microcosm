@@ -182,17 +182,19 @@ _INDICATORS: tuple[tuple[str, float | int], ...] = (
 #: ASEC arrival windows transcribed from the module's comments, not read from
 #: its tables. Birth codes are the module's own (its comment says they were
 #: "verified against Census CPS technical documentation"); the windows are the
-#: comments' words. ``_RECENT_ARRIVAL_CODES``: "The 2024 ASEC distinguishes
-#: 2020-2021 (27) from 2022-2024 (28) ... U4U and CHNV cannot draw from code
-#: 27, while Operation Allies Welcome can"; ``_PAROLE_ORIGIN_CODES``: "Operation
-#: Allies Welcome (Afghanistan), Uniting for Ukraine, and the
-#: non-Cuban/Haitian CHNV nationalities".
+#: comments' words. ``_RECENT_ARRIVAL_CODES``: "Operation Allies Welcome
+#: (2021-2022 arrivals) draws from 27 and 28. U4U and CHNV (2022 to early
+#: 2025) and refugees admitted in FY2023-FY2024 draw from 28 and 29, never
+#: from 27"; ``_PAROLE_ORIGIN_CODES``: "Operation Allies Welcome
+#: (Afghanistan), Uniting for Ukraine, and the non-Cuban/Haitian CHNV
+#: nationalities".
 _PAROLE_DOCUMENTED_WINDOWS: Mapping[int, frozenset[int]] = {
     200: frozenset({27, 28}),  # Afghanistan (Operation Allies Welcome)
-    164: frozenset({28}),  # Ukraine (Uniting for Ukraine)
-    315: frozenset({28}),  # Nicaragua (CHNV)
-    373: frozenset({28}),  # Venezuela (CHNV)
+    164: frozenset({28, 29}),  # Ukraine (Uniting for Ukraine)
+    315: frozenset({28, 29}),  # Nicaragua (CHNV)
+    373: frozenset({28, 29}),  # Venezuela (CHNV)
 }
+_REFUGEE_DOCUMENTED_WINDOW = frozenset({28, 29})
 #: ``_TPS_ORIGIN_CODES``: "Legacy designations bind hard (El Salvador
 #: 2001-02-13 -> code 17; Honduras/Nicaragua 1998-12-30 -> code 16; Nepal
 #: 2015-06-24 -> code 24)".
@@ -207,8 +209,11 @@ _TPS_DOCUMENTED_MAX_ARRIVAL_CODE: Mapping[int, int] = {
 #: Cuba/Haiti-born persons "are excluded from every humanitarian draw".
 _TPS_DOCUMENTED_EXCLUDED_BIRTHS = frozenset({164, 200, 327, 332})
 #: ``_ASYLEE_ARRIVAL_CODES``: "grantees in 2022-2024 overwhelmingly arrived
-#: 2016+"; the 2016-2017 bin (midpoint 2017) is code 25.
+#: 2016+"; the 2016-2017 bin (midpoint 2017) is code 25. Its comment and
+#: ``_TPS_ORIGIN_CODES``'s both say "The 2026 ASEC's code 29 (2024-2026) is
+#: left out".
 _ASYLEE_DOCUMENTED_MIN_ARRIVAL_CODE = 25
+_ASYLEE_AND_TPS_DOCUMENTED_EXCLUDED_ARRIVAL_CODE = 29
 
 
 def _draw_labels() -> tuple[str, ...]:
@@ -803,7 +808,7 @@ def _generic_asec_row(weight):
                 st.sampled_from(_HUMANITARIAN_ORIGIN_CODES),
             ),
             "PEINUSYR": st.one_of(
-                st.integers(0, 28), st.integers(17, 28), st.integers(24, 28)
+                st.integers(0, 29), st.integers(17, 29), st.integers(24, 29)
             ),
             "A_AGE": st.integers(0, 85),
             "A_MARITL": st.sampled_from((1, 2, 4, 7)),
@@ -847,7 +852,7 @@ def _humanitarian_profile_row(draw, weight) -> dict:
         arrival = draw(st.sampled_from(immigration._PAROLE_ASEC_ARRIVAL_CODES[origin]))
     elif category == "refugee":
         birth = draw(st.sampled_from(immigration._REFUGEE_ORIGIN_CODES))
-        arrival = 28
+        arrival = draw(st.sampled_from(immigration._POST_2021_ARRIVAL_CODES))
     elif category == "asylee":
         birth = draw(st.sampled_from(immigration._ASYLEE_ORIGIN_CODES))
         arrival = draw(st.sampled_from(immigration._ASYLEE_ARRIVAL_CODES))
@@ -861,7 +866,7 @@ def _humanitarian_profile_row(draw, weight) -> dict:
         birth = draw(st.sampled_from(codes))
         arrival = draw(st.integers(1, latest))
     if draw(st.integers(0, 4)) == 0:
-        arrival = min(28, max(1, arrival + draw(st.sampled_from((-1, 1)))))
+        arrival = min(29, max(1, arrival + draw(st.sampled_from((-1, 1)))))
     return {
         "PRCITSHP": draw(st.sampled_from((5, 5, 5, 4))),
         "PENATVTY": birth,
@@ -1360,9 +1365,11 @@ def test_humanitarian_rows_sit_inside_the_asec_windows_the_comments_state(
     """Independent of ``_humanitarian_draw_candidates``: every emitted parole,
     TPS and asylee row satisfies the ASEC origin/arrival windows transcribed
     above from the module's comments (``_PAROLE_DOCUMENTED_WINDOWS``,
-    ``_TPS_DOCUMENTED_MAX_ARRIVAL_CODE``, ``_TPS_DOCUMENTED_EXCLUDED_BIRTHS``,
-    ``_ASYLEE_DOCUMENTED_MIN_ARRIVAL_CODE``). Refugee and withholding windows
-    have no numeric statement in a comment and are not checked here."""
+    ``_REFUGEE_DOCUMENTED_WINDOW``, ``_TPS_DOCUMENTED_MAX_ARRIVAL_CODE``,
+    ``_TPS_DOCUMENTED_EXCLUDED_BIRTHS``,
+    ``_ASYLEE_DOCUMENTED_MIN_ARRIVAL_CODE``,
+    ``_ASYLEE_AND_TPS_DOCUMENTED_EXCLUDED_ARRIVAL_CODE``). The withholding
+    window has no numeric statement in a comment and is not checked here."""
 
     output = _run(case)
     status = output["immigration_status_str"].to_numpy()
@@ -1379,8 +1386,14 @@ def test_humanitarian_rows_sit_inside_the_asec_windows_the_comments_state(
             event("a parole-origin row sits outside its window")
         assert np.isin(arrival[rows], list(window)).all(), origin
 
+    refugee = status == "REFUGEE"
+    if refugee.any():
+        event("refugee rows emitted")
+    assert np.isin(arrival[refugee], list(_REFUGEE_DOCUMENTED_WINDOW)).all()
+
     tps = status == "TPS"
     assert not np.isin(birth[tps], list(_TPS_DOCUMENTED_EXCLUDED_BIRTHS)).any()
+    assert not (arrival[tps] == _ASYLEE_AND_TPS_DOCUMENTED_EXCLUDED_ARRIVAL_CODE).any()
     assert (arrival[tps] >= 1).all()
     for origin, latest in _TPS_DOCUMENTED_MAX_ARRIVAL_CODE.items():
         rows = tps & (birth == origin)
@@ -1394,6 +1407,9 @@ def test_humanitarian_rows_sit_inside_the_asec_windows_the_comments_state(
     if asylee.any():
         event("asylee rows emitted")
     assert (arrival[asylee] >= _ASYLEE_DOCUMENTED_MIN_ARRIVAL_CODE).all()
+    assert not (
+        arrival[asylee] == _ASYLEE_AND_TPS_DOCUMENTED_EXCLUDED_ARRIVAL_CODE
+    ).any()
 
 
 @_STAGE

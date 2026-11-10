@@ -30,6 +30,10 @@ UK_ALLOWED_RATE_STATUSES = frozenset(
     }
 )
 UK_ALLOWED_RATE_ENTITIES = frozenset({"person", "benunit", "household"})
+# The childcare fitter's first version to fit a nested entry's conditional rate.
+NESTED_RATE_MIN_TOOL_VERSION = 5
+# The childcare fitter's first version to record what each rate estimates.
+ESTIMAND_MIN_TOOL_VERSION = 6
 
 
 @dataclass(frozen=True)
@@ -185,6 +189,16 @@ def _entries(values: object, *, section: str) -> tuple[UKRateEntry, ...]:
             raise ValueError(f"UK take-up contract {key!r} requires source.")
         _validate_source(key, source)
         _validate_fitting_receipt(key, item.get("fitting_receipt"))
+        nested_under = item.get("nested_under")
+        if nested_under is not None and (
+            not isinstance(nested_under, str) or nested_under == item.get("output")
+        ):
+            raise ValueError(
+                f"UK take-up contract {key!r} nested_under must name another "
+                "output: the flag this conditional rate is nested under."
+            )
+        if nested_under is not None:
+            _validate_nested_rate_receipt(key, item.get("fitting_receipt"))
         entries.append(
             UKRateEntry(
                 key=key,
@@ -220,6 +234,49 @@ def _validate_fitting_receipt(key: str, receipt: object) -> None:
                 "name the engine the rate was fitted on; a hermetic receipt "
                 "(engine absent) cannot be landed."
             )
+    tool_version = receipt.get("tool_version")
+    if (
+        isinstance(tool_version, int)
+        and not isinstance(tool_version, bool)
+        and tool_version >= ESTIMAND_MIN_TOOL_VERSION
+    ):
+        estimand = receipt.get("estimand")
+        if not isinstance(estimand, str) or not estimand.strip():
+            raise ValueError(
+                f"UK take-up contract {key!r} fitting_receipt of tool version "
+                f"{tool_version} must say what the rate estimates (estimand)."
+            )
+        at_bound = receipt.get("params_at_bound") or ()
+        reason = receipt.get("at_bound_reason")
+        if key in at_bound and (not isinstance(reason, str) or not reason.strip()):
+            raise ValueError(
+                f"UK take-up contract {key!r} was fitted at a bound of [0, 1], so "
+                "its fitting_receipt must give an at_bound_reason."
+            )
+
+
+def _validate_nested_rate_receipt(key: str, receipt: object) -> None:
+    """Refuse a nested rate fitted on the marginal basis.
+
+    A nested entry's rate is conditional on not holding the flag it is
+    nested under. The childcare fitter has fitted that conditional rate
+    since tool version 5; an earlier receipt fitted the marginal rate, which
+    read as a conditional one overstates take-up. So a nested entry needs a
+    receipt from tool version 5 or later.
+    """
+
+    version = receipt.get("tool_version") if isinstance(receipt, Mapping) else None
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, int)
+        or version < NESTED_RATE_MIN_TOOL_VERSION
+    ):
+        raise ValueError(
+            f"UK take-up contract {key!r} is nested_under another flag, so its "
+            "rate must come from a fitting receipt of tool version "
+            f"{NESTED_RATE_MIN_TOOL_VERSION} or later (the conditional basis); "
+            f"got {version!r}."
+        )
 
 
 def _continuous_entries(values: object) -> tuple[Mapping[str, Any], ...]:

@@ -594,6 +594,42 @@ def test_assignment_refuses_local_authority_layer_vintage_mismatch(tmp_path) -> 
         assign_uk_geography_ladder(_household(), ladder, seed=0)
 
 
+def test_assignment_accepts_the_full_uk_composite_local_authority_vintage(
+    tmp_path,
+) -> None:
+    # tools/build_uk_oa_ladder_artifact.py writes one composite vintage on the
+    # local_authority layer of every full-UK ladder; the April 2023 frame the
+    # names resource enumerates is exactly that composite (microcosm#932).
+    metadata = _ladder_metadata()
+    metadata["layers"]["local_authority"] = {
+        "vintage": "ew:2023_april_lad;scotland:2019_council_area;ni:2014_lgd",
+        "source": "ONS; Scotland: NRS; NI: NISRA",
+    }
+    ladder = load_uk_oa_ladder(
+        _write_ladder(tmp_path / "ladder.npz", metadata_json=json.dumps(metadata))
+    )
+
+    assigned = assign_uk_geography_ladder(_household(), ladder, seed=0)
+
+    assert len(assigned) == len(_household())
+
+
+def test_assignment_refuses_a_foreign_full_uk_composite_local_authority_vintage(
+    tmp_path,
+) -> None:
+    metadata = _ladder_metadata()
+    metadata["layers"]["local_authority"] = {
+        "vintage": "ew:2025_april_lad;scotland:2019_council_area;ni:2014_lgd",
+        "source": "a rebuilt ladder",
+    }
+    ladder = load_uk_oa_ladder(
+        _write_ladder(tmp_path / "ladder.npz", metadata_json=json.dumps(metadata))
+    )
+
+    with pytest.raises(ValueError, match="local authority vintage 'ew:2025_april_lad"):
+        assign_uk_geography_ladder(_household(), ladder, seed=0)
+
+
 def test_gate_fails_when_columns_are_missing() -> None:
     household, weights = _gated_household()
     household = household.drop(columns=["ward_code"])

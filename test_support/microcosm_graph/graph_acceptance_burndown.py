@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from test_support.git_repositories import NO_BACKGROUND_MAINTENANCE
 from test_support.paths import paths_for
 from tools import graph_acceptance_burndown as burndown
 
@@ -115,6 +116,7 @@ def _repository(tmp_path: Path, sources: dict[str, str]) -> Path:
     subprocess.run(
         [
             "git",
+            *NO_BACKGROUND_MAINTENANCE,
             "-c",
             "user.name=t",
             "-c",

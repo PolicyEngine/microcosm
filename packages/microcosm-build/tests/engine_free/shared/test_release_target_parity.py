@@ -39,6 +39,7 @@ from microcosm.build.us_runtime.release_target_parity import (
     registry_target_family_ids,
     us_release_target_parity_gate,
     us_target_family_id,
+    us_target_family_vintage_free_id,
 )
 from test_support.paths import paths_for
 
@@ -247,7 +248,8 @@ class TestAntiRot:
                 evidence="none",
                 fence=_FENCE,
             )
-            if family.name in RED_LINE_COMPILED_FAMILIES
+            if us_target_family_vintage_free_id(family.name)
+            in RED_LINE_COMPILED_FAMILIES
             else family
             for family in _CONTRACT.families
         )
@@ -287,7 +289,13 @@ class TestShippedManifest:
     def test_red_line_families_are_compiled(self) -> None:
         manifest = load_target_parity_manifest()
         for family in RED_LINE_COMPILED_FAMILIES:
-            assert manifest.by_name[family].status == COMPILED_STATUS
+            entries = [
+                entry
+                for entry in manifest.families
+                if us_target_family_vintage_free_id(entry.name) == family
+            ]
+            assert entries, family
+            assert all(entry.status == COMPILED_STATUS for entry in entries)
 
     def test_congressional_district_family_declares_one_surface_doctrine(self) -> None:
         family = load_target_parity_manifest().by_name[
@@ -315,7 +323,8 @@ class TestShippedManifest:
             manifest.reviewed_exclusions
         )
         assert len(manifest.compiled_families) == 32
-        assert len(manifest.reviewed_exclusions) == 52
+        # 53, plus the 11 ed_fsa families of the 41b2fb2b feed (microcosm#1074).
+        assert len(manifest.reviewed_exclusions) == 64
 
     def test_wired_nipa_and_liheap_families_are_compiled(self) -> None:
         manifest = load_target_parity_manifest()
@@ -332,6 +341,32 @@ class TestShippedManifest:
         state_wages = manifest.by_name["bea_regional.state_wages_salaries"]
         assert state_wages.status == REVIEWED_EXCLUSION_STATUS
         assert "PR #1034" in state_wages.fence.origin
+
+    def test_fsa_portfolio_families_are_off_by_default_exclusions(self) -> None:
+        """microcosm#1074: no ed_fsa family compiles by default, so the default
+        surface this manifest describes declares all 11 fenced reviewed
+        exclusions under one ``ed_fsa`` namespace fence, and none compiled.
+
+        Only four of the 11 bind even in a build with the federal student loan
+        balance columns: microcosm#1357's opt-in binds the location, age,
+        debt-size and loan-type tables (its ``FSA_BOUND_TABLES``). The
+        portfolio summary and the six repayment-plan and IDR tables stay
+        diagnostic in every build (its ``FSA_DIAGNOSTIC_TABLES``), and so do
+        the loan-type table's recipient counts. Giving those seven families
+        their own exclusions waits for microcosm#1357, which owns their
+        reasons."""
+        manifest = load_target_parity_manifest()
+        fsa = {
+            name: family
+            for name, family in manifest.by_name.items()
+            if name.startswith("ed_fsa.")
+        }
+        assert len(fsa) == 11
+        for family in fsa.values():
+            assert family.status == REVIEWED_EXCLUSION_STATUS
+            assert family.classification == "off_by_default"
+            assert "--scf-education-debt" in family.reason
+            assert "microcosm#1074" in family.fence.origin
 
     def test_ssi_state_payments_family_is_compiled(self) -> None:
         manifest = load_target_parity_manifest()
@@ -478,6 +513,46 @@ class TestJctObbbaAdjudication:
         assert entry["classification"] == "deferred"
         assert entry["fence"]["verdict_basis"]
         assert feed_families["families"]["jct.obbba_title_vii"] == 1
+
+
+class TestFeedLabelVariants:
+    """microcosm#1343: the inventory records every dimension value the feed
+    labels more than one way, so CI sees a label regression without the feed."""
+
+    def test_generator_lists_values_with_two_labels_from_either_field(self) -> None:
+        generator = _load_generator()
+        agi = "us:statutes/26/62#adjusted_gross_income"
+        rows = [
+            {
+                "dimension_value_labels": {agi: {"all": "All returns"}},
+                "layout": {
+                    "groupby_dimension": agi,
+                    "groupby_value_id": "all",
+                    "groupby_value_label": "All returns",
+                },
+            },
+            {
+                "dimension_value_labels": {
+                    agi: {"all": "All returns, total"},
+                    "filing_status": {"all": "All filing statuses"},
+                },
+                "layout": {},
+            },
+            {
+                "dimension_value_labels": {"age": {"85_plus": "Age 85 plus"}},
+                "layout": {
+                    "groupby_dimension": "age",
+                    "groupby_value_id": "85_plus",
+                    "groupby_value_label": "Age 85 and over",
+                },
+            },
+            {"dimension_value_labels": {"age": {"age_20": "Age 20"}}},
+        ]
+
+        assert generator._dimension_value_label_variants(rows) == {
+            "age": {"85_plus": ["Age 85 and over", "Age 85 plus"]},
+            agi: {"all": ["All returns", "All returns, total"]},
+        }
 
 
 class TestRegeneration:

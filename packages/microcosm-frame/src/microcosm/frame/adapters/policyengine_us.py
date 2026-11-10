@@ -39,7 +39,11 @@ from microcosm.frame.adapters._policyengine_us_source_index import (
 from microcosm.frame.adapters._policyengine_us_source_index import (
     _index_policyengine_us_sources as _build_policyengine_us_source_index,
 )
+from microcosm.frame.adapters.policyengine_us_concepts import (
+    POLICYENGINE_US_CONCEPT_MAPPING,
+)
 from microcosm.frame.bundle import Frame
+from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.materialize import (
     engine_tables,
     materialize_nullable_booleans_for_pytables,
@@ -53,6 +57,7 @@ from microcosm.frame.units import US_SCHEMA
 from microcosm.frame.weights import Weights
 
 __all__ = [
+    "POLICYENGINE_US_CONCEPT_MAPPING",
     "ConsumerReceipt",
     "PolicyEngineUSEngine",
     "PolicyEngineUSVariableMetadataIndex",
@@ -414,6 +419,19 @@ class PolicyEngineUSVariableMetadataIndex:
             raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
         return definition.metadata
 
+    def variable_unit(self, name: str) -> str | None:
+        """Return the ``unit`` a variable's class declares, or None.
+
+        ``unit = USD`` reads as ``"currency-USD"``, as the engine stores it.
+        None means the class declares no unit. The audited generated-variable
+        snapshot records no unit, so its variables also report None.
+        """
+
+        definition = self._definitions.get(name)
+        if definition is None:
+            raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
+        return definition.unit
+
     def variables(self) -> list[str]:
         return sorted(
             name
@@ -703,6 +721,11 @@ class PolicyEngineUSEngine:
             ),
         )
 
+    def variable_unit(self, name: str) -> str | None:
+        """Return the variable's ``unit``, or None when it declares none."""
+
+        return self._variable(name).unit
+
     def variables(self) -> list[str]:
         """Return the engine's input variable names (those without a formula).
 
@@ -892,6 +915,10 @@ class PolicyEngineUSEngine:
     def entity_schema(self) -> EntitySchema:
         """Return the US entity schema (no engine import required)."""
         return US_SCHEMA
+
+    def concept_mapping(self) -> ConceptMapping:
+        """Return the concept-to-input mapping (no engine import required)."""
+        return POLICYENGINE_US_CONCEPT_MAPPING
 
     # ------------------------------------------------------------------
     # Materialization

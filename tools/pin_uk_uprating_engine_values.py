@@ -10,6 +10,11 @@ appliers can ask for, one per declared parameter per 1 January of
 engine version they came from. A ``requires_uk`` test holds the file in
 lockstep with the installed engine, so an engine bump re-runs this tool.
 
+The file also carries the growth policyengine-uk applies to ``household_weight``
+when it projects a dataset to a later year (block ``dataset_projection``): the
+release write divides the solved weights by it (``uk_runtime.weight_year``,
+microcosm#796 A19).
+
 Usage (with the uk extra installed):
 
     uv run --no-sync python tools/pin_uk_uprating_engine_values.py [--check]
@@ -32,6 +37,11 @@ from microcosm.build.uk_runtime.hmrc_uprating import (
     UK_ENGINE_PINS_RESOURCE,
     installed_engine_version,
     live_engine_parameter_value,
+)
+from microcosm.build.uk_runtime.weight_year import (
+    UK_WEIGHT_PROJECTION_PARAMETER,
+    UK_WEIGHT_PROJECTION_PINS_BLOCK,
+    UK_WEIGHT_PROJECTION_VARIABLE,
 )
 
 UK_PACKAGE_DIR = (
@@ -64,6 +74,15 @@ def build_pins() -> dict[str, object]:
                 )
             by_instant[instant] = value
         values[path] = by_instant
+    growth: dict[str, float] = {}
+    for instant in instants:
+        value = live_engine_parameter_value(UK_WEIGHT_PROJECTION_PARAMETER, instant)
+        if not value > -1:
+            raise SystemExit(
+                f"policyengine-uk {version}: {UK_WEIGHT_PROJECTION_PARAMETER!r} is "
+                f"{value!r} at {instant}; a growth rate must be above -1."
+            )
+        growth[instant] = value
     return {
         "schema_version": 1,
         "engine": {"package": "policyengine-uk", "version": version},
@@ -71,6 +90,12 @@ def build_pins() -> dict[str, object]:
         "written_by": "tools/pin_uk_uprating_engine_values.py",
         "instants": instants,
         "values": values,
+        UK_WEIGHT_PROJECTION_PINS_BLOCK: {
+            UK_WEIGHT_PROJECTION_VARIABLE: {
+                "parameter": UK_WEIGHT_PROJECTION_PARAMETER,
+                "growth": growth,
+            }
+        },
     }
 
 

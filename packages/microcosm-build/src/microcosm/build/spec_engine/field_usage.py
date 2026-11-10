@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_544
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 10_027
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_571
+EXPECTED_AUTHORED_FIELD_COUNT = 32_749
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 10_032
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_781
 
 
 class FieldUsageError(AssertionError):
@@ -341,8 +341,8 @@ def _path_inventory(rows: Sequence[tuple[str, object]]) -> tuple[int, str]:
 # wildcard broadening a source diff rather than an automatically accepted field.
 _PINS: dict[str, tuple[int, str]] = {
     "battery": (
-        797,
-        "55c2c0cd2d652216ed35f2d2667f52fe00229eb4336507bef9758397a1e24a17",
+        807,
+        "f35844c0d404d5fc7905d8b7ecbee1d273c0bb46a7ed656d86f1b7cb0760fb33",
     ),
     "bundle_country": (
         1,
@@ -361,16 +361,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "36564747627fb0058bb99e8e8c4397e41d8ecc472a20c49d4b6d7df1003a80ec",
     ),
     "calibration": (
-        312,
-        "9bad55b4945af1c4213c510942e7b9d22d104bf75b0d9804e4a183e1656c8393",
+        320,
+        "49a153b065b59950d910f9e2bcfcd7005e5babaecf9b41b1cc9704a7f20dcc5b",
     ),
     "catalog_columns": (
-        1_673,
-        "a983c0d68e980a31bd1ad41e7ef3c0cb3db9a7ee4d73454ae46f81eb6d1bb427",
-    ),
-    "catalog_metadata_waivers": (
-        5,
-        "64182b6be1ea6d95bff345b30a2aa046b6fa7e8ee61a282b225dfa49c28fbfdc",
+        1_593,
+        "bdd9e79157590fade42d28cc2b5d5c8b58e13903af75375a0e3235c94d2a8339",
     ),
     "country_manifest": (
         107,
@@ -401,8 +397,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "bdf40812604e7cd35d68093fe14b7cd1371cb8ab8658fd6002b254610b062781",
     ),
     "imputation_family_execution": (
-        1_769,
-        "cd395f41c1cc425c734dc344607de043f3506b4ec2e727a29130fc4304f351e3",
+        1_787,
+        "aa733722f4442ae0ab22c5f1f2ffc1df2accfc5a1791702b242545e40abd26bf",
     ),
     "imputation_gap_fill_schedule": (
         5,
@@ -421,12 +417,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "e1dd7dc5123ab0f39d08ea4939d98dd09a6fdb8e7449a7ca3125fb1ddbd5b4e9",
     ),
     "imputation_producer_graph": (
-        24_554,
-        "18140dbc554c2a17a673fec5ae5839f504d4b9980c5d8f1c1ccb545342977cb4",
+        24577,
+        "cd6f3f0bb0cca334bec3c133060352b1b99a4e7be118924de8741a9da748325c",
     ),
     "imputation_transfer_execution": (
-        115,
-        "545f626e7b9c6aed25a5ae8dd3156c96db2cd35e5637ec1ebe443432d1684277",
+        128,
+        "072e12dcb7b0ec4af2d954c3280cca7ebad3496826b20de3bbc713ec1e9344e9",
     ),
     "imputation_waiver_records": (
         70,
@@ -453,16 +449,16 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        1_034,
-        "079a78782c7ca36c89160eccb36a17227222c892261d7910ea55b6e97ccc5b9e",
+        1035,
+        "0da36c3d74127193e82c128071fb687028d4e6cf096f045c8d96d3c52391bc41",
     ),
     "resolved_seed_site_bindings": (
         316,
         "199ec98045871070860164b522892327ab840b48c0c6a53972ebc0ff0d7d091f",
     ),
     "resolved_vintage_authorities": (
-        63,
-        "5f2edfe9826e1200e2b8706780c9f53b7c61f01aad8cab5907f08c37a0b1ead2",
+        67,
+        "3f49902e745368ce8df0ad338a1697b76fd3299d35959977d36a8c09690ffb10",
     ),
     "selection": (
         87,
@@ -485,8 +481,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_729,
-        "5d202acc8be3ffec000a3185fe90c0ad01d75ee25f49ebfd4ab51a7b447cab71",
+        1939,
+        "0e43f91c8617181bdceeef7570dd5a7e871f77e1acd3961f9b7203f825f20882",
     ),
     "spine_assembly_household_mass_shares": (
         2,
@@ -533,8 +529,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d53096196db4c34da260cce2f35af8e7ba67f978448656c602ee5e17529dc4e0",
     ),
     "vintage_records": (
-        112,
-        "c69a923e893fde8a929ca087d29ded607fa9c04fd14a39d0a401ad1db845e6de",
+        120,
+        "825b4ab09602353fc4d6c24b6f7654f7582502c7acf963b7ff6c117b07208eb4",
     ),
 }
 
@@ -646,14 +642,6 @@ def default_usage_claims() -> tuple[UsageClaim, ...]:
                 "/calibration_tail_contracts",
             ),
             relative_sink_prefix="/calibration_contract",
-        ),
-        _claim(
-            "catalog_metadata_waivers",
-            f"{_A}/spec~1catalogs.yaml/metadata_waivers",
-            UsageMode.FRONT_END_VALIDATION,
-            _NO_EFFECT,
-            "typed_closure.metadata_waiver_validation",
-            "catalog_waivers",
         ),
         _claim(
             "catalog_columns",
@@ -1287,22 +1275,6 @@ def _verify_catalog_columns(context: _VerificationContext, claim: UsageClaim) ->
         raise FieldUsageError("catalog_columns: typed column projection differs")
 
 
-def _verify_catalog_waivers(context: _VerificationContext, claim: UsageClaim) -> None:
-    _verify_compiled_domain(context, claim)
-    _, waivers = _pointer_value(context.sources, claim.source_prefix)
-    if not isinstance(waivers, (list, tuple)):
-        raise FieldUsageError("catalog_metadata_waivers: array required")
-    waiver_ids = {
-        str(waiver["id"])
-        for waiver in waivers
-        if isinstance(waiver, Mapping) and "id" in waiver
-    }
-    used = {column.unit_waiver for column in context.spec.columns}
-    used.discard(None)
-    if waiver_ids != used:
-        raise FieldUsageError("catalog_metadata_waivers: typed closure differs")
-
-
 def _verify_imputation_validation(
     context: _VerificationContext,
     claim: UsageClaim,
@@ -1471,7 +1443,6 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
             context, claim
         ),
         "catalog_columns": lambda: _verify_catalog_columns(context, claim),
-        "catalog_waivers": lambda: _verify_catalog_waivers(context, claim),
         "imputation_validation": lambda: _verify_imputation_validation(context, claim),
         "imputation_graph": lambda: _verify_imputation_graph(context, claim),
         "seed_protocol": lambda: _verify_seed_protocol(context, claim),

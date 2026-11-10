@@ -70,13 +70,13 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
     assert projected["sha256"] == (
-        "5730bd1c7410a59baa5a85ced86d9dcf0f901b3fa1c56617953199ad1a180eaa"
+        "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef"
     )
     assert {
         name: component["sha256"] for name, component in projected["components"].items()
     } == {
         "declared_surface": (
-            "5b5a4470e2612365f253e933833bb08b8f9c857ea0bc175b958ead9a74abee01"
+            "36cddcc06b6307ce1ccfa8aeaf502a7769d72f70dd4ac969fc5e9a45be2d6178"
         ),
         "gap_fill_plan": (
             "f41319a95750a441676bc6599b1de6bb49a87b45d83b9263d627c402cfe8e750"
@@ -85,13 +85,13 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
             "cacc6c11e114dbae3aaa2761cc6b3fcb1191cd9b689b1c2bd096614c51ebff8b"
         ),
         "late_producer_schedule": (
-            "ebbce94e8cefb7afef0a2547d28f578b13c6a791576ab04081a6a09099a8c8bc"
+            "80321bdcd6b2278da993ac6156b97b5b7532ed671e19caddc6cea19f1ace8816"
         ),
         "metric_registry": (
-            "d75cb9b29f8b0a9a085471a11f4c19c32ba04cbe5419053df94ea81cbe6125a9"
+            "832245589a8ec5a33fc151e60662a245d411a636ef62debb884d65abcad3024a"
         ),
         "post_puf_transfer_surface": (
-            "a31e8a9512ec829c98745ed9ca2177e66d529bdc4b096ecfa2b4452f7bd41d73"
+            "ce501bf1978a164d71338cfa46fb3ec354cb1afa4809cf05f280afdf12cbb27e"
         ),
         "post_transfer_calibration": (
             "141519684c72ab84a077ae0f5716a0416f1e19da57262948e459633cbe560576"
@@ -188,7 +188,7 @@ def test_checkpoint_projection_is_field_and_byte_identical_to_live_oracle(
     ]
     assert (
         projected["pool_code"]["late_producer_schedule"]["schedule_sha256"]
-        == "88bc9243a3518982ae951c3de21bd55877e296ce4fcb183b9bee420d3a684b10"
+        == "46cea046d2fb8223d32772bd6a7807c52791640943949154982dcc52d93fa9eb"
     )
 
 

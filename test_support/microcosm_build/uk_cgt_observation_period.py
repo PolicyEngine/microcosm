@@ -1,4 +1,4 @@
-"""Dated CGT measurements retain base-year rows through both calibration paths."""
+"""Dated CGT measurements retain base-year rows through both calibration routes."""
 
 # ruff: noqa: F401
 
@@ -13,8 +13,8 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import measure_simulation
+from microcosm.build.uk_runtime.graph_national import materialize_uk_national_rows
 from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
-from microcosm.build.uk_runtime.national_calibration import UKNationalCalibrationStage
 from microcosm.build.uk_runtime.national_doctrine import UKNationalSolveDoctrine
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,

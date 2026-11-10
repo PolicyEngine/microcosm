@@ -8,9 +8,9 @@ it never loads a historical candidate H5 or creates a second execution graph.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import date
-from importlib import metadata
 from typing import TYPE_CHECKING
 
 from microcosm.build.country_spec import CountrySpec, load_country_spec
@@ -58,9 +58,21 @@ def validate_uk_country_source_projection(spec: CountrySpec) -> None:
         for artifact in root.artifacts
         if artifact["role"] == "frs_table"
     ]
-    if sources["sources"] != expected:
+    # The atomic-area supports (microcosm#932) are declared beside the raw FRS
+    # tables with their own role and loader; every other row is an FRS table.
+    declared = [row for row in sources["sources"] if row["role"] == "frs_raw_table"]
+    if declared != expected:
         raise ValueError(
             "UK country raw-source pins differ from the canonical FRS spine stage."
+        )
+    others = [row for row in sources["sources"] if row["role"] != "frs_raw_table"]
+    if any(
+        row["role"] != "uk_atomic_area_support"
+        or row["loader"] != "kernel:load_uk_atomic_area_support"
+        for row in others
+    ):
+        raise ValueError(
+            "UK country sources beyond the raw FRS tables must be atomic-area supports."
         )
     if spine["channels"] != [
         {
@@ -76,16 +88,57 @@ def validate_uk_country_source_projection(spec: CountrySpec) -> None:
         )
 
 
+def uk_atomic_support_register(
+    spec: CountrySpec | None = None,
+) -> dict[str, dict[str, object]]:
+    """The committed identity of each atomic-area support, by system.
+
+    ``sources.yaml`` pins every support's ``sha256`` and ``byte_size`` (the
+    provenance register carries the same values). A release candidate must
+    build on exactly these bytes, whatever digest the operator pinned on
+    the command line; the dense release pre-flight reads the same register
+    against the manifest's ``geography.assignment.support_pins``.
+    """
+    from .atomic_area_support import SOURCES
+
+    spec = load_country_spec("uk") if spec is None else spec
+    if spec.resolved_spec is None:
+        raise ValueError("The atomic-area support register needs a resolved UK spec.")
+    rows = spec.resolved_spec.resource("sources").domain.to_wire()["sources"]
+    by_id = {row["id"]: row for row in rows if row["role"] == "uk_atomic_area_support"}
+    register = {}
+    for system, source in SOURCES.items():
+        row = by_id.get(source)
+        if row is None:
+            raise ValueError(
+                f"sources.yaml declares no atomic-area support {source!r}."
+            )
+        register[system] = {
+            "sha256": str(row["sha256"]),
+            "size_bytes": int(row["byte_size"]),
+        }
+    return register
+
+
 def build_uk_country_graph(
     config: UKFullBuildConfig | None = None,
     *,
     spec: CountrySpec | None = None,
     engine_identity: str | None = None,
     review_date: date | None = None,
+    gate_review_date: date | None = None,
     release_candidate: bool = False,
-    skip_holdout: bool = False,
+    skip_holdout: bool = True,
+    atomic_geography_definition: Mapping | None = None,
 ) -> UKFullGraph:
-    """Compile the canonical full graph; default target scope is all geographies."""
+    """Compile the canonical full graph; default target scope is all geographies.
+
+    ``atomic_geography_definition`` is the UK assignment declaration over the
+    admitted support bytes (``uk_atomic_assignment_definition``), required
+    while the config's ``geography_assignment`` is ``atomic`` (the default).
+    ``gate_review_date`` is the calibrated gates' clock, by default the solve
+    clock ``review_date`` (microcosm#1301).
+    """
     from microcosm.graph import compile_graph
     from microcosm.graph.canonical import canonical_json
 
@@ -104,13 +157,12 @@ def build_uk_country_graph(
             source_year=release.survey_year,
         )
     if engine_identity is None:
+        # The same provenance the spine and full builds hash, so a URL
+        # install's commit keys this graph too.
+        from microcosm.build.uk_runtime.spine_build import _rules_engine_provenance
+
         engine_identity = hashlib.sha256(
-            canonical_json(
-                {
-                    "package": "policyengine-uk",
-                    "version": metadata.version("policyengine-uk"),
-                }
-            )
+            canonical_json(_rules_engine_provenance())
         ).hexdigest()
     review_date = date.today() if review_date is None else review_date
     spine = add_uk_spine_gate_nodes(
@@ -119,7 +171,12 @@ def build_uk_country_graph(
         engine_identity=engine_identity,
         release_candidate=release_candidate,
     )
-    full = uk_full_graph(config, spine=spine, review_date=review_date.isoformat())
+    full = uk_full_graph(
+        config,
+        spine=spine,
+        review_date=review_date.isoformat(),
+        atomic_geography_definition=atomic_geography_definition,
+    )
     graph = append_uk_full_gate_nodes(
         full.graph,
         calibration=full.calibration,
@@ -127,6 +184,7 @@ def build_uk_country_graph(
         spine_stage_names=tuple(stage.stage for stage in spec.sources.stages),
         engine_identity=engine_identity,
         review_date=review_date,
+        gate_review_date=gate_review_date,
         sample_fraction=config.effective_sample_fraction,
         release_candidate=release_candidate,
         skip_holdout=skip_holdout,

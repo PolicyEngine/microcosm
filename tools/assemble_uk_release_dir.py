@@ -1,9 +1,16 @@
-"""Assemble a certified UK national candidate into a publishable release.
+"""Assemble a certified UK national candidate into a publishable release build.
 
 This derivative packaging step closes the certification/build-record identity
 join, mints the calibration weight bundle, writes the two release manifests,
 copies the signed evidence byte-for-byte, and validates the finished release
-directory before printing the inspect-lane publication command.
+directory before printing its publication and promotion commands.
+
+The national release publishes each build into its own folder,
+``releases/microcosm-uk-2024-25-national/<build>/``, through the emitter.
+The build is the calibration attempt ID, and both manifests name the release
+and the build; nothing is tagged. The publication command lists the build
+without making it current; the promotion command, run after review, makes
+it the release's current build.
 """
 
 from __future__ import annotations
@@ -26,12 +33,20 @@ from microcosm.build.staging_v2 import (
     validate_staging_delivery,
 )
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
-from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    load_uk_national_frame,
+    uk_build_identifiers,
+    uk_time_period,
+)
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
-from microcosm.data.contract import validate_release_dir
+from microcosm.build.uk_runtime.spi_dependency import (
+    UK_SPI_PUBLIC_USE_TAPE_KEY,
+    uk_check_spi_public_use_tape_marker,
+    uk_spi_public_use_tape_marker_for_stage_names,
+)
+from microcosm.build.uk_runtime.weight_year import uk_weights_are_at_dataset_year
+from microcosm.data.contract import release_artifact_role, validate_release_dir
 
-_ATTEMPT_PREFIX = "uk-frs-calibration-attempt-"
-_ATTEMPT_SUFFIX = re.compile(r"(?P<timestamp>\d{8}T\d{6}Z)-(?P<uuid>[0-9a-f]{8})")
 _GIT_COMMIT = re.compile(r"[0-9a-f]{40}")
 _REPO_ID = "policyengine/populace-uk-private"
 _DATASET_KEY = "microcosm_uk_2024_25"
@@ -246,7 +261,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         measured["spine H5"],
         signed_input_posture.get("sha256"),
     )
-    cut_tag = _cut_tag(attempt_id, args.cut_tag)
+    spi_marker = _spi_public_use_tape_marker(build_block)
     runtime = _runtime_versions(build_block, dict(args.runtime_version))
     code_pin = _diagnostics_code_pin(diagnostics)
     calibration_filename = f"{_DATASET_KEY}_calibration.npz"
@@ -287,8 +302,12 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     # must be identical — same ids, same order — before the pairing is
     # digested and shipped as authoritative. A digest over mis-paired bytes
     # authenticates the bytes, not the pairing.
-    candidate_ids = candidate_frame.table("household")["household_id"].to_numpy()
-    spine_ids = spine_frame.table("household")["household_id"].to_numpy()
+    # A release renumbers its identifiers and keeps the build's beside them
+    # (microcosm#1194); the spine carries the build's own.
+    candidate_ids = uk_build_identifiers(
+        candidate_frame.table("household"), "household"
+    )
+    spine_ids = uk_build_identifiers(spine_frame.table("household"), "household")
     if candidate_ids.shape != spine_ids.shape or not np.array_equal(
         candidate_ids, spine_ids
     ):
@@ -302,9 +321,20 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             f"({detail}); the calibration NPZ would pair weights across "
             "different households"
         )
+    # The NPZ carries the dataset's own household weights, so it pairs with
+    # the H5 row by row. On a release they stand at the dataset's year
+    # (microcosm#796 A19); the build manifest says which.
     household_weight = np.asarray(
         candidate_frame.weights_for("household").values, dtype=np.float64
     )
+    household_weight_year = {
+        "dataset_year": int(uk_time_period(candidate_frame)),
+        "basis": (
+            "dataset_year"
+            if uk_weights_are_at_dataset_year(candidate_frame)
+            else "as_solved"
+        ),
+    }
     initial_household_weight = np.asarray(
         spine_frame.weights_for("household").values, dtype=np.float64
     )
@@ -320,8 +350,8 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             calibration_filename=calibration_filename,
             household_weight=household_weight,
             initial_household_weight=initial_household_weight,
+            household_weight_year=household_weight_year,
             measured=measured,
-            cut_tag=cut_tag,
             attempt_id=attempt_id,
             runtime=runtime,
             code_pin=code_pin,
@@ -332,6 +362,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             release_cut_part=release_cut_part,
             spine_report_path=spine_report_path,
             staging_delivery=staging_delivery,
+            spi_marker=spi_marker,
         )
     finally:
         shutil.rmtree(staging_parent, ignore_errors=True)
@@ -348,8 +379,8 @@ def _stage_and_finalize(
     calibration_filename: str,
     household_weight: np.ndarray,
     initial_household_weight: np.ndarray,
+    household_weight_year: Mapping[str, object],
     measured: Mapping[str, str],
-    cut_tag: str,
     attempt_id: str,
     runtime: Mapping[str, str],
     code_pin: str,
@@ -360,6 +391,7 @@ def _stage_and_finalize(
     release_cut_part: Mapping[str, object],
     spine_report_path: Path,
     staging_delivery: Mapping[str, object],
+    spi_marker: Mapping[str, object],
 ) -> dict[str, object]:
     np.savez(
         calibration_path,
@@ -371,8 +403,11 @@ def _stage_and_finalize(
     created_at = datetime.now(UTC).isoformat()
     release_dir = staging_parent / UK_NATIONAL_RELEASE_ID
     release_dir.mkdir(parents=True)
+    # The build is the calibration attempt: both manifests name it, and the
+    # release, so the emitter can publish it into its own folder.
     build_manifest = {
-        "build_id": UK_NATIONAL_RELEASE_ID,
+        "release": UK_NATIONAL_RELEASE_ID,
+        "build": attempt_id,
         "code": {
             "repository": "PolicyEngine/microcosm",
             "git_commit": code_pin,
@@ -387,6 +422,10 @@ def _stage_and_finalize(
         "calibration": {
             "filename": calibration_filename,
             "sha256": calibration_sha,
+            # The year ``household_weight`` stands at: the dataset's own on a
+            # release, where policyengine-uk's projection then returns the
+            # solved weights at the calibration year.
+            "household_weight_year": dict(household_weight_year),
             "target_surface": {
                 "sha256": target_surface.get("sha256"),
                 "n_targets": target_surface.get("n_targets"),
@@ -404,8 +443,6 @@ def _stage_and_finalize(
             "calibration_seam": seam_part.get("statuses"),
             "release_cut": release_cut_part.get("statuses"),
         },
-        "attempt_id": attempt_id,
-        "cut_tag": cut_tag,
         "created_at": created_at,
         "staging": dict(staging_delivery),
     }
@@ -433,36 +470,33 @@ def _stage_and_finalize(
         ),
     }
 
-    def artifact(kind: str, path: str, sha256: str) -> dict[str, str]:
+    def artifact(key: str, kind: str, path: str, sha256: str) -> dict[str, str]:
         return {
             "kind": kind,
             "path": path,
             "repo_id": _REPO_ID,
-            "revision": cut_tag,
             "sha256": sha256,
+            "role": release_artifact_role(key, kind),
         }
 
     release_manifest = {
         "schema_version": 1,
+        "release": UK_NATIONAL_RELEASE_ID,
+        "build": attempt_id,
+        "built_at": created_at,
+        "built_with_core_package": {
+            "name": "policyengine-core",
+            "version": runtime["policyengine-core"],
+        },
+        "built_with_model_package": {
+            "name": "policyengine-uk",
+            "version": runtime["policyengine-uk"],
+        },
         "data_package": {
             "name": "microcosm-data",
             "version": runtime["microcosm-data"],
         },
         "default_datasets": {"national": _DATASET_KEY},
-        "build": {
-            "build_id": UK_NATIONAL_RELEASE_ID,
-            "built_at": created_at,
-            "built_with_core_package": {
-                "name": "policyengine-core",
-                "version": runtime["policyengine-core"],
-            },
-            "built_with_model_package": {
-                "name": "policyengine-uk",
-                "version": runtime["policyengine-uk"],
-            },
-            "attempt_id": attempt_id,
-            "cut_tag": cut_tag,
-        },
         "compatible_core_packages": [
             {
                 "name": "policyengine-core",
@@ -476,14 +510,22 @@ def _stage_and_finalize(
             }
         ],
         "artifacts": {
-            _DATASET_KEY: artifact(
-                "microdata", _DATASET_FILENAME, measured["candidate"]
-            ),
+            # The microdata's own entry says whether it rests on the SPI
+            # Public Use Tape; licensed_data carries the tape's conditions.
+            _DATASET_KEY: {
+                **artifact(
+                    _DATASET_KEY, "microdata", _DATASET_FILENAME, measured["candidate"]
+                ),
+                "spi_public_use_tape_dependent": bool(spi_marker["dependent"]),
+            },
             f"{_DATASET_KEY}_calibration": artifact(
-                "calibration", calibration_filename, calibration_sha
+                f"{_DATASET_KEY}_calibration",
+                "calibration",
+                calibration_filename,
+                calibration_sha,
             ),
             **{
-                key: artifact("diagnostics", filename, measured[name])
+                key: artifact(key, "diagnostics", filename, measured[name])
                 for key, (_source, filename), name in (
                     (
                         "calibration_diagnostics",
@@ -519,10 +561,11 @@ def _stage_and_finalize(
             },
         },
         "description": (
-            "UK national calibration pipeline release assembled from attempt "
-            f"{attempt_id} at immutable cut {cut_tag}."
+            "UK national calibration pipeline release build assembled from "
+            f"attempt {attempt_id}."
         ),
         "publisher_labels": _uk_publisher_labels(),
+        "licensed_data": {UK_SPI_PUBLIC_USE_TAPE_KEY: dict(spi_marker)},
     }
     release_manifest_path = release_dir / "release_manifest.json"
     _write_json(release_manifest_path, release_manifest)
@@ -552,45 +595,36 @@ def _stage_and_finalize(
         npz_destination.unlink(missing_ok=True)
         raise
 
+    # Publication lists the build without making it current; the reviewed
+    # promotion is the second command.
     publish_command = shlex.join(
         [
             "uv",
             "run",
-            "python",
-            "-m",
-            "microcosm.data.publish_cli",
+            "microcosm-publish-release-build",
             str(destination),
             "--repo-id",
             _REPO_ID,
             "--artifact-root",
             str(args.candidate_h5.parent),
-            "--no-latest",
-            "--tag-name",
-            cut_tag,
         ]
     )
     promote_command = shlex.join(
         [
             "uv",
             "run",
-            "python",
-            "-m",
-            "microcosm.data.publish_cli",
+            "microcosm-publish-release-build",
             str(destination),
             "--repo-id",
             _REPO_ID,
-            "--artifact-root",
-            str(args.candidate_h5.parent),
-            "--promote-line",
-            "national",
-            "--tag-name",
-            cut_tag,
+            "--promote",
         ]
     )
     return {
         "release_id": UK_NATIONAL_RELEASE_ID,
+        "release": UK_NATIONAL_RELEASE_ID,
+        "build": attempt_id,
         "release_dir": str(destination),
-        "cut_tag": cut_tag,
         "dataset": {
             "path": str(args.candidate_h5),
             "sha256": measured["candidate"],
@@ -624,7 +658,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--release-cut-gate-json", type=Path)
     parser.add_argument("--score-receipt", required=True, type=Path)
     parser.add_argument("--out-dir", type=Path, default=Path("releases"))
-    parser.add_argument("--cut-tag")
     parser.add_argument(
         "--runtime-version",
         action="append",
@@ -657,6 +690,31 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             parser.error(f"{flag} aliases {resolved[canonical]}: {path}")
         resolved[canonical] = flag
     return args
+
+
+def _spi_public_use_tape_marker(
+    build_block: Mapping[str, object],
+) -> dict[str, object]:
+    """The SPI Public Use Tape marker, rederived from the signed stage list.
+
+    The spine provenance in the signed diagnostics names the stages the spine
+    ran; the packaged spec says which of them read the tape. A provenance that
+    also records a marker must agree with the rederived one (microcosm#1095).
+    """
+
+    provenance = _mapping(
+        build_block.get("spine_provenance"), "diagnostics.build.spine_provenance"
+    )
+    try:
+        marker = uk_spi_public_use_tape_marker_for_stage_names(
+            [str(stage) for stage in provenance.get("stages") or ()]
+        )
+        uk_check_spi_public_use_tape_marker(
+            provenance.get(UK_SPI_PUBLIC_USE_TAPE_KEY), marker
+        )
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    return marker
 
 
 def _runtime_version(value: str) -> tuple[str, str]:
@@ -709,30 +767,6 @@ def _diagnostics_code_pin(diagnostics: Mapping[str, object]) -> str:
             "git commit"
         )
     return code_pin
-
-
-def _cut_tag(attempt_id: str, override: str | None) -> str:
-    prefix = UK_NATIONAL_RELEASE_ID + "-"
-    if override is not None:
-        # The override may re-tag a cut but never leave the grammar the
-        # contract validates: prefix plus an attempt-shaped suffix.
-        if not override.startswith(prefix) or not _ATTEMPT_SUFFIX.fullmatch(
-            override[len(prefix) :]
-        ):
-            raise SystemExit(
-                f"error: --cut-tag must be {prefix}<YYYYMMDDTHHMMSSZ>-<uuid8>"
-            )
-        return override
-    if not attempt_id.startswith(_ATTEMPT_PREFIX):
-        raise SystemExit(
-            f"error: build_record.build_id must start with {_ATTEMPT_PREFIX!r}"
-        )
-    suffix = attempt_id.removeprefix(_ATTEMPT_PREFIX)
-    if not _ATTEMPT_SUFFIX.fullmatch(suffix):
-        raise SystemExit(
-            "error: build_record.build_id must end with <YYYYMMDDTHHMMSSZ>-<uuid8>"
-        )
-    return f"{UK_NATIONAL_RELEASE_ID}-{suffix}"
 
 
 def _load_json(path: Path, *, label: str) -> Mapping[str, object]:

@@ -77,7 +77,11 @@ Selection draws are seeded blake2b hashes keyed by the person's stable source
 identity (``source_year``/``source_household_id``/``source_person_id`` when
 present), so
 support-channel clones of one source person always receive the same status
-and reruns are bit-reproducible without global RNG state.
+and reruns are bit-reproducible without global RNG state. A caller whose rows
+carry no unique source identity (the ACS local lane, where ``SPORDER``
+repeats in every household) passes explicit draw keys, and a caller with an
+exact entry year (the ACS ``YOEP``) passes it in place of the ``PEINUSYR``
+bins (:mod:`~microcosm.build.us_runtime.acs_local_immigration`).
 
 Control totals and the gate anchor are data, not code: they live in the
 ``immigration_status`` stage of ``microcosm/build/us/source_stages.json`` with
@@ -215,8 +219,18 @@ _DERIVE_IMMIGRATION_STATUS_PARAMETER_KEYS = frozenset(
     }
 )
 
+#: Kernel SSN code -> PolicyEngine-US ``SSNCardType`` member name.
+_SSN_CODE_TO_NAME: Mapping[int, str] = {
+    0: "NONE",
+    1: "CITIZEN",
+    2: "NON_CITIZEN_VALID_EAD",
+    3: "OTHER_NON_CITIZEN",
+}
+
 #: PEINUSYR codes that mean arrival before 1982 (IRCA amnesty eligible).
 _PRE_1982_ARRIVAL_CODES = (1, 2, 3, 4, 5, 6, 7)
+#: First arrival year outside the IRCA cohort, for exact (not binned) years.
+_IRCA_COHORT_END_YEAR = 1982
 
 #: PEINUSYR code → arrival-year midpoint (Census ASEC codebook intervals).
 _ARRIVAL_YEAR_MIDPOINTS: Mapping[int, int] = {
@@ -248,6 +262,7 @@ _ARRIVAL_YEAR_MIDPOINTS: Mapping[int, int] = {
     26: 2019,
     27: 2021,
     28: 2023,
+    29: 2024,
 }
 
 #: PENATVTY codes for Cuba and Haiti; the Cuban/Haitian entrant class exists
@@ -307,16 +322,26 @@ _PEW_INCLUDED_HUMANITARIAN_STATUS_VALUES: tuple[str, ...] = (
 _CPS_LABOR_FORCE_STATUS_CODES = (1, 2, 3, 4)
 _CPS_LABOR_FORCE_STATUS_DOMAIN = (0, 1, 2, 3, 4, 7)
 
-#: PEINUSYR codes for 2020+ arrivals. The 2024 ASEC distinguishes 2020-2021
-#: (27) from 2022-2024 (28). Program-specific rules below do not treat those
-#: windows as interchangeable: U4U and CHNV cannot draw from code 27, while
-#: Operation Allies Welcome can.
+#: PEINUSYR codes for 2020+ arrivals. Census re-bins the newest codes each
+#: survey year. Code 27 is 2020-2021 in the 2024, 2025 and 2026 ASEC; code 28
+#: is 2022-2024, 2022-2025 and 2022-2023 in turn; the 2026 ASEC adds code 29
+#: for 2024-2026. Foreign-born infants agree: in each of those files they sit
+#: only in the newest code. Every window below holds in all three, the
+#: default pool (``asec_sources.ASEC_DEFAULT_POOL_INCOME_YEARS``). Operation
+#: Allies Welcome (2021-2022 arrivals) draws from 27 and 28. U4U and CHNV
+#: (2022 to early 2025) and refugees admitted in FY2023-FY2024 draw from 28
+#: and 29, never from 27. The 2023 ASEC codes 2020-2023 as 27 and has no 28,
+#: so the 2022+ windows find no candidates there; it is outside the default
+#: pool.
 _RECENT_ARRIVAL_CODES = (27, 28)
+#: Codes holding only 2022+ arrivals: 28 in each default-pool file, and the
+#: 2026 ASEC's 29.
+_POST_2021_ARRIVAL_CODES = (28, 29)
 _PAROLE_ASEC_ARRIVAL_CODES: Mapping[str, tuple[int, ...]] = {
     "afghanistan": _RECENT_ARRIVAL_CODES,
-    "ukraine": (28,),
-    "nicaragua": (28,),
-    "venezuela": (28,),
+    "ukraine": _POST_2021_ARRIVAL_CODES,
+    "nicaragua": _POST_2021_ARRIVAL_CODES,
+    "venezuela": _POST_2021_ARRIVAL_CODES,
 }
 _PAROLE_ACS_MIN_ARRIVAL_YEAR: Mapping[str, int] = {
     "afghanistan": 2021,
@@ -325,7 +350,9 @@ _PAROLE_ACS_MIN_ARRIVAL_YEAR: Mapping[str, int] = {
     "venezuela": 2022,
 }
 #: Asylum grants lag arrival by filing queues plus court backlog; grantees
-#: in 2022-2024 overwhelmingly arrived 2016+ (OHSS asylee flow reports).
+#: in 2022-2024 overwhelmingly arrived 2016+ (OHSS asylee flow reports). The
+#: 2026 ASEC's code 29 (2024-2026) is left out: its arrivals come after all
+#: but the last months of the FY2022-FY2024 grants the target counts.
 _ASYLEE_ARRIVAL_CODES = (25, 26, 27, 28)
 #: Withholding of removal follows years of proceedings: settled arrivals only.
 _WITHHELD_MAX_ARRIVAL_CODE = 26
@@ -388,8 +415,11 @@ _ASYLEE_ORIGIN_CODES: tuple[int, ...] = (
 #: compatible with the designation's required continuous-residence date
 #: (CRS RS20844 Table 1). Legacy designations bind hard (El Salvador
 #: 2001-02-13 -> code 17; Honduras/Nicaragua 1998-12-30 -> code 16; Nepal
-#: 2015-06-24 -> code 24); 2021+ designations reach the top code, where the
-#: 2022-2024 bin unavoidably includes some post-cutoff arrivals.
+#: 2015-06-24 -> code 24); 2021+ designations reach code 28, where the 2024
+#: ASEC's 2022-2024 bin unavoidably includes some post-cutoff arrivals. The
+#: 2026 ASEC's code 29 (2024-2026) is left out: no designation's residence
+#: date falls after 2024 (``_TPS_ACS_MAX_ARRIVAL_YEAR_BY_BIRTH``), so at most
+#: the bin's first year could qualify.
 #: Ukraine and Afghanistan TPS registrants are carried by the parole draw
 #: (same U4U/OAW people); Haiti TPS is carried by CUBAN_HAITIAN_ENTRANT.
 _TPS_ORIGIN_CODES: Mapping[str, tuple[tuple[int, ...], int]] = {
@@ -555,9 +585,15 @@ class ImmigrationControls:
 
 @dataclass(frozen=True)
 class _ImmigrationEvidenceProfile:
-    """Canonical immigration evidence shared by ASEC and ACS rows."""
+    """Canonical immigration evidence shared by ASEC and ACS rows.
 
-    source_is_acs: np.ndarray
+    ``exact_arrival`` marks rows whose arrival is an exact year (the ACS
+    ``YOEP``, or exact years a caller supplies) rather than an ASEC
+    ``PEINUSYR`` bin; the humanitarian arrival windows read the year itself
+    on those rows and the bin codes on the rest.
+    """
+
+    exact_arrival: np.ndarray
     is_citizen: np.ndarray
     birth_country: np.ndarray
     arrival_code: np.ndarray
@@ -653,13 +689,9 @@ def derive_us_immigration_status_from_manifest(
         humanitarian_marks,
         time_period=int(context.config.target_year),
     )
-    code_to_name = {
-        0: "NONE",
-        1: "CITIZEN",
-        2: "NON_CITIZEN_VALID_EAD",
-        3: "OTHER_NON_CITIZEN",
-    }
-    result["ssn_card_type"] = pd.Series(ssn_codes, index=result.index).map(code_to_name)
+    result["ssn_card_type"] = pd.Series(ssn_codes, index=result.index).map(
+        _SSN_CODE_TO_NAME
+    )
     result["immigration_status_str"] = status
     return result
 
@@ -845,6 +877,7 @@ def _source_aware_immigration_profile(
     person: pd.DataFrame,
     *,
     time_period: int,
+    arrival_year: np.ndarray | None = None,
 ) -> _ImmigrationEvidenceProfile:
     """Normalize ASEC PRCITSHP/PENATVTY/PEINUSYR and ACS CIT/POBP/YOEP.
 
@@ -853,6 +886,11 @@ def _source_aware_immigration_profile(
     present. Relevant POBP country codes share the Census country codebook with
     PENATVTY, so the normalized origin is lossless; ACS YOEP retains its exact
     year while ASEC necessarily uses the documented interval midpoint.
+
+    ``arrival_year`` (one exact year per row, NaN where there is none)
+    replaces both survey arrival fields: every row then reads as exact-year
+    evidence, which is how the ACS local lane runs the kernel on its
+    CPS-named view of ACS persons.
     """
 
     if isinstance(time_period, bool) or int(time_period) != time_period:
@@ -900,6 +938,84 @@ def _source_aware_immigration_profile(
         )
     birth_country = birth.astype(np.int64)
 
+    if arrival_year is not None:
+        exact_year = np.asarray(arrival_year, dtype=np.float64)
+        if exact_year.shape != (len(person),):
+            raise ValueError(
+                f"Exact arrival years cover {exact_year.shape} row(s); the person "
+                f"table has {len(person)}."
+            )
+        invalid_exact = np.isin(citizenship, [4, 5]) & (
+            ~np.isfinite(exact_year)
+            | ~np.equal(exact_year, np.rint(exact_year))
+            | (exact_year < 1900)
+            | (exact_year > time_period)
+        )
+        if invalid_exact.any():
+            raise SourceRuntimeError(
+                "An exact arrival year must be an integral 1900..time_period year "
+                "for every foreign-born row; "
+                f"invalid_rows={int(invalid_exact.sum())}."
+            )
+        exact_arrival = np.ones(len(person), dtype=bool)
+        arrival_code = np.zeros(len(person), dtype=np.int64)
+        arrival_years = np.where(
+            np.isfinite(exact_year), exact_year, float(time_period)
+        ).astype(np.int64)
+    else:
+        exact_arrival, arrival_code, arrival_years = _survey_arrival(
+            person,
+            has_asec=has_asec,
+            has_acs=has_acs,
+            citizenship=citizenship,
+            time_period=time_period,
+        )
+
+    age_values = _numeric_evidence_column(person, "A_AGE")
+    if "age" in person.columns:
+        mapped_age = _numeric_evidence_column(person, "age")
+        age_values = np.where(np.isfinite(age_values), age_values, mapped_age)
+    invalid_age = (
+        ~np.isfinite(age_values)
+        | ~np.equal(age_values, np.rint(age_values))
+        | (age_values < 0)
+    )
+    if invalid_age.any():
+        raise SourceRuntimeError(
+            "US immigration evidence requires a finite non-negative integral "
+            f"A_AGE/age on every row; invalid_rows={int(invalid_age.sum())}."
+        )
+    age = age_values.astype(np.int64)
+    age_at_entry = np.maximum(0, age - (time_period - arrival_years))
+    tps_acs_max_arrival_year = np.full(len(person), -1, dtype=np.int64)
+    for birth_code, cutoff in _TPS_ACS_MAX_ARRIVAL_YEAR_BY_BIRTH.items():
+        tps_acs_max_arrival_year[birth_country == birth_code] = cutoff
+    return _ImmigrationEvidenceProfile(
+        exact_arrival=exact_arrival,
+        is_citizen=is_citizen,
+        birth_country=birth_country,
+        arrival_code=arrival_code,
+        arrival_year=arrival_years,
+        age=age,
+        age_at_entry=age_at_entry,
+        tps_acs_max_arrival_year=tps_acs_max_arrival_year,
+    )
+
+
+def _survey_arrival(
+    person: pd.DataFrame,
+    *,
+    has_asec: np.ndarray,
+    has_acs: np.ndarray,
+    citizenship: np.ndarray,
+    time_period: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(exact-arrival flag, PEINUSYR code, arrival year) from the survey fields.
+
+    ASEC rows read the ``PEINUSYR`` bin midpoint; ACS rows keep their exact
+    ``YOEP`` year. A row with neither arrives at ``time_period``.
+    """
+
     arrival_code_values = _numeric_evidence_column(person, "PEINUSYR")
     invalid_asec_arrival = has_asec & (
         ~np.isfinite(arrival_code_values)
@@ -910,7 +1026,7 @@ def _source_aware_immigration_profile(
     if invalid_asec_arrival.any():
         bad = sorted(set(arrival_code_values[invalid_asec_arrival].tolist()))[:5]
         raise SourceRuntimeError(
-            "PEINUSYR carries value(s) outside the 2024 ASEC domain "
+            "PEINUSYR carries value(s) outside the 2024-2026 ASEC domain "
             f"0..{max(_ARRIVAL_YEAR_MIDPOINTS)}: {bad}."
         )
     arrival_code = np.zeros(len(person), dtype=np.int64)
@@ -936,36 +1052,7 @@ def _source_aware_immigration_profile(
     arrival_year[observed_acs_arrival] = acs_arrival[observed_acs_arrival].astype(
         np.int64
     )
-
-    age_values = _numeric_evidence_column(person, "A_AGE")
-    if "age" in person.columns:
-        mapped_age = _numeric_evidence_column(person, "age")
-        age_values = np.where(np.isfinite(age_values), age_values, mapped_age)
-    invalid_age = (
-        ~np.isfinite(age_values)
-        | ~np.equal(age_values, np.rint(age_values))
-        | (age_values < 0)
-    )
-    if invalid_age.any():
-        raise SourceRuntimeError(
-            "US immigration evidence requires a finite non-negative integral "
-            f"A_AGE/age on every row; invalid_rows={int(invalid_age.sum())}."
-        )
-    age = age_values.astype(np.int64)
-    age_at_entry = np.maximum(0, age - (time_period - arrival_year))
-    tps_acs_max_arrival_year = np.full(len(person), -1, dtype=np.int64)
-    for birth_code, cutoff in _TPS_ACS_MAX_ARRIVAL_YEAR_BY_BIRTH.items():
-        tps_acs_max_arrival_year[birth_country == birth_code] = cutoff
-    return _ImmigrationEvidenceProfile(
-        source_is_acs=has_acs,
-        is_citizen=is_citizen,
-        birth_country=birth_country,
-        arrival_code=arrival_code,
-        arrival_year=arrival_year,
-        age=age,
-        age_at_entry=age_at_entry,
-        tps_acs_max_arrival_year=tps_acs_max_arrival_year,
-    )
+    return has_acs.copy(), arrival_code, arrival_year
 
 
 def us_immigration_evidence_features(
@@ -987,13 +1074,21 @@ def us_immigration_evidence_features(
     )
 
 
-def _stable_person_draws(person: pd.DataFrame, *, seed: int, salt: str) -> np.ndarray:
+def _stable_person_draws(
+    person: pd.DataFrame,
+    *,
+    seed: int,
+    salt: str,
+    keys: pd.Series | None = None,
+) -> np.ndarray:
     """Deterministic uniform draws keyed by stable person identity.
 
     Support-channel clones carry their source person's ``source_year`` /
     ``source_household_id`` / ``source_person_id``, so keying on those gives
     every clone of one source person the same draw; frames without full source
-    ids fall back to the legacy source pair or ``person_id``.
+    ids fall back to the legacy source pair or ``person_id``. A caller whose
+    rows carry no unique source identity (the ACS ``SPORDER`` repeats in every
+    household) passes explicit ``keys``, one per row.
     """
 
     def complete(columns: tuple[str, ...]) -> bool:
@@ -1003,7 +1098,14 @@ def _stable_person_draws(person: pd.DataFrame, *, seed: int, salt: str) -> np.nd
 
     full_lineage = ("source_year", "source_household_id", "source_person_id")
     legacy_lineage = ("source_year", "source_person_id")
-    if complete(full_lineage):
+    if keys is not None:
+        if len(keys) != len(person):
+            raise ValueError(
+                f"Explicit draw keys cover {len(keys)} row(s); the person "
+                f"table has {len(person)}."
+            )
+        keys = pd.Series(keys).astype(str)
+    elif complete(full_lineage):
         keys = (
             person["source_year"].astype(str)
             + ":"
@@ -1080,19 +1182,87 @@ def _select_weight_to_target(
     return selected
 
 
-def _arrival_profile(
-    person: pd.DataFrame, *, time_period: int
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """(PEINUSYR code, arrival-year midpoint, age at entry) per person."""
+def _asec_arrival_year(person: pd.DataFrame, *, time_period: int) -> np.ndarray:
+    """Arrival year per person from the ASEC ``PEINUSYR`` bins.
+
+    Each code maps to its :data:`_ARRIVAL_YEAR_MIDPOINTS` value: the later
+    year of a two-year bin (code 8, 1982-1983, maps to 1983) and the middle of
+    the wider pre-1980 bins. Code 0 (native-born) or any unknown code maps to
+    ``time_period``, i.e. zero years in the US.
+    """
 
     arrival_code = _integer_column(person, "PEINUSYR")
     arrival_year = np.full(len(person), time_period, dtype=np.int64)
     for code, midpoint in _ARRIVAL_YEAR_MIDPOINTS.items():
         arrival_year[arrival_code == code] = midpoint
-    years_in_us = time_period - arrival_year
+    return arrival_year
+
+
+def _arrival_profile(
+    person: pd.DataFrame,
+    *,
+    time_period: int,
+    arrival_year: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """(arrival year, age at entry) per person; ``arrival_year`` replaces the bins.
+
+    An exact ``arrival_year`` (NaN where there is none) is read the way the
+    ASEC bins are: no entry year means ``time_period``.
+    """
+
+    if arrival_year is None:
+        year = _asec_arrival_year(person, time_period=time_period)
+    else:
+        exact = np.asarray(arrival_year, dtype=np.float64)
+        if exact.shape != (len(person),):
+            raise ValueError(
+                f"Arrival years cover {exact.shape} row(s); the person table has "
+                f"{len(person)}."
+            )
+        year = np.where(np.isfinite(exact), exact, float(time_period)).astype(np.int64)
+    years_in_us = time_period - year
     age = _integer_column(person, "A_AGE")
     age_at_entry = np.maximum(0, age - years_in_us)
-    return arrival_code, arrival_year, age_at_entry
+    return year, age_at_entry
+
+
+def _arrival_indicators(
+    person: pd.DataFrame,
+    *,
+    arrival_year: np.ndarray | None,
+    time_period: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """IRCA-cohort, five-plus-year and three-plus-year arrival indicators.
+
+    With ``arrival_year`` absent they come from the ASEC ``PEINUSYR`` bins
+    exactly as before (codes 1-7 arrived before 1982; codes 8-26 and 8-27 are
+    the five- and three-plus-year windows of the 2024 codebook). A survey with
+    an exact entry year (the ACS ``YOEP``) passes it instead, NaN for people
+    with no entry year, and the same windows are measured against
+    ``time_period``.
+    """
+
+    if arrival_year is None:
+        arrival_code = _integer_column(person, "PEINUSYR")
+        return (
+            np.isin(arrival_code, _PRE_1982_ARRIVAL_CODES),
+            np.isin(arrival_code, list(range(8, 27))),
+            np.isin(arrival_code, list(range(8, 28))),
+        )
+    year = np.asarray(arrival_year, dtype=np.float64)
+    if year.shape != (len(person),):
+        raise ValueError(
+            f"Arrival years cover {year.shape} row(s); the person table has "
+            f"{len(person)}."
+        )
+    entered = np.isfinite(year)
+    filled = np.where(entered, year, np.inf)
+    after_irca = entered & (filled >= _IRCA_COHORT_END_YEAR)
+    return (
+        entered & (filled < _IRCA_COHORT_END_YEAR),
+        after_irca & (filled <= time_period - 5),
+        after_irca & (filled <= time_period - 3),
+    )
 
 
 def _daca_statutory_cohort(
@@ -1177,6 +1347,7 @@ def _spill_pew_unauthorized_excess(
     target: float,
     seed: int,
     salt: str,
+    draw_keys: pd.Series | None = None,
 ) -> None:
     """Spill a broad Pew-universe margin to EAD in deterministic order.
 
@@ -1190,7 +1361,7 @@ def _spill_pew_unauthorized_excess(
     the next tier is considered.
     """
 
-    draws = _stable_person_draws(person, seed=seed, salt=salt)
+    draws = _stable_person_draws(person, seed=seed, salt=salt, keys=draw_keys)
     # A selection that closes the gap exactly can leave floating-point
     # residue in the recomputed sum (it adds the weights in a different order
     # than the selection's cumulative sum). Treat anything within a
@@ -1268,11 +1439,11 @@ def _humanitarian_draw_candidates(
                 profile.birth_country,
                 _PAROLE_ORIGIN_CODES[origin],
             )
-            asec_window = (~profile.source_is_acs) & np.isin(
+            asec_window = (~profile.exact_arrival) & np.isin(
                 profile.arrival_code,
                 _PAROLE_ASEC_ARRIVAL_CODES[origin],
             )
-            acs_window = profile.source_is_acs & (
+            acs_window = profile.exact_arrival & (
                 profile.arrival_year >= _PAROLE_ACS_MIN_ARRIVAL_YEAR[origin]
             )
             cohort |= origin_match & (asec_window | acs_window)
@@ -1283,8 +1454,11 @@ def _humanitarian_draw_candidates(
             & (ssn_codes == 3)
             & np.isin(profile.birth_country, _REFUGEE_ORIGIN_CODES)
             & (
-                ((~profile.source_is_acs) & (profile.arrival_code == 28))
-                | (profile.source_is_acs & (profile.arrival_year >= 2022))
+                (
+                    (~profile.exact_arrival)
+                    & np.isin(profile.arrival_code, _POST_2021_ARRIVAL_CODES)
+                )
+                | (profile.exact_arrival & (profile.arrival_year >= 2022))
             )
             & ~excluded
         )
@@ -1295,10 +1469,10 @@ def _humanitarian_draw_candidates(
             & np.isin(profile.birth_country, _ASYLEE_ORIGIN_CODES)
             & (
                 (
-                    (~profile.source_is_acs)
+                    (~profile.exact_arrival)
                     & np.isin(profile.arrival_code, _ASYLEE_ARRIVAL_CODES)
                 )
-                | (profile.source_is_acs & (profile.arrival_year >= 2016))
+                | (profile.exact_arrival & (profile.arrival_year >= 2016))
             )
             & ~excluded
         )
@@ -1308,11 +1482,11 @@ def _humanitarian_draw_candidates(
             & (ssn_codes == 3)
             & (
                 (
-                    (~profile.source_is_acs)
+                    (~profile.exact_arrival)
                     & (profile.arrival_code >= 1)
                     & (profile.arrival_code <= _WITHHELD_MAX_ARRIVAL_CODE)
                 )
-                | (profile.source_is_acs & (profile.arrival_year <= 2019))
+                | (profile.exact_arrival & (profile.arrival_year <= 2019))
             )
             & ~excluded
         )
@@ -1329,12 +1503,12 @@ def _humanitarian_draw_candidates(
             codes, max_arrival_code = _TPS_ORIGIN_CODES[origin]
             origin_match = np.isin(profile.birth_country, codes)
             asec_window = (
-                (~profile.source_is_acs)
+                (~profile.exact_arrival)
                 & (profile.arrival_code >= 1)
                 & (profile.arrival_code <= max_arrival_code)
             )
             acs_window = (
-                profile.source_is_acs
+                profile.exact_arrival
                 & (profile.tps_acs_max_arrival_year >= 0)
                 & (profile.arrival_year <= profile.tps_acs_max_arrival_year)
             )
@@ -1808,6 +1982,8 @@ def _assign_humanitarian_statuses(
     seed: int,
     controls: ImmigrationControls,
     time_period: int,
+    arrival_year: np.ndarray | None = None,
+    draw_keys: pd.Series | None = None,
 ) -> np.ndarray:
     """Mark humanitarian statuses and upgrade residual draws' SSN codes.
 
@@ -1821,7 +1997,9 @@ def _assign_humanitarian_statuses(
     """
 
     marks = np.full(len(person), "", dtype="U24")
-    profile = _source_aware_immigration_profile(person, time_period=time_period)
+    profile = _source_aware_immigration_profile(
+        person, time_period=time_period, arrival_year=arrival_year
+    )
     for draw in controls.humanitarian:
         if draw.target <= 0:
             continue
@@ -1830,7 +2008,7 @@ def _assign_humanitarian_statuses(
             ssn_codes=ssn_codes,
             profile=profile,
         ) & (marks == "")
-        draws = _stable_person_draws(person, seed=seed, salt=draw.salt)
+        draws = _stable_person_draws(person, seed=seed, salt=draw.salt, keys=draw_keys)
         selected = _select_weight_to_target(candidates, weights, draws, draw.target)
         marks[selected] = draw.status
         ssn_codes[selected & (ssn_codes == 0)] = 2
@@ -1844,7 +2022,17 @@ def _assign_ssn_card_codes(
     seed: int,
     controls: ImmigrationControls,
     time_period: int,
+    arrival_year: np.ndarray | None = None,
+    draw_keys: pd.Series | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
+    """SSN codes (0 NONE, 1 CITIZEN, 2 EAD, 3 OTHER) and humanitarian marks.
+
+    ``arrival_year`` replaces the ``PEINUSYR`` bins with an exact entry year
+    (NaN where there is none), and ``draw_keys`` replaces the source-identity
+    draw keys; left unset, the ASEC behaviour is unchanged. The marks are the
+    humanitarian status names, ``""`` for unmarked rows.
+    """
+
     citizenship = _integer_column(person, "PRCITSHP")
     unknown = ~np.isin(citizenship, [1, 2, 3, 4, 5])
     if unknown.any():
@@ -1860,14 +2048,13 @@ def _assign_ssn_card_codes(
 
     # ASEC-UA legal-status indicators (Van Hook et al., SSRN 4662801): any
     # one of them moves a non-citizen out of the likely-undocumented pool.
-    arrival_code = _integer_column(person, "PEINUSYR")
-    arrived_before_1982 = np.isin(arrival_code, _PRE_1982_ARRIVAL_CODES)
+    arrived_before_1982, has_five_plus_years, has_three_plus_years = (
+        _arrival_indicators(person, arrival_year=arrival_year, time_period=time_period)
+    )
     age = _integer_column(person, "A_AGE")
     marital = _integer_column(person, "A_MARITL")
     spouse = _integer_column(person, "A_SPOUSE")
     is_naturalized = citizenship == 4
-    has_five_plus_years = np.isin(arrival_code, list(range(8, 27)))
-    has_three_plus_years = np.isin(arrival_code, list(range(8, 28)))
     is_married = np.isin(marital, [1, 2]) & (spouse > 0)
     eligible_naturalized = (
         is_naturalized
@@ -1914,6 +2101,8 @@ def _assign_ssn_card_codes(
         seed=seed,
         controls=controls,
         time_period=time_period,
+        arrival_year=arrival_year,
+        draw_keys=draw_keys,
     )
 
     labor_force_status = _integer_column(person, "A_LFSR")
@@ -1933,11 +2122,13 @@ def _assign_ssn_card_codes(
     )
     is_student = _integer_column(person, "A_HSCOL") == 2
 
-    _, arrival_year, age_at_entry = _arrival_profile(person, time_period=time_period)
-    daca_cohort = _daca_statutory_cohort(arrival_year, age_at_entry, age)
+    entry_year, age_at_entry = _arrival_profile(
+        person, time_period=time_period, arrival_year=arrival_year
+    )
+    daca_cohort = _daca_statutory_cohort(entry_year, age_at_entry, age)
     cuban_haitian_cohort = (
         np.isin(_integer_column(person, "PENATVTY"), _CUBAN_HAITIAN_BIRTH_CODES)
-        & (arrival_year >= _CUBAN_HAITIAN_ARRIVAL_CUTOFF)
+        & (entry_year >= _CUBAN_HAITIAN_ARRIVAL_CUTOFF)
         & ~daca_cohort
     )
     retained_ead_cohort = daca_cohort | cuban_haitian_cohort
@@ -1961,6 +2152,7 @@ def _assign_ssn_card_codes(
         target=controls.undocumented.students,
         seed=seed,
         salt="immigration:ead_students",
+        draw_keys=draw_keys,
     )
     _spill_pew_unauthorized_excess(
         person,
@@ -1974,6 +2166,7 @@ def _assign_ssn_card_codes(
         target=controls.undocumented.workers,
         seed=seed,
         salt="immigration:ead_workers",
+        draw_keys=draw_keys,
     )
     return ssn_codes, humanitarian_marks
 
@@ -1984,8 +2177,17 @@ def _derive_immigration_status(
     humanitarian_marks: np.ndarray,
     *,
     time_period: int,
+    arrival_year: np.ndarray | None = None,
 ) -> np.ndarray:
-    _, arrival_year, age_at_entry = _arrival_profile(person, time_period=time_period)
+    """Immigration status per person; ``arrival_year`` replaces the bins.
+
+    An exact ``arrival_year`` (NaN where there is none) is read the way the
+    ASEC bins are: no entry year means ``time_period``.
+    """
+
+    entry_year, age_at_entry = _arrival_profile(
+        person, time_period=time_period, arrival_year=arrival_year
+    )
     age = _integer_column(person, "A_AGE")
     birth_country = _integer_column(person, "PENATVTY")
 
@@ -2000,7 +2202,7 @@ def _derive_immigration_status(
     cuban_haitian, daca = _special_status_masks(
         ssn_codes=ssn_codes,
         birth_country=birth_country,
-        arrival_year=arrival_year,
+        arrival_year=entry_year,
         age_at_entry=age_at_entry,
         age=age,
     )
@@ -2103,6 +2305,22 @@ def with_us_immigration_inputs(
         frame.strata,
         mass_log=frame.mass_log,
         metadata=frame.metadata,
+    )
+
+
+def _pew_unauthorized_rows(person: pd.DataFrame) -> np.ndarray:
+    """Rows inside Pew's broad unauthorized universe, from emitted labels.
+
+    The engine statuses Pew retains (:data:`_PEW_UNAUTHORIZED_STATUS_VALUES`)
+    plus ``CUBAN_HAITIAN_ENTRANT`` rows holding an EAD, which only an EAD
+    spill from the residual pool produces. This is the universe the worker
+    and student controls bind and the population anchor grades.
+    """
+
+    status = person["immigration_status_str"].astype(str).to_numpy()
+    ssn = person["ssn_card_type"].astype(str).to_numpy()
+    return np.isin(status, _PEW_UNAUTHORIZED_STATUS_VALUES) | (
+        (status == "CUBAN_HAITIAN_ENTRANT") & (ssn == "NON_CITIZEN_VALID_EAD")
     )
 
 
@@ -2274,15 +2492,7 @@ def us_immigration_composition_gate(
         )
 
     status_values = status.to_numpy()
-    ssn_values = ssn.to_numpy()
-    pew_unauthorized_rows = np.isin(
-        status_values,
-        _PEW_UNAUTHORIZED_STATUS_VALUES,
-    ) | (
-        (status_values == "CUBAN_HAITIAN_ENTRANT")
-        & (ssn_values == "NON_CITIZEN_VALID_EAD")
-    )
-    pew_unauthorized = float(weights[pew_unauthorized_rows].sum())
+    pew_unauthorized = float(weights[_pew_unauthorized_rows(person)].sum())
     details["pew_unauthorized_population"] = pew_unauthorized
     details["pew_unauthorized_statuses"] = list(_PEW_UNAUTHORIZED_STATUS_VALUES)
     details["pew_unauthorized_paired_status"] = {

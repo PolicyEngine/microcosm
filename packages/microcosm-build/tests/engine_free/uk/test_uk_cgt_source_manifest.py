@@ -76,7 +76,11 @@ def test_band_facts_stay_fenced_from_calibration() -> None:
     fence = _operations()["classify_cgt_band_facts_with_reviewed_fence"]
 
     assert fence["calibration_permitted"] is False
-    assert fence["fenced_fact_count"] == 76
+    # The six all-gains income-column totals were promoted to targets on the
+    # engine's taxable income; the joint cells and row totals stay fenced.
+    assert fence["fenced_fact_count"] == 70
+    assert "microcosm#1014" in fence["fenced_fact_composition"]
+    assert fence["adjudication"].endswith("/microcosm/issues/1014")
     assert fence["fact_fence_id"]
 
 

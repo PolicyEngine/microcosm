@@ -6,7 +6,9 @@ enter a person-level calibration by accident.
 """
 
 import json
+import os
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -176,9 +178,7 @@ def test_coverage_requires_all_three_observed_facts():
     assert set(requirement.accepted_names) == CGT_TARGET_NAMES
 
 
-def test_original_cash_forecast_survives_only_as_diagnostic_metadata(
-    tmp_path, compile_cgt
-):
+def test_the_cash_outturn_survives_only_as_diagnostic_metadata(tmp_path, compile_cgt):
     compilation = compile_cgt(_facts(), target_period=2025)
     by_name = {spec.name: spec for spec in compilation.registry.specs}
     assert "obr.capital_gains_tax" not in by_name
@@ -186,12 +186,14 @@ def test_original_cash_forecast_survives_only_as_diagnostic_metadata(
     assert metadata["cgt_cash_diagnostic_status"] == "available"
     assert metadata["cgt_cash_diagnostic_role"] == "diagnostic_only_not_in_fit"
     assert metadata["cgt_cash_reconciliation_status"] == "unresolved"
-    assert float(metadata["cgt_cash_diagnostic_value_gbp"]) == 21_801_546_197.09165
+    # The October 2026 EFO's FY2025-26 outturn: March's forecast left the feed
+    # with PolicyEngine/chronicle#397 (microcosm#1430).
+    assert float(metadata["cgt_cash_diagnostic_value_gbp"]) == 24_310_000_000
     assert metadata["cgt_cash_diagnostic_period"] == "2025"
     assert metadata["cgt_cash_diagnostic_ledger_period_type"] == "fiscal_year"
-    assert metadata["cgt_cash_diagnostic_ledger_assertion"] == "source_projection"
+    assert metadata["cgt_cash_diagnostic_ledger_assertion"] == "observation"
     assert metadata["cgt_cash_diagnostic_ledger_aggregate_fact_key"] == (
-        "ledger.aggregate_fact.v2:93699bb9caa7ec0d6833f420"
+        "ledger.aggregate_fact.v2:81ca86a5fa9d42cfa0eff5e3"
     )
     assert "obr.uk" in metadata["cgt_cash_diagnostic_source"]
     # TargetSpec's normal serialization is used in national/local receipts.
@@ -209,8 +211,8 @@ def test_original_cash_forecast_survives_only_as_diagnostic_metadata(
     [
         "missing",
         "wrong_year",
-        "observation",
-        "different_forecast",
+        "projection",
+        "different_figure",
         "wrong_period_type",
         "duplicate",
     ],
@@ -233,8 +235,8 @@ def test_missing_cash_diagnostic_does_not_remove_observed_targets(
         for fact in cash:
             if cash_change == "wrong_year":
                 fact["period"]["value"] = 2026
-            elif cash_change == "observation":
-                fact["assertion"] = "observation"
+            elif cash_change == "projection":
+                fact["assertion"] = "source_projection"
             elif cash_change == "wrong_period_type":
                 fact["period"]["type"] = "tax_year"
             else:
@@ -252,11 +254,11 @@ def test_missing_cash_diagnostic_does_not_remove_observed_targets(
     assert metadata["cgt_cash_diagnostic_status"] == "unavailable"
     assert metadata["cgt_cash_diagnostic_unavailable_reason"]
     assert metadata["cgt_cash_diagnostic_expected_fact_key"] == (
-        "ledger.aggregate_fact.v2:93699bb9caa7ec0d6833f420"
+        "ledger.aggregate_fact.v2:81ca86a5fa9d42cfa0eff5e3"
     )
     assert metadata["cgt_cash_diagnostic_expected_period"] == "2025"
     assert metadata["cgt_cash_diagnostic_expected_period_type"] == "fiscal_year"
-    assert metadata["cgt_cash_diagnostic_expected_assertion"] == "source_projection"
+    assert metadata["cgt_cash_diagnostic_expected_assertion"] == "observation"
     assert "cgt_cash_diagnostic_value_gbp" not in metadata
     assert "cgt_cash_diagnostic_source" not in metadata
     restored = TargetRegistry.from_json(
@@ -331,7 +333,8 @@ def test_malformed_cash_declaration_remains_a_compile_error(
     elif change == "fact_key":
         declaration["reference"]["ledger_fact_key"] = None
     else:
-        declaration["required_assertion"] = "observation"
+        # The outturn pin pairs with observed_only; a projection disagrees.
+        declaration["required_assertion"] = "source_projection"
     (tmp_path / "uk_population_targets.json").write_text(json.dumps(contract))
     original_files = ledger_targets.importlib_resources.files
     monkeypatch.setattr(
@@ -344,7 +347,8 @@ def test_malformed_cash_declaration_remains_a_compile_error(
     compilation = compile_cgt(_facts(), target_period=2025)
     assert "hmrc.cgt.liability_total" not in {r.name for r in compilation.registry}
     assert any(
-        "cash diagnostic declaration" in r["reason"] for r in compilation.unsupported
+        "diagnostic declaration 'obr.capital_gains_tax'" in r["reason"]
+        for r in compilation.unsupported
     )
 
 
@@ -406,6 +410,32 @@ GAIN_BAND_TARGETS = ("hmrc.cgt.taxpayers_by_gain_band", "hmrc.cgt.gains_by_gain_
 RESIDENTIAL_TARGETS = (
     "hmrc.cgt.residential_property_taxpayers",
     "hmrc.cgt.residential_property_gains",
+)
+BADR_TARGETS = (
+    "hmrc.cgt.badr_ir_taxpayers_by_band",
+    "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+)
+BADR_BAND_VALUE_IDS = (
+    "gain_0_to_9999",
+    "gain_10000_to_24999",
+    "gain_25000_to_49999",
+    "gain_50000_to_99999",
+    "gain_100000_to_249999",
+    "gain_250000_to_499999",
+    "gain_500000_to_999999",
+    "gain_1000000_plus",
+)
+TAXABLE_INCOME_TARGETS = (
+    "hmrc.cgt.taxpayers_by_taxable_income_band",
+    "hmrc.cgt.gains_by_taxable_income_band",
+)
+TAXABLE_INCOME_BAND_VALUE_IDS = (
+    "income_0_to_37699",
+    "income_37700_to_49999",
+    "income_50000_to_99999",
+    "income_100000_to_125139",
+    "income_125140_to_199999",
+    "income_200000_plus",
 )
 GAIN_BAND_METRICS = {
     "hmrc.cgt.taxpayers_by_gain_band": "hmrc/cgt_taxpayers_band",
@@ -553,6 +583,95 @@ def test_gain_band_rows_reuse_incumbent_names_and_skip_the_sub_aea_band():
         )
 
 
+def test_badr_rows_fan_out_over_the_eight_qualifying_gain_bands():
+    """Table 4.1 individuals bands, measured on the stage's qualifying gain."""
+    contract = json.loads(
+        (
+            _TEST_PATHS.package
+            / "src"
+            / "microcosm"
+            / "build"
+            / "uk"
+            / "uk_population_targets.json"
+        ).read_text(encoding="utf-8")
+    )
+    targets = {t["target_id"]: t for t in contract["targets"]}
+    for target_id in BADR_TARGETS:
+        rows = _references_for(target_id)
+        # Fan-out rows sort by their dimension value id, so compare as sets.
+        assert {r.name for r in rows} == {
+            f"{target_id}.{value_id}" for value_id in BADR_BAND_VALUE_IDS
+        }
+        assert len(rows) == len(BADR_BAND_VALUE_IDS)
+        for reference in rows:
+            assert reference.family == "hmrc_cgt"
+            assert reference.entity == "person"
+            selector = reference.ledger_selector
+            assert selector["period_value"] == 2024
+            assert selector["groupby_dimension"] == "cgt_badr_ir_gain_band"
+            assert selector["dimension_values"]["taxpayer_type"] == "individuals"
+            assert selector["source_table"].startswith(
+                "Capital Gains Tax statistics Table 4"
+            )
+            assert reference.metadata["measurement_period"] == "2024"
+        binding = targets[target_id]["bindings"]["policyengine"]
+        assert binding["kind"] == "parameter_gated_threshold"
+        assert binding["gated_variable"] == "cgt_2024_gains"
+        assert binding["groupby_variable"] == "cgt_2024_badr_gains"
+        assert binding["band_filter_dimension"] == "cgt_badr_ir_qualifying_gain"
+        # A non-claimant's qualifying gain is zero, inside the lowest band's
+        # [0, 10,000) range, so the claimant filter keeps them out of it.
+        assert binding["filters"] == [
+            {"variable": "cgt_2024_badr_gains", "operator": ">", "value": 0}
+        ]
+        assert target_id in contract["registry_parity"]["unmapped_declarations"]
+        assert target_id in contract["registry_parity"]["scope_target_ids"]
+
+
+def test_taxable_income_rows_bind_table3_margins_on_the_engine_income():
+    """Table 3's all-gains income columns, banded on the engine's CGT income."""
+    contract = json.loads(
+        (
+            _TEST_PATHS.package
+            / "src"
+            / "microcosm"
+            / "build"
+            / "uk"
+            / "uk_population_targets.json"
+        ).read_text(encoding="utf-8")
+    )
+    targets = {t["target_id"]: t for t in contract["targets"]}
+    for target_id in TAXABLE_INCOME_TARGETS:
+        rows = _references_for(target_id)
+        assert {r.name for r in rows} == {
+            f"{target_id}.{value_id}" for value_id in TAXABLE_INCOME_BAND_VALUE_IDS
+        }
+        assert len(rows) == len(TAXABLE_INCOME_BAND_VALUE_IDS)
+        for reference in rows:
+            assert reference.family == "hmrc_cgt"
+            assert reference.entity == "person"
+            selector = reference.ledger_selector
+            assert selector["period_value"] == 2024
+            assert selector["layout_groupby_value_id"] == "all_gains"
+            assert selector["source_table"].startswith(
+                "Capital Gains Tax statistics Table 3"
+            )
+            assert reference.metadata["measurement_period"] == "2024"
+        target = targets[target_id]
+        assert target["fanout_row_naming"] == "dimension_value"
+        # The exact name-set match keeps the all-gains, all-incomes total
+        # (Table 1's restatement) out of the fan-out.
+        assert target["ledger_selector"]["dimensions"] == ["cgt_taxable_income_band"]
+        binding = target["bindings"]["policyengine"]
+        assert binding["kind"] == "parameter_gated_threshold"
+        assert binding["gated_variable"] == "cgt_2024_gains"
+        assert binding["groupby_variable"] == "cgt_2024_taxable_income"
+        assert binding["band_filter_dimension"] == "taxable_income"
+        assert "filters" not in binding
+        assert target_id in contract["registry_parity"]["unmapped_declarations"]
+        assert target_id in contract["registry_parity"]["scope_target_ids"]
+
+
 def test_signed_out_rows_are_recorded_not_dropped():
     membership = json.loads(
         (
@@ -570,18 +689,36 @@ def test_signed_out_rows_are_recorded_not_dropped():
     assert signed == {
         *((target_id, "age_0_to_15") for target_id in AGE_BAND_TARGETS),
         *((target_id, "gain_0_to_2999") for target_id in GAIN_BAND_TARGETS),
+        *((target_id, "total") for target_id in BADR_TARGETS),
     }
     assert all(
         membership["targets"][target_id]["status"] == "active"
-        for target_id in (*AGE_BAND_TARGETS, *GAIN_BAND_TARGETS, *REGION_TARGETS)
+        for target_id in (
+            *AGE_BAND_TARGETS,
+            *GAIN_BAND_TARGETS,
+            *REGION_TARGETS,
+            *BADR_TARGETS,
+            *TAXABLE_INCOME_TARGETS,
+        )
     )
 
 
 def _pinned_feed_rows():
-    feed = _TEST_PATHS.repository / ".codex-work/consumer_facts_uk.jsonl"
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
+    feed = (
+        Path(configured)
+        if configured
+        else _TEST_PATHS.repository / ".codex-work/consumer_facts_uk.jsonl"
+    )
+    if feed.is_dir():
+        feed = feed / "consumer_facts.jsonl"
     if not feed.exists():
         pytest.skip("pinned UK Chronicle consumer feed is not present")
-    return [json.loads(line) for line in feed.read_text().splitlines() if line.strip()]
+    # Stream the feed and parse only the CGT rows: every selector and ratio
+    # operand the test compiles pins an hmrc.cgt_* source concept, so no other
+    # row can match, and the whole feed parses to tens of GB.
+    with feed.open(encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if "hmrc.cgt_" in line]
 
 
 def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():
@@ -592,6 +729,8 @@ def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():
         *REGION_TARGETS,
         *GAIN_BAND_TARGETS,
         *RESIDENTIAL_TARGETS,
+        *BADR_TARGETS,
+        *TAXABLE_INCOME_TARGETS,
     }
     references = [
         r
@@ -647,3 +786,44 @@ def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():
         assert compiled.metadata["ledger_value_formula"] == (
             "base * numerator / denominator"
         )
+    # Table 4.1 individuals bands sum to the individuals total (61,000
+    # claimants, GBP 18,443m) within each row's rounding to the nearest
+    # thousand claimants and GBP 1m (microcosm#1014).
+    for target_id, total, half_unit in (
+        ("hmrc.cgt.badr_ir_taxpayers_by_band", 61_000, 500),
+        ("hmrc.cgt.badr_ir_qualifying_gains_by_band", 18_443e6, 0.5e6),
+    ):
+        rows = by_target[target_id]
+        assert len(rows) == len(BADR_BAND_VALUE_IDS)
+        assert abs(sum(s.value for s in rows) - total) <= half_unit * (len(rows) + 1)
+    # The open top band holds claims at the GBP 1m lifetime limit, so its
+    # qualifying gains over the limit sit inside the rounded count's
+    # half-width: the structural residual the target notes declare.
+    top = {
+        reference.name: compiled.value
+        for reference, compiled in zip(references, registry.specs, strict=True)
+    }
+    top_count = top["hmrc.cgt.badr_ir_taxpayers_by_band.gain_1000000_plus"]
+    top_gains = top["hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_1000000_plus"]
+    assert top_count - 500 <= top_gains / 1_000_000 < top_count
+    # Table 3's all-gains margin partitions Table 1's individuals within
+    # rounding, and about 55 percent of gains sit above the GBP 125,140
+    # higher-rate threshold, the share the calibrated candidate lost
+    # (microcosm#1014).
+    for target_id, national in (
+        ("hmrc.cgt.taxpayers_by_taxable_income_band", 551_000),
+        ("hmrc.cgt.gains_by_taxable_income_band", 119_258e6),
+    ):
+        rows = by_target[target_id]
+        assert len(rows) == len(TAXABLE_INCOME_BAND_VALUE_IDS)
+        assert sum(s.value for s in rows) == pytest.approx(national, rel=1e-3)
+    gains_by_band = {
+        reference.name.rsplit(".", 1)[1]: compiled.value
+        for reference, compiled in zip(references, registry.specs, strict=True)
+        if reference.metadata["contract_target_id"]
+        == "hmrc.cgt.gains_by_taxable_income_band"
+    }
+    above = (
+        gains_by_band["income_125140_to_199999"] + gains_by_band["income_200000_plus"]
+    )
+    assert 0.54 < above / sum(gains_by_band.values()) < 0.56

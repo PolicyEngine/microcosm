@@ -14,7 +14,16 @@ def test_explicit_country_filter_runs_same_full_graph_without_local_constraints(
     assert manifest.population(full.population).n("household") == 4
     assert len(problem.bindings["target_selection"]["excluded"]) > 0
     assert "uk.full.dense" in manifest.nodes
-    assert "uk.full.locations" in manifest.nodes
+    assert "uk.full.locations" not in manifest.nodes
+    assert {
+        "uk.full.identity",
+        "uk.full.geography.assign",
+        "uk.full.geography_gate",
+    } <= set(manifest.nodes)
+    assert manifest.nodes["uk.full.geography_gate"].receipt["outcome"] == "pass"
+    assert (
+        manifest.nodes["uk.full.pool"].receipt["atomic_validation"]["outcome"] == "pass"
+    )
     surface = json.loads(
         ContentStore(tmp_path / "store").load_bytes(
             manifest.nodes["uk.full.target_compilation"].opaque_artifacts["surface"]
@@ -43,14 +52,17 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
     from test_support.microcosm_build.uk_full_population_graph import source_frame
 
     ladder, path = toy_ladder
+    # The pre-graph numerical helpers below draw geography with the legacy
+    # sequential ladder; the graph is built the same way for this parity proof.
     default, default_run, default_problem = build(
-        tmp_path / "default", path, None, n_clones=10
+        tmp_path / "default", path, None, n_clones=10, geography_assignment="legacy"
     )
     explicit, explicit_run, explicit_problem = build(
         tmp_path / "explicit",
         path,
         ("country", "region", "constituency", "la"),
         n_clones=10,
+        geography_assignment="legacy",
     )
     assert {row["geography_level"] for row in default_problem.target_metadata} == {
         "country",
@@ -102,7 +114,8 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
         source_year=2023,
         expected_constituency_vintage="2024_pcon",
     )
-    prepared_frame, _, national_rows, metrics, _ = target_inputs["measures"](
+    prepared_frame = target_inputs["prepared"](assignment.frame)
+    _, national_rows, metrics, _ = target_inputs["measures"](
         assignment.frame, target_inputs["national"], local_grains=("constituency", "la")
     )
     surface, cross = target_inputs["surface"]()
@@ -140,6 +153,7 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
         n_clones=10,
         resume="require",
         forbid_execution=True,
+        geography_assignment="legacy",
     )
     assert all(receipt.hit for receipt in replay.nodes.values())
     np.testing.assert_array_equal(
@@ -185,12 +199,29 @@ def test_source_census_validation_precedes_any_geography_filter(
         build(tmp_path, toy_ladder[1], levels)
 
 
-def test_target_kernel_identity_binds_country_reference_resources(monkeypatch):
+@pytest.mark.parametrize(
+    ("resource", "rekeys"),
+    [
+        ("calibration_measure_exclusions.json", True),
+        ("target_fit_reviewed_exclusions.json", False),
+        ("local_area_support_exclusions.json", False),
+    ],
+)
+def test_target_kernel_identity_binds_the_solve_scoped_resources(
+    monkeypatch, resource, rekeys
+):
+    """A solve-scoped resource re-keys the target kernels; a gate-only
+    register does not, so a sign-off reuses the surface (microcosm#1301)."""
+    from types import MappingProxyType
+
+    from microcosm.build import country_spec
+
     kernel = graph_targets.UKFullProblemKernel()
     original = kernel.implementation_hash()
+    spec = country_spec.load_country_spec("uk")
+    hashes = {**spec.resource_hashes, resource: "0" * 64}
+    edited = replace(spec, resource_hashes=MappingProxyType(hashes))
     monkeypatch.setattr(
-        graph_targets,
-        "load_country_spec",
-        lambda _country: SimpleNamespace(fingerprint="changed-reference-resource"),
+        country_spec, "_load_packaged_country_spec", lambda _country: edited
     )
-    assert kernel.implementation_hash() != original
+    assert (kernel.implementation_hash() != original) is rekeys

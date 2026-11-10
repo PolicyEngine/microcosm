@@ -10,9 +10,22 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
         kernel_registry=KernelRegistry.from_ids(SELECTION_KERNEL_IDS),
     )
     # Pin the domain separator, normalization rules, schema-set receipt, and
-    # exact normative projection as one reviewable golden vector.
+    # exact normative projection as one reviewable golden vector. The seed
+    # protocol inside it attests microcosm.calibrate.solve's bytes, so
+    # microcosm#1124's opt-in retain_best_objective and microcosm#1301's
+    # budget_search_bracket move it, and the fit kernels' bytes, so the QRF
+    # chain step's caller-owned uniforms move it too. microcosm#1380's
+    # self-employment feature in the imputation schema moves the schema-set
+    # receipt, and its post-transfer step moves acs_transfer's attested bytes.
+    # The ACS local lane's immigration stage (microcosm#1020) moves the
+    # immigration stage's attested bytes.
+    # The ACS local income pass's predictor extensions (microcosm#1022) move
+    # acs_transfer's attested bytes again.
+    # The ACS SSI disability-criteria stage (microcosm#1022) moves
+    # ssi_disability_criteria's attested bytes.
+    # The opt-in cross-fitted gate calibration moves the fit kernels' bytes.
     assert first.spec_sha256 == (
-        "646929f66c8496d40b4afec6c37d74a1d69dd8085b0610e1252e39fbd774ba5f"
+        "7dd74e956915808940e675a456084981cf58369f7afd198cbd8bdec512b11285"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

@@ -73,17 +73,17 @@ def test_pipr_three_signed_absence_reasons_pin_crosswalk_measurements() -> None:
         "E09000001",
     ]
     assert len(rows["private_rent_pipr_scotland_brma_grain"]["area_ids"]) == 32
-    assert (
-        "18 Scottish BRMA rows"
-        in rows["private_rent_pipr_scotland_brma_grain"]["rationale"]
-    )
-    assert (
-        "cannot translate" in rows["private_rent_pipr_scotland_brma_grain"]["rationale"]
-    )
+    scotland = rows["private_rent_pipr_scotland_brma_grain"]["rationale"]
+    # Scotland binds at BRMA grain; its councils have no rent of their own
+    # (microcosm#1090, #1262).
+    assert "18 Broad Rental Market Areas only" in scotland
+    assert "ons.rent.private_rent_brma" in scotland
+    assert "no published rent of its own" in scotland
     assert len(rows["private_rent_pipr_ni_absent"]["area_ids"]) == 11
-    assert (
-        "zero Northern Ireland rows" in rows["private_rent_pipr_ni_absent"]["rationale"]
-    )
+    # Northern Ireland is published as a country mean only, no higher control.
+    northern_ireland = rows["private_rent_pipr_ni_absent"]["rationale"]
+    assert "only as a country mean" in northern_ireland
+    assert "no higher control" in northern_ireland
 
 
 def test_deferral_for_unknown_contract_target_refuses() -> None:

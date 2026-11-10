@@ -1,5 +1,6 @@
 """Synthetic full-build population graph: the seam-frame source kernel and
-the graph/registry pair the UK full-graph tests build on."""
+the graph/registry pair (legacy ladder draw or identity-keyed atomic-area
+assignment) the UK full-graph tests build on."""
 
 # ruff: noqa: F401
 
@@ -38,13 +39,60 @@ from test_support.microcosm_build.uk_ladder_rowwise_clone import (
     toy_ladder as toy_ladder,
 )
 
+SOURCE_VINTAGE = "toy_2023_24"
+
 
 def source_frame():
     original = _seam_frame()
     tables = {e: original.table(e).copy() for e in original.entities}
     tables["person"]["age"] = 40
     tables["benunit"]["would_claim_uc"] = True
-    tables["household"]["region"] = tables["household"]["region"].astype("string")
+    household = tables["household"]
+    household["region"] = household["region"].astype("string")
+    # Explicit spine lineage: every toy household is its own FRS original.
+    household["source_household_id"] = household["household_id"].astype("int64")
+    household["household_support_channel"] = pd.array(
+        ["frs"] * len(household), dtype="string"
+    )
+    household["household_support_clone_index"] = np.zeros(len(household), dtype="int64")
+    household["household_is_spi_synthetic"] = False
+    household["household_is_capital_gains_clone"] = False
+    household["household_is_cgt_support_copy"] = False
+    household["cgt_support_copy_index"] = np.zeros(len(household), dtype="int64")
+    household["household_is_cgt_residential_clone"] = False
+    household["cgt_residential_clone_index"] = np.zeros(len(household), dtype="int64")
+    # microcosm#1240: the housing columns the post-geography property nodes
+    # read and rewrite; one owner per region with a positive value, the
+    # Scottish household a renter, the Northern Irish one an owner at zero.
+    household["tenure_type"] = pd.array(
+        ["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE", "RENT_PRIVATELY", "OWNED_OUTRIGHT"][
+            : len(household)
+        ],
+        dtype="string",
+    )
+    household["main_residence_value"] = np.asarray(
+        [400_000.0, 250_000.0, 0.0, 0.0][: len(household)], dtype="float64"
+    )
+    household["property_wealth"] = np.asarray(
+        [450_000.0, 250_000.0, 0.0, 10_000.0][: len(household)], dtype="float64"
+    )
+    household["council_tax_band"] = pd.array(
+        ["D", "C", "B", "D"][: len(household)], dtype="string"
+    )
+    # microcosm#1262: the spine's regional BRMA draw, which the area-BRMA node
+    # replaces outside Northern Ireland.
+    household["brma"] = pd.array(
+        ["MAIDSTONE", "MAIDSTONE", "MAIDSTONE", "BELFAST"][: len(household)],
+        dtype="string",
+    )
+    # The Scottish household is the toy's one private renter; the private-rent
+    # node re-draws its rent from its area's toy list.
+    household["rent"] = np.asarray(
+        [0.0, 0.0, 9_000.0, 0.0][: len(household)], dtype="float64"
+    )
+    household["num_bedrooms"] = np.asarray(
+        [3, 3, 2, 3][: len(household)], dtype="int64"
+    )
     return Frame(
         tables,
         original.schema,
@@ -68,9 +116,8 @@ class Source(KernelBase):
         return KernelResult(frame=source_frame())
 
 
-def graph_and_registry(k):
-    frame = source_frame()
-    source = Node(
+def source_node(frame):
+    return Node(
         "source",
         Source.ref,
         structural=StructuralDelta.CREATE,
@@ -94,14 +141,40 @@ def graph_and_registry(k):
             }
         ),
     )
+
+
+def graph_and_registry(
+    k,
+    *,
+    geography_assignment="legacy",
+    definition=None,
+    seed=7,
+    property_localisation_mode="none",
+    brma_localisation_mode="none",
+    private_rent_localisation_mode="none",
+    rfdr_localisation_mode="none",
+    full_scale=True,
+):
     graph = append_uk_population_nodes(
-        Graph("uk", (SourceRef("fixture", "raw-bytes-v1"),), (source,)),
+        Graph(
+            "uk",
+            (SourceRef("fixture", "raw-bytes-v1"),),
+            (source_node(source_frame()),),
+        ),
         population="source",
         time_period="2023",
         weight_kind="importance",
         n_clones=k,
-        seed=7,
+        seed=seed,
         source_year=2023,
+        geography_assignment=geography_assignment,
+        atomic_geography_definition=definition,
+        source_vintage=SOURCE_VINTAGE if geography_assignment == "atomic" else None,
+        property_localisation_mode=property_localisation_mode,
+        brma_localisation_mode=brma_localisation_mode,
+        private_rent_localisation_mode=private_rent_localisation_mode,
+        rfdr_localisation_mode=rfdr_localisation_mode,
+        full_scale=full_scale,
     )
     registry = KernelRegistry()
     registry.register(Source())

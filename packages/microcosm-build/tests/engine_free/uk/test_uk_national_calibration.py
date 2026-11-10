@@ -1,9 +1,19 @@
-"""The UK national Ledger-backed calibration stage."""
+"""The UK national register on the graph's national problem route.
+
+The in-process calibration stage retired with the national release role's
+move onto the graph; these tests exercise the same route as a library:
+``encode_uk_national_problem`` (materialise, compile, bind the doctrine),
+the shared solve under the bindings, and ``national_calibration_manifest``
+(the seam's evidence block).
+"""
 
 from __future__ import annotations
 
 import json
+import tempfile
 from importlib import resources as importlib_resources
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -21,27 +31,27 @@ from microcosm.build.uk_runtime import (
     UK_NATIONAL_TARGET_LOSS_CAP,
     UK_NATIONAL_TARGET_WEIGHT_RULE,
     UKNationalSolveDoctrine,
-    national_calibration,
     uk_doctrine_with_overrides,
     uk_national_target_loss_weights,
 )
+from microcosm.build.uk_runtime.graph_national import (
+    encode_uk_national_problem,
+    materialize_uk_national_rows,
+    national_calibration_manifest,
+)
 from microcosm.build.uk_runtime.ledger_targets import (
-    UKLedgerTargetCompilation,
     _uk_contract_targets,
 )
 from microcosm.build.uk_runtime.national_calibration import (
-    UKNationalCalibrationStage,
-    _post_solve_calibration_record,
     national_calibration_mass_reason,
 )
 from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
     write_uk_national_frame,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
-from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
-
-ACTIVE_REFERENCE_COUNT = 1124
+from microcosm.calibrate import TargetRegistry, TargetSpec, calibrate
+from microcosm.calibrate.artifacts import decode_problem
+from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
@@ -306,11 +316,15 @@ def _facts_for_reference(reference: LedgerTargetReference, value: float) -> list
     if reference.value_operation == "calendar_year_window":
         # A windowed row composes the fiscal years opening in Y-1 and Y from
         # one series; two equal annual facts resolve to the headline value.
+        # An OBR row takes each year from the EFO edition its map names.
+        tables = reference.ledger_selector.get("source_table_by_opening_year", {})
         facts = []
         for year in (reference.period - 1, reference.period):
             fact = _fact_for_reference(reference, value)
             fact["aggregate_fact_key"] += f":fy{year}"
             fact["period"] = {"type": "fiscal_year", "value": year}
+            if str(year) in tables:
+                fact["observed_measure"]["source_table"] = tables[str(year)]
             facts.append(fact)
         return facts
     if reference.name != "dwp.uc.households":
@@ -352,6 +366,10 @@ def _materialization_binding_frame(
             "region": "LONDON",
             "esa_income": [10.0, 20.0, 0.0],
             "esa_contrib": [1.0, 2.0, 0.0],
+            # OBR's incapacity line also carries Incapacity Benefit and SDA
+            # (table 4.9 footnote 2; microcosm#1095, uk-data#582).
+            "incapacity_benefit": [0.0, 0.0, 0.5],
+            "sda": [0.0, 3.0, 4.0],
         }
     )
     salary_sacrifice_metric = "hmrc/salary_sacrifice_it_relief_basic_rate"
@@ -382,190 +400,186 @@ def _materialization_binding_frame(
     )
 
 
-def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None:
-    frame = _frame()
-    stage = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
+def _solve(frame, registry, doctrine, *, resolver_factory=None, band_edge=None):
+    """The graph's national route as a library call: the problem the node
+    encodes, the solve the shared dense node runs on its bindings, the
+    calibrated population and the seam's evidence block."""
+    payload = encode_uk_national_problem(
+        frame,
+        national_registry=registry,
+        band_edge_registry=registry if band_edge is None else band_edge,
         period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=200, learning_rate=0.05),
+        doctrine={
+            "target_weight_rule": doctrine.target_weight_rule,
+            "target_loss_cap": doctrine.target_loss_cap,
+            "max_weight_ratio": doctrine.max_weight_ratio,
+            "l0_lambda": doctrine.l0_lambda,
+            "mass_rule": doctrine.mass_rule,
+            "scale_rule": doctrine.scale_rule,
+        },
+        resolver_factory=resolver_factory,
+        scratch_dir=None if resolver_factory is None else Path(tempfile.mkdtemp()),
+    )
+    problem = decode_problem(payload)
+    binding = problem.bindings
+    result = calibrate(
+        frame,
+        problem.to_target_set(),
+        weight_entity="household",
+        epochs=doctrine.epochs,
+        learning_rate=doctrine.learning_rate,
+        seed=doctrine.seed,
+        mass="free",
+        mass_reason=binding["mass_reason"],
+        max_weight_ratio=binding["max_weight_ratio"],
+        target_loss_weights=np.asarray(
+            binding["target_loss_weights"], dtype=np.float64
+        ),
+        target_loss_cap=binding["target_loss_cap"],
+    )
+    calibrated = frame.with_weights(
+        "household",
+        Weights(result.weights, WeightKind.CALIBRATED),
+        mass=MassChange(
+            factor=float(result.weights.sum())
+            / float(frame.weights_for("household").total),
+            reason=binding["mass_reason"],
+        ),
+    )
+    manifest = national_calibration_manifest(
+        result,
+        calibrated,
+        problem=problem,
+        doctrine={
+            **binding,
+            "epochs": doctrine.epochs,
+            "learning_rate": doctrine.learning_rate,
+            "seed": doctrine.seed,
+        },
+    )
+    return SimpleNamespace(
+        result=result,
+        frame=calibrated,
+        problem=problem,
+        manifest=manifest,
+        diagnostics=[
+            {
+                "name": row.name,
+                "estimate": row.final_estimate,
+                "target": row.target,
+                "relative_error": row.relative_error,
+            }
+            for row in result.diagnostics
+        ],
     )
 
-    result = stage(frame)
+
+def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None:
+    frame = _frame()
+    solved = _solve(
+        frame, _registry(), UKNationalSolveDoctrine(epochs=200, learning_rate=0.05)
+    )
 
     before = 20.0
-    after = float(result.weights_for("household").values[:2].sum())
+    after = float(solved.frame.weights_for("household").values[:2].sum())
     assert abs(after - 30.0) < abs(before - 30.0)
-    assert stage.manifest["activated_reference_count"] == 1
-    assert stage.manifest["resolved_reference_count"] == 1
-    assert stage.manifest["matrix_target_count"] == 1
-    assert stage.diagnostics[0]["target"] == 30.0
-    assert result.weights_for("household").kind is WeightKind.CALIBRATED
-    assert len(result.mass_log) == 1
-    mass_change = stage.manifest["weights"]["calibration_mass_change"]
+    manifest = solved.manifest
+    assert manifest["activated_reference_count"] == 1
+    assert manifest["resolved_reference_count"] == 1
+    assert manifest["matrix_target_count"] == 1
+    assert solved.diagnostics[0]["target"] == 30.0
+    assert solved.frame.weights_for("household").kind is WeightKind.CALIBRATED
+    assert len(solved.frame.mass_log) == 1
+    mass_change = manifest["weights"]["calibration_mass_change"]
     assert mass_change["entity"] == "household"
     assert "National doctrine calibration" in mass_change["reason"]
-    assert stage.manifest["weights"]["household_weight_kind_chain"] == [
+    assert manifest["weights"]["household_weight_kind_chain"] == [
         {"stage": "staging", "kind": "design"},
         {"stage": "national_calibration", "kind": "calibrated"},
     ]
-    assert stage.manifest["weights"]["mass_log_records_before_calibration"] == 0
-    assert stage.manifest["weights"]["mass_log_records"] == 1
-    assert stage.manifest["solve"]["n_targets"] == 1
-    assert stage.manifest["solve"]["n_households"] == 4
+    assert manifest["weights"]["mass_log_records_before_calibration"] == 0
+    assert manifest["weights"]["mass_log_records"] == 1
+    assert manifest["solve"]["n_targets"] == 1
+    assert manifest["solve"]["n_households"] == 4
+    assert manifest["parameters"]["doctrine"]["target_weight_rule"] == "family_equal"
 
 
-def test_stage_forwards_solver_progress_and_complete_lifecycle() -> None:
-    progress: list[dict[str, object]] = []
-    stages: list[tuple[str, str, dict[str, object]]] = []
-    stage = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-        progress_callback=progress.append,
-        stage_callback=lambda stage_id, status, details: stages.append(
-            (stage_id, status, dict(details))
-        ),
-    )
-
-    stage(_frame())
-
-    assert progress
-    assert all(event["kind"] == "calibration_epoch" for event in progress)
-    assert [(stage_id, status) for stage_id, status, _details in stages] == [
-        ("calibration_input_validation", "started"),
-        ("calibration_input_validation", "completed"),
-        ("measure_resolution", "started"),
-        ("measure_resolution", "completed"),
-        ("target_materialization", "started"),
-        ("target_materialization", "completed"),
-        ("solver_preparation", "started"),
-        ("solver_preparation", "completed"),
-        ("solver_execution", "started"),
-        ("solver_execution", "completed"),
-        ("calibration_result_validation", "started"),
-        ("calibration_result_validation", "completed"),
-        ("calibration_evidence_construction", "started"),
-        ("calibration_evidence_construction", "completed"),
-    ]
-    assert stages[-1][2]["diagnostic_count"] == 1
-    assert all(details["elapsed_seconds"] >= 0 for _, _, details in stages)
-
-
-def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() -> None:
+def test_uc_calibration_accepts_benunit_grain_reference_on_nested_frame() -> None:
     frame = _nested_frame()
-    stage = UKNationalCalibrationStage(
-        _registry(value=60.0),
-        band_edge_registry=_registry(value=60.0),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-    )
+    solved = _solve(frame, _registry(value=60.0), UKNationalSolveDoctrine(epochs=5))
 
-    result = stage(frame)
-
-    assert stage.manifest["activated_reference_count"] == 1
-    assert stage.manifest["resolved_reference_count"] == 1
-    assert stage.manifest["matrix_target_count"] == 1
-    assert stage.diagnostics[0]["target"] == 60.0
-    assert stage.diagnostics[0]["estimate"] == pytest.approx(60.0)
-    validate_uk_national_frame(result)
+    assert solved.manifest["activated_reference_count"] == 1
+    assert solved.manifest["resolved_reference_count"] == 1
+    assert solved.manifest["matrix_target_count"] == 1
+    assert solved.diagnostics[0]["target"] == 60.0
+    assert solved.diagnostics[0]["estimate"] == pytest.approx(60.0)
+    validate_uk_national_frame(solved.frame)
 
 
-def test_stage_measure_resolver_injects_columns_then_restores_pristine_output() -> None:
+def test_measure_resolver_injects_columns_then_restores_pristine_output() -> None:
     frame = _frame_without_uc_column()
     resolver = StubMeasureResolver()
     original_columns = {
         entity: set(frame.table(entity).columns) for entity in frame.entities
     }
-    stage = UKNationalCalibrationStage(
+    solved = _solve(
+        frame,
         _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-        measure_resolver=resolver,
+        UKNationalSolveDoctrine(epochs=5),
+        resolver_factory=lambda **kwargs: resolver,
     )
-
-    result = stage(frame)
 
     assert resolver.calls == [("benunit", "universal_credit")]
-    assert stage.manifest["measure_resolution"]["provider"] == {"provider": "stub_uc"}
-    assert stage.manifest["measure_resolution"]["attached"] == {
-        "benunit.universal_credit": "stub_uc"
-    }
+    # The seam manifest's block: which measure came from which provider, the
+    # rounds and the provider's receipt; the materialisation report is its
+    # own field.
+    resolution = solved.manifest["measure_resolution"]
+    assert resolution["provider"] == {"provider": "stub_uc"}
+    assert resolution["attached"] == {"benunit.universal_credit": "stub_uc"}
+    assert solved.manifest["target_materialization"]["prepared_count"] == 1
     for entity in frame.entities:
-        assert set(result.table(entity).columns) == original_columns[entity]
-    assert "universal_credit" not in result.table("benunit")
-    validate_uk_national_frame(result)
+        assert set(solved.frame.table(entity).columns) == original_columns[entity]
+    assert "universal_credit" not in solved.frame.table("benunit")
+    validate_uk_national_frame(solved.frame)
 
 
-def test_stage_manifest_omits_measure_resolution_without_resolver() -> None:
-    stage = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-    )
+def test_manifest_omits_measure_resolution_without_resolver() -> None:
+    solved = _solve(_frame(), _registry(), UKNationalSolveDoctrine(epochs=5))
 
-    stage(_frame())
-
-    assert "measure_resolution" not in stage.manifest
+    assert "measure_resolution" not in solved.manifest
+    assert solved.problem.bindings["measure_resolution"]["mode"] == "frame_only"
 
 
-def test_stage_threads_band_edge_registry_to_materialization(monkeypatch) -> None:
+def test_materialization_threads_band_edge_registry(monkeypatch) -> None:
+    from microcosm.build.uk_runtime import ledger_targets
+
     captured = []
-    real_materialize = national_calibration.materialize_uk_ledger_targets
+    real_materialize = ledger_targets.materialize_uk_ledger_targets
 
     def capture_materialize(*args, **kwargs):
         captured.append(kwargs)
         return real_materialize(*args, **kwargs)
 
     monkeypatch.setattr(
-        national_calibration,
-        "materialize_uk_ledger_targets",
-        capture_materialize,
+        ledger_targets, "materialize_uk_ledger_targets", capture_materialize
     )
     sentinel = TargetRegistry([], country="uk")
-    stage = UKNationalCalibrationStage(
+    materialize_uk_national_rows(
+        _frame(),
         _registry(),
         period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=1),
         band_edge_registry=sentinel,
+        resolver_factory=None,
     )
-
-    stage(_frame())
 
     assert captured[-1]["band_edge_registry"] is sentinel
 
-    # The parameter is required, never defaulted: a stage cannot tell a
+    # The parameter is required, never defaulted: the route cannot tell a
     # pruned registry from a full one (#803 review finding 1).
     with pytest.raises(TypeError, match="band_edge_registry"):
-        UKNationalCalibrationStage(
-            _registry(),
-            period=2025,
-            doctrine=UKNationalSolveDoctrine(epochs=1),
+        materialize_uk_national_rows(
+            _frame(), _registry(), period=2025, resolver_factory=None
         )
-
-
-def test_activated_unresolvable_compiled_reference_aborts_loudly() -> None:
-    stage = UKNationalCalibrationStage(
-        UKLedgerTargetCompilation(
-            registry=TargetRegistry([], country="uk"),
-            unsupported=(
-                {
-                    "name": "dwp.uc.households",
-                    "period": "2025",
-                    "reason": "did not match a Ledger fact selector",
-                },
-            ),
-        ),
-        band_edge_registry=TargetRegistry([], country="uk"),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=1),
-    )
-
-    with pytest.raises(RuntimeError, match="did not match a Ledger fact selector"):
-        stage(_frame())
 
 
 def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
@@ -573,9 +587,8 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     from microcosm.build.ledger_targets import compile_ledger_target_references
 
     spec = load_country_spec("uk")
-    assert len(spec.target_references) == ACTIVE_REFERENCE_COUNT
     reference_names = {reference.name for reference in spec.target_references}
-    assert "obr.universal_credit_in_cap" in reference_names
+    assert "obr.universal_credit" in reference_names
     assert "dwp.uc.households" in reference_names
 
     membership = json.loads(
@@ -616,31 +629,47 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     references = tuple(
         reference
         for reference in spec.target_references
-        if reference.name == "obr.universal_credit_in_cap"
+        if reference.name == "obr.universal_credit"
     )
     registry = compile_ledger_target_references(
         [
-            # The OBR row binds at the calendar-2025 window, so the series
-            # needs the fiscal years opening in 2024 and 2025.
+            # The OBR total binds the two welfare-cap cells at the calendar-2025
+            # window, so each cell's series needs the fiscal years opening in
+            # 2024 and 2025, from the March and October 2026 EFOs.
             {
-                **_fact(
-                    concept="obr.universal_credit_in_cap",
-                    source_name="obr",
-                    value=40_000_000_000,
+                **_fact(concept=concept, source_name="obr", value=value),
+                "aggregate_fact_key": (
+                    f"ledger.aggregate_fact.v2:obr-fixture-{concept}-fy{year}"
                 ),
-                "aggregate_fact_key": f"ledger.aggregate_fact.v2:obr-fixture-fy{year}",
+                "observed_measure": {
+                    **_fact(concept=concept, source_name="obr")["observed_measure"],
+                    "source_table": (
+                        f"EFO {edition} 2026 detailed forecast tables: expenditure"
+                    ),
+                },
                 "period": {"type": "fiscal_year", "value": year},
+                # Chronicle stamps OBR table 4.9's DWP lines with the
+                # geography DWP counts them over (microcosm#1300).
+                "geography": {
+                    "level": "country",
+                    "id": "K03000001",
+                    "name": "Great Britain",
+                },
             }
-            for year in (2024, 2025)
+            for concept, value in (
+                ("obr.universal_credit_in_cap", 40_000_000_000),
+                ("obr.universal_credit_outside_cap", 10_000_000_000),
+            )
+            for year, edition in ((2024, "March"), (2025, "October"))
         ],
         references,
         country="uk",
     )
 
-    assert {spec.name for spec in registry.specs} == {"obr.universal_credit_in_cap"}
+    assert {spec.name for spec in registry.specs} == {"obr.universal_credit"}
 
 
-def test_packaged_binding_classes_materialize_through_national_stage() -> None:
+def test_packaged_binding_classes_materialize_through_the_national_route() -> None:
     selected_names = (
         "dwp.uc.households",
         "obr.esa",
@@ -670,25 +699,23 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
     assert headline.metadata["ledger_member_fact_count"] == "120"
     resolver = StubCrosstabResolver()
     resolver.contract_targets = _uk_contract_targets()
-    stage = UKNationalCalibrationStage(
-        registry,
-        band_edge_registry=registry,
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=1, learning_rate=0.01),
-        measure_resolver=resolver,
-    )
-
     input_frame = _materialization_binding_frame()
     original_columns = {
         entity: set(input_frame.table(entity).columns)
         for entity in input_frame.entities
     }
 
-    result = stage(input_frame)
+    solved = _solve(
+        input_frame,
+        registry,
+        UKNationalSolveDoctrine(epochs=1, learning_rate=0.01),
+        resolver_factory=lambda **kwargs: resolver,
+    )
+    result = solved.frame
 
-    assert stage.manifest["activated_reference_count"] == len(selected_names)
-    assert stage.manifest["resolved_reference_count"] == len(selected_names)
-    assert stage.manifest["matrix_target_count"] == len(selected_names)
+    assert solved.manifest["activated_reference_count"] == len(selected_names)
+    assert solved.manifest["resolved_reference_count"] == len(selected_names)
+    assert solved.manifest["matrix_target_count"] == len(selected_names)
     # The staged frame stays writer-clean: no prepared scratch column survives
     # onto the returned tables (adjudicated lifecycle; slash-named scratch
     # crashes the HDFStore staging writer). Original input columns — including
@@ -706,7 +733,7 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
     materialize_uk_ledger_targets(adapter, registry, period=2025)
     materialized = {
         ("benunit", "dwp/uc/households"): [1.0, 0.0, 1.0],
-        ("household", "obr/esa"): [11.0, 22.0, 0.0],
+        ("household", "obr/esa"): [11.0, 25.0, 4.5],
         ("person", "hmrc/cgt_taxpayers"): [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
         # The prepared affected-child counts stay distinct from the claim
         # indicator [1.0, 0.0, 1.0] and legacy person-native entitlement flags.
@@ -724,7 +751,7 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
         assert adapter.tables[entity][measure].tolist() == expected
 
 
-def test_packaged_materialization_skip_aborts_national_stage() -> None:
+def test_packaged_materialization_skip_aborts_the_national_route() -> None:
     from microcosm.build.ledger_targets import compile_ledger_target_references
 
     reference = _reference_by_name("hmrc.salary_sacrifice.it_relief_basic_rate")
@@ -733,27 +760,20 @@ def test_packaged_materialization_skip_aborts_national_stage() -> None:
         [reference],
         country="uk",
     )
-    stage = UKNationalCalibrationStage(
-        registry,
-        band_edge_registry=registry,
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=1),
-    )
-
     with pytest.raises(RuntimeError, match="could not materialize every"):
-        stage(_materialization_binding_frame(include_counterfactual_delta=False))
+        materialize_uk_national_rows(
+            _materialization_binding_frame(include_counterfactual_delta=False),
+            registry,
+            period=2025,
+            band_edge_registry=registry,
+            resolver_factory=None,
+        )
 
 
 def test_calibration_preserves_entity_ids_and_national_integrity() -> None:
     frame = _frame()
-    stage = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-    )
-
-    result = stage(frame)
+    solved = _solve(frame, _registry(), UKNationalSolveDoctrine(epochs=5))
+    result = solved.frame
 
     for entity in frame.entities:
         id_column = f"{entity}_id"
@@ -761,80 +781,12 @@ def test_calibration_preserves_entity_ids_and_national_integrity() -> None:
     validate_uk_national_frame(result)
 
 
-def test_checkpoint_metadata_round_trips_calibration_evidence() -> None:
-    frame = _frame()
-    stage = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-    )
-
-    staged = stage(frame)
-    metadata = json.loads(json.dumps(stage.checkpoint_metadata()))
-
-    resumed = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-    )
-    resumed.resume_from_checkpoint(metadata, staged)
-
-    assert resumed.manifest == stage.manifest
-    assert resumed.diagnostics == stage.diagnostics
-    assert resumed.output_content_identity == metadata["output_content_identity"]
-
-    drifted = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-    )
-    with pytest.raises(RuntimeError, match="drifted record"):
-        drifted.resume_from_checkpoint(metadata, frame)
-
-    empty = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-    )
-    with pytest.raises(RuntimeError, match="calibration counts"):
-        empty.resume_from_checkpoint({}, staged)
-
-    missing_count = dict(metadata)
-    missing_count["calibration"] = {
-        key: value
-        for key, value in metadata["calibration"].items()
-        if key != "activated_reference_count"
-    }
-    with pytest.raises(RuntimeError, match="calibration counts"):
-        empty.resume_from_checkpoint(missing_count, staged)
-
-    unrun = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-    )
-    with pytest.raises(RuntimeError, match="has not run"):
-        unrun.checkpoint_metadata()
-
-
 def test_prepared_slash_columns_are_not_returned_to_the_writer(tmp_path) -> None:
     pytest.importorskip("tables")
-    stage = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-    )
+    solved = _solve(_frame(), _registry(), UKNationalSolveDoctrine(epochs=5))
 
-    result = stage(_frame())
-
-    assert "dwp/uc/households" not in result.table("benunit")
-    write_uk_national_frame(result, tmp_path / "staging.h5")
+    assert "dwp/uc/households" not in solved.frame.table("benunit")
+    write_uk_national_frame(solved.frame, tmp_path / "staging.h5")
 
 
 def test_national_calibration_mass_reason_is_canonical() -> None:
@@ -848,8 +800,10 @@ def test_national_calibration_mass_reason_is_canonical() -> None:
         national_calibration_mass_reason([])
 
 
-def test_post_solve_fence_requires_calibrated_kind_and_mass_record() -> None:
+def test_evidence_block_requires_calibrated_kind_and_the_calibration_record() -> None:
+    solved = _solve(_frame(), _registry(), UKNationalSolveDoctrine(epochs=5))
     before = _frame()
+    doctrine = solved.manifest["parameters"]["doctrine"]
     uncalibrated = Frame(
         {entity: before.table(entity) for entity in before.entities},
         before.schema,
@@ -858,23 +812,35 @@ def test_post_solve_fence_requires_calibrated_kind_and_mass_record() -> None:
         mass_log=before.mass_log,
         metadata=before.metadata,
     )
-
     with pytest.raises(RuntimeError, match="not 'calibrated'"):
-        _post_solve_calibration_record(before, uncalibrated, before_count=0)
+        national_calibration_manifest(
+            solved.result, uncalibrated, problem=solved.problem, doctrine=doctrine
+        )
 
     calibrated_without_record = Frame(
         {entity: before.table(entity) for entity in before.entities},
         before.schema,
-        {"household": Weights(np.full(4, 10.0), WeightKind.CALIBRATED)},
+        {"household": Weights(solved.result.weights, WeightKind.CALIBRATED)},
         before.strata,
         mass_log=before.mass_log,
         metadata=before.metadata,
     )
-    with pytest.raises(RuntimeError, match="exactly one mass record"):
-        _post_solve_calibration_record(
-            before,
+    with pytest.raises(RuntimeError, match="append one mass record"):
+        national_calibration_manifest(
+            solved.result,
             calibrated_without_record,
-            before_count=0,
+            problem=solved.problem,
+            doctrine=doctrine,
+        )
+
+    foreign_record = calibrated_without_record.with_weights(
+        "household",
+        Weights(solved.result.weights, WeightKind.CALIBRATED),
+        mass=MassChange(factor=1.0, reason="a resample"),
+    )
+    with pytest.raises(RuntimeError, match="not the calibration record"):
+        national_calibration_manifest(
+            solved.result, foreign_record, problem=solved.problem, doctrine=doctrine
         )
 
 
@@ -985,45 +951,35 @@ def test_national_doctrine_rejects_tampered_bounds() -> None:
     ("rule", "expected"),
     [("uniform", None), ("family_equal", [1.0])],
 )
-def test_doctrine_target_weight_rule_reaches_the_solver(
-    monkeypatch, rule, expected
-) -> None:
+def test_doctrine_target_weight_rule_reaches_the_solver(rule, expected) -> None:
     """The declared rule must reach calibrate(), not just the manifest echo.
 
     First-armed-run finding (2026-08-23): the doctrine declared a
     target_weight_rule the stage never passed to the kernel, so the solve
-    silently ran uniform whatever the doctrine said. The doctrine vector now
-    travels explicitly; "uniform" maps to None — the kernel's own default —
-    so the shipped identity is unchanged under the default rule.
+    silently ran uniform whatever the doctrine said. On the graph the
+    doctrine vector is bound into the ordered problem, which the shared
+    dense node hands to calibrate(); "uniform" is bound as the explicit
+    all-ones vector (the kernel's own equal weighting written out).
     """
 
-    from microcosm.calibrate import calibrate as real_calibrate
-
-    captured: dict[str, object] = {}
-
-    def capturing_calibrate(*args, **kwargs):
-        captured["target_loss_weights"] = kwargs["target_loss_weights"]
-        return real_calibrate(*args, **kwargs)
-
-    monkeypatch.setattr(
-        "microcosm.build.uk_runtime.national_calibration.calibrate",
-        capturing_calibrate,
-    )
-    stage = UKNationalCalibrationStage(
-        _registry(),
+    payload = encode_uk_national_problem(
+        _frame(),
+        national_registry=_registry(),
         band_edge_registry=_registry(),
         period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5, target_weight_rule=rule),
+        doctrine={
+            "target_weight_rule": rule,
+            "target_loss_cap": 10.0,
+            "max_weight_ratio": 10.0,
+            "l0_lambda": 0.0,
+            "mass_rule": "free",
+            "scale_rule": "default_target_loss_scales",
+        },
+        resolver_factory=None,
     )
-
-    stage(_frame())
-
-    weights = captured["target_loss_weights"]
-    if expected is None:
-        assert weights is None
-    else:
-        assert weights is not None
-        assert weights.tolist() == expected
+    bindings = decode_problem(payload).bindings
+    assert bindings["target_weight_rule"] == rule
+    assert bindings["target_loss_weights"] == ([1.0] if expected is None else expected)
 
 
 def test_measure_resolution_never_touches_the_source_frame() -> None:
@@ -1156,38 +1112,3 @@ def test_packaged_uc_headline_refuses_incomplete_month_cell_fixture(defect) -> N
 
     with pytest.raises(ValueError, match="monthly window"):
         compile_ledger_target_references(facts, [reference], country="uk")
-
-
-def test_stage_attributes_failure_to_the_operation_actually_executing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    stages: list[tuple[str, str]] = []
-    stage = UKNationalCalibrationStage(
-        _registry(),
-        band_edge_registry=_registry(),
-        period=2025,
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-        stage_callback=lambda stage_id, status, details: stages.append(
-            (stage_id, status)
-        ),
-    )
-
-    def fail_materialization(*args, **kwargs):
-        raise RuntimeError("materialization failed")
-
-    monkeypatch.setattr(
-        "microcosm.build.uk_runtime.national_calibration.materialize_uk_ledger_targets",
-        fail_materialization,
-    )
-
-    with pytest.raises(RuntimeError, match="materialization failed"):
-        stage(_frame())
-
-    assert stages == [
-        ("calibration_input_validation", "started"),
-        ("calibration_input_validation", "completed"),
-        ("measure_resolution", "started"),
-        ("measure_resolution", "completed"),
-        ("target_materialization", "started"),
-        ("target_materialization", "failed"),
-    ]

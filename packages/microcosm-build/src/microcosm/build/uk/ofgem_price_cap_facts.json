@@ -3,7 +3,7 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "ofgem_price_cap_facts.json",
-  "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. Consumed by the LCFS energy pricing (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge; VAT added from the engine parameter). Since chronicle #271 the stage prices at the DESNZ QEP average prices paid (qep_energy_prices.json); the cap levels stay vendored as the regional maximum that the QEP-versus-cap lockstep test and the receipts compare against.",
+  "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. The LCFS energy pricing read these levels until chronicle #271 (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge); since then it prices at the DESNZ QEP average prices paid (qep_energy_prices.json), and the cap levels stay vendored for validation only, as the regional maximum the QEP-versus-cap lockstep test compares against.",
   "consumers": [],
   "planned_consumers": [
     "uk_runtime.energy_pricing"
@@ -15,12 +15,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "5324aa27a7698eef97b38a7924a36b3a1f97c137",
+    "source_commit": "64753803f9b22944a3ee8b24ba6d1fa6c26fef50",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 287024,
-    "facts_sha256": "e5baacd48ab32be197268ef3ef25dfb3a04b4a03d394ca3a6f22b8f15fa9e8d6",
-    "manifest_sha256": "c479426724efa0a79ad2ebaf4ca0b5487fc307f0499d6150dacdc4e6d665cdff"
+    "fact_row_count": 1585295,
+    "facts_sha256": "bcb226fd07a1eba8970a69b13e87ab20c3bd90e96e02509894a65799dbd9482a",
+    "manifest_sha256": "801d3e5e9d7039f877a12fc45afdd2d6b52ddbb46eecc91d7bd5ff843ea5efb8"
   },
   "selections": [
     {

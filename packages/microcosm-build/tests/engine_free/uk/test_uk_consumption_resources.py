@@ -81,18 +81,37 @@ def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None
     services = _load("etb_services_support_bounds.json")
 
     assert lcfs["source"]["household_tab_sha256"] == (
-        "6e78f0914be38e63853165486d641cbd790753cc471086210c6f672bfa18ca72"
+        "b39b1dd39170b63ca0aa84f747e1d2239213fcfcf197bf8d5c047e146ed8c781"
     )
     assert lcfs["source"]["person_tab_sha256"] == (
-        "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50"
+        "952d128362334388af12d9e2ef7b40db591d2d3e043ae8f6cc0f98fb813f2089"
     )
-    # Raked columns (energy and, since microcosm#890, bus fares) carry no bounds.
-    assert len(lcfs["bounds"]) == 14
+    # Raked or levelled columns carry no bounds: energy, bus fares since
+    # microcosm#890, and petrol and diesel since microcosm#1113. The housing
+    # and transport totals keep theirs: the stage recomposes them around the
+    # levelled parts, and the terminal support check holds the emitted totals.
+    assert len(lcfs["bounds"]) == 12
     assert "bus_fare_spending" not in lcfs["bounds"]
+    assert "petrol_spending" not in lcfs["bounds"]
+    # The tool floors the donor as the stage does, so no bound starts below 0.
+    assert lcfs["bounds"]["housing_water_and_electricity_consumption"] == [
+        0.0,
+        80000,
+    ]
+    # LCFS 2024-25, SN 9603 2nd edition (microcosm#1164).
+    assert (lcfs["source"]["ukds_study_number"], lcfs["source"]["doi"]) == (
+        9603,
+        "10.5255/UKDA-SN-9603-2",
+    )
+    assert all(low >= 0 for low, _high in lcfs["bounds"].values())
+    assert lcfs["bounds"]["transport_consumption"] == [0.0, 200000]
     assert vat["source"]["tab_sha256"] == (
         "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8"
     )
-    assert set(vat["bounds"]) == {"full_rate_vat_expenditure_rate"}
+    # The rate is a share of expenditure after VAT (uk-data#572): its bound is
+    # the stage's declared range, not a rounded donor extreme.
+    assert vat["bounds"] == {"full_rate_vat_expenditure_rate": [0.0, 1]}
+    assert "no donor value is committed" in vat["source"]["sdc_treatment"]
     assert set(services["bounds"]) == {
         "dfe_education_spending",
         "rail_subsidy_spending",
@@ -172,3 +191,42 @@ def test_e6_support_bounds_round_trip_against_licensed_tabs() -> None:
         assert json.dumps(payload, indent=2, sort_keys=False) + "\n" == (
             UK_PACKAGE / name
         ).read_text(encoding="utf-8")
+
+
+def test_support_bound_generator_refuses_a_second_rounding_of_unchanged_tabs(
+    tmp_path,
+) -> None:
+    # microcosm#1164: two outward roundings of one donor extreme under
+    # different factors narrow it, so with the tabs unchanged a re-derivation
+    # may not move a rounded bound; a lower bound may move to the floor (zero).
+    import importlib.util
+
+    path = ROOT / "tools/build_uk_e6_support_bounds.py"
+    spec = importlib.util.spec_from_file_location("build_uk_e6_support_bounds", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    committed = tmp_path / "bounds.json"
+    committed.write_text(
+        json.dumps(
+            {
+                "source": {"household_tab_sha256": "a" * 64},
+                "bounds": {"x": [-20000, 300000], "y": [0.0, 70000]},
+            }
+        )
+    )
+
+    def payload(digest: str, x: list, y: list) -> dict:
+        return {
+            "source": {"household_tab_sha256": digest * 64},
+            "bounds": {"x": x, "y": y},
+        }
+
+    module.refuse_rerounding(committed, payload("a", [0.0, 300000], [0.0, 70000]))
+    module.refuse_rerounding(committed, payload("b", [0.0, 300000], [0.0, 60000]))
+    module.refuse_rerounding(tmp_path / "absent.json", payload("a", [0, 1], [0, 1]))
+    with pytest.raises(SystemExit, match=r"\['y'\] would move"):
+        module.refuse_rerounding(
+            committed, payload("a", [-20000, 300000], [0.0, 60000])
+        )

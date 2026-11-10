@@ -1,0 +1,187 @@
+{
+  "purpose": "R5 of experiments/901-uk-national-graph-path-receipts.md: the licensed seam-vs-graph national A/B on the 10 % smoke spine of the #901 pre-merge run (53,806 households, 1,062 targets), compared field by field by docs/evidence/uk-901-national-ab/scripts/compare_national_ab.py (run in the licensed lane as data/ukds/acceptance/901-national-ab/compare_national_ab.py; committed by microcosm#1059 on review round 2 of #1057, item 10). Aggregates and field-level differences only; no unit records.",
+  "date": "2026-09-29",
+  "a": "a-seam (main at the #901 merge, 6a70cd4ee, run_uk_calibration)",
+  "b": "b-graph-2 (uk-national-graph-path at 218226898, microcosm-build-uk --release-role national)",
+  "solve": {
+    "targets": [
+      1062,
+      1062
+    ],
+    "households": [
+      53806,
+      53806
+    ],
+    "row_names_equal": true,
+    "target_vector_equal": true,
+    "matrix_identical": true,
+    "design_weights_equal": true,
+    "household_ids_equal": true,
+    "final_weights_identical": true,
+    "final_weights_max_abs_diff": 0.0,
+    "final_weight_totals": [
+      29024853.117736887,
+      29024853.117736887
+    ]
+  },
+  "diagnostics": {
+    "scalars": {
+      "schema_version": [
+        8,
+        8,
+        true
+      ],
+      "initial_loss": [
+        0.3107629418373108,
+        0.3107629418373108,
+        true
+      ],
+      "final_loss": [
+        0.008806911920052014,
+        0.008806911920052014,
+        true
+      ],
+      "n_nonzero": [
+        53806,
+        53806,
+        true
+      ],
+      "n_records": [
+        53806,
+        53806,
+        true
+      ],
+      "realized_max_weight_ratio": [
+        10.000000000000002,
+        10.000000000000002,
+        true
+      ],
+      "fraction_within_10pct": [
+        0.9774011299435028,
+        0.9774011299435028,
+        true
+      ]
+    },
+    "diff_minus_build": [],
+    "build_diff": [
+      "/measure_resolution/provider/mode: 'direct_h5' vs 'scratch_frame_export'",
+      "/measure_resolution/provider/source_path: the seam's input H5 path vs the graph's scratch export path (machine paths omitted here; the scratch path is recorded scratch-relative since the round-1 review)"
+    ],
+    "bytes_identical": false
+  },
+  "gate_report": {
+    "blocked_at_phase": [
+      "terminal",
+      "terminal"
+    ],
+    "statuses": {
+      "uk_aggregate_admin": [
+        "passed",
+        "passed"
+      ],
+      "uk_calibration_reference_coverage": [
+        "passed",
+        "passed"
+      ],
+      "uk_cgt_projection_entrants": [
+        "failed",
+        "failed"
+      ],
+      "uk_target_fit": [
+        "passed",
+        "passed"
+      ],
+      "uk_weight_ess": [
+        "passed",
+        "passed"
+      ],
+      "uk_weight_ratio": [
+        "passed",
+        "passed"
+      ],
+      "uk_zero_weight_strata": [
+        "passed",
+        "passed"
+      ]
+    },
+    "diff_minus_attestation": [],
+    "signed": [
+      true,
+      true
+    ]
+  },
+  "logbook": {
+    "pipeline": [
+      "uk-frs-calibration",
+      "uk-frs-calibration",
+      true
+    ],
+    "identity_digest": [
+      "2344c21d2bc85ed0695cf8678db1890cb03238ed9aa3612ca9a209204fd11659",
+      "2344c21d2bc85ed0695cf8678db1890cb03238ed9aa3612ca9a209204fd11659",
+      true
+    ],
+    "input_pins_digest": [
+      "74a4aa2fbfb82565b98b7f7fbb1b31076d9b95ebd48ab2e125ccc5366bc3b188",
+      "74a4aa2fbfb82565b98b7f7fbb1b31076d9b95ebd48ab2e125ccc5366bc3b188",
+      true
+    ],
+    "disposition": [
+      "failed",
+      "failed",
+      true
+    ],
+    "rung": [
+      "f100",
+      "f100",
+      true
+    ],
+    "seed": [
+      0,
+      0,
+      true
+    ],
+    "phases": [
+      [
+        "attempt_started",
+        "input_sha_verified",
+        "input_loaded",
+        "input_sidecar_bound",
+        "input_finite",
+        "national_calibration_solved",
+        "diagnostics_written",
+        "target_support_sidecars_written",
+        "error"
+      ],
+      [
+        "attempt_started",
+        "configured",
+        "input_sha_verified",
+        "input_loaded",
+        "input_sidecar_bound",
+        "targets_bound",
+        "national_calibration_solved",
+        "diagnostics_written",
+        "target_support_sidecars_written",
+        "calibration_gates_evaluated",
+        "candidate_blocked"
+      ]
+    ]
+  },
+  "h5": {
+    "written": [
+      false,
+      false
+    ]
+  },
+  "build_record": {
+    "written": [
+      false,
+      false
+    ]
+  },
+  "wall_seconds": {
+    "a": "637.99",
+    "b": "653.31"
+  }
+}

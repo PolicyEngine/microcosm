@@ -7,10 +7,12 @@ The legacy numerical functions remain the only implementations of the draws.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from collections.abc import Mapping
 from dataclasses import asdict, replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -28,6 +30,7 @@ from microcosm.graph import (
     KernelRegistry,
     KernelResult,
     Node,
+    Numeric,
     Owned,
     SeedSource,
     Slice,
@@ -39,22 +42,81 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.population import dtype_for_token
+from microcosm.graph.randomness import keyed_uniform
 from microcosm.graph.weight_update import weight_update_receipt
 
-from . import geography_ladder, national_sampling, rowwise_dataset
+from . import (
+    atomic_area_support,
+    atomic_household_identity,
+    brma_area_layer,
+    geography_ladder,
+    local_authority_input,
+    national_sampling,
+    private_rent_localisation,
+    property_localisation,
+    rfdr_area_layer,
+    rowwise_dataset,
+)
 from .geography_ladder import (
     UK_GEOGRAPHY_LADDER_COLUMNS,
     derive_uk_ladder_locations,
     draw_uk_ladder_locations,
     load_uk_oa_ladder,
 )
-from .local_authority_input import verify_local_authority_engine_domain
+from .household_lineage import (
+    HIGH_VALUE_SUPPORT_COPY_COLUMN,
+    UK_HOUSEHOLD_LINEAGE_COLUMNS,
+    UK_OPTIONAL_LINEAGE_COLUMNS,
+    uk_household_clone_paths,
+)
+from .local_authority_input import (
+    UK_LOCAL_AUTHORITY_CODE_COLUMN,
+    UK_LOCAL_AUTHORITY_INPUT_COLUMN,
+    UK_LOCAL_AUTHORITY_VINTAGE,
+    resolve_local_authority_engine_keys,
+    verify_local_authority_engine_domain,
+)
 from .national_frame import UK_NATIONAL_SCHEMA
+from .receipt_counts import rounded_count
 from .rowwise_dataset import expand_uk_geographic_pool, ladder_clone_index_column
 
 POPULATION_RECEIPT_TYPE = ArtifactType("microcosm.uk.population-receipt", 1)
 LOCATION_DRAW_TYPE = ArtifactType("microcosm.uk.ladder-location-draw", 1)
 GEOGRAPHY_GATE_TYPE = ArtifactType("microcosm.uk.geography-gate", 1)
+GEOGRAPHY_ASSIGNMENTS = ("atomic", "legacy")
+#: Lineage columns the post-clone household identity is keyed on. The support
+#: channel, the CGT support split's copy flag and index (microcosm#1045) and
+#: the clone flag come from the spine stages; the geographic clone index from
+#: ``uk.full.expand``. Calibration K, weights and remapped ids are not inputs.
+UK_GEOGRAPHY_IDENTITY_INPUTS = UK_HOUSEHOLD_LINEAGE_COLUMNS
+PROPERTY_LOCALISATION_MODES = property_localisation.PROPERTY_LOCALISATION_MODES
+PROPERTY_QUANTILE_TYPE = ArtifactType("microcosm.uk.property-quantile-draw", 1)
+#: Household columns the post-geography property nodes read and rewrite.
+_PROPERTY_VALUE_COLUMNS = (
+    "region",
+    "tenure_type",
+    "main_residence_value",
+    "property_wealth",
+)
+_PROPERTY_BAND_COLUMNS = ("council_tax_band",)
+BRMA_LOCALISATION_MODES = brma_area_layer.BRMA_LOCALISATION_MODES
+#: Household columns the post-geography BRMA node reads (microcosm#1262).
+_BRMA_AREA_COLUMNS = ("atomic_area_system", "brma", "lsoa_code", "oa_code", "region")
+PRIVATE_RENT_LOCALISATION_MODES = (
+    private_rent_localisation.PRIVATE_RENT_LOCALISATION_MODES
+)
+RFDR_LOCALISATION_MODES = rfdr_area_layer.RFDR_LOCALISATION_MODES
+#: Household columns the post-geography RFDR node reads (microcosm#1418).
+_RFDR_AREA_COLUMNS = ("atomic_area_code", "atomic_area_system")
+#: Household columns the post-geography private-rent node reads (microcosm#1262).
+_PRIVATE_RENT_COLUMNS = (
+    "brma",
+    "household_support_channel",
+    "num_bedrooms",
+    "region",
+    "rent",
+    "tenure_type",
+)
 
 
 def context_frame(context: KernelContext) -> Frame:
@@ -333,6 +395,574 @@ class UKGeographyMappingKernel(_PopulationKernel):
         )
 
 
+class UKGeographyIdentityKernel(_PopulationKernel):
+    """Key every post-clone household by its source id and ordered clone path.
+
+    The path is read from the spine's explicit lineage columns, never inferred
+    from ids, weights or financial values: ``spi_support_channel`` with the
+    support clone index when the household is an SPI support copy,
+    ``cgt_support_split`` with the copy index when it is a support copy
+    (microcosm#1045), ``cgt_incidence_clone`` (ordinal 1) from its flag,
+    ``geographic_support`` with the pool clone index when it is not the
+    original copy. Growing K never changes an existing household's key.
+    """
+
+    ref = "uk.full.identity@1"
+    capabilities = Capabilities(Determinism.DETERMINISTIC)
+
+    def implementation_hash(self) -> str:
+        return source_hash(
+            type(self), atomic_household_identity, atomic_area_support, rowwise_dataset
+        )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        source = str(context.params["source"])
+        vintage = str(context.params["source_vintage"])
+        source_ids, paths = uk_household_clone_paths(household)
+        keys = [
+            atomic_household_identity.household_draw_key(
+                source=source,
+                source_vintage=vintage,
+                source_household_id=source_id,
+                clone_path=path,
+            )
+            for source_id, path in zip(source_ids, paths, strict=True)
+        ]
+        if len(set(keys)) != len(keys):
+            raise ValueError("Geography identity keys are not unique.")
+        index = pd.Index(household["household_id"], name="household_id")
+        column = atomic_area_support.IDENTITY_COLUMN
+        return KernelResult(
+            columns={
+                ("household", column): pd.Series(
+                    keys, index=index, name=column, dtype=dtype_for_token("string")
+                )
+            },
+            receipt={
+                "households": len(keys),
+                "source": source,
+                "source_vintage": vintage,
+                "inputs": list(UK_GEOGRAPHY_IDENTITY_INPUTS),
+            },
+        )
+
+
+class UKPropertyValueKernel(_PopulationKernel):
+    """Read each owner clone's home value off its constituency's distribution.
+
+    microcosm#1240 fixes 3 and 5. Every pool clone of one spine household
+    keeps one uniform (its weighted rank among the owner households of its
+    FRS region, ties broken by a keyed draw; high-value support copies take a
+    keyed draw inside the top stratum), and reads its value at that uniform
+    from the assigned constituency's uprated latest-sale knots. Weights are
+    untouched; property wealth moves by the value's change.
+    """
+
+    ref = "uk.full.property.value@1"
+    capabilities = Capabilities(
+        determinism=Determinism.SEEDED,
+        seed_source=SeedSource.KEYED,
+        numeric=Numeric.PLATFORM_BITWISE,
+    )
+
+    def implementation_hash(self) -> str:
+        from . import household_lineage
+
+        return source_hash(
+            type(self),
+            property_localisation,
+            household_lineage,
+            atomic_household_identity,
+        )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        weights = np.asarray(context.weights["household"].values, dtype=float)
+        knots = property_localisation.load_value_knots(
+            Path(context.sources[property_localisation.QUANTILES_SOURCE]).read_bytes()
+        )
+        stream = tuple(context.params["stream"])
+        keys = property_localisation.spine_household_keys(
+            household,
+            source=str(context.params["source"]),
+            source_vintage=str(context.params["source_vintage"]),
+        )
+        support = (
+            household[HIGH_VALUE_SUPPORT_COPY_COLUMN].to_numpy().astype(bool)
+            if HIGH_VALUE_SUPPORT_COPY_COLUMN in household
+            else None
+        )
+        u, uniform_receipt = property_localisation.owner_uniforms(
+            spine_key=keys,
+            region=household["region"].to_numpy(),
+            tenure_type=household["tenure_type"].to_numpy(),
+            # The spine's regional values (microcosm#1112) keep the value they
+            # replaced; ranking on it keeps this node's draws unchanged.
+            value=property_localisation.main_residence_rank_basis(
+                household,
+                declared=bool(context.params.get("rank_basis_declared", False)),
+            ),
+            weight=weights,
+            stream=stream,
+            support_copy=support,
+            support_stratum_lower=float(context.params["support_stratum_lower"]),
+        )
+        new_value, new_wealth, receipt = property_localisation.localise_values(
+            u=u,
+            constituency_code=household["constituency_code"].to_numpy(),
+            tenure_type=household["tenure_type"].to_numpy(),
+            value=household["main_residence_value"].to_numpy(),
+            property_wealth=household["property_wealth"].to_numpy(),
+            knots=knots,
+        )
+        index = pd.Index(household["household_id"], name="household_id")
+        household_ids = [int(value) for value in household["household_id"].to_numpy()]
+        payload = {
+            "schema": "microcosm.uk.property-quantile-draw.v1",
+            "household_ids": household_ids,
+            "u": [float(value) for value in u],
+            "cap": knots.cap,
+            "stream": list(stream),
+            "method": property_localisation.METHOD_VERSION,
+            "knots_inputs_sha256": knots.inputs_sha256,
+            "basis_year": knots.basis_year,
+            "rows_value_rewritten": receipt["rows_rewritten"],
+        }
+        return KernelResult(
+            columns={
+                ("household", "main_residence_value"): pd.Series(
+                    new_value, index=index, name="main_residence_value", dtype="float64"
+                ),
+                ("household", "property_wealth"): pd.Series(
+                    new_wealth, index=index, name="property_wealth", dtype="float64"
+                ),
+            },
+            artifacts={"quantiles": canonical_json(payload)},
+            receipt={
+                **receipt,
+                "uniforms": uniform_receipt,
+                "weights": "unchanged",
+                "household_mass": float(weights.sum()),
+                "knots_inputs_sha256": knots.inputs_sha256,
+                "basis_year": knots.basis_year,
+                "stream": list(stream),
+            },
+        )
+
+
+class UKPropertyBandKernel(_PopulationKernel):
+    """Draw each England-and-Wales clone's council-tax band from its LSOA's VOA mix.
+
+    microcosm#1240 fix 4: the band is read at the same uniform the value node
+    placed the home value with, so a clone's value and band agree by
+    construction. Rows outside England and Wales keep the spine's band.
+    """
+
+    ref = "uk.full.property.band@1"
+    capabilities = Capabilities(
+        determinism=Determinism.DETERMINISTIC, numeric=Numeric.PLATFORM_BITWISE
+    )
+
+    def implementation_hash(self) -> str:
+        return source_hash(type(self), property_localisation)
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        payload = json.loads(context.artifacts["quantiles"].payload)
+        if payload.get("schema") != "microcosm.uk.property-quantile-draw.v1":
+            raise ValueError(
+                "Property band node received an unknown quantile artifact."
+            )
+        ids = [int(value) for value in household["household_id"].to_numpy()]
+        if payload["household_ids"] != ids:
+            raise ValueError(
+                "Property quantile draws do not align with the pool households."
+            )
+        u = np.asarray(payload["u"], dtype=float)
+        mix = property_localisation.load_band_mix(
+            Path(context.sources[property_localisation.BAND_MIX_SOURCE]).read_bytes()
+        )
+        scotland_mix = property_localisation.load_scotland_band_mix(
+            Path(
+                context.sources[property_localisation.SCOTLAND_BAND_MIX_SOURCE]
+            ).read_bytes()
+        )
+        band_dtype = household["council_tax_band"].dtype
+        tenure = household["tenure_type"].to_numpy()
+        new_band, receipt = property_localisation.localise_bands(
+            u=u,
+            lsoa_code=household["lsoa_code"].to_numpy(),
+            band=household["council_tax_band"].to_numpy(),
+            tenure_type=tenure,
+            mix=mix,
+            scotland_mix=scotland_mix,
+            local_authority_code=household["local_authority_code"].to_numpy(),
+        )
+        lsoa = household["lsoa_code"].to_numpy().astype(str)
+        area = household["local_authority_code"].to_numpy().astype(str)
+        owner = property_localisation.owner_mask(tenure)
+        england_wales = np.char.startswith(lsoa, "E") | np.char.startswith(lsoa, "W")
+        scotland = np.char.startswith(area, "S12") & ~england_wales
+        # Each mix is monotone within its area: an LSOA in England and Wales,
+        # a council area in Scotland.
+        violations = property_localisation.monotone_violations(
+            u[england_wales & owner],
+            new_band[england_wales & owner],
+            lsoa[england_wales & owner],
+        ) + property_localisation.monotone_violations(
+            u[scotland & owner], new_band[scotland & owner], area[scotland & owner]
+        )
+        if violations:
+            raise ValueError("Property band draws are not monotone in the uniform.")
+        index = pd.Index(household["household_id"], name="household_id")
+        return KernelResult(
+            columns={
+                ("household", "council_tax_band"): pd.Series(
+                    new_band, index=index, name="council_tax_band"
+                ).astype(band_dtype),
+            },
+            receipt={
+                **receipt,
+                "monotone_violations": violations,
+                "band_mix_sha256": mix.source_sha256,
+                "scotland_band_mix_facts_sha256": scotland_mix.source_sha256,
+            },
+        )
+
+
+class UKLocalAuthorityResolveKernel(_PopulationKernel):
+    """Resolve the engine's ``local_authority`` input from the derived code.
+
+    The shared derive step writes ``local_authority_code``; the engine input
+    is the member name resolved fail-closed on the April 2023 roster
+    (microcosm#953), exactly as the legacy ladder derive writes it. The
+    engine itself is never imported here; the UK distribution gate checks
+    the assigned names against the installed enum.
+    """
+
+    ref = "uk.full.geography.local_authority@1"
+    capabilities = Capabilities(Determinism.DETERMINISTIC)
+
+    def implementation_hash(self) -> str:
+        return source_hash(type(self), local_authority_input)
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        keys = resolve_local_authority_engine_keys(
+            household[UK_LOCAL_AUTHORITY_CODE_COLUMN]
+        )
+        index = pd.Index(household["household_id"], name="household_id")
+        column = UK_LOCAL_AUTHORITY_INPUT_COLUMN
+        return KernelResult(
+            columns={
+                ("household", column): pd.Series(
+                    keys, index=index, name=column, dtype=dtype_for_token("string")
+                )
+            },
+            receipt={
+                "households": int(len(keys)),
+                "local_authority_vintage": UK_LOCAL_AUTHORITY_VINTAGE,
+            },
+        )
+
+
+class UKBRMAAreaKernel(_PopulationKernel):
+    """Read each placed Great Britain household's BRMA off its assigned area.
+
+    microcosm#1262: the spine's ``frs_brma`` stage draws a BRMA within the
+    household's FRS region before any household has an area, so every clone
+    carried one BRMA wherever it landed. The committed layer places every
+    England-and-Wales LSOA and Scottish output area in one BRMA, so a clone's
+    BRMA, LHA rate, local authority and constituency describe one place.
+    Northern Ireland has no open BRMA geography and keeps the spine's draw.
+    """
+
+    ref = "uk.full.geography.brma@1"
+    capabilities = Capabilities(
+        determinism=Determinism.DETERMINISTIC, numeric=Numeric.PLATFORM_BITWISE
+    )
+
+    def implementation_hash(self) -> str:
+        return source_hash(type(self), brma_area_layer)
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        payload = Path(
+            context.sources[brma_area_layer.BRMA_AREA_LAYER_SOURCE]
+        ).read_bytes()
+        layer = brma_area_layer.load_brma_area_layer(payload)
+        brma, counts = brma_area_layer.area_brmas(
+            layer=layer,
+            area_system=household["atomic_area_system"].to_numpy(),
+            lsoa_code=household["lsoa_code"].to_numpy(),
+            oa_code=household["oa_code"].to_numpy(),
+            region=household["region"].to_numpy(),
+            brma=household["brma"].to_numpy(),
+        )
+        index = pd.Index(household["household_id"], name="household_id")
+        return KernelResult(
+            columns={
+                ("household", "brma"): pd.Series(brma, index=index, name="brma").astype(
+                    household["brma"].dtype
+                ),
+            },
+            receipt={
+                "rows_by_grain": {
+                    grain: rounded_count(count)
+                    for grain, count in sorted(counts.items())
+                    if grain != "changed"
+                },
+                "rows_changed": rounded_count(counts["changed"]),
+                "layer_sha256": hashlib.sha256(payload).hexdigest(),
+                "method": layer.method,
+            },
+        )
+
+
+class UKRFDRAreaKernel(_PopulationKernel):
+    """Set each placed household's Rural Fuel Duty Relief flag off its output area.
+
+    microcosm#1418: policyengine-uk relieves a household's petrol and diesel
+    duty when ``in_rural_fuel_duty_relief_area`` is true. The committed layer
+    lists the Great Britain output areas in the scheme (HMRC Notice 2001's
+    islands, post town and postcode districts, by the ONS postcode lookup), so
+    a clone in one of them carries the flag. Northern Ireland has no area in
+    the scheme.
+    """
+
+    ref = "uk.full.geography.rfdr@1"
+    capabilities = Capabilities(
+        determinism=Determinism.DETERMINISTIC, numeric=Numeric.PLATFORM_BITWISE
+    )
+
+    def implementation_hash(self) -> str:
+        return source_hash(type(self), rfdr_area_layer)
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        payload = Path(
+            context.sources[rfdr_area_layer.RFDR_AREA_LAYER_SOURCE]
+        ).read_bytes()
+        layer = rfdr_area_layer.load_rfdr_area_layer(payload)
+        strict = bool(context.params.get("strict_flags", True))
+        flags, counts = rfdr_area_layer.area_flags(
+            layer=layer,
+            area_system=household["atomic_area_system"].to_numpy(),
+            area_code=household["atomic_area_code"].to_numpy(),
+            require_flagged=strict,
+        )
+        index = pd.Index(household["household_id"], name="household_id")
+        column = rfdr_area_layer.RFDR_COLUMN
+        return KernelResult(
+            columns={
+                ("household", column): pd.Series(flags, index=index, name=column),
+            },
+            receipt={
+                "rows_by_system": {
+                    system: rounded_count(count)
+                    for system, count in sorted(counts.items())
+                    if system != "flagged"
+                },
+                "rows_flagged": rounded_count(counts["flagged"]),
+                "zero_flag_refusal": strict,
+                "layer_sha256": hashlib.sha256(payload).hexdigest(),
+                "method": layer.method,
+            },
+        )
+
+
+class UKPrivateRentKernel(_PopulationKernel):
+    """Read each Great Britain private renter's rent off its BRMA's list of rents.
+
+    microcosm#1262: the spine's rent describes the source household's FRS
+    region. Every private renter with a positive rent, in either channel,
+    keeps its rank among the FRS renters of its region and bedroom size (one
+    keyed tie-break per spine household, shared by all of its pool clones)
+    and reads that quantile off its assigned BRMA's list for homes of its
+    size, scaled so the region's mean rent is the FRS level on the census
+    private-renter mix. Placement follows all households, so at design
+    weights the level moves with the gap between the two mixes, which
+    calibration's tenure rows close. Weights are untouched; owners, social
+    renters, zero rents and Northern Ireland keep their rents bit for bit. The
+    region scales and ranks stay inside the kernel; the receipt carries
+    rounded record counts only.
+    """
+
+    ref = "uk.full.private_rent@1"
+    capabilities = Capabilities(
+        determinism=Determinism.SEEDED,
+        seed_source=SeedSource.KEYED,
+        numeric=Numeric.PLATFORM_BITWISE,
+    )
+
+    def implementation_hash(self) -> str:
+        from . import household_lineage
+
+        return source_hash(
+            type(self),
+            private_rent_localisation,
+            property_localisation,
+            household_lineage,
+            atomic_household_identity,
+        )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        weights = np.asarray(context.weights["household"].values, dtype=float)
+        quantiles_payload = Path(
+            context.sources[private_rent_localisation.QUANTILES_SOURCE]
+        ).read_bytes()
+        counts_payload = Path(
+            context.sources[private_rent_localisation.COUNTS_SOURCE]
+        ).read_bytes()
+        quantiles = private_rent_localisation.load_rent_quantiles(quantiles_payload)
+        counts = private_rent_localisation.load_private_renter_counts(counts_payload)
+        stream = tuple(context.params["stream"])
+        keys = property_localisation.spine_household_keys(
+            household,
+            source=str(context.params["source"]),
+            source_vintage=str(context.params["source_vintage"]),
+        )
+        mask = private_rent_localisation.redraw_mask(
+            household["region"].to_numpy(),
+            household["tenure_type"].to_numpy(),
+            household["rent"].to_numpy(),
+        )
+        redrawn = sorted({str(key) for key in keys[mask]})
+        draws = keyed_uniform(
+            stream=stream, keys=[(key, "rent_rank") for key in redrawn]
+        )
+        new_rent, details = private_rent_localisation.localise_rents(
+            spine_key=keys,
+            region=household["region"].to_numpy(),
+            tenure_type=household["tenure_type"].to_numpy(),
+            rent=household["rent"].to_numpy(),
+            num_bedrooms=household["num_bedrooms"].to_numpy(),
+            brma=household["brma"].to_numpy(),
+            channel=household["household_support_channel"].to_numpy(),
+            weight=weights,
+            tie_uniform=dict(zip(redrawn, (float(v) for v in draws), strict=True)),
+            quantiles=quantiles,
+            counts=counts,
+            strict=bool(context.params.get("strict_cells", True)),
+        )
+        index = pd.Index(household["household_id"], name="household_id")
+        return KernelResult(
+            columns={
+                ("household", "rent"): pd.Series(
+                    new_rent, index=index, name="rent"
+                ).astype(household["rent"].dtype),
+            },
+            receipt={
+                "rows_redrawn": rounded_count(details["rows_redrawn"]),
+                "spine_households_redrawn": rounded_count(
+                    details["spine_households_redrawn"]
+                ),
+                "cells_ranked_against_their_region": details["fallback_cells"],
+                "cells_ranked_against_great_britain": details["great_britain_cells"],
+                "regions_scaled": details["regions"],
+                "regions_scaled_on_great_britain": details[
+                    "regions_scaled_on_great_britain"
+                ],
+                "weights": "unchanged",
+                "quantiles_sha256": hashlib.sha256(quantiles_payload).hexdigest(),
+                "counts_sha256": hashlib.sha256(counts_payload).hexdigest(),
+                "method": private_rent_localisation.METHOD_VERSION,
+                "stream": list(stream),
+            },
+        )
+
+
+class UKPoolCheckpointKernel(_PopulationKernel):
+    """Checkpoint the complete pool; refuse unless the shared atomic gate passed.
+
+    The shared ``geography.gate@1`` result is a platform-scoped typed artifact
+    (amendment 17), and a bitwise UK kernel consuming it as a typed input
+    would be refused. This FILTER node consumes it and emits no typed
+    artifact of its own, so that refusal is avoided here. It is only the
+    typed-artifact edge that stops: the shared assignment kernels are
+    ``platform_bitwise`` too, and their columns reach the UK target and
+    calibration chain through population slices, which the executor already
+    reads at platform scope. Whether the shared kernels can honestly declare
+    ``bitwise`` (exact keyed draws, integer inverse CDF) is the open question
+    recorded on microcosm#932.
+    """
+
+    ref = "uk.full.pool@1"
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC,
+        numeric=Numeric.PLATFORM_BITWISE,
+        structural=StructuralDelta.FILTER,
+    )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        receipt = {"scope": "complete_pool_checkpoint"}
+        if "atomic_validation" in context.artifacts:
+            validation = json.loads(context.artifacts["atomic_validation"].payload)
+            if validation.get("outcome") != "pass":
+                raise ValueError("Shared atomic geography validation did not pass.")
+            receipt["atomic_validation"] = validation
+        if "property_quantiles" in context.artifacts:
+            quantiles = json.loads(context.artifacts["property_quantiles"].payload)
+            household_ids = [
+                int(value)
+                for value in context.tables["household"]["household_id"].to_numpy()
+            ]
+            if quantiles.get("household_ids") != household_ids:
+                raise ValueError(
+                    "Property quantile draws do not align with the checkpointed pool."
+                )
+            receipt["property_localisation"] = {
+                key: quantiles[key]
+                for key in (
+                    "cap",
+                    "stream",
+                    "method",
+                    "knots_inputs_sha256",
+                    "basis_year",
+                    "rows_value_rewritten",
+                )
+            }
+        person = context.tables[UK_NATIONAL_SCHEMA.person_entity]
+        id_column = UK_NATIONAL_SCHEMA.person_id_column
+        ids = pd.Index(person[id_column].to_numpy(copy=True), name=id_column)
+        return KernelResult(
+            keep=pd.Series(True, index=ids, dtype="bool"), receipt=receipt
+        )
+
+
+def uk_pool_validation_inputs(
+    geography_assignment: str, property_localisation_mode: str = "none"
+) -> tuple[ArtifactInput, ...]:
+    """The typed edges that order the shared atomic gate (and the property draw) before the checkpoint."""
+    if geography_assignment != "atomic":
+        return ()
+    from microcosm.build.graph_atomic_geography import (
+        ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
+    )
+
+    inputs = (
+        ArtifactInput(
+            "atomic_validation",
+            "uk.full.geography.gate",
+            "validation",
+            ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
+        ),
+    )
+    if property_localisation_mode == "price_paid":
+        inputs = (
+            *inputs,
+            ArtifactInput(
+                "property_quantiles",
+                "uk.full.property.value",
+                "quantiles",
+                PROPERTY_QUANTILE_TYPE,
+            ),
+        )
+    return inputs
+
+
 class UKGeographyGateKernel(_PopulationKernel):
     ref = "uk.full.geography_gate@1"
     capabilities = Capabilities(Determinism.DETERMINISTIC)
@@ -371,14 +1001,68 @@ def append_uk_population_nodes(
     source_year: int = 2024,
     constituency_vintage: str = "2024_pcon",
     source_lineage_modulus: int | None = None,
+    geography_assignment: str = "atomic",
+    atomic_geography_definition: Mapping | None = None,
+    source_vintage: str | None = None,
+    identity_source: str = "frs",
+    property_localisation_mode: str = "none",
+    brma_localisation_mode: str = "none",
+    private_rent_localisation_mode: str = "none",
+    rfdr_localisation_mode: str = "none",
+    full_scale: bool = True,
 ) -> Graph:
-    """Compose sampling → replication → location draw → derivation → gate."""
+    """Compose sampling → replication → identity → assignment → derivation → gate.
+
+    ``property_localisation_mode="price_paid"`` (atomic assignment only) adds
+    the microcosm#1240 value and band nodes between the local-authority
+    resolve and the gates; ``"none"`` leaves the spine's values and bands on
+    every clone.
+
+    ``geography_assignment="atomic"`` (the default) keys every post-clone
+    household by its lineage and runs the shared atomic-geography operators
+    on the three UK support artifacts declared by ``atomic_geography_definition``
+    (``uk_atomic_assignment_definition``). ``"legacy"`` keeps the sequential
+    ladder draw for measurement builds only.
+    """
 
     from .graph_kernels import UKClaimKernel
 
     cells = population_columns(graph, population)
     if type(n_clones) is not int or n_clones < 1:
         raise ValueError("Geographic replicate count K must be a positive integer.")
+    if geography_assignment not in GEOGRAPHY_ASSIGNMENTS:
+        raise ValueError(
+            f"Geography assignment must be one of {GEOGRAPHY_ASSIGNMENTS}."
+        )
+    if geography_assignment == "atomic":
+        if atomic_geography_definition is None:
+            raise ValueError(
+                "Atomic geography assignment requires the UK assignment definition."
+            )
+        if not isinstance(source_vintage, str) or not source_vintage:
+            raise ValueError("Atomic geography assignment requires the FRS vintage.")
+    elif atomic_geography_definition is not None:
+        raise ValueError("Legacy geography assignment takes no atomic definition.")
+    if property_localisation_mode not in PROPERTY_LOCALISATION_MODES:
+        raise ValueError(
+            f"Property localisation must be one of {PROPERTY_LOCALISATION_MODES}."
+        )
+    if property_localisation_mode != "none" and geography_assignment != "atomic":
+        raise ValueError("Property localisation needs the atomic geography assignment.")
+    if brma_localisation_mode not in BRMA_LOCALISATION_MODES:
+        raise ValueError(f"BRMA localisation must be one of {BRMA_LOCALISATION_MODES}.")
+    if brma_localisation_mode != "none" and geography_assignment != "atomic":
+        raise ValueError("Area BRMAs need the atomic geography assignment.")
+    if private_rent_localisation_mode not in PRIVATE_RENT_LOCALISATION_MODES:
+        raise ValueError(
+            f"Private rent localisation must be one of {PRIVATE_RENT_LOCALISATION_MODES}."
+        )
+    if private_rent_localisation_mode != "none" and brma_localisation_mode != "area":
+        raise ValueError("Private rents from the lists need the area BRMAs.")
+    if rfdr_localisation_mode not in RFDR_LOCALISATION_MODES:
+        raise ValueError(f"RFDR localisation must be one of {RFDR_LOCALISATION_MODES}.")
+    if rfdr_localisation_mode != "none" and geography_assignment != "atomic":
+        raise ValueError("Area RFDR flags need the atomic geography assignment.")
     national_sampling.validate_sample_fraction(sample_fraction, label="UK full build")
     national_sampling.validate_sample_seed(sample_seed, label="UK full build")
     common = {"time_period": str(time_period)}
@@ -495,7 +1179,39 @@ def append_uk_population_nodes(
         )
     )
     cells.update(expansion_cells)
-    nodes.append(
+    if geography_assignment == "legacy":
+        geography_nodes, geography_sources = _legacy_geography_nodes(
+            cells, common=common, seed=seed, constituency_vintage=constituency_vintage
+        )
+    else:
+        geography_nodes, geography_sources = _atomic_geography_nodes(
+            cells,
+            common=common,
+            seed=seed,
+            definition=atomic_geography_definition,
+            identity_source=identity_source,
+            source_vintage=source_vintage,
+            property_localisation_mode=property_localisation_mode,
+            brma_localisation_mode=brma_localisation_mode,
+            private_rent_localisation_mode=private_rent_localisation_mode,
+            rfdr_localisation_mode=rfdr_localisation_mode,
+            full_scale=full_scale,
+        )
+    nodes.extend(geography_nodes)
+    declared = {s.name for s in graph.sources}
+    sources = (
+        *graph.sources,
+        *(ref for ref in geography_sources if ref.name not in declared),
+    )
+    return replace(graph, nodes=tuple(nodes), sources=tuple(sources))
+
+
+def _legacy_geography_nodes(
+    cells: dict, *, common: Mapping, seed: int, constituency_vintage: str
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """The sequential ladder draw, kept verbatim for measurement builds."""
+
+    nodes = (
         Node(
             id="uk.full.locations",
             kernel=UKLocationDrawKernel.ref,
@@ -505,9 +1221,7 @@ def append_uk_population_nodes(
             params={"seed": seed, "constituency_vintage": constituency_vintage},
             artifact_outputs=(ArtifactOutput("locations", LOCATION_DRAW_TYPE),),
             description="Draw constituency then atomic area with the current sequential RNG.",
-        )
-    )
-    nodes.append(
+        ),
         Node(
             id="uk.full.geography_mapping",
             kernel=UKGeographyMappingKernel.ref,
@@ -524,42 +1238,474 @@ def append_uk_population_nodes(
                 for col in UK_GEOGRAPHY_LADDER_COLUMNS
             ),
             description="Derive every geography from the drawn atomic-area index.",
-        )
+        ),
     )
     cells.update({("household", col): "string" for col in UK_GEOGRAPHY_LADDER_COLUMNS})
-    nodes.append(
-        Node(
-            id="uk.full.geography_gate",
-            kernel=UKGeographyGateKernel.ref,
-            population="uk.full.expand",
-            inputs=population_slices(cells),
-            params=common,
-            artifact_outputs=(ArtifactOutput("gate", GEOGRAPHY_GATE_TYPE),),
-            description="Validate geography integrity before selected-target contributions.",
+    gate = Node(
+        id="uk.full.geography_gate",
+        kernel=UKGeographyGateKernel.ref,
+        population="uk.full.expand",
+        inputs=population_slices(cells),
+        params=dict(common),
+        artifact_outputs=(ArtifactOutput("gate", GEOGRAPHY_GATE_TYPE),),
+        description="Validate geography integrity before selected-target contributions.",
+    )
+    ladder = SourceRef(
+        "uk_ladder", "raw-bytes-v1", "Full UK atomic-area ladder with pinned vintages."
+    )
+    return (*nodes, gate), (ladder,)
+
+
+def _atomic_geography_nodes(
+    cells: dict,
+    *,
+    common: Mapping,
+    seed: int,
+    definition: Mapping,
+    identity_source: str,
+    source_vintage: str,
+    property_localisation_mode: str = "none",
+    brma_localisation_mode: str = "none",
+    private_rent_localisation_mode: str = "none",
+    rfdr_localisation_mode: str = "none",
+    full_scale: bool = True,
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """Identity-keyed assignment on the shared operators (release path order)."""
+
+    from microcosm.build.atomic_geography import validate_assignment_spec
+    from microcosm.build.graph_atomic_geography import atomic_geography_nodes
+
+    spec = validate_assignment_spec(definition)
+    if spec["identity"] != [atomic_area_support.IDENTITY_COLUMN]:
+        raise ValueError("UK atomic assignment must key on the geography identity.")
+    if spec["stream"][3] != seed:
+        raise ValueError("UK atomic assignment seed differs from the build seed.")
+    if {system["source"] for system in spec["systems"]} != set(
+        atomic_area_support.SOURCES.values()
+    ):
+        raise ValueError("UK atomic assignment must declare the three UK supports.")
+    lineage_inputs = tuple(
+        sorted(
+            column
+            for column in (*UK_HOUSEHOLD_LINEAGE_COLUMNS, *UK_OPTIONAL_LINEAGE_COLUMNS)
+            if ("household", column) in cells
         )
+    )
+    identity = Node(
+        id="uk.full.identity",
+        kernel=UKGeographyIdentityKernel.ref,
+        population="uk.full.expand",
+        inputs=(Slice("household", lineage_inputs),),
+        outputs=(Owned("household", atomic_area_support.IDENTITY_COLUMN, "string"),),
+        params={
+            **common,
+            "source": identity_source,
+            "source_vintage": source_vintage,
+        },
+        description="Key every post-clone household by its source id and ordered clone path.",
+    )
+    cells[("household", atomic_area_support.IDENTITY_COLUMN)] = "string"
+    shared = atomic_geography_nodes(
+        spec,
+        tuple(Owned(e, c, dtype) for (e, c), dtype in sorted(cells.items())),
+        base="uk.full.expand",
+        prefix="uk.full.geography",
+        emit_validation_artifact=True,
+    )
+    for node in shared:
+        cells.update({(o.entity, o.column): o.dtype for o in node.outputs})
+    # The engine's local_authority enum input (microcosm#953) is UK-side: the
+    # shared derive writes the GSS code, this node resolves the member name
+    # the export gate and the engine require, between derive and the gates.
+    local_authority = Node(
+        id="uk.full.geography.local_authority",
+        kernel=UKLocalAuthorityResolveKernel.ref,
+        population="uk.full.expand",
+        inputs=(Slice("household", (UK_LOCAL_AUTHORITY_CODE_COLUMN,)),),
+        outputs=(Owned("household", UK_LOCAL_AUTHORITY_INPUT_COLUMN, "string"),),
+        params=dict(common),
+        description="Resolve the engine local_authority input from the derived GSS code.",
+    )
+    cells[("household", UK_LOCAL_AUTHORITY_INPUT_COLUMN)] = "string"
+    brma_nodes: tuple[Node, ...] = ()
+    brma_sources: tuple[SourceRef, ...] = ()
+    if brma_localisation_mode == "area":
+        brma_nodes, brma_sources = _brma_area_nodes(cells, common=common)
+    if private_rent_localisation_mode == "brma_list":
+        rent_nodes, rent_sources = _private_rent_nodes(
+            cells,
+            common=common,
+            seed=seed,
+            identity_source=identity_source,
+            source_vintage=source_vintage,
+            lineage_inputs=lineage_inputs,
+            strict=full_scale,
+        )
+        brma_nodes = (*brma_nodes, *rent_nodes)
+        brma_sources = (*brma_sources, *rent_sources)
+    rfdr_nodes: tuple[Node, ...] = ()
+    rfdr_sources: tuple[SourceRef, ...] = ()
+    if rfdr_localisation_mode == "area":
+        rfdr_nodes, rfdr_sources = _rfdr_area_nodes(
+            cells, common=common, strict=full_scale
+        )
+    property_nodes: tuple[Node, ...] = ()
+    property_sources: tuple[SourceRef, ...] = ()
+    if property_localisation_mode == "price_paid":
+        property_nodes, property_sources = _property_localisation_nodes(
+            cells,
+            common=common,
+            seed=seed,
+            identity_source=identity_source,
+            source_vintage=source_vintage,
+            lineage_inputs=lineage_inputs,
+        )
+    # The shared gate's typed validation artifact is platform-scoped, so it is
+    # consumed by the pool checkpoint (uk.full.pool, no typed outputs), not by
+    # this distribution gate, whose own artifact feeds the bitwise UK chain.
+    gate = Node(
+        id="uk.full.geography_gate",
+        kernel=UKGeographyGateKernel.ref,
+        population="uk.full.expand",
+        inputs=population_slices(cells),
+        params=dict(common),
+        artifact_outputs=(ArtifactOutput("gate", GEOGRAPHY_GATE_TYPE),),
+        description="Validate the UK geography distribution on the identity-keyed assignment.",
     )
     sources = (
-        graph.sources
-        if any(s.name == "uk_ladder" for s in graph.sources)
-        else (
-            *graph.sources,
+        SourceRef(
+            "uk_ladder",
+            "raw-bytes-v1",
+            "Full UK atomic-area ladder with pinned vintages.",
+        ),
+        *(
             SourceRef(
-                "uk_ladder",
+                atomic_area_support.SOURCES[system],
                 "raw-bytes-v1",
-                "Full UK atomic-area ladder with pinned vintages.",
-            ),
-        )
+                f"UK atomic-area support artifact for {system}.",
+            )
+            for system in atomic_area_support.SYSTEMS
+        ),
+        *property_sources,
+        *brma_sources,
+        *rfdr_sources,
     )
-    return replace(graph, nodes=tuple(nodes), sources=tuple(sources))
+    return (
+        identity,
+        *shared[:-1],
+        local_authority,
+        *brma_nodes,
+        *rfdr_nodes,
+        *property_nodes,
+        shared[-1],
+        gate,
+    ), sources
+
+
+def _property_localisation_nodes(
+    cells: dict,
+    *,
+    common: Mapping,
+    seed: int,
+    identity_source: str,
+    source_vintage: str,
+    lineage_inputs: tuple[str, ...],
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """The microcosm#1240 value and band nodes, after derivation and before the gates."""
+    for column in (*_PROPERTY_VALUE_COLUMNS, *_PROPERTY_BAND_COLUMNS):
+        if ("household", column) not in cells:
+            raise ValueError(
+                f"Property localisation needs the household column {column!r} on the pool."
+            )
+    for column in ("constituency_code", "lsoa_code", "local_authority_code"):
+        if ("household", column) not in cells:
+            raise ValueError(
+                f"Property localisation runs after geography derives {column!r}."
+            )
+    stream = (
+        "sha256-u53-v1",
+        property_localisation.PROPERTY_STREAM_EXPERIMENT,
+        0,
+        int(seed),
+    )
+    # The regional home values stage (microcosm#1112) keeps the value it
+    # replaced; the node must receive it to rank owners as it did before.
+    rank_basis_declared = (
+        "household",
+        property_localisation.RANK_BASIS_COLUMN,
+    ) in cells
+    rank_basis_inputs = (
+        (property_localisation.RANK_BASIS_COLUMN,) if rank_basis_declared else ()
+    )
+    value = Node(
+        id="uk.full.property.value",
+        kernel=UKPropertyValueKernel.ref,
+        population="uk.full.expand",
+        inputs=(
+            Slice(
+                "household",
+                tuple(
+                    sorted(
+                        {
+                            *lineage_inputs,
+                            *_PROPERTY_VALUE_COLUMNS,
+                            *rank_basis_inputs,
+                            "constituency_code",
+                        }
+                    )
+                ),
+            ),
+        ),
+        outputs=(
+            Owned(
+                "household",
+                "main_residence_value",
+                cells[("household", "main_residence_value")],
+                rewrite=True,
+            ),
+            Owned(
+                "household",
+                "property_wealth",
+                cells[("household", "property_wealth")],
+                rewrite=True,
+            ),
+        ),
+        sources=(property_localisation.QUANTILES_SOURCE,),
+        params={
+            **common,
+            "source": identity_source,
+            "source_vintage": source_vintage,
+            "stream": stream,
+            "support_stratum_lower": property_localisation.SUPPORT_STRATUM_LOWER,
+            "method": property_localisation.METHOD_VERSION,
+            "rank_basis_declared": rank_basis_declared,
+        },
+        artifact_outputs=(ArtifactOutput("quantiles", PROPERTY_QUANTILE_TYPE),),
+        description="Read each owner clone's home value off its constituency's uprated sale distribution at its region rank.",
+    )
+    band = Node(
+        id="uk.full.property.band",
+        kernel=UKPropertyBandKernel.ref,
+        population="uk.full.expand",
+        inputs=(
+            Slice(
+                "household",
+                tuple(
+                    sorted(
+                        {
+                            *_PROPERTY_BAND_COLUMNS,
+                            "local_authority_code",
+                            "lsoa_code",
+                            "tenure_type",
+                        }
+                    )
+                ),
+            ),
+        ),
+        outputs=(
+            Owned(
+                "household",
+                "council_tax_band",
+                cells[("household", "council_tax_band")],
+                rewrite=True,
+            ),
+        ),
+        sources=(
+            property_localisation.BAND_MIX_SOURCE,
+            property_localisation.SCOTLAND_BAND_MIX_SOURCE,
+        ),
+        params={**common, "method": property_localisation.METHOD_VERSION},
+        artifact_inputs=(
+            ArtifactInput("quantiles", value.id, "quantiles", PROPERTY_QUANTILE_TYPE),
+        ),
+        description=(
+            "Draw each England-and-Wales owner clone's council-tax band from its "
+            "LSOA's VOA mix, and each Scottish owner clone's from its council "
+            "area's CTAXBASE mix, at the same uniform."
+        ),
+    )
+    sources = (
+        SourceRef(
+            property_localisation.QUANTILES_SOURCE,
+            "raw-bytes-v1",
+            "Per-constituency quantile knots of the uprated Land Registry sale values.",
+        ),
+        SourceRef(
+            property_localisation.BAND_MIX_SOURCE,
+            "raw-bytes-v1",
+            "Per-LSOA cumulative VOA council-tax band shares.",
+        ),
+        SourceRef(
+            property_localisation.SCOTLAND_BAND_MIX_SOURCE,
+            "raw-bytes-v1",
+            "Per-council-area chargeable dwellings by council-tax band "
+            "(Scottish Government CTAXBASE), vendored from Chronicle.",
+        ),
+    )
+    return (value, band), sources
+
+
+def _brma_area_nodes(
+    cells: dict, *, common: Mapping
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """The microcosm#1262 area-BRMA node, after the local-authority resolve."""
+
+    for column in _BRMA_AREA_COLUMNS:
+        if ("household", column) not in cells:
+            raise ValueError(
+                f"The area BRMA node needs the household column {column!r} on the pool."
+            )
+    node = Node(
+        id="uk.full.geography.brma",
+        kernel=UKBRMAAreaKernel.ref,
+        population="uk.full.expand",
+        inputs=(Slice("household", tuple(sorted(_BRMA_AREA_COLUMNS))),),
+        outputs=(
+            Owned("household", "brma", cells[("household", "brma")], rewrite=True),
+        ),
+        sources=(brma_area_layer.BRMA_AREA_LAYER_SOURCE,),
+        params={**common, "method": brma_area_layer.METHOD_VERSION},
+        description="Read each placed Great Britain household's BRMA off its assigned area.",
+    )
+    source = SourceRef(
+        brma_area_layer.BRMA_AREA_LAYER_SOURCE,
+        "raw-bytes-v1",
+        "BRMA of every England-and-Wales LSOA and Scottish output area.",
+    )
+    return (node,), (source,)
+
+
+def _rfdr_area_nodes(
+    cells: dict, *, common: Mapping, strict: bool = True
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """The microcosm#1418 area RFDR node, after the local-authority resolve.
+
+    ``strict`` (the build's full scale) keeps the refusal of a support system
+    none of whose households is flagged, as the private-rent node keeps its
+    strict cells; malformed codes refuse at every scale.
+    """
+
+    for column in _RFDR_AREA_COLUMNS:
+        if ("household", column) not in cells:
+            raise ValueError(
+                f"The area RFDR node needs the household column {column!r} on the pool."
+            )
+    column = rfdr_area_layer.RFDR_COLUMN
+    node = Node(
+        id="uk.full.geography.rfdr",
+        kernel=UKRFDRAreaKernel.ref,
+        population="uk.full.expand",
+        inputs=(Slice("household", _RFDR_AREA_COLUMNS),),
+        outputs=(Owned("household", column, "bool"),),
+        sources=(rfdr_area_layer.RFDR_AREA_LAYER_SOURCE,),
+        params={
+            **common,
+            "method": rfdr_area_layer.METHOD_VERSION,
+            "strict_flags": bool(strict),
+        },
+        description="Set each placed household's Rural Fuel Duty Relief flag off its area.",
+    )
+    cells[("household", column)] = "bool"
+    source = SourceRef(
+        rfdr_area_layer.RFDR_AREA_LAYER_SOURCE,
+        "raw-bytes-v1",
+        "Great Britain output areas in the Rural Fuel Duty Relief scheme.",
+    )
+    return (node,), (source,)
+
+
+def _private_rent_nodes(
+    cells: dict,
+    *,
+    common: Mapping,
+    seed: int,
+    identity_source: str,
+    source_vintage: str,
+    lineage_inputs: tuple[str, ...],
+    strict: bool = True,
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """The microcosm#1262 private-rent node, after the area-BRMA node.
+
+    ``strict`` holds at full scale; a sampled development rung relaxes it so
+    that a region its sample leaves without FRS renters ranks and scales on
+    Great Britain's (``private_rent_localisation.localise_rents``).
+    """
+
+    for column in _PRIVATE_RENT_COLUMNS:
+        if ("household", column) not in cells:
+            raise ValueError(
+                f"The private-rent node needs the household column {column!r} on the pool."
+            )
+    stream = (
+        "sha256-u53-v1",
+        private_rent_localisation.STREAM_EXPERIMENT,
+        0,
+        int(seed),
+    )
+    node = Node(
+        id="uk.full.private_rent",
+        kernel=UKPrivateRentKernel.ref,
+        population="uk.full.expand",
+        inputs=(
+            Slice(
+                "household", tuple(sorted({*lineage_inputs, *_PRIVATE_RENT_COLUMNS}))
+            ),
+        ),
+        outputs=(
+            Owned("household", "rent", cells[("household", "rent")], rewrite=True),
+        ),
+        sources=(
+            private_rent_localisation.QUANTILES_SOURCE,
+            private_rent_localisation.COUNTS_SOURCE,
+        ),
+        params={
+            **common,
+            "source": identity_source,
+            "source_vintage": source_vintage,
+            "stream": stream,
+            "method": private_rent_localisation.METHOD_VERSION,
+            "strict_cells": bool(strict),
+        },
+        description=(
+            "Read each Great Britain private renter's rent off its assigned BRMA's "
+            "list at its FRS rank, scaled to its region's FRS level."
+        ),
+    )
+    sources = (
+        SourceRef(
+            private_rent_localisation.QUANTILES_SOURCE,
+            "raw-bytes-v1",
+            "Weekly rent quantiles by BRMA and LHA category B to E.",
+        ),
+        SourceRef(
+            private_rent_localisation.COUNTS_SOURCE,
+            "raw-bytes-v1",
+            "Census private-rented households by FRS region, BRMA and bedrooms.",
+        ),
+    )
+    return (node,), sources
 
 
 def register_uk_population_kernels(registry: KernelRegistry) -> None:
+    from microcosm.build.graph_atomic_geography import (
+        register_atomic_geography_kernels,
+    )
+
     for kernel in (
         UKFamilySampleKernel(),
         UKSampleNormalizationKernel(),
         UKGeographicExpansionKernel(),
+        UKGeographyIdentityKernel(),
+        UKPropertyValueKernel(),
+        UKPropertyBandKernel(),
+        UKLocalAuthorityResolveKernel(),
+        UKBRMAAreaKernel(),
+        UKRFDRAreaKernel(),
+        UKPrivateRentKernel(),
         UKLocationDrawKernel(),
         UKGeographyMappingKernel(),
         UKGeographyGateKernel(),
+        UKPoolCheckpointKernel(),
     ):
         registry.register(kernel)
+    register_atomic_geography_kernels(registry)

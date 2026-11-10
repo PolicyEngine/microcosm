@@ -117,8 +117,9 @@ def uk_dwp_disability_category_rates(
 
     The parameter instant is the fiscal-year label instant: policyengine-uk
     writes the April rates over the whole labelled year. This corrects the
-    tree mismatch identified by uk-data#475 and uses the shared 365.25/7 week
-    conversion identified by uk-data#476.
+    tree mismatch identified by uk-data#475 and uses the spine's shared week
+    conversion identified by uk-data#476, 52 weeks since María's ruling of
+    2026-10-23 (uk-data#531).
     """
 
     dwp = _uk_dwp_tree(year)
@@ -148,8 +149,9 @@ def uk_dwp_disability_flag_rates(year: int) -> UKDWPDisabilityFlagRates:
 
     The parameter instant is the fiscal-year label instant: policyengine-uk
     writes the April rates over the whole labelled year. This keeps the tree
-    correction from uk-data#475 and the shared 365.25/7 week conversion from
-    uk-data#476 aligned with the category derivation.
+    correction from uk-data#475 and the spine's shared week conversion from
+    uk-data#476 (52 weeks since 2026-10-23) aligned with the category
+    derivation.
     """
 
     dwp = _uk_dwp_tree(year)
@@ -250,7 +252,10 @@ def derive_frs_disability(
     )
     values["dla_m_category"] = _category(
         _amount(person, "dla_m_reported"),
-        (("LOWER", category_rates.dla_m_lower), ("HIGHER", category_rates.dla_m_higher)),
+        (
+            ("LOWER", category_rates.dla_m_lower),
+            ("HIGHER", category_rates.dla_m_higher),
+        ),
     )
     values["pip_m_category"] = _category(
         _amount(person, "pip_m_reported"),
@@ -266,11 +271,12 @@ def derive_frs_disability(
             ("ENHANCED", category_rates.pip_dl_enhanced),
         ),
     )
-    total = sum(_amount(person, column) for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS)
+    total = sum(
+        _amount(person, column) for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS
+    )
     dla_sc = _amount(person, "dla_sc_reported")
     aa = _amount(person, "attendance_allowance_reported")
     pip_dl = _amount(person, "pip_dl_reported")
-    afcs = _amount(person, "afcs_reported")
     gap = WEEKS_IN_YEAR
     aa_higher = flag_rates.aa_higher * WEEKS_IN_YEAR - gap
     dla_sc_higher = flag_rates.dla_sc_higher * WEEKS_IN_YEAR - gap
@@ -279,9 +285,19 @@ def derive_frs_disability(
     values["is_enhanced_disabled_for_benefits"] = (
         (aa >= aa_higher) | (dla_sc > dla_sc_higher) | (pip_dl >= pip_dl_enhanced)
     )
+    # The tax credit severe disability condition (CTC Regs 2002 reg 8, WTC
+    # Regs 2002 reg 17) on the categories derived above, so the stored flag
+    # agrees with them by construction and with policyengine-uk's formula
+    # (pe-uk#1946, uk-data#494): the DLA care component at the highest rate,
+    # the PIP daily living component at the enhanced rate, or higher-rate
+    # Attendance Allowance. Lower-rate Attendance Allowance does not count,
+    # and FRS code 8 (the Armed Forces Compensation Scheme) cannot be told
+    # apart from Armed Forces Independence Payment, so it no longer counts.
     values["is_severely_disabled_for_benefits"] = (
-        (aa > 0) | (dla_sc >= dla_sc_higher) | (pip_dl >= pip_dl_enhanced) | (afcs > 0)
-    )
+        (values["aa_category"] == "HIGHER")
+        | (values["dla_sc_category"] == "HIGHER")
+        | (values["pip_dl_category"] == "ENHANCED")
+    ).to_numpy(dtype=bool)
     return values
 
 
