@@ -21,8 +21,9 @@ import pandas as pd
 from microcosm.build.source_lineage import (
     CopyBranch,
     CopyLineage,
-    collapse_replicas,
+    ReplicaFold,
     copy_paths,
+    fold_replicas,
     replica_keys,
 )
 from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
@@ -35,6 +36,7 @@ __all__ = [
     "UK_COPY_LINEAGE",
     "UK_HOUSEHOLD_LINEAGE_COLUMNS",
     "collapse_geographic_clones",
+    "fold_geographic_clones",
     "uk_household_clone_paths",
 ]
 
@@ -154,30 +156,37 @@ def uk_household_clone_paths(
     return [int(source) for source in sources], paths
 
 
-def collapse_geographic_clones(
+def fold_geographic_clones(
     tables: Mapping[str, pd.DataFrame],
     entity: str,
     rows: np.ndarray,
     weights: np.ndarray,
     *,
     inputs: pd.DataFrame,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> ReplicaFold:
     """A fit's training rows with each record's geographic clones folded in.
 
-    A survey record a fit trains on keeps one row, its first among ``rows``,
-    with the weight of all its geographic clones; every other copy (SPI
-    support, high-value support and the CGT steps) stays a row of its own
-    (microcosm#931). The record's key is its true source and its clone path
-    without the geographic branch, through the shared reader
+    A survey record a fit trains on keeps one row, its clone with the lowest
+    id among ``rows``, with the weight of all its geographic clones; every
+    other copy (SPI support, high-value support and the CGT steps) stays a
+    row of its own (microcosm#931). The record's key is its true source and
+    its clone path without the geographic branch, through the shared reader
     (``microcosm.build.source_lineage``); a frame without geographic clones,
     as every spine is today, keeps ``rows`` and ``weights`` value for value.
+
+    The fold orders a key's clones by ``entity``'s id column. Their ids
+    differ only by each clone's offset (the copy-id table's
+    ``geographic_support`` digits on a clone-first spine), so each variant
+    trains on its lowest clone among ``rows``: clone 0 whenever clone 0 is
+    selected and agrees with it, whatever the row order.
 
     ``inputs`` is what the fit reads, one row per row of ``entity``. Clones
     fold only where they agree on it. Clones that differ, through a draw
     keyed on their own ids or a stage run per area, stay rows of their own,
-    each variant with its clones' summed weight, so the fit sees each
-    clone's value at its share. Returns the kept rows and the weights over
-    every row of ``entity``.
+    each variant on its lowest-id clone with its clones' summed weight, so
+    the fit sees each clone's value at its share. Returns the shared
+    :class:`~microcosm.build.source_lineage.ReplicaFold` over every row of
+    ``entity``.
     """
 
     keys = replica_keys(
@@ -187,7 +196,28 @@ def collapse_geographic_clones(
         UK_COPY_LINEAGE,
         merge=(GEOGRAPHIC_SUPPORT_BRANCH,),
     )
-    return collapse_replicas(keys, rows, weights, inputs=inputs)
+    ids = tables[entity][UK_NATIONAL_SCHEMA.entity_id_column(entity)].to_numpy()
+    return fold_replicas(keys, rows, weights, inputs=inputs, order=ids)
+
+
+def collapse_geographic_clones(
+    tables: Mapping[str, pd.DataFrame],
+    entity: str,
+    rows: np.ndarray,
+    weights: np.ndarray,
+    *,
+    inputs: pd.DataFrame,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The kept rows and weights of :func:`fold_geographic_clones`.
+
+    Each survey record trains on its lowest-id clone among ``rows``, with
+    the weight of the clones that agree with it on ``inputs``; clones that
+    differ stay rows of their own. Returns the kept rows and the weights
+    over every row of ``entity``.
+    """
+
+    fold = fold_geographic_clones(tables, entity, rows, weights, inputs=inputs)
+    return fold.kept, fold.weights
 
 
 def without_geographic_branch(
