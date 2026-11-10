@@ -1,7 +1,14 @@
 """Tests split from packages/microcosm-build/tests/test_uk_cgt_imputation.py."""
 
 # ruff: noqa: F403, F405
-from microcosm.build.stochastic_assignment import stable_identity_uniform
+from microcosm.build.stochastic_assignment import (
+    binomial_share_tolerance,
+    keyed_tie_order,
+    keyed_tie_uniforms,
+    stable_identity_uniform,
+    stable_identity_uniforms,
+)
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.cgt_imputation import UK_CGT_IMPUTATION_SEED
 from test_support.microcosm_build.uk_cgt_imputation import *
 
@@ -1744,3 +1751,226 @@ class TestKeyedWalkOffsets:
         for label, (uniforms, members) in draws.items():
             assert shuffled_draws[label][0] == uniforms, label
             np.testing.assert_array_equal(shuffled_draws[label][1], members)
+
+
+#: The rank ties' salt on the helper frames, built for 2023.
+_RANK_TIE = {
+    "seed": UK_CGT_IMPUTATION_SEED,
+    "salt": "hmrc_cgt_gains_spine:rank_tie:2023",
+}
+
+
+def _redrawn(frame: Frame) -> pd.Series:
+    result, _ = impute_uk_capital_gains_with_report(
+        frame,
+        _distribution(cell_people=300.0),
+        PARAMETERS,
+        conditioning=load_hmrc_cgt_conditioning_facts(),
+    )
+    person = result.table("person")
+    return pd.Series(
+        person["capital_gains"].to_numpy(), index=person["person_id"].to_numpy()
+    ).sort_index()
+
+
+class TestRankTies:
+    """Gainers tied on a rank take the order of one identity-keyed uniform
+    each, then of their person ids, not of their ids alone, which handed
+    every tie to the lowest id range: the first copy or clone of a household
+    (microcosm#931)."""
+
+    def test_ranked_orders_ties_by_the_keyed_uniform_then_person_id(self) -> None:
+        person_id = np.asarray([40, 41, 42, 43, 44, 45, 46], dtype=np.int64)
+        key = np.asarray([0.9, 0.5, 0.5, 0.5, 0.5, 0.2, 0.7])
+        tie = keyed_tie_uniforms(person_id, **_RANK_TIE)
+        indices = np.arange(len(key))
+
+        ranked = cgt_imputation._ranked(
+            indices, person_id=person_id, existing=key, tie=tie
+        )
+
+        # The shared helper's order on the negated key.
+        np.testing.assert_array_equal(
+            ranked, keyed_tie_order(-key, person_id, **_RANK_TIE)
+        )
+        tied = person_id[ranked[2:6]]
+        assert tied.tolist() == person_id[1:5][np.argsort(tie[1:5])].tolist()
+        assert tied.tolist() != [41, 42, 43, 44]
+        # Without the uniforms, person_id alone breaks ties, as before.
+        np.testing.assert_array_equal(
+            cgt_imputation._ranked(indices, person_id=person_id, existing=key),
+            np.lexsort((person_id, -key)),
+        )
+        # On distinct keys the uniforms move nothing.
+        distinct = np.asarray([0.9, 0.6, 0.5, 0.4, 0.3, 0.2, 0.7])
+        np.testing.assert_array_equal(
+            cgt_imputation._ranked(
+                indices, person_id=person_id, existing=distinct, tie=tie
+            ),
+            np.lexsort((person_id, -distinct)),
+        )
+
+    def test_a_plan_and_the_remainder_give_ties_the_keyed_order_reversed(
+        self,
+    ) -> None:
+        # Both walk the rank ascending, so the member of a tie with the
+        # higher uniform takes the lower stratum, where the id order gave it
+        # to the higher person id.
+        person_id = np.arange(10, 16, dtype=np.int64)
+        existing = np.asarray([1.0, 2.0, 2.0, 2.0, 3.0, 4.0])
+        weights = np.full(6, 100.0)
+        tie = keyed_tie_uniforms(person_id, **_RANK_TIE)
+        tied = np.asarray([1, 2, 3])
+        keyed_low_first = tied[np.argsort(-tie[tied])]
+        assert keyed_low_first.tolist() != tied[::-1].tolist()
+        plan = _CellPlan(
+            1_000_000, 2_000_000.0, 1_000_000.0, 9_000.0, 1_420_000.0, False, False
+        )
+
+        def strata(gains: np.ndarray) -> list[int]:
+            return tied[np.argsort(gains[tied])].tolist()
+
+        for tie_argument, expected in ((tie, keyed_low_first), (None, tied[::-1])):
+            gains = np.zeros(6)
+            _draw_plan_amounts(
+                plan,
+                np.arange(6),
+                person_id=person_id,
+                existing=existing,
+                weights=weights,
+                rng=cgt_imputation._KeyedOffset(0.5),
+                new_gains=gains,
+                tie=tie_argument,
+            )
+            assert strata(gains) == expected.tolist()
+
+        surface = advani_summers_rows(load_advani_summers_distribution())
+        band_index = advani_summers_band_index(surface, np.full(6, 30_000.0))
+        for tie_argument, expected in ((tie, keyed_low_first), (None, tied[::-1])):
+            gains = existing.copy()
+            _map_remainder_amounts(
+                remainder=np.arange(6),
+                existing=existing,
+                person_id=person_id,
+                person_weight=weights,
+                band_index=band_index,
+                rows=surface,
+                annual_exempt_amount=3_000.0,
+                new_gains=gains,
+                tie=tie_argument,
+            )
+            assert strata(gains) == expected.tolist()
+
+    def test_clone_zero_ranks_first_among_tied_clones_at_its_share(self) -> None:
+        # Sixty source gainers, each as three geographic clones tied on the
+        # rank key: by person id, clone 0 ranked first in every family; keyed
+        # on each clone's own id, in about a third of them, inside the
+        # four-sigma binomial band (design verifier P10).
+        families, clone_count = 60, 3
+        sources = np.arange(1, families + 1, dtype=np.int64) * 1_000 + 1
+        person_id = np.concatenate(
+            [
+                sources,
+                *(
+                    copy_id_table.mint(sources, "geographic_support", k)
+                    for k in range(1, clone_count)
+                ),
+            ]
+        )
+        clone = np.repeat(np.arange(clone_count), families)
+        key = np.tile(np.linspace(0.1, 0.9, families), clone_count)
+        indices = np.arange(len(key))
+
+        def firsts(tie) -> np.ndarray:
+            ranked = cgt_imputation._ranked(
+                indices, person_id=person_id, existing=key, tie=tie
+            )
+            blocks = ranked.reshape(families, clone_count)
+            assert (np.ptp(key[blocks], axis=1) == 0.0).all()
+            return clone[blocks[:, 0]]
+
+        share = float((firsts(keyed_tie_uniforms(person_id, **_RANK_TIE)) == 0).mean())
+        band = binomial_share_tolerance(
+            target=1 / clone_count, rows=families, sigma=4.0
+        )
+        assert abs(share - 1 / clone_count) <= band
+        assert float((firsts(None) == 0).mean()) == 1.0
+
+    def test_every_walk_plan_and_the_remainder_rank_on_one_keyed_draw(
+        self, monkeypatch
+    ) -> None:
+        # One uniform per person, keyed on person_id under the stage's seed
+        # and salted with the build period, reaches every _ranked call.
+        frame = _cells_frame((*_KEYED_CELLS, _KEYED_EARLY_CELL))
+        calls: list[np.ndarray | None] = []
+        ranked = cgt_imputation._ranked
+
+        def recording(indices, **kwargs):
+            calls.append(kwargs["tie"])
+            return ranked(indices, **kwargs)
+
+        monkeypatch.setattr(cgt_imputation, "_ranked", recording)
+        _redrawn(frame)
+
+        person_id = frame.table("person")["person_id"].to_numpy()
+        expected = stable_identity_uniforms(person_id, **_RANK_TIE)
+        # Six cell walks, the pooled walk, the plans and the remainder's bands.
+        assert len(calls) > 7
+        for tie in calls:
+            np.testing.assert_array_equal(tie, expected)
+
+    def test_tied_rank_keys_redraw_whatever_the_row_order(self) -> None:
+        # Wealth in six-row families, as the high-value copies carry it, ties
+        # the blended rank key; the redraw is still the same, gainer by
+        # gainer, under a row permutation.
+        rng = np.random.default_rng(44)
+        rows = 1_200
+        wealth = np.repeat(rng.lognormal(11.0, 1.5, rows // 6), 6)
+        frame = _frame(
+            rows,
+            gains=np.where(rng.random(rows) < 0.6, rng.lognormal(10, 1.4, rows), 0.0),
+            incomes=rng.lognormal(10.6, 0.7, rows),
+            wealth=wealth,
+            weights=rng.uniform(50.0, 400.0, rows),
+        )
+        person = frame.table("person")
+        gainer = person["capital_gains"].to_numpy() > 0.0
+        key, _ = cgt_imputation._allocation_rank_key(
+            person, frame.table("household"), person["capital_gains"].to_numpy()
+        )
+        assert pd.Series(key[gainer]).duplicated().any()
+        order = np.random.default_rng(5).permutation(rows)
+        shuffled = uk_national_frame(
+            person=person.iloc[order].reset_index(drop=True),
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            time_period="2023",
+            household_weights=frame.weights_for("household").values,
+        )
+
+        def redrawn(frame: Frame) -> pd.Series:
+            result, _ = impute_uk_capital_gains_with_report(
+                frame,
+                _real_distribution(),
+                PARAMETERS,
+                conditioning=load_hmrc_cgt_conditioning_facts(),
+            )
+            drawn = result.table("person")
+            return pd.Series(
+                drawn["capital_gains"].to_numpy(), index=drawn["person_id"].to_numpy()
+            ).sort_index()
+
+        pd.testing.assert_series_equal(
+            redrawn(shuffled), redrawn(frame), check_exact=True
+        )
+
+    def test_untied_rank_keys_redraw_as_the_id_order_did(self, monkeypatch) -> None:
+        # Equal wealth leaves the prior ranking in charge, and distinct priors
+        # tie no key, so the redraw is the id order's bit for bit; the
+        # uniforms reorder exact ties alone.
+        frame = _cells_frame((*_KEYED_CELLS, _KEYED_EARLY_CELL))
+        keyed = _redrawn(frame)
+        monkeypatch.setattr(
+            cgt_imputation, "keyed_tie_uniforms", lambda *args, **kwargs: None
+        )
+        pd.testing.assert_series_equal(_redrawn(frame), keyed, check_exact=True)

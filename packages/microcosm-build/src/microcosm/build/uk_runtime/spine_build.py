@@ -839,6 +839,13 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
     for stage in stages:
         stage_seeds: dict[str, int] = {}
         for operation in stage.operations:
+            if operation.kind == "allocate_property_rental_income":
+                # The receipts walk keys its tie-break on person ids under its
+                # walk seed and the tie salt (microcosm#931).
+                walk_seed = operation.parameters.get("walk_seed")
+                if isinstance(walk_seed, int):
+                    stage_seeds[str(operation.parameters["tie_salt"])] = walk_seed
+                continue
             output = operation.parameters.get("output")
             seed = operation.parameters.get("seed")
             if seed is None:
@@ -892,6 +899,13 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                 ):
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "top_up_to_stock":
+                    stage_seeds[str(operation.parameters["salt"])] = seed
+                elif operation.kind in (
+                    "split_top_wealth_support_households",
+                    "split_top_value_owner_households",
+                ):
+                    # The support splits' tie-breaks are keyed on household
+                    # ids under their salts (microcosm#931).
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind in (
                     "split_household_isa_balances",

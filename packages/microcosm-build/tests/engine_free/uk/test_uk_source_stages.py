@@ -1145,9 +1145,22 @@ class TestE3ManifestLockstep:
         stages = load_country_spec("uk").sources.stage_map()
 
         assert stages["cgt_incidence_clone"].operations[1].parameters["seed"] == 0
-        # The support split is deterministic: no seed, no salt (microcosm#1045).
-        assert "seed" not in stages["cgt_support_split"].operations[0].parameters
-        assert "salt" not in stages["cgt_support_split"].operations[0].parameters
+        # The support splits key their walks' tie-breaks under a seed and salt
+        # of their own, and the receipts walk under its walk seed and a tie
+        # salt (microcosm#931); before, the splits declared neither.
+        for stage, salt in (
+            ("cgt_support_split", "cgt_support_split:wealth_tie"),
+            ("high_value_home_support", "high_value_home_support:value_tie"),
+        ):
+            parameters = stages[stage].operations[0].parameters
+            assert (parameters["seed"], parameters["salt"]) == (0, salt)
+        (receipts,) = [
+            operation
+            for operation in stages["property_components"].operations
+            if operation.kind == "allocate_property_rental_income"
+        ]
+        assert receipts.parameters["walk_seed"] == 0
+        assert receipts.parameters["tie_salt"] == "allocate_property_rental_income:tie"
         assert (
             stages["hmrc_cgt_gains_spine"].operations[4].parameters["seed_base"] == 552
         )

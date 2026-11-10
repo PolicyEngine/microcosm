@@ -10,7 +10,10 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
-from microcosm.build.stochastic_assignment import stable_identity_uniform
+from microcosm.build.stochastic_assignment import (
+    stable_identity_uniform,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime import cgt_asset_type
 from microcosm.build.uk_runtime.cgt_asset_type import (
     CGT_ASSET_TYPE_COLUMN,
@@ -1033,6 +1036,107 @@ class TestAssignment:
         # Without the split's arms the stage has nothing to type residential.
         with pytest.raises(ValueError, match="run cgt_residential_split"):
             assign_uk_cgt_asset_types(frame, facts, PARAMETERS, BADR_PARAMETERS)
+
+
+class TestKeyedTies:
+    """The BADR walk and the main asset type walk order persons tied on gain
+    by a uniform keyed on their own person_id, then by id, each under its own
+    salt and the BADR seed (microcosm#931). Gains are plan amounts, so ties
+    are not expected on the spine; these frames force them."""
+
+    @staticmethod
+    def _tied_frame() -> tuple[Frame, HMRCCGTAssetTypeFacts]:
+        gains = _synthetic_gains()
+        tied = np.flatnonzero((gains > 12_000.0) & (gains < 20_000.0))[:30]
+        gains[tied] = 15_000.0
+        weights = np.full(gains.size, 60.0)
+        return _frame(gains, weights=weights), _synthetic_facts(gains, weights)
+
+    @staticmethod
+    def _recorded(monkeypatch, frame, facts, **kwargs):
+        calls: list[tuple[str, int, np.ndarray, np.ndarray, np.ndarray]] = []
+        order = cgt_asset_type.keyed_tie_order
+
+        def recording(primary, ids, *, seed, salt):
+            result = order(primary, ids, seed=seed, salt=salt)
+            calls.append((salt, seed, np.asarray(primary), np.asarray(ids), result))
+            return result
+
+        with monkeypatch.context() as patch:
+            patch.setattr(cgt_asset_type, "keyed_tie_order", recording)
+            result, _ = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS, **kwargs)
+        return result, calls
+
+    def test_both_walks_break_gain_ties_on_their_own_keyed_uniforms(
+        self, monkeypatch
+    ) -> None:
+        frame, facts = self._tied_frame()
+        _, calls = self._recorded(monkeypatch, frame, facts)
+
+        salts = {salt for salt, *_ in calls}
+        assert salts == {
+            "assign_badr_qualifying_gains:tie:2024",
+            "assign_main_asset_type:tie:2024",
+        }
+        reordered = set()
+        for salt, seed, primary, ids, result in calls:
+            assert seed == 555
+            uniforms = stable_identity_uniforms(ids, seed=seed, salt=salt)
+            np.testing.assert_array_equal(result, np.lexsort((ids, uniforms, primary)))
+            if not np.array_equal(result, np.lexsort((ids, primary))):
+                reordered.add(salt)
+        # Both walks met the forced tie and ordered it otherwise than by id.
+        assert reordered == salts
+        _, reseeded = self._recorded(monkeypatch, frame, facts, badr_seed=999)
+        assert {seed for _, seed, *_ in reseeded} == {999}
+        declared = cgt_asset_type_operation_parameters()
+        assert (
+            "assign_badr_qualifying_gains:tie:<period>"
+            in (declared["assign_badr_qualifying_gains"]["realization"])
+        )
+        main = declared["assign_main_asset_type"]["realization"]
+        assert "assign_main_asset_type:tie:<period>" in main
+        assert "no seed" not in main
+
+    def test_distinct_gains_assign_as_the_id_order_did(self, monkeypatch) -> None:
+        # The tie-break only reorders exact ties: on distinct gains both walks
+        # run in the id order's sequence and the stage's output and evidence
+        # are the same bit for bit.
+        gains = _synthetic_gains()
+        weights = np.full(gains.size, 60.0)
+        facts = _synthetic_facts(gains, weights)
+        frame = _frame(gains, weights=weights)
+        keyed, keyed_summary = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
+        monkeypatch.setattr(
+            cgt_asset_type,
+            "keyed_tie_order",
+            lambda primary, ids, **_: np.lexsort((np.asarray(ids), primary)),
+        )
+        by_id, by_id_summary = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
+
+        pd.testing.assert_frame_equal(keyed.table("person"), by_id.table("person"))
+        assert keyed_summary.evidence() == by_id_summary.evidence()
+
+    def test_tied_gains_do_not_depend_on_the_row_order(self) -> None:
+        frame, facts = self._tied_frame()
+        person = frame.table("person")
+        order = np.random.default_rng(3).permutation(len(person))
+        shuffled = uk_national_frame(
+            person=person.iloc[order].reset_index(drop=True),
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            time_period="2024",
+            household_weights=frame.weights_for("household").values,
+        )
+
+        first, _ = _assign(frame, facts, PARAMETERS, BADR_PARAMETERS)
+        second, _ = _assign(shuffled, facts, PARAMETERS, BADR_PARAMETERS)
+
+        columns = [CGT_ASSET_TYPE_COLUMN, CGT_BADR_GAINS_COLUMN]
+        pd.testing.assert_frame_equal(
+            first.table("person").set_index("person_id").sort_index()[columns],
+            second.table("person").set_index("person_id").sort_index()[columns],
+        )
 
 
 class TestStageContract:

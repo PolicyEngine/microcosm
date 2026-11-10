@@ -7,6 +7,11 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.stochastic_assignment import (
+    binomial_share_tolerance,
+    stable_identity_uniforms,
+)
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime import high_value_home_support as hv
 from microcosm.build.uk_runtime.household_lineage import (
     HIGH_VALUE_SUPPORT_COPY_COLUMN,
@@ -20,6 +25,9 @@ from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_clone_first_frames import (
     assert_copy_ids_follow_lineage,
 )
+
+#: The stratum's declared tie-break, which every direct call passes.
+TIE = {"seed": hv.HIGH_VALUE_SUPPORT_TIE_SEED, "salt": hv.HIGH_VALUE_SUPPORT_TIE_SALT}
 
 
 def _frame(n: int = 40):
@@ -71,6 +79,7 @@ def test_selection_takes_the_top_stratum_of_each_region() -> None:
         tenure_type=household["tenure_type"].to_numpy(),
         value=household["main_residence_value"].to_numpy(),
         stratum_lower=0.9,
+        **TIE,
     )
     # 38 equal-weight owners: mid-ranks (i + 0.5) / 38 >= 0.9 for the top four.
     assert int(selected.sum()) == 4
@@ -86,6 +95,166 @@ def test_selection_takes_the_top_stratum_of_each_region() -> None:
         and row["owner_households"] == 38
         and row["households_selected"] == 4
     )
+
+
+def _owners(values, *, ids=None, region="LONDON"):
+    """Equal-weight owners in one region, the selection's inputs."""
+
+    n = len(values)
+    return {
+        "household_ids": np.arange(1, n + 1, dtype=np.int64) if ids is None else ids,
+        "weights": np.full(n, 10.0),
+        "region": np.full(n, region, dtype=object),
+        "tenure_type": np.full(n, "OWNED_OUTRIGHT", dtype=object),
+        "value": np.asarray(values, dtype=float),
+    }
+
+
+def _id_ranked_stratum(inputs, stratum_lower: float) -> np.ndarray:
+    """The stratum as the rank took it before (microcosm#931): ties by id."""
+
+    ids = np.asarray(inputs["household_ids"])
+    weight = np.asarray(inputs["weights"], dtype=float)
+    region = np.asarray(inputs["region"]).astype(str)
+    values = np.asarray(inputs["value"], dtype=float)
+    selected = np.zeros(len(ids), dtype=bool)
+    for code in sorted(set(region)):
+        pool = np.flatnonzero((region == code) & (values > 0) & (weight > 0))
+        order = pool[np.lexsort((ids[pool], values[pool]))]
+        cumulative = np.cumsum(weight[order])
+        mid_rank = (cumulative - weight[order] / 2.0) / float(weight[order].sum())
+        selected[order[mid_rank >= stratum_lower]] = True
+    return selected
+
+
+def test_a_value_tie_straddling_the_stratum_is_ranked_in_keyed_order() -> None:
+    # Twenty equal-weight owners, the top three tied on value: at 0.9 the two
+    # highest mid-ranks are selected, so the cut falls inside the tie group,
+    # and the two of the three ranked last in keyed order are selected, not
+    # the two highest ids (microcosm#931).
+    values = [*(100_000.0 * (i + 1) for i in range(17)), *([3_000_000.0] * 3)]
+    inputs = _owners(values)
+    tied = np.asarray([18, 19, 20])
+    keyed = tied[np.lexsort((tied, stable_identity_uniforms(tied, **TIE)))]
+    assert sorted(keyed[1:].tolist()) != [19, 20]
+
+    selected, (row,) = hv.select_high_value_support_households(
+        **inputs, stratum_lower=0.9, **TIE
+    )
+
+    ids = inputs["household_ids"]
+    assert sorted(ids[selected].tolist()) == sorted(keyed[1:].tolist())
+    assert row["households_selected"] == 2 and row["selected_mass"] == 20.0
+    assert ids[_id_ranked_stratum(inputs, 0.9)].tolist() == [19, 20]
+    for seed in range(5):
+        rows = np.random.default_rng(seed).permutation(len(values))
+        permuted, (permuted_row,) = hv.select_high_value_support_households(
+            **{key: np.asarray(value)[rows] for key, value in inputs.items()},
+            stratum_lower=0.9,
+            **TIE,
+        )
+        assert permuted.tolist() == selected[rows].tolist()
+        assert permuted_row == row
+
+
+def test_distinct_values_rank_the_stratum_as_the_id_rank_did_bit_for_bit() -> None:
+    # The tie-break only reorders exact ties, so on distinct values every
+    # region's stratum is the one the id rank took, down to the household
+    # whose mid-rank sits nearest the cut, in each of forty regions
+    # (microcosm#931).
+    rng = np.random.default_rng(20261109)
+    n = 2_000
+    inputs = {
+        "household_ids": rng.choice(10**8, n, replace=False).astype(np.int64),
+        "weights": rng.uniform(1.0, 50.0, n),
+        "region": rng.choice([f"R{code:02d}" for code in range(40)], n).astype(object),
+        "tenure_type": np.full(n, "OWNED_OUTRIGHT", dtype=object),
+        "value": rng.permutation(n) * 1_000.0 + 50_000.0,
+    }
+
+    selected, _ = hv.select_high_value_support_households(**inputs, **TIE)
+
+    np.testing.assert_array_equal(
+        selected, _id_ranked_stratum(inputs, hv.HIGH_VALUE_SUPPORT_STRATUM_LOWER)
+    )
+    assert 0 < int(selected.sum()) < n
+
+
+def test_tied_clones_enter_the_stratum_at_their_share() -> None:
+    # Sixty regions, each of seventeen owners below one source household's
+    # three geographic clones, tied on value at the top: the stratum takes
+    # one clone a region. The rank by id took the last clone every time;
+    # keyed on each clone's own id, clone 0 enters at about a third of the
+    # regions, inside the four-sigma binomial band (design verifier P10;
+    # microcosm#931).
+    families, clone_count = 60, 3
+    parts: list[dict[str, np.ndarray]] = []
+    clone_index: list[np.ndarray] = []
+    for family in range(families):
+        source = np.int64(10_000 + family)
+        clones = np.asarray(
+            [
+                source,
+                *(
+                    copy_id_table.mint(np.asarray([source]), "geographic_support", k)[0]
+                    for k in range(1, clone_count)
+                ),
+            ],
+            dtype=np.int64,
+        )
+        below = np.arange(1, 18, dtype=np.int64) + 100 * family
+        parts.append(
+            _owners(
+                [*(1_000.0 * (i + 1) for i in range(17)), *([90_000.0] * clone_count)],
+                ids=np.concatenate([below, clones]),
+                region=f"R{family:02d}",
+            )
+        )
+        clone_index.append(np.asarray([-1] * 17 + list(range(clone_count))))
+    inputs = {key: np.concatenate([part[key] for part in parts]) for key in parts[0]}
+    clone = np.concatenate(clone_index)
+
+    selected, rows = hv.select_high_value_support_households(**inputs, **TIE)
+
+    assert [row["households_selected"] for row in rows] == [1] * families
+    share = float((clone[selected] == 0).mean())
+    band = binomial_share_tolerance(target=1 / clone_count, rows=families, sigma=4.0)
+    assert abs(share - 1 / clone_count) <= band
+    by_id = _id_ranked_stratum(inputs, hv.HIGH_VALUE_SUPPORT_STRATUM_LOWER)
+    assert float((clone[by_id] == clone_count - 1).mean()) == 1.0
+
+
+def test_the_stage_ranks_on_the_declared_tie_break(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    select = hv.select_high_value_support_households
+
+    def recording(**kwargs):
+        calls.append(kwargs)
+        return select(**kwargs)
+
+    monkeypatch.setattr(hv, "select_high_value_support_households", recording)
+    hv.split_high_value_support_households(_frame(), stratum_lower=0.9)
+
+    ((_, payload),) = hv.high_value_support_operation_parameters()
+    assert hv.high_value_support_tie_break() == (payload["seed"], payload["salt"])
+    assert hv.high_value_support_tie_break() == (0, "high_value_home_support:value_tie")
+    (call,) = calls
+    assert (call["seed"], call["salt"]) == hv.high_value_support_tie_break()
+    assert payload["stratum_rule"] == (
+        "within each FRS region, owner households (tenure owned outright or with "
+        "a mortgage, main_residence_value > 0, positive weight) ordered by "
+        "main_residence_value ascending, households tied on it in ascending "
+        "order of a uniform keyed on their own household_id under seed and salt, "
+        "then household_id ascending; a household whose weighted mid-rank "
+        "(cumulative weight before it plus half its own, over the region's owner "
+        "weight) is at or above stratum_lower is selected"
+    )
+    assert payload["values"] == (
+        "every column copied unchanged; the stratum's tie-break is the stage's "
+        "only draw"
+    )
+    with pytest.raises(TypeError, match="seed"):
+        select(**_owners([1.0, 2.0]))
 
 
 def test_split_copies_whole_households_and_conserves_mass() -> None:
@@ -476,6 +645,13 @@ def test_stage_manifest_restates_the_code_dictionary() -> None:
     )
     transform = hv.UKHighValueHomeSupportStageTransform(stage=stage)
     assert transform.output_columns() == tuple(stage.outputs)
+    # The manifest declares the stratum's tie-break the stage walks on
+    # (microcosm#931).
+    (operation,) = stage.operations
+    assert (
+        operation.parameters["seed"],
+        operation.parameters["salt"],
+    ) == hv.high_value_support_tie_break()
     names = [s.stage for s in spec.sources.stages]
     assert names.index("regional_property_uprating") + 1 == names.index(
         hv.HIGH_VALUE_SUPPORT_STAGE_NAME

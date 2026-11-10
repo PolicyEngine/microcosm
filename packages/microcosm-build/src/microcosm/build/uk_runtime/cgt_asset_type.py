@@ -106,7 +106,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.stochastic_assignment import stable_identity_uniform
+from microcosm.build.stochastic_assignment import (
+    keyed_tie_order,
+    stable_identity_uniform,
+)
 from microcosm.build.uk_runtime.cgt_imputation import (
     UKCGTPolicyParameters,
     uk_cgt_policy_parameters,
@@ -258,8 +261,10 @@ CGT_ASSET_TYPE_LOG_SIGMA = 1.5
 
 #: The BADR seed is combined with the build period, as the amounts stage
 #: does; distinct from the amounts stage's 552 so the two stages never share
-#: a draw. The residential flag draws nothing since microcosm#1063: the
-#: ``cgt_residential_split`` stage carries its probability as weight.
+#: a draw. It also keys the tie-breaks of the BADR walk and the main asset
+#: type walk, each under its own salt (microcosm#931). The residential flag
+#: draws nothing since microcosm#1063: the ``cgt_residential_split`` stage
+#: carries its probability as weight.
 CGT_BADR_FLAG_SEED = 555
 
 _BISECTION_ITERATIONS = 200
@@ -1034,6 +1039,9 @@ def _assign_badr_claims(
     one receipt row per band. Each band's walk offset is an identity-keyed
     uniform on its bounds (``_badr_band_offset``), so it depends neither on
     which bands carry a target nor on which other bands the facts declare.
+    The walk runs in ascending gain order, persons tied on gain in the order
+    of a uniform keyed on their person_id, salted with the build period, then
+    of their ids (``keyed_tie_order``; microcosm#931).
     """
 
     qualifying = np.zeros(gains.shape)
@@ -1117,7 +1125,12 @@ def _assign_badr_claims(
                 np.log(band_gains) - centre, intercept, slope, band_offset
             )
             amounts = band_gains
-        order = np.lexsort((person_id[rows], band_gains))
+        order = keyed_tie_order(
+            band_gains,
+            person_id[rows],
+            seed=seed,
+            salt=f"assign_badr_qualifying_gains:tie:{int(time_period)}",
+        )
         flags = _weighted_systematic_flags(
             probabilities,
             band_weights,
@@ -1538,8 +1551,15 @@ def assign_uk_cgt_asset_types(
         )
         stakes = person_weight[rows] * gains[rows]
         # Largest gain first, so the rows that could move the composition most
-        # are placed while every later row can still repay the balance.
-        order = np.lexsort((person_id[rows], -gains[rows]))
+        # are placed while every later row can still repay the balance; persons
+        # tied on gain take the order of a uniform keyed on their person_id,
+        # then of their ids (microcosm#931).
+        order = keyed_tie_order(
+            -gains[rows],
+            person_id[rows],
+            seed=badr_seed,
+            salt=f"assign_main_asset_type:tie:{int(time_period)}",
+        )
         choice, balances = _diffuse_types(type_probabilities, stakes, order)
         remainder_types[in_status] = choice
         mass = float(stakes.sum())
@@ -1671,7 +1691,10 @@ def assign_uk_cgt_asset_types(
         "log_sigma": CGT_ASSET_TYPE_LOG_SIGMA,
         "median_anchor_gbp": medians,
         "composition_by_claimant_status": status_reports,
-        "realization": "error diffusion in descending (gain, person_id) order",
+        "realization": (
+            "error diffusion in descending gain order, ties in ascending order of "
+            "a uniform keyed on person_id, then person_id ascending"
+        ),
         "achieved_median_gain_gbp": {
             asset_type_name: _weighted_median(
                 gains[asset_type == asset_type_name],
@@ -1941,13 +1964,16 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
                 "Table 4.1's tax column to within half a percent"
             ),
             "realization": (
-                "weighted systematic sampling within each band in ascending "
-                "(gain, person_id) order with one identity-keyed offset per "
-                "band, keyed on its bounds (<lower bound>|<exclusive upper "
-                "bound>, open for the top band) and salted "
-                "assign_badr_qualifying_gains:offset:<period>, with no stream "
-                "order, so a band's offset depends neither on which bands carry "
-                "a target nor on which other bands the facts declare"
+                "weighted systematic sampling within each band in ascending gain "
+                "order, persons tied on gain in ascending order of a uniform "
+                "keyed on person_id under seed and salted "
+                "assign_badr_qualifying_gains:tie:<period>, then person_id "
+                "ascending, with one identity-keyed offset per band, keyed on "
+                "its bounds (<lower bound>|<exclusive upper bound>, open for the "
+                "top band) and salted assign_badr_qualifying_gains:offset:<period>, "
+                "with no stream order, so a band's offset depends neither on "
+                "which bands carry a target nor on which other bands the facts "
+                "declare"
             ),
             "seed": CGT_BADR_FLAG_SEED,
             "seed_mixing": "seed combined with the build period",
@@ -2017,13 +2043,15 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
             "weight_fitting_iterations": _SHARE_FIT_ITERATIONS,
             "weight_fitting_tolerance": _SHARE_FIT_TOLERANCE,
             "realization": (
-                "error diffusion per claimant status in descending (gain, "
-                "person_id) order: each person adds weight x gain x type "
-                "probability to a running balance per type and takes the type it "
-                "may hold with the largest balance, which is drawn down by the "
-                "whole weight x gain, so the realised gains by type track the "
-                "fitted composition instead of following the heaviest rows; "
-                "deterministic, no seed"
+                "error diffusion per claimant status in descending gain order, "
+                "persons tied on gain in ascending order of a uniform keyed on "
+                "person_id under the assign_badr_qualifying_gains seed and salted "
+                "assign_main_asset_type:tie:<period>, then person_id ascending: "
+                "each person adds weight x gain x type probability to a running "
+                "balance per type and takes the type it may hold with the largest "
+                "balance, which is drawn down by the whole weight x gain, so the "
+                "realised gains by type track the fitted composition instead of "
+                "following the heaviest rows; that tie-break is its only draw"
             ),
             "output_column": CGT_ASSET_TYPE_COLUMN,
             "value_domain": list(CGT_ASSET_TYPE_DOMAIN),

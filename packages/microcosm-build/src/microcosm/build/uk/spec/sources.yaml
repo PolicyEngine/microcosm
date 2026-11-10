@@ -3267,13 +3267,15 @@ stages:
   - kind: split_top_value_owner_households
     stratum_lower: 0.95
     copies: 6
-    stratum_rule: within each FRS region, owner households (tenure owned outright or with a mortgage, main_residence_value > 0, positive weight) ordered by main_residence_value ascending then household_id ascending; a household whose weighted mid-rank (cumulative weight before it plus half its own, over the region's owner weight) is at or above stratum_lower is selected
+    stratum_rule: within each FRS region, owner households (tenure owned outright or with a mortgage, main_residence_value > 0, positive weight) ordered by main_residence_value ascending, households tied on it in ascending order of a uniform keyed on their own household_id under seed and salt, then household_id ascending; a household whose weighted mid-rank (cumulative weight before it plus half its own, over the region's owner weight) is at or above stratum_lower is selected
+    seed: 0
+    salt: high_value_home_support:value_tie
     copy_rule: every selected household becomes copies rows at weight / copies, except where none of the 64 heaviest households left whole can carry the exact-total correction, when the shared fallback can put it on a root or copy, off weight / copies by about one ulp of the total weight
     id_remapping: copy-id table field high_value_support; copy k takes every entity id + k x the field's radix (10**12)
     flag_column: household_is_high_value_support_copy
     copies_column: high_value_support_copies
     copy_index_column: high_value_support_copy_index
-    values: every column copied unchanged; no draw, no seed, no salt
+    values: every column copied unchanged; the stratum's tie-break is the stage's only draw
     weight_kind_out: importance
     conservation: exact_total
     declared_factor: 1.0
@@ -3283,7 +3285,7 @@ stages:
   - high_value_support_copies
   - high_value_support_copy_index
   rewrites: []
-  notes: 'Spine-only, deterministic, mass-conserving support split for the dense graph''s post-geography home value map (microcosm#1240). The value node reads every owner clone''s home value off its assigned constituency''s Land Registry sale distribution at the household''s weighted rank among its region''s owners, so each seat''s homes over 2 million rest on the few households whose rank is in the top of the region; this stage copies every owner household in the top five per cent of its region six ways at equal weight, each copy carrying its index in high_value_support_copy_index (0 on roots), the explicit lineage the geography identity keys on, and the value node gives each copy its own keyed rank inside the stratum. The exact-total correction lands on one of the 64 heaviest households the stage leaves whole, and on a root or copy only where none of them can carry it (copy_rule). No value is assigned and no draw is made here.'
+  notes: 'Spine-only, deterministic, mass-conserving support split for the dense graph''s post-geography home value map (microcosm#1240). The value node reads every owner clone''s home value off its assigned constituency''s Land Registry sale distribution at the household''s weighted rank among its region''s owners, so each seat''s homes over 2 million rest on the few households whose rank is in the top of the region; this stage copies every owner household in the top five per cent of its region six ways at equal weight, each copy carrying its index in high_value_support_copy_index (0 on roots), the explicit lineage the geography identity keys on, and the value node gives each copy its own keyed rank inside the stratum. The exact-total correction lands on one of the 64 heaviest households the stage leaves whole, and on a root or copy only where none of them can carry it (copy_rule). No value is assigned here; the one draw is the stratum''s tie-break, a uniform keyed on each household''s own household_id (seed, salt) that orders owners tied on value, so no copy or clone ordinal ranks highest on every tie.'
 - stage: regional_home_values
   survey: HM Land Registry Price Paid latest sales uprated with the UK House Price Index, owner-weighted by region (the dense value node's knots, region level)
   source: uk/high_value_home_value_knots.json, built by tools/build_uk_high_value_home_stock.py from PolicyEngine/chronicle#343's registrations
@@ -3407,9 +3409,10 @@ stages:
     population: persons with profit from property other than sub-letting above zero, on both channels, after the finance-cost add-back
     band_lower_bounds: [0, 10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000]
     band_basis: PRIS 2024-25 Table 13 (all tax entities) scaled by Table 1's individuals' share of landlords
-    order: profit descending, person_id ascending
+    order: profit descending, landlords tied on profit in ascending order of a uniform keyed on person_id under walk_seed and tie_salt, then person_id ascending
     walk: top band first, each band filled with whole persons to its share of the individuals-basis landlords times the spine's landlord weight (the spine's total before calibration differs from PRIS's, and filling the published counts would push every profit rank into a higher band), at one seeded systematic offset (the CGT Table 3 walk's rule); the lowest band takes every remaining landlord
     walk_seed: 0
+    tie_salt: allocate_property_rental_income:tie
     within_band: linear in the weight-ranked position within the band, from its upper bound for the highest profit to its lower bound; never below the landlord's profit
     top_band: max(100,000, k x profit) with k at least 1, solved by bisection so the band's weighted mean receipts equal the individuals' Table 2 receipts less the bounded bands' realised mean receipts at their individuals-basis counts, over the top band's count; where the floor at k = 1 already exceeds that mean the multiplier stays 1 and the overshoot per landlord is recorded
     maximum_top_band_multiplier: 5.0
@@ -5856,14 +5859,16 @@ stages:
     - corporate_wealth
     - other_residential_property_value
     - non_residential_property_value
-    selection: within each income band walk households in investable wealth descending, household_id ascending, accumulating positive household weight until the cumulative weight reaches the band's support mass; whole households; an exhausted pool is recorded, not refused
+    selection: within each income band walk households in investable wealth descending, households tied on it in ascending order of a uniform keyed on their own household_id under seed and salt, then household_id ascending, accumulating positive household weight until the cumulative weight reaches the band's support mass; whole households; an exhausted pool is recorded, not refused
+    seed: 0
+    salt: cgt_support_split:wealth_tie
     maximum_copy_weight: 60.0
     copy_rule: copies = ceil(geographic clone count x household weight / maximum_copy_weight), the quotient snapped to the nearest integer within clone-count ulps when the clone count exceeds one; every copy carries weight / copies, except where none of the 64 heaviest households left whole can carry the exact-total correction, when the shared fallback can put it on a root or copy, off weight / copies by about one ulp of the total weight; of those 64, a selected household left at one copy can carry the correction only where its corrected weight keeps its one copy and the walk's selection, a check the fallback does not make
     id_remapping: copy-id table field cgt_support_split; copy k takes every entity id + k x the field's radix (10**13), k up to 9,999, and a household needing more copies is refused
     flag_column: household_is_cgt_support_copy
     copies_column: cgt_support_copies
     copy_index_column: cgt_support_copy_index
-    values: every column copied unchanged; no draw, no seed, no salt
+    values: every column copied unchanged; the selection's tie-break is the stage's only draw
     weight_kind_out: importance
     conservation: exact_total
     declared_factor: 1.0
@@ -5873,7 +5878,7 @@ stages:
   - cgt_support_copies
   - cgt_support_copy_index
   rewrites: []
-  notes: 'Spine-only, deterministic, mass-conserving support split before the incidence clone (microcosm#1045). The Table 3 redraw owns every gain amount and places rows by wealth rank, so the top gain bands need light rows where the walk already places heavy ones: within each Table 3 income column the wealthiest households, up to twice the headroom times the published count of gainers at or above GBP 250,000 in that column, are split into copies of at most 60 divided by the geographic clone count before the incidence clone (half that after), each copy the same household at an equal share of its weight and carrying its index in cgt_support_copy_index (0 on roots), the explicit lineage the geography identity keys on. The exact-total correction lands on one of the 64 heaviest households the split leaves whole, and on a root or copy only where none of them can carry it (copy_rule). The shared fallback does not make the one-copy check copy_rule names, so where none of the 64 can carry the correction, the fallback can put it on a one-copy household the check passed over, and the identity tool''s selection recompute can then find a family the stage never made, or miss one it made, as under the rule before. No value is assigned and no draw is made; the incidence clone stage (cgt_incidence_clone) gives every copy its own prior. This replaces the HMRC Table 2.1a band-donor stack, whose 30 heavy rows per band the redraw demoted below the exempt amount (the projection-entrants fence artefact).'
+  notes: 'Spine-only, deterministic, mass-conserving support split before the incidence clone (microcosm#1045). The Table 3 redraw owns every gain amount and places rows by wealth rank, so the top gain bands need light rows where the walk already places heavy ones: within each Table 3 income column the wealthiest households, up to twice the headroom times the published count of gainers at or above GBP 250,000 in that column, are split into copies of at most 60 divided by the geographic clone count before the incidence clone (half that after), each copy the same household at an equal share of its weight and carrying its index in cgt_support_copy_index (0 on roots), the explicit lineage the geography identity keys on. The exact-total correction lands on one of the 64 heaviest households the split leaves whole, and on a root or copy only where none of them can carry it (copy_rule). The shared fallback does not make the one-copy check copy_rule names, so where none of the 64 can carry the correction, the fallback can put it on a one-copy household the check passed over, and the identity tool''s selection recompute can then find a family the stage never made, or miss one it made, as under the rule before. No value is assigned, and the one draw is the walk''s tie-break, a uniform keyed on each household''s own household_id (seed, salt) that orders households tied on wealth, so no copy or clone ordinal is taken first on every tie; the incidence clone stage (cgt_incidence_clone) gives every copy its own prior. This replaces the HMRC Table 2.1a band-donor stack, whose 30 heavy rows per band the redraw demoted below the exempt amount (the projection-entrants fence artefact).'
 - stage: cgt_incidence_clone
   survey: Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence
   source: Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465
@@ -6032,7 +6037,7 @@ stages:
     reporting_grain: Table 6 age bands and the twelve region-tier areas
   - kind: rank_preserving_allocation
     within: income band x age group x region group cell, then the income band's pooled unassigned gainers
-    ordering: 'a rank key descending, person_id ascending on ties: among gainers, the household investable-wealth rank times the wealth rank weight plus the prior-gain rank times its complement, both as average ranks over the gainers'
+    ordering: 'a rank key descending, then the rank-tie uniform ascending, then person_id ascending: among gainers, the household investable-wealth rank times the wealth rank weight plus the prior-gain rank times its complement, both as average ranks over the gainers; the rank-tie uniform is one identity-keyed uniform per person, keyed on person_id under seed_base and salted hmrc_cgt_gains_spine:rank_tie:<period>, which every walk, plan and the remainder read'
     wealth_rank_weight: 0.75
     investable_wealth_columns:
     - gross_financial_wealth
@@ -6066,8 +6071,8 @@ stages:
     resource_vintage: 2017-18 nominal pounds as published (Advani and Summers 2020, CAGE WP 465, Table A1); no uprating is applied
     banding: Advani-Summers total-income bands at the person's component-sum income without allowance subtraction, the banding the prior draw uses
     range: quantiles strictly between the band's degree-1 quantile spline zero crossing and its crossing of the build period's annual exempt amount, so every amount lies in (0, AEA]
-    mapping: remainder gainers take the midpoints of the weight-proportional quantile strata that partition the range, evaluated on the band's spline; zero-weight persons take a nominal stratum of the band's smallest positive weight and carry no mass; the mapping draws nothing
-    ordering: existing gains ascending, person_id descending on ties (the prior-gain ranking reversed; the allocation and the within-band draws rank on the wealth-blended key)
+    mapping: remainder gainers take the midpoints of the weight-proportional quantile strata that partition the range, evaluated on the band's spline; zero-weight persons take a nominal stratum of the band's smallest positive weight and carry no mass; the mapping makes no draw of its own
+    ordering: existing gains ascending, then the rank-tie uniform descending, then person_id descending (the prior-gain ranking reversed; the allocation and the within-band draws rank on the wealth-blended key)
     quantile_points:
     - 0.05
     - 0.1
@@ -6283,7 +6288,7 @@ stages:
     qualifying_amount: below the lifetime limit a claimant's whole net gain qualifies; in the open top band the qualifying gain is the lifetime limit
     top_band_count: the published top-band qualifying gains divided by the lifetime limit; the published count is rounded to the nearest thousand
     basis_assumption: Table 4.1 counts qualifying gains before losses and the annual exempt amount while the frame carries net gains after losses; Investors' Relief is merged with BADR, as in the engine's capital_gains_badr input; the whole-gain assumption reproduces Table 4.1's tax column to within half a percent
-    realization: weighted systematic sampling within each band in ascending (gain, person_id) order with one identity-keyed offset per band, keyed on its bounds (<lower bound>|<exclusive upper bound>, open for the top band) and salted assign_badr_qualifying_gains:offset:<period>, with no stream order, so a band's offset depends neither on which bands carry a target nor on which other bands the facts declare
+    realization: weighted systematic sampling within each band in ascending gain order, persons tied on gain in ascending order of a uniform keyed on person_id under seed and salted assign_badr_qualifying_gains:tie:<period>, then person_id ascending, with one identity-keyed offset per band, keyed on its bounds (<lower bound>|<exclusive upper bound>, open for the top band) and salted assign_badr_qualifying_gains:offset:<period>, with no stream order, so a band's offset depends neither on which bands carry a target nor on which other bands the facts declare
     seed: 555
     seed_mixing: seed combined with the build period
     policy_parameters:
@@ -6320,7 +6325,7 @@ stages:
     weight_fitting: 'one fit per claimant status: multiplicative updates of the type weights until the household-weighted expected gains shares by type match that status''s share targets; a fit refuses if it has not converged within the iteration limit, and the stage refuses up front when claimants hold more of the gains than the claimant categories'' share'
     weight_fitting_iterations: 200
     weight_fitting_tolerance: 1.0e-06
-    realization: 'error diffusion per claimant status in descending (gain, person_id) order: each person adds weight x gain x type probability to a running balance per type and takes the type it may hold with the largest balance, which is drawn down by the whole weight x gain, so the realised gains by type track the fitted composition instead of following the heaviest rows; deterministic, no seed'
+    realization: 'error diffusion per claimant status in descending gain order, persons tied on gain in ascending order of a uniform keyed on person_id under the assign_badr_qualifying_gains seed and salted assign_main_asset_type:tie:<period>, then person_id ascending: each person adds weight x gain x type probability to a running balance per type and takes the type it may hold with the largest balance, which is drawn down by the whole weight x gain, so the realised gains by type track the fitted composition instead of following the heaviest rows; that tie-break is its only draw'
     output_column: capital_gains_asset_type
     value_domain:
     - none

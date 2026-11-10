@@ -13,7 +13,11 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceOperationSpec
-from microcosm.build.uk_runtime import cgt_support
+from microcosm.build.stochastic_assignment import (
+    binomial_share_tolerance,
+    stable_identity_uniforms,
+)
+from microcosm.build.uk_runtime import cgt_support, copy_id_table
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_INVESTABLE_WEALTH_COLUMNS,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
@@ -37,6 +41,8 @@ from microcosm.build.uk_runtime.cgt_support import (
     CGT_SUPPORT_PUBLISHED_TOP_BAND_TAXPAYERS,
     CGT_SUPPORT_SPLIT_OPERATION_KIND,
     CGT_SUPPORT_SPLIT_STAGE_NAME,
+    CGT_SUPPORT_TIE_SALT,
+    CGT_SUPPORT_TIE_SEED,
     HOUSEHOLD_IS_CGT_SUPPORT_COPY,
     UKCGTSupportSplitStageTransform,
     _assert_cgt_support_split_stage_parameters,
@@ -46,6 +52,7 @@ from microcosm.build.uk_runtime.cgt_support import (
     cgt_support_income_band,
     cgt_support_mass_by_income_band,
     cgt_support_split_operation_parameters,
+    cgt_support_tie_break,
     geographic_clone_count,
     select_cgt_support_households,
     split_cgt_support_households,
@@ -83,12 +90,13 @@ from test_support.microcosm_build.uk_clone_first_frames import (
 # 20,000): ids 1-4 and the zero-weight id 7; band 37,700 (income 60,000):
 # ids 5-6. The synthetic joint publishes 60 top-band taxpayers in band 0
 # (support mass 2 x 2 x 60 = 240, one suppressed cell) and 10 in band 37,700
-# (support mass 40). Band 0 walks by wealth descending then id ascending: id
-# 2 (500, 130) then id 3 (500, 121; the tie breaks on id) reach 251, so id 3
-# is the crossing household and ids 4 (200) and 1 (100) stay. Band 37,700
-# walks id 6 (20, 61) first, which crosses at once; id 5 (10, 90) stays and
-# is the heaviest unselected incumbent, so the exact-total correction lands
-# on it. Split: id 2 into 3 copies, id 3 into 3, id 6 into 2.
+# (support mass 40). Band 0 walks by wealth descending, ties by the walk's
+# keyed uniforms: ids 2 (500, 130) and 3 (500, 121) tie, and together reach
+# 251, so both are taken whichever crosses (id 3's uniform is the lower, so
+# id 2 crosses), and ids 4 (200) and 1 (100) stay. Band 37,700 walks id 6
+# (20, 61) first, which crosses at once; id 5 (10, 90) stays and is the
+# heaviest unselected incumbent, so the exact-total correction lands on it.
+# Split: id 2 into 3 copies, id 3 into 3, id 6 into 2.
 
 SCENARIO_WEIGHTS = [70.0, 130.0, 121.0, 30.0, 90.0, 61.0, 0.0]
 SCENARIO_WEALTH = [100.0, 500.0, 500.0, 200.0, 10.0, 20.0, 1_000_000.0]
@@ -114,6 +122,8 @@ SCENARIO_HEADROOM = 2.0
 
 #: The copy-id table's cgt_support_split radix (microcosm#931).
 COPY_RADIX = radix("cgt_support_split")
+#: The walk's declared tie-break, which every direct call passes.
+TIE = {"seed": CGT_SUPPORT_TIE_SEED, "salt": CGT_SUPPORT_TIE_SALT}
 
 
 def _scenario_frame(**overrides):
@@ -322,20 +332,23 @@ def test_household_wealth_sums_the_investable_columns_and_refuses_gaps():
 # --- selection ----------------------------------------------------------------
 
 
-def test_selection_walks_wealth_descending_then_id_ascending_whole_households():
+def test_selection_walks_wealth_descending_ties_keyed_whole_households():
     ids = np.asarray([1, 2, 3, 4, 5, 6, 7])
     weights = np.asarray(SCENARIO_WEIGHTS)
     bands = np.asarray([0, 0, 0, 0, 37_700, 37_700, 0])
     wealth = np.asarray(SCENARIO_WEALTH)
 
     selected, rows = select_cgt_support_households(
-        ids, weights, bands, wealth, SCENARIO_SUPPORT
+        ids, weights, bands, wealth, SCENARIO_SUPPORT, **TIE
     )
 
-    # Band 0 at 240: id 2 (500, 130) then id 3 (500, 121; the tie breaks on
-    # id) reach 251 and id 3 is the crossing household, taken whole; id 4
-    # (200) and id 1 (100) stay. Band 37,700 at 40: id 6 (20, 61) crosses at
-    # once; id 5 (10, 90) stays.
+    # Band 0 at 240: ids 2 (500, 130) and 3 (500, 121) tie on wealth and
+    # together reach 251, so both are taken in either order (id 3's keyed
+    # uniform is the lower, so id 2 crosses); id 4 (200) and id 1 (100)
+    # stay. Band 37,700 at 40: id 6 (20, 61) crosses at once; id 5 (10, 90)
+    # stays.
+    uniforms = stable_identity_uniforms([2, 3], **TIE)
+    assert uniforms[1] < uniforms[0]
     assert ids[selected].tolist() == [2, 3, 6]
     band_0, band_37700 = rows
     assert band_0 == {
@@ -370,13 +383,13 @@ def test_selection_takes_the_crossing_household_whole_and_stops_there():
 
     for support, expected in ((0.0, []), (1.0, [1]), (10.0, [1]), (10.5, [1, 2])):
         selected, (row,) = select_cgt_support_households(
-            ids, weights, bands, wealth, {0: support}
+            ids, weights, bands, wealth, {0: support}, **TIE
         )
         assert ids[selected].tolist() == expected
         assert row["households_selected"] == len(expected)
         assert row["pool_exhausted"] is False
     selected, (row,) = select_cgt_support_households(
-        ids, weights, bands, wealth, {0: 40.0}
+        ids, weights, bands, wealth, {0: 40.0}, **TIE
     )
     assert ids[selected].tolist() == [1, 2, 3, 4]
     assert row["pool_exhausted"] is False
@@ -389,7 +402,7 @@ def test_selection_records_pool_exhaustion_and_empty_bands_without_refusing():
     wealth = np.asarray([1.0, 2.0, 3.0])
 
     selected, rows = select_cgt_support_households(
-        ids, weights, bands, wealth, {0: 1_000.0, 50_000: 40.0, 200_000: 0.0}
+        ids, weights, bands, wealth, {0: 1_000.0, 50_000: 40.0, 200_000: 0.0}, **TIE
     )
 
     assert selected.tolist() == [True, True, True]
@@ -419,7 +432,7 @@ def test_selection_excludes_zero_weight_rows_and_is_permutation_stable():
     bands = np.asarray([0, 0, 0, 0, 37_700, 37_700, 0])
     wealth = np.asarray(SCENARIO_WEALTH)
     selected, rows = select_cgt_support_households(
-        ids, weights, bands, wealth, SCENARIO_SUPPORT
+        ids, weights, bands, wealth, SCENARIO_SUPPORT, **TIE
     )
     # Id 7 is the wealthiest household of band 0 and weighs nothing.
     assert not selected[6]
@@ -432,6 +445,7 @@ def test_selection_excludes_zero_weight_rows_and_is_permutation_stable():
         bands[permutation],
         wealth[permutation],
         SCENARIO_SUPPORT,
+        **TIE,
     )
 
     assert permuted.tolist() == selected[permutation].tolist()
@@ -439,18 +453,182 @@ def test_selection_excludes_zero_weight_rows_and_is_permutation_stable():
 
 
 def test_selection_refuses_inconsistent_inputs():
+    def select(*args):
+        return select_cgt_support_households(*args, **TIE)
+
     with pytest.raises(ValueError, match="one entry per household"):
-        select_cgt_support_households([1, 2], [1.0], [0, 0], [0.0, 0.0], {0: 1.0})
+        select([1, 2], [1.0], [0, 0], [0.0, 0.0], {0: 1.0})
     with pytest.raises(ValueError, match="unique household ids"):
-        select_cgt_support_households([1, 1], [1.0, 1.0], [0, 0], [0.0, 0.0], {0: 1.0})
+        select([1, 1], [1.0, 1.0], [0, 0], [0.0, 0.0], {0: 1.0})
     with pytest.raises(ValueError, match="finite and non-negative"):
-        select_cgt_support_households([1, 2], [1.0, -1.0], [0, 0], [0.0, 0.0], {0: 1.0})
+        select([1, 2], [1.0, -1.0], [0, 0], [0.0, 0.0], {0: 1.0})
     with pytest.raises(ValueError, match="wealth must be finite"):
-        select_cgt_support_households(
-            [1, 2], [1.0, 1.0], [0, 0], [0.0, np.nan], {0: 1.0}
-        )
+        select([1, 2], [1.0, 1.0], [0, 0], [0.0, np.nan], {0: 1.0})
     with pytest.raises(ValueError, match="support mass"):
-        select_cgt_support_households([1, 2], [1.0, 1.0], [0, 0], [0.0, 0.0], {0: -1.0})
+        select([1, 2], [1.0, 1.0], [0, 0], [0.0, 0.0], {0: -1.0})
+    # The tie-break has no default: every caller passes the declared pair.
+    with pytest.raises(TypeError, match="seed"):
+        select_cgt_support_households([1, 2], [1.0, 1.0], [0, 0], [0.0, 0.0], {0: 1.0})
+
+
+def _id_walk(ids, weights, bands, wealth, support_by_band) -> np.ndarray:
+    """The selection as the walk made it before (microcosm#931): ties by id."""
+
+    selected = np.zeros(len(ids), dtype=bool)
+    for band, target in support_by_band.items():
+        pool = np.flatnonzero((bands == band) & (weights > 0.0))
+        order = pool[np.lexsort((ids[pool], -wealth[pool]))]
+        reached = np.flatnonzero(np.cumsum(weights[order]) >= target)
+        take = int(reached[0]) + 1 if target > 0.0 and reached.size else 0
+        if target > 0.0 and not reached.size:
+            take = len(order)
+        selected[order[:take]] = True
+    return selected
+
+
+def test_a_wealth_tie_straddling_the_support_mass_is_walked_in_keyed_order():
+    # Four households tie on wealth across the band's support mass of 25:
+    # after the wealthiest (10), the walk takes the first two of the tie
+    # group (20 and 30), in the order of their keyed uniforms, which is not
+    # their id order, then stops; the poorest stays (microcosm#931).
+    tied = np.asarray([201, 202, 203, 204])
+    ids = np.asarray([101, *tied, 301])
+    weights = np.full(6, 10.0)
+    bands = np.zeros(6, dtype=int)
+    wealth = np.asarray([9.0, 5.0, 5.0, 5.0, 5.0, 1.0])
+    keyed = tied[np.lexsort((tied, stable_identity_uniforms(tied, **TIE)))]
+    assert sorted(keyed[:2].tolist()) != [201, 202]
+
+    selected, (row,) = select_cgt_support_households(
+        ids, weights, bands, wealth, {0: 25.0}, **TIE
+    )
+
+    assert sorted(ids[selected].tolist()) == sorted([101, *keyed[:2].tolist()])
+    assert row["households_selected"] == 3 and row["selected_mass"] == 30.0
+    assert ids[_id_walk(ids, weights, bands, wealth, {0: 25.0})].tolist() == [
+        101,
+        201,
+        202,
+    ]
+    for seed in range(5):
+        rows = np.random.default_rng(seed).permutation(6)
+        permuted, (permuted_row,) = select_cgt_support_households(
+            ids[rows], weights[rows], bands[rows], wealth[rows], {0: 25.0}, **TIE
+        )
+        assert permuted.tolist() == selected[rows].tolist()
+        assert permuted_row == row
+
+
+def test_distinct_wealth_selects_as_the_id_walk_did_bit_for_bit():
+    # The tie-break only reorders exact ties, so on distinct wealth every
+    # band takes the households the walk took before (microcosm#931).
+    rng = np.random.default_rng(20261109)
+    n = 600
+    ids = rng.choice(10**8, n, replace=False).astype(np.int64)
+    weights = rng.uniform(1.0, 400.0, n)
+    weights[rng.random(n) < 0.05] = 0.0
+    bands = rng.choice(CGT_SUPPORT_INCOME_BAND_LOWER_BOUNDS, n)
+    wealth = rng.permutation(n) * 1_000.0 + rng.random(n)
+    support = {
+        int(band): float(mass)
+        for band, mass in zip(
+            CGT_SUPPORT_INCOME_BAND_LOWER_BOUNDS,
+            rng.uniform(100.0, 9_000.0, len(CGT_SUPPORT_INCOME_BAND_LOWER_BOUNDS)),
+            strict=True,
+        )
+    }
+
+    selected, rows = select_cgt_support_households(
+        ids, weights, bands, wealth, support, **TIE
+    )
+
+    np.testing.assert_array_equal(
+        selected, _id_walk(ids, weights, bands, wealth, support)
+    )
+    assert 0 < int(selected.sum()) < n
+    rows_order = rng.permutation(n)
+    permuted, permuted_rows = select_cgt_support_households(
+        ids[rows_order],
+        weights[rows_order],
+        bands[rows_order],
+        wealth[rows_order],
+        support,
+        **TIE,
+    )
+    assert permuted.tolist() == selected[rows_order].tolist()
+    # The pool's mass is summed in row order, so it alone may move in its
+    # last bits.
+    for permuted_row, row in zip(permuted_rows, rows, strict=True):
+        assert permuted_row["pool_mass"] == pytest.approx(row["pool_mass"], rel=1e-12)
+        assert {**permuted_row, "pool_mass": None} == {**row, "pool_mass": None}
+
+
+def test_clone_zero_is_taken_from_tied_clones_at_its_share():
+    # Sixty source households, each as three geographic clones tied on wealth
+    # (ids minted in the copy-id table's geographic field), each alone in its
+    # band at a support mass one clone's weight covers: every band takes one
+    # clone. The walk by id took clone 0 every time; keyed on each clone's own
+    # id, clone 0 is taken at about a third of the bands, inside the four-sigma
+    # binomial band (design verifier P10; microcosm#931).
+    families, clone_count = 60, 3
+    sources = np.arange(1, families + 1, dtype=np.int64)
+    ids = np.concatenate(
+        [
+            sources,
+            *(
+                copy_id_table.mint(sources, "geographic_support", k)
+                for k in range(1, clone_count)
+            ),
+        ]
+    )
+    clone = np.repeat(np.arange(clone_count), families)
+    bands = np.tile(sources, clone_count)
+    wealth = np.tile(1_000.0 * sources, clone_count)
+    weights = np.full(families * clone_count, 10.0)
+    support = {int(band): 5.0 for band in sources}
+
+    selected, rows = select_cgt_support_households(
+        ids, weights, bands, wealth, support, **TIE
+    )
+
+    assert [row["households_selected"] for row in rows] == [1] * families
+    share = float((clone[selected] == 0).mean())
+    band = binomial_share_tolerance(target=1 / clone_count, rows=families, sigma=4.0)
+    assert abs(share - 1 / clone_count) <= band
+    by_id = _id_walk(ids, weights, bands, wealth, support)
+    assert float((clone[by_id] == 0).mean()) == 1.0
+
+
+def test_the_split_and_its_rerun_walk_on_the_declared_tie_break(monkeypatch):
+    # The stage's walk and keeps_the_split's rerun pass the seed and salt the
+    # declaration names, never a default (microcosm#931).
+    calls: list[dict[str, object]] = []
+    select = cgt_support.select_cgt_support_households
+
+    def recording(*args, **kwargs):
+        calls.append(dict(kwargs))
+        return select(*args, **kwargs)
+
+    monkeypatch.setattr(cgt_support, "select_cgt_support_households", recording)
+    frame = support_frame(
+        weights=[145.5, 37.87, 7.05, 26.65, 32.73, 37.87],
+        wealth=[9e6, 8e6, 4e3, 3e3, 2e3, 1.0],
+        incomes=[BAND_INCOMES[0]] * 6,
+    )
+    split_cgt_support_households(
+        frame,
+        distribution=support_distribution({0: {250_000: 65.77}}),
+        parameters=PARAMETERS,
+        clone_count=1,
+    )
+
+    ((_, payload),) = cgt_support_split_operation_parameters()
+    assert cgt_support_tie_break() == (payload["seed"], payload["salt"])
+    assert cgt_support_tie_break() == (0, "cgt_support_split:wealth_tie")
+    assert len(calls) == 2
+    assert all(
+        (call["seed"], call["salt"]) == cgt_support_tie_break() for call in calls
+    )
 
 
 # --- copy counts --------------------------------------------------------------
@@ -1818,9 +1996,10 @@ def test_the_walk_can_stop_partway_through_a_households_clones():
     # support mass of 1,500 (2 x 1.25 x 600 published). At one clone the walk
     # takes the first two, at 15 and 30 copies. At three it accumulates each
     # clone's own weight: the first household's three clones (900 together)
-    # and then the second's clone 0 (600) reach 1,500, so the second's clones
-    # 1 and 2 stay whole. Selection nests only approximately (microcosm#931);
-    # every clone the walk selects gets its source's count.
+    # and then the first of the second's clones, which tie on wealth, in
+    # keyed order (600) reach 1,500, so its other two clones stay whole.
+    # Selection nests only approximately (microcosm#931); every clone the
+    # walk selects gets its source's count.
     def counts_by_clone(clone_count: int):
         frame = clone_first_frame(
             support_frame(
@@ -1842,14 +2021,16 @@ def test_the_walk_can_stop_partway_through_a_households_clones():
 
     one, one_selected = counts_by_clone(1)
     three, three_selected = counts_by_clone(3)
+    second = 2 + np.arange(3) * copy_id_table.radix("geographic_support")
+    first = int(np.argmin(stable_identity_uniforms(second, **TIE)))
+    # The walk by id took clone 0; the keyed order takes another here.
+    assert first != 0
 
     assert one == {(1, 0): 15, (2, 0): 30, (3, 0): 1}
     assert one_selected == 2
     assert three == {
         **{(1, clone): 15 for clone in range(3)},
-        (2, 0): 30,
-        (2, 1): 1,
-        (2, 2): 1,
+        **{(2, clone): 30 if clone == first else 1 for clone in range(3)},
         **{(3, clone): 1 for clone in range(3)},
     }
     assert three_selected == 4
@@ -2133,6 +2314,21 @@ def test_operation_dictionary_restates_the_reviewed_design():
         UK_CGT_INVESTABLE_WEALTH_COLUMNS
     )
     assert payload["maximum_copy_weight"] == 60.0
+    # The walk's tie-break is keyed on each household's own id under its own
+    # seed and salt, its one draw (microcosm#931).
+    assert payload["selection"] == (
+        "within each income band walk households in investable wealth "
+        "descending, households tied on it in ascending order of a uniform "
+        "keyed on their own household_id under seed and salt, then household_id "
+        "ascending, accumulating positive household weight until the cumulative "
+        "weight reaches the band's support mass; whole households; an exhausted "
+        "pool is recorded, not refused"
+    )
+    assert (payload["seed"], payload["salt"]) == (0, "cgt_support_split:wealth_tie")
+    assert payload["values"] == (
+        "every column copied unchanged; the selection's tie-break is the stage's "
+        "only draw"
+    )
     assert payload["copy_rule"] == (
         "copies = ceil(geographic clone count x household weight / "
         "maximum_copy_weight), the quotient snapped to the nearest integer "
@@ -2173,6 +2369,8 @@ def test_operation_dictionary_restates_the_reviewed_design():
         "wealth_measure",
         "investable_wealth_columns",
         "selection",
+        "seed",
+        "salt",
         "maximum_copy_weight",
         "copy_rule",
         "id_remapping",

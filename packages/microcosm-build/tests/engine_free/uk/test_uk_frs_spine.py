@@ -4207,7 +4207,13 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "uc_deduction_random_draw": 0,
         "uc_deduction_type_random_draw": 0,
     }
-    assert "cgt_support_split" not in declared
+    # The support splits' and the receipts walk's tie-breaks, under their
+    # salts (microcosm#931).
+    assert declared["cgt_support_split"] == {"cgt_support_split:wealth_tie": 0}
+    assert declared["high_value_home_support"] == {
+        "high_value_home_support:value_tie": 0
+    }
+    assert declared["property_components"] == {"allocate_property_rental_income:tie": 0}
     assert declared["spi_income_band_donors"] == {"spi_income_band_donor_draw": 3}
     assert declared["hmrc_spi_income_spine"]["spi_income_band_donor_leaf_draw"] == 44
     assert declared["hmrc_cgt_gains_spine"] == {"within_band_draws": 552}

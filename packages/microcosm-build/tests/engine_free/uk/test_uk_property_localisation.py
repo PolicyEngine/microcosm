@@ -151,6 +151,7 @@ def test_support_copies_keep_the_stratum_mass_at_the_selected_share() -> None:
     # top five per cent and copies each six ways; the pool's uniforms must
     # leave exactly that share of the owner mass at or above the stratum.
     from microcosm.build.uk_runtime.high_value_home_support import (
+        high_value_support_tie_break,
         select_high_value_support_households,
     )
 
@@ -167,6 +168,7 @@ def test_support_copies_keep_the_stratum_mass_at_the_selected_share() -> None:
         tenure_type=tenure,
         value=values,
         stratum_lower=0.95,
+        **dict(zip(("seed", "salt"), high_value_support_tie_break(), strict=True)),
     )
     assert selected.sum() == pytest.approx(0.05 * n, abs=2)
     copies = 6
