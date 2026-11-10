@@ -1108,7 +1108,7 @@ def _cached_canonical_stacked_late_dag_receipt(
         "completion": {
             "status": "complete",
             "group_count": 19,
-            "target_count": 70,
+            "target_count": 72,
             "residual_null_rows": 0,
         },
     }
@@ -1382,6 +1382,8 @@ def _rewrite_as_legacy_relocated_worker_pool(
     }
     config["schema_version"] = 4
     config["qrf"]["worker_execution"] = recorded_worker
+    # A schema-4 pool predates the recipient-share bound and records none.
+    config["qrf"].pop("recipient_share_bound")
     config_receipt["binding_sha256"] = _json_sha256(config)
     config_receipt_sha256 = _json_sha256(config_receipt)
 

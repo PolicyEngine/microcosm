@@ -241,7 +241,10 @@ def test_spi_variable_surfaces_include_efrs_stage1_and_stage2_fixes() -> None:
     assert "universal_credit_reported" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
     assert "housing_benefit_reported" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
     assert "employee_pension_contributions" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
-    assert "tax_free_savings_income" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
+    assert (
+        "individual_savings_account_interest_income" in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
+    )
+    assert "tax_free_savings_income" not in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
 
 
 def _certified_like_dead_spi_support():

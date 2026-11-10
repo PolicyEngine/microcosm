@@ -88,9 +88,8 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_INCOME_YEAR,
+    SPI_INCOME_RECIPIENT_COLUMN,
     SPI_INCOME_UPRATING_VARIABLES,
-    SPI_MINIMUM_RECIPIENT_AGE,
-    SPI_RECIPIENT_ROLE_COLUMN,
     SPIDonorAgeModel,
     load_spi_donor_age_model,
     prepare_spi_donor_table,
@@ -311,22 +310,44 @@ def _person_weights(frame: Frame) -> np.ndarray:
     )
 
 
+#: Person columns the stage reads; the UK graph's declared reads for the
+#: node must cover them, since a node receives its declared cells alone
+#: (the recipient flag joined them with microcosm#840).
+PROPERTY_COMPONENTS_PERSON_INPUTS: frozenset[str] = frozenset(
+    {
+        PROFIT_COLUMN,
+        FINANCE_COSTS_COLUMN,
+        HOUSEHOLD_HEAD_COLUMN,
+        SPI_INCOME_RECIPIENT_COLUMN,
+        support_channel_column("person"),
+        "age",
+    }
+)
+
+
 def _tape_concept_rows(person: pd.DataFrame) -> np.ndarray:
     """Rows whose income leaves the income stage drew from the SPI tape.
 
-    The SPI support channel's claimants and partners aged 16 and over (the
-    income stage's recipient rule); every other row keeps FRS-reported
-    property income, including the channel's dependants on their twin values.
+    The income stage flags them (``SPI_INCOME_RECIPIENT_COLUMN``): the SPI
+    support channel's claimants and partners aged 16 and over with taxable
+    income under its recipient income rule, and the reserved band carriers.
+    Every other row keeps FRS-reported property income: the channel's
+    dependants and the copies of twins with no taxable income on their twin
+    values (microcosm#840), and the FRS rows.
     """
 
+    flag = person[SPI_INCOME_RECIPIENT_COLUMN]
+    if not pd.api.types.is_bool_dtype(flag.dtype):
+        raise PropertyComponentsError(
+            f"the income stage's {SPI_INCOME_RECIPIENT_COLUMN!r} must be boolean."
+        )
     channel = person[support_channel_column("person")].astype(str).to_numpy()
-    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=float)
-    role = person[SPI_RECIPIENT_ROLE_COLUMN].to_numpy(dtype=bool)
-    return (
-        (channel == SPI_SYNTHETIC_SUPPORT_CHANNEL)
-        & (age >= SPI_MINIMUM_RECIPIENT_AGE)
-        & role
-    )
+    tape = flag.to_numpy(dtype=bool)
+    if (tape & (channel != SPI_SYNTHETIC_SUPPORT_CHANNEL)).any():
+        raise PropertyComponentsError(
+            f"{SPI_INCOME_RECIPIENT_COLUMN!r} is set outside the SPI channel."
+        )
+    return tape
 
 
 def frs_concept_rental_profit(
@@ -930,17 +951,7 @@ class UKPropertyComponentsStageTransform:
 
         person = frame.table("person").copy()
         household = frame.table("household")
-        missing = sorted(
-            {
-                PROFIT_COLUMN,
-                FINANCE_COSTS_COLUMN,
-                HOUSEHOLD_HEAD_COLUMN,
-                SPI_RECIPIENT_ROLE_COLUMN,
-                support_channel_column("person"),
-                "age",
-            }
-            - set(person.columns)
-        )
+        missing = sorted(PROPERTY_COMPONENTS_PERSON_INPUTS - set(person.columns))
         if missing:
             raise PropertyComponentsError(f"the spine's person table lacks {missing}.")
         weights = _person_weights(frame)

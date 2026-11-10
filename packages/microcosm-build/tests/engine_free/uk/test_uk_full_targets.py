@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
@@ -39,12 +40,16 @@ def prepared(monkeypatch):
     local = _registry("local")
     calls = []
     artifact = SimpleNamespace(
-        facts=({"test": True},), facts_sha256="a" * 64, manifest_sha256="b" * 64
+        facts=({"test": True},),
+        facts_sha256="a" * 64,
+        manifest_sha256="b" * 64,
+        fact_schema_versions=("chronicle.consumer_fact.v4",),
     )
     pin = SimpleNamespace(
         facts_sha256=artifact.facts_sha256,
         manifest_sha256=artifact.manifest_sha256,
         fact_row_count=1,
+        consumer_fact_schema_versions=("chronicle.consumer_fact.v4",),
         to_dict=lambda: {
             "facts_sha256": artifact.facts_sha256,
             "manifest_sha256": artifact.manifest_sha256,
@@ -78,6 +83,9 @@ def prepared(monkeypatch):
     monkeypatch.setattr(
         runtime, "load_uk_calibration_measure_exclusions", lambda path: ()
     )
+    # Nor a support floor (#1095 U3, tested in test_uk_support_floor): the
+    # packaged one is signed after these tests' evaluation date.
+    monkeypatch.setattr(runtime, "load_uk_support_floor_declaration", lambda path: None)
     # The national reconciliation (#1123) has its own tests; these registers
     # carry no geography, so it passes them through here.
     monkeypatch.setattr(
@@ -110,6 +118,33 @@ def _load(**kwargs):
         exclusions_evaluated_on=date(2026, 9, 10),
         **kwargs,
     )
+
+
+@pytest.mark.parametrize(
+    ("rows", "message"),
+    [
+        (("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+        (
+            ("chronicle.consumer_fact.v4", "chronicle.consumer_fact.v5"),
+            "consumer_fact_schema_versions",
+        ),
+        ((), "consumer_fact_schema_versions"),
+    ],
+    ids=["undeclared", "not_in_the_pin", "unstamped"],
+)
+def test_full_inputs_hold_the_rows_row_contracts_to_the_pin(prepared, rows, message):
+    """The committed feed's rows must carry exactly the pin's declared row contracts.
+
+    The pin's list is typed by hand at a re-pin, so a feed whose digests match
+    the pin is also held to it by the row contracts its rows actually carry.
+    """
+    _national, _approved, _local, artifact, calls = prepared
+    artifact.fact_schema_versions = rows
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        _load()
+
+    assert calls == []
 
 
 def test_full_inputs_preserve_band_edges_and_validation_periods(prepared):
@@ -203,28 +238,51 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 942a1fa feed re-pinned by microcosm#1123
-    # (PolicyEngine/chronicle#313 via #314, the 2025 calibration inputs). It
-    # holds the 1ee7dfe rows microcosm#1113 pinned (PolicyEngine/chronicle#322
-    # via #323: Consumer Trends by COICOP division, DESNZ road fuel).
+    # The identity is 8045b13, Chronicle main after PolicyEngine/chronicle#423,
+    # #424 and #425 (PolicyEngine/chronicle#420's facts for the November UK
+    # events: young people, PIP and Scotland, for microcosm#1095's PR2), which
+    # also carries #413's UK area inputs, #415's land value inputs and #421's
+    # NRS data zone bands, on top of the 6475380 merge of PolicyEngine/chronicle#411
+    # (PolicyEngine/chronicle#407: the APS's people in employment by SOC 2020
+    # group and ASHE Table 2, for microcosm#1490), whose rows are
+    # chronicle.consumer_fact.v5 (PolicyEngine/chronicle#377: one label per
+    # dimension value), on top of the 08962f1 merge of PolicyEngine/chronicle#399
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316: HMRC's benefits in
+    # kind statistics, with one OBR EFO number per line and year), on top of
+    # the 7d5d627 merge of PolicyEngine/chronicle#396 (the UK facts of
+    # PolicyEngine/chronicle#395) and the 53815b2 merge of
+    # PolicyEngine/chronicle#394 (microcosm#1418: SPI 2023-24 Table 3.10 and
+    # the OBR's October 2026 EFO), on top of the 0b721a4 merge of
+    # PolicyEngine/chronicle#392
+    # (HMRC's ISA statistics) and the 272c987 feed of microcosm#1359
+    # (PolicyEngine/chronicle#391: the Gambling Commission's Gambling Survey
+    # for Great Britain 2025 participation tables), on top of the 200bf6d feed
+    # of microcosm#1359 (PolicyEngine/chronicle#384: HMRC alcohol and tobacco clearances,
+    # betting and gaming receipts and Machine Games Duty liabilities, the
+    # Gambling Commission's industry statistics and OBR's excise lines, with
+    # the September Consumer Trends edition in place of June's), on top of the
+    # abf0921 feed of microcosm#1300 (UC by payment indicator, OBR table 4.9
+    # geography, DESNZ gas years and Northern Ireland energy, UV404 by output
+    # area). It holds the 735820c HVCTS inputs microcosm#1240 pinned, every
+    # 942a1fa row of microcosm#1123 and the 1ee7dfe rows of microcosm#1113.
     national = runtime.load_uk_chronicle_feed()
     local = runtime.load_uk_local_chronicle_pin()
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("a45ae8570206af49d1dc570fe0f9b2ae83ed3b432ac5e430f088f488f0d256da")
+        == ("0856f17072b09ed17d231d862b66d004729409a128fd1b3bf7b545f4e585d267")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("f7af3ec965dc7951f2fbd25b4e06fa6c4b945ed289e4b99d27d3a77c45d3988c")
+        == ("559106a03970962cb7293af8664f69594d9aa64f5aa7f9c21e0f609838f96fef")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "942a1fa0adc50d645734481c88f403ac2175e896"
+        == "8045b138355b196846f633f31323fd129908e751"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 927239
+    assert national.fact_row_count == local["fact_row_count"] == 2091616
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):
@@ -385,3 +443,186 @@ def test_historical_validation_period_without_facts_is_recorded_not_fatal(
         "national": {"2025": ["obr.income_tax"]},
         "local": {},
     }
+
+
+_REGION_ROW = "microcosm.high_value_homes.over_2m_by_region"
+
+
+def _with_region_rows(*names):
+    """A compiled register carrying local-line-only region rows (#1301)."""
+
+    region = _registry(f"{_REGION_ROW}@E12000007", f"{_REGION_ROW}@W92000004")
+    region = TargetRegistry(
+        [
+            replace(spec, metadata={"contract_target_id": _REGION_ROW})
+            for spec in region.specs
+        ],
+        country="uk",
+    )
+    plain = _registry(*names)
+    return TargetRegistry([*plain.specs, *region.specs], country="uk"), plain
+
+
+@pytest.mark.parametrize(
+    ("pinned_feed", "rows", "message"),
+    [
+        (True, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+        (True, ("chronicle.consumer_fact.v5",), "consumer_fact_schema_versions"),
+        (False, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+    ],
+    ids=["undeclared", "not_in_the_pin", "undeclared_unpinned_feed"],
+)
+def test_the_national_role_holds_the_rows_row_contracts(
+    monkeypatch, pinned_feed, rows, message
+):
+    """The national role refuses rows on a row contract the pin or epoch lacks.
+
+    On the committed feed the rows must carry the pin's list. A feed admitted
+    by ``--allow-unpinned-feed`` is another artifact, so its rows are held only
+    to the declared row contracts.
+    """
+    pin = SimpleNamespace(
+        facts_sha256="a" * 64,
+        manifest_sha256="b" * 64,
+        consumer_fact_schema_versions=("chronicle.consumer_fact.v4",),
+        to_dict=lambda: {},
+    )
+    artifact = SimpleNamespace(
+        facts=({"feed": True},),
+        facts_sha256=pin.facts_sha256 if pinned_feed else "c" * 64,
+        manifest_sha256=pin.manifest_sha256,
+        fact_schema_versions=rows,
+        provenance=lambda: {"artifact_id": "synthetic"},
+    )
+    monkeypatch.setattr(
+        runtime, "load_ledger_consumer_artifact", lambda *a, **kw: artifact
+    )
+    monkeypatch.setattr(
+        runtime, "require_committed_uk_chronicle_feed_pin", lambda *a, **kw: pin
+    )
+
+    def compile_national(facts, *, target_period):
+        raise AssertionError("the rows reached target compilation")
+
+    monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        runtime.load_uk_national_target_inputs(
+            "facts.jsonl",
+            calibration_year=2025,
+            exclusions_evaluated_on=date(2026, 10, 16),
+            allow_unpinned_feed=not pinned_feed,
+        )
+
+
+def test_the_national_line_drops_local_only_rows_before_reconciliation(monkeypatch):
+    compiled, plain = _with_region_rows("retained", "excluded")
+    artifact = SimpleNamespace(
+        facts=({"feed": True},),
+        facts_sha256="a" * 64,
+        manifest_sha256="b" * 64,
+        fact_schema_versions=("chronicle.consumer_fact.v4",),
+        provenance=lambda: {"artifact_id": "synthetic"},
+    )
+    monkeypatch.setattr(
+        runtime, "load_ledger_consumer_artifact", lambda *a, **kw: artifact
+    )
+    monkeypatch.setattr(
+        runtime,
+        "require_committed_uk_chronicle_feed_pin",
+        lambda facts_sha256, **kwargs: SimpleNamespace(
+            facts_sha256=facts_sha256,
+            consumer_fact_schema_versions=("chronicle.consumer_fact.v4",),
+            to_dict=lambda: {},
+        ),
+    )
+    compiled_facts = []
+
+    def compile_national(facts, *, target_period):
+        compiled_facts.append(tuple(facts))
+        return SimpleNamespace(registry=compiled, unsupported=())
+
+    monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
+    reconciled_from = []
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (reconciled_from.append(registry) or registry, {}),
+    )
+    monkeypatch.setattr(runtime, "uk_cross_grain_coverage_receipt", lambda: {})
+    monkeypatch.setattr(runtime, "assert_uk_subset_relations", lambda registry: [])
+    monkeypatch.setattr(
+        runtime, "load_uk_calibration_measure_exclusions", lambda path: ()
+    )
+    monkeypatch.setattr(runtime, "load_uk_support_floor_declaration", lambda path: None)
+    monkeypatch.setattr(
+        runtime,
+        "assert_uk_uprating_holds_declared",
+        lambda registry, **kwargs: {"scope": kwargs["scope"]},
+    )
+    monkeypatch.setattr(runtime, "_ledger_provenance", lambda artifact: {})
+
+    result = runtime.load_uk_national_target_inputs(
+        "facts.jsonl",
+        calibration_year=2025,
+        exclusions_evaluated_on=date(2026, 10, 16),
+    )
+
+    # Every reference compiles, on the feed and the derived facts together.
+    derived = runtime.uk_derived_fact_rows()
+    assert compiled_facts == [({"feed": True}, *derived)]
+    # The region rows leave before reconciliation: the national surface and
+    # its version are the ones it had without them.
+    (reconciled,) = reconciled_from
+    assert [spec.name for spec in reconciled.specs] == ["retained", "excluded"]
+    assert result["national_registry"].version == plain.version
+    completeness = result["register_completeness"]
+    assert completeness["compiled_registry_version"] == plain.version
+    assert completeness["compiled_reference_count"] == 2
+    assert completeness["calibration_line"] == {
+        "line": "national",
+        "all_lines_registry_version": compiled.version,
+        "all_lines_reference_count": 4,
+        "dropped_reference_count": 2,
+        "dropped_target_ids": [_REGION_ROW],
+    }
+    # The receipt names every derived resource the compile read.
+    resources = runtime.load_uk_derived_facts()
+    assert sorted(result["derived_fact_provenance"]) == sorted(resources)
+    for stem, facts in resources.items():
+        assert result["derived_fact_provenance"][stem]["rows_sha256"] == (
+            facts.rows_sha256
+        )
+
+
+def test_the_full_line_binds_the_region_rows(prepared, monkeypatch):
+    national, approved, local, artifact, calls = prepared
+    compiled, _plain = _with_region_rows("retained", "excluded")
+    seen_facts = []
+
+    def compile_national(facts, *, target_period):
+        seen_facts.append(tuple(facts))
+        return SimpleNamespace(registry=compiled, unsupported=())
+
+    monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
+    reconciled_from = []
+    monkeypatch.setattr(
+        runtime,
+        "reconcile_uk_national_registry",
+        lambda registry: (reconciled_from.append(registry) or registry, {}),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "apply_uk_calibration_measure_exclusions",
+        lambda registry, exclusions, now: (registry, {}),
+    )
+    result = _load()
+    derived = runtime.uk_derived_fact_rows()
+    assert all(facts == (*artifact.facts, *derived) for facts in seen_facts)
+    # The local line binds every row: nothing leaves, the registry is the
+    # compiled object itself.
+    assert reconciled_from == [compiled]
+    assert result["national_registry"] is compiled
+    line = result["register_completeness"]["calibration_line"]
+    assert line["line"] == "local"
+    assert line["dropped_reference_count"] == 0

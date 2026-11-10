@@ -358,10 +358,14 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
     # (SINGLE 28,800-30,000 and COUPLE_NO_CHILDREN 22,800-24,000, the
     # uk-data#452 class). microcosm#1095 excluded two more whose few
     # supporting awards policyengine-uk 2.122.2 moves out (SINGLE
-    # 26,400-27,600 and COUPLE_NO_CHILDREN 24,000-25,200).
+    # 26,400-27,600 and COUPLE_NO_CHILDREN 24,000-25,200). 88 active / 12
+    # excluded since microcosm#1095 U3: the support floor drops every band
+    # below ten source households on the built frame, so the nine per-row
+    # entries it covers retired. 92 / 8 since arm 2 of the next
+    # policyengine-uk bump binds four bands it fits unbound (microcosm#1344).
     assert len(specs) == 100
-    assert len(active) == 79
-    assert len({s.name for s in specs} & excluded) == 21
+    assert len(active) == 92
+    assert len({s.name for s in specs} & excluded) == 8
     registry = TargetRegistry(active, country="uk")
     result = materialize_uk_ledger_targets(
         adapter, registry, period=2025, band_edge_registry=full_registry
@@ -371,7 +375,7 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
         adapter.to_frame(), registry.to_target_set(), weight_entity="household"
     )
     assert not problem.skipped
-    assert len(problem.names) == 79
+    assert len(problem.names) == 92
     assert not {f"{name}@2025" for name in excluded}.intersection(problem.names)
     expected_family = np.asarray(expected_families)[bu.benunit_id.to_numpy()]
     uc = bu.universal_credit.to_numpy()

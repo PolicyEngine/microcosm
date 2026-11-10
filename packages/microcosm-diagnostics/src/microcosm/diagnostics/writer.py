@@ -13,9 +13,15 @@ from typing import Literal
 
 from pydantic import ValidationError
 
+from microcosm.diagnostics.catalogs import (
+    HierarchyLabelChoices,
+    HierarchyLabelConflictError,
+    catalog_calibration_diagnostics,
+)
 from microcosm.diagnostics.schema import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     CalibrationDiagnosticsV8,
+    CalibrationDiagnosticsV9,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,6 +29,9 @@ _LOGGER = logging.getLogger(__name__)
 DiagnosticsFailureCode = Literal[
     "construction_error",
     "validation_error",
+    # The rows give one identifier two labels and no label is chosen
+    # (HierarchyLabelConflictError); schema 9 holds one label per identifier.
+    "label_conflict",
     "serialization_error",
     "io_error",
     "unexpected_error",
@@ -33,14 +42,14 @@ DiagnosticsFailureCode = Literal[
 class DiagnosticsWriteSuccess:
     status: Literal["available"]
     path: Path
-    schema_version: Literal[8]
+    schema_version: Literal[9]
     sha256: str
 
 
 @dataclass(frozen=True)
 class DiagnosticsWriteFailure:
     status: Literal["failed"]
-    expected_schema_version: Literal[8]
+    expected_schema_version: Literal[9]
     error_code: DiagnosticsFailureCode
     message: str
 
@@ -92,15 +101,30 @@ def failed_diagnostics_outcome(
 
 
 def write_calibration_diagnostics(
-    diagnostics: CalibrationDiagnosticsV8,
+    diagnostics: CalibrationDiagnosticsV8 | CalibrationDiagnosticsV9,
     path: Path | str,
+    *,
+    label_choices: HierarchyLabelChoices | None = None,
 ) -> DiagnosticsWriteOutcome:
-    """Validate and atomically write diagnostics without failing its dataset build."""
+    """Validate and atomically write schema 9 diagnostics without failing a build.
+
+    A schema 8 document, as producers assemble it, is published as schema 9:
+    its hierarchy labels move into ``hierarchy_catalogs``
+    (:func:`catalog_calibration_diagnostics`, with ``label_choices``). When the
+    rows give one identifier two labels and no label is chosen, nothing is
+    written and the outcome's error code is ``label_conflict``.
+    """
 
     output = Path(path)
     temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
     try:
-        validated = CalibrationDiagnosticsV8.model_validate(diagnostics)
+        if isinstance(diagnostics, CalibrationDiagnosticsV9):
+            validated = CalibrationDiagnosticsV9.model_validate(diagnostics)
+        else:
+            validated = catalog_calibration_diagnostics(
+                CalibrationDiagnosticsV8.model_validate(diagnostics),
+                label_choices=label_choices,
+            )
         payload = validated.model_dump(mode="python", exclude_defaults=True)
         encoded = json.dumps(
             payload,
@@ -110,6 +134,14 @@ def write_calibration_diagnostics(
         ).encode("utf-8")
         temporary.write_bytes(encoded)
         os.replace(temporary, output)
+    except HierarchyLabelConflictError as error:
+        # The outcome's message is shortened; log every conflicting identifier.
+        _LOGGER.warning("Calibration diagnostics label conflicts: %s", error)
+        return failed_diagnostics_outcome(
+            error,
+            error_code="label_conflict",
+            path=output,
+        )
     except ValidationError as error:
         return failed_diagnostics_outcome(
             error,

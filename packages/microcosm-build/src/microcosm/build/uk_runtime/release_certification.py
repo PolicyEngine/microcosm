@@ -47,6 +47,7 @@ from microcosm.build.gates import FitWeightRecord
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
+    UK_LOCAL_DIAGNOSTIC_GATE_SCOPE,
     UK_LOCAL_GATE_SCOPE,
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
@@ -60,6 +61,10 @@ from microcosm.build.uk_runtime.cgt_projection import (
     uk_cgt_projection_read_from_engine,
 )
 from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
+from microcosm.data.gate_signing_keys import (
+    GateSigningKeyError,
+    require_registered_gate_signing_key,
+)
 
 __all__ = [
     "UK_RELEASE_CERTIFICATION_KIND",
@@ -77,7 +82,9 @@ __all__ = [
 UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
 UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 UK_RELEASE_CUT_POSTURE = "release_cut"
-UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(UK_LOCAL_GATE_SCOPE)
+UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(UK_LOCAL_GATE_SCOPE) | frozenset(
+    UK_LOCAL_DIAGNOSTIC_GATE_SCOPE
+)
 
 #: Each certification part's declared scope, phases, and manifest policy
 #: suffix. The suffixes are load-bearing: they are what the producers bake
@@ -154,8 +161,8 @@ def uk_release_cut_scope_exclusions() -> dict[str, str]:
             )
         elif entry.id in UK_CERTIFICATION_EXCLUDED_GATE_IDS:
             exclusions[entry.id] = (
-                "local-candidate gate; excluded from national certification "
-                "until microcosm#146."
+                "local-candidate gate; certified on the local line, not the "
+                "national one (microcosm#146 shipped the local variant)."
             )
         else:  # pragma: no cover - closed-world classification is import-enforced
             raise RuntimeError(
@@ -243,6 +250,15 @@ def uk_release_parity_evidence(
                 "grain; the reference side is keyed name@period, so a "
                 "bare-name row would silently fall out of the comparison."
             )
+        metadata = row.get("metadata")
+        if isinstance(metadata, Mapping) and metadata.get("model_figures_withheld"):
+            # A build from before María's ruling of 2026-10-26, which dropped
+            # the withholding, left this row's figures blank; the fit gate
+            # judges every row, so the run cannot be certified here.
+            raise UKReleaseCertificationError(
+                f"diagnostics target {name!r} withholds its model figures; "
+                "rebuild the run to certify it."
+            )
         target_relative_errors[name] = float(row["relative_error"])
     return SimpleNamespace(
         candidate_columns=uk_export_candidate_columns(frame),
@@ -316,8 +332,15 @@ def run_uk_release_cut_battery(
     the compile's unsupported references by period (empty where every
     reference resolved): the compile-parity gates need them to tell a
     reference that did not resolve from a fixture row with no counterpart.
+    The battery refuses to run on a policyengine-uk other than the pinned one
+    (microcosm#1095), since its coverage engine is the installed one.
     """
 
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     battery = GateBatteryRun(
         uk_national_gate_manifest(),
         release_id=release_id,
@@ -352,6 +375,7 @@ def run_uk_release_cut_battery(
         "parity_evidence": parity_evidence,
         "aggregate_admin": admin_totals,
         "input_mass_reference": input_mass_reference,
+        "release_line": "national",
     }
     if fit_weight_records is not None:
         terminal_artifacts["fit_weight_records"] = fit_weight_records
@@ -564,7 +588,12 @@ def _require_signing_key() -> bytes:
         raise UKReleaseCertificationError(
             f"{env_name} must decode to exactly 32 bytes."
         )
-    return key
+    # The certifier verifies every part and signs the certification with
+    # this one key, so it must be a registered key that may still sign.
+    try:
+        return require_registered_gate_signing_key("uk", key, purpose="sign")
+    except GateSigningKeyError as exc:
+        raise UKReleaseCertificationError(f"{env_name}: {exc}") from exc
 
 
 def _verify_part(

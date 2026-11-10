@@ -326,6 +326,39 @@ def test_softmax_parametrization_conserves_mass_and_respects_the_cap(
     assert isinstance(exhausted, int) and 0 <= exhausted <= 300
 
 
+def test_retaining_the_best_objective_under_l2_never_returns_a_worse_epoch() -> None:
+    frame, targets, _design = _problem(3, n=60, k=4)
+    common = dict(
+        epochs=300,
+        learning_rate=0.3,
+        l2_lambda=0.05,
+        l2_anchor="uniform",
+        l2_basis=L2_BASIS_CHI_SQUARE,
+        seed=0,
+    )
+    closing = calibrate(frame, targets, **common)
+    best = calibrate(frame, targets, retain_best_objective=True, **common)
+    assert closing.options["iterate_selection"] == "closing_state"
+    assert best.options["iterate_selection"] == "best_feasible_objective"
+    receipt = best.options["iterate_selection_receipt"]
+    assert receipt["rule"] == "best_feasible_objective"
+    assert receipt["selected_loss_float32"] <= receipt["closing_iterate_loss_float32"]
+    # One optimization path; only the returned epoch can differ.
+    np.testing.assert_array_equal(best.loss_trajectory, closing.loss_trajectory)
+    # Without an L2 penalty the solve already keeps its best epoch.
+    plain = calibrate(frame, targets, epochs=300, learning_rate=0.3, seed=0)
+    flagged = calibrate(
+        frame,
+        targets,
+        epochs=300,
+        learning_rate=0.3,
+        seed=0,
+        retain_best_objective=True,
+    )
+    np.testing.assert_array_equal(plain.weights, flagged.weights)
+    assert flagged.options["iterate_selection"] == "best_feasible_loss"
+
+
 # --- 6: the regularization path ----------------------------------------------
 
 #: Dense at large lambda, where the derived slack 2 * eps / (lam_b - lam_a) is

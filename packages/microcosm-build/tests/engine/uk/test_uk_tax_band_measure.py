@@ -8,12 +8,21 @@ depend on, on the installed engine at the 2025 calibration period.
 
 from __future__ import annotations
 
+import numpy as np
+import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.frs_annual_income import (
+    ANNUAL_SHARE_COLUMNS,
+    OTHER_SPELLS_COLUMNS,
+)
 from microcosm.build.uk_runtime.local_targets import (
     HIGHER_RATE_TAXPAYERS_METRIC,
     compute_household_metrics,
 )
+from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.frame import WeightKind
 
 PERIOD = 2025
 
@@ -98,13 +107,44 @@ def test_scottish_savings_and_dividends_count_against_the_scottish_thresholds():
     assert _bands(people, "ENGLAND") == ["BASIC"]
 
 
-def test_the_area_metric_counts_higher_rate_taxpayers_only():
-    people = {
-        "basic": {"age": 40, "employment_income": 30_000.0},
-        "higher": {"age": 41, "employment_income": 60_000.0},
-        "additional": {"age": 42, "employment_income": 200_000.0},
-    }
-    sim = _simulation(people, "ENGLAND")
+def test_the_area_metric_counts_higher_rate_taxpayers_only(tmp_path):
+    # A basic, a higher and an additional rate taxpayer sharing one English
+    # household, each a single adult's benefit unit.
+    ids = np.arange(1, 4)
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": ids,
+                "person_benunit_id": ids,
+                "person_household_id": [1, 1, 1],
+                "age": [40.0, 41.0, 42.0],
+                "employment_income": [30_000.0, 60_000.0, 200_000.0],
+                "is_benunit_head": [True, True, True],
+                "is_parent": [False, False, False],
+                # Each paid all year at today's rate: the rows read the tax
+                # band of each person's year, here the current band.
+                **{column: [1.0] * 3 for column in ANNUAL_SHARE_COLUMNS},
+                **{column: [0.0] * 3 for column in OTHER_SPELLS_COLUMNS},
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids, "dependent_children": [0, 0, 0]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1],
+                "household_weight": [1.0],
+                "region": ["NORTH_WEST"],
+                "tenure_type": ["OWNED_OUTRIGHT"],
+                "main_residence_value": [250_000.0],
+                "council_tax": [0.0],
+                "rent": [0.0],
+            }
+        ),
+        time_period=str(PERIOD),
+        weight_kind=WeightKind.DESIGN,
+    )
+    resolver = UKMeasureResolver(
+        simulation_source=None, frame=frame, scratch_dir=tmp_path, year=PERIOD
+    )
     for area_type in ("constituency", "la"):
-        metrics = compute_household_metrics(sim, area_type, period=PERIOD)
+        metrics = compute_household_metrics(resolver, area_type, period=PERIOD)
         assert metrics[HIGHER_RATE_TAXPAYERS_METRIC].tolist() == [1.0]

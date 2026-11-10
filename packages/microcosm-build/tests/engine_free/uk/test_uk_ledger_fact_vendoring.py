@@ -288,3 +288,57 @@ def test_committed_vendored_resources_regenerate_from_pinned_feed(
             hashlib.sha256(committed).hexdigest()
             == hashlib.sha256(regenerated).hexdigest()
         ), entry["resource"]
+
+
+def _licence_entry(**licence) -> dict:
+    return {
+        "resource": "probe.json",
+        "purpose": "p",
+        "consumers": [],
+        "planned_consumers": ["c"],
+        "selections": [
+            {
+                "label": "s",
+                "selector": {"source_concept": "x.y"},
+                "expected_row_count": 1,
+            }
+        ],
+        **({"licence": licence} if licence else {}),
+    }
+
+
+def test_a_declared_licence_is_validated_and_copied_into_the_header() -> None:
+    """Publishers' attribution travels with the vendored rows (microcosm#1207)."""
+
+    fact = {
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:one",
+        "semantic_fact_key": "ledger.semantic_fact.v2:one",
+        "observed_measure": {"source_concept": "x.y", "source_name": "x"},
+        "geography": {"id": "K02000001", "level": "country"},
+        "period": {"type": "calendar_year", "value": 2024},
+        "layout": {},
+        "value": 1.0,
+    }
+    licence = {"licence": "Open Government Licence v3.0", "attribution": ["A."]}
+    register = json.loads(json.dumps(load_vendor_selections()))
+    register["resources"].append(_licence_entry(**licence))
+    validate_vendor_selections(register)
+    payload = vendor_resource(
+        _licence_entry(**licence), [fact], pin=load_uk_chronicle_feed()
+    ).payload
+    assert payload["licence"] == licence
+    assert (
+        "licence"
+        not in vendor_resource(
+            _licence_entry(), [fact], pin=load_uk_chronicle_feed()
+        ).payload
+    )
+    for bad in (
+        {"licence": "", "attribution": ["A."]},
+        {"licence": "OGL", "attribution": []},
+        {"licence": "OGL", "attribution": ["A."], "url": "u"},
+    ):
+        broken = json.loads(json.dumps(load_vendor_selections()))
+        broken["resources"].append(_licence_entry(**bad))
+        with pytest.raises(ValueError, match="licence must carry"):
+            validate_vendor_selections(broken)

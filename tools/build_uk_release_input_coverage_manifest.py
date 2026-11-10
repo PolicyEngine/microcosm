@@ -88,6 +88,46 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "approved_by": "juaristi22",
         "approved_on": "2026-10-11",
     },
+    "tax_free_savings_income": {
+        "reason": ENGINE_DERIVED_EXCLUSION_REASON,
+        "tracking_note": (
+            "microcosm#1360: under the additive ISA income contract the "
+            "producer stores ISA interest in "
+            "individual_savings_account_interest_income, which policyengine-uk "
+            "adds into tax_free_savings_income; savings_interest_income, now "
+            "interest outside ISAs, stays required."
+        ),
+        "approved_by": "juaristi22",
+        "approved_on": "2026-10-28",
+    },
+    "pip_dl_category": {
+        "reason": ENGINE_DERIVED_EXCLUSION_REASON,
+        "tracking_note": (
+            "microcosm#1095 (P1 of the November event-data plan): "
+            "policyengine-uk 2.174.1 derives pip_dl_category from "
+            "pip_dl_points (8 points for the standard rate, 12 for the "
+            "enhanced) where no category is supplied for the year; the "
+            "pip_points stage stores the points within the stored award, and "
+            "the release and calibration boundaries drop the category, which "
+            "the spine keeps (María's signature of 2026-11-09)."
+        ),
+        "approved_by": "juaristi22",
+        "approved_on": "2026-11-09",
+    },
+    "pip_m_category": {
+        "reason": ENGINE_DERIVED_EXCLUSION_REASON,
+        "tracking_note": (
+            "microcosm#1095 (P1 of the November event-data plan): "
+            "policyengine-uk 2.174.1 derives pip_m_category from pip_m_points "
+            "(8 points for the standard rate, 12 for the enhanced) where no "
+            "category is supplied for the year; the pip_points stage stores "
+            "the points within the stored award, and the release and "
+            "calibration boundaries drop the category, which the spine keeps "
+            "(María's signature of 2026-11-09)."
+        ),
+        "approved_by": "juaristi22",
+        "approved_on": "2026-11-09",
+    },
 }
 ENTITY_TABLES = ("person", "benunit", "household")
 READ_BATCH_SIZE = 12
@@ -107,6 +147,23 @@ EFFECTIVE_MASS_COVERAGE = {
 # honest (these two columns have signal only on zero-weight SPI rows there);
 # the national HMRC stage is what promotes them. This mirrors the US campaign's
 # RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS anti-regression list.
+#: Engine-derived exclusions the pinned policyengine-uk derives by formula but
+#: the eFRS reference's engine (2.89.0) treated as plain inputs, so they are
+#: absent from its formula_owned_persisted_overrides_included list. Each names
+#: where the pinned engine derives it; the formula-owned check admits only
+#: these beyond the reference's own list (microcosm#1095, P1).
+ENGINE_DERIVED_SINCE_REFERENCE: dict[str, str] = {
+    "pip_dl_category": (
+        "policyengine-uk 2.174.1, variables/input/pip_dl_category.py through "
+        "utils/pip.py pip_category: from pip_dl_points where no category is "
+        "supplied for the year"
+    ),
+    "pip_m_category": (
+        "policyengine-uk 2.174.1, variables/input/pip_m_category.py through "
+        "utils/pip.py pip_category: from pip_m_points where no category is "
+        "supplied for the year"
+    ),
+}
 RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS = (
     "charitable_investment_gifts",
     "gift_aid",
@@ -766,7 +823,15 @@ def _validate_known_gaps(
         if isinstance(engine, dict)
         else ()
     )
-    not_formula_owned = sorted(engine_derived - formula_owned)
+    stray = sorted(set(ENGINE_DERIVED_SINCE_REFERENCE) - engine_derived)
+    if stray:
+        raise ValueError(
+            "Inputs the pinned engine derives since the reference must be "
+            f"engine-derived exclusions: {stray}."
+        )
+    not_formula_owned = sorted(
+        engine_derived - formula_owned - set(ENGINE_DERIVED_SINCE_REFERENCE)
+    )
     if not_formula_owned:
         raise ValueError(
             "Engine-derived exclusions must be formula-owned inputs the "
@@ -863,6 +928,12 @@ def build_manifest(
                 stage_name="cgt_support_split",
                 candidate_source=candidate_source,
             ),
+            # The high-value home support copies whole households at equal weight
+            # (microcosm#1240), the CGT support split's mass semantics.
+            "high_value_home_support": _source_stage_family_coverage_contract(
+                stage_name="high_value_home_support",
+                candidate_source=candidate_source,
+            ),
             "hmrc_cgt_gains_spine": _cgt_spine_family_coverage_contract(
                 candidate_source=candidate_source,
             ),
@@ -882,6 +953,10 @@ def build_manifest(
             ),
             "salary_sacrifice": _source_stage_family_coverage_contract(
                 stage_name="salary_sacrifice",
+                candidate_source=candidate_source,
+            ),
+            "private_school_attendance": _source_stage_family_coverage_contract(
+                stage_name="private_school_attendance",
                 candidate_source=candidate_source,
             ),
             "student_loans": _source_stage_family_coverage_contract(
@@ -906,6 +981,31 @@ def build_manifest(
                 stage_name="was_lisa",
                 candidate_source=candidate_source,
             ),
+            "isa_subscriptions": _source_stage_family_coverage_contract(
+                stage_name="isa_subscriptions",
+                candidate_source=candidate_source,
+            ),
+            # microcosm#1095 (Y1): the UC limited capability flags, DWP's
+            # admin-linked status on linked claims and the proxy elsewhere.
+            "uc_limited_capability": _source_stage_family_coverage_contract(
+                stage_name="uc_limited_capability",
+                candidate_source=candidate_source,
+            ),
+            # microcosm#1095 (P1): the PIP points, drawn within the stored awards.
+            "pip_points": _source_stage_family_coverage_contract(
+                stage_name="pip_points",
+                candidate_source=candidate_source,
+            ),
+            "trading_allowance_receipts": _source_stage_family_coverage_contract(
+                stage_name="trading_allowance_receipts",
+                candidate_source=candidate_source,
+            ),
+            # PolicyEngine/uk-autumn-budget-dashboard-2026#316: the company cars
+            # declare their household-mass receipt like every other stage.
+            "company_cars": _source_stage_family_coverage_contract(
+                stage_name="company_cars",
+                candidate_source=candidate_source,
+            ),
             "nts_bus_travel": _source_stage_family_coverage_contract(
                 stage_name="nts_bus_travel",
                 candidate_source=candidate_source,
@@ -916,6 +1016,14 @@ def build_manifest(
             ),
             "property_components": _source_stage_family_coverage_contract(
                 stage_name="property_components",
+                candidate_source=candidate_source,
+            ),
+            "regional_home_values": _source_stage_family_coverage_contract(
+                stage_name="regional_home_values",
+                candidate_source=candidate_source,
+            ),
+            "property_purchases": _source_stage_family_coverage_contract(
+                stage_name="property_purchases",
                 candidate_source=candidate_source,
             ),
             "lcfs_consumption": _source_stage_family_coverage_contract(
@@ -1194,6 +1302,9 @@ def _hmrc_family_coverage_contract(
         "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
         "required_predecessor_stages": [
             "frs_hmrc_spine_leaves",
+            # The SPI copies carry the annual income descriptors their twins
+            # hold, and the income stage holds them to the drawn incomes.
+            "frs_annual_income_spells",
             "spi_support_channel",
             "spi_income_band_donors",
         ],

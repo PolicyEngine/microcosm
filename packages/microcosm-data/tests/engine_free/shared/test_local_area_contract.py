@@ -19,7 +19,9 @@ import pytest
 from microcosm.data import contract
 from microcosm.data.contract import (
     NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
+    US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
+    US_SPM_MEASUREMENT_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_KEY,
     ReleaseContractError,
     release_dataset_role,
@@ -27,6 +29,11 @@ from microcosm.data.contract import (
 )
 from microcosm.data.release import prepare_release, publish_release
 from microcosm.data.stored_inputs import register_sha256
+from test_support.microcosm_data.build_folders import (
+    UK_LOCAL_BUILD,
+    build_folder_build_manifest,
+    build_folder_release_manifest,
+)
 from test_support.paths import REPOSITORY_ROOT
 
 RELEASE_ID = "populace-us-2024-buildo-acs-local-abc1234-20260723T000000Z"
@@ -57,6 +64,36 @@ def _stored_inputs_gate() -> dict:
     }
 
 
+def _spm_measurement_gate(engine: str = "policyengine-us 2.2.1") -> dict:
+    """The SPM measurement gate the ACS package stage writes for ARTIFACT_BYTES
+    under an engine that measures every SPM unit, as policyengine-us 2.2.1
+    does (microcosm#1263)."""
+    return {
+        "passed": True,
+        "failures": [],
+        "engine": engine,
+        "details": {
+            "role_column_present": True,
+            "role_null_values": 0,
+            "role_non_boolean_values": 0,
+            "engine_scopes_spm_universe": False,
+            "universe_declared_in_release": False,
+            "measured_scope": "all_units",
+            "n_units": 1_589_568,
+            "n_units_by_universe": {"INCLUDED": 1_408_308, "OUTSIDE": 181_260},
+            "n_measured_units": 1_589_568,
+            "n_measured_units_without_classified_adult": 0,
+            "n_units_without_classified_adult": 0,
+            "n_units_without_classified_adult_by_universe": {
+                "INCLUDED": 0,
+                "OUTSIDE": 0,
+            },
+        },
+        "artifact_sha256": ARTIFACT_SHA,
+        "checked_at_stage": US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
+    }
+
+
 def _write_local_bundle(
     root: Path,
     *,
@@ -70,13 +107,18 @@ def _write_local_bundle(
     build_manifest_stored_inputs_gate: object = _DEFAULT,
     built_with_model_package: object = _DEFAULT,
     extra_gates: dict | None = None,
+    spm_measurement_gate: object = _DEFAULT,
+    build_manifest_spm_measurement_gate: object = _DEFAULT,
 ) -> Path:
     """A local-area release directory the contract accepts by default.
 
-    A US id gets the package stage's stored-input gate in ``gate_summary.json``
-    and ``build_manifest.json`` and the built-with engine it names; a UK id
-    gets neither, as the UK lanes write neither. ``None`` omits a piece, and a
-    value replaces it.
+    A US id gets the package stage's stored-input and SPM measurement gates in
+    ``gate_summary.json`` and ``build_manifest.json`` and the built-with
+    engine they name; a UK id gets none of them, as the UK lanes write none.
+    ``None`` omits a piece, and a value replaces it. A UK local-area release
+    publishes each build into its own folder, so its manifests name the
+    release and the build (``UK_LOCAL_BUILD``) and record its UK built-with
+    packages at the top level.
     """
     release_dir = root / "releases" / release_id
     release_dir.mkdir(parents=True)
@@ -87,6 +129,25 @@ def _write_local_bundle(
         build_manifest_stored_inputs_gate = copy.deepcopy(stored_inputs_gate)
     if built_with_model_package is _DEFAULT:
         built_with_model_package = dict(BUILT_WITH_US) if us else None
+    if spm_measurement_gate is _DEFAULT:
+        # The package stage grades against the engine it records as
+        # built-with, so the default gate names that engine.
+        version = (
+            built_with_model_package.get("version")
+            if isinstance(built_with_model_package, dict)
+            else None
+        )
+        spm_measurement_gate = (
+            _spm_measurement_gate(
+                f"policyengine-us {version}"
+                if isinstance(version, str) and version
+                else "policyengine-us 2.2.1"
+            )
+            if us
+            else None
+        )
+    if build_manifest_spm_measurement_gate is _DEFAULT:
+        build_manifest_spm_measurement_gate = copy.deepcopy(spm_measurement_gate)
 
     diagnostics = {
         "households": 1_600_000,
@@ -119,6 +180,8 @@ def _write_local_bundle(
     }
     if stored_inputs_gate is not None:
         gates[US_STORED_INPUTS_EVIDENCE_KEY] = stored_inputs_gate
+    if spm_measurement_gate is not None:
+        gates[US_SPM_MEASUREMENT_EVIDENCE_KEY] = spm_measurement_gate
     gate_summary = {"gates": gates, "reviewed_limitations": []}
     coverage = {
         "schema_version": 1,
@@ -128,10 +191,17 @@ def _write_local_bundle(
         "donor_release": {"release_id": "populace-us-2024-buildo-sparse-x"},
     }
     build_manifest = {"build_id": release_id, "build_sha": "abc1234"}
+    build_manifest_gates = {}
     if build_manifest_stored_inputs_gate is not None:
-        build_manifest["gates"] = {
-            US_STORED_INPUTS_EVIDENCE_KEY: build_manifest_stored_inputs_gate
-        }
+        build_manifest_gates[US_STORED_INPUTS_EVIDENCE_KEY] = (
+            build_manifest_stored_inputs_gate
+        )
+    if build_manifest_spm_measurement_gate is not None:
+        build_manifest_gates[US_SPM_MEASUREMENT_EVIDENCE_KEY] = (
+            build_manifest_spm_measurement_gate
+        )
+    if build_manifest_gates:
+        build_manifest["gates"] = build_manifest_gates
 
     files = {
         "calibration_diagnostics.json": diagnostics,
@@ -182,6 +252,17 @@ def _write_local_bundle(
         },
         "reviewed_limitations": [{"id": "cd_population_marginal_vintage_2020"}],
     }
+    if release_id.startswith("microcosm-uk-2024-25-"):
+        manifest = _as_uk_build_folder(manifest, release_id=release_id)
+        payloads["build_manifest.json"] = json.dumps(
+            build_folder_build_manifest(
+                build_manifest, release=release_id, build=UK_LOCAL_BUILD
+            ),
+            indent=1,
+        ).encode()
+        (release_dir / "build_manifest.json").write_bytes(
+            payloads["build_manifest.json"]
+        )
     manifest_text = json.dumps(manifest, indent=1)
     (release_dir / "release_manifest.json").write_text(manifest_text)
     ledger = {name: _sha256_bytes(payload) for name, payload in payloads.items()}
@@ -191,6 +272,81 @@ def _write_local_bundle(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(ledger.items()))
     )
     return release_dir
+
+
+def _as_uk_build_folder(manifest: dict, *, release_id: str) -> dict:
+    """The local-area manifest as a UK local-area build publishes it."""
+    for artifact in manifest["artifacts"].values():
+        artifact["repo_id"] = "policyengine/populace-uk-private"
+    manifest["build"] = {
+        "built_with_core_package": {"name": "policyengine-core", "version": "3.33.3"},
+        "built_with_model_package": {"name": "policyengine-uk", "version": "2.165.1"},
+    }
+    manifest["compatible_core_packages"] = [
+        {"name": "policyengine-core", "specifier": "==3.33.3"}
+    ]
+    manifest["compatible_model_packages"] = [
+        {"name": "policyengine-uk", "specifier": "==2.165.1"}
+    ]
+    return build_folder_release_manifest(
+        manifest, release=release_id, build=UK_LOCAL_BUILD
+    )
+
+
+def test_uk_local_area_bundle_publishes_in_the_build_folder_layout(
+    tmp_path: Path,
+) -> None:
+    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+
+    assert (manifest["release"], manifest["build"]) == (
+        UK_LOCAL_RELEASE_ID,
+        UK_LOCAL_BUILD,
+    )
+    assert (build_manifest["release"], build_manifest["build"]) == (
+        UK_LOCAL_RELEASE_ID,
+        UK_LOCAL_BUILD,
+    )
+    validate_release_dir(release_dir)
+
+
+def test_uk_local_area_bundle_refuses_the_tagged_layout(tmp_path: Path) -> None:
+    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+    build_manifest_path = release_dir / "build_manifest.json"
+    build_manifest = json.loads(build_manifest_path.read_text())
+    build_manifest["build_id"] = UK_LOCAL_RELEASE_ID
+    build_manifest_path.write_text(json.dumps(build_manifest))
+
+    failures = _failures(release_dir)
+    assert any(
+        "build_manifest.json carries 'build_id'" in failure for failure in failures
+    )
+
+
+def test_uk_local_area_bundle_refuses_a_tagged_release_manifest(
+    tmp_path: Path,
+) -> None:
+    """A tagged release manifest describes the build in an object and pins
+    each artifact to the build's tag; a UK local-area build publishes into
+    its own folder, so the contract refuses both."""
+    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    tag = f"{UK_LOCAL_RELEASE_ID}-20260920T120000Z-deadbeef"
+    manifest["build"] = {"build_id": UK_LOCAL_RELEASE_ID, "cut_tag": tag}
+    for artifact in manifest["artifacts"].values():
+        artifact["revision"] = tag
+    manifest_path.write_text(json.dumps(manifest))
+
+    failures = _failures(release_dir)
+
+    assert any("'build' must be the build's name" in failure for failure in failures)
+    assert any(
+        f"pins revision {tag!r}; a build folder's files are found through "
+        "releases.json" in failure
+        for failure in failures
+    )
 
 
 def test_valid_local_area_bundle_passes(tmp_path: Path) -> None:
@@ -560,6 +716,91 @@ def test_a_release_packaged_before_the_gate_is_refused() -> None:
 
     assert len(failures) == 1
     assert "must carry the 'stored_inputs' gate" in failures[0]
+
+
+# ---------------------------------------------------------------------------
+# The SPM measurement gate (microcosm#1263)
+# ---------------------------------------------------------------------------
+
+
+def test_us_local_area_release_requires_the_spm_measurement_gate(
+    tmp_path: Path,
+) -> None:
+    """A US bundle without the gate is refused through the full validator,
+    though every gate it does list passed."""
+    release_dir = _write_local_bundle(
+        tmp_path,
+        spm_measurement_gate=None,
+        build_manifest_spm_measurement_gate=None,
+    )
+
+    failures = _failures(release_dir)
+
+    assert len(failures) == 1, failures
+    assert "must carry the 'spm_measurement_composition' gate" in failures[0]
+
+
+def test_a_release_with_a_measured_unit_without_an_adult_is_refused(
+    tmp_path: Path,
+) -> None:
+    """The 2026-09-23 failure, as a record: under policyengine-us 2.2.1 every
+    unit is measured, so 1,946 unclassified units outside the universe are
+    measured units, and the release would crash every SPM measurement."""
+    gate = _spm_measurement_gate()
+    gate["details"].update(
+        n_measured_units_without_classified_adult=1_946,
+        n_units_without_classified_adult=1_946,
+        n_units_without_classified_adult_by_universe={"INCLUDED": 0, "OUTSIDE": 1_946},
+    )
+    release_dir = _write_local_bundle(tmp_path, spm_measurement_gate=gate)
+
+    failures = _failures(release_dir)
+
+    assert any("SPM_COMPOSITION_REQUIRED" in failure for failure in failures)
+
+
+def test_the_build_manifest_copy_of_the_spm_gate_must_match(tmp_path: Path) -> None:
+    other = _spm_measurement_gate()
+    other["details"]["n_units"] = 1
+    release_dir = _write_local_bundle(
+        tmp_path, build_manifest_spm_measurement_gate=other
+    )
+
+    failures = _failures(release_dir)
+
+    assert any(
+        "build_manifest.json gates.spm_measurement_composition" in failure
+        for failure in failures
+    ), failures
+
+
+def test_uk_local_k_bundle_needs_no_spm_measurement_gate(tmp_path: Path) -> None:
+    release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
+    gate_summary = json.loads((release_dir / "gate_summary.json").read_text())
+
+    assert US_SPM_MEASUREMENT_EVIDENCE_KEY not in gate_summary["gates"]
+    validate_release_dir(release_dir)
+
+
+def test_a_release_packaged_before_the_spm_gate_is_refused() -> None:
+    """Negative control on a real pre-gate package-stage output: the Build O
+    hours rebuild's release files carry no SPM measurement gate."""
+    source = REPO_ROOT / "experiments" / "us-acs-local-hours-rebuild-20260922"
+    gate_summary = json.loads((source / "gate_summary.json").read_text())
+    release_manifest = json.loads((source / "release_manifest.json").read_text())
+    build_manifest = json.loads((source / "build_manifest.json").read_text())
+    assert US_SPM_MEASUREMENT_EVIDENCE_KEY not in gate_summary["gates"]
+
+    failures: list[str] = []
+    contract._check_us_local_area_spm_measurement_gate(
+        gate_summary,
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        failures=failures,
+    )
+
+    assert len(failures) == 1
+    assert "must carry the 'spm_measurement_composition' gate" in failures[0]
 
 
 def _hypothesis():

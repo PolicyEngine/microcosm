@@ -486,6 +486,7 @@ class TestStageTransform:
         )
         person["property_income"] = profit + sublet
         spi_rows = person["person_support_channel"].eq("spi") & person["is_uc_claimant"]
+        person["person_is_spi_income_recipient"] = spi_rows.to_numpy()
         person["property_finance_costs"] = np.where(spi_rows, 0.2 * profit, 0.0)
         benunit = pd.DataFrame({"benunit_id": np.arange(1, households + 1)})
         return uk_national_frame(

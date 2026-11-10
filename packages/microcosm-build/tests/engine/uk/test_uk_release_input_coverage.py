@@ -439,19 +439,29 @@ class TestUKManifest:
         )
         # microcosm#1106: property_wealth is formula-owned in policyengine-uk,
         # so the release leaves it to the engine; it is an engine-derived
-        # exclusion, not parity debt, and its components stay required.
+        # exclusion, not parity debt, and its components stay required. So is
+        # tax_free_savings_income under the additive ISA income contract
+        # (microcosm#1360), and so are the PIP categories, which the engine
+        # derives from the points the release stores (microcosm#1095, P1).
+        engine_derived = [
+            "pip_dl_category",
+            "pip_m_category",
+            "property_wealth",
+            "tax_free_savings_income",
+        ]
         assert manifest.required_columns == (
             frozenset(load_efrs_parity_reference().populated_layers)
-            - {"property_wealth"}
+            - set(engine_derived)
         )
-        assert set(manifest.reviewed_exclusions) == {"property_wealth"}
+        assert set(manifest.reviewed_exclusions) == set(engine_derived)
         assert load_efrs_parity_known_gaps() == ()
-        assert [gap.variable for gap in load_efrs_engine_derived_exclusions()] == [
-            "property_wealth"
-        ]
+        assert [
+            gap.variable for gap in load_efrs_engine_derived_exclusions()
+        ] == engine_derived
         assert manifest.required_build_stages == frozenset(
             {
                 "frs_hmrc_spine_leaves",
+                "frs_annual_income_spells",
                 "spi_support_channel",
                 "spi_income_band_donors",
                 "hmrc_spi_income_spine",
@@ -463,10 +473,19 @@ class TestUKManifest:
                 "hmrc_cgt_asset_type_spine",
                 "salary_sacrifice",
                 "student_loans",
+                "private_school_attendance",
                 "was_wealth",
                 "was_lisa",
+                "isa_subscriptions",
+                "uc_limited_capability",
+                "pip_points",
+                "trading_allowance_receipts",
+                "company_cars",
                 "regional_property_uprating",
+                "high_value_home_support",
+                "regional_home_values",
                 "property_components",
+                "property_purchases",
                 "nts_bus_travel",
                 "lcfs_consumption",
                 "etb_vat",
@@ -778,13 +797,27 @@ class TestUKManifest:
             reference["engine"]["formula_owned_persisted_overrides_included"]
         )
         assert len(overrides) == 13
-        # The one exception is declared: property_wealth, whose persisted copy
+        # The exceptions are declared: property_wealth, whose persisted copy
         # overrides the engine's component sum and is never uprated, so the
-        # release leaves it to the formula (microcosm#1106). Every other
+        # release leaves it to the formula (microcosm#1106), and
+        # tax_free_savings_income, the engine's sum of the ISA interest the
+        # additive contract stores apart (microcosm#1360). Every other
         # formula-owned override stays required.
+        #
+        # The PIP categories are engine-derived since the reference: its
+        # engine (2.89.0) read them as plain inputs, so they are not among its
+        # overrides, but the pinned engine derives them from the points the
+        # release stores (microcosm#1095, P1).
+        since_reference = {"pip_dl_category", "pip_m_category"}
         engine_derived = {gap.variable for gap in load_efrs_engine_derived_exclusions()}
-        assert engine_derived == {"property_wealth"}
-        assert engine_derived <= overrides
+        expected = {"property_wealth", "tax_free_savings_income"} | since_reference
+        assert engine_derived == expected
+        assert since_reference.isdisjoint(overrides)
+        assert engine_derived - since_reference <= overrides
+        from policyengine_uk import CountryTaxBenefitSystem
+
+        variables = CountryTaxBenefitSystem().variables
+        assert not any(variables[name].is_input_variable() for name in since_reference)
         assert overrides - engine_derived <= set(manifest.required_columns)
         assert engine_derived.isdisjoint(manifest.required_columns)
 

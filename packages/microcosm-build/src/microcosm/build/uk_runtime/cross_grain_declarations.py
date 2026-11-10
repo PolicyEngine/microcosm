@@ -38,7 +38,10 @@ from microcosm.build.cross_grain import (
 )
 
 UK_CROSS_GRAIN_DECLARATIONS_RESOURCE = "cross_grain_declarations.json"
-UK_LOCAL_GEOGRAPHY_LEVELS = frozenset({"constituency", "local_authority"})
+#: ``statistical_scope`` is Scotland's BRMA grain (microcosm#1090, #1262).
+UK_LOCAL_GEOGRAPHY_LEVELS = frozenset(
+    {"constituency", "local_authority", "statistical_scope"}
+)
 _RELATION_KINDS = ("subset", "independent")
 _LOCAL_ROUTE_KINDS = ("no_higher_control",)
 
@@ -73,6 +76,13 @@ def uk_cross_grain_bridges(
             higher_target_ids=tuple(str(value) for value in entry["higher_target_ids"]),
             lower_side=str(entry["lower_side"]),
             per_geography=bool(entry.get("per_geography", False)),
+            max_factor_shift=(
+                None
+                if entry.get("max_factor_shift") is None
+                else _declared_bound(
+                    entry, "max_factor_shift", kind="cross-grain bridge"
+                )
+            ),
         )
         for entry in declared["bridges"]
     )
@@ -94,15 +104,40 @@ class UKFanoutSumBridge:
     sides no longer measure one quantity. The index factor is the rest, the
     gap between the bands' band-by-band growth and the cells' all-ranges
     growth: one further than ``max_index_shift`` from one means a re-pinned
-    index has moved the area targets.
+    index has moved the area targets. A source gap known to run one way is
+    bounded on both sides: ``min_factor_shift`` is the lowest signed shift the
+    source factor may take, and without it the bound is symmetric (the
+    independent review of microcosm#1420).
+
+    A bridge may sum several national fan-outs whose cells together are the
+    area cells' quantity (``higher_target_ids``): the State Pension and the
+    private pension bands are one area's pension income (microcosm#1418).
     """
 
     bridge_id: str
-    higher_target_id: str
+    higher_target_ids: tuple[str, ...]
     lower_target_id: str
     geography_id: str
     max_factor_shift: float
     max_index_shift: float
+    min_factor_shift: float | None = None
+
+    @property
+    def source_factor_bounds(self) -> tuple[float, float]:
+        """The lowest and highest source factor the bridge accepts."""
+
+        lower = (
+            -self.max_factor_shift
+            if self.min_factor_shift is None
+            else self.min_factor_shift
+        )
+        return 1.0 + lower, 1.0 + self.max_factor_shift
+
+    @property
+    def higher_target_id(self) -> str:
+        """The control's name: its one fan-out, or its fan-outs joined by ``+``."""
+
+        return "+".join(self.higher_target_ids)
 
     @property
     def control_target_id(self) -> str:
@@ -116,21 +151,69 @@ def uk_fanout_sum_bridges(
     return tuple(
         UKFanoutSumBridge(
             bridge_id=str(entry["bridge_id"]),
-            higher_target_id=str(entry["higher_target_id"]),
+            higher_target_ids=_fanout_higher_target_ids(entry),
             lower_target_id=str(entry["lower_target_id"]),
             geography_id=str(entry["geography_id"]),
-            max_factor_shift=_fanout_bound(entry, "max_factor_shift"),
-            max_index_shift=_fanout_bound(entry, "max_index_shift"),
+            max_factor_shift=_declared_bound(entry, "max_factor_shift"),
+            max_index_shift=_declared_bound(entry, "max_index_shift"),
+            min_factor_shift=_declared_floor(entry),
         )
         for entry in declared.get("fanout_sum_bridges", ())
     )
 
 
-def _fanout_bound(entry: Mapping[str, Any], field: str) -> float:
-    bound = entry.get(field)
-    if not isinstance(bound, (int, float)) or not 0.0 < float(bound) < 1.0:
+def _declared_floor(entry: Mapping[str, Any]) -> float | None:
+    """A bridge's signed lower bound on its source shift, if it declares one."""
+
+    floor = entry.get("min_factor_shift")
+    if floor is None:
+        return None
+    ceiling = _declared_bound(entry, "max_factor_shift")
+    if (
+        isinstance(floor, bool)
+        or not isinstance(floor, (int, float))
+        or not -ceiling <= float(floor) < ceiling
+    ):
         raise ValueError(
             f"UK fan-out sum bridge {entry.get('bridge_id')!r} must declare "
+            f"min_factor_shift in [-max_factor_shift, max_factor_shift), got "
+            f"{floor!r}."
+        )
+    return float(floor)
+
+
+def _fanout_higher_target_ids(entry: Mapping[str, Any]) -> tuple[str, ...]:
+    """A fan-out sum bridge's national fan-outs: one, or several summed."""
+
+    single = entry.get("higher_target_id")
+    several = entry.get("higher_target_ids")
+    if (single is None) == (several is None):
+        raise ValueError(
+            f"UK fan-out sum bridge {entry.get('bridge_id')!r} must declare "
+            "exactly one of higher_target_id and higher_target_ids."
+        )
+    if single is not None:
+        return (str(single),)
+    ids = tuple(str(value) for value in several)
+    if len(ids) < 2 or len(set(ids)) != len(ids):
+        raise ValueError(
+            f"UK fan-out sum bridge {entry.get('bridge_id')!r} must sum two or "
+            "more distinct higher_target_ids."
+        )
+    return ids
+
+
+def _declared_bound(
+    entry: Mapping[str, Any], field: str, *, kind: str = "fan-out sum bridge"
+) -> float:
+    bound = entry.get(field)
+    if (
+        isinstance(bound, bool)
+        or not isinstance(bound, (int, float))
+        or not 0.0 < float(bound) < 1.0
+    ):
+        raise ValueError(
+            f"UK {kind} {entry.get('bridge_id')!r} must declare "
             f"{field} in (0, 1), got {bound!r}."
         )
     return float(bound)
@@ -237,7 +320,7 @@ def uk_cross_grain_overlap_candidates(
         for side in (entry["higher_target_id"], *entry["lower_target_ids"]):
             bridged.setdefault(str(side), set()).add(str(entry["bridge_id"]))
     for fanout in uk_fanout_sum_bridges(declarations):
-        for side in (fanout.higher_target_id, fanout.lower_target_id):
+        for side in (*fanout.higher_target_ids, fanout.lower_target_id):
             bridged.setdefault(side, set()).add(fanout.bridge_id)
     for entry in declarations.get("sum_bridges", ()):
         for side in (*entry["higher_target_ids"], *entry["lower_target_ids"]):
@@ -308,7 +391,7 @@ def uk_cross_grain_coverage_violations(
         for target_id in (entry["higher_target_id"], *entry["lower_target_ids"]):
             known(str(target_id), f"band bridge {entry['bridge_id']}")
     for fanout in uk_fanout_sum_bridges(declared):
-        for target_id in (fanout.higher_target_id, fanout.lower_target_id):
+        for target_id in (*fanout.higher_target_ids, fanout.lower_target_id):
             known(target_id, f"fan-out sum bridge {fanout.bridge_id}")
         bridge_lower.add(fanout.lower_target_id)
     for entry in declared.get("sum_bridges", ()):

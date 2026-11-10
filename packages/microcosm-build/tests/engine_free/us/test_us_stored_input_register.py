@@ -6,6 +6,7 @@ from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
 
+from microcosm.build.us_runtime.county_vintage import COUNTY_FIPS_2023_COLUMN
 from microcosm.data import contract  # noqa: E402
 from microcosm.data.contract import (  # noqa: E402
     US_FISCAL_STORED_INPUTS_STAGE,
@@ -30,7 +31,8 @@ def test_every_register_entry_is_a_named_producer_column():
     base-spine tag of every US entity, the pooled-source provenance columns,
     microunit's two tax-unit construction columns, the PUF capital-gains tail
     provenance columns, the ACS-native acs_ amounts and acs_pums's puma_geoid
-    alias."""
+    alias, plus the two pending engine-input families: the parent ids and the
+    federal student loan inputs."""
 
     support = {
         column(entity)
@@ -60,10 +62,12 @@ def test_every_register_entry_is_a_named_producer_column():
         | tail
         | _ACS_NATIVE_AMOUNTS
         | {"puma_geoid"}
+        | {COUNTY_FIPS_2023_COLUMN}
         | set(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS)
+        | set(US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS)
     )
     assert len(_ACS_NATIVE_AMOUNTS) == 6
-    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1 + 2
+    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1 + 2 + 1 + 4
 
 
 def test_every_register_reason_names_where_its_column_comes_from():
@@ -88,6 +92,7 @@ def test_every_register_reason_names_where_its_column_comes_from():
         },
         **{column: "_ACS_NATIVE_INPUT_CONTRACTS" for column in _ACS_NATIVE_AMOUNTS},
         "puma_geoid": "microcosm.build.us_runtime.acs_pums",
+        COUNTY_FIPS_2023_COLUMN: "microcosm.build.us_runtime.county_vintage",
         _TAX_UNIT_ROLE_COLUMN: "microcosm.frame.units._TAX_UNIT_ROLE_COLUMN",
         TAX_UNIT_FILING_STATUS_COLUMN: (
             "microcosm.frame.units.TAX_UNIT_FILING_STATUS_COLUMN"
@@ -95,6 +100,10 @@ def test_every_register_reason_names_where_its_column_comes_from():
         **{
             column: "US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS"
             for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+        },
+        **{
+            column: "US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS"
+            for column in US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS
         },
     }
     for column, owner in expected_owner.items():

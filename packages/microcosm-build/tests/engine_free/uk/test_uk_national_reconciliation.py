@@ -377,3 +377,177 @@ def test_a_partly_bound_sum_bridge_is_refused():
     specs = [_spec("a", bridge.higher_target_ids[0], 1.0)]
     with pytest.raises(ValueError, match="partly bound"):
         _apply_sum_bridges(specs, (bridge,))
+
+
+def _area(target_id: str, geography_id: str, value: float) -> TargetSpec:
+    level = "region" if geography_id.startswith("E12") else "country"
+    return _spec(
+        f"{target_id}@{geography_id}@2025",
+        target_id,
+        value,
+        geography_level=level,
+        geography_id=geography_id,
+    )
+
+
+def _council_tax_partition(bound: float = 0.05):
+    from microcosm.build.uk_runtime.national_reconciliation import (
+        UKHouseholdBasisPartition,
+    )
+
+    return UKHouseholdBasisPartition(
+        partition_id="council_tax_on_households",
+        control_target_ids=("ons.households.english_regions",),
+        parent_target_ids=("mhclg.council_tax_stock.total",),
+        member_target_ids=(
+            "mhclg.council_tax_stock.band_a",
+            "mhclg.council_tax_stock.band_b",
+        ),
+        max_factor_shift=bound,
+    )
+
+
+def test_council_tax_cells_take_their_areas_household_basis():
+    """Each area's dwelling total takes its household control and the bands
+    keep their mix (microcosm#1284)."""
+
+    from microcosm.build.uk_runtime.national_reconciliation import (
+        _apply_household_basis_partitions,
+    )
+
+    specs = [
+        _area("ons.households.english_regions", "E12000001", 1020.0),
+        _area("mhclg.council_tax_stock.total", "E12000001", 1000.0),
+        _area("mhclg.council_tax_stock.band_a", "E12000001", 600.0),
+        _area("mhclg.council_tax_stock.band_b", "E12000001", 400.0),
+        _area("ons.households.english_regions", "E12000002", 990.0),
+        _area("mhclg.council_tax_stock.total", "E12000002", 1000.0),
+        _area("mhclg.council_tax_stock.band_a", "E12000002", 500.0),
+        _area("mhclg.council_tax_stock.band_b", "E12000002", 500.0),
+    ]
+    receipts = _apply_household_basis_partitions(specs, (_council_tax_partition(),))
+
+    values = [spec.value for spec in specs]
+    assert values == pytest.approx(
+        [1020.0, 1020.0, 612.0, 408.0, 990.0, 990.0, 495.0, 495.0]
+    )
+    assert [r["geography_id"] for r in receipts] == ["E12000001", "E12000002"]
+    assert [r["declared_factor"] for r in receipts] == pytest.approx([1.02, 0.99])
+    assert specs[2].metadata["cross_grain_control"] == "council_tax_on_households"
+    assert float(specs[2].metadata["cross_grain_value_before"]) == 600.0
+    assert specs[0].metadata.get("cross_grain_factor") is None
+
+
+def test_a_household_basis_factor_beyond_its_bound_is_refused():
+    from microcosm.build.uk_runtime.national_reconciliation import (
+        _apply_household_basis_partitions,
+    )
+
+    specs = [
+        _area("ons.households.english_regions", "E12000001", 1200.0),
+        _area("mhclg.council_tax_stock.total", "E12000001", 1000.0),
+    ]
+    with pytest.raises(ValueError, match="households per dwelling"):
+        _apply_household_basis_partitions(specs, (_council_tax_partition(),))
+
+
+def test_band_cells_without_their_total_are_refused():
+    from microcosm.build.uk_runtime.national_reconciliation import (
+        _apply_household_basis_partitions,
+    )
+
+    specs = [
+        _area("ons.households.english_regions", "E12000001", 1020.0),
+        _area("mhclg.council_tax_stock.band_a", "E12000001", 600.0),
+    ]
+    with pytest.raises(ValueError, match="without their total"):
+        _apply_household_basis_partitions(specs, (_council_tax_partition(),))
+
+
+def test_the_committed_partition_puts_council_tax_on_the_household_controls():
+    from microcosm.build.uk_runtime.cross_grain_declarations import (
+        load_uk_cross_grain_declarations,
+    )
+    from microcosm.build.uk_runtime.national_reconciliation import (
+        uk_household_basis_partitions,
+    )
+
+    (partition,) = uk_household_basis_partitions()
+    assert partition.control_target_ids == (
+        "ons.households.english_regions",
+        "welshgov.households.wales",
+        "nrs.households.scotland",
+    )
+    assert partition.parent_target_ids == (
+        "mhclg.council_tax_stock.total",
+        "welshgov.council_tax_stock.total",
+        "scotgov.council_tax_stock.total",
+    )
+    expected_members = {
+        f"{publisher}.council_tax_stock.band_{band}"
+        for publisher, bands in (
+            ("mhclg", "abcdefgh"),
+            ("welshgov", "abcdefghi"),
+            ("scotgov", "abcdefgh"),
+        )
+        for band in bands
+    }
+    assert set(partition.member_target_ids) == expected_members
+    assert 0.0 < partition.max_factor_shift < 0.1
+    (entry,) = load_uk_cross_grain_declarations()["household_basis_partitions"]
+    # The signed assumption: households per chargeable dwelling are the same
+    # in every band of an area.
+    assert "households per chargeable dwelling" in entry["reason"]
+    assert entry["approved_by"] == "juaristi22"
+    assert entry["tracking"] == "microcosm#1284"
+
+
+def test_the_committed_partition_closes_the_register_on_the_household_basis():
+    """The committed partition, applied and then checked as the national
+    reconciliation does: each area's total equals its control."""
+
+    from microcosm.build.uk_runtime.cross_grain_declarations import (
+        load_uk_cross_grain_declarations,
+    )
+    from microcosm.build.uk_runtime.national_reconciliation import (
+        _apply_household_basis_partitions,
+        _assert_national_closure,
+        uk_household_basis_partitions,
+    )
+
+    bands = (250_000.0, 500_000.0, 800_000.0, 800_000.0, 500_000.0, 300_000.0)
+    specs = [
+        _area("ons.households.english_regions", "E12000007", 3_500_000.0),
+        _area("mhclg.council_tax_stock.total", "E12000007", 3_450_000.0),
+        *[
+            _area(f"mhclg.council_tax_stock.band_{band}", "E12000007", value)
+            for band, value in zip(
+                "abcdefgh", (*bands, 200_000.0, 100_000.0), strict=True
+            )
+        ],
+        _area("nrs.households.scotland", "S92000003", 2_570_000.0),
+        _area("scotgov.council_tax_stock.total", "S92000003", 2_623_000.0),
+        _area("scotgov.council_tax_stock.band_b", "S92000003", 2_623_000.0),
+    ]
+    receipts = _apply_household_basis_partitions(specs, uk_household_basis_partitions())
+    by_name = {spec.name: spec.value for spec in specs}
+    assert by_name["mhclg.council_tax_stock.total@E12000007@2025"] == pytest.approx(
+        3_500_000.0
+    )
+    assert math.fsum(
+        value
+        for name, value in by_name.items()
+        if name.startswith("mhclg.council_tax_stock.band_")
+    ) == pytest.approx(3_500_000.0)
+    assert by_name["scotgov.council_tax_stock.band_b@S92000003@2025"] == (
+        pytest.approx(2_570_000.0)
+    )
+    assert [r["geography_id"] for r in receipts] == ["E12000007", "S92000003"]
+    declarations = {
+        "household_basis_partitions": load_uk_cross_grain_declarations()[
+            "household_basis_partitions"
+        ],
+        "band_bridges": [],
+        "sum_bridges": [],
+    }
+    _assert_national_closure(TargetRegistry(specs, country="uk"), None, declarations)

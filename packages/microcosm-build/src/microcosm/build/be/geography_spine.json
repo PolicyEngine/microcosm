@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "be",
-  "policy": "One national dataset carrying commune NIS codes as spine columns; local-area use filters the national dataset by geography, never per-area files. NIS code sets change across merger waves, so every commune-grain assignment and target declares its vintage and a mismatch is a compile error.",
+  "policy": "One synthetic national dataset carries assigned NIS 2025 commune codes; local-area use filters that dataset. Each household draws one commune nationally from population-weighted Chronicle support, then province, region and community codes derive and broadcast to its members. These are assigned destination geographies, never observed donor regions. Every support, mapping and target declares its geography vintage; mismatches refuse compilation.",
   "geography_spine": {
     "stage": "clone_assign_communes",
     "method": "clone_assign_uniform",
@@ -10,14 +10,14 @@
     "code_column": "commune_nis",
     "vintage": "2025",
     "vintage_policy": "error",
-    "clones_per_record": 20,
+    "clones_per_record": 1,
     "collision_avoidance": true,
-    "constrain_to_column": "region_nuts1",
+    "constrain_to_column": "",
     "assignment_source": {
-      "survey": "Statbel population structure by municipality",
+      "survey": "Statbel population structure by commune, 2025 (Chronicle administrative population support)",
       "source": "https://statbel.fgov.be/en/themes/population/structure-population",
-      "notes": "Assignment distribution over communes within the record's observed NUTS1 region (SILC carries region; the spine assigns the commune)."
+      "notes": "Chronicle package statbel-population-structure-commune-2025, PolicyEngine/chronicle#383 (approved and merging). Households draw communes nationally using population counts, without an observed Belgian region constraint. The exact consumer-artifact pin remains a declared placeholder in source_stages.json. Executable atomic support must have unique string commune codes, exact NIS 2025 identity and nonnegative integer population weights."
     },
-    "notes": "Generalizes the UK output-area rowwise clone-and-assign operators (uk_runtime/rowwise_dataset.py, rowwise_geography.py) with collision avoidance; the shared operator lands with the calibration-surface issue (populace#263). The 2025 NIS vintage postdates the 2019 merger wave; the old-to-merged crosswalk is ledger-be work (PolicyEngine/ledger#69)."
+    "notes": "Contract-only compatibility declaration: clone_assign_communes and clone_assign_uniform retain the schema vocabulary with one clone per record; they do not supply an executable operator. Shared atomic geography will assign commune_nis to households and derive province_nis, region_nuts1 and community_code before broadcasting to persons. Reviewed functional concordances, including Brussels province and bilingual-community handling, are prerequisites; no memberships or support rows are invented here. Exact-vintage refusal remains mandatory."
   }
 }
