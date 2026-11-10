@@ -141,7 +141,15 @@ def test_default_float_loading_returns_exact_builtin_float(tmp_path, pinned):
     assert type(artifact.facts[0]["value"]) is float
 
 
-def test_lexical_float_opt_in_is_limited_to_factor_consumers():
+def test_lexical_float_opt_in_is_limited_to_exact_arithmetic_readers():
+    """Only modules that load operands for exact arithmetic opt in.
+
+    ``LexicalFloat``'s docstring asks for ``lexical_floats=True`` only then,
+    and every other loader gets builtin floats. The NZ native band
+    report opts in because it reads publisher counts and amounts through
+    ``_exact``, where a plain float refuses.
+    """
+
     repository = paths_for("microcosm-build").repository
     sources = list((repository / "packages").glob("*/src/**/*.py"))
     sources.extend((repository / "tools").rglob("*.py"))
@@ -166,6 +174,8 @@ def test_lexical_float_opt_in_is_limited_to_factor_consumers():
                     continue
                 opt_ins.add(path.relative_to(repository).as_posix())
     assert opt_ins == {
+        # The native band report: exact publisher counts and amounts.
+        "packages/microcosm-build/src/microcosm/build/transport/income_evidence_kernels.py",
         "packages/microcosm-build/src/microcosm/build/transport/money_kernels.py",
         "packages/microcosm-build/src/microcosm/build/transport/target_kernels.py",
         "tools/generate_be_target_references.py",

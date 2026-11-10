@@ -2754,8 +2754,6 @@ def test_cli_arguments():
 _GAPS = (
     "axiom_rules_bindings.engine.commit",
     "axiom_rules_bindings.engine.wheel_sha256",
-    "money column person.liquid_financial_assets awaits quantile map",
-    "money column household.rent awaits quantile map",
 )
 
 
