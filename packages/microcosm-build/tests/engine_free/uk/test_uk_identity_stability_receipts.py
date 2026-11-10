@@ -1352,6 +1352,49 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
     goes unreported.
     """
 
+    def test_the_recompute_walks_a_tie_at_the_crossing_as_the_stage_did(
+        self, monkeypatch
+    ) -> None:
+        # At three clones the second household's clones tie on wealth across
+        # band 0's support mass of 1,500, and the stage takes the one its keyed
+        # uniform puts first, not clone 0 (microcosm#931). The recompute walks
+        # under the declared tie-break too, and agrees; walked by id, as the
+        # rule before did, it takes clone 0 and reports the family the stage
+        # made as missing and clone 0 as one it did not make.
+        from microcosm.build.uk_runtime import cgt_support
+
+        scenario = {
+            "weights": [900.0, 1_800.0, 600.0],
+            "wealth": [3e3, 2e3, 1e3],
+            "incomes": [BAND_INCOMES[0]] * 3,
+            "top_cells": {0: {250_000: 600.0}},
+        }
+        split, frame = _clone_first_split_then_cloned(3, scenario)
+        assert split.households_selected == 4
+        household = frame.table("household")
+        families = household.loc[
+            household[CGT_SUPPORT_COPIES_COLUMN] == 30, "household_clone_index"
+        ]
+        assert set(families) == {1}
+        calls: list[tuple[int, str]] = []
+        select = cgt_support.select_cgt_support_households
+
+        def recording(*args, **kwargs):
+            calls.append((kwargs["seed"], kwargs["salt"]))
+            return select(*args, **kwargs)
+
+        monkeypatch.setattr(cgt_support, "select_cgt_support_households", recording)
+        _, problems = _exhausting_receipt(frame, scenario)
+        assert problems == {}
+        assert calls and set(calls) == {cgt_support.cgt_support_tie_break()}
+        monkeypatch.setattr(
+            cgt_support,
+            "keyed_tie_order",
+            lambda primary, ids, **_: np.lexsort((np.asarray(ids), primary)),
+        )
+        _, by_id = _exhausting_receipt(frame, scenario)
+        assert by_id["support_split_selection_stored"] == {"missing": 1, "extra": 1}
+
     def test_at_one_clone_the_receipt_is_the_rule_before_the_clone_count(
         self, monkeypatch
     ) -> None:

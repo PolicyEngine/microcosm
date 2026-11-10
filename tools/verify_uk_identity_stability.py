@@ -837,7 +837,9 @@ def _e8_support_split(
 ) -> dict[str, object]:
     """Recompute the CGT support split from the folded pre-split frame.
 
-    The split (microcosm#1045) is deterministic - no draw, no seed - so it is
+    The split (microcosm#1045) is deterministic - its one draw, the selection
+    walk's tie-break, is keyed on each household's own id under the declared
+    seed and salt (microcosm#931), which the recompute passes too - so it is
     reconstructible from the artifact alone: every clone folded onto its
     original and every support copy onto its root gives the pre-split
     household table at the weights the stage saw, and the stage's own helpers
@@ -913,6 +915,7 @@ def _e8_support_split(
         cgt_support_household_wealth,
         cgt_support_income_band,
         cgt_support_mass_by_income_band,
+        cgt_support_tie_break,
         geographic_clone_count,
         select_cgt_support_households,
     )
@@ -1048,6 +1051,9 @@ def _e8_support_split(
     # The geographic clone count the copies were counted on, read from the
     # pre-split table as the stage read it from its input (microcosm#931).
     clone_count = geographic_clone_count(pre_household)
+    # The walk's declared tie-break, so households tied on wealth fall in the
+    # order the stage walked them (microcosm#931).
+    tie_seed, tie_salt = cgt_support_tie_break()
 
     def recompute(person_t, household_t, weights_t):
         ids_t = (
@@ -1060,7 +1066,13 @@ def _e8_support_split(
             person_t, household_ids=ids_t, parameters=parameters
         )
         selected, band_rows = select_cgt_support_households(
-            ids_t, weights_t, band, wealth, support_by_band
+            ids_t,
+            weights_t,
+            band,
+            wealth,
+            support_by_band,
+            seed=tie_seed,
+            salt=tie_salt,
         )
         copies = np.ones(len(ids_t), dtype="int64")
         copies[selected] = cgt_support_copy_counts(

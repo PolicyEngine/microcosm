@@ -14,13 +14,14 @@ explicit lineage the geography identity keys on; the value node then gives each
 copy its own keyed rank inside the stratum instead of the household's single
 rank, so the copies spread across the tail and across seats.
 
-Deterministic and mass-conserving: no draw, no seed, no salt. Every
-household's mass and the total household mass are conserved exactly. The
-stratum is selected on the spine's weights with ties broken by household id;
-the value node ranks the pool's weights with a keyed tie-break and ranks the
-copies beside their root, so the two agree up to ties and up to any weight
-change between the spine and the pool, not by construction. No value moves
-here.
+Deterministic and mass-conserving: every household's mass and the total
+household mass are conserved exactly, and the one draw is the stratum's
+tie-break, a uniform keyed on each household's own id that orders
+households tied on value (microcosm#931). The stratum is selected on the
+spine's weights with that tie-break; the value node ranks the pool's weights
+with a keyed tie-break of its own and ranks the copies beside their root, so
+the two agree up to ties and up to any weight change between the spine and
+the pool, not by construction. No value moves here.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import keyed_tie_order
 from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
 from microcosm.build.uk_runtime.cgt_support import (
@@ -60,9 +62,12 @@ __all__ = [
     "HIGH_VALUE_SUPPORT_OPERATION_KIND",
     "HIGH_VALUE_SUPPORT_STAGE_NAME",
     "HIGH_VALUE_SUPPORT_STRATUM_LOWER",
+    "HIGH_VALUE_SUPPORT_TIE_SALT",
+    "HIGH_VALUE_SUPPORT_TIE_SEED",
     "UKHighValueHomeSupportResult",
     "UKHighValueHomeSupportStageTransform",
     "high_value_support_operation_parameters",
+    "high_value_support_tie_break",
     "select_high_value_support_households",
     "split_high_value_support_households",
 ]
@@ -79,6 +84,12 @@ HIGH_VALUE_SUPPORT_STRATUM_LOWER = SUPPORT_STRATUM_LOWER
 HIGH_VALUE_SUPPORT_COPIES = 6
 #: The copy-id field copy ``k`` takes ``k`` in (microcosm#931).
 HIGH_VALUE_SUPPORT_COPY_ID_FIELD = "high_value_support"
+#: The seed and salt of the stratum's tie-break: owners tied on value take
+#: the order of a uniform keyed on their own household_id, then of their ids,
+#: not of their ids alone, which always ranked a household's highest copy or
+#: clone ordinal highest (microcosm#931).
+HIGH_VALUE_SUPPORT_TIE_SEED = 0
+HIGH_VALUE_SUPPORT_TIE_SALT = "high_value_home_support:value_tie"
 HIGH_VALUE_SUPPORT_MASS_CHANGE_REASON = (
     "High-value home support divides every owner household in the top value "
     "stratum of its region into light copies at equal weight; every household's "
@@ -144,11 +155,15 @@ def high_value_support_operation_parameters() -> tuple[
                 "stratum_rule": (
                     "within each FRS region, owner households (tenure owned outright "
                     "or with a mortgage, main_residence_value > 0, positive weight) "
-                    "ordered by main_residence_value ascending then household_id "
-                    "ascending; a household whose weighted mid-rank "
-                    "(cumulative weight before it plus half its own, over the "
-                    "region's owner weight) is at or above stratum_lower is selected"
+                    "ordered by main_residence_value ascending, households tied on "
+                    "it in ascending order of a uniform keyed on their own "
+                    "household_id under seed and salt, then household_id ascending; "
+                    "a household whose weighted mid-rank (cumulative weight before "
+                    "it plus half its own, over the region's owner weight) is at or "
+                    "above stratum_lower is selected"
                 ),
+                "seed": HIGH_VALUE_SUPPORT_TIE_SEED,
+                "salt": HIGH_VALUE_SUPPORT_TIE_SALT,
                 "copy_rule": (
                     "every selected household becomes copies rows at weight / "
                     f"copies, {CGT_SUPPORT_EXACT_TOTAL_EXCEPTION}"
@@ -160,7 +175,10 @@ def high_value_support_operation_parameters() -> tuple[
                 "flag_column": HIGH_VALUE_SUPPORT_COPY_COLUMN,
                 "copies_column": HIGH_VALUE_SUPPORT_COPIES_COLUMN,
                 "copy_index_column": HIGH_VALUE_SUPPORT_INDEX_COLUMN,
-                "values": "every column copied unchanged; no draw, no seed, no salt",
+                "values": (
+                    "every column copied unchanged; the stratum's tie-break is the "
+                    "stage's only draw"
+                ),
                 "weight_kind_out": "importance",
                 "conservation": "exact_total",
                 "declared_factor": 1.0,
@@ -168,6 +186,18 @@ def high_value_support_operation_parameters() -> tuple[
             },
         ),
     )
+
+
+def high_value_support_tie_break() -> tuple[int, str]:
+    """The declared seed and salt of the stratum's tie-break.
+
+    Read from the reviewed operation the manifests restate verbatim
+    (:func:`high_value_support_operation_parameters`), so the stage keys its
+    ties on the declared pair (microcosm#931).
+    """
+
+    ((_, operation),) = high_value_support_operation_parameters()
+    return int(operation["seed"]), str(operation["salt"])
 
 
 def select_high_value_support_households(
@@ -178,13 +208,20 @@ def select_high_value_support_households(
     tenure_type: np.ndarray,
     value: np.ndarray,
     stratum_lower: float = HIGH_VALUE_SUPPORT_STRATUM_LOWER,
+    seed: int,
+    salt: str,
 ) -> tuple[np.ndarray, tuple[dict[str, object], ...]]:
     """The owner households in the top value stratum of each region.
 
-    Returns the selection mask aligned to the inputs and one receipt row per
-    region (owner households, owner mass, households selected, selected mass
-    and the value rank the stratum starts at). A region without owner
-    households selects nothing and says so.
+    Owners are ranked by value ascending, owners tied on value by a uniform
+    keyed on their own household id under ``seed`` and ``salt``, then by id
+    (:func:`microcosm.build.stochastic_assignment.keyed_tie_order`); ``seed``
+    and ``salt`` have no default (the stage passes
+    :func:`high_value_support_tie_break`). Returns the selection mask aligned
+    to the inputs and one receipt row per region (owner households, owner
+    mass, households selected, selected mass and the value rank the stratum
+    starts at). A region without owner households selects nothing and says
+    so.
     """
     ids = np.asarray(household_ids)
     weight = np.asarray(weights, dtype=float)
@@ -216,7 +253,7 @@ def select_high_value_support_households(
                 }
             )
             continue
-        order = pool[np.lexsort((ids[pool], values[pool]))]
+        order = pool[keyed_tie_order(values[pool], ids[pool], seed=seed, salt=salt)]
         pool_weight = weight[order]
         total = float(pool_weight.sum())
         cumulative = np.cumsum(pool_weight)
@@ -281,6 +318,7 @@ def split_high_value_support_households(
     weights = np.asarray(frame.weights_for("household").values, dtype=float)
     old_total = frame.weights_for("household").total
     household_ids = household["household_id"].to_numpy()
+    tie_seed, tie_salt = high_value_support_tie_break()
     selected, region_rows = select_high_value_support_households(
         household_ids=household_ids,
         weights=weights,
@@ -288,6 +326,8 @@ def split_high_value_support_households(
         tenure_type=household[_TENURE_COLUMN].to_numpy(),
         value=household[_VALUE_COLUMN].to_numpy(),
         stratum_lower=stratum_lower,
+        seed=tie_seed,
+        salt=tie_salt,
     )
     copy_counts = np.ones(len(household), dtype="int64")
     copy_counts[selected] = int(copies)

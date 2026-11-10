@@ -16,6 +16,8 @@ __all__ = [
     "binomial_share_tolerance",
     "clipped_normal_from_uniforms",
     "integer_record_keys",
+    "keyed_tie_order",
+    "keyed_tie_uniforms",
     "sample_categorical_from_counts",
     "stable_identity_uniform",
     "stable_identity_uniforms",
@@ -143,6 +145,67 @@ def integer_record_keys(
     if np.unique(keys).size != keys.size:
         raise ValueError(f"{label} must name each record once.")
     return keys
+
+
+def keyed_tie_uniforms(
+    ids: Sequence[object] | np.ndarray, *, seed: int, salt: str
+) -> np.ndarray:
+    """The uniforms :func:`keyed_tie_order` breaks exact ties on, one per id.
+
+    ``stable_identity_uniforms`` of ``ids`` checked by
+    :func:`integer_record_keys`, so each record's uniform depends on its own
+    id alone, in whichever pool it is walked. A stage that orders the same
+    records in several walks draws them once here and sorts on them, as
+    :func:`keyed_tie_order` does (microcosm#931).
+    """
+
+    keys = integer_record_keys(ids, label=salt)
+    return stable_identity_uniforms(keys, seed=seed, salt=salt)
+
+
+def keyed_tie_order(
+    primary: Sequence[float] | np.ndarray,
+    ids: Sequence[object] | np.ndarray,
+    *,
+    seed: int,
+    salt: str,
+) -> np.ndarray:
+    """Positions that sort ``primary`` ascending, exact ties in keyed order.
+
+    The order is ``np.lexsort((ids, u, primary))``, ``u`` the records'
+    :func:`keyed_tie_uniforms`. Records whose ``primary`` values differ keep
+    the order those values give them, so on distinct values it is
+    ``np.lexsort((ids, primary))`` bit for bit; records tied exactly on
+    ``primary`` take the order of their uniforms, then of their ids. Ties
+    broken on ids alone put the lowest id first every time, so where the
+    copies or geographic clones of one household tie, the lowest copy
+    ordinal always won (microcosm#931). Each uniform is a function of its
+    record's id, so the order does not depend on the order of the rows. Pass
+    a negated key to walk it descending.
+
+    Only the records that share their ``primary`` value with another are
+    drawn, since no other record's uniform can move it; NaNs tie with each
+    other, as the sort puts them together.
+    """
+
+    values = np.asarray(primary, dtype=np.float64)
+    keys = integer_record_keys(ids, label=salt)
+    if values.shape != keys.shape:
+        raise ValueError("primary and ids must be aligned 1-D arrays.")
+    order = np.lexsort((keys, values))
+    ordered = values[order]
+    same = (ordered[1:] == ordered[:-1]) | (
+        np.isnan(ordered[1:]) & np.isnan(ordered[:-1])
+    )
+    if not same.any():
+        return order
+    tied = np.zeros(order.size, dtype=bool)
+    tied[1:] |= same
+    tied[:-1] |= same
+    rows = order[tied]
+    uniforms = np.zeros(order.size, dtype=np.float64)
+    uniforms[rows] = stable_identity_uniforms(keys[rows], seed=seed, salt=salt)
+    return np.lexsort((keys, uniforms, values))
 
 
 def binomial_share_tolerance(*, target: float, rows: int, sigma: float) -> float:
