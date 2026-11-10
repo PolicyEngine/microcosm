@@ -50,6 +50,7 @@ from microcosm.graph import (
     Ownership,
     source_hash,
 )
+from microcosm.graph.canonical import canonical_json
 
 __all__ = [
     "SimulateRulesByRefKernel",
@@ -77,12 +78,12 @@ class SimulateRulesByRefKernel(KernelBase):
     outputs check, its all-rows rule, and its receipt, unchanged.
 
     The implementation hash binds this module, ``microcosm.frame.kernels``,
-    the frame modules ``simulate.rules@1`` binds, and the source of each
-    distinct adapter *class*. It does not bind the references: a second
-    binding of a class already bound leaves every node key where it was. A
-    binding of a new adapter class adds that class's source to the hash and so
-    re-keys every node of this kernel, as replacing an adapter class does for
-    ``simulate.rules@1``.
+    the frame modules ``simulate.rules@1`` binds, the canonical JSON encoder
+    and the source of each distinct adapter *class*. It does not bind the
+    references: a second binding of a class already bound leaves every node
+    key where it was. A binding of a new adapter class adds that class's
+    source to the hash and so re-keys every node of this kernel, as replacing
+    an adapter class does for ``simulate.rules@1``.
 
     Raises:
         TypeError: If ``engines`` is not a mapping, or a binding is not a
@@ -124,7 +125,12 @@ class SimulateRulesByRefKernel(KernelBase):
         return tuple(self._delegates)
 
     def implementation_hash(self) -> str:
-        """Hash the routing and delegate kernels plus every bound adapter class."""
+        """Hash the routing and delegate kernels plus every bound adapter class.
+
+        The encoder is bound too: an AxiomEngine builds its views as
+        AxiomView records, which compare and hash by their canonical JSON
+        (microcosm#931).
+        """
 
         return source_hash(
             type(self),
@@ -133,6 +139,7 @@ class SimulateRulesByRefKernel(KernelBase):
             frame_bundle_module,
             frame_rules_module,
             frame_schema_module,
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -233,6 +240,26 @@ class SimulateCounterfactualKernel(SimulateRulesByRefKernel):
             dependencies=tuple(
                 dict.fromkeys((*self.capabilities.dependencies, "numpy", "pandas"))
             ),
+        )
+
+    def implementation_hash(self) -> str:
+        """Bind the exact helpers as imports are not followed by source_hash.
+
+        ``_prepare`` and ``_evaluate`` name frame.exact_money's helpers in
+        their quantized branches, which the zero solve runs; the bridge,
+        which shares them, binds them too, with the encoder the by-ref
+        kernel binds (microcosm#931).
+        """
+        return source_hash(
+            type(self),
+            SimulateRulesKernel,
+            *self._adapter_classes,
+            frame_bundle_module,
+            frame_rules_module,
+            frame_schema_module,
+            frame_exact_money_module,
+            canonical_json,
+            dependencies=self.capabilities.dependencies,
         )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -735,19 +762,6 @@ class SimulateSolveZeroKernel(SimulateCounterfactualKernel):
     """
 
     ref = "simulate.solve_zero@1"
-
-    def implementation_hash(self) -> str:
-        """Bind the exact helpers as imports are not followed by source_hash."""
-        return source_hash(
-            type(self),
-            SimulateRulesKernel,
-            *self._adapter_classes,
-            frame_bundle_module,
-            frame_rules_module,
-            frame_schema_module,
-            frame_exact_money_module,
-            dependencies=self.capabilities.dependencies,
-        )
 
     def run(self, context: KernelContext) -> KernelResult:
         components, terms, frame = self._prepare(context, solver=True)

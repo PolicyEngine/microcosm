@@ -30,7 +30,7 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.population import dtype_for_token
 
-from . import graph_inputs
+from . import artifact_types, graph_inputs
 from .artifact_types import INCOME_CELLS_TYPE
 from .graph_inputs import (
     canonical_document_param,
@@ -185,6 +185,12 @@ class _ReportingKernel(KernelBase):
             sys.modules[__name__],
             reporting,
             graph_inputs,
+            # The shared contract check names the income cells' type
+            # (artifact_types); the classifier document's spelling is checked
+            # through the encoder, which the income deciles also encode their
+            # cells with (microcosm#931).
+            artifact_types,
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 

@@ -66,6 +66,7 @@ from microcosm.graph import (
     SeedSource,
     source_hash,
 )
+from microcosm.graph.canonical import canonical_json
 
 from . import graph_inputs
 from .graph_inputs import (
@@ -193,6 +194,10 @@ class MoneyNormalizeKernel(KernelBase):
             chronicle_epoch_module,
             concepts_module,
             exact_money_module,
+            # reference_factors digests and replays the factor documents
+            # through the encoder, and canonical_document_param checks each
+            # document parameter's spelling through it (microcosm#931).
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -417,6 +422,9 @@ class MoneyMinorUnitsKernel(KernelBase):
             type(self),
             graph_inputs,
             exact_money_module,
+            # canonical_document_param checks the money document's spelling
+            # through the encoder (microcosm#931).
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -510,6 +518,9 @@ class MoneyAnnualTransfersKernel(KernelBase):
             type(self),
             graph_inputs,
             exact_money_module,
+            # canonical_document_param checks the money document's spelling
+            # through the encoder (microcosm#931).
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 

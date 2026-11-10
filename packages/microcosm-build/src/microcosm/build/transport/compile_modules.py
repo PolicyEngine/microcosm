@@ -16,10 +16,15 @@ kernel that hashes ``target_kernels``.
 ``EXCLUDED_DIRECT_IMPORTS`` names every first-party (``microcosm.*``) module
 a listed module imports but the tuple leaves out, with the reason. A test
 pins that the two together cover every direct import of every listed module,
-so a new import must be listed or excluded. The exclusions cover only the
-listed modules' own imports; a second test walks every module each compile
-kernel hashes, its own module included, and records the imports no review
-has classified yet (microcosm#1497).
+so a new import must be listed or excluded.
+
+The exclusions cover only the listed modules' own imports, and keep a module
+off the list, not out of a kernel's hash. Each transport kernel also hashes,
+beside this tuple, every first-party module its own code computes through:
+the derived binding rule in test_transport_binding_rule holds each kernel's
+hash to that, in place of the per-kernel import record microcosm#1497 kept
+(microcosm#931). This module is not hashed, so an edit to a reason re-keys
+nothing; an edit to the tuple re-keys the kernels.
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ TRANSPORT_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.calibrate.hierarchy",
     "microcosm.calibrate.geography_constants",
     "microcosm.build.transport.reference_selection",
+    "microcosm.graph.canonical",
 )
 
 _COUNTRY_SPEC_LOADER = (
@@ -51,12 +57,16 @@ _COUNTRY_SPEC_LOADER = (
     "validators do not use"
 )
 _GRAPH_RUNTIME = (
-    "the graph runtime the listed modules read a node's context, declare "
-    "artifact types and encode documents with: the kernel protocol, the "
-    "declarations and the canonical JSON encoder node keys are computed "
-    "with. The compile kernels hash none of the three; other kernels hash "
-    "the encoder, among them each UK graph kernel whose code computes "
-    "through it (microcosm#931)"
+    "the graph runtime the listed modules read a node's context and declare "
+    "artifact types with: the kernel protocol and the declarations. Both are "
+    "core modules every node runs through, which the derived binding rule "
+    "lists rather than binds (test_transport_binding_rule): node_key hashes "
+    "each node's declaration, its artifact types included, and every input "
+    "and output passes through microcosm.graph.kernel's records, so binding "
+    "either would re-key every node on any edit to it, and the transport "
+    "graph tests, which run composed graphs through run_graph, catch an edit "
+    "that changes a value. The canonical JSON encoder, which the listed "
+    "modules encode and digest documents with, is listed (microcosm#931)"
 )
 
 EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
@@ -94,7 +104,6 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
             "graph_inputs.context_frame's entity schema; target compilation "
             "reads no population"
         ),
-        "microcosm.graph.canonical": _GRAPH_RUNTIME,
         "microcosm.graph.decl": _GRAPH_RUNTIME,
         "microcosm.graph.kernel": _GRAPH_RUNTIME,
     }
