@@ -24,6 +24,7 @@ from hypothesis import strategies as st
 import microcosm.frame.bundle as frame_bundle_module
 import microcosm.frame.rules as frame_rules_module
 import microcosm.frame.schema as frame_schema_module
+import microcosm.graph.canonical as graph_canonical_module
 from microcosm.frame import (
     EntitySchema,
     ExportContract,
@@ -219,6 +220,7 @@ def _hash_of(classes) -> str:
         frame_bundle_module,
         frame_rules_module,
         frame_schema_module,
+        graph_canonical_module,
     )
 
 
@@ -409,6 +411,7 @@ class TestConstruction:
             frame_bundle_module,
             frame_rules_module,
             frame_schema_module,
+            graph_canonical_module,
         )
         assert (
             kernel.implementation_hash()
@@ -456,6 +459,7 @@ class TestConstruction:
             frame_bundle_module,
             frame_rules_module,
             frame_schema_module,
+            graph_canonical_module,
         )
         orders = list(itertools.permutations(bindings))
         assert len(orders) == 6

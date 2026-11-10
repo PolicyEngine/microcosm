@@ -18,6 +18,7 @@ from fractions import Fraction
 import numpy as np
 
 import microcosm.build.atomic_geography as atomic_geography_module
+import microcosm.build.graph_atomic_geography as graph_atomic_geography_module
 import microcosm.calibrate.hierarchy as hierarchy_module
 import microcosm.calibrate.registry as registry_module
 from microcosm.build.atomic_geography import _U53, encode_atomic_support
@@ -35,7 +36,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 
-from . import graph_inputs, target_kernels
+from . import artifact_types, graph_inputs, target_kernels
 from .artifact_types import TARGET_SURFACE_TYPE
 from .graph_inputs import (
     canonical_document_param,
@@ -287,6 +288,17 @@ class GeographySupportFromFactsKernel(KernelBase):
             registry_module,
             hierarchy_module,
             canonical_json,
+            # The kernel checks the surface's type (artifact_types) and types
+            # its support (graph_atomic_geography); decode_target_surface
+            # checks the surface's factor evidence and its Chronicle feed
+            # identity through the next three and rebuilds its registry's
+            # targets through calibrate.target (microcosm#931).
+            artifact_types,
+            graph_atomic_geography_module,
+            target_kernels.reference_factors_module,
+            target_kernels.ledger_artifact_module,
+            target_kernels.chronicle_epoch_module,
+            target_kernels.target_module,
             dependencies=self.capabilities.dependencies,
         )
 

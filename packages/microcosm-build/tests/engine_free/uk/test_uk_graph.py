@@ -11,6 +11,7 @@ from microcosm.graph import graph_schema, orrery_document
 from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.derived_binding_rule import (
     FIRST_PARTY_SCOPE,
+    GRAPH_RECORD_REASONS,
     BindingRule,
     KernelWalk,
     KeyedWalk,
@@ -1097,7 +1098,11 @@ _CORE_MODULES: dict[str, str] = {
 #: key misses (test_the_core_definitions_the_kernels_name_are_listed). The
 #: Frame's definitions, which kernels build and read frames with, are the
 #: Frame's reason's; a stage's transform meets the Frame's modules alone
-#: (test_the_core_modules_are_on_every_nodes_path).
+#: (test_the_core_modules_are_on_every_nodes_path). The graph's records and
+#: enums take their reasons from the graph's own facts
+#: (derived_binding_rule.GRAPH_RECORD_REASONS), which every country shares; the
+#: kernels name some of them through microcosm.graph's lazy exports, which the
+#: walk follows since microcosm#931 ruling 8.
 _KERNEL_CORE_NAMES: dict[tuple[str, str], str] = {
     ("microcosm.graph.population", "dtype_for_token"): (
         "maps a node's declared dtype token to the dtype its owned cells are "
@@ -1108,53 +1113,19 @@ _KERNEL_CORE_NAMES: dict[tuple[str, str], str] = {
         "the dtypes its spine fixture carries, and graph.population's own "
         "tests the rest"
     ),
-    ("microcosm.graph.decl", "ArtifactType"): (
-        "a frozen record of an artifact type's name and version, which a "
-        "kernel names to declare or check its artifacts' types; node_key "
-        "hashes each node's declared artifact types as part of its normative "
-        "declaration"
-    ),
-    ("microcosm.graph.decl", "ArtifactOutput"): (
-        "a frozen record pairing an artifact's name with its type, which the "
-        "atomic geography gate names to declare and check its outputs; "
-        "node_key hashes each node's declared artifact outputs"
-    ),
-    ("microcosm.graph.decl", "StructuralDelta"): (
-        "the enum a kernel's capabilities declare its row-set change in; the "
-        "executor refuses a kernel whose declared change differs from its "
-        "node's, and node_key binds the declared value with the rest of the "
-        "kernel's capabilities"
-    ),
-    ("microcosm.graph.kernel", "KernelRole"): (
-        "the enum a kernel's capabilities declare its role in, by which the "
-        "executor holds a gate's outcome to the gate outcomes and derives a "
-        "release's tier from its gate ancestors; node_key binds the declared "
-        "value with the rest of the kernel's capabilities"
-    ),
-    # The kernels name the entries below through microcosm.graph's lazy
-    # exports, which the walk follows since microcosm#931 ruling 8.
-    ("microcosm.graph.kernel", "Capabilities"): (
-        "the frozen record of a kernel's declared contract, which a kernel "
-        "names to declare its capabilities; it only checks the types and "
-        "consistency of its fields, and node_key binds every field it holds "
-        "(keys._capabilities_projection)"
-    ),
-    ("microcosm.graph.kernel", "Determinism"): (
-        "the enum a kernel's capabilities declare its determinism in, whether "
-        "its output is a function of its inputs and seed; node_key binds the "
-        "declared value with the rest of the kernel's capabilities"
-    ),
-    ("microcosm.graph.kernel", "Numeric"): (
-        "the enum a kernel's capabilities declare its numbers' "
-        "reproducibility in, from which the executor resolves the numeric "
-        "scope of each column a reader is given; node_key binds the declared "
-        "value with the rest of the kernel's capabilities"
-    ),
-    ("microcosm.graph.kernel", "SeedSource"): (
-        "the enum a kernel's capabilities declare its seed source in, where a "
-        "seeded kernel takes its randomness from; node_key binds the declared "
-        "value with the rest of the kernel's capabilities"
-    ),
+    **{
+        item: GRAPH_RECORD_REASONS[item]
+        for item in (
+            ("microcosm.graph.decl", "ArtifactType"),
+            ("microcosm.graph.decl", "ArtifactOutput"),
+            ("microcosm.graph.decl", "StructuralDelta"),
+            ("microcosm.graph.kernel", "KernelRole"),
+            ("microcosm.graph.kernel", "Capabilities"),
+            ("microcosm.graph.kernel", "Determinism"),
+            ("microcosm.graph.kernel", "Numeric"),
+            ("microcosm.graph.kernel", "SeedSource"),
+        )
+    },
     ("microcosm.graph.kernel", "KernelContext"): (
         "the frozen record of what the executor hands a kernel to read, which "
         "a kernel names to annotate it; it only checks and freezes the fields "

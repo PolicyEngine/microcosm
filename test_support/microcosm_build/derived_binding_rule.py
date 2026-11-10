@@ -104,6 +104,99 @@ IN_PLACE_CALLS = frozenset(
 
 #: The builtins whose call returns a new container (``local_containers``).
 FRESH_CONTAINER_CALLS = frozenset({"dict", "list", "set"})
+#: The graph's records, enums and constants that kernels' code names, each
+#: with why naming it binds nothing a kernel's key misses. They are facts
+#: about the graph, the same for every country, so a country's table of the
+#: core definitions its kernels name takes these reasons from here and gives
+#: its own only to definitions whose reason rests on its own checks.
+GRAPH_RECORD_REASONS: Mapping[tuple[str, str], str] = MappingProxyType(
+    {
+        ("microcosm.graph.decl", "ArtifactType"): (
+            "a frozen record of an artifact type's name and version, which a "
+            "kernel names to declare or check its artifacts' types; node_key "
+            "hashes each node's declared artifact types as part of its "
+            "normative declaration"
+        ),
+        ("microcosm.graph.decl", "ArtifactOutput"): (
+            "a frozen record pairing an artifact's name with its type, which a "
+            "kernel names to declare and check its outputs, as the shared atomic "
+            "geography gate does; node_key hashes each node's declared artifact "
+            "outputs"
+        ),
+        ("microcosm.graph.decl", "StructuralDelta"): (
+            "the enum a kernel's capabilities declare its row-set change in; the "
+            "executor refuses a kernel whose declared change differs from its "
+            "node's, and node_key binds the declared value with the rest of the "
+            "kernel's capabilities"
+        ),
+        ("microcosm.graph.decl", "GATE_OUTCOMES"): (
+            "the closed set of outcomes a gate may record, to which the executor "
+            "holds every gate node's outcome; a kernel names it to refuse a gate "
+            "report recording another, and an edit to it changes what every gate "
+            "may record alike"
+        ),
+        ("microcosm.graph.decl", "Node"): (
+            "the frozen record of a node's declaration, which a kernel names to "
+            "annotate or check the node its context carries; node_key hashes "
+            "each node's normative declaration"
+        ),
+        ("microcosm.graph.decl", "Ownership"): (
+            "the enum of what a node promises about the cells it owns, which a "
+            "kernel names to check its node's declared outputs; node_key hashes "
+            "each node's declared outputs with their ownership"
+        ),
+        ("microcosm.graph.decl", "ROWS_ALL"): (
+            "the rows token of a slice or output that covers every row, which a "
+            "kernel names to refuse a node that declares fewer; node_key hashes "
+            "each node's slices and outputs with their rows"
+        ),
+        ("microcosm.graph.decl", "Slice"): (
+            "the frozen record of what a node reads, one entity's columns under "
+            "a row mask, which a kernel names to annotate or check its node's "
+            "slices; it only checks its fields, and node_key hashes each node's "
+            "declared slices"
+        ),
+        ("microcosm.graph.kernel", "ArtifactValue"): (
+            "the frozen record of an artifact's verified bytes and typed "
+            "provenance that the executor hands a kernel, which a kernel names "
+            "to annotate its inputs; it only checks and freezes its fields, and "
+            "node_key binds each typed artifact input's producer key and type"
+        ),
+        ("microcosm.graph.kernel", "KernelBase"): (
+            "the base class of the kernels, whose default implementation hash "
+            "hashes a kernel class's own module; a kernel's code names it as a "
+            "class's base, and it computes nothing a node's values depend on"
+        ),
+        ("microcosm.graph.kernel", "KernelRole"): (
+            "the enum a kernel's capabilities declare its role in, by which the "
+            "executor holds a gate's outcome to the gate outcomes and derives a "
+            "release's tier from its gate ancestors; node_key binds the declared "
+            "value with the rest of the kernel's capabilities"
+        ),
+        ("microcosm.graph.kernel", "Capabilities"): (
+            "the frozen record of a kernel's declared contract, which a kernel "
+            "names to declare its capabilities; it only checks the types and "
+            "consistency of its fields, and node_key binds every field it holds "
+            "(keys._capabilities_projection)"
+        ),
+        ("microcosm.graph.kernel", "Determinism"): (
+            "the enum a kernel's capabilities declare its determinism in, "
+            "whether its output is a function of its inputs and seed; node_key "
+            "binds the declared value with the rest of the kernel's capabilities"
+        ),
+        ("microcosm.graph.kernel", "Numeric"): (
+            "the enum a kernel's capabilities declare its numbers' "
+            "reproducibility in, from which the executor resolves the numeric "
+            "scope of each column a reader is given; node_key binds the declared "
+            "value with the rest of the kernel's capabilities"
+        ),
+        ("microcosm.graph.kernel", "SeedSource"): (
+            "the enum a kernel's capabilities declare its seed source in, where "
+            "a seeded kernel takes its randomness from; node_key binds the "
+            "declared value with the rest of the kernel's capabilities"
+        ),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -1157,6 +1250,77 @@ class BindingRule:
             if more == methods:
                 return reached
             methods = more
+
+    def keyed_walk(
+        self,
+        kernel,
+        *,
+        halts: Mapping[tuple[str, str], str] | None = None,
+        handed_classes: Iterable[tuple[str, str]] = (),
+        handed_values: Iterable[tuple[str, str]] = (),
+        key: Iterable[str] = (),
+    ) -> KeyedWalk:
+        """What the kernel rule holds one kernel's key to: the walk from what
+        it runs (``kernel_walk``), with what the objects its build hands it
+        compute through, and the modules its implementation hash hashes
+        (``hashed_modules``) with ``key``, those its key binds beyond them.
+
+        A handed value is a definition the build hands the kernel, such as a
+        gate registry, which the walk follows from its definition as from
+        what the kernel names. A handed class is the class of an object the
+        build hands the kernel whose class its code need not name, such as a
+        rules engine: from the methods the walks so far name on any receiver,
+        the walk follows them, the constructor the build calls and every
+        method they call on ``self``, and the methods its own reach names
+        outside the object's classes, to a fixed point, as the engine root
+        does (``engine_reach``). Each is walked on its own with the kernel's
+        ``halts`` (``stops`` unless given) and joins the kernel's walk, its
+        stops, listed stops met and core names included, so it can only add
+        to what the kernel walk finds."""
+
+        halts = self.tables.stops if halts is None else halts
+        own = self.kernel_walk(type(kernel), halts=halts)
+        parts = [(Walk(own.reach, own.stops, own.core), own.met, own.core_names)]
+        for value in handed_values:
+            module, name = value
+            node = module_definitions(module, self.scope).definitions[name]
+            parts.append(
+                self.walk(
+                    {value},
+                    [(found, value) for found in self.named(module, node)],
+                    halts=halts,
+                )
+            )
+        named = functools.reduce(merged, (walk for walk, _, _ in parts))
+        for ref in handed_classes:
+            handed = class_named(ref)
+            methods = self.engine_methods(handed, named)
+            while True:
+                part = self.walk(
+                    set(self.engine_roots(handed)),
+                    self.engine_seeds(handed, methods),
+                    halts=halts,
+                )
+                more = methods | self.engine_methods_beyond(handed, part[0])
+                if more == methods:
+                    break
+                methods = more
+            parts.append(part)
+        walk = functools.reduce(merged, (walk for walk, _, _ in parts))
+        met: dict[tuple[str, str], frozenset] = {}
+        for _, part_met, _ in parts:
+            for item, namers in part_met.items():
+                met[item] = met.get(item, frozenset()) | namers
+        return KeyedWalk(
+            KernelWalk(
+                walk.reach,
+                walk.stops,
+                walk.core,
+                met,
+                frozenset().union(*(names for _, _, names in parts)),
+            ),
+            hashed_modules(kernel) | frozenset(key),
+        )
 
     def refusal_only_violations(self) -> list[tuple[str, str]]:
         """The listed refusal-only checks (``refusal_only``) whose definition

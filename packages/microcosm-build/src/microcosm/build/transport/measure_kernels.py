@@ -46,6 +46,7 @@ from microcosm.graph import (
     Numeric,
     source_hash,
 )
+from microcosm.graph.canonical import canonical_json
 from microcosm.graph.population import dtype_for_token
 
 from . import graph_inputs
@@ -289,6 +290,9 @@ class MeasureCombineKernel(KernelBase):
             type(self),
             graph_inputs,
             reference_intervals_module,
+            # canonical_document_param checks the measure document's spelling
+            # through the encoder (microcosm#931).
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 

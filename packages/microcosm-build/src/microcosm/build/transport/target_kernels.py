@@ -50,6 +50,7 @@ import numpy as np
 
 import microcosm.build.calibration_columns as calibration_columns_module
 import microcosm.build.calibration_predicates as calibration_predicates_module
+import microcosm.build.chronicle_epoch as chronicle_epoch_module
 import microcosm.build.ledger_artifact as ledger_artifact_module
 import microcosm.build.reference_factors as reference_factors_module
 import microcosm.build.reference_intervals as reference_intervals_module
@@ -61,6 +62,7 @@ import microcosm.calibrate.monetary_binding as monetary_binding_module
 import microcosm.calibrate.registry as registry_module
 import microcosm.calibrate.target as target_module
 import microcosm.frame.bundle as frame_bundle_module
+import microcosm.frame.concepts as frame_concepts_module
 import microcosm.frame.schema as frame_schema_module
 import microcosm.frame.unit_construction as units_module
 import microcosm.frame.weights as frame_weights_module
@@ -601,6 +603,12 @@ class CalibrationPrepareKernel(KernelBase):
             reference_intervals_module,
             reference_factors_module,
             reference_profiles_module,
+            # validate_reference_resolution checks the factor evidence's
+            # Chronicle feed identity through these two, and the bindings and
+            # columns are digested as canonical JSON (microcosm#931).
+            ledger_artifact_module,
+            chronicle_epoch_module,
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -963,6 +971,15 @@ class TargetsProblemKernel(KernelBase):
             reference_profiles_module,
             reference_selection_module,
             *_MATRIX_MODULES,
+            # decode_target_surface checks the surface's factor evidence and
+            # its Chronicle feed identity through these three; the interval
+            # diagnostics count source households by frame.concepts' column
+            # name and are digested as canonical JSON (microcosm#931).
+            reference_factors_module,
+            ledger_artifact_module,
+            chronicle_epoch_module,
+            frame_concepts_module,
+            canonical_json,
             dependencies=self.capabilities.dependencies,
         )
 
