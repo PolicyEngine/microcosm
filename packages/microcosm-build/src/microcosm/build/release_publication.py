@@ -45,6 +45,7 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
@@ -589,6 +590,49 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
+def _claim_records(release_dir: Path) -> dict[str, Any]:
+    """The compatibility records a build carries for whoever publishes it.
+
+    ``narrowed_claims`` is a compatibility range an earlier certification
+    narrowed back to an exact pin; ``claim_measurement`` is the model
+    versions a declared compatibility range was measured against (a source
+    enrichment's, or a recertification's with its baseline and drift
+    summary). Only records the build has are returned. Reading them refuses
+    nothing: the release contract has already accepted or refused them.
+    """
+    from microcosm.data import compatibility_recertification, source_enrichment
+
+    narrowed = source_enrichment.recorded_narrowed_claims(release_dir)
+    measurement = source_enrichment.recorded_claim_measurement(
+        release_dir
+    ) or compatibility_recertification.recorded_claim_measurement(release_dir)
+    records: dict[str, Any] = {}
+    if narrowed:
+        records["narrowed_claims"] = narrowed
+    if measurement:
+        records["claim_measurement"] = measurement
+    return records
+
+
+def _print_claim_records(records: Mapping[str, Any]) -> None:
+    """Say a build's compatibility records on stderr, as the tagged command
+    did, on the preflight and on publication, which needs no preflight
+    first; the preflight's verdict on stdout carries them too."""
+    if "narrowed_claims" in records:
+        print(
+            "note: this build records a compatibility narrowing from an "
+            f"earlier certification: {json.dumps(records['narrowed_claims'])}",
+            file=sys.stderr,
+        )
+    if "claim_measurement" in records:
+        print(
+            "note: this build declares a publisher compatibility range that "
+            "certification measured against only the versions recorded here: "
+            f"{json.dumps(records['claim_measurement'], sort_keys=True)}",
+            file=sys.stderr,
+        )
+
+
 def _run(args: argparse.Namespace) -> int:
     release_dir: Path = args.release_dir
     if args.promote:
@@ -608,6 +652,8 @@ def _run(args: argparse.Namespace) -> int:
         if refusal is not None:
             print(refusal, file=sys.stderr)
             return 1
+        claim_records = _claim_records(release_dir)
+        _print_claim_records(claim_records)
         if args.preflight_only:
             prepared = prepare_build_folder_release(
                 release_dir,
@@ -623,6 +669,7 @@ def _run(args: argparse.Namespace) -> int:
                 "build": prepared.build,
                 "repository": prepared.repository,
                 "release_role": prepared.release_role,
+                **claim_records,
             }
             if prepared.contract_warnings:
                 verdict["contract_warnings"] = list(prepared.contract_warnings)
