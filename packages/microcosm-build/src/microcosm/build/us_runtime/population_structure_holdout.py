@@ -203,7 +203,13 @@ def _benchmark_people(component: str) -> int:
 
 
 def _share(numerator: float, denominator: float) -> float | None:
-    """A weighted share, clipped to [0, 1] against float summation residue."""
+    """A weighted share, clipped to [0, 1] against float summation residue.
+
+    A group without weight has no share. Validated weights keep every total
+    finite, so a non-finite total raises.
+    """
+    if not (np.isfinite(numerator) and np.isfinite(denominator)):
+        raise ValueError("Population structure shares need finite totals.")
     if denominator <= 0:
         return None
     return min(1.0, max(0.0, numerator / denominator))
@@ -314,6 +320,12 @@ def population_structure_holdout_payload(
         raise ValueError(
             "Population structure needs finite values and nonnegative weights."
         )
+    # Every reported total sums a subset of these nonnegative weights, so a
+    # finite total keeps the whole payload finite and JSON-serializable.
+    with np.errstate(over="ignore"):
+        weight_total = weights.sum()
+    if not np.isfinite(weight_total):
+        raise ValueError("Population structure needs a finite weight total.")
 
     _, household_index = np.unique(household_id, return_inverse=True)
     household_size = np.bincount(household_index)[household_index]

@@ -8,6 +8,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.us_runtime import population_structure_holdout as holdout_module
 from microcosm.build.us_runtime.population_structure_holdout import (
     ACS_2024_B09021_65_PLUS_ADULTS,
     ACS_2024_B09021_65_PLUS_LIVES_ALONE,
@@ -98,6 +99,9 @@ def test_fixture_shares_counts_and_structure(tmp_path):
     payload = population_structure_holdout_payload(
         **_fixture(), period=2024, release_id="fixture"
     )
+    assert payload["marital_status_65_plus"]["benchmark"]["married"] == (
+        "now married, spouse present or absent (not separated)"
+    )
     # People 65+: the couple (2 + 2), the widow (3), the divorced man (5).
     assert _status(payload, "all", "married")["share"] == pytest.approx(4 / 12)
     assert _status(payload, "all", "widowed")["share"] == pytest.approx(3 / 12)
@@ -165,6 +169,9 @@ def test_without_a_maritl_the_measure_falls_back_to_unit_structure():
     )
     section = payload["marital_status_65_plus"]
     assert "marital-unit" in section["measure"]
+    # The benchmark text names the marriage the measure can see.
+    assert section["benchmark"]["married"].startswith("now married, spouse present (")
+    assert "other_unmarried_or_spouse_absent" in section["benchmark"]["married"]
     married = _status(payload, "all", "married_spouse_present")
     assert married["share"] == pytest.approx(4 / 12)
     assert _status(payload, "all", "widowed")["share"] == pytest.approx(3 / 12)
@@ -221,6 +228,40 @@ def test_misaligned_or_invalid_arrays_refuse():
     del fixture["components"]["social_security_dependents"]
     with pytest.raises(ValueError, match="component"):
         population_structure_holdout_payload(**fixture, period=2024)
+    # Each weight is finite, but their total overflows float64.
+    fixture = _fixture()
+    fixture["weights"] = np.full(6, 1e308)
+    with pytest.raises(ValueError, match="finite weight total"):
+        population_structure_holdout_payload(**fixture, period=2024)
+
+
+def test_summation_residue_never_pushes_a_share_past_one():
+    # Nine men 65+, all married except the one with zero weight. Summing the
+    # married weights and the known-status weights in different orders gives
+    # a ratio of 1.0000000000000002 before the clip.
+    weights = np.array([0.1, 0.1, 1000, 100, 0, 10, 0.1, 100, 0.1])
+    n = len(weights)
+    payload = population_structure_holdout_payload(
+        age=np.full(n, 70),
+        is_female=np.zeros(n, dtype=bool),
+        household_id=np.arange(n),
+        marital_unit_id=np.arange(n),
+        marital_code=np.where(weights > 0, 1, 7),
+        components=_components(n),
+        weights=weights,
+        period=2024,
+    )
+    assert _status(payload, "male", "married")["share"] == 1.0
+    assert _status(payload, "all", "married")["share"] == 1.0
+    assert payload["living_alone_65_plus"]["share"] == 1.0
+
+
+def test_a_share_refuses_a_non_finite_total():
+    assert holdout_module._share(0.0, 0.0) is None
+    assert holdout_module._share(3.0, 2.0) == 1.0
+    for numerator, denominator in [(np.nan, 1.0), (1.0, np.inf), (np.inf, np.inf)]:
+        with pytest.raises(ValueError, match="finite totals"):
+            holdout_module._share(numerator, denominator)
 
 
 def test_no_weighted_older_people_reports_null_shares():
@@ -384,7 +425,7 @@ def test_accounting_identities(population):
         shares = [s["share"] for s in row["statuses"]]
         if row["weighted_people"] > 0:
             assert sum(shares) == pytest.approx(1.0)
-            assert all(-1e-12 <= s <= 1.0 + 1e-12 for s in shares)
+            assert all(0.0 <= s <= 1.0 for s in shares)
         else:
             assert all(s is None for s in shares)
     sexes = {
@@ -407,7 +448,7 @@ def test_accounting_identities(population):
     beneficiaries = sum(c["weighted_people"] for k, c in counts.items() if k != "0")
     assert beneficiaries == pytest.approx(by_age["all"])
     alone = payload["living_alone_65_plus"]["share"]
-    assert alone is None or -1e-12 <= alone <= 1.0 + 1e-12
+    assert alone is None or 0.0 <= alone <= 1.0
 
 
 @settings(max_examples=50, deadline=None)

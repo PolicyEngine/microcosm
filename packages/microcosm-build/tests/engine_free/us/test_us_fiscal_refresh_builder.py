@@ -6609,6 +6609,19 @@ def _run_green_register_release(
             captured["scorer_closed"] = True
 
     monkeypatch.setattr(builder, "_HouseholdBatchedPostExportScorer", WrittenH5Scorer)
+    read_population_structure = builder.population_structure_holdout_from_h5
+
+    def population_structure_from_h5(dataset_path, **kwargs):
+        # Records whether the scorer's batch frames were already freed.
+        captured["population_structure_read"] = (
+            Path(dataset_path),
+            captured.get("scorer_closed", False),
+        )
+        return read_population_structure(dataset_path, **kwargs)
+
+    monkeypatch.setattr(
+        builder, "population_structure_holdout_from_h5", population_structure_from_h5
+    )
 
     def fake_smoke(*, simulate, period):
         # The pre-export plan dry-runs the smoke on a recording seam first;
@@ -6701,6 +6714,18 @@ def _run_green_register_release(
     assert part_b["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 69.90)
     assert part_d["weighted_payers"] == 2
     assert part_d["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 12.90)
+    # The population-structure holdout reads the written H5 only after the
+    # scorer closes. The harness H5 holds placeholder bytes, so the step
+    # records the report as unavailable and the release still publishes it.
+    assert captured["population_structure_read"] == (
+        captured["written_dataset"],
+        True,
+    )
+    population_path = release_dir / "us_population_structure_holdout.json"
+    population = json.loads(population_path.read_text())
+    assert population["status"] == "unavailable"
+    assert population["release_id"] == release_id
+    assert population["enforced"] is False
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     if not skipped_smoke:
@@ -6746,6 +6771,13 @@ def _run_green_register_release(
             "revision": release_id,
             "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
         }
+    assert artifacts["us_population_structure_holdout"] == {
+        "kind": "diagnostics",
+        "path": population_path.name,
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": hashlib.sha256(population_path.read_bytes()).hexdigest(),
+    }
     if not skipped_smoke:
         smoke = json.loads((release_dir / "reform_coverage_smoke.json").read_text())
         assert smoke["reform_coverage_smoke"]["passed"] is True
@@ -13030,6 +13062,28 @@ def test_build_manifests_selects_population_structure_holdout_for_publication(
     _check_release_manifest(manifest, release_id, failures)
     _check_local_artifact_hashes(release_dir, manifest, failures)
     assert failures == []
+
+
+def test_population_structure_holdout_records_an_unwritable_measurement(
+    monkeypatch, tmp_path
+) -> None:
+    """A measurement strict JSON cannot hold becomes an unavailable report,
+    never a release refusal."""
+    builder = _load_builder_module()
+
+    def overflowing(dataset_path, **kwargs):
+        return {"status": "available", "weighted_people_65_plus": float("inf")}
+
+    monkeypatch.setattr(builder, "population_structure_holdout_from_h5", overflowing)
+    builder._write_population_structure_holdout(
+        release_dir=tmp_path, dataset_path=tmp_path / "release.h5", release_id="r1"
+    )
+    payload = json.loads(
+        (tmp_path / "us_population_structure_holdout.json").read_text()
+    )
+    assert payload["status"] == "unavailable"
+    assert payload["release_id"] == "r1"
+    assert payload["error"].startswith("ValueError: Out of range float values")
 
 
 def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(

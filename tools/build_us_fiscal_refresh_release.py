@@ -10597,24 +10597,30 @@ def _write_population_structure_holdout(
 ) -> None:
     """Report held-out population structure; misses never refuse a release.
 
-    Marital status and living arrangement of people 65+, and Social Security
-    beneficiary counts, read from the written H5 (no engine). None of these
-    margins is in the target surface, so a release can meet every target while
-    missing them (microcosm#880).
+    It reads marital status and living arrangement of people 65+, and Social
+    Security beneficiary counts, from the written H5 without an engine. The
+    target surface holds none of these margins, so a release can meet every
+    target while missing them (microcosm#880).
     """
+    path = release_dir / "us_population_structure_holdout.json"
     try:
-        payload = population_structure_holdout_from_h5(
-            dataset_path, period=PERIOD, release_id=release_id
+        # Serializing inside the try keeps a measurement that strict JSON
+        # cannot hold observational as well.
+        write_population_structure_holdout(
+            population_structure_holdout_from_h5(
+                dataset_path, period=PERIOD, release_id=release_id
+            ),
+            path,
         )
     except Exception as error:
         # Observational, like the SSI holdout: an unavailable measurement must
         # not add a release refusal.
-        payload = population_structure_holdout_unavailable(
-            error, period=PERIOD, release_id=release_id
+        write_population_structure_holdout(
+            population_structure_holdout_unavailable(
+                error, period=PERIOD, release_id=release_id
+            ),
+            path,
         )
-    write_population_structure_holdout(
-        payload, release_dir / "us_population_structure_holdout.json"
-    )
 
 
 def _build_manifests(
