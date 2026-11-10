@@ -4820,6 +4820,27 @@ def _check_source_coverage_diagnostics(
                 )
 
 
+def _check_local_area_donor_reference(donor: Mapping, failures: list[str]) -> None:
+    """The source coverage's donor reference says where the donor build is.
+
+    A donor published into a build folder is named by ``repo_id``,
+    ``release`` and ``build``; a donor that keeps only its tag by ``repo_id``,
+    ``release_id`` and ``revision`` (microcosm#1570). Either form is read by
+    :func:`microcosm.data.build_folder_manifests.referenced_build`, which
+    refuses a reference that is incomplete or mixes the two.
+    """
+    # build_folder_manifests imports this module.
+    from microcosm.data.build_folder_manifests import referenced_build
+
+    try:
+        referenced_build(donor)
+    except ValueError as error:
+        failures.append(
+            f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} donor_release must name the "
+            f"donor build (stage with --donor-release-manifest): {error}."
+        )
+
+
 def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None:
     """The non-default local-area release contract (microcosm#398).
 
@@ -4827,11 +4848,16 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     state administrative families) by design, so the national critical-target
     checks do not apply. What must hold instead: the declared gates all
     passed, the per-target diagnostics are complete and consistent, the
-    source coverage carries the local provenance chain, a
-    reviewed-limitations register exists, the manifest claims no default
-    slot, and every artifact is pinned to the immutable release id. A US
-    release must also declare the stored-input gate, bound to its built-with
-    engine and its microdata bytes (microcosm#1034).
+    source coverage carries the local provenance chain and names its donor
+    build in either reference form, a reviewed-limitations register exists,
+    and the manifest claims no default slot. In the tagged layout every
+    artifact is pinned to the immutable release id; a release that publishes
+    into build folders (such as the US local-area release,
+    ``microcosm-us-2024-local``, whose new builds declare
+    ``microcosm_us_2024_acs_local.h5``) names its release and build and pins
+    no revision. A US release must also record the package stage's
+    stored-input check (its ``stored_inputs`` entry in ``gate_summary.json``),
+    bound to its built-with engine and its microdata bytes (microcosm#1034).
     """
 
     failures: list[str] = []
@@ -4932,12 +4958,8 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
                         "null)."
                     )
             donor = coverage.get("donor_release")
-            if isinstance(donor, Mapping) and not donor.get("release_id"):
-                failures.append(
-                    f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} donor_release "
-                    "must pin a non-empty release_id (stage with "
-                    "--donor-release-manifest)."
-                )
+            if isinstance(donor, Mapping):
+                _check_local_area_donor_reference(donor, failures)
 
     required_checksum_files = tuple(
         filename
@@ -5860,6 +5882,8 @@ def _check_local_area_release_manifest(
         )
     if build_folder:
         _check_build_folder_artifacts(artifacts, failures)
+        # A new build of the US local-area release declares its dataset file.
+        _check_us_release_dataset_file(artifacts, release_id, failures)
         return
     for name, entry in artifacts.items():
         if not isinstance(entry, Mapping):
