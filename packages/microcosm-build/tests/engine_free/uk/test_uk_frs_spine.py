@@ -47,6 +47,8 @@ from microcosm.build.uk_runtime.frs_spine import (
     BENEFIT_CODES,
     BENEFIT_RECIPIENT_RULE,
     BSP_MONTHLY_RATES,
+    FRS_CARE_OUTSIDE_BIT,
+    FRS_CARE_RECIPIENTS_COLUMN,
     FRS_COMPANY_CAR_CARRIER_COLUMNS,
     FRS_COMPANY_CAR_FUEL_CODES,
     FRS_COMPANY_CAR_FUEL_ELECTRIC,
@@ -68,6 +70,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     benefits_by_recipient,
     build_uk_frs_spine_frame,
     completed_months,
+    frs_care_recipients,
     frs_claimant_or_partner,
     frs_council_tax_band,
     frs_uc_lcw_status,
@@ -632,6 +635,12 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
             }
         ],
         "extchild": [{"SERNUM": 1, "BENUNIT": 1, "NHHAMT": 2.0}],
+        # Person 1 cares for household member 2 at 35-49 hours a week, the
+        # largest band, and for a parent outside the household at 5-9.
+        "care": [
+            {"SERNUM": 1, "BENUNIT": 1, "NEEDPER": 2, "WHOLOO01": 1, "HOUR01": 5},
+            {"SERNUM": 1, "BENUNIT": 1, "NEEDPER": 15, "WHOLOO01": 1, "HOUR01": 2},
+        ],
         "mortgage": [
             {"SERNUM": 1, "RMORT": 1, "RMAMT": 120.0, "BORRAMT": 240.0, "MORTEND": 12.0}
         ],
@@ -642,8 +651,13 @@ def _write_fixture(
     root: Path, tables: dict[str, list[dict[str, object]]] | None = None
 ) -> SourceStageSpec:
     root.mkdir(exist_ok=True)
-    for table, rows in (tables or _fixture_tables()).items():
+    tables = tables or _fixture_tables()
+    for table, rows in tables.items():
         _write_tab(root, table, rows)
+    if "care" not in tables:
+        # Tables written before the care tab joined the spine (A3) take the
+        # fixture's own care rows.
+        _write_tab(root, "care", _fixture_tables()["care"])
     artifacts = []
     for table in FRS_SPINE_TABLES:
         path = root / f"{table}.tab"
@@ -1156,7 +1170,7 @@ class _FakeUKEngine:
 def test_manifest_stage_and_runtime_agree_on_artifacts_and_operations() -> None:
     stage = _manifest_stage()
 
-    assert len(stage.artifacts) == 14
+    assert len(stage.artifacts) == 15
     assert [artifact["table"] for artifact in stage.artifacts] == sorted(
         FRS_SPINE_TABLES
     )
@@ -2597,6 +2611,57 @@ def test_a_benefits_table_without_whorec_is_left_as_it_is() -> None:
 
     pd.testing.assert_frame_equal(moved, rows)
     assert evidence["rows_moved"] == 0 and evidence["rows_split"] == 0
+
+
+def test_care_recipients_are_the_people_given_the_largest_band() -> None:
+    """Each carer's main recipients: household members by number, outside as one bit (A3).
+
+    Person 1 cares for member 2 at 35-49 hours and for someone outside at 5-9,
+    so member 2 alone is main. Person 3's two recipients share the largest
+    band, so both count. Person 4's row names themself, which is left out, and
+    person 5 helps nobody.
+    """
+
+    care = pd.DataFrame(
+        {
+            "household_id": [1, 1, 1, 1, 1],
+            "needper": [2, 15, 17, 2, 4],
+            "wholoo01": [1, 1, 2, 2, 2],
+            "hour01": [5, 2, 0, 0, 0],
+            "wholoo03": [2, 2, 1, 1, 2],
+            "hour03": [0, 0, 6, 6, 0],
+            "wholoo04": [2, 2, 2, 2, 1],
+            "hour04": [0, 0, 0, 0, 5],
+        }
+    )
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003, 1004, 1005]})
+
+    recipients, evidence = frs_care_recipients(care, person)
+
+    assert recipients.tolist() == [
+        1 << 2,
+        0,
+        (1 << 2) | (1 << FRS_CARE_OUTSIDE_BIT),
+        0,
+        0,
+    ]
+    # Two carers: one with household recipients only, one with both.
+    assert evidence["carers"] == "<3"
+    assert evidence["household_only"] == "<3"
+    assert evidence["both"] == "<3"
+    assert evidence["outside_only"] == 0
+    assert evidence["helpers_not_held"] == 0
+
+
+def test_the_spine_stores_each_carers_main_recipients(tmp_path: Path) -> None:
+    """The fixture's carer holds member 2 alone, whose band is the largest (A3)."""
+
+    stage = _write_fixture(tmp_path)
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+    stored = person.set_index("person_id")[FRS_CARE_RECIPIENTS_COLUMN]
+    assert stored.loc[1001] == 1 << 2
+    assert (stored.drop(index=1001) == 0).all()
 
 
 def test_weekly_benefits_annualise_at_52_weeks() -> None:

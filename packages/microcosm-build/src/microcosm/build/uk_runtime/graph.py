@@ -803,6 +803,8 @@ _ROOT_PERSON_INT = {
     # The company car carriers' FRS codes (frs_spine.frs_company_car_carriers).
     "frs_company_car_price_band",
     "frs_company_car_fuel_code",
+    # The care recipients bitmask (frs_spine.frs_care_recipients).
+    "frs_care_recipients",
 }
 _ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {

@@ -34,6 +34,7 @@ from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
 
 __all__ = [
+    "FRS_CARE_RECIPIENTS_COLUMN",
     "FRS_SPINE_TABLES",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
@@ -44,6 +45,7 @@ __all__ = [
     "artifact_by_table",
     "benefits_by_recipient",
     "build_uk_frs_spine_frame",
+    "frs_care_recipients",
     "frs_claimant_or_partner",
     "map_codes",
     "normalize_ids",
@@ -61,6 +63,7 @@ FRS_SPINE_TABLES = (
     "adult",
     "benefits",
     "benunit",
+    "care",
     "child",
     "chldcare",
     "extchild",
@@ -312,6 +315,23 @@ FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMNS = ("hourab", "hourah", "hourcb", "hourch")
 #: disabled household member (microcosm#1418). It is no engine input and
 #: leaves at the release boundary.
 FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN = "frs_care_hours_in_household"
+#: The FRS care tab holds one row per household and person helped. NEEDPER is
+#: the person helped: 1 to 14 a household member's person number, 15 to 22
+#: someone outside the household (a parent, another parent, a child, a spouse,
+#: another relative, a friend or neighbour, a voluntary organisation's client,
+#: or another). WHOLOO01 to WHOLOO14 (1 yes) mark which household members help
+#: them, and HOUR01 to HOUR14 give each helper's weekly band, coded as HOURTOT
+#: is (FRS 2024-25 CARE dictionary, UKDS SN 9563).
+FRS_CARE_HELPER_NUMBERS = tuple(range(1, 15))
+FRS_CARE_OUTSIDE_NEEDPER = tuple(range(15, 23))
+#: Each person's main care recipients as a bitmask: bit n for household member
+#: n among the people given the person's largest weekly band, and bit
+#: FRS_CARE_OUTSIDE_BIT for anyone outside the household among them; 0 for a
+#: person who helps nobody in the care tab. frs_disability reads it to write
+#: cares_for_severely_disabled_person (A3 of the November event-data plan's
+#: PR3, microcosm#1095). It is no engine input and leaves at the release.
+FRS_CARE_RECIPIENTS_COLUMN = "frs_care_recipients"
+FRS_CARE_OUTSIDE_BIT = 15
 #: DWP's limited capability for work status on a benefit unit's linked
 #: Universal Credit claim: BENEFITS.UCLCW on the UC row, "Limited Capability
 #: for Work Status (Admin UC)", coded 0 None, 1 LCFW Group and 2 LCFWRA Group
@@ -377,6 +397,7 @@ OUTPUT_COLUMNS = (
     "hours_worked",
     "care_hours",
     FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
+    FRS_CARE_RECIPIENTS_COLUMN,
     "is_household_head",
     "is_benunit_head",
     "is_parent",
@@ -494,6 +515,7 @@ class UKFRSSpineStageTransform:
         self._access_fund: dict[str, object] | None = None
         self._net_pay: dict[str, object] | None = None
         self._benefit_recipients: dict[str, object] | None = None
+        self._care_recipients: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         evidence: dict[str, object] = {}
@@ -505,6 +527,7 @@ class UKFRSSpineStageTransform:
         self._access_fund = dict(evidence["access_fund"])
         self._net_pay = dict(evidence["net_pay_contributions"])
         self._benefit_recipients = dict(evidence["benefit_recipients"])
+        self._care_recipients = dict(evidence["care_recipients"])
         return result
 
     @staticmethod
@@ -520,6 +543,7 @@ class UKFRSSpineStageTransform:
             or self._access_fund is None
             or self._net_pay is None
             or self._benefit_recipients is None
+            or self._care_recipients is None
         ):
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
@@ -532,6 +556,7 @@ class UKFRSSpineStageTransform:
                 "access_fund": dict(self._access_fund),
                 "net_pay_contributions": dict(self._net_pay),
                 "benefit_recipients": dict(self._benefit_recipients),
+                "care_recipients": dict(self._care_recipients),
             }
         }
 
@@ -736,6 +761,10 @@ def _assemble_frame(
     pe_person["hours_worked"] = _positive(person, "tothours") * WEEKS_IN_YEAR
     pe_person["care_hours"] = frs_care_hours(person)
     pe_person[FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN] = frs_in_household_care_hours(person)
+    care_recipients, care_evidence = frs_care_recipients(frs["care"], person)
+    pe_person[FRS_CARE_RECIPIENTS_COLUMN] = care_recipients.to_numpy(dtype=np.int64)
+    if evidence is not None:
+        evidence["care_recipients"] = care_evidence
     pe_person["is_household_head"] = _number(person, "hrpid") == 1
     pe_person["is_benunit_head"] = _number(person, "uperson") == 1
     dependent_children = _dependent_children(benunit_raw, frs["child"])
@@ -1887,6 +1916,114 @@ def frs_in_household_care_hours(person: pd.DataFrame) -> pd.Series:
         for column in FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMNS
     ]
     return pd.concat(bands, axis=1).max(axis=1).astype("float64")
+
+
+def frs_care_recipients(
+    care: pd.DataFrame, person: pd.DataFrame
+) -> tuple[pd.Series, dict[str, object]]:
+    """Each person's main care recipients, as :data:`FRS_CARE_RECIPIENTS_COLUMN`.
+
+    ``care`` is the normalized care tab (``household_id`` from SERNUM) and
+    ``person`` the spine's people. A helper's band for each person they help
+    maps to weekly hours as HOURTOT does; the recipients at the helper's
+    largest band are their main ones. A household member helping themself,
+    which the tab shouldn't hold, is left out. The evidence counts carers by
+    where their main recipients live, in the receipts' rounded counts and
+    support bands, never exactly.
+    """
+
+    people = person["person_id"].astype("int64")
+    result = pd.Series(np.zeros(len(person), dtype=np.int64), index=person.index)
+    links: list[pd.DataFrame] = []
+    if not care.empty and "needper" in care.columns:
+        household = _number(care, "household_id").astype("int64")
+        needper = _number(care, "needper").astype("int64")
+        for number in FRS_CARE_HELPER_NUMBERS:
+            helps = (_number(care, f"wholoo{number:02d}") == 1) & (needper != number)
+            if not helps.any():
+                continue
+            hours = _frs_care_band_hours(
+                care.loc[helps], f"hour{number:02d}", FRS_CARE_RECIPIENTS_COLUMN
+            )
+            links.append(
+                pd.DataFrame(
+                    {
+                        "person_id": household[helps] * 1000 + number,
+                        "household_id": household[helps],
+                        "needper": needper[helps],
+                        "hours": hours.to_numpy(),
+                    }
+                )
+            )
+    held = set(people.tolist())
+    evidence: dict[str, object] = {
+        "rule": (
+            "a helper's main care recipients are the people given their largest "
+            "weekly band (CARE.HOUR01 to HOUR14, coded as HOURTOT), household "
+            "members by person number and anyone outside the household as one "
+            "bit"
+        ),
+    }
+    if not links:
+        evidence.update(
+            {
+                "carers": 0,
+                "household_only": 0,
+                "outside_only": 0,
+                "both": 0,
+                "helpers_not_held": 0,
+                "recipients_not_held": 0,
+            }
+        )
+        return result, evidence
+    frame = pd.concat(links, ignore_index=True)
+    largest = frame.groupby("person_id")["hours"].transform("max")
+    main = frame.loc[frame["hours"] == largest]
+    inside = main["needper"].isin(FRS_CARE_HELPER_NUMBERS)
+    outside = main["needper"].isin(FRS_CARE_OUTSIDE_NEEDPER)
+    bits = np.where(inside, main["needper"], FRS_CARE_OUTSIDE_BIT)
+    main = main.assign(bit=bits).loc[inside | outside]
+    masks = main.groupby("person_id")["bit"].agg(
+        lambda column: int(sum(1 << int(bit) for bit in set(column)))
+    )
+    result = people.map(masks).fillna(0).astype("int64")
+    result.index = person.index
+    by_carer = main.groupby("person_id").agg(
+        household_id=("household_id", "first"),
+        inside=("needper", lambda column: column.isin(FRS_CARE_HELPER_NUMBERS).any()),
+        outside=(
+            "needper",
+            lambda column: column.isin(FRS_CARE_OUTSIDE_NEEDPER).any(),
+        ),
+    )
+    held_carers = by_carer.loc[by_carer.index.isin(list(held))]
+    recipients = main.loc[main["needper"].isin(FRS_CARE_HELPER_NUMBERS)]
+    recipient_ids = recipients["household_id"] * 1000 + recipients["needper"]
+    evidence.update(
+        {
+            # Record counts are rounded, never exact (UKDS CD137 cl. 8).
+            "carers": rounded_count(len(held_carers)),
+            "carer_households": support_band(
+                int(held_carers["household_id"].nunique())
+            ),
+            "household_only": rounded_count(
+                int((held_carers["inside"] & ~held_carers["outside"]).sum())
+            ),
+            "outside_only": rounded_count(
+                int((~held_carers["inside"] & held_carers["outside"]).sum())
+            ),
+            "both": rounded_count(
+                int((held_carers["inside"] & held_carers["outside"]).sum())
+            ),
+            "helpers_not_held": rounded_count(
+                int((~by_carer.index.isin(list(held))).sum())
+            ),
+            "recipients_not_held": rounded_count(
+                int((~recipient_ids.isin(list(held))).sum())
+            ),
+        }
+    )
+    return result, evidence
 
 
 def _frs_care_band_hours(person: pd.DataFrame, column: str, label: str) -> pd.Series:

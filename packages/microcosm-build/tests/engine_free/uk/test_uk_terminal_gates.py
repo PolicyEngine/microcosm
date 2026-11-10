@@ -504,6 +504,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     )
     from microcosm.build.uk_runtime.frs_spine import (
         FRS_BONUS_CARRIER_COLUMN,
+        FRS_CARE_RECIPIENTS_COLUMN,
         FRS_COMPANY_CAR_CARRIER_COLUMNS,
         FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
         FRS_LANDLORD_CARRIER_COLUMN,
@@ -530,6 +531,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
         | {f"person.{FRS_BONUS_CARRIER_COLUMN}"}
         | {f"person.{FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN}"}
+        | {f"person.{FRS_CARE_RECIPIENTS_COLUMN}"}
         | {f"person.{FRS_UC_LCW_STATUS_COLUMN}"}
         | {f"person.{column}" for column in FRS_COMPANY_CAR_CARRIER_COLUMNS}
         | {f"household.{RANK_BASIS_COLUMN}"}
