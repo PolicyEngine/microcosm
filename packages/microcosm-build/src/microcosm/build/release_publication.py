@@ -1,7 +1,7 @@
 """Publish a release build into its own folder through the emitter.
 
 A release whose builds can publish into their own folders (the UK
-national, dense and local-area releases, which
+national, dense and local-area releases and the four US releases, which
 ``microcosm.data.contract.publishes_to_build_folder`` names) is handed to the
 separately installed emitter with the interface's ``publish_release`` call.
 Microcosm decides what the build contains and checks it with the release
@@ -84,11 +84,13 @@ __all__ = [
 ]
 
 #: How long the command waits for a publication to land or be refused. The
-#: emitter uploads a build's files in its one commit, and the largest UK
-#: build recorded (about 2.4 GB) takes about 16 minutes at 20 Mbit/s; the
-#: emitter refuses a change still pending an hour after it was handed over
-#: (``REQUEST_EXPIRED``), so the wait covers that hour and one long upload.
-PUBLICATION_WAIT_SECONDS = 2 * 3600.0
+#: emitter uploads a build's files in its one commit: the largest UK build
+#: recorded (about 2.4 GB) takes about 16 minutes at 20 Mbit/s, and a US ACS
+#: local-area build (about 10 GB) about 67 minutes. The emitter refuses a
+#: change still pending an hour after it was handed over
+#: (``REQUEST_EXPIRED``), so the wait covers that hour and the longest
+#: upload.
+PUBLICATION_WAIT_SECONDS = 3 * 3600.0
 #: How long the command waits for a promotion, which changes only
 #: ``releases.json``.
 PROMOTION_WAIT_SECONDS = 300.0
@@ -439,8 +441,9 @@ def _parser() -> argparse.ArgumentParser:
         prog="microcosm-publish-release-build",
         description=(
             "Publish a build of a release whose builds publish into their own "
-            "folders (the UK national, dense and local-area releases) through "
-            "the emitter, or make a published build current. " + TAGGED_RELEASE_ADVICE
+            "folders (the UK national, dense and local-area releases and the US "
+            "releases) through the emitter, or make a published build current. "
+            + TAGGED_RELEASE_ADVICE
         ),
     )
     parser.add_argument("release_dir", type=Path, help="The local release directory.")
