@@ -354,7 +354,7 @@ ensure_worktree "$PC"; PW=$WT
 PY=$W/.venv/bin/python
 [ "$(sha_of "$W/$CROSSWALK_REL")" = "$CROSSWALK_SHA" ] || fail "packaged crosswalk digest in $W"
 PEUS=$("$PY" -c 'import importlib.metadata as m; print(m.version("policyengine-us"))')
-[ -x "$W/.venv/bin/microcosm-publish-release" ] || fail "no microcosm-publish-release in $W/.venv"
+[ -x "$W/.venv/bin/microcosm-publish-release-build" ] || fail "no microcosm-publish-release-build in $W/.venv"
 log "build worktree $W (policyengine-us $PEUS); preflight worktree $PW"
 
 # --- 2. Wait for the overnight chain to leave the machine. ---
@@ -588,7 +588,9 @@ fi
 RID=$("$PY" -c 'import json,sys; a=json.load(open(sys.argv[1]))["argv"]; print(a[a.index("--release-id")+1])' "$RUN/release-sup/COMMAND.json") \
   || fail "cannot read the release id from release-sup/COMMAND.json"
 REL_OUT=$RUN/release-out/$RID
-REL_DIR=$REL_OUT/releases/$RID
+# A national run writes its build into the national release's directory;
+# $RID is the build ID (microcosm#1570).
+REL_DIR=$REL_OUT/releases/microcosm-us-2024-national
 [ -f "$REL_DIR/release_manifest.json" ] || fail "release accepted but $REL_DIR/release_manifest.json is missing"
 log "release candidate $RID at $REL_DIR"
 
@@ -606,12 +608,13 @@ else
   log "preflight-release: $(cat "$RUN/preflight-release-sup/ACCEPTED"); report $RUN/preflight-release.json"
 fi
 
-# --- 8. Publisher preflight, offline: publish_cli.py returns after
-# prepare_release when --preflight-only is set (:325-331 on origin/main), and
-# builds no Hub client. Secrets are stripped as overnight_chain.sh does. ---
+# --- 8. Publisher preflight, offline: microcosm-publish-release-build checks
+# the build with its release contract and lists what it would publish when
+# --preflight-only is set, and starts no emitter. Secrets are stripped as
+# overnight_chain.sh does. ---
 if ! stage_done publisher-preflight; then
   write_config publisher-preflight 24 16 22 7200 14400 "$W" "$PF_ENV" -- "${NOSECRETS[@]}" \
-    "PATH=$W/.venv/bin:/usr/bin:/bin:/usr/sbin:/sbin" "$W/.venv/bin/microcosm-publish-release" \
+    "PATH=$W/.venv/bin:/usr/bin:/bin:/usr/sbin:/sbin" "$W/.venv/bin/microcosm-publish-release-build" \
     "$REL_DIR" --repo-id policyengine/populace-us --artifact-root "$REL_OUT/artifacts" --preflight-only
   run_stage publisher-preflight 0 16 22
 fi
