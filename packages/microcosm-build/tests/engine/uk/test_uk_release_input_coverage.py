@@ -490,7 +490,11 @@ class TestUKManifest:
             "tax_free_savings_income",
         ]
         assert manifest.required_columns == frozenset()
-        assert set(manifest.reviewed_exclusions) == set(engine_derived)
+        # And the gross receipts microcosm#1550 stops writing, which the
+        # current builds still carry (María's signature of 2026-11-10).
+        assert set(manifest.reviewed_exclusions) == set(engine_derived) | {
+            "self_employment_gross_receipts"
+        }
         assert load_efrs_parity_known_gaps() == ()
         assert [
             gap.variable for gap in load_efrs_engine_derived_exclusions()
@@ -851,7 +855,10 @@ class TestUKManifest:
 
         variables = CountryTaxBenefitSystem().variables
         assert not any(variables[name].is_input_variable() for name in since_reference)
-        assert set(manifest.reviewed_exclusions) == engine_derived
+        # Beside them, the one input retired since the current builds.
+        assert set(manifest.reviewed_exclusions) == engine_derived | {
+            "self_employment_gross_receipts"
+        }
 
     def test_live_uk_adapter_recognises_loader_aliases(self) -> None:
         engine = PolicyEngineUKCoverageEngine()

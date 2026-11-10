@@ -737,6 +737,11 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # (frs_spine.FRS_UC_LCW_STATUS_COLUMN) the uc_limited_capability stage
         # reads (microcosm#1095, Y1); it is no engine input.
         "frs_uc_lcw_status",
+        # The gross receipts microcosm#1550 (microcosm#1439) stops writing:
+        # the trading allowance stage stores the claim status instead. A frame
+        # from an older spine would carry the receipts encoding into the
+        # release, which the export gate refuses (microcosm#1095).
+        "self_employment_gross_receipts",
         # The company car carriers (frs_spine.FRS_COMPANY_CAR_CARRIER_COLUMNS)
         # the company_cars stage reads to set policyengine-uk's company car
         # inputs (PolicyEngine/uk-autumn-budget-dashboard-2026#316); they are

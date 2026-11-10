@@ -245,6 +245,16 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "the pip_points stage draws within the stored award and drops the "
         "category (microcosm#1095, P1; María's signature of 2026-11-09)."
     ),
+    "person.self_employment_gross_receipts": (
+        "microcosm#1550 (microcosm#1439) stops writing "
+        "self_employment_gross_receipts: the trading allowance stage stores "
+        "each trader's trading_allowance_claim_status and leaves gross receipts "
+        "at the engine's zero, since neither the FRS nor the SPI records them. "
+        "The current builds (national eeb6093e, dense 38605444) still export "
+        "the receipts encoding microcosm#1428 wrote, so the candidate drops the "
+        "column against them; the entry leaves once a promotion moves the "
+        "reference past it (microcosm#1095; María's signature of 2026-11-10)."
+    ),
     "person.tax_free_savings_income": (
         "policyengine-uk derives tax_free_savings_income as the sum of the ISA "
         "interest it adds (individual_savings_account_interest_income); a "

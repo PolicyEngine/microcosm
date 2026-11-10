@@ -168,6 +168,27 @@ RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS = (
     "charitable_investment_gifts",
     "gift_aid",
 )
+#: Inputs the current builds carry that a later build stops carrying on
+#: purpose (microcosm#1095). The coverage gate requires what the cut's
+#: reference carries, so each is a reviewed exclusion until a promotion moves
+#: the reference past it; then it is dormant and leaves. Signed rulings, not
+#: enhanced-FRS parity debt, so they sit here rather than in the ledger.
+RETIRED_SINCE_REFERENCE_EXCLUSIONS: dict[str, dict[str, str]] = {
+    "self_employment_gross_receipts": {
+        "reason": (
+            "microcosm#1550 (microcosm#1439) stops writing it: the trading "
+            "allowance stage stores each trader's trading_allowance_claim_status "
+            "and leaves gross receipts at the engine's zero, since neither the "
+            "FRS nor the SPI records them. The current builds (national "
+            "eeb6093e, dense 38605444) still carry the receipts encoding "
+            "microcosm#1428 wrote (María's signature of 2026-11-10)."
+        ),
+        "tracking_note": (
+            "microcosm#1095: remove once neither line's current build carries it."
+        ),
+    },
+}
+
 RESTORED_REQUIRED_COLUMN_EVIDENCE = {
     "charitable_investment_gifts": {
         "effective_signal_mass_share": 0.00028055329260683216,
@@ -867,9 +888,16 @@ def build_manifest(
     # Schema 4 (microcosm#1095): the required inputs are the ones the cut's
     # reference build carries, measured at gate time, so the manifest
     # declares only the reviewed exclusions.
+    retired = RETIRED_SINCE_REFERENCE_EXCLUSIONS
+    clash = sorted(set(retired) & ({*known_gaps, *engine_derived} | restored_required))
+    if clash:
+        raise ValueError(
+            "An input retired since the reference cannot also be a known gap, an "
+            f"engine-derived exclusion or a restored input: {clash}."
+        )
     columns: dict[str, dict[str, str]] = {}
-    for name in sorted({*known_gaps, *engine_derived}):
-        exclusion = known_gaps.get(name) or engine_derived[name]
+    for name in sorted({*known_gaps, *engine_derived, *retired}):
+        exclusion = known_gaps.get(name) or engine_derived.get(name) or retired[name]
         columns[name] = {
             "status": "reviewed_exclusion",
             "reason": str(exclusion["reason"]),
@@ -1033,7 +1061,10 @@ def build_manifest(
             "its known gaps, with reason "
             f"{EXCLUSION_REASON!r} and a UK_COVERAGE_PROGRESS.md tracking note, "
             "and its engine_derived_exclusions, with their own reason because "
-            "the engine computes them from persisted inputs. Every other input "
+            "the engine computes them from persisted inputs; and the inputs "
+            "the current builds carry that a later build stops carrying on "
+            "purpose, each a signed ruling until a promotion moves the "
+            "reference past it. Every other input "
             "the cut's reference build carries is required. The gate applies "
             "one effective-mass floor to the reference and the candidate, and "
             "distributional restorations must pass it on their required "

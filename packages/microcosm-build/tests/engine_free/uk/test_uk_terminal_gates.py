@@ -1314,3 +1314,65 @@ def test_degenerate_gate_skips_columns_the_release_boundary_drops() -> None:
         _dataset(), dropped_at_export={"household": ("not_a_column",)}
     )
     assert inert.passed is True and inert.details["dropped_at_export"] == []
+
+
+def test_the_gross_receipts_exclusions_are_signed_for_the_current_builds() -> None:
+    """microcosm#1550 stops writing self_employment_gross_receipts; the current
+    builds carry it, so it is excluded against them (María, 2026-11-10)."""
+
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_REVIEWED_EXPORT_EXCLUSIONS,
+    )
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        uk_default_input_mass_reviewed_exclusions,
+    )
+
+    register = uk_default_input_mass_reviewed_exclusions()
+    lines = {
+        "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e": (
+            "national",
+        ),
+        "microcosm-uk-2024-25-dense@uk-local-candidate-f100-s42-20261107T173210Z-38605444": (
+            "local",
+        ),
+    }
+    assert set(register) == set(lines)
+    for label, line in lines.items():
+        entry = register[label]["self_employment_gross_receipts"]
+        assert entry.approved_by == "juaristi22"
+        assert entry.approved_on == "2026-11-10"
+        assert entry.release_lines == line
+    assert "person.self_employment_gross_receipts" in UK_REVIEWED_EXPORT_EXCLUSIONS
+    gate = uk_export_surface_gate(
+        {"person.age", "person.self_employment_gross_receipts"},
+        {"person.age", "person.self_employment_gross_receipts"},
+    )
+    assert not gate.passed
+    assert gate.details["forbidden_candidate_columns"] == [
+        "person.self_employment_gross_receipts"
+    ]
+    assert uk_export_surface_gate(
+        {"person.age"}, {"person.age", "person.self_employment_gross_receipts"}
+    ).passed
+
+
+def test_a_signed_input_mass_entry_covers_the_missing_column_for_its_build() -> None:
+    policy = _input_mass_policy(
+        relative_tolerance=6.0,
+        maximum_relative_drop=0.9,
+        reviewed_exclusions={
+            "self_employment_gross_receipts": _entry("Seeded retired column.")
+        },
+    )
+    reference = _input_mass_reference(
+        totals={"employment_income": 10.0, "self_employment_gross_receipts": 5.0},
+    )
+    gate = _input_mass_gate({"employment_income": 10.0}, reference, policy=policy)
+    assert gate.passed, gate.failures
+    assert gate.details["stale_exclusions"] == []
+    unsigned = _input_mass_gate(
+        {"employment_income": 10.0},
+        reference,
+        policy=_input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9),
+    )
+    assert not unsigned.passed

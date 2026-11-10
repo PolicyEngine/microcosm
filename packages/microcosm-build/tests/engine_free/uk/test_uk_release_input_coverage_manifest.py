@@ -137,13 +137,16 @@ def test_manifest_declares_the_exclusions_and_leaves_the_rest_to_the_reference()
     # build carries, measured at gate time; the manifest declares only the
     # reviewed exclusions: the engine-derived totals whose persisted
     # components the reference carries (microcosm#1106, microcosm#1360) and
-    # the PIP categories the engine derives from the points (microcosm#1095).
+    # the PIP categories the engine derives from the points (microcosm#1095),
+    # and the gross receipts microcosm#1550 stops writing, which the current
+    # builds still carry (María's signature of 2026-11-10).
     manifest = _resource("release_input_coverage_manifest.json")
-    assert manifest["counts"] == {"reviewed_exclusion": 4}
+    assert manifest["counts"] == {"reviewed_exclusion": 5}
     assert set(manifest["columns"]) == {
         "pip_dl_category",
         "pip_m_category",
         "property_wealth",
+        "self_employment_gross_receipts",
         "tax_free_savings_income",
     }
     for entry in manifest["columns"].values():
@@ -490,3 +493,21 @@ def test_engine_derived_exclusions_require_a_signature(tmp_path) -> None:
     )
     with pytest.raises(ValueError, match="ISO date"):
         load_efrs_engine_derived_exclusions(str(undated))
+
+
+def test_an_input_retired_since_the_reference_cannot_overlap_the_ledger() -> None:
+    generator = _load_generator()
+    retired = dict(generator.RETIRED_SINCE_REFERENCE_EXCLUSIONS)
+    try:
+        generator.RETIRED_SINCE_REFERENCE_EXCLUSIONS["gift_aid"] = {
+            "reason": "seeded clash",
+            "tracking_note": "seeded",
+        }
+        with pytest.raises(ValueError, match="retired since the reference"):
+            generator.build_manifest(
+                reference=_resource("efrs_parity_reference.json"),
+                known_gaps_payload=_resource("efrs_parity_known_gaps.json"),
+            )
+    finally:
+        generator.RETIRED_SINCE_REFERENCE_EXCLUSIONS.clear()
+        generator.RETIRED_SINCE_REFERENCE_EXCLUSIONS.update(retired)
