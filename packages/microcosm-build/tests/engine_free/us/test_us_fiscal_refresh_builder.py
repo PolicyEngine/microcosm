@@ -332,6 +332,46 @@ def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
         builder._refuse_certified_release_dir_reuse(release_dir)
 
 
+@pytest.mark.parametrize(
+    ("leftover", "skip_flag"),
+    [
+        ("reform_validation.json", "skip_reform_validation"),
+        ("demographics.json", "skip_demographics"),
+    ],
+)
+def test_a_skipped_check_s_file_from_an_earlier_attempt_is_refused(
+    tmp_path, leftover: str, skip_flag: str
+) -> None:
+    """The release directory is named after the release (microcosm#1570), so
+    a rerun into the same --out finds an earlier attempt's files. A file the
+    manifest declares whenever it exists, but this run will not write because
+    it skips that check, would be published as the new build's: the run
+    refuses before doing anything (review of #1571)."""
+    from types import SimpleNamespace
+
+    builder = _load_builder_module()
+    release_dir = tmp_path / "releases" / "microcosm-us-2024-national"
+    release_dir.mkdir(parents=True)
+    (release_dir / leftover).write_text("{}")
+    args = SimpleNamespace(skip_reform_validation=False, skip_demographics=False)
+
+    builder._refuse_skipped_checks_left_files(release_dir, args)  # rewritten
+
+    setattr(args, skip_flag, True)
+    with pytest.raises(RuntimeError, match=leftover):
+        builder._refuse_skipped_checks_left_files(release_dir, args)
+
+
+def test_the_run_refuses_skipped_checks_left_files_before_any_side_effect() -> None:
+    """The refusal sits beside the first refusal of a certified directory,
+    which precedes every download and output directory."""
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    first_refusal = source.index("    _refuse_certified_release_dir_reuse(\n")
+    following = source[first_refusal : first_refusal + 600]
+    assert "_refuse_skipped_checks_left_files(" in following
+
+
 def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -> None:
     """microcosm#566/#567: the dense-arm fence table must cover exactly the
     normally-enforced bands, and every fence must carry the recompute

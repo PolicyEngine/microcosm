@@ -481,3 +481,37 @@ def test_a_hub_that_could_not_be_asked_is_not_read_as_an_unpublished_base(
             release_dir,
             repo_id=_US_REPOSITORY,
         )
+
+
+@pytest.mark.parametrize("allow", [False, True])
+def test_the_command_takes_the_incomplete_reform_validation_override(
+    tmp_path, monkeypatch, capsys, allow
+) -> None:
+    """The shared refusal of a build made with --skip-out-of-sample-reforms
+    names --allow-incomplete-reform-validation, as the tagged command did, so
+    the emitter command takes it too (review of #1571)."""
+    release_dir = tmp_path / "microcosm-us-2024-national"
+    release_dir.mkdir()
+    (release_dir / "reform_validation.json").write_text(
+        json.dumps({"out_of_sample_simulated": False})
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "prepare_build_folder_release",
+        lambda path, **_kwargs: _prepared(path),
+    )
+
+    exit_code = release_publication.main(
+        [
+            str(release_dir),
+            "--preflight-only",
+            *(["--allow-incomplete-reform-validation"] if allow else []),
+        ]
+    )
+
+    error_output = capsys.readouterr().err
+    if allow:
+        assert exit_code == 0
+    else:
+        assert exit_code == 1
+        assert "--allow-incomplete-reform-validation" in error_output
