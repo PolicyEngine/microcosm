@@ -52,6 +52,7 @@ from .evidence_kernels import register_evidence_kernels
 from .gate_bindings import TRANSPORT_GATE_REGISTRY
 from .gate_kernels import register_gate_kernel
 from .geography_kernels import register_geography_kernels
+from .income_evidence_kernels import register_income_evidence_kernels
 from .measure_kernels import register_measure_kernels
 from .money_kernels import register_money_kernels
 from .person_location_kernels import register_person_location_kernels
@@ -688,6 +689,7 @@ def build_transport_registry(
     register_takeup_kernels(kernels)
     register_reporting_kernels(kernels)
     register_evidence_kernels(kernels, engine_mapping)
+    register_income_evidence_kernels(kernels)
     return TransportRegistry(
         kernels, codecs, engine_mapping, MappingProxyType(refs), schema, nesting
     )

@@ -136,6 +136,11 @@ from .evidence_contract import (
     binding_relation_inputs,
     binding_view_entities,
 )
+from .income_evidence_kernels import (
+    INCOME_IDENTITY_REF,
+    NATIVE_BAND_REPORT_REF,
+    OMISSION_REGISTER_REF,
+)
 from .money_kernels import (
     MONEY_ANNUAL_TRANSFERS_REF,
     MONEY_MINOR_UNITS_REF,
@@ -210,6 +215,9 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         WEIGHTS_AUDIT_REF,
         DONOR_RANGES_REF,
         SUPPORT_BOUNDS_REF,
+        INCOME_IDENTITY_REF,
+        OMISSION_REGISTER_REF,
+        NATIVE_BAND_REPORT_REF,
         "export.prepare@1",
         "export.readback@1",
         "transport.package@1",
