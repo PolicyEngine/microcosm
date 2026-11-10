@@ -209,9 +209,9 @@ BENEFIT_RECIPIENT_RULE = (
     "Payment, PIP and Adult Disability Payment) moves to the household members "
     "its WHOREC1 to WHOREC5 name where they name anyone other than the row's "
     "own person; a row naming two or more splits its amount evenly between "
-    "them; a row naming nobody, only its own person, someone outside the "
-    "household (97) or a person number the household doesn't hold stays where "
-    "it is; other benefits never move"
+    "them (María's ruling of 2026-11-10); a row naming nobody, only its own "
+    "person, someone outside the household (97) or a person number the "
+    "household doesn't hold stays where it is; other benefits never move"
 )
 
 
