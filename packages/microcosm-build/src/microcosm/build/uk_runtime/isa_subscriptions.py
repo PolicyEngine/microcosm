@@ -27,7 +27,8 @@ read the whole population.
    cells of the same income band with room; nobody is made a holder.
 3. **How much (2023-24).** Within each (type, income band) the subscribers walk
    Table 9.7's band masses from the top, ranked by a key that blends their balance
-   rank with a keyed uniform, so larger holders tend to pay in more. Amounts are
+   rank with a keyed uniform, so larger holders tend to pay in more; holders tied
+   on a balance share its rank, so the keyed uniform alone orders them. Amounts are
    spread evenly inside each band on weight-proportional strata; GBP 20,000 is a
    point mass.
 4. **The split for people paying into both** (María's ruling, 28 October 2026).
@@ -991,17 +992,38 @@ def _subscription_bands() -> list[tuple[float, float]]:
 SUBSCRIPTION_BANDS = _subscription_bands()
 
 
-def _weighted_rank(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
-    """Each value's weighted mid-rank in [0, 1] (ties share a rank)."""
+def _weighted_rank(
+    values: np.ndarray, weights: np.ndarray, ids: np.ndarray
+) -> np.ndarray:
+    """Each value's weighted mid-rank in [0, 1]; tied values share one rank.
 
-    order = np.argsort(values, kind="stable")
-    cumulative = np.cumsum(weights[order])
+    A value held by one row keeps its own mid-rank, the weight below it plus
+    half its own, over the total. Every row of a group tied on one value takes
+    the group's mid-rank, ``(F(x-) + F(x)) / 2``: the weight below the group
+    plus half the group's. The weights accumulate in (value, id) order, so the
+    ranks do not depend on row order, and the keyed uniform each caller blends
+    in orders tied rows exchangeably. Tied rows used to rank by row position,
+    so the copies and clones that carry their root's balance ranked by where
+    they sat in the table, clone 0 lowest (microcosm#931).
+    """
+
+    order = np.lexsort((ids, values))
+    ordered = values[order]
+    ordered_weights = weights[order]
+    cumulative = np.cumsum(ordered_weights)
     total = float(cumulative[-1]) if len(cumulative) else 0.0
     ranks = np.empty(len(values), dtype=float)
     if total <= 0:
         ranks[:] = 0.5
         return ranks
-    ranks[order] = (cumulative - weights[order] / 2.0) / total
+    # A singleton's mid-rank, computed as before so it is bit for bit what it
+    # was wherever the rows arrive in id order (the spine's tables do).
+    mid = cumulative - ordered_weights / 2.0
+    first = np.searchsorted(ordered, ordered, side="left")
+    last = np.searchsorted(ordered, ordered, side="right") - 1
+    below = np.concatenate(([0.0], cumulative))[first]
+    mid = np.where(last > first, (below + cumulative[last]) / 2.0, mid)
+    ranks[order] = mid / total
     return ranks
 
 
@@ -1032,7 +1054,8 @@ def draw_band_amounts(
         person_ids[rows], seed=seed, salt=f"{salt}:rank"
     )
     rank_key = (
-        balance_rank_weight * _weighted_rank(balance[rows], row_weights)
+        balance_rank_weight
+        * _weighted_rank(balance[rows], row_weights, person_ids[rows])
         + (1.0 - balance_rank_weight) * uniforms
     )
     ranked = np.lexsort((person_ids[rows], -rank_key))
@@ -1290,7 +1313,9 @@ def draw_lifetime_isa_payments(
     key = (
         spec.balance_rank_weight
         * _weighted_rank(
-            recipients["lifetime_isa_balance"].to_numpy(float)[rows], payer_weights
+            recipients["lifetime_isa_balance"].to_numpy(float)[rows],
+            payer_weights,
+            person_ids,
         )
         + (1.0 - spec.balance_rank_weight) * uniforms
     )

@@ -10,6 +10,8 @@ import pytest
 
 from microcosm.build.source_manifest import SourceOperationSpec
 from microcosm.build.stage_evidence import snapshot_stage_evidence
+from microcosm.build.stochastic_assignment import binomial_share_tolerance
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime import isa_subscriptions as stage
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
@@ -53,7 +55,17 @@ def donor(spec):
     )
 
 
-def _population(seed: int = 1, households: int = 800):
+#: Five balance atoms, as repeated QRF draws give them: holders tie on them.
+BALANCE_ATOMS = (1_000.0, 5_000.0, 12_000.0, 20_000.0, 45_000.0)
+
+
+def _population(
+    seed: int = 1, households: int = 800, atoms: tuple[float, ...] | None = None
+):
+    """The synthetic population; with ``atoms``, every positive household ISA
+    total and every Lifetime ISA balance is one of them, drawn from a second
+    generator so the other draws stay as they are."""
+
     rng = np.random.default_rng(seed)
     household = pd.DataFrame(
         {
@@ -104,6 +116,12 @@ def _population(seed: int = 1, households: int = 800):
             "lifetime_isa_balance": rng.uniform(100, 20_000, len(person)),
         }
     )
+    if atoms is not None:
+        pick = np.random.default_rng(seed + 1_000)
+        for column in ("cash_isa", "stocks_and_shares_isa"):
+            held = household[column].to_numpy() > 0
+            household[column] = np.where(held, pick.choice(atoms, households), 0.0)
+        recipients["lifetime_isa_balance"] = pick.choice(atoms, len(person))
     return household, person, recipients
 
 
@@ -290,14 +308,212 @@ def test_band_amounts_sit_inside_their_bands_with_an_exact_top(statistics):
     assert not ((amounts > 18_000) & (amounts < 20_000) & (amounts >= 19_999.999)).any()
 
 
+def _row_position_rank(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """The balance rank before microcosm#931: tied values ranked in row order."""
+
+    order = np.argsort(values, kind="stable")
+    cumulative = np.cumsum(weights[order])
+    total = float(cumulative[-1]) if len(cumulative) else 0.0
+    ranks = np.empty(len(values), dtype=float)
+    if total <= 0:
+        ranks[:] = 0.5
+        return ranks
+    ranks[order] = (cumulative - weights[order] / 2.0) / total
+    return ranks
+
+
+def _tie_heavy(rng: np.random.Generator, n: int):
+    """Values half on the five atoms and half distinct, weights, unique ids."""
+
+    values = np.where(
+        rng.random(n) < 0.5,
+        rng.choice(BALANCE_ATOMS, n),
+        rng.uniform(100.0, 60_000.0, n),
+    )
+    weights = rng.uniform(1.0, 50.0, n)
+    ids = rng.choice(10**9, n, replace=False).astype(np.int64)
+    return values, weights, ids
+
+
+def test_tied_balances_share_one_weighted_mid_rank():
+    # The three rows tied on 5 take the group's mid-rank: the weight below it
+    # (6) plus half the group's (6), over the total (12). The two singletons
+    # keep their own. By row position the tied rows ranked 6.5, 8.5 and 11
+    # twelfths (microcosm#931).
+    values = np.asarray([5.0, 1.0, 5.0, 3.0, 5.0])
+    weights = np.asarray([1.0, 2.0, 3.0, 4.0, 2.0])
+    ids = np.asarray([10, 20, 30, 40, 50], dtype=np.int64)
+    np.testing.assert_array_equal(
+        stage._weighted_rank(values, weights, ids),
+        [9 / 12, 1 / 12, 9 / 12, 4 / 12, 9 / 12],
+    )
+    np.testing.assert_array_equal(
+        _row_position_rank(values, weights)[[0, 2, 4]], [6.5 / 12, 8.5 / 12, 11 / 12]
+    )
+    # On tie-heavy input every member of a group shares one rank,
+    # (F(x-) + F(x)) / 2 over the total, which for a singleton is its own.
+    values, weights, ids = _tie_heavy(np.random.default_rng(20261110), 3_000)
+    ranks = stage._weighted_rank(values, weights, ids)
+    total = weights.sum()
+    sizes = []
+    for value in np.unique(values):
+        group = values == value
+        sizes.append(int(group.sum()))
+        expected = (weights[values < value].sum() + weights[group].sum() / 2) / total
+        assert len(set(ranks[group].tolist())) == 1
+        assert ranks[group][0] == pytest.approx(expected, rel=0, abs=1e-12)
+    tie_groups = [size for size in sizes if size > 1]
+    assert len(tie_groups) == len(BALANCE_ATOMS) and min(tie_groups) > 200
+    # No weight: every rank is the middle, as before.
+    assert (stage._weighted_rank(values, np.zeros_like(weights), ids) == 0.5).all()
+
+
+def test_singleton_ranks_are_the_row_position_ranks_on_id_sorted_rows():
+    # The spine's tables arrive in id order, so a balance nobody else holds
+    # keeps its rank bit for bit and only tied rows move, to their group's
+    # mid-rank (microcosm#931).
+    values, weights, ids = _tie_heavy(np.random.default_rng(1110), 3_000)
+    in_id_order = np.argsort(ids)
+    values, weights, ids = values[in_id_order], weights[in_id_order], ids[in_id_order]
+    tied = pd.Series(values).duplicated(keep=False).to_numpy()
+    assert 0.4 < tied.mean() < 0.6
+
+    ranks = stage._weighted_rank(values, weights, ids)
+    before = _row_position_rank(values, weights)
+
+    np.testing.assert_array_equal(ranks[~tied], before[~tied])
+    assert (ranks[tied] != before[tied]).mean() > 0.99
+    # Without ties every rank is the row-position rank, bit for bit.
+    np.testing.assert_array_equal(
+        stage._weighted_rank(values[~tied], weights[~tied], ids[~tied]),
+        _row_position_rank(values[~tied], weights[~tied]),
+    )
+
+
+def test_the_ranks_do_not_depend_on_row_order():
+    # The weights accumulate in (value, id) order, so each row's rank is the
+    # same bit for bit however the rows arrive; by row position, tied rows'
+    # ranks followed their rows (microcosm#931).
+    values, weights, ids = _tie_heavy(np.random.default_rng(11), 2_000)
+    tied = pd.Series(values).duplicated(keep=False).to_numpy()
+    ranks = pd.Series(stage._weighted_rank(values, weights, ids), index=ids)
+    before = pd.Series(_row_position_rank(values, weights), index=ids)
+    for seed in range(5):
+        rows = np.random.default_rng(seed).permutation(len(values))
+        permuted = stage._weighted_rank(values[rows], weights[rows], ids[rows])
+        np.testing.assert_array_equal(permuted, ranks.loc[ids[rows]].to_numpy())
+        old = _row_position_rank(values[rows], weights[rows])
+        followed = old != before.loc[ids[rows]].to_numpy()
+        assert followed[tied[rows]].mean() > 0.99
+
+
+def _clone_pool(*, sources: int, clone_count: int, seed: int = 931):
+    """``sources`` holders and their geographic clones as one walk's payers:
+    clone-major, as their ids sort, each clone carrying its source's balance
+    (on the five atoms; both draws rank it) and an equal share of its weight."""
+
+    rng = np.random.default_rng(seed)
+    roots = 10_000 + np.arange(sources, dtype=np.int64)
+    ids = np.concatenate(
+        [
+            roots,
+            *(
+                copy_id_table.mint(roots, "geographic_support", k)
+                for k in range(1, clone_count)
+            ),
+        ]
+    )
+    balance = np.tile(rng.choice(BALANCE_ATOMS, sources), clone_count)
+    weights = np.tile(rng.uniform(5.0, 30.0, sources) / clone_count, clone_count)
+    return pd.DataFrame(
+        {
+            "person_id": ids,
+            "weight": weights,
+            "age": np.full(len(ids), 30.0),
+            "holds_lifetime_isa": np.ones(len(ids), dtype=bool),
+            "lifetime_isa_balance": balance,
+        }
+    )
+
+
+def _clone_zero_least(amounts: np.ndarray, clone_count: int) -> tuple[float, int]:
+    """The share of sources whose clone 0 gets strictly the least of its
+    clones, over the sources whose clones' amounts all differ, and their count."""
+
+    by_clone = amounts.reshape(clone_count, -1)
+    distinct = (np.diff(np.sort(by_clone, axis=0), axis=0) > 0).all(axis=0)
+    least = (by_clone[0] < by_clone[1:]).all(axis=0)
+    return float(least[distinct].mean()), int(distinct.sum())
+
+
+def test_clone_zero_is_not_ranked_below_its_clones(spec, monkeypatch):
+    # Three geographic clones of 2,000 holders, clone-major as their ids sort,
+    # each carrying its source's balance on five atoms. Clone 0 gets the least
+    # ISA amount, and the least Lifetime ISA payment, of its three in about a
+    # third of the sources, inside the four-sigma binomial band. Ranked by row
+    # position, each clone 0 sat in the bottom third of its tie group and got
+    # the least in about 43 and 40 per cent of the sources, outside the band
+    # (microcosm#931).
+    clone_count = 3
+    pool = _clone_pool(sources=2_000, clone_count=clone_count)
+    shares = np.full(len(stage.HMRC_ISA_SUBSCRIPTION_BAND_IDS), 1.0)
+
+    def isa_amounts() -> np.ndarray:
+        return stage.draw_band_amounts(
+            np.arange(len(pool)),
+            weights=pool["weight"].to_numpy(),
+            balance=pool["lifetime_isa_balance"].to_numpy(),
+            person_ids=pool["person_id"].to_numpy(),
+            band_shares=shares,
+            balance_rank_weight=spec.balance_rank_weight,
+            seed=spec.amount_seed,
+            salt=spec.amount_salt,
+            key="clones",
+        )
+
+    def lifetime_isa_payments() -> np.ndarray:
+        payments, receipt = stage.draw_lifetime_isa_payments(
+            pool,
+            headroom=np.full(len(pool), 20_000.0),
+            target_gbp=float(pool["weight"].sum()) * 1_000.0,
+            spec=spec,
+        )
+        assert receipt["saturated"] is None
+        return payments
+
+    def clone_zero_least() -> list[tuple[float, float]]:
+        found = []
+        for draw in (isa_amounts, lifetime_isa_payments):
+            share, count = _clone_zero_least(draw(), clone_count)
+            band = binomial_share_tolerance(
+                target=1 / clone_count, rows=count, sigma=4.0
+            )
+            found.append((share, band))
+        return found
+
+    for share, band in clone_zero_least():
+        assert abs(share - 1 / clone_count) <= band
+    monkeypatch.setattr(
+        stage,
+        "_weighted_rank",
+        lambda values, weights, ids: _row_position_rank(values, weights),
+    )
+    for share, band in clone_zero_least():
+        assert share > 1 / clone_count + band
+
+
 class _UKEngine:
     country = "uk"
 
 
-def _stage_frame(seed: int = 1, order: np.ndarray | None = None):
+def _stage_frame(
+    seed: int = 1,
+    order: np.ndarray | None = None,
+    atoms: tuple[float, ...] | None = None,
+):
     """The synthetic population as the 2024 frame the whole transform reads."""
 
-    household, person, recipients = _population(seed)
+    household, person, recipients = _population(seed, atoms=atoms)
     holds = recipients["holds_lifetime_isa"].to_numpy()
     person = person.assign(
         person_benunit_id=person["person_household_id"].to_numpy() * 10,
@@ -404,18 +620,39 @@ def test_the_stage_declares_no_fit_weight_records(statistics):
     assert "fit_weight_records" not in evidence
 
 
-def test_reordering_the_rows_moves_no_draw(statistics):
+@pytest.mark.parametrize(
+    "atoms", [None, BALANCE_ATOMS], ids=["distinct_balances", "five_balance_atoms"]
+)
+def test_reordering_the_rows_moves_no_draw(statistics, atoms):
     """Every draw is keyed on identity, so row order moves none.
 
-    Adding or removing rows can move others' amounts (the rakes, band walks and
-    growth factors read the whole population), so only order is invariant.
+    On five atoms most holders tie on their balance, as copies, clone halves
+    and repeated QRF draws do. Tied balances share one rank, so the keyed
+    uniform orders them, not their rows (microcosm#931); ranked by row
+    position, most of their amounts moved under this permutation. Adding or
+    removing rows can move others' amounts (the rakes, band walks and growth
+    factors read the whole population), so only order is invariant.
     """
 
     columns = list(stage.UK_ISA_SUBSCRIPTIONS_OUTPUT_COLUMNS)
     transform = _transform(statistics)
-    first = transform(_stage_frame()).table("person")
+    first = transform(_stage_frame(atoms=atoms)).table("person")
+    if atoms is not None:
+        # The ties are there: most subscribers and Lifetime ISA payers share
+        # their balance with another.
+        paying = (
+            first[stage.CASH_SUBSCRIPTIONS]
+            + first[stage.STOCKS_AND_SHARES_SUBSCRIPTIONS]
+            > 0
+        )
+        held = first[stage.CASH_BALANCE] + first[stage.STOCKS_AND_SHARES_BALANCE]
+        assert held[paying].duplicated(keep=False).mean() > 0.6
+        lifetime = first.loc[
+            first[stage.LIFETIME_ISA_PAYMENTS] > 0, stage.LIFETIME_ISA_BALANCE
+        ]
+        assert lifetime.duplicated(keep=False).mean() > 0.9
     order = np.random.default_rng(7).permutation(len(first))
-    second = transform(_stage_frame(order=order)).table("person")
+    second = transform(_stage_frame(order=order, atoms=atoms)).table("person")
     pd.testing.assert_frame_equal(
         first.set_index("person_id")[columns].sort_index(),
         second.set_index("person_id")[columns].sort_index(),
