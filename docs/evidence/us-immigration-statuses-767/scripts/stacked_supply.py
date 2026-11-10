@@ -46,18 +46,20 @@ Two lower bounds bracket each draw's share of its target:
   ``OTHER_NON_CITIZEN``, which PUMS cannot show, so its worst case is its
   ASEC arm share.
 
-One estimate sits between them, for parole and TPS draws only:
+One estimate sits between the worst case and the projected share, for parole
+and TPS draws only:
 
 - ``expected_share_of_target``: the ASEC arm plus the ACS mass the draw
   expects to take when each earlier parole or TPS draw takes its residual
   from the candidates no earlier draw took. The reconciliation selects by
   person-keyed hash draws, which order the free candidates as a uniform
   random order would, so each free candidate of a draw that takes mass
-  ``take`` from free mass ``available`` stays free with probability
+  ``take`` from free mass ``available`` stays free with probability about
   ``1 - take / available``. Refugee, asylee and withholding draws take only
   ``OTHER_NON_CITIZEN`` rows, which PUMS cannot show, so the estimate leaves
-  their takes out and overstates a later draw's share by whatever they take
-  of its candidates.
+  their takes out. Those takes can only lower a later draw's share, and they
+  lower it only once its free supply falls below its residual, as TPS
+  Venezuela's does.
 
 The output holds aggregates only.
 """
