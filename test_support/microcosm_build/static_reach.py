@@ -16,7 +16,10 @@ What the walk follows from a root, a function or a method with its class:
 - Bindings. A name resolves to every definition that can bind it: each
   alternative of a ``try`` or an ``if``, at module or function level, star
   imports, re-exports, and a package's lazy exports through a module-level
-  ``__getattr__``, defined or assigned.
+  ``__getattr__``, defined or assigned. Every form of assignment binds: a
+  ``for`` or ``with`` target stands for what the loop iterates or the
+  statement enters, a ``match`` capture for the subject, and a walrus
+  target for its value.
 - Scopes. Each scope binds only its own names, as Python scopes them. A
   comprehension, lambda or nested function keeps its names to itself, a class
   body's names stay out of its methods, and ``global`` and ``nonlocal`` send a
@@ -26,8 +29,10 @@ What the walk follows from a root, a function or a method with its class:
   module's binding, so the walk follows that one too.
 - Aliases. A module-level constant stands for each module, class or function
   its value names: ``_helper = helper_module``, ``_Base = pkg.Base``,
-  ``pkg.Base[int]``, either branch of a conditional, each element of a tuple,
-  and ``getattr`` or ``import_module`` with a literal name.
+  ``pkg.Base[int]``, either branch of a conditional, each operand of ``and``
+  or ``or``, a walrus's value, each element of a tuple, list or set (starred
+  ones too), and ``getattr``, ``import_module`` or ``__import__`` with a
+  literal name (for ``__import__``, the top package as well).
 - Inheritance. A member that a class doesn't define resolves on each
   first-party base, through aliases and subscripts (``Base[int]``).
 - Self and cls. In a method, a chain from ``self`` or ``cls`` continues
@@ -40,11 +45,12 @@ What the walk follows from a root, a function or a method with its class:
 - Import-time code. Importing a module runs its module-level code, and
   creating a class runs its body. In each module that holds an item the walk
   reaches, and in each class it reaches, the walk follows every statement
-  that runs only for its effect, whatever it names: an expression statement
-  (``_setup()``, ``setattr(Kernel, ...)``), a ``del``, and a store to an item
-  or an attribute. It also follows the header of each compound statement
-  there (``if``, ``while``, ``for``, ``with``, ``match``, and an ``except``
-  clause's types).
+  that runs only for its effect, in any block and whatever it names: an
+  expression statement (``_setup()``, ``setattr(Kernel, ...)``), a ``del``,
+  and a store to an item or an attribute. It also follows each compound
+  statement's header there: an ``if`` or ``while`` test, what a ``for``
+  iterates or a ``with`` enters, a ``match`` statement's subject, patterns
+  and guards, and each ``except`` or ``except*`` clause's types.
 - Changes by name. In any module the walk has read, a statement at module
   level or in any class body that changes a reached name in place runs with
   it: a method call on the name (``_TABLE.update(...)``, also inside an

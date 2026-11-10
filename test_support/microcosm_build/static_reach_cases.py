@@ -36,13 +36,22 @@ TARGETS = (
     "alternative_first",
     "attrgetter",
     "base_attr",
+    "base_dunder_import",
     "base_else",
     "base_first",
     "base_getattr",
     "base_if",
     "base_import",
+    "base_or",
     "base_second",
+    "base_starred",
     "base_subscript",
+    "base_walrus",
+    "block_body",
+    "block_case",
+    "block_else",
+    "block_finally",
+    "block_handler",
     "body_annotation",
     "body_before",
     "body_conditional",
@@ -71,15 +80,19 @@ TARGETS = (
     "fill_call",
     "fill_global",
     "float",
+    "for_target",
     "getattr_alias",
     "getattr_constant",
     "global",
     "go",
     "hasattr",
     "header_for",
+    "header_guard",
     "header_if",
     "header_match",
+    "header_pattern",
     "header_try",
+    "header_trystar",
     "header_while",
     "header_with",
     "import_from",
@@ -92,8 +105,11 @@ TARGETS = (
     "local",
     "local_alternative",
     "local_alternative_first",
+    "match_capture",
     "match_keyword",
     "match_positional",
+    "match_rest",
+    "match_star",
     "metaclass",
     "methodcaller",
     "mutation_alias",
@@ -123,6 +139,8 @@ TARGETS = (
     "unpack",
     "update",
     "value",
+    "walrus",
+    "with_target",
 )
 
 #: Targets a case binds so that a wrong walk would reach them. No walk
@@ -285,6 +303,91 @@ SOURCES: dict[str, str] = {
             except ImportError:
                 from microcosm.walkcases import absent as backend
             return backend.impl()
+        """,
+    # A name that a for loop, a with statement, a match capture or a walrus
+    # binds at module level, imported from that module. Nothing else leads
+    # the walk to the module.
+    "bind_for": """
+        from microcosm.walkcases import t_for_target
+
+        for VALUE in (t_for_target.X,):
+            pass
+        """,
+    "r_bind_for": """
+        from microcosm.walkcases.bind_for import VALUE
+
+
+        def run():
+            return VALUE
+        """,
+    "bind_with": """
+        from contextlib import nullcontext
+
+        from microcosm.walkcases import t_with_target
+
+        with nullcontext(t_with_target.X) as VALUE:
+            pass
+        """,
+    "r_bind_with": """
+        from microcosm.walkcases.bind_with import VALUE
+
+
+        def run():
+            return VALUE
+        """,
+    "bind_match": """
+        from microcosm.walkcases import t_match_capture
+
+        match t_match_capture.X:
+            case VALUE:
+                pass
+        """,
+    "r_bind_match": """
+        from microcosm.walkcases.bind_match import VALUE
+
+
+        def run():
+            return VALUE
+        """,
+    "bind_star": """
+        from microcosm.walkcases import t_match_star
+
+        match (t_match_star.X,):
+            case [*VALUE]:
+                pass
+        """,
+    "r_bind_star": """
+        from microcosm.walkcases.bind_star import VALUE
+
+
+        def run():
+            return VALUE
+        """,
+    "bind_rest": """
+        from microcosm.walkcases import t_match_rest
+
+        match t_match_rest.ROWS:
+            case {**VALUE}:
+                pass
+        """,
+    "r_bind_rest": """
+        from microcosm.walkcases.bind_rest import VALUE
+
+
+        def run():
+            return VALUE
+        """,
+    "bind_walrus": """
+        from microcosm.walkcases import t_walrus
+
+        _FIRST = (VALUE := t_walrus.X)
+        """,
+    "r_bind_walrus": """
+        from microcosm.walkcases.bind_walrus import VALUE
+
+
+        def run():
+            return VALUE
         """,
     # A package's lazy export, through its module-level __getattr__.
     "lazy.__init__": """
@@ -652,16 +755,21 @@ SOURCES: dict[str, str] = {
             pass
         """,
     # ... through each branch of a conditional (the walk follows both), each
-    # element of a tuple, getattr, a subscript and import_module.
+    # operand of or, a walrus, each element of a tuple, a starred list,
+    # getattr, a subscript, import_module, and __import__'s top package.
     "bases": """
         from microcosm.walkcases import (
+            t_base_dunder_import,
             t_base_else,
             t_base_first,
             t_base_getattr,
             t_base_if,
             t_base_import,
+            t_base_or,
             t_base_second,
+            t_base_starred,
             t_base_subscript,
+            t_base_walrus,
         )
 
 
@@ -701,6 +809,26 @@ SOURCES: dict[str, str] = {
         class ImportBase:
             def run(self):
                 return t_base_import.X
+
+
+        class OrBase:
+            def run(self):
+                return t_base_or.X
+
+
+        class WalrusBase:
+            def run(self):
+                return t_base_walrus.X
+
+
+        class StarredBase:
+            def run(self):
+                return t_base_starred.X
+
+
+        class DunderImportBase:
+            def run(self):
+                return t_base_dunder_import.X
         """,
     "r_base_conditional": """
         from microcosm.walkcases import bases
@@ -737,6 +865,40 @@ SOURCES: dict[str, str] = {
 
 
         class Kernel(_Base):
+            pass
+        """,
+    "r_base_or": """
+        from microcosm.walkcases import bases
+
+        _Base = None or bases.OrBase
+
+
+        class Kernel(_Base):
+            pass
+        """,
+    "r_base_walrus": """
+        from microcosm.walkcases import bases
+
+        _Base = (_Found := bases.WalrusBase)
+
+
+        class Kernel(_Base):
+            pass
+        """,
+    "r_base_starred": """
+        from microcosm.walkcases import bases
+
+        _Base = [*[bases.StarredBase]][0]
+
+
+        class Kernel(_Base):
+            pass
+        """,
+    "r_base_dunder_import": """
+        _top = __import__("microcosm.walkcases.bases")
+
+
+        class Kernel(_top.walkcases.bases.DunderImportBase):
             pass
         """,
     "r_import_alias_base": """
@@ -964,9 +1126,12 @@ SOURCES: dict[str, str] = {
 
         from microcosm.walkcases import (
             t_header_for,
+            t_header_guard,
             t_header_if,
             t_header_match,
+            t_header_pattern,
             t_header_try,
+            t_header_trystar,
             t_header_while,
             t_header_with,
         )
@@ -986,14 +1151,55 @@ SOURCES: dict[str, str] = {
                 FOUND = found
             case _:
                 FOUND = None
+        match 0:
+            case t_header_pattern.X:
+                PATTERN = 1
+            case _ if t_header_guard.X:
+                PATTERN = 2
         try:
             raise ValueError
         except ValueError if t_header_try.X else TypeError:
+            pass
+        try:
+            raise ExceptionGroup("group", [ValueError()])
+        except* (ValueError if t_header_trystar.X else TypeError):
             pass
 
 
         def run():
             return VALUE
+        """,
+    # Statements that run for their effect inside each kind of block.
+    "r_blocks": """
+        from microcosm.walkcases import (
+            t_block_body,
+            t_block_case,
+            t_block_else,
+            t_block_finally,
+            t_block_handler,
+        )
+
+        if True:
+            t_block_body.X
+        for _row in ():
+            pass
+        else:
+            t_block_else.X
+        try:
+            pass
+        finally:
+            t_block_finally.X
+        try:
+            raise ValueError
+        except ValueError:
+            t_block_handler.X
+        match 1:
+            case _:
+                t_block_case.X
+
+
+        def run():
+            return 1
         """,
     "r_class_header": """
         from microcosm.walkcases import t_class_header
@@ -1551,6 +1757,12 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_alternative_first", "run"): {"alternative_first"},
     ("r_local_alternative", "run"): {"local_alternative"},
     ("r_local_alternative_first", "run"): {"local_alternative_first"},
+    ("r_bind_for", "run"): {"for_target"},
+    ("r_bind_with", "run"): {"with_target"},
+    ("r_bind_match", "run"): {"match_capture"},
+    ("r_bind_star", "run"): {"match_star"},
+    ("r_bind_rest", "run"): {"match_rest"},
+    ("r_bind_walrus", "run"): {"walrus"},
     ("r_lazy", "run"): {"lazy"},
     ("r_lazy_assigned", "run"): {"lazy_assigned"},
     ("r_star_lazy", "run"): {"star_lazy"},
@@ -1578,6 +1790,10 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_base_tuple", "Kernel.run"): {"base_first", "base_second"},
     ("r_base_getattr", "Kernel.run"): {"base_getattr"},
     ("r_base_subscript", "Kernel.run"): {"base_subscript"},
+    ("r_base_or", "Kernel.run"): {"base_or"},
+    ("r_base_walrus", "Kernel.run"): {"base_walrus"},
+    ("r_base_starred", "Kernel.run"): {"base_starred"},
+    ("r_base_dunder_import", "Kernel.run"): {"base_dunder_import"},
     ("r_import_alias_base", "Kernel.run"): {"base_import"},
     ("r_getattr_alias", "run"): {"getattr_alias"},
     # Inheritance
@@ -1597,11 +1813,21 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     # Import-time code
     ("r_headers", "run"): {
         "header_for",
+        "header_guard",
         "header_if",
         "header_match",
+        "header_pattern",
         "header_try",
+        "header_trystar",
         "header_while",
         "header_with",
+    },
+    ("r_blocks", "run"): {
+        "block_body",
+        "block_case",
+        "block_else",
+        "block_finally",
+        "block_handler",
     },
     ("r_class_header", "Kernel.run"): {"class_header"},
     ("r_fill_global", "run"): {"fill_global"},
