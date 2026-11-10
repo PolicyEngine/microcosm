@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.174.1. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.177.4. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -475,10 +475,51 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "funding and whom no exception covers. It is understated for an 18- or "
         "19-year-old on the FRS adult table on such a course who reports no "
         "Universal Credit, JSA or ESA of their own and is without parental "
-        "support: policyengine-uk 2.174.1 has no input for parental support, "
+        "support: policyengine-uk 2.177.4 has no input for parental support, "
         "so it doesn't apply reg. 14(1)(a), and such a person counts as a "
         "qualifying young person. Such records are mostly young people living "
         "away from their parents (microcosm#1095, microcosm#1535; for María's "
+        "signature)."
+    ),
+    "legacy_prescribed_accommodation_capital_exception": (
+        "From policyengine-uk 2.174.8 a claimant who lives permanently in "
+        "prescribed accommodation (a care home, an independent hospital, an "
+        "Abbeyfield Home or Polish Resettlement Act accommodation, receiving the "
+        "care the regulations describe: IS Regs 1987 reg. 53(1B)-(1C), JSA Regs "
+        "1996 reg. 116(1B)-(1C), ESA Regs 2008 reg. 118(3)-(4) and their "
+        "Northern Ireland equivalents) takes tariff income on capital above GBP "
+        "10,000 instead of GBP 6,000 for Income Support, income-based JSA and "
+        "income-related ESA. The FRS samples private households, so it holds "
+        "almost no such resident, and the input stays False. A qualifying "
+        "resident's legacy benefit is understated by the tariff income on "
+        "capital between GBP 6,000 and GBP 10,000; eligibility, capital and the "
+        "upper limit do not move (microcosm#1095; for María's signature)."
+    ),
+    "esa_income_appointee_saving": (
+        "Under SI 2025/1148 art. 3A(2) (SR 2025/176 art. 3A(2) in Northern "
+        "Ireland) an old-style income-related ESA award stays payable after the "
+        "abolition of 1 July 2026 (1 October 2026 in Northern Ireland) where an "
+        "appointee acts for the claimant, or the department decided in the six "
+        "months before that one was likely needed. The FRS does not identify "
+        "appointees, so the input stays False and policyengine-uk 2.175.3 ends "
+        "every reported award at the abolition. DWP exempted around 500 such "
+        "claimants from the June 2026 closure (LA Welfare Direct 6/2026), so "
+        "from July 2026 the build ends about that many awards that the saving "
+        "keeps. 2025, the calibration year, does not move (microcosm#1095; for "
+        "María's signature)."
+    ),
+    "cares_for_severely_disabled_person": (
+        "From policyengine-uk 2.177.3 caring hours pay Carer's Allowance and "
+        "Carer Support Payment, and count for the Universal Credit carer "
+        "element, only where the person cared for gets a qualifying disability "
+        "benefit (SSCBA 1992 s. 70(1)-(2); SSI 2023/302 regs 2 and 5(1); UC Regs "
+        "2013 regs 29-30). The FRS records caring hours but not whom the carer "
+        "cares for, and the person cared for can live elsewhere, so the build "
+        "leaves the input at its default, True, as policyengine-uk documents for "
+        "survey data. A carer whose hours go to someone with no qualifying "
+        "benefit is then treated as entitled through the caring-hours route; a "
+        "reported award counts whatever the input says. At the default no "
+        "figure moves from policyengine-uk 2.177.2 (microcosm#1095; for María's "
         "signature)."
     ),
 }
@@ -505,7 +546,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.174.1",
+    engine_version="2.177.4",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(

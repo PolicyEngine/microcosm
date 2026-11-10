@@ -32,8 +32,8 @@ US_ENGINE = {
 #: What every UK install path resolves: the locked policyengine-uk and the
 #: policyengine-core its own floor brings.
 UK_ENGINE = {
-    "policyengine-core": "3.33.3",
-    "policyengine-uk": "2.174.1",
+    "policyengine-core": "3.34.10",
+    "policyengine-uk": "2.177.4",
 }
 ENGINE_PACKAGES = ("microcosm-build", "microcosm-data", "microcosm-frame")
 
