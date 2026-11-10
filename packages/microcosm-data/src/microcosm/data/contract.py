@@ -4855,8 +4855,9 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     into build folders (such as the US local-area release,
     ``microcosm-us-2024-local``, whose new builds declare
     ``microcosm_us_2024_acs_local.h5``) names its release and build and pins
-    no revision. A US release must also declare the stored-input gate, bound
-    to its built-with engine and its microdata bytes (microcosm#1034).
+    no revision. A US release must also record the package stage's
+    stored-input check (its ``stored_inputs`` entry in ``gate_summary.json``),
+    bound to its built-with engine and its microdata bytes (microcosm#1034).
     """
 
     failures: list[str] = []
