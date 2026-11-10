@@ -254,7 +254,12 @@ def _identity_node(declaration, *, identities=IDENTITIES, columns=None):
 
 
 def _register_node(
-    declaration, *, register=REGISTER, columns=None, problem_type=PROBLEM_TYPE
+    declaration,
+    *,
+    register=REGISTER,
+    columns=None,
+    problem_type=PROBLEM_TYPE,
+    solution_type=SOLUTION_TYPE,
 ):
     names = columns or (
         *(row["column"] for row in declaration["components"]),
@@ -272,8 +277,20 @@ def _register_node(
         },
         artifact_inputs=(
             ArtifactInput("problem", "toy.problem", "problem", problem_type),
+            ArtifactInput("solution", "toy.calibrate", "solution", solution_type),
         ),
         artifact_outputs=(ArtifactOutput("omission_register", OMISSION_REGISTER_TYPE),),
+    )
+
+
+def _encoded_solution(problem, weights, *, entity_ids=None):
+    """A solution of ``problem`` at ``weights``, on its axis unless given one."""
+
+    decoded = decode_problem(problem)
+    return encode_solution(
+        np.asarray(weights, dtype=np.float64),
+        entity_ids=decoded.entity_ids if entity_ids is None else entity_ids,
+        problem_sha256=decoded.sha256,
     )
 
 
@@ -294,29 +311,43 @@ def _register_context(
     weights=None,
     *,
     problem=None,
+    solution=None,
     problem_type=PROBLEM_TYPE,
+    solution_type=SOLUTION_TYPE,
     edit=None,
     artifacts=None,
     **node,
 ):
-    """The register's context: ``_frame``'s households, and a problem on them.
+    """The register's context: ``_frame``'s households, a problem and its fit.
 
     By default the problem's pre-fit weights are the frame's own design
     weights, one household per person, so the register's totals equal
-    ``measure.combine@1``'s at the frame's weights. ``edit`` changes the node.
+    ``measure.combine@1``'s at the frame's weights. The default solution
+    gives each household on the problem's axis its frame weight (1.0 for one
+    the frame lacks), as the fit's own solution does where the register
+    runs. ``edit`` changes the node.
     """
 
     frame = _frame(person, weights)
+    households = frame.table("household")["household_id"].tolist()
+    frame_weights = frame.resolve_weights("household").values
     if problem is None:
-        problem = _encoded_problem(
-            frame.table("household")["household_id"].tolist(),
-            frame.resolve_weights("household").values,
+        problem = _encoded_problem(households, frame_weights)
+    if solution is None:
+        by_id = dict(zip(households, frame_weights, strict=True))
+        solution = _encoded_solution(
+            problem,
+            [by_id.get(value, 1.0) for value in decode_problem(problem).entity_ids],
         )
-    built = _register_node(declaration, problem_type=problem_type, **node)
+    built = _register_node(
+        declaration, problem_type=problem_type, solution_type=solution_type, **node
+    )
     return _context(
         built if edit is None else edit(built),
         frame,
-        _artifact_values({"problem": (problem, problem_type)})
+        _artifact_values(
+            {"problem": (problem, problem_type), "solution": (solution, solution_type)}
+        )
         if artifacts is None
         else artifacts,
     )
@@ -654,14 +685,18 @@ def test_the_register_binds_the_declared_items_verbatim() -> None:
     size = len(person)
     design = np.linspace(1, 2, size)
     problem = _encoded_problem(list(range(1, size + 1)), design)
-    payload, receipt = _register(person, TOY, problem=problem)
+    solution = _encoded_solution(problem, design)
+    payload, receipt = _register(person, TOY, problem=problem, solution=solution)
     document = json.loads(payload)
     assert document["kind"] == "transport_omission_register"
     assert document["register"] == REGISTER
     assert document["register_sha256"] == sha256(canonical_json(REGISTER)).hexdigest()
     assert document["income_measurements_sha256"] == "c" * 64
     assert document["measurement_id"] == "toy_measurement_v1"
-    assert document["inputs"]["artifacts"] == {"problem": sha256(problem).hexdigest()}
+    assert document["inputs"]["artifacts"] == {
+        "problem": sha256(problem).hexdigest(),
+        "solution": sha256(solution).hexdigest(),
+    }
     # boundary_diagnostics' two digests, over the people in record order.
     assert document["weights"] == {
         "entity": "person",
@@ -675,7 +710,8 @@ def test_the_register_binds_the_declared_items_verbatim() -> None:
 
 
 def test_the_register_reads_pre_fit_weights_from_the_problem() -> None:
-    # The frame's weights may already be calibrated where the register runs;
+    # Where the register runs, the frame's weights are the fit's solution
+    # (the default context's solution gives each household its frame weight);
     # the totals follow the problem's initial weights, not the frame's.
     person, receipt = _measured(TOY_COLUMNS, TOY)
     size = len(person)
@@ -697,12 +733,25 @@ def test_the_register_refuses_each_node_edit(edit) -> None:
 def test_the_register_refuses_a_problem_it_cant_broadcast() -> None:
     person, _ = _measured(TOY_COLUMNS, TOY)
     size = len(person)
-    with pytest.raises(ValueError, match="reads exactly \\['problem'\\] artifacts"):
+    exactly = "reads exactly \\['problem', 'solution'\\] artifacts"
+    with pytest.raises(ValueError, match=exactly):
         _register(
             person,
             TOY,
             edit=lambda node: dataclasses.replace(node, artifact_inputs=()),
             artifacts={},
+        )
+    # G8-x1's register read the problem alone; that node now refuses.
+    problem = _encoded_problem(list(range(1, size + 1)), np.linspace(1, 2, size))
+    with pytest.raises(ValueError, match=exactly):
+        _register(
+            person,
+            TOY,
+            problem=problem,
+            edit=lambda node: dataclasses.replace(
+                node, artifact_inputs=node.artifact_inputs[:1]
+            ),
+            artifacts=_artifact_values({"problem": (problem, PROBLEM_TYPE)}),
         )
     with pytest.raises(
         ValueError,
@@ -710,6 +759,12 @@ def test_the_register_refuses_a_problem_it_cant_broadcast() -> None:
         "microcosm.calibrate.ordered-solution@1",
     ):
         _register(person, TOY, problem_type=SOLUTION_TYPE)
+    with pytest.raises(
+        ValueError,
+        match="reads 'solution' as microcosm.calibrate.ordered-solution@1, not "
+        "microcosm.calibrate.ordered-problem@1",
+    ):
+        _register(person, TOY, solution_type=PROBLEM_TYPE)
     with pytest.raises(ValueError, match="but the problem calibrates 'household'"):
         _register(
             person,
@@ -721,6 +776,88 @@ def test_the_register_refuses_a_problem_it_cant_broadcast() -> None:
     short = _encoded_problem(list(range(1, size)), np.ones(size - 1))
     with pytest.raises(ValueError, match="outside the problem's household axis"):
         _register(person, TOY, problem=short)
+
+
+OFF_THE_SOLUTION = (
+    "frame person weights differ from the calibration solution's household weights"
+)
+
+
+def test_the_register_refuses_frame_weights_off_the_solution() -> None:
+    # #1563 N3: the frame carries the fit's weights where the register runs,
+    # so one household one ulp off its solution weight refuses.
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    size = len(person)
+    design = np.linspace(1, 2, size)
+    problem = _encoded_problem(list(range(1, size + 1)), design)
+    fitted = design.copy()
+    fitted[2] = np.nextafter(fitted[2], np.inf)
+    with pytest.raises(ValueError, match=OFF_THE_SOLUTION):
+        _register(
+            person, TOY, problem=problem, solution=_encoded_solution(problem, fitted)
+        )
+
+
+def test_the_register_refuses_a_solution_of_another_problem_or_axis() -> None:
+    # #1563 N3: the solution must be the one solved from the problem it reads.
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    size = len(person)
+    design = np.linspace(1, 2, size)
+    ids = list(range(1, size + 1))
+    problem = _encoded_problem(ids, design)
+    other = _encoded_problem(ids, design * 2)
+    with pytest.raises(ValueError, match="Solution belongs to a different problem"):
+        _register(
+            person, TOY, problem=problem, solution=_encoded_solution(other, design)
+        )
+    with pytest.raises(ValueError, match="different ordered entity axis"):
+        _register(
+            person,
+            TOY,
+            problem=problem,
+            solution=_encoded_solution(problem, design, entity_ids=ids[::-1]),
+        )
+
+
+def test_the_register_refuses_a_household_on_the_axis_with_no_person() -> None:
+    # #1563 N3: the frame's households are the problem's axis, so every
+    # household the fit weighted holds a record the register reads.
+    person, _ = _measured(TOY_COLUMNS, TOY)
+    size = len(person)
+    wide = _encoded_problem(list(range(1, size + 2)), np.ones(size + 1))
+    with pytest.raises(
+        ValueError, match="frame has a household on the problem's axis with no person"
+    ):
+        _register(person, TOY, problem=wide)
+
+
+_WEIGHT = st.floats(min_value=0.01, max_value=1e6, allow_nan=False)
+
+
+@PROPERTY
+@given(case=measures(), data=st.data())
+def test_property_the_register_reads_its_fits_frame_at_pre_fit_weights(
+    case, data
+) -> None:
+    # #1563 N3: at whatever solution the frame carries, the totals are the
+    # problem's pre-fit totals; one record's weight one ulp off refuses.
+    columns, declaration, design = case
+    person, receipt = _measured(columns, declaration, design)
+    size = len(person)
+    problem = _encoded_problem(list(range(1, size + 1)), design)
+    fitted = np.asarray(
+        data.draw(st.lists(_WEIGHT, min_size=size, max_size=size)), dtype=np.float64
+    )
+    solution = _encoded_solution(problem, fitted)
+    payload, _ = _register(
+        person, declaration, fitted, problem=problem, solution=solution
+    )
+    _included_matches_receipt(json.loads(payload)["included"], receipt)
+    off = fitted.copy()
+    index = data.draw(st.integers(min_value=0, max_value=size - 1))
+    off[index] = np.nextafter(off[index], np.inf)
+    with pytest.raises(ValueError, match=OFF_THE_SOLUTION):
+        _register(person, declaration, off, problem=problem, solution=solution)
 
 
 def test_the_register_refuses_a_measure_off_the_person_entity() -> None:

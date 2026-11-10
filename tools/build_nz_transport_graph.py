@@ -715,6 +715,18 @@ def measure_params(measure="central"):
     }
 
 
+def measurement_selection():
+    """The id ``income_measurements`` defines, as a reader's ``measurement``.
+
+    R2C-1's proof reads a producer's ``measurement_id`` as a literal string in
+    the declared rows (``compose._measurement_declaration``) and refuses any
+    other value, so the stand-in keeps the literal, and the declarations test
+    pins it to this resource's id. A reader's ``measurement`` sits outside that
+    proof, so the readers select the id and move with the resource.
+    """
+    return select("income_measurements", "value", "measurement_id")
+
+
 def reader_params(measure="central"):
     """measure_params for a node that reads the measure, under ``measurement``.
 
@@ -726,7 +738,7 @@ def reader_params(measure="central"):
     return {
         "measure": params["measure"],
         "measure_sha256": params["measure_sha256"],
-        "measurement": params["measurement_id"],
+        "measurement": measurement_selection(),
     }
 
 
@@ -1586,7 +1598,10 @@ def add_evidence(graph):
                 **reader_params(),
                 "weight_entity": "household",
             },
-            artifact_inputs=[edge("problem", "nz.targets.problem")],
+            artifact_inputs=[
+                edge("problem", "nz.targets.problem"),
+                edge("solution", "nz.calibrate"),
+            ],
             artifact_outputs=[
                 artifact_output("omission_register", OMISSION_REGISTER_TYPE)
             ],
@@ -1610,7 +1625,7 @@ def add_evidence(graph):
                 **document("diagnostic_references", "income_diagnostic_references"),
                 "chronicle_feed_pin": select("chronicle_feed"),
                 "weight_entity": "household",
-                "measurement": MEASUREMENT_ID,
+                "measurement": measurement_selection(),
             },
             artifact_inputs=[
                 edge("preparation", "nz.targets.prepare"),

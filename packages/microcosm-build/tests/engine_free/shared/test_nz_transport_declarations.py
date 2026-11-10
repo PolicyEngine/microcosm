@@ -677,11 +677,12 @@ _BRIDGE_AND_REGION = {
 
 
 def _nz_composition_spec_and_config():
-    """Supply compiler-only toy engine pins and CREATE's inventory.
+    """Supply synthetic engine refs and CREATE's inventory.
 
-    The packaged graph declares every money producer, so the compiler checks
-    the complete packaged node and population structure with no synthetic
-    node. The toy pins certify no runtime result. CREATE's inventory holds
+    The packaged graph declares every money producer, and the packaged
+    bindings carry the engine pins, so the compiler checks the complete
+    packaged node and population structure with no synthetic node or pin. The
+    synthetic engine refs certify no runtime result. CREATE's inventory holds
     canonical concepts and unit outputs only: no bridge or region column
     enters as a root.
     """
@@ -689,9 +690,7 @@ def _nz_composition_spec_and_config():
 
     spec = _spec()
     resources = spec["resources"]
-    resources["axiom_rules_bindings"]["engine"].update(
-        commit="1" * 40, wheel_sha256="2" * 64
-    )
+    compose.validate_transport_activation(spec)
 
     rows = _instantiated_nz_rows(spec)
     produced = {
@@ -1630,10 +1629,13 @@ def test_the_income_evidence_readers_name_the_measurement_but_dont_declare_it():
 
     measurement_proofs counts every node upstream of a calibration that
     declares the measurement's id and needs exactly one. The three readers
-    name the stand-in's id under ``measurement``, and the register reads
-    the problem's household weights. The readers sit two boundary filters
-    after the reweight, and only stand-ins write the three proxy columns, so
-    nz.terminal holds what nz.income.standin wrote at nz.central.
+    name the stand-in's id under ``measurement``, selected from
+    income_measurements' own ``measurement_id``. The stand-in keeps the literal
+    that R2C-1's proof reads, and the composed readers resolve to it. The
+    register reads the problem's household weights and checks the frame's
+    against the fit's solution. The readers sit two boundary filters after the
+    reweight, and only stand-ins write the three proxy columns, so nz.terminal
+    holds what nz.income.standin wrote at nz.central.
     """
     spec = _spec()
     rows = spec["resources"]["transport_graph"]["nodes"]
@@ -1643,13 +1645,21 @@ def test_the_income_evidence_readers_name_the_measurement_but_dont_declare_it():
     ]
     assert declarers == ["nz.income.standin"]
     by_id = {row["id"]: row for row in rows}
+    assert by_id["nz.income.standin"]["params"]["measurement_id"] == _MEASUREMENT
+    selection = {
+        "resource": "income_measurements",
+        "path": ["measurement_id"],
+        "encoding": "value",
+    }
+    _, _, graph, _ = _nz_composed()
     for producer, _ in _INCOME_EVIDENCE.values():
-        assert by_id[producer]["params"]["measurement"] == _MEASUREMENT, producer
+        assert by_id[producer]["params"]["measurement"] == selection, producer
+        assert graph.node(producer).params["measurement"] == _MEASUREMENT, producer
     register = by_id["nz.evidence.omission_register"]
     assert register["params"]["weight_entity"] == "household"
     assert [
         (edge["name"], edge["producer"]) for edge in register["artifact_inputs"]
-    ] == [("problem", "nz.targets.problem")]
+    ] == [("problem", "nz.targets.problem"), ("solution", "nz.calibrate")]
     for name, base in (("nz.as", "nz.calibrate"), ("nz.terminal", "nz.as")):
         assert (by_id[name]["kernel"], by_id[name]["base"]) == (
             "transport.boundary@1",

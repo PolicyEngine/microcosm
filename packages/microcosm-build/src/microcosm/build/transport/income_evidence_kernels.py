@@ -15,7 +15,9 @@ refuses, or carries the run's own content, on its own:
     size exactly as declared), beside the totals of what the measure does
     include at the calibration problem's pre-fit weights. It adds no
     model-side figure for an omitted item, because the register's sizes mean
-    IRD's.
+    IRD's. It decodes the fit's solution against that problem and refuses a
+    frame whose weights aren't the solution's, so the problem it reads is the
+    one this run's fit solved.
 ``transport.native_band_report@1``
     Sets the model, at the run's pre-fit and post-fit weights, beside every
     native row of the publisher's table: the row's count and amount from the
@@ -744,7 +746,7 @@ class OmissionRegisterKernel(KernelBase):
         "measurement",
         "weight_entity",
     )
-    _inputs = MappingProxyType({"problem": PROBLEM_TYPE})
+    _inputs = MappingProxyType({"problem": PROBLEM_TYPE, "solution": SOLUTION_TYPE})
 
     def implementation_hash(self) -> str:
         return _implementation_hash(self.ref)
@@ -799,6 +801,29 @@ class OmissionRegisterKernel(KernelBase):
             entity=entity,
             weight_entity=weight_entity,
         )
+        # Tie the problem to this run's fit: the solution must be the one
+        # solved from it, every weight unit on its axis must hold a record, and
+        # each record's frame weight (its weight unit's, which the frame
+        # broadcasts) must be the solution's, bit for bit.
+        solution = decode_solution(
+            payloads["solution"],
+            problem_sha256=problem.sha256,
+            entity_ids=problem.entity_ids,
+        )
+        if len(set(rows)) != len(problem.entity_ids):
+            raise ValueError(
+                f"{ref} frame has a {weight_entity} on the problem's axis with no "
+                f"{entity}."
+            )
+        frame_weights = context.weights.get(entity)
+        if frame_weights is None or not np.array_equal(
+            np.asarray(frame_weights.values, dtype=np.float64),
+            np.asarray(solution.weights, dtype=np.float64)[rows],
+        ):
+            raise ValueError(
+                f"{ref} frame {entity} weights differ from the calibration "
+                f"solution's {weight_entity} weights."
+            )
         # The problem's initial weights are the fit's pre-fit weights, on its
         # own entity axis; each record takes its weight unit's.
         initial = problem.problem.initial_weights
