@@ -67,22 +67,35 @@ derived rules in ``HashMap`` order, so when several blockers exist, which
 one its error names varies from process to process. The snapshot therefore
 records the lexicographically first blocker, in the engine's own message
 format, plus a count of the rest. In dense mode every dense error must equal
-one of the computed blockers. Anything else aborts the run: a new kind of
-dense limitation is a review event, not a silent snapshot change. In CLI-only
-mode, only these two blocker kinds are detected.
+one of the computed blockers. One exception: engines from 4d7ec14f (#292) on
+follow a cross-entity message with ". " and advice that names the relation
+to read through (``cross_entity_advice`` in the engine's ``src/dense.rs``).
+The walk can't build that advice, so a cross-entity blocker also matches an
+error that starts with its text and ". ", and the snapshot keeps the walk's
+text. Anything else aborts the run: a new kind of dense limitation is a
+review event, not a silent snapshot change. In CLI-only mode, only these two
+blocker kinds are detected.
+
+The walk reads CLI artifact formats 2 and 3, and each artifact must carry
+the format the engine's ``capabilities`` names. Format 3 (engine 590d1dc9,
+#250) adds ``program.interface``, ``engine_build`` and ``source_closure``,
+which the walk doesn't read. The engine's ``docs/artifact-format.md`` says
+that, for source without election declarations, its ``program`` without
+``interface``, and its ``metadata``, are what format 2 emits.
 
 Regenerate
 ----------
 Archive the pinned commits into a scratch directory (never build inside a
 live checkout), build the CLI and the dense extension from the same engine
 archive, then run this tool once per country from the repository root.
-These are the commands that produced the checked-in snapshots.
-``AXIOM`` is the directory holding the three TheAxiomFoundation checkouts,
-after a ``git fetch origin`` in each::
+Each snapshot names its own engine commit: nz.json 753ce7d9 and be.json
+04315d94. Set ``ENGINE`` to the one the snapshot records, and run only that
+country's command. ``AXIOM`` is the directory holding the three
+TheAxiomFoundation checkouts, after a ``git fetch origin`` in each::
 
     W=<empty scratch dir>
     AXIOM=<dir with axiom-rules-engine, rulespec-nz, rulespec-be checkouts>
-    ENGINE=04315d94d04efd61e27665ab3aa300d64fdf3a66
+    ENGINE=<the snapshot's engine.commit>
     NZ=6fe181fc4c65763150fe97501ef3443774e64869
     BE=b105e2b3a3086ddd2de447d58a9b951346870dd1
     mkdir -p $W/engine $W/rulespec-nz $W/rulespec-be
@@ -111,10 +124,11 @@ after a ``git fetch origin`` in each::
 ``<python3.14>`` stands for any GIL-enabled CPython 3.14 interpreter.
 The wrapper pins Python ``==3.14.*``, and the extension must be built for the
 interpreter that loads it: a wheel built for free-threaded 3.14t does not
-import on GIL-enabled 3.14. ``maturin build`` runs without ``--locked``
-because ``python-ext/Cargo.lock`` at that engine commit still records the
-path dependency ``axiom-rules-engine`` as 0.1.0 (the crate is 0.2.2). Cargo
-rewrites only that entry.
+import on GIL-enabled 3.14. At 04315d94 ``maturin build`` runs without
+``--locked``, because ``python-ext/Cargo.lock`` there still records the
+path dependency ``axiom-rules-engine`` as 0.1.0 (the crate is 0.2.2), and
+Cargo rewrites only that entry. At 753ce7d9 the lock records 0.2.2, and
+``maturin build --locked`` builds the wheel.
 
 ``--rulespec-git-dir`` checks that every file under ``--rulespec-root`` is
 byte-identical to the blob at ``--rulespec-commit``. ``--check`` regenerates
@@ -152,14 +166,17 @@ COUNTRIES = ("nz", "be")
 ENGINE_REPOSITORY = "TheAxiomFoundation/axiom-rules-engine"
 SURFACE_DENSE = "dense_root_inputs"
 SURFACE_CLI = "cli_artifact_walk"
-#: The CLI artifact layout the walk below was written against.
-ARTIFACT_FORMAT_VERSION = 2
+#: The CLI artifact formats the walk below reads (the module docstring says
+#: why format 3 needs nothing new).
+ARTIFACT_FORMAT_VERSIONS = frozenset({2, 3})
 SCALAR_ENTITY = "Scalar"
 ERROR_TAIL_CHARACTERS = 300
 _FULL_SHA = re.compile(r"[0-9a-f]{40}")
 
-#: Every node ``kind`` in artifact v2 expressions (``ScalarExprSpec``,
-#: ``JudgmentExprSpec``, ``ScalarValueSpec`` in the engine's ``src/spec.rs``).
+#: Every node ``kind`` in artifact expressions at engine 04315d94
+#: (``ScalarExprSpec``, ``JudgmentExprSpec``, ``ScalarValueSpec`` in the
+#: engine's ``src/spec.rs``). Engine 753ce7d9 adds ten kinds and keeps these;
+#: the walk knows none of the ten, so an artifact that uses one fails the run.
 #: The walk refuses an unknown kind rather than guessing its evaluation
 #: context.
 _KNOWN_KINDS = frozenset(
@@ -213,6 +230,8 @@ _CROSS_ENTITY = (
     "dense compilation only supports dependencies within the same root "
     "entity; `{dependency}` from `{derived}` crosses into `{entity}`"
 )
+#: The text every cross-entity message starts with, before its names.
+_CROSS_ENTITY_HEAD = _CROSS_ENTITY[: _CROSS_ENTITY.index("`")]
 _VERSIONED = (
     "dense compilation does not yet support versioned derived formulas in "
     "`{name}`; use generic API execution"
@@ -334,8 +353,15 @@ def verify_rulespec_tree(root: Path, git_dir: Path, commit: str) -> int:
     return len(expected)
 
 
-def engine_version(engine_bin: Path) -> str:
-    """The CLI's ``--version`` line, after checking its artifact format."""
+def _artifact_format(value: Any) -> int | None:
+    """``value`` if it names a format the walk reads; a JSON 3.0 or true doesn't."""
+    if type(value) is int and value in ARTIFACT_FORMAT_VERSIONS:
+        return value
+    return None
+
+
+def engine_identity(engine_bin: Path) -> tuple[str, int]:
+    """The CLI's ``--version`` line and the artifact format it emits."""
     version = subprocess.run(
         [str(engine_bin), "--version"], capture_output=True, text=True, check=True
     ).stdout.strip()
@@ -347,13 +373,14 @@ def engine_version(engine_bin: Path) -> str:
             check=True,
         ).stdout
     )
-    if capabilities.get("artifact_format_version") != ARTIFACT_FORMAT_VERSION:
+    found = capabilities.get("artifact_format_version")
+    artifact_format = _artifact_format(found)
+    if artifact_format is None:
         raise SurfaceError(
-            f"{engine_bin} emits artifact format "
-            f"{capabilities.get('artifact_format_version')!r}; this walk reads "
-            f"format {ARTIFACT_FORMAT_VERSION}"
+            f"{engine_bin} emits artifact format {found!r}; this walk reads "
+            f"formats {sorted(ARTIFACT_FORMAT_VERSIONS)}"
         )
-    return version
+    return version, artifact_format
 
 
 # ----------------------------------------------------------------------
@@ -368,9 +395,13 @@ def _sanitize(text: str, replacements: Mapping[str, str]) -> str:
 
 
 def compile_module(
-    engine_bin: Path, module: Path, root: Path, artifact: Path
+    engine_bin: Path, module: Path, root: Path, artifact: Path, artifact_format: int
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """Compile one module with the CLI: (artifact, None) or (None, stderr)."""
+    """Compile one module with the CLI: (artifact, None) or (None, stderr).
+
+    The artifact must carry ``artifact_format``, the format the engine's
+    ``capabilities`` names.
+    """
     process = subprocess.run(
         [
             str(engine_bin),
@@ -388,10 +419,11 @@ def compile_module(
     if process.returncode != 0:
         return None, (process.stderr.strip() or process.stdout.strip())
     compiled = json.loads(artifact.read_text(encoding="utf-8"))
-    if compiled.get("artifact_format_version") != ARTIFACT_FORMAT_VERSION:
+    found = compiled.get("artifact_format_version")
+    if _artifact_format(found) != artifact_format:
         raise SurfaceError(
-            f"{artifact} has artifact format "
-            f"{compiled.get('artifact_format_version')!r}"
+            f"{artifact} has artifact format {found!r}; {engine_bin} names "
+            f"format {artifact_format}"
         )
     return compiled, None
 
@@ -489,6 +521,23 @@ def _blocker_error(entity: str, blockers: Sequence[str]) -> str:
     return message
 
 
+def explained(message: str, blockers: Iterable[str]) -> bool:
+    """Whether one of the walk's blockers explains a dense error.
+
+    A blocker explains an error equal to it. A cross-entity blocker also
+    explains its own text followed by ". " and the advice later engines add
+    (the module docstring has the detail).
+    """
+    return any(
+        message == blocker
+        or (
+            blocker.startswith(_CROSS_ENTITY_HEAD)
+            and message.startswith(blocker + ". ")
+        )
+        for blocker in blockers
+    )
+
+
 # ----------------------------------------------------------------------
 # Dense surface
 # ----------------------------------------------------------------------
@@ -527,7 +576,7 @@ def build_snapshot(
     artifact_dir: Path,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     """Build the snapshot and, in dense mode, the CLI-walk differential."""
-    version = engine_version(engine_bin)
+    version, artifact_format = engine_identity(engine_bin)
     replacements = {
         str(artifact_dir): "<artifact-dir>",
         str(rulespec_root): "<rulespec-root>",
@@ -542,7 +591,7 @@ def build_snapshot(
         }
         artifact_path = artifact_dir / (relative.replace("/", "__") + ".json")
         artifact, error = compile_module(
-            engine_bin, module, rulespec_root, artifact_path
+            engine_bin, module, rulespec_root, artifact_path, artifact_format
         )
         if artifact is None:
             record.update(
@@ -610,7 +659,7 @@ def build_snapshot(
                             f"{relative}: dense reports no {entity} program "
                             "although the artifact has derived rules on it"
                         )
-                    if message not in walk_blockers[entity]:
+                    if not explained(message, walk_blockers[entity]):
                         raise SurfaceError(
                             f"{relative} [{entity}]: dense error not explained "
                             f"by the artifact walk: {message}"
