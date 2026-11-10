@@ -416,8 +416,6 @@ from microcosm.data.contract import (
     US_STORED_INPUTS_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
     stored_input_evidence_manifest_block,
-    validate_evidence_release_dir,
-    validate_release_dir,
 )
 from microcosm.data.stored_inputs import (
     US_STORED_NON_VARIABLE_COLUMNS,
@@ -511,10 +509,6 @@ DATASET_KEY = "microcosm_us_2024"
 DATASET_FILENAME = "microcosm_us_2024.h5"
 CALIBRATION_KEY = "microcosm_us_2024_calibration"
 CALIBRATION_FILENAME = "microcosm_us_2024_calibration.npz"
-#: The dataset an earlier build published at the repository's root, which a
-#: run without ``--base-h5`` downloads as its base. It keeps that build's
-#: name; only the files a run writes take the ``microcosm_`` names.
-BASE_DATASET_FILENAME = "populace_us_2024.h5"
 FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
 FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME = "final_household_weights.json"
 FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
@@ -3306,15 +3300,16 @@ def _git_dirty() -> bool:
 
 
 def _download_base_h5() -> Path:
-    from huggingface_hub import hf_hub_download
+    """The base a run without ``--base-h5`` starts from: the US national
+    release's current build, SHA-verified by the loader (microcosm#1570).
 
-    return Path(
-        hf_hub_download(
-            repo_id=REPO_ID,
-            filename=BASE_DATASET_FILENAME,
-            repo_type="dataset",
-        )
-    )
+    It is read from ``releases.json`` once the repository has one and from
+    ``latest.json`` until then. The repository's root file stops changing at
+    the switch, since builds published into folders write no root files.
+    """
+    from microcosm.data import download
+
+    return Path(download("us", 2024))
 
 
 def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
@@ -11741,28 +11736,23 @@ def _finish_build_folder_release(
     artifact_root: Path,
     evidence_release: bool,
 ) -> dict[str, str]:
-    """Rewrite the release directory into the build-folder layout and check it.
+    """Rewrite the release directory into the build-folder layout.
 
     :func:`_build_manifests` writes both manifests in the tagged shape. This
     names the release (the directory's name) and the build (``build``, the
     build ID) in both, moves the build's details to the release manifest's
     top level and drops each artifact's ``revision`` (microcosm#1570). The
-    directory is then checked against its tier's contract: the evidence
-    contract for an evidence-tier build, the certified one otherwise; either
-    raises ``ReleaseContractError`` naming every failure.
+    release contract is left to ``microcosm-publish-release-build``, whose
+    preflight runs it (the evidence contract for an evidence-tier build), as
+    the tagged path left it to its publisher: a diagnostic run's output is
+    written, not refused at its end.
 
     Returns:
         The commands that publish the build into its own folder of the
         release and then make it the release's current build.
     """
+    del evidence_release  # The release is the directory's name.
     rewrite_release_dir(release_dir, build=build)
-    if evidence_release:
-        validate_evidence_release_dir(release_dir)
-    else:
-        for contract_warning in validate_release_dir(
-            release_dir, artifact_root=artifact_root
-        ):
-            print(f"release contract: {contract_warning}", file=sys.stderr)
     return publication_commands(
         release_dir, repo_id=REPO_ID, artifact_root=artifact_root
     )
