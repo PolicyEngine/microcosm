@@ -82,7 +82,8 @@ How the tables relate, on HMRC's own figures:
    (`shortfall_weight_unmet`); no holder is invented.
 3. **How much.** Within each income band and class, amounts follow Table 9.7's
    subscription bands: uniform inside a band, exactly £20,000 at the top. The
-   rank blends the person's balance rank with a keyed uniform.
+   rank blends the person's balance rank with a keyed uniform. Holders tied on a
+   balance share its rank, so the keyed uniform alone orders them.
 4. **The both class.** Each person's amount is split by their balance shares,
    shifted on the logit scale so the class's stocks-and-shares total equals
    Table 9.4's 2023-24 stocks-and-shares amount less the stocks-and-shares-only
@@ -102,7 +103,8 @@ How the tables relate, on HMRC's own figures:
    2017. Amounts lie in (0, £4,000], drawn by a truncated-exponential tilt so
    the total equals Table 9.4's 2024-25 Lifetime ISA amount (£2,818m from
    1,136,000 accounts), so the baseline leaves nothing above the overall limit.
-   The rank blends the balance and income ranks with a keyed uniform.
+   The rank blends the person's Lifetime ISA balance rank with a keyed uniform,
+   as in step 3, but over every holder aged 18 to 47, not by income band.
 
 ## Decisions (28 October 2026)
 
