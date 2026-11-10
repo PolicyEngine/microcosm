@@ -57,6 +57,13 @@
       "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578)",
       "approved_on": "2026-09-22",
       "expires_on": "2026-12-22"
+    },
+    "person.trading_allowance_full_relief": {
+      "reason": "Trading allowance claim status (microcosm#1439, the trading_allowance_receipts spine stage): the enhanced FRS leaves the claim status at the engine's UNKNOWN and carries no full-relief group; 5 hmrc_spi rows bind through it: self-employment income amounts and counts by total income band and by self-employment income band, and employment income counts by self-employment income band.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578); the SPI rows read the carrier since microcosm#1439, after the incumbent pin.",
+      "approved_on": "2026-11-10",
+      "expires_on": "2027-02-10"
     }
   }
 }
