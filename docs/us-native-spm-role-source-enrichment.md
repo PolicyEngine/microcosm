@@ -19,7 +19,9 @@ separately reviewed contract; there is no caller-supplied legacy-schema waiver.
 The release type has one other reviewed operation: the reported-receipt child
 of the national default (`add_reported_receipt_inputs`, pinned to
 `populace-us-2024-spm-20260915`). It shares every gate below. It has its own
-pinned parent, evidence and native inputs, and it never moves `latest.json`.
+pinned parent, evidence and native inputs, and it is a build of its own
+release, `microcosm-us-2024-receipt-donor`, which is never the repository's
+default.
 `source_enrichment.json`'s `operation` selects the lineage, and any other
 value is judged, and refused, as this lane. See
 [the reported-receipt runbook](us-reported-receipt-source-enrichment.md).
@@ -75,10 +77,11 @@ The generated three-column evidence CSV must also match independently reviewed
 SHA256 `22b5968d90fecfeef7614583e493fe10cc16bda8b5be82e6f49a5bc2102d3ce5`.
 The CSV is never used to derive the role. Parent and source evidence are copied
 unchanged into the release bundle; H5 and evidence files are read-only on exit.
-The H5 belongs only in `artifact_root`, for upload at its manifest-declared root
-path. A same-named entry in the release directory is rejected before compatibility
-probing or Hub client activity, including identical copies and symlinks: either
-would otherwise change the publisher's upload destination.
+The H5 belongs only in `artifact_root`, which the publisher reads it from. A
+same-named entry in the release directory is rejected before compatibility
+probing or Hub activity, including identical copies and symlinks: the
+publisher reads an artifact from the release directory first, so either would
+change which file is published.
 
 ## Build and validate a local candidate
 
@@ -99,10 +102,21 @@ python tools/build_us_spm_role_enrichment.py \
   --release-id populace-us-2024-buildp-spm-role-REVIEWED-NEW-ID
 
 python -m microcosm.data.source_enrichment \
-  --release-dir /path/to/new-candidate/releases/RELEASE_ID \
+  --release-dir /path/to/new-candidate/releases/microcosm-us-2024-national \
   --parent-h5 /path/to/certified/populace_us_2024.h5 \
   --artifact-root /path/to/new-candidate/artifacts
 ```
+
+The candidate is a new build of the national release,
+`microcosm-us-2024-national`: the tool writes
+`releases/microcosm-us-2024-national/` and the H5 as
+`artifacts/microcosm_us_2024.h5`, and `--release-id` is the new build's ID.
+Both manifests name the release and the build, each artifact has its `role`
+and no `revision`, and the build manifest is not declared as an artifact,
+since the build-folder publisher uploads it itself. The parent, Build P, is
+named as a build in the national release's folder: `repo_id`, `release`,
+`build`, its dataset digest and its pinned files, with no `revision`. Its H5
+keeps its published name, `populace_us_2024.h5`.
 
 The candidate has `release_type: source_enrichment` and
 `compatibility.status: pending`. It includes no inherited built-with or model
@@ -139,8 +153,8 @@ bytes, so a new role candidate from that parent is refused under 2.2.1.
 
 ```bash
 python -m microcosm.data.source_enrichment --certify \
-  --release-dir /path/to/new-candidate/releases/RELEASE_ID \
-  --output-dir /path/to/certified/releases/RELEASE_ID \
+  --release-dir /path/to/new-candidate/releases/microcosm-us-2024-national \
+  --output-dir /path/to/certified/releases/microcosm-us-2024-national \
   --parent-h5 /path/to/certified/populace_us_2024.h5 \
   --artifact-root /path/to/new-candidate/artifacts \
   --compatibility-wheel /path/to/policyengine_us-EXACT.whl \
@@ -148,7 +162,8 @@ python -m microcosm.data.source_enrichment --certify \
   --compatibility-wheel /path/to/policyengine-EXACT.whl \
   --compatibility-wheel /path/to/spm_calculator-EXACT.whl
 
-microcosm-publish-release /path/to/certified/releases/RELEASE_ID \
+microcosm-publish-release-build \
+  /path/to/certified/releases/microcosm-us-2024-national \
   --repo-id policyengine/populace-us \
   --parent-h5 /path/to/certified/populace_us_2024.h5 \
   --artifact-root /path/to/new-candidate/artifacts \
@@ -158,6 +173,11 @@ microcosm-publish-release /path/to/certified/releases/RELEASE_ID \
   --compatibility-wheel /path/to/spm_calculator-EXACT.whl \
   --preflight-only
 ```
+
+The certified directory keeps the candidate directory's name. The preflight
+checks the build as a build of `microcosm-us-2024-national` with that
+release's dataset file, lists the files it would publish with their roles and
+digests, and starts no emitter.
 
 ## Declaring a publisher compatibility range
 
@@ -175,8 +195,8 @@ behind a range, declare it at certification:
 
 ```bash
 python -m microcosm.data.source_enrichment --certify \
-  --release-dir /path/to/new-candidate/releases/RELEASE_ID \
-  --output-dir /path/to/certified/releases/RELEASE_ID \
+  --release-dir /path/to/new-candidate/releases/microcosm-us-2024-national \
+  --output-dir /path/to/certified/releases/microcosm-us-2024-national \
   --parent-h5 /path/to/certified/populace_us_2024.h5 \
   --artifact-root /path/to/new-candidate/artifacts \
   --compatible-model-specifier 'policyengine-us>=2.0.1,<2.1' \
@@ -201,17 +221,16 @@ naming the lowest version the old claim covered and the new one does not, and
 records the same under `compatibility.narrowed_claims` in the certified report.
 Pass the options again to keep the range.
 
-The record outlives the terminal that printed the warning. Every verdict that
-touches the bundle carries it: `--certify` itself, validation
-(`python -m microcosm.data.source_enrichment` without `--certify`) and publish
-preflight (`microcosm-publish-release --preflight-only`) all print
+The record outlives the warning. `--certify` itself and validation
+(`python -m microcosm.data.source_enrichment` without `--certify`) print
 `narrowed_claims` beside their verdict whenever the bundle records one, so an
-operator publishing days later reads what an earlier run gave up rather than
-just `passed`. Publication says the same on stderr, because reaching it does
-not require running the preflight first — `tools/publish_release.sh` passes its
-arguments straight through. All four read the record under one tolerance, so
-none of them reports a bundle differently from the others, and a bundle that
-gave nothing up prints nothing.
+operator publishing days later can read what an earlier run gave up rather
+than just `passed`. Both read the record under one tolerance, so neither
+reports a bundle differently from the other, and a bundle that gave nothing up
+prints nothing. Unlike the tagged publisher, `microcosm-publish-release-build`
+prints neither `narrowed_claims` nor `claim_measurement`, in its preflight or
+its publication; run validation on the certified bundle before publishing to
+read them.
 
 Only the **model** field may be widened. Core keeps the exact pin it has always
 had, and a `core` key in `publisher_claims` is refused rather than honoured.
@@ -331,7 +350,8 @@ a bundle against a runtime it did not measure.
 
 The native-loader probe, and the stored-input contract it runs
 (`microcosm.data.stored_inputs`, microcosm#1026), measure one country version:
-the tested one, which the manifest records as `build.built_with_model_package`.
+the tested one, which the manifest records as `built_with_model_package` (at
+its top level in a build folder).
 Every other version the claim admits is unmeasured. That includes later
 releases inside the range, and earlier ones when the range reaches below the
 tested version: the guard bounds a claim above but accepts any lower bound
@@ -345,10 +365,10 @@ Certification records this in the bundle, beside the claim, as
 measured, `{"model": {"specifier": ">=2.0.1,<2.1", "measured_versions":
 ["2.0.1"]}}`. Validation and the publisher recompute it from the version the
 replayed probe tested and refuse a report that records anything else, a record
-with no claim, or a pending candidate that carries one. The validation and
-`--preflight-only` JSON, the certify JSON and the publisher's stderr print it
-for a declared bundle, so the operator at each later gate sees what the range
-rests on.
+with no claim, or a pending candidate that carries one. The validation JSON
+and the certify JSON print it for a declared bundle, so the operator sees what
+the range rests on. `microcosm-publish-release-build` does not print it; read
+it from validation before publishing.
 
 Before declaring a range, grade the candidate H5 against each released version
 you intend it to cover: run `python -m microcosm.data.stored_inputs
@@ -370,13 +390,18 @@ its own review.
 
 Certification creates a separate bundle with measured compatibility; it leaves
 the candidate H5 and source evidence unchanged. Both the preflight above and
-the real publisher share local preparation: they invoke the source-enrichment
-validator, replay the H5 and compatibility checks, and enforce release filenames,
-root artifact paths/hashes, revision/tag pins and dataset-role/latest-pointer
-eligibility. Preflight never constructs a Hub client or performs Hub activity;
-publication constructs its client only after these checks pass. Pass the same
-tag, extra-file and latest-pointer options to preflight as to publication.
-The evidence-tier publisher cannot be used as an escape hatch. Pending
+the real publication share local preparation
+(`microcosm.data.release.prepare_build_folder_release`): they invoke the
+source-enrichment validator, replay the H5 and compatibility checks, require a
+build of `microcosm-us-2024-national` that declares the release's dataset
+file, a role and no revision on each artifact, and no declared
+`release_manifest.json`, `build_manifest.json` or `sha256sums.txt` (the
+publisher adds those itself), and check every file's bytes against the
+manifest. Preflight starts no emitter and reads nothing from the Hub;
+publication first lists the repository's files to refuse a `latest*.json`
+pointer file, and starts the emitter only after these checks pass. Pass the same `--parent-h5`, `--artifact-root` and wheels to
+preflight as to publication. The evidence release cannot be used as an escape
+hatch: its contract refuses every release type but a calibration. Pending
 compatibility and a recorded dirty producer build are hard publication failures.
 
 Coordinated order: build local candidate wheels, test them against the existing
@@ -391,15 +416,24 @@ Qualification retains `external_package_publication: not_attested` and
 These receipts deliberately state that external package publication and
 canonical SPM numerical acceptance are **not attested**. Root owns exact Fable
 review, canonical calculator/country/wrapper/Axiom parity, and the immutable
-published package proof. Once those gates pass and root authorizes publication,
-use `tools/publish_release.sh` with the same directory and arguments, remove
-`--preflight-only`, and add `--tag-name RELEASE_ID`. The existing publisher
-creates the new immutable Hugging Face tag; its standard invocation also
-updates `latest.json`. An inspect-only tag uses `--no-latest --tag-only`.
-Neither candidate construction nor certification authorizes either mutation.
+published package proof. Once those checks pass and root authorizes
+publication, run the preflight command above without `--preflight-only`. It
+hands the build to the emitter, which publishes it into its own folder,
+`releases/microcosm-us-2024-national/<build>/`, and lists it in
+`releases.json` without making it current. Until it is made current, it loads
+only by name, with `microcosm.data.load("us", build="<build>")`. Making it the
+national release's current build, the US default, is a separate step:
+
+```bash
+microcosm-publish-release-build \
+  /path/to/certified/releases/microcosm-us-2024-national \
+  --repo-id policyengine/populace-us --promote
+```
+
+Neither candidate construction nor certification authorizes either change.
 
 Run certification and publisher commands from the Microcosm checkout. Publication
-authenticates the six recorded producer source hashes against the recorded Git
+authenticates the seven recorded producer source hashes against the recorded Git
 commit, the checkout, and the executing data contract modules. A later docs-only
 commit is allowed; an invented clean flag, missing commit, changed source, or
 older installed producer module is refused.

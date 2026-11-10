@@ -100,7 +100,17 @@ publication decision; this module supplies no certification override.
    manifest, then release the wrapper and update consumers. Certification
    must retain the complete year map and exact annual artifact pins.
 
-The annual tag cannot become `latest.json` through this route. It augments the
+This route never makes an annual build the default. It augments the
 same accepted base population; it does not promote another agent's new graph
 candidate. A later graph release can supply a new base only after passing its
 own qualification, followed by a fresh annual build and acceptance.
+
+**No publication path since the US switch.** Steps 3 and 4 describe the
+tagged layout: every annual artifact pins one annual tag, and the tagged
+publisher (`microcosm-publish-release`) publishes it. Since
+`policyengine/populace-us` records its builds in `releases.json`, the tagged
+publisher refuses that repository. `microcosm-publish-release-build` cannot
+take an annual build either, because a build folder pins no revision and the
+annual checks require one. The candidate builder still runs, but no annual
+build can be published to the US repository until the build-folder layout
+supports one.
