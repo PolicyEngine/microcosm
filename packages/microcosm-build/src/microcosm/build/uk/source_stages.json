@@ -2224,7 +2224,7 @@
      },
      "n_estimators": 100,
      "seed": 42,
-     "gate_calibration": "cross_fitted"
+     "gate_calibration": "cross_fitted_balanced"
     },
     {
      "kind": "resample_band_donor_leaves",
