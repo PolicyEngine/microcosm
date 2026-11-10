@@ -127,22 +127,20 @@ def test_parity_evidence_refuses_bare_name_grain():
     class _Registry:
         specs = ()
 
-    class _Reference:
-        input_entities = {}
-
     with pytest.raises(UKReleaseCertificationError, match="name@period"):
         uk_release_parity_evidence(
             _Frame(),
             diagnostics_targets=[{"name": "dwp.uc.households", "relative_error": 0.1}],
             reference_registry=_Registry(),
-            parity_reference=_Reference(),
         )
     evidence = uk_release_parity_evidence(
         _Frame(),
         diagnostics_targets=[{"name": "dwp.uc.households@2025", "relative_error": 0.1}],
         reference_registry=_Registry(),
-        parity_reference=_Reference(),
     )
+    # The export-surface gate reads the reference's columns from the cut's
+    # reference surface itself (microcosm#1095).
+    assert not hasattr(evidence, "reference_columns")
     assert evidence.candidate_targets == {"dwp.uc.households@2025"}
     assert evidence.target_relative_errors == {"dwp.uc.households@2025": 0.1}
     # A run built before María's ruling of 2026-10-26 dropped the withholding
@@ -161,7 +159,6 @@ def test_parity_evidence_refuses_bare_name_grain():
                 },
             ],
             reference_registry=_Registry(),
-            parity_reference=_Reference(),
         )
 
 
@@ -587,6 +584,7 @@ def test_release_cut_battery_refuses_a_compiled_period_with_no_unsupported_repor
             parity_evidence=object(),
             fit_weight_records=None,
             input_mass_reference={},
+            reference_surface=object(),
             exclusions_evaluated_on=date(2026, 8, 27),
             gate_registry=_stub_registry(),
             spine_frame=object(),
@@ -614,6 +612,7 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         parity_evidence=SimpleNamespace(),
         fit_weight_records=None,
         input_mass_reference={},
+        reference_surface=SimpleNamespace(),
         exclusions_evaluated_on=date(2026, 8, 27),
         gate_registry=_stub_registry(),
         spine_frame=object(),

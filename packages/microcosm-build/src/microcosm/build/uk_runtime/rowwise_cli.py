@@ -1200,6 +1200,10 @@ def refuse_dense_role_arguments(
         refused.append("--require-solve-reuse")
     if args.dataset_households is not None:
         refused.append("--dataset-households")
+    # The national cut's certify step reads its reference surface
+    # (microcosm#1095); the national build runs no export-surface gate.
+    if getattr(args, "reference_surface", None) is not None:
+        refused.append("--reference-surface")
     if args.selection_seed is not None:
         refused.append("--selection-seed")
     if getattr(args, "selection_initial_lambda", None) is not None:

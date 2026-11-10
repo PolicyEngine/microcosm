@@ -232,12 +232,13 @@ def uk_release_parity_evidence(
     *,
     diagnostics_targets: Sequence[Mapping[str, Any]],
     reference_registry: Any,
-    parity_reference: Any,
 ) -> SimpleNamespace:
     """The parity-trio evidence over persisted inputs, sides never aliased.
 
-    Candidate columns come from the staged frame; reference columns from the
-    frozen parity instrument's declared input entities. Candidate targets
+    Candidate columns come from the staged frame; the export-surface gate
+    reads the reference's columns from the cut's reference surface itself
+    (the ``reference_surface`` artifact, microcosm#1095), where until then
+    they came from the frozen enhanced-FRS instrument. Candidate targets
     come from the solve's realized diagnostics rows; reference targets from
     the independently recompiled (and exclusion-pruned) register at
     ``name@period`` grain — the same two-source rule the retired June
@@ -265,10 +266,6 @@ def uk_release_parity_evidence(
         target_relative_errors[name] = float(row["relative_error"])
     return SimpleNamespace(
         candidate_columns=uk_export_candidate_columns(frame),
-        reference_columns={
-            f"{entity}.{name}"
-            for name, entity in parity_reference.input_entities.items()
-        },
         candidate_targets=set(target_relative_errors),
         reference_targets={
             f"{spec.name}@{spec.period}" for spec in reference_registry.specs
@@ -315,6 +312,7 @@ def run_uk_release_cut_battery(
     parity_evidence: Any,
     fit_weight_records: tuple[FitWeightRecord, ...] | None,
     input_mass_reference: Mapping[str, Any],
+    reference_surface: Any,
     exclusions_evaluated_on: date,
     gate_registry: Mapping[str, Any] | None = None,
     spine_frame: Any | None = None,
@@ -324,7 +322,9 @@ def run_uk_release_cut_battery(
     ``spine_frame`` is the frame the spine build produced, the evidence the
     input-coverage gate's family build-state half reads (typed importance
     weights and each stage's mass receipt); the calibrated candidate is the
-    evidence for everything else.
+    evidence for everything else. ``reference_surface`` is the cut's
+    reference build's surface, whose carried inputs the coverage gate
+    requires (microcosm#1095).
 
     Always release-candidate strict: this battery exists to certify a cut,
     so an ``evidence_absent`` gap blocks rather than being tolerated, and a
@@ -378,6 +378,7 @@ def run_uk_release_cut_battery(
         "parity_evidence": parity_evidence,
         "aggregate_admin": admin_totals,
         "input_mass_reference": input_mass_reference,
+        "reference_surface": reference_surface,
         "release_line": "national",
     }
     if fit_weight_records is not None:

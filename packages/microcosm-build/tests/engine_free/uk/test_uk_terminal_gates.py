@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import UTC, date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -301,16 +303,55 @@ def test_ported_june_parity_gates_retain_their_named_failures() -> None:
     assert fit.name == "target_fit"
 
 
-def test_export_surface_allows_claimant_roles_but_not_unreviewed_columns() -> None:
+def test_export_surface_allows_declared_extras_but_not_unreviewed_columns() -> None:
     reference = {"person.age"}
-    assert uk_export_surface_gate(
-        reference | {"person.is_uc_claimant"}, reference
-    ).passed
+    assert uk_export_surface_gate(reference | {"household.lsoa_code"}, reference).passed
     unrelated = uk_export_surface_gate(
-        reference | {"person.is_uc_claimant", "person.unreviewed_extra"}, reference
+        reference | {"household.lsoa_code", "person.unreviewed_extra"}, reference
     )
     assert not unrelated.passed
     assert any("unreviewed_extra" in failure for failure in unrelated.failures)
+
+
+def test_export_surface_reports_a_declared_extra_the_reference_now_carries() -> None:
+    # microcosm#1095: a promotion moves the reference past a declared extra;
+    # the entry is reported as redundant, never failed.
+    reference = {"person.age", "household.lsoa_code"}
+    result = uk_export_surface_gate(reference, reference)
+    assert result.passed
+    assert result.details["redundant_allowed_extra_columns"] == ["household.lsoa_code"]
+
+
+def test_export_surface_names_the_reference_build() -> None:
+    result = uk_export_surface_gate(
+        {"person.age"},
+        {"person.age", "person.dropped_input"},
+        reference_name="microcosm-uk-2024-25-national@build-a",
+    )
+    assert not result.passed
+    assert "microcosm-uk-2024-25-national@build-a" in result.failures[0]
+    assert result.details["reference_name"] == "microcosm-uk-2024-25-national@build-a"
+
+
+def test_export_surface_extras_are_not_exported_by_the_current_national_build() -> None:
+    # The standing list holds only what the current national build does not
+    # export (microcosm#1095): the dense line's geography and clone columns.
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+    )
+
+    gates = json.loads(
+        (
+            Path(__file__).resolve().parents[3] / "src/microcosm/build/uk/gates.json"
+        ).read_text()
+    )
+    entry = next(gate for gate in gates["gates"] if gate["id"] == "uk_export_surface")
+    assert entry["parameters"]["allowed_extra_columns"] == list(
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+    )
+    assert len(UK_ALLOWED_EXTRA_EXPORT_COLUMNS) == len(
+        set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
+    )
 
 
 def test_export_candidate_columns_and_release_frame_carry_consumer_area_code_names() -> (
@@ -398,7 +439,6 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         uk_release_export_frame,
     )
     from microcosm.build.uk_runtime.terminal_gates import (
-        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
         UK_REVIEWED_EXPORT_EXCLUSIONS,
         uk_export_candidate_columns,
     )
@@ -435,8 +475,9 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     }
     exported = uk_release_export_frame(frame)
     # microcosm#1106: the WAS total leaves; its engine components stay.
-    # microcosm#1194: the build identifiers stay beside the renumbered ones,
-    # as reviewed extras of the export surface.
+    # microcosm#1194: the build identifiers stay beside the renumbered ones;
+    # the current national build exports them too, so since microcosm#1095
+    # they are part of the reference surface, not declared extras.
     carriers = {
         f"{entity}.{column}" for entity, column in UK_BUILD_IDENTIFIER_COLUMNS.items()
     }
@@ -447,7 +488,6 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         "household.household_weight",
         *carriers,
     }
-    assert carriers <= set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
     assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
     assert exported.mass_log == frame.mass_log
     # The boundary drops the reviewed export exclusions, the internal

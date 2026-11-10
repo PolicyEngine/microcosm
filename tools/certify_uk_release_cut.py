@@ -60,7 +60,7 @@ from microcosm.build.uk_runtime.measure_simulation import (
     load_uk_calibration_measure_exclusions,
 )
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
-from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
+from microcosm.build.uk_runtime.reference_surface import load_uk_reference_surface
 from microcosm.build.uk_runtime.release_certification import (
     compose_uk_release_certification,
     rehydrate_uk_fit_weight_records,
@@ -333,11 +333,11 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     # (importance weights, mass receipts); the candidate is calibrated.
     spine_frame, _spine_provenance = load_uk_national_frame(args.spine_h5)
     engine = PolicyEngineUKCoverageEngine()
+    reference_surface = _reference_surface(args)
     parity_evidence = uk_release_parity_evidence(
         frame,
         diagnostics_targets=diagnostics["targets"],
         reference_registry=reference_registry,
-        parity_reference=load_efrs_parity_reference(),
     )
     report = run_uk_release_cut_battery(
         frame,
@@ -353,6 +353,7 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         parity_evidence=parity_evidence,
         fit_weight_records=rehydrate_uk_fit_weight_records(sidecar),
         input_mass_reference=_input_mass_reference(args),
+        reference_surface=reference_surface,
         exclusions_evaluated_on=evaluated_on,
         spine_frame=spine_frame,
     )
@@ -412,6 +413,25 @@ def _input_mass_reference(args: argparse.Namespace):
     return loaded
 
 
+def _reference_surface(args: argparse.Namespace):
+    """The cut's reference surface, refused unless it is the cut's reference.
+
+    The export-surface and input-coverage gates compare with the build the
+    score and the input-mass gate compare with (microcosm#1095).
+    """
+
+    reference = json.loads(args.reference_record.read_text())
+    loaded = load_uk_reference_surface(args.reference_surface)
+    label = f"{reference.get('release')}@{reference.get('build')}"
+    if loaded.label != label or loaded.sha256 != reference.get("sha256"):
+        raise SystemExit(
+            f"error: the reference surface names {loaded.label} "
+            f"({loaded.sha256}), not the cut's reference {label}; write it from "
+            "the cut's reference (tools/run_uk_cut.py's reference step)."
+        )
+    return loaded
+
+
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-h5", required=True, type=Path)
@@ -430,6 +450,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--ledger-facts-sha256", required=True, type=_sha256)
     parser.add_argument("--ledger-manifest-sha256", required=True, type=_sha256)
     parser.add_argument("--input-mass-reference", required=True, type=Path)
+    parser.add_argument(
+        "--reference-surface",
+        required=True,
+        type=Path,
+        help="The export surface and carried inputs of the cut's reference.",
+    )
     parser.add_argument("--score-receipt", required=True, type=Path)
     parser.add_argument(
         "--reference-record",
@@ -459,6 +485,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--certification-json": args.certification_json,
         "--score-receipt": args.score_receipt,
         "--reference-record": args.reference_record,
+        "--reference-surface": args.reference_surface,
     }
     resolved: dict[Path, str] = {}
     for flag, path in distinct.items():

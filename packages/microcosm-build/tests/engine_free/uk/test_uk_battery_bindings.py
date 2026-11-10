@@ -52,6 +52,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
 from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import engine_tables
+from test_support.microcosm_build.uk_cut_reference import reference_surface
 from tools.generate_uk_local_target_references import SUPPORT_FLOOR_DEFERRED_AREA_IDS
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
@@ -69,6 +70,11 @@ VALIDATE_REFERENCE = (
 )
 
 
+# A reference that carries no input: the coverage tests' manifests declare
+# the required inputs themselves (microcosm#1095).
+NO_REFERENCE_INPUTS = reference_surface(export_columns=("person.age",))
+
+
 @pytest.fixture(autouse=True)
 def signing_env(monkeypatch) -> None:
     monkeypatch.setenv(gate_signing_key_env("uk"), KEY)
@@ -79,32 +85,41 @@ def uk_gates():
     return load_country_spec("uk").gates
 
 
-def test_declared_export_surface_preserves_claimants_and_matches_runtime(uk_gates):
+def test_declared_export_surface_matches_runtime(uk_gates):
     from microcosm.build.uk_runtime.terminal_gates import (
         UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
     )
 
     entry = next(entry for entry in uk_gates.gates if entry.id == "uk_export_surface")
     declared = set(entry.parameters["allowed_extra_columns"])
-    assert "person.is_uc_claimant" in declared
     assert declared == set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
     battery = _run_battery(
         _tables(),
-        parity=_parity(candidate_columns={"person.age", "person.is_uc_claimant"}),
+        parity=_parity(candidate_columns={"person.age", "household.lsoa_code"}),
     )
     outcome = next(o for o in battery.outcomes if o.entry.id == "uk_export_surface")
     assert outcome.status is GateStatus.PASSED
+    assert outcome.result.details["reference_name"] == REFERENCE_LABEL
 
 
-def test_spine_export_surface_is_reference_or_allow_listed(uk_gates):
-    """Every column the spine declares leaves through the release boundary as
-    an enhanced-FRS input, an allow-listed extra or a reviewed drop.
+def test_export_surface_needs_the_reference_surface(uk_gates):
+    # Without the cut's reference surface the gate is evidence_absent, which
+    # blocks a release candidate, never a verdict against no reference.
+    battery = _run_battery(_tables(), parity=None)
+    outcome = next(o for o in battery.outcomes if o.entry.id == "uk_export_surface")
+    assert outcome.status is GateStatus.EVIDENCE_ABSENT
 
-    The export-surface gate runs only at release-cut certification, on a built
-    file; war_widows_pension_reported (#1222) reached main without an
-    allow-list entry and blocked the first certification after it. This runs
-    the same gate on the spine's declared surface through the production
-    export path, against the checked-in enhanced-FRS reference.
+
+def test_spine_export_never_carries_a_reviewed_export_exclusion(uk_gates):
+    """The release boundary drops every column a candidate must never export.
+
+    Until microcosm#1095 this ran the export-surface gate on the spine's
+    declared surface against the checked-in enhanced-FRS reference, so a new
+    spine column without an allow-list entry failed here before it failed a
+    certification (#1222). The reference is now the current build of the
+    line, which the repository does not hold, so that half runs at the cut;
+    the half that needs no reference stays: a persisted copy of a reviewed
+    export exclusion overrides the engine's formula.
     """
 
     from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
@@ -112,12 +127,9 @@ def test_spine_export_surface_is_reference_or_allow_listed(uk_gates):
         uk_national_frame,
         uk_release_export_frame,
     )
-    from microcosm.build.uk_runtime.parity_reference import (
-        load_efrs_parity_reference,
-    )
     from microcosm.build.uk_runtime.terminal_gates import (
+        UK_REVIEWED_EXPORT_EXCLUSIONS,
         uk_export_candidate_columns,
-        uk_export_surface_gate,
     )
 
     columns = {
@@ -135,13 +147,7 @@ def test_spine_export_surface_is_reference_or_allow_listed(uk_gates):
     }
     frame = uk_national_frame(**tables, time_period="2024", household_weights=[1.0])
     candidate = uk_export_candidate_columns(uk_release_export_frame(frame))
-    reference = {
-        f"{entity}.{name}"
-        for name, entity in load_efrs_parity_reference().input_entities.items()
-    }
-    entry = next(entry for entry in uk_gates.gates if entry.id == "uk_export_surface")
-    result = uk_export_surface_gate(candidate, reference, **dict(entry.parameters))
-    assert result.passed, result.failures
+    assert not candidate & set(UK_REVIEWED_EXPORT_EXCLUSIONS)
 
 
 def _tables(*, n: int = 4, weights=None):
@@ -359,6 +365,12 @@ def _run_battery(
         artifacts["fit_weight_records"] = fit_records
     if parity is not None:
         artifacts["parity_evidence"] = parity
+        # The export-surface gate reads the reference's columns from the
+        # cut's reference surface (microcosm#1095); the fixture keeps them
+        # beside the parity evidence for readability.
+        artifacts["reference_surface"] = reference_surface(
+            export_columns=tuple(parity.reference_columns), label=REFERENCE_LABEL
+        )
     if armed:
         artifacts["input_mass_reference"] = _reference()
         artifacts["aggregate_admin"] = {
@@ -1449,6 +1461,7 @@ class TestTerminalCoverageBinding:
                 artifacts={
                     "coverage_engine": engine,
                     "coverage_manifest": manifest,
+                    "reference_surface": NO_REFERENCE_INPUTS,
                     "spine_frame": frame,
                 },
             ),
@@ -1457,6 +1470,7 @@ class TestTerminalCoverageBinding:
         direct = uk_release_input_coverage_gate(
             _uk_gate_surface(frame),
             engine,
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=manifest,
             build_state_frame=_uk_gate_surface(frame),
         )
@@ -1511,7 +1525,10 @@ class TestTerminalCoverageBinding:
             family_coverage={},
         )
         raw = uk_release_input_coverage_gate(
-            _uk_gate_surface(frame), engine, manifest=manifest
+            _uk_gate_surface(frame),
+            engine,
+            reference_surface=NO_REFERENCE_INPUTS,
+            manifest=manifest,
         )
         result = UK_GATE_REGISTRY["release_input_coverage"].evaluate(
             EvidenceContext(
@@ -1519,6 +1536,7 @@ class TestTerminalCoverageBinding:
                 artifacts={
                     "coverage_engine": engine,
                     "coverage_manifest": manifest,
+                    "reference_surface": NO_REFERENCE_INPUTS,
                     # The spine build state the family half reads (#1115).
                     "spine_frame": frame,
                 },

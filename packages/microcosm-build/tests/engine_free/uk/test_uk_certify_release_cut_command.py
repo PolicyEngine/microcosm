@@ -35,6 +35,7 @@ def test_certifier_pins_carry_the_byte_sizes_the_logbook_digest_requires(
         "build_record.json",
         "terminal_gates.json",
         "input_mass_reference.json",
+        "reference_surface.json",
         "score_vs_reference.json",
         "reference.json",
     ):
@@ -78,6 +79,8 @@ def test_certifier_pins_carry_the_byte_sizes_the_logbook_digest_requires(
                 "2" * 64,
                 "--input-mass-reference",
                 str(placeholders["input_mass_reference.json"]),
+                "--reference-surface",
+                str(placeholders["reference_surface.json"]),
                 "--score-receipt",
                 str(placeholders["score_vs_reference.json"]),
                 "--reference-record",
@@ -152,6 +155,7 @@ def test_certifier_refuses_a_spine_that_is_not_the_candidates_recorded_parent(
     for name in (
         "terminal_gates.json",
         "input_mass_reference.json",
+        "reference_surface.json",
         "score.json",
         "reference.json",
     ):
@@ -186,6 +190,8 @@ def test_certifier_refuses_a_spine_that_is_not_the_candidates_recorded_parent(
                 "2" * 64,
                 "--input-mass-reference",
                 str(tmp_path / "input_mass_reference.json"),
+                "--reference-surface",
+                str(tmp_path / "reference_surface.json"),
                 "--score-receipt",
                 str(tmp_path / "score.json"),
                 "--reference-record",
@@ -198,3 +204,50 @@ def test_certifier_refuses_a_spine_that_is_not_the_candidates_recorded_parent(
                 str(tmp_path / "release_certification.json"),
             ]
         )
+
+
+def test_certifier_refuses_a_reference_surface_of_another_build(tmp_path: Path):
+    """The export-surface and coverage gates compare with the build the score
+    and the input-mass gate compare with (microcosm#1095)."""
+
+    import argparse
+
+    record = tmp_path / "reference.json"
+    record.write_text(
+        json.dumps(
+            {
+                "release": "microcosm-uk-2024-25-national",
+                "build": "build-a",
+                "sha256": "1" * 64,
+            }
+        )
+    )
+    surface = tmp_path / "reference_surface.json"
+
+    def write_surface(build: str, sha256: str) -> None:
+        surface.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "uk_reference_surface",
+                    "label": f"microcosm-uk-2024-25-national@{build}",
+                    "sha256": sha256,
+                    "minimum_nondefault_mass_share": 1e-6,
+                    "export_columns": ["person.age"],
+                    "populated_inputs": ["age"],
+                    "thin_inputs": [],
+                }
+            )
+        )
+
+    args = argparse.Namespace(reference_record=record, reference_surface=surface)
+    write_surface("build-b", "2" * 64)
+    with pytest.raises(SystemExit, match="not the cut's reference"):
+        certify._reference_surface(args)
+    write_surface("build-a", "2" * 64)
+    with pytest.raises(SystemExit, match="not the cut's reference"):
+        certify._reference_surface(args)
+    write_surface("build-a", "1" * 64)
+    assert certify._reference_surface(args).label == (
+        "microcosm-uk-2024-25-national@build-a"
+    )

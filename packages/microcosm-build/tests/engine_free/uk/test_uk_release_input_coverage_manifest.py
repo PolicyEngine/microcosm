@@ -130,43 +130,32 @@ def test_hmrc_family_period_fields_come_from_the_bytes_their_hash_names() -> Non
     assert "canonical_source_manifest" not in family
 
 
-def test_promoted_manifest_requires_the_full_reference_surface() -> None:
-    reference = _resource("efrs_parity_reference.json")
+def test_manifest_declares_the_exclusions_and_leaves_the_rest_to_the_reference() -> (
+    None
+):
+    # microcosm#1095: the required inputs are the ones the cut's reference
+    # build carries, measured at gate time; the manifest declares only the
+    # reviewed exclusions: the engine-derived totals whose persisted
+    # components the reference carries (microcosm#1106, microcosm#1360) and
+    # the PIP categories the engine derives from the points (microcosm#1095).
     manifest = _resource("release_input_coverage_manifest.json")
-    assert manifest["counts"] == {
-        "required": 141,
-        "reviewed_exclusion": 4,
-        "total": 145,
-    }
-    assert set(manifest["columns"]) == set(reference["nonzero_shares"])
-    # Every reference input is required except the engine-derived totals; their
-    # persisted components stay required (microcosm#1106, microcosm#1360).
-    excluded = {
-        name: entry
-        for name, entry in manifest["columns"].items()
-        if entry != {"status": "required"}
-    }
-    assert set(excluded) == {
+    assert manifest["counts"] == {"reviewed_exclusion": 4}
+    assert set(manifest["columns"]) == {
         "pip_dl_category",
         "pip_m_category",
         "property_wealth",
         "tax_free_savings_income",
     }
-    for name in excluded:
-        assert excluded[name]["status"] == "reviewed_exclusion"
-    for component in (
-        "main_residence_value",
-        "other_residential_property_value",
-        "non_residential_property_value",
-        "savings_interest_income",
-    ):
-        assert manifest["columns"][component] == {"status": "required"}
+    for entry in manifest["columns"].values():
+        assert entry["status"] == "reviewed_exclusion"
+        assert entry["reason"].strip() and entry["tracking_note"].strip()
+    assert manifest["reference"]["kind"] == "current_build"
     assert manifest["restoration_evidence"] == {
         "derived_from": "efrs_parity_known_gaps.json",
         "required_columns": ["charitable_investment_gifts", "gift_aid"],
     }
     assert manifest["candidate_evidence"]["tier"] == "frs"
-    assert manifest["schema_version"] == 3
+    assert manifest["schema_version"] == 4
     assert manifest["effective_mass_coverage"] == {
         "weight_source": "household_weight",
         "minimum_nondefault_mass_share": 1e-6,

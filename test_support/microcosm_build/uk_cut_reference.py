@@ -196,6 +196,7 @@ def stub_reference_evidence(reference, h5_path, output_dir):
 
     from microcosm.build.uk_runtime.cut_reference import (
         UK_CUT_REFERENCE_INPUT_MASS_NAME,
+        UK_CUT_REFERENCE_SURFACE_NAME,
     )
 
     destination = Path(output_dir) / UK_CUT_REFERENCE_INPUT_MASS_NAME
@@ -217,4 +218,41 @@ def stub_reference_evidence(reference, h5_path, output_dir):
             }
         )
     )
-    return {"input_mass_reference": destination}
+    surface = Path(output_dir) / UK_CUT_REFERENCE_SURFACE_NAME
+    surface.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "kind": "uk_reference_surface",
+                "label": reference.label,
+                "sha256": reference.sha256,
+                "minimum_nondefault_mass_share": 1e-6,
+                "export_columns": ["person.employment_income"],
+                "populated_inputs": ["employment_income"],
+                "thin_inputs": [],
+            }
+        )
+    )
+    return {"input_mass_reference": destination, "reference_surface": surface}
+
+
+def reference_surface(
+    *carried: str,
+    thin: tuple[str, ...] = (),
+    export_columns: tuple[str, ...] = ("person.employment_income",),
+    label: str = "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-test",
+    sha256: str = "0" * 64,
+    floor: float = 1e-6,
+):
+    """A reference surface carrying ``carried`` inputs (and ``thin`` ones)."""
+
+    from microcosm.build.uk_runtime.reference_surface import UKReferenceSurface
+
+    return UKReferenceSurface(
+        label=label,
+        sha256=sha256,
+        export_columns=frozenset(export_columns),
+        populated_inputs=frozenset(carried),
+        thin_inputs=frozenset(thin),
+        minimum_nondefault_mass_share=floor,
+    )

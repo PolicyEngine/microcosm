@@ -258,9 +258,13 @@ def _evaluate_release_input_coverage(
         build_state = _uk_gate_surface(spine_frame)
     else:
         build_state = spine_frame
+    # The required inputs are the ones the cut's reference build carries
+    # (microcosm#1095); the artifact selector marks the gate evidence_absent
+    # when no reference surface arrived.
     return uk_release_input_coverage_gate(
         _uk_gate_surface(uk_release_export_frame(context.frame)),
         engine,
+        reference_surface=context.artifacts["reference_surface"],
         manifest=manifest,
         build_state_frame=build_state,
     )
@@ -277,7 +281,7 @@ def _coverage_required_artifacts(parameters: Mapping[str, Any]) -> frozenset[str
     # the calibrated frame.
     if parameters.get("check") == "manifest_current":
         return frozenset({"coverage_engine"})
-    return frozenset({"coverage_engine", "spine_frame"})
+    return frozenset({"coverage_engine", "spine_frame", "reference_surface"})
 
 
 def _evaluate_source_coverage(
@@ -1489,10 +1493,14 @@ def _evaluate_weights_audit(
 def _evaluate_export_surface(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
+    # The reference side is the export surface of the cut's reference build,
+    # the current build of the line (microcosm#1095).
     parity = context.artifacts["parity_evidence"]
+    reference = context.artifacts["reference_surface"]
     return uk_export_surface_gate(
         parity.candidate_columns,
-        parity.reference_columns,
+        reference.export_columns,
+        reference_name=reference.label,
         **dict(parameters),
     )
 
@@ -2386,7 +2394,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         name="export_surface",
         evaluator=_evaluate_export_surface,
         parameter_keys=frozenset({"allowed_extra_columns", "reviewed_exclusions"}),
-        artifact_keys=frozenset({"parity_evidence"}),
+        artifact_keys=frozenset({"parity_evidence", "reference_surface"}),
         needs_frame=False,
     ),
     "target_surface": UKGateBinding(

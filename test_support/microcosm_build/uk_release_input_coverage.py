@@ -28,6 +28,7 @@ from microcosm.build.uk_runtime import (
     uk_release_input_coverage_gate,
 )
 from microcosm.frame import EntitySchema, Frame, MassChangeRecord, WeightKind, Weights
+from test_support.microcosm_build.uk_cut_reference import reference_surface
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -119,6 +120,11 @@ class _StubEngine:
 
     def variable_entities(self, names) -> dict[str, str]:
         return {name: self._entities[name] for name in names if name in self._entities}
+
+
+#: A reference that carries no input: the test's manifest declares the
+#: required inputs itself, as every test did before microcosm#1095.
+NO_REFERENCE_INPUTS = reference_surface(export_columns=("person.age",))
 
 
 def _manifest(

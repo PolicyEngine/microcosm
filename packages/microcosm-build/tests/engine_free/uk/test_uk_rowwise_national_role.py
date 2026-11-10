@@ -1508,6 +1508,23 @@ def test_uk_dense_role_refuses_the_national_reference_flags(tmp_path) -> None:
         )
 
 
+def test_uk_national_role_refuses_the_dense_reference_surface(tmp_path) -> None:
+    # The national cut's certify step reads its reference surface
+    # (microcosm#1095); the national build runs no export-surface gate.
+    builder = candidate._load_builder_module()
+    (tmp_path / "spine.h5").write_bytes(b"spine")
+    parsed = builder._parse_args(
+        _argv(
+            tmp_path / "spine.h5",
+            tmp_path / "out",
+            "--reference-surface",
+            str(tmp_path / "reference_surface.json"),
+        )
+    )
+    with pytest.raises(ValueError, match="--reference-surface"):
+        builder._validate_cli_args(parsed)
+
+
 def test_uk_national_role_requires_the_reference_pair(monkeypatch, tmp_path):
     pytest.importorskip("tables")
     builder = candidate._load_builder_module()

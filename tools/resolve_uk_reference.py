@@ -15,9 +15,11 @@ certification evidence, and downloads no dataset. ``--output-dir`` downloads
 the dataset, verifies its SHA-256, copies it there and writes
 ``reference.json`` beside it, with ``input_mass_reference.json`` (the
 build's input-mass totals and carriers, licensed-data aggregates that stay
-with the run). A dense build takes ``--input-mass-reference`` from it. It
-refuses a directory that already holds a reference, so a run keeps the one
-it started with.
+with the run) and ``reference_surface.json`` (the columns it exports and the
+loader inputs it carries, names and flags only). A dense build takes
+``--input-mass-reference`` and ``--reference-surface`` from it. It refuses a
+directory that already holds a reference, so a run keeps the one it started
+with.
 
 Reading ``policyengine/populace-uk-private`` needs ``HF_TOKEN``.
 """
@@ -60,8 +62,9 @@ def fetch_reference(
     """Download the current build of ``release`` into ``output_dir``.
 
     Beside the dataset and its record go the evidence the gates read from it:
-    its input-mass totals and carriers (``input_mass_reference.json``), which
-    a dense build takes with ``--input-mass-reference``.
+    its input-mass totals and carriers (``input_mass_reference.json``) and its
+    surface (``reference_surface.json``), which a dense build takes with
+    ``--input-mass-reference`` and ``--reference-surface``.
     """
 
     reference = fetch_uk_cut_reference(release, output_dir, hub_download=hub_download)

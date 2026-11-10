@@ -604,6 +604,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--register-json", type=Path)
     parser.add_argument("--input-mass-reference", type=Path)
     parser.add_argument(
+        "--reference-surface",
+        type=Path,
+        help=(
+            "Dense role: the export surface and carried inputs of the dense "
+            "line's current build (reference_surface.json from "
+            "tools/resolve_uk_reference.py), which the export-surface and "
+            "input-coverage gates compare with (microcosm#1095)."
+        ),
+    )
+    parser.add_argument(
         "--native-scorecard",
         type=Path,
         help=(
@@ -1462,14 +1472,18 @@ def prepare_full_build(
         if path is not None:
             sources[name] = path
             optional.append(name)
-    if args.input_mass_reference is not None:
-        sources["uk_input_mass_reference"] = args.input_mass_reference
+    for name, path in (
+        ("uk_input_mass_reference", args.input_mass_reference),
+        # The reference build's surface (microcosm#1095): the export-surface
+        # and input-coverage gates read it, and are evidence_absent without.
+        ("uk_reference_surface", getattr(args, "reference_surface", None)),
+    ):
+        if path is None:
+            continue
+        sources[name] = path
         spine = replace(
             spine,
-            sources=(
-                *spine.sources,
-                SourceRef("uk_input_mass_reference", "raw-bytes-v1"),
-            ),
+            sources=(*spine.sources, SourceRef(name, "raw-bytes-v1")),
         )
     checkpoint_identity = (
         None
@@ -1809,6 +1823,7 @@ def _argument_sources(args: argparse.Namespace) -> dict[str, Path]:
             ("measure_exclusions", args.measure_exclusions),
             ("register_json", args.register_json),
             ("input_mass_reference", args.input_mass_reference),
+            ("reference_surface", getattr(args, "reference_surface", None)),
             ("native_scorecard", args.native_scorecard),
             ("matched_size_scorecard", args.matched_size_scorecard),
             ("resume_size_checkpoint", args.resume_size_checkpoint),

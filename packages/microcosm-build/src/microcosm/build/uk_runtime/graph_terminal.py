@@ -651,6 +651,25 @@ def decode_full_gate_report(payload: bytes | Mapping):
     return report, enforcement
 
 
+def _require_one_reference(supporting: Mapping[str, Any]) -> None:
+    """Refuse an input-mass reference and a surface of two different builds.
+
+    The dense line compares with one build, its current one (microcosm#1095):
+    both files come from ``tools/resolve_uk_reference.py`` for that build.
+    """
+
+    mass = supporting.get("input_mass_reference")
+    surface = supporting.get("reference_surface")
+    if mass is None or surface is None:
+        return
+    if (mass.label, mass.sha256) != (surface.label, surface.sha256):
+        raise ValueError(
+            f"The input-mass reference names {mass.label} ({mass.sha256}) but the "
+            f"reference surface names {surface.label} ({surface.sha256}); write "
+            "both from one reference with tools/resolve_uk_reference.py."
+        )
+
+
 def _spine_gate_evidence(context: KernelContext):
     from ..stage_evidence import decode_stage_evidence
 
@@ -846,6 +865,7 @@ class UKFullGateKernel(KernelBase):
         )
         from .geography_ladder import load_uk_oa_ladder
         from .local_rowwise import uk_ladder_area_support_summary
+        from .reference_surface import load_uk_reference_surface
         from .release_certification import rehydrate_uk_fit_weight_records
         from .weighted_integrity import load_uk_input_mass_reference
 
@@ -938,6 +958,11 @@ class UKFullGateKernel(KernelBase):
                 supporting["input_mass_reference"] = load_uk_input_mass_reference(
                     context.sources["uk_input_mass_reference"]
                 )
+            if "uk_reference_surface" in context.sources:
+                supporting["reference_surface"] = load_uk_reference_surface(
+                    context.sources["uk_reference_surface"]
+                )
+            _require_one_reference(supporting)
             household = frame.table("household").copy()
             household["household_weight"] = frame.weights_for("household").values
             summaries = uk_ladder_area_support_summary(
@@ -1209,10 +1234,10 @@ def append_uk_full_gate_nodes(
         else node
         for node in graph.nodes
     )
-    sources = ("uk_ladder",) + (
-        ("uk_input_mass_reference",)
-        if any(source.name == "uk_input_mass_reference" for source in graph.sources)
-        else ()
+    sources = ("uk_ladder",) + tuple(
+        name
+        for name in ("uk_input_mass_reference", "uk_reference_surface")
+        if any(source.name == name for source in graph.sources)
     )
     # The spine checkpoint's build state, when the bound checkpoint publishes
     # it: the input-coverage gate reads the stages' importance weights and

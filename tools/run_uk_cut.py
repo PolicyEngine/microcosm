@@ -65,6 +65,7 @@ from typing import Any, Protocol
 from microcosm.build.uk_runtime.cut_reference import (
     UK_CUT_REFERENCE_INPUT_MASS_NAME,
     UK_CUT_REFERENCE_RECORD_NAME,
+    UK_CUT_REFERENCE_SURFACE_NAME,
     UKCutReference,
     check_uk_cut_reference,
     fetch_uk_cut_reference,
@@ -619,6 +620,10 @@ class CutPaths:
         return self.reference_dir / UK_CUT_REFERENCE_INPUT_MASS_NAME
 
     @property
+    def reference_surface(self) -> Path:
+        return self.reference_dir / UK_CUT_REFERENCE_SURFACE_NAME
+
+    @property
     def score_receipt(self) -> Path:
         return self.run_dir / "score_vs_reference.json"
 
@@ -764,6 +769,7 @@ def certify_argv(
         "--ledger-facts-sha256", chronicle["consumer_facts.jsonl"],
         "--ledger-manifest-sha256", chronicle["manifest.json"],
         "--input-mass-reference", str(paths.reference_input_mass),
+        "--reference-surface", str(paths.reference_surface),
         "--score-receipt", str(paths.score_receipt),
         "--reference-record", str(paths.reference_record),
         "--release-id", RELEASE_ID,

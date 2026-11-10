@@ -43,6 +43,7 @@ __all__ = [
     "UKCutReference",
     "UK_CUT_REFERENCE_INPUT_MASS_NAME",
     "UK_CUT_REFERENCE_RECORD_NAME",
+    "UK_CUT_REFERENCE_SURFACE_NAME",
     "check_uk_cut_reference",
     "fetch_uk_cut_reference",
     "read_uk_cut_reference",
@@ -60,6 +61,9 @@ UK_CUT_REFERENCE_RECORD_NAME = "reference.json"
 #: The reference's input-mass totals and carriers, written beside it: the
 #: input-mass gate's reference (licensed-data aggregates, never committed).
 UK_CUT_REFERENCE_INPUT_MASS_NAME = "input_mass_reference.json"
+#: The reference's column surface (names and flags): the export-surface and
+#: input-coverage gates' reference (:mod:`.reference_surface`).
+UK_CUT_REFERENCE_SURFACE_NAME = "reference_surface.json"
 
 #: Each line's registry variant and the build evidence its fetch reads.
 UK_CUT_REFERENCE_RELEASES: Mapping[str, tuple[str, str]] = {
@@ -477,11 +481,15 @@ def write_uk_cut_reference_evidence(
     """Write the evidence the gates read from the reference, beside it.
 
     The input-mass totals and carriers of the build's export frame at its own
-    solved weights (:func:`~.weighted_integrity.uk_input_mass_reference_payload`).
-    The file holds licensed-data aggregates: it stays with the cut, as the
-    reference's dataset does.
+    solved weights (:func:`~.weighted_integrity.uk_input_mass_reference_payload`),
+    which hold licensed-data aggregates and stay with the cut as the
+    reference's dataset does, and the build's column surface, names and
+    flags only (:func:`~.reference_surface.uk_reference_surface_payload`).
     """
 
+    from microcosm.build.uk_runtime.reference_surface import (
+        uk_reference_surface_payload,
+    )
     from microcosm.build.uk_runtime.weighted_integrity import (
         uk_input_mass_reference_payload,
     )
@@ -496,11 +504,20 @@ def write_uk_cut_reference_evidence(
         revision=reference.build,
         sha256=reference.sha256,
     )
-    destination = directory / UK_CUT_REFERENCE_INPUT_MASS_NAME
-    partial = destination.with_name(destination.name + ".partial")
-    partial.write_text(json.dumps(payload, sort_keys=True, allow_nan=False))
-    partial.replace(destination)
-    return {"input_mass_reference": destination}
+    surface = uk_reference_surface_payload(
+        source, label=reference.label, sha256=reference.sha256
+    )
+    written: dict[str, Path] = {}
+    for key, name, content in (
+        ("input_mass_reference", UK_CUT_REFERENCE_INPUT_MASS_NAME, payload),
+        ("reference_surface", UK_CUT_REFERENCE_SURFACE_NAME, surface),
+    ):
+        destination = directory / name
+        partial = destination.with_name(destination.name + ".partial")
+        partial.write_text(json.dumps(content, sort_keys=True, allow_nan=False))
+        partial.replace(destination)
+        written[key] = destination
+    return written
 
 
 def uk_cut_reference_evidence_done(
@@ -508,16 +525,19 @@ def uk_cut_reference_evidence_done(
 ) -> tuple[bool, str]:
     """Whether the reference's evidence is beside it and names this build."""
 
-    path = Path(output_dir) / UK_CUT_REFERENCE_INPUT_MASS_NAME
-    try:
-        payload = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return False, f"no {UK_CUT_REFERENCE_INPUT_MASS_NAME} beside the reference"
-    identity = payload.get("identity") if isinstance(payload, Mapping) else None
-    if (
-        not isinstance(identity, Mapping)
-        or payload.get("label") != reference.label
-        or identity.get("sha256") != reference.sha256
-    ):
-        return False, f"{UK_CUT_REFERENCE_INPUT_MASS_NAME} names another build"
+    for name in (UK_CUT_REFERENCE_INPUT_MASS_NAME, UK_CUT_REFERENCE_SURFACE_NAME):
+        try:
+            payload = json.loads((Path(output_dir) / name).read_text())
+        except (OSError, ValueError):
+            return False, f"no {name} beside the reference"
+        if not isinstance(payload, Mapping):
+            return False, f"{name} is not a JSON object"
+        identity = payload.get("identity")
+        sha256 = (
+            identity.get("sha256")
+            if isinstance(identity, Mapping)
+            else payload.get("sha256")
+        )
+        if payload.get("label") != reference.label or sha256 != reference.sha256:
+            return False, f"{name} names another build"
     return True, f"evidence for {reference.label}"
