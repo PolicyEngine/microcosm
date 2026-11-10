@@ -197,11 +197,13 @@ RECEIPT_COLUMNS = {
 #: The release a new reported-receipt donor is a build of: a release of its
 #: own, which is never the repository's default.
 RECEIPT_RELEASE_ID = US_RECEIPT_DONOR_RELEASE_ID
-#: The published root path. Never the national default's ``populace_us_2024.h5``,
-#: so no publication of this donor can overwrite the default's root file.
-RECEIPT_DATASET_FILENAME = "populace_us_2024_receipt_qualified.h5"
-#: The file name a reported-receipt donor that keeps only its tag published its
-#: H5 under, at the repository root.
+#: The H5 a new reported-receipt donor declares: its release's dataset file,
+#: never the national release's ``microcosm_us_2024.h5``, which the national
+#: release's dataset-file check also refuses for a donor.
+RECEIPT_DATASET_FILENAME = US_RELEASE_DATASET_FILES[RECEIPT_RELEASE_ID]
+#: The root path a reported-receipt donor that keeps only its tag published its
+#: H5 under, never the national default's ``populace_us_2024.h5``. The
+#: qualification also gives the child of that file this name.
 TAGGED_RECEIPT_DATASET_FILENAME = "populace_us_2024_receipt_qualified.h5"
 #: The qualification's aggregate receipt, carried verbatim as source evidence.
 RECEIPT_QUALIFICATION_FILE = "donor_receipt_qualification.json"
