@@ -224,6 +224,10 @@ def stub_reference_evidence(reference, h5_path, output_dir):
                 },
                 "totals": {"employment_income": 1.0},
                 "carriers": {"employment_income": 3},
+                "since_baseline": {
+                    "baseline": reference.label,
+                    "ratios": {"employment_income": 1.0},
+                },
             }
         )
     )
@@ -236,6 +240,7 @@ def stub_reference_evidence(reference, h5_path, output_dir):
                 "label": reference.label,
                 "sha256": reference.sha256,
                 "minimum_nondefault_mass_share": 1e-6,
+                "baseline": {"label": reference.label, "inputs": ["employment_income"]},
                 "export_columns": ["person.employment_income"],
                 "populated_inputs": ["employment_income"],
                 "thin_inputs": [],

@@ -147,15 +147,28 @@ def test_the_evidence_is_done_only_when_both_files_name_the_build(
     mass = tmp_path / UK_CUT_REFERENCE_INPUT_MASS_NAME
     mass.write_text(json.dumps({"label": LABEL, "identity": {"sha256": SHA}}))
     done, reason = uk_cut_reference_evidence_done(reference, tmp_path)
+    # Evidence from before the chain (the review of microcosm#1574) is redone.
+    assert not done and "no change since the baseline" in reason
+    chain = {"baseline": LABEL, "ratios": {}}
+    mass.write_text(
+        json.dumps(
+            {"label": LABEL, "identity": {"sha256": SHA}, "since_baseline": chain}
+        )
+    )
+    done, reason = uk_cut_reference_evidence_done(reference, tmp_path)
     assert not done and UK_CUT_REFERENCE_SURFACE_NAME in reason
 
     surface = tmp_path / UK_CUT_REFERENCE_SURFACE_NAME
-    surface.write_text(json.dumps(_payload(sha256="b" * 64)))
+    baseline = {"label": LABEL, "inputs": ["employment_income"]}
+    surface.write_text(json.dumps({**_payload(sha256="b" * 64), "baseline": baseline}))
     done, reason = uk_cut_reference_evidence_done(reference, tmp_path)
     assert not done and "another build" in reason
 
-    surface.write_text(json.dumps(_payload()))
+    surface.write_text(json.dumps({**_payload(), "baseline": baseline}))
     assert uk_cut_reference_evidence_done(reference, tmp_path)[0]
+    loaded = load_uk_reference_surface(surface)
+    assert loaded.baseline_label == LABEL
+    assert loaded.baseline_inputs == {"employment_income"}
 
 
 def test_the_evidence_reads_a_dense_line_file(tmp_path: Path) -> None:

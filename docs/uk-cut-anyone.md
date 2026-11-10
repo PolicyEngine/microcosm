@@ -275,11 +275,29 @@ once the cut is promoted. A build withdrawn after the fetch stops the certify
 step, and `status` says so; the cut keeps its record until
 `--re-resolve-reference` moves it.
 
-A line with no current build cannot be cut yet: a new line, or one whose only
-current build was withdrawn (`current: null`), refuses at the reference step
-until `releases.json` names a current build again. There is no way yet to pin
-a listed build instead. The release ids and the registry year are code
-constants, so the next FRS year needs a code change too.
+A line with no current build (a new line, or one whose only current build
+was withdrawn, `current: null`) refuses at the reference step. Pin one of its
+listed builds instead, with `--reference-build <build>` here or `--build` on
+`tools/resolve_uk_reference.py`. A pinned build passes the same certification
+checks as the current one and is refused if withdrawn. The record and the
+certification mark it `pinned`. A cut that already compares with another
+build keeps it unless `--re-resolve-reference` is given too. The release ids
+and the registry year are code constants, so the next FRS year needs a code
+change.
+
+Every check compares a cut with the build before it, so the certification
+also records the change since a fixed baseline:
+- each input column's total as a ratio of the baseline's;
+- the inputs the baseline carried;
+- which of those this build no longer carries.
+
+The chain starts at the build each line compared with first (for the national
+line, eeb6093e). Each cut continues its reference's record, multiplying in
+the ratios its own input-mass gate measures, so no baseline dataset is ever
+loaded. A column one or two source households carry leaves the chain, with
+its figures withheld. The record carries no verdict. The dense line's
+published evidence carries none of these gates, so its chain restarts at each
+reference.
 
 ## Signing keys
 

@@ -1340,8 +1340,24 @@ def uk_release_input_coverage_gate(
         manifest,
     )
     failures.extend(family_build_failures)
+    since_baseline = None
+    if reference_surface.baseline_label is not None:
+        # Which of the inputs the fixed baseline carried this build no longer
+        # carries, by this gate's rule: names only, a record with no verdict
+        # (the review of microcosm#1574).
+        carried_now = uk_effective_input_signal(
+            frame, engine, minimum_nondefault_mass_share=floor
+        )
+        since_baseline = {
+            "baseline": reference_surface.baseline_label,
+            "inputs": sorted(reference_surface.baseline_inputs),
+            "dropped": sorted(
+                set(reference_surface.baseline_inputs) - set(carried_now)
+            ),
+        }
     details = {
         **dict(base.details),
+        **({"since_baseline": since_baseline} if since_baseline else {}),
         # Names only: which build the required inputs came from, and which
         # of them it carries on fewer than three source households ("<3").
         "reference": reference_surface.label,

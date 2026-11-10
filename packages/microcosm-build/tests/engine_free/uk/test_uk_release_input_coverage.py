@@ -395,3 +395,28 @@ def test_figures_resting_on_fewer_than_three_source_households_are_withheld() ->
     assert reported.details["effective_mass_by_column"]["dividend_income"][
         "effective_signal_mass_share"
     ] == pytest.approx(0.75)
+
+
+def test_coverage_names_the_baseline_inputs_no_longer_carried() -> None:
+    """The review of microcosm#1574 (S5): an input the reference stopped
+    carrying stops being required, so the record keeps the baseline's."""
+
+    import dataclasses
+
+    surface = dataclasses.replace(
+        reference_surface("employment_income"),
+        baseline_label="microcosm-uk-2024-25-national@baseline",
+        baseline_inputs=frozenset({"employment_income", "dividend_income"}),
+    )
+    result = uk_release_input_coverage_gate(
+        _person_frame({"employment_income": np.asarray([0.0, 52_000.0])}),
+        _StubEngine({"employment_income": 0.0, "dividend_income": 0.0}),
+        reference_surface=surface,
+        manifest=_manifest(()),
+    )
+    assert result.passed, result.failures
+    assert result.details["since_baseline"] == {
+        "baseline": "microcosm-uk-2024-25-national@baseline",
+        "inputs": ["dividend_income", "employment_income"],
+        "dropped": ["dividend_income"],
+    }

@@ -124,6 +124,7 @@ from datetime import UTC, date, datetime
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -873,6 +874,38 @@ def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
             f"{path}: input-mass reference label {label!r} does not name the "
             f"build its identity records ({identity.get('revision')!r})."
         )
+    since_baseline = payload.get("since_baseline")
+    if since_baseline is not None:
+        ratios = (
+            since_baseline.get("ratios")
+            if isinstance(since_baseline, Mapping)
+            else None
+        )
+        baseline = (
+            since_baseline.get("baseline")
+            if isinstance(since_baseline, Mapping)
+            else None
+        )
+        if (
+            not isinstance(baseline, str)
+            or baseline.count("@") != 1
+            or not isinstance(ratios, Mapping)
+            or not all(
+                isinstance(value, int | float)
+                and not isinstance(value, bool)
+                and math.isfinite(float(value))
+                and float(value) >= 0.0
+                for value in ratios.values()
+            )
+        ):
+            raise ValueError(
+                f"{path}: since_baseline names its baseline <release>@<build> and "
+                "a finite, non-negative ratio per column."
+            )
+        since_baseline = {
+            "baseline": baseline,
+            "ratios": {str(name): float(value) for name, value in ratios.items()},
+        }
     return UKInputMassReference(
         totals=dict(totals),
         filename=str(identity.get("filename", "")),
@@ -881,6 +914,7 @@ def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
         vintage=str(identity.get("vintage", "")),
         label=label,
         carriers=dict(carriers),
+        since_baseline=since_baseline,
     )
 
 
@@ -902,6 +936,10 @@ class UKInputMassReference:
     vintage: str
     label: str | None = None
     carriers: Mapping[str, int] | None = None
+    #: The reference's own change since a fixed baseline, which the gate
+    #: continues: ``{"baseline": "<release>@<build>", "ratios": {column:
+    #: total / baseline total}}`` (the review of microcosm#1574).
+    since_baseline: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.carriers is not None:
@@ -1219,6 +1257,35 @@ def _excess_drops(
     return drops
 
 
+def _since_baseline(
+    candidate_totals: Mapping[str, float],
+    reference: UKInputMassReference,
+    thin: frozenset[str],
+) -> dict[str, Any] | None:
+    """Continue the reference's change since the baseline, or None without one.
+
+    A column leaves the chain where its ratio cannot be continued: absent on
+    a side, a zero reference total, or one or two source households on a
+    side (its figures are withheld).
+    """
+
+    chain = reference.since_baseline
+    if not chain:
+        return None
+    ratios: dict[str, float] = {}
+    for column, ratio in chain["ratios"].items():
+        if column in thin:
+            continue
+        reference_total = reference.totals.get(column)
+        candidate_total = candidate_totals.get(column)
+        if reference_total is None or candidate_total is None:
+            continue
+        if float(reference_total) == 0.0:
+            continue
+        ratios[column] = float(ratio) * float(candidate_total) / float(reference_total)
+    return {"baseline": chain["baseline"], "ratios": dict(sorted(ratios.items()))}
+
+
 def _withheld_failure(message: str, thin: frozenset[str]) -> str:
     column = message.split(":", 1)[0]
     if column not in thin:
@@ -1317,6 +1384,7 @@ def uk_input_mass_parity_gate(
             stale.append(column)
 
     thin = _thin_columns(candidate_carriers, reference.carriers)
+    since_baseline = _since_baseline(candidate_totals, reference, thin)
     failures = [_withheld_failure(message, thin) for message in base.failures]
     for column, drift in sorted(drops.items()):
         failures.append(
@@ -1357,6 +1425,9 @@ def uk_input_mass_parity_gate(
             "maximum_relative_drop": policy.maximum_relative_drop,
             # Names only: a column's drift is in worst_drifts unless it is thin.
             "excess_drops": sorted(drops),
+            # Each column's total as a ratio of the fixed baseline's, the
+            # reference's ratio times this comparison's: a record, no verdict.
+            **({"since_baseline": since_baseline} if since_baseline else {}),
             "stale_exclusions": stale,
             "dormant_exclusions": dormant,
             "expired_exclusions": expired,

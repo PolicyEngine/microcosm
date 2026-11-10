@@ -1376,3 +1376,34 @@ def test_a_signed_input_mass_entry_covers_the_missing_column_for_its_build() -> 
         policy=_input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9),
     )
     assert not unsigned.passed
+
+
+def test_the_input_mass_gate_continues_the_change_since_the_baseline() -> None:
+    """The review of microcosm#1574 (S5): each column's ratio to the fixed
+    baseline is the reference's ratio times this comparison's."""
+
+    import dataclasses
+
+    reference = dataclasses.replace(
+        _input_mass_reference(
+            totals={"employment_income": 10.0, "rare_flag": 4.0, "gone": 2.0},
+            carriers={"employment_income": 900, "rare_flag": 2, "gone": 50},
+        ),
+        since_baseline={
+            "baseline": "microcosm-uk-2024-25-national@baseline",
+            "ratios": {"employment_income": 0.5, "rare_flag": 1.0, "gone": 1.0},
+        },
+    )
+    gate = _input_mass_gate(
+        {"employment_income": 12.0, "rare_flag": 4.0},
+        reference,
+        policy=_input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9),
+        candidate_carriers={"employment_income": 950, "rare_flag": 2},
+    )
+    # Thin and absent columns leave the chain; the rest continue it.
+    assert gate.details["since_baseline"] == {
+        "baseline": "microcosm-uk-2024-25-national@baseline",
+        "ratios": {"employment_income": pytest.approx(0.6)},
+    }
+    plain = _input_mass_gate({"employment_income": 10.0})
+    assert "since_baseline" not in plain.details

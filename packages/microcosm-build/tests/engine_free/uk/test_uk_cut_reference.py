@@ -276,3 +276,54 @@ def test_a_listed_build_can_be_pinned_and_is_recorded_as_pinned(hub, tmp_path) -
         check_uk_cut_reference(
             UK_NATIONAL_RELEASE, build=NATIONAL_BUILD, hub_download=hub
         )
+
+
+def test_the_chain_starts_at_a_reference_with_none_and_continues_one(
+    hub, tmp_path
+) -> None:
+    """The review of microcosm#1574 (S5): no baseline dataset is loaded."""
+
+    from microcosm.build.uk_runtime.cut_reference import (
+        UK_CUT_REFERENCE_EVIDENCE_NAME,
+        fetch_uk_cut_reference,
+        uk_cut_reference_chain,
+    )
+
+    reference = fetch_uk_cut_reference(
+        UK_NATIONAL_RELEASE, tmp_path / "ref", hub_download=hub
+    )
+    # The fetch keeps the build's own certification beside it.
+    kept = tmp_path / "ref" / UK_CUT_REFERENCE_EVIDENCE_NAME
+    assert sha256_of(kept.read_bytes()) == reference.evidence["sha256"]
+    started = uk_cut_reference_chain(
+        reference,
+        tmp_path / "ref",
+        totals={"employment_income": 10.0, "rare_flag": 2.0, "zero": 0.0},
+        carriers={"employment_income": 900, "rare_flag": 2, "zero": 40},
+        carried_inputs={"employment_income", "rare_flag"},
+    )
+    assert started == {
+        "baseline": reference.label,
+        "input_mass_ratios": {"employment_income": 1.0},
+        "baseline_inputs": ["employment_income", "rare_flag"],
+    }
+    certification = json.loads(kept.read_text())
+    certification["since_baseline"] = {
+        "baseline": f"{UK_NATIONAL_RELEASE}@baseline",
+        "input_mass_ratios": {"employment_income": 0.8},
+        "baseline_inputs": ["employment_income", "gift_aid"],
+        "inputs_dropped": ["gift_aid"],
+    }
+    kept.write_text(json.dumps(certification))
+    continued = uk_cut_reference_chain(
+        reference,
+        tmp_path / "ref",
+        totals={"employment_income": 10.0},
+        carriers={"employment_income": 900},
+        carried_inputs={"employment_income"},
+    )
+    assert continued == {
+        "baseline": f"{UK_NATIONAL_RELEASE}@baseline",
+        "input_mass_ratios": {"employment_income": 0.8},
+        "baseline_inputs": ["employment_income", "gift_aid"],
+    }

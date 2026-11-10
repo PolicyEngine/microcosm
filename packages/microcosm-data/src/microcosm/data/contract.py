@@ -1005,6 +1005,53 @@ _UK_CERTIFICATION_REFERENCE_FIELDS = frozenset(
 #: listed build pinned for a line with none (microcosm#1095).
 _UK_CERTIFICATION_REFERENCE_SELECTIONS = frozenset({"current", "pinned"})
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
+_UK_CERTIFICATION_SINCE_BASELINE_FIELDS = frozenset(
+    {"baseline", "input_mass_ratios", "baseline_inputs", "inputs_dropped"}
+)
+
+
+def _check_uk_certification_since_baseline(
+    since: object, *, file: str, failures: list[str]
+) -> None:
+    """The certification's record of change since a fixed national baseline."""
+
+    if not isinstance(since, Mapping) or set(since) != (
+        _UK_CERTIFICATION_SINCE_BASELINE_FIELDS
+    ):
+        failures.append(
+            f"{file} since_baseline must record exactly "
+            f"{sorted(_UK_CERTIFICATION_SINCE_BASELINE_FIELDS)}."
+        )
+        return
+    baseline = since.get("baseline")
+    ratios = since.get("input_mass_ratios")
+    inputs = since.get("baseline_inputs")
+    dropped = since.get("inputs_dropped")
+    names_ok = all(
+        isinstance(names, list)
+        and all(isinstance(name, str) and name for name in names)
+        for names in (inputs, dropped)
+    )
+    if (
+        not isinstance(baseline, str)
+        or not baseline.startswith(f"{_UK_NATIONAL_RELEASE_ID}@")
+        or baseline == f"{_UK_NATIONAL_RELEASE_ID}@"
+        or not isinstance(ratios, Mapping)
+        or not all(
+            isinstance(value, int | float)
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+            and float(value) >= 0.0
+            for value in ratios.values()
+        )
+        or not names_ok
+        or not set(dropped) <= set(inputs)
+    ):
+        failures.append(
+            f"{file} since_baseline must name a national baseline build, a "
+            "finite non-negative ratio per column, and the baseline's inputs "
+            "with those this build no longer carries."
+        )
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
 _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
     {
@@ -1162,6 +1209,8 @@ _UK_CERTIFICATION_REQUIRED_FIELDS = frozenset(
         "parent_spine",
         # The current national build the cut was compared with.
         "reference",
+        # The change since a fixed baseline, chained across cuts.
+        "since_baseline",
         "parts",
         "spec",
         "doctrine",
@@ -3557,6 +3606,9 @@ def _check_uk_release_certification(
                 "with its file name, sha256 digest, built-with policyengine-uk "
                 "version and selection (current or pinned)."
             )
+    _check_uk_certification_since_baseline(
+        certification.get("since_baseline"), file=file, failures=failures
+    )
     parent_spine = certification.get("parent_spine")
     parent_sha = (
         parent_spine.get("sha256") if isinstance(parent_spine, Mapping) else None

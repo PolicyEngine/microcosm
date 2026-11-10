@@ -405,6 +405,49 @@ def run_uk_release_cut_battery(
 # ---------------------------------------------------------------------------
 
 
+def _since_baseline(release_cut: Mapping[str, Any]) -> dict[str, Any]:
+    """The release cut's change since the baseline, from its two gates.
+
+    The input-mass gate continues each column's ratio to the baseline's
+    total; the coverage gate names the baseline's inputs this build no
+    longer carries. Both continue the reference's own record, so the next
+    cut reads it from this certification without loading any baseline.
+    """
+
+    from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
+
+    gates = release_cut.get("gates") or {}
+
+    def block(gate_id: str) -> Mapping[str, Any] | None:
+        details = (gates.get(gate_id) or {}).get("details") or {}
+        value = details.get("since_baseline")
+        return value if isinstance(value, Mapping) else None
+
+    mass = block("uk_input_mass_parity")
+    coverage = block("uk_release_input_coverage")
+    if mass is None or coverage is None:
+        raise UKReleaseCertificationError(
+            "The release-cut report records no change since the baseline: the "
+            "cut's reference evidence predates it, so write it again (the "
+            "reference step of tools/run_uk_cut.py)."
+        )
+    baseline = mass.get("baseline")
+    if baseline != coverage.get("baseline") or not str(baseline).startswith(
+        f"{UK_NATIONAL_RELEASE_ID}@"
+    ):
+        raise UKReleaseCertificationError(
+            "The release-cut report's input-mass and coverage gates must chain "
+            f"from one national baseline; they name {baseline!r} and "
+            f"{coverage.get('baseline')!r}."
+        )
+    return {
+        "baseline": str(baseline),
+        "input_mass_ratios": dict(sorted(mass["ratios"].items())),
+        "baseline_inputs": sorted(coverage["inputs"]),
+        "inputs_dropped": sorted(coverage["dropped"]),
+    }
+
+
 def compose_uk_release_certification(
     *,
     release_id: str,
@@ -550,6 +593,9 @@ def compose_uk_release_certification(
             # for a line with none (the review of microcosm#1574).
             "selection": reference.selection,
         },
+        # The change since a fixed baseline, chained across cuts so a slow
+        # drift shows: a record, with no verdict (the review of microcosm#1574).
+        "since_baseline": _since_baseline(parts_raw["release_cut"][0]),
         "parts": part_summaries,
         "spec": {
             "gates_manifest_sha256": full_digests["gates_manifest_sha256"],

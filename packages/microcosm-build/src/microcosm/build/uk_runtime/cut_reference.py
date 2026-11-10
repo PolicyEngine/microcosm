@@ -43,11 +43,13 @@ __all__ = [
     "UKCutReference",
     "UK_CUT_REFERENCE_INPUT_MASS_NAME",
     "UK_CUT_REFERENCE_RECORD_NAME",
+    "UK_CUT_REFERENCE_EVIDENCE_NAME",
     "UK_CUT_REFERENCE_SURFACE_NAME",
     "check_uk_cut_reference",
     "fetch_uk_cut_reference",
     "read_uk_cut_reference",
     "resolve_uk_cut_reference",
+    "uk_cut_reference_chain",
     "uk_cut_reference_evidence_done",
     "uk_cut_reference_withdrawal",
     "uk_input_mass_reference_payload",
@@ -66,6 +68,10 @@ UK_CUT_REFERENCE_INPUT_MASS_NAME = "input_mass_reference.json"
 #: The reference's column surface (names and flags): the export-surface and
 #: input-coverage gates' reference (:mod:`.reference_surface`).
 UK_CUT_REFERENCE_SURFACE_NAME = "reference_surface.json"
+#: The reference's own certification evidence, kept beside it: a national
+#: build's certification carries its change since the baseline, which the
+#: cut continues (the review of microcosm#1574).
+UK_CUT_REFERENCE_EVIDENCE_NAME = "reference_evidence.json"
 
 #: Each line's registry variant and the build evidence its fetch reads.
 UK_CUT_REFERENCE_RELEASES: Mapping[str, tuple[str, str]] = {
@@ -571,8 +577,43 @@ def fetch_uk_cut_reference(
         partial.unlink(missing_ok=True)
         raise
     partial.replace(destination)
+    _keep_evidence(reference, directory, hub_download=hub_download)
     write_uk_cut_reference(record_path, reference)
     return reference
+
+
+def _keep_evidence(
+    reference: UKCutReference,
+    directory: Path,
+    *,
+    hub_download: _HubDownload | None,
+) -> Path:
+    """Copy the build's certification evidence beside it, checked.
+
+    The fetch read and checked it already; the copy is checked against the
+    record's sha256 before it is kept.
+    """
+
+    from pathlib import PurePosixPath
+
+    if hub_download is None:
+        from huggingface_hub import hf_hub_download as hub_download
+    folder = PurePosixPath(reference.path_in_repo).parent
+    source = Path(
+        hub_download(
+            repo_id=reference.repo_id,
+            filename=str(folder / reference.evidence["filename"]),
+            repo_type="dataset",
+        )
+    )
+    if _sha256(source) != reference.evidence["sha256"]:
+        raise ValueError(
+            f"{reference.evidence['filename']} of {reference.label} no longer has "
+            "the sha256 the fetch checked."
+        )
+    destination = directory / UK_CUT_REFERENCE_EVIDENCE_NAME
+    shutil.copyfile(source, destination)
+    return destination
 
 
 def uk_input_mass_reference_payload(
@@ -624,6 +665,55 @@ def uk_input_mass_reference_payload(
     }
 
 
+def uk_cut_reference_chain(
+    reference: UKCutReference,
+    directory: str | Path,
+    *,
+    totals: Mapping[str, float],
+    carriers: Mapping[str, int],
+    carried_inputs: frozenset[str] | set[str],
+) -> dict[str, Any]:
+    """The reference's change since the baseline, for the cut to continue.
+
+    Every check compares a cut with the build before it, so drift can add up
+    across cuts (the review of microcosm#1574). A national build's
+    certification records its change since a fixed baseline: each column's
+    input-mass total as a ratio of the baseline's, the inputs the baseline
+    carried, and which of them it no longer carries. The cut continues that
+    chain, multiplying the ratios its own input-mass gate measures, with no
+    baseline dataset loaded. A reference whose certification carries no chain
+    (one certified before it, or a dense build, whose published evidence
+    carries none of these gates) starts one: the reference is the baseline,
+    its ratios one, for the columns at least three source households carry.
+    """
+
+    from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR
+
+    chain = None
+    evidence = Path(directory) / UK_CUT_REFERENCE_EVIDENCE_NAME
+    if evidence.is_file():
+        payload = json.loads(evidence.read_text())
+        chain = payload.get("since_baseline") if isinstance(payload, Mapping) else None
+    if isinstance(chain, Mapping):
+        return {
+            "baseline": str(chain["baseline"]),
+            "input_mass_ratios": {
+                str(name): float(value)
+                for name, value in chain["input_mass_ratios"].items()
+            },
+            "baseline_inputs": sorted(str(name) for name in chain["baseline_inputs"]),
+        }
+    return {
+        "baseline": reference.label,
+        "input_mass_ratios": {
+            str(name): 1.0
+            for name, total in totals.items()
+            if float(total) != 0.0 and int(carriers.get(name, 0)) >= UK_DISCLOSURE_FLOOR
+        },
+        "baseline_inputs": sorted(str(name) for name in carried_inputs),
+    }
+
+
 def write_uk_cut_reference_evidence(
     reference: UKCutReference, h5_path: str | Path, output_dir: str | Path
 ) -> dict[str, Path]:
@@ -653,6 +743,21 @@ def write_uk_cut_reference_evidence(
     surface = uk_reference_surface_payload(
         source, label=reference.label, sha256=reference.sha256
     )
+    chain = uk_cut_reference_chain(
+        reference,
+        directory,
+        totals=payload["totals"],
+        carriers=payload["carriers"],
+        carried_inputs={*surface["populated_inputs"], *surface["thin_inputs"]},
+    )
+    payload["since_baseline"] = {
+        "baseline": chain["baseline"],
+        "ratios": chain["input_mass_ratios"],
+    }
+    surface["baseline"] = {
+        "label": chain["baseline"],
+        "inputs": chain["baseline_inputs"],
+    }
     written: dict[str, Path] = {}
     for key, name, content in (
         ("input_mass_reference", UK_CUT_REFERENCE_INPUT_MASS_NAME, payload),
@@ -686,4 +791,9 @@ def uk_cut_reference_evidence_done(
         )
         if payload.get("label") != reference.label or sha256 != reference.sha256:
             return False, f"{name} names another build"
+        block = (
+            "since_baseline" if name == UK_CUT_REFERENCE_INPUT_MASS_NAME else "baseline"
+        )
+        if not isinstance(payload.get(block), Mapping):
+            return False, f"{name} records no change since the baseline"
     return True, f"evidence for {reference.label}"

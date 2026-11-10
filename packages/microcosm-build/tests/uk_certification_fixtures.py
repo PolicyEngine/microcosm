@@ -42,6 +42,17 @@ def signing_key(monkeypatch):
     monkeypatch.setenv(gate_signing_key_env("uk"), TEST_KEY)
 
 
+GREEN_SINCE_BASELINE_MASS = {
+    "baseline": "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e",
+    "ratios": {"employment_income": 1.02, "dividend_income": 0.97},
+}
+GREEN_SINCE_BASELINE_COVERAGE = {
+    "baseline": GREEN_SINCE_BASELINE_MASS["baseline"],
+    "inputs": ["dividend_income", "employment_income", "gift_aid"],
+    "dropped": ["gift_aid"],
+}
+
+
 def stub_registry():
     """Return a registry that passes every declared gate over the real spec."""
 
@@ -52,6 +63,10 @@ def stub_registry():
 
     details_by_gate = {
         "cgt_projection_entrants": {"projection_engine": STUB_PROJECTION_ENGINE},
+        # The release cut's change since the baseline (the review of
+        # microcosm#1574): the certification records it from these two gates.
+        "input_mass_parity": {"since_baseline": GREEN_SINCE_BASELINE_MASS},
+        "release_input_coverage": {"since_baseline": GREEN_SINCE_BASELINE_COVERAGE},
     }
 
     def passing(name):

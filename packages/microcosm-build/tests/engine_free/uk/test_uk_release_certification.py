@@ -720,3 +720,51 @@ def test_compose_refuses_a_reference_of_another_line(green_certification_inputs)
     }
     with pytest.raises(UKReleaseCertificationError, match="national line"):
         compose_uk_release_certification(**inputs)
+
+
+def test_the_certification_records_the_change_since_the_baseline(
+    green_certification_inputs,
+):
+    """The review of microcosm#1574 (S5): each certification records its
+    change since a fixed baseline, chained from its reference's."""
+
+    mass = _FIXTURES.GREEN_SINCE_BASELINE_MASS
+    coverage = _FIXTURES.GREEN_SINCE_BASELINE_COVERAGE
+
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["since_baseline"] == {
+        "baseline": mass["baseline"],
+        "input_mass_ratios": mass["ratios"],
+        "baseline_inputs": coverage["inputs"],
+        "inputs_dropped": coverage["dropped"],
+    }
+
+
+def test_compose_refuses_a_release_cut_with_no_record_since_the_baseline():
+    from microcosm.build.uk_runtime.release_certification import _since_baseline
+
+    with pytest.raises(UKReleaseCertificationError, match="no change since"):
+        _since_baseline({"gates": {"uk_input_mass_parity": {"details": {}}}})
+    mixed = {
+        "gates": {
+            "uk_input_mass_parity": {
+                "details": {
+                    "since_baseline": {
+                        "baseline": "microcosm-uk-2024-25-national@a",
+                        "ratios": {},
+                    }
+                }
+            },
+            "uk_release_input_coverage": {
+                "details": {
+                    "since_baseline": {
+                        "baseline": "microcosm-uk-2024-25-national@b",
+                        "inputs": [],
+                        "dropped": [],
+                    }
+                }
+            },
+        }
+    }
+    with pytest.raises(UKReleaseCertificationError, match="one national baseline"):
+        _since_baseline(mixed)

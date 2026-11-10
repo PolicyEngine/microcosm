@@ -53,6 +53,10 @@ class UKReferenceSurface:
     populated_inputs: frozenset[str]
     thin_inputs: frozenset[str]
     minimum_nondefault_mass_share: float
+    #: The fixed baseline the chain of cuts runs from, and the inputs it
+    #: carried (the review of microcosm#1574); none for an older file.
+    baseline_label: str | None = None
+    baseline_inputs: frozenset[str] = frozenset()
 
     @property
     def carried_inputs(self) -> frozenset[str]:
@@ -195,9 +199,30 @@ def load_uk_reference_surface(source: str | Path) -> UKReferenceSurface:
         raise ValueError(f"{path}: a column cannot be both populated and thin.")
     if not lists["export_columns"]:
         raise ValueError(f"{path}: a reference surface exports no column.")
+    baseline = payload.get("baseline")
+    baseline_label = None
+    baseline_inputs: frozenset[str] = frozenset()
+    if baseline is not None:
+        inputs = baseline.get("inputs") if isinstance(baseline, Mapping) else None
+        baseline_label = (
+            baseline.get("label") if isinstance(baseline, Mapping) else None
+        )
+        if (
+            not isinstance(baseline_label, str)
+            or baseline_label.count("@") != 1
+            or not isinstance(inputs, list)
+            or not all(isinstance(item, str) and item for item in inputs)
+        ):
+            raise ValueError(
+                f"{path}: a reference surface's baseline names its build and the "
+                "inputs it carried."
+            )
+        baseline_inputs = frozenset(inputs)
     return UKReferenceSurface(
         label=label,
         sha256=sha256,
         minimum_nondefault_mass_share=float(floor),
+        baseline_label=baseline_label,
+        baseline_inputs=baseline_inputs,
         **lists,
     )

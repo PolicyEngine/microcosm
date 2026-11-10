@@ -6078,6 +6078,15 @@ def _green_uk_certification(
             },
             "selection": "current",
         },
+        "since_baseline": {
+            "baseline": (
+                "microcosm-uk-2024-25-national@"
+                "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+            ),
+            "input_mass_ratios": {"employment_income": 1.02},
+            "baseline_inputs": ["employment_income", "gift_aid"],
+            "inputs_dropped": ["gift_aid"],
+        },
         "parts": parts,
         "spec": {
             "gates_manifest_sha256": contract._UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
@@ -6223,6 +6232,24 @@ def test_uk_release_certification_refusals(monkeypatch) -> None:
             "reference must be a build of" in line
             for line in _certification_failures(certification, monkeypatch, key)
         ), broken
+    # The change since a fixed baseline (the review of microcosm#1574).
+    for broken in (
+        {"baseline": "microcosm-uk-2024-25-dense@x"},
+        {"input_mass_ratios": {"employment_income": -1.0}},
+        {"inputs_dropped": ["not_a_baseline_input"]},
+    ):
+        certification = _green_uk_certification(key)
+        certification["since_baseline"].update(broken)
+        assert any(
+            "since_baseline must name a national baseline" in line
+            for line in _certification_failures(certification, monkeypatch, key)
+        ), broken
+    certification = _green_uk_certification(key)
+    del certification["since_baseline"]["inputs_dropped"]
+    assert any(
+        "since_baseline must record exactly" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
     certification = _green_uk_certification(key)
     certification["schema_version"] = 1
     assert any(
