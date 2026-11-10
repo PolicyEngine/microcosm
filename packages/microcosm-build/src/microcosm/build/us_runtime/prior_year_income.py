@@ -16,6 +16,19 @@ PolicyEngine-US 2.2.1 and the retired finalizer explicitly dropped it, so it
 is retained only through the joint fit and removed from the export-ready
 support frame.  The two persisted input leaves are
 ``self_employment_income_last_year`` and ``previous_year_income_available``.
+
+The retired finalizer discarded the wage itself.  Microcosm keeps it under
+the auxiliary name :data:`US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN`
+(``cps_employment_income_last_year``).  PolicyEngine-US 2.2.1 and 2.90.4
+define no variable of that name, so no rule reads it, and the engine still
+computes ``employment_income_last_year`` with its own formula.  The
+stored-input register lists the column in
+``microcosm.data.stored_inputs.US_AUXILIARY_STORED_COLUMNS``.  An analysis
+that needs two observed years of earnings, such as a microsimulation history
+anchored on matched CPS records, reads it where
+``previous_year_income_available`` is true.  Only the support-clone pass
+writes it.  The stacked multispine pool merges only a source operator's
+declared outputs, so a stacked build does not carry it.
 """
 
 from __future__ import annotations
@@ -55,6 +68,8 @@ __all__ = [
     "PRIOR_YEAR_INCOME_ARCHIVED_PUF_SPLICE_URL",
     "PRIOR_YEAR_INCOME_ARCHIVED_FORMULA_OUTPUT_URL",
     "PRIOR_YEAR_INCOME_ARCHIVED_FINALIZER_URL",
+    "US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN",
+    "US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS",
     "US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS",
     "US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS",
     "US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS",
@@ -112,6 +127,14 @@ US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS = frozenset(
 )
 US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS = (
     US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS
+)
+#: The support-clone pass keeps its prior-year wage under a name the engine
+#: does not define (see the module docstring).
+#: ``US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS`` leaves it out because
+#: the release tool also accepts stacked pools, which do not carry it.
+US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN = "cps_employment_income_last_year"
+US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS: tuple[str, ...] = (
+    US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN,
 )
 US_PRIOR_YEAR_INCOME_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "source_year",
@@ -741,6 +764,9 @@ def with_us_prior_year_income_inputs(
         errors="ignore",
     )
     if has_support_roles:
+        output[US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN] = pd.to_numeric(
+            output[_FORMULA_OWNED_OUTPUT], errors="raise"
+        ).to_numpy(dtype=np.float64)
         output = output.drop(columns=[_FORMULA_OWNED_OUTPUT])
     return _replace_person_table(frame, output)
 
@@ -835,10 +861,40 @@ def us_prior_year_income_summary(frame: Frame) -> dict[str, object]:
         ),
         "unique_counts": {
             column: int(person[column].dropna().nunique())
-            for column in US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS
+            for column in (
+                *US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
+                *(
+                    auxiliary
+                    for auxiliary in US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS
+                    if auxiliary in person
+                ),
+            )
         },
         "channels": channels,
         "clone_availability_mismatches": clone_availability_mismatches,
+        **_prior_year_wage_summary(person, weights),
+    }
+
+
+def _prior_year_wage_summary(
+    person: pd.DataFrame, weights: np.ndarray
+) -> dict[str, object]:
+    """Report the auxiliary prior-year wage when the frame carries it."""
+
+    column = US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN
+    if column not in person:
+        return {}
+    wages = pd.to_numeric(person[column], errors="coerce").to_numpy(dtype=np.float64)
+    finite = np.isfinite(wages)
+    total_weight = float(weights.sum())
+    positive = finite & (wages > 0)
+    return {
+        f"{column}_nonfinite_rows": int(np.count_nonzero(~finite)),
+        f"{column}_negative_rows": int(np.count_nonzero(finite & (wages < 0))),
+        f"{column}_positive_share": (
+            float(weights[positive].sum()) / total_weight if total_weight > 0 else 0.0
+        ),
+        f"{column}_weighted_total": float(np.dot(weights[finite], wages[finite])),
     }
 
 
@@ -952,6 +1008,14 @@ def us_prior_year_income_signal_gate(frame: Frame) -> GateResult:
             f"{mismatches} source person(s) disagree on prior-year availability "
             "across support clones."
         )
+    wage = US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN
+    for suffix, label in (
+        ("nonfinite_rows", "nonfinite"),
+        ("negative_rows", "negative"),
+    ):
+        count = int(summary.get(f"{wage}_{suffix}", 0))
+        if count:
+            failures.append(f"{wage} holds {count} {label} value(s).")
     return GateResult(
         name="prior_year_income_signal",
         passed=not failures,
@@ -966,6 +1030,11 @@ def us_prior_year_income_source_reconciliation_gate(frame: Frame) -> GateResult:
     This runs on the reusable base before sparse support selection, while all
     adjacent-year source rows are still present.  Only the ASEC channel is
     reconciled: PUF-support amounts are deliberately owned by the joint QRF.
+    The gate requires the prior-year wage under one of its two names: the
+    formula-owned ``employment_income_last_year`` before the support-clone
+    pass, :data:`US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN` after it.  It
+    compares each name present with the derivation's wage and allows no
+    difference.
     """
 
     person = frame.table("person")
@@ -982,10 +1051,20 @@ def us_prior_year_income_source_reconciliation_gate(frame: Frame) -> GateResult:
         if column not in actual
     ]
     compare_columns = [
-        column for column in US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS if column in actual
+        column
+        for column in (
+            *US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
+            US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN,
+        )
+        if column in actual
     ]
+    wage_missing = not {
+        _FORMULA_OWNED_OUTPUT,
+        US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN,
+    }.intersection(compare_columns)
     missing_outputs = sorted(
         set(US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS) - set(compare_columns)
+        | ({US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN} if wage_missing else set())
     )
     if missing_sources or missing_outputs:
         failures = []
@@ -1005,7 +1084,10 @@ def us_prior_year_income_source_reconciliation_gate(frame: Frame) -> GateResult:
 
     source = without_support_role_metadata(
         actual.drop(
-            columns=[*US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS],
+            columns=[
+                *US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
+                *US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS,
+            ],
             errors="ignore",
         ),
         entity="person",
@@ -1026,7 +1108,12 @@ def us_prior_year_income_source_reconciliation_gate(frame: Frame) -> GateResult:
             observed = pd.to_numeric(actual[column], errors="coerce").to_numpy(
                 dtype=np.float64
             )
-            target = expected[column].to_numpy(dtype=np.float64)
+            derived = (
+                _FORMULA_OWNED_OUTPUT
+                if column == US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN
+                else column
+            )
+            target = expected[derived].to_numpy(dtype=np.float64)
             mismatches = ~np.isclose(observed, target, rtol=0.0, atol=0.0)
         mismatch_counts[column] = int(np.count_nonzero(mismatches))
     failures = tuple(

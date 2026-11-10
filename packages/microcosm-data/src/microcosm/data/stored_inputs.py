@@ -118,6 +118,7 @@ from types import MappingProxyType
 
 __all__ = [
     "MODEL_NAMED_COLUMN_PATTERN",
+    "US_AUXILIARY_STORED_COLUMNS",
     "US_STORED_NON_VARIABLE_COLUMNS",
     "CertifiedEngine",
     "StoredInputRefusalError",
@@ -259,6 +260,38 @@ _TAX_UNIT_CONSTRUCTION = (
 #: register entry to the producer definition it names.
 _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marital_unit")
 
+#: Auxiliary columns: person attributes a build carries for analysis,
+#: conditioning or calibration that no rule consumes, so storing one makes no
+#: tax-benefit modeling claim. Unlike a pending engine input, an auxiliary
+#: column waits for no engine variable, so its entry does not expire with an
+#: engine bump; an analysis reads it by joining on ``person_id``.
+#: :data:`US_STORED_NON_VARIABLE_COLUMNS` takes in every entry, and each
+#: reason starts with ``Auxiliary``.
+US_AUXILIARY_STORED_COLUMNS: Mapping[str, str] = MappingProxyType(
+    {
+        "cps_employment_income_last_year": (
+            "Auxiliary: the person's prior-year wage and salary income. "
+            "microcosm.build.us_runtime.prior_year_income "
+            "(US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN) writes it when the stage "
+            "runs on the support-cloned frame. Where "
+            "previous_year_income_available is true, an ASEC row holds "
+            "WSAL_VAL, unadjusted, from the same person's (PERIDNUM) record in "
+            "the previous ASEC year: a record whose two Census allocation "
+            "flags read zero and whose wage and self-employment amounts hold "
+            "no -1 or -9999 sentinel. Other ASEC rows hold the current year's "
+            "WSAL_VAL (0 for a sentinel), or 0 where the pool lacks the "
+            "previous year, and "
+            "PUF-support rows hold a QRF imputation fit on the ASEC rows. "
+            "policyengine-us computes employment_income_last_year with its own "
+            "formula from 2024 on, and the release writer refuses to store a "
+            "formula-owned column, so the stage keeps its value under this "
+            "name; no rule reads it, and policyengine-us defines no variable "
+            "for it."
+        ),
+    }
+)
+
+
 #: Reviewed register of lowercase stored columns that are deliberately not
 #: policyengine-us variables: column -> why the engine may ignore it.
 #:
@@ -288,6 +321,8 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: (microcosm#1073) likewise postdate them: their producer is
 #: ``scf_education_debt.US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS``, and they leave
 #: the register once the pinned engine carries policyengine-us#9721 and #9724.
+#: The auxiliary columns (:data:`US_AUXILIARY_STORED_COLUMNS`) postdate the
+#: files too and rest on their producers the same way.
 #:
 #: Two model-named non-variable columns that the published default, its
 #: receipt child and the ACS local-area release store are deliberately absent,
@@ -322,6 +357,7 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: that rule against the installed engine.
 US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
     {
+        **US_AUXILIARY_STORED_COLUMNS,
         "county_fips_2023": (
             "The household's five-digit 2023 county-equivalent FIPS, produced "
             "by microcosm.build.us_runtime.county_vintage and the block/PUMA "

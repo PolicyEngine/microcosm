@@ -161,7 +161,9 @@ def _column_strategies(st):
 #: scf_education_debt.US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS by
 #: test_us_stored_input_register.py. That test also binds county_fips_2023 to
 #: county_vintage; test_us_county_vintage_ladders.py proves the PUMA and block
-#: assignments write it.
+#: assignments write it. It binds the auxiliary prior-year wage to
+#: prior_year_income.US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN, and
+#: test_us_prior_year_income.py proves the support-clone pass writes it.
 _PRODUCER_BOUND_ENTRIES = frozenset(
     {
         "county_fips_2023",
@@ -171,6 +173,7 @@ _PRODUCER_BOUND_ENTRIES = frozenset(
         "federal_parent_plus_loan_balance",
         "is_income_based_repayment_new_borrower",
         "federal_student_loan_graduate_share",
+        "cps_employment_income_last_year",
     }
 )
 

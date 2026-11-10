@@ -184,6 +184,32 @@ def test_puf_support_joint_qrf_is_weighted_signed_and_drops_formula_output(
     ].to_numpy()
     assert asec_values.tolist() == [0, -20, 30, 20, -5, 0, 50, 60]
 
+    # The wage stays under its auxiliary name: the derivation's value on ASEC
+    # rows (row 0 has no 2021 file, rows 3, 5 and 7 have no prior record, row
+    # 4's record is allocated and row 6's carries a sentinel, so those fall back
+    # to the current wage) and the joint QRF's prediction on PUF rows.
+    wages = person[US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN]
+    assert wages.dtype == np.float64
+    assert wages[channel == BASE_ASEC_SUPPORT_CHANNEL].tolist() == [
+        0,
+        100,
+        200,
+        10,
+        400,
+        300,
+        500,
+        600,
+    ]
+    assert direct.table("person")["employment_income_last_year"].tolist() == (
+        wages[channel == BASE_ASEC_SUPPORT_CHANNEL].tolist()
+    )
+    assert wages[channel == PUF_TAX_DETAIL_SUPPORT_CHANNEL].tolist() == [
+        1_000.0 + row for row in range(8)
+    ]
+    assert person.loc[
+        channel == BASE_ASEC_SUPPORT_CHANNEL, "previous_year_income_available"
+    ].tolist() == [False, True, True, False, False, False, False, False]
+
     assert len(_QRF.calls) == 1
     call = _QRF.calls[0]
     assert call["targets"] == [
@@ -589,6 +615,105 @@ def test_source_reconciliation_accepts_complete_assembled_provenance() -> None:
     pd.testing.assert_frame_equal(assembled.table("person"), person)
 
 
+def _post_clone_frame(monkeypatch: pytest.MonkeyPatch) -> Frame:
+    monkeypatch.setattr(module, "QRF", _QRF)
+    direct = with_us_prior_year_income_inputs(_source_frame(), seed=0, time_period=2024)
+    return with_us_prior_year_income_inputs(
+        clone_us_frame_for_puf_support(direct), seed=0, time_period=2024
+    )
+
+
+def test_source_reconciliation_compares_the_auxiliary_wage_after_cloning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _post_clone_frame(monkeypatch)
+    passing = us_prior_year_income_source_reconciliation_gate(result)
+    assert passing.passed, passing.failures
+    assert passing.details["compared_columns"] == [
+        "self_employment_income_last_year",
+        "previous_year_income_available",
+        US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN,
+    ]
+
+    person = result.table("person").copy()
+    asec_rows = person.index[
+        person["person_support_channel"].astype(str) == BASE_ASEC_SUPPORT_CHANNEL
+    ]
+    person.loc[asec_rows[1], US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN] = 101.0
+    failing = us_prior_year_income_source_reconciliation_gate(
+        module._replace_person_table(result, person)
+    )
+    assert not failing.passed
+    assert failing.details["mismatch_counts"] == {
+        "self_employment_income_last_year": 0,
+        "previous_year_income_available": 0,
+        US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN: 1,
+    }
+
+    # A PUF-support value is the QRF's to own, so moving one changes nothing.
+    person = result.table("person").copy()
+    puf_rows = person.index[
+        person["person_support_channel"].astype(str) == PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    person.loc[puf_rows[0], US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN] = 7.0
+    assert us_prior_year_income_source_reconciliation_gate(
+        module._replace_person_table(result, person)
+    ).passed
+
+
+def test_source_reconciliation_requires_the_wage_under_one_of_its_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _post_clone_frame(monkeypatch)
+    person = result.table("person").drop(
+        columns=[US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN]
+    )
+    gate = us_prior_year_income_source_reconciliation_gate(
+        module._replace_person_table(result, person)
+    )
+    assert not gate.passed
+    assert gate.details["missing_outputs"] == [US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN]
+
+
+@pytest.mark.parametrize(
+    ("value", "label"),
+    [(-1.0, "negative"), (np.nan, "nonfinite"), (np.inf, "nonfinite")],
+)
+def test_signal_gate_refuses_an_invalid_auxiliary_wage(
+    value: float, label: str
+) -> None:
+    frame = _signal_frame()
+    person = frame.table("person").copy()
+    person[US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN] = np.where(
+        np.arange(len(person)) < 40, 25_000.0, 0.0
+    )
+    valid = us_prior_year_income_signal_gate(
+        module._replace_person_table(frame, person)
+    )
+    assert valid.passed, valid.failures
+    assert valid.details["unique_counts"][US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN] == 2
+    assert valid.details[f"{US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN}_positive_share"] > 0
+
+    person.loc[3, US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN] = value
+    gate = us_prior_year_income_signal_gate(module._replace_person_table(frame, person))
+    assert not gate.passed
+    assert gate.failures == (
+        f"{US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN} holds 1 {label} value(s).",
+    )
+
+
+def test_signal_gate_without_the_auxiliary_wage_reports_none_of_it() -> None:
+    """A stacked pool carries no auxiliary wage; the gate neither requires nor
+    reports it there."""
+
+    gate = us_prior_year_income_signal_gate(_signal_frame())
+    assert gate.passed, gate.failures
+    assert not any(
+        key.startswith(US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN) for key in gate.details
+    )
+    assert US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN not in gate.details["unique_counts"]
+
+
 def test_release_contract_promotes_both_persisted_inputs_without_wage_formula() -> None:
     manifest = load_release_input_coverage_manifest()
     for column in US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS:
@@ -601,6 +726,15 @@ def test_release_contract_promotes_both_persisted_inputs_without_wage_formula() 
         "previous_year_income_available",
     )
     assert "employment_income_last_year" not in manifest.required_columns
+    # The auxiliary wage is no engine input, and stacked pools lack it, so no
+    # release requirement names it.
+    assert US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS == (
+        US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN,
+    )
+    assert US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN not in (
+        US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS
+    )
+    assert US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN not in manifest.required_columns
 
     probe = next(
         probe

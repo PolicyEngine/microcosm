@@ -31,6 +31,10 @@ from microcosm.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
 )
 from microcosm.build.us_runtime.operator_boundary import _ACS_NATIVE_INPUT_CONTRACTS
+from microcosm.build.us_runtime.prior_year_income import (
+    US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN,
+    US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS,
+)
 from microcosm.build.us_runtime.scf_education_debt import (
     US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS,
 )
@@ -42,6 +46,7 @@ from microcosm.build.us_runtime.support_provenance import (
 )
 from microcosm.data.stored_inputs import (
     _US_ENTITIES,
+    US_AUXILIARY_STORED_COLUMNS,
     US_STORED_NON_VARIABLE_COLUMNS,
     CertifiedEngine,
     h5_stored_tables,
