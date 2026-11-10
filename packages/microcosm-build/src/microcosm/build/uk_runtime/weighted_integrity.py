@@ -1168,14 +1168,15 @@ def uk_input_mass_reference_payload(
     with, as the candidate does.
     """
 
-    from microcosm.build.uk_runtime.national_frame import (
-        load_uk_national_frame,
-        uk_release_export_frame,
-    )
+    from microcosm.build.uk_runtime.national_frame import uk_published_release_frame
+    from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
     from microcosm.build.uk_runtime.weight_year import uk_recorded_solve_year_frame
 
-    frame, _provenance = load_uk_national_frame(h5_path)
-    export = uk_release_export_frame(uk_recorded_solve_year_frame(frame))
+    # The row-wise reader opens both lines' files: the dense line's carries one
+    # ``clone_index`` name on every table, which the compact national loader
+    # refuses, and a national file carries none.
+    frame, _provenance = load_uk_rowwise_dataset(h5_path)
+    export = uk_published_release_frame(uk_recorded_solve_year_frame(frame))
     return {
         "schema_version": UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION,
         "kind": UK_INPUT_MASS_REFERENCE_KIND,

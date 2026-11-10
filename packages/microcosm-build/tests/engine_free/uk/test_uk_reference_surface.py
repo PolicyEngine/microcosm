@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.uk_runtime import national_frame, weight_year
+from microcosm.build.uk_runtime import national_frame, rowwise_dataset, weight_year
 from microcosm.build.uk_runtime.cut_reference import (
     UK_CUT_REFERENCE_INPUT_MASS_NAME,
     UK_CUT_REFERENCE_SURFACE_NAME,
@@ -111,7 +111,7 @@ def test_the_payload_flags_inputs_by_how_many_source_households_carry_them(
 ) -> None:
     frame = _reference_frame()
     monkeypatch.setattr(
-        national_frame, "load_uk_national_frame", lambda path: (frame, None)
+        rowwise_dataset, "load_uk_rowwise_dataset", lambda path: (frame, None)
     )
     # The test frame records no solve; the real one is put back at its own
     # solved weights by the factor its mass log records.
@@ -156,3 +156,82 @@ def test_the_evidence_is_done_only_when_both_files_name_the_build(
 
     surface.write_text(json.dumps(_payload()))
     assert uk_cut_reference_evidence_done(reference, tmp_path)[0]
+
+
+def test_the_evidence_reads_a_dense_line_file(tmp_path: Path) -> None:
+    """A dense build's file carries one ``clone_index`` name on every table,
+    which the national loader refuses; the reference evidence opens it."""
+
+    pytest.importorskip("tables")
+    from microcosm.build.uk_runtime import (
+        clone_uk_dataset_tables_with_rowwise_geography,
+        write_uk_rowwise_dataset,
+    )
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        uk_input_mass_reference_payload,
+    )
+
+    result = clone_uk_dataset_tables_with_rowwise_geography(
+        person=pd.DataFrame(
+            {
+                "person_id": [1001, 2001, 2002, 3001],
+                "person_household_id": [1, 2, 2, 3],
+                "person_benunit_id": [101, 201, 201, 301],
+                "employment_income": [5.0, 9.0, 11.0, 7.0],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [101, 201, 301]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2, 3],
+                "household_source_id": [11, 12, 13],
+                "household_weight": [10.0, 20.0, 30.0],
+                "region": ["LONDON", "WALES", "LONDON"],
+            }
+        ),
+        crosswalk=pd.DataFrame(
+            [
+                {
+                    "oa_code": "E0001",
+                    "lsoa_code": "E0101",
+                    "msoa_code": "E0201",
+                    "la_code": "E06000063",
+                    "constituency_code": "E14000001",
+                    "region_code": "E12000007",
+                    "country": "England",
+                    "population": 100,
+                },
+                {
+                    "oa_code": "W0001",
+                    "lsoa_code": "W0101",
+                    "msoa_code": "W0201",
+                    "la_code": "W06000001",
+                    "constituency_code": "W07000041",
+                    "region_code": "W99999999",
+                    "country": "Wales",
+                    "population": 80,
+                },
+            ]
+        ),
+        source_year=2024,
+    )
+    path = write_uk_rowwise_dataset(result, tmp_path / "dense.h5")
+    with pytest.raises(ValueError):
+        national_frame.load_uk_national_frame(path)
+
+    surface = uk_reference_surface_payload(
+        path,
+        label="microcosm-uk-2024-25-dense@uk-local-candidate-test",
+        sha256=SHA,
+        engine=_StubEngine({"employment_income": 0.0}),
+    )
+    assert surface["populated_inputs"] == ["employment_income"]
+    assert "household.household_clone_index" in surface["export_columns"]
+    mass = uk_input_mass_reference_payload(
+        path,
+        label="microcosm-uk-2024-25-dense@uk-local-candidate-test",
+        filename="dense.h5",
+        revision="uk-local-candidate-test",
+        sha256=SHA,
+    )
+    assert "employment_income" in mass["totals"]

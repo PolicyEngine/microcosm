@@ -74,6 +74,7 @@ __all__ = [
     "uk_household_mass_conservation_receipt",
     "uk_time_period",
     "validate_uk_national_frame",
+    "uk_published_release_frame",
     "uk_release_export_frame",
     "write_uk_national_frame",
 ]
@@ -1050,6 +1051,50 @@ def uk_release_export_frame(frame: Frame) -> Frame:
         isa_income_contract=uk_isa_income_contract(frame),
         savings_income_projection=uk_savings_income_projection(frame),
     )
+
+
+def uk_published_release_frame(frame: Frame) -> Frame:
+    """A published release file read back, through today's export boundary.
+
+    A cut compares with the current build of its line (microcosm#1095), whose
+    file already left through the export boundary of its own build: a dense
+    file carries the consumers' area-code names (microcosm#1114), which
+    :func:`uk_release_export_frame` refuses on a frame it is to rename. Those
+    names go back to the ladder's first, so the boundary writes them again and
+    the reference leaves with today's drops and names, exactly as the
+    candidate does. A national file carries none and only takes the drops.
+    """
+
+    from .geography_ladder import UK_EXPORT_AREA_CODE_COLUMNS
+
+    household = frame.table("household")
+    published = {
+        export: ladder
+        for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items()
+        if export in household.columns
+    }
+    shadowed = sorted(
+        ladder for ladder in published.values() if ladder in household.columns
+    )
+    if shadowed:
+        raise ValueError(
+            "A published release file carries both the ladder and the consumer "
+            f"names of the area code(s) {shadowed}; it did not leave through "
+            "the export boundary."
+        )
+    if published:
+        frame = uk_national_frame(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=household.rename(columns=published),
+            time_period=uk_time_period(frame),
+            weight_kind=uk_household_weight_kind(frame),
+            household_weights=frame.weights_for("household").values,
+            mass_log=frame.mass_log,
+            isa_income_contract=uk_isa_income_contract(frame),
+            savings_income_projection=uk_savings_income_projection(frame),
+        )
+    return uk_release_export_frame(frame)
 
 
 def write_uk_national_frame(frame: Frame, path: str | Path) -> Path:

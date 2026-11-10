@@ -77,8 +77,7 @@ def uk_reference_surface_payload(
 
     from microcosm.build.uk_runtime.national_frame import (
         _uk_gate_surface,
-        load_uk_national_frame,
-        uk_release_export_frame,
+        uk_published_release_frame,
     )
     from microcosm.build.uk_runtime.receipt_counts import (
         UK_DISCLOSURE_FLOOR,
@@ -90,6 +89,7 @@ def uk_reference_surface_payload(
         load_uk_release_input_coverage_manifest,
         uk_effective_input_signal,
     )
+    from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
     from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
     from microcosm.build.uk_runtime.weight_year import uk_recorded_solve_year_frame
 
@@ -97,8 +97,11 @@ def uk_reference_surface_payload(
         engine = PolicyEngineUKCoverageEngine()
     floor = load_uk_release_input_coverage_manifest().effective_mass_coverage
     floor = floor.minimum_nondefault_mass_share
-    frame, _provenance = load_uk_national_frame(h5_path)
-    export = uk_release_export_frame(uk_recorded_solve_year_frame(frame))
+    # The row-wise reader opens both lines' files (the dense line's carries
+    # one ``clone_index`` name on every table, which the national loader
+    # refuses).
+    frame, _provenance = load_uk_rowwise_dataset(h5_path)
+    export = uk_published_release_frame(uk_recorded_solve_year_frame(frame))
     surface = _uk_gate_surface(export)
     schema = export.schema
     household = surface.household
