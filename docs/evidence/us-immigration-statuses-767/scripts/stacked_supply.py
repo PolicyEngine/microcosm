@@ -57,9 +57,10 @@ and TPS draws only:
   ``take`` from free mass ``available`` stays free with probability about
   ``1 - take / available``. Refugee, asylee and withholding draws take only
   ``OTHER_NON_CITIZEN`` rows, which PUMS cannot show, so the estimate leaves
-  their takes out. Those takes can only lower a later draw's share, and they
-  lower it only once its free supply falls below its residual, as TPS
-  Venezuela's does.
+  their takes out. Those takes can only lower a later draw's share, up to
+  the weight of the one tie group that crosses its residual, and they lower
+  it by more than that only once its free supply falls below its residual,
+  as TPS Venezuela's does.
 
 The output holds aggregates only.
 """
