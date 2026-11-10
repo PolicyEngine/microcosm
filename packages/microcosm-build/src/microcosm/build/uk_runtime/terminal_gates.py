@@ -201,6 +201,20 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.itl2_code",
     "household.itl3_code",
     "household.ward_code",
+    # New since the current builds (national eeb6093e, dense 38605444); each
+    # leaves once a promotion moves the reference past it (microcosm#1095).
+    # microcosm#1550 (microcosm#1095, P1): the PIP points the pip_points stage
+    # draws within the stored award, from which the engine derives the
+    # categories.
+    "person.pip_dl_points",
+    "person.pip_m_points",
+    # microcosm#1550 (microcosm#1439): the trading allowance claim status and
+    # the full-relief group's carrier.
+    "person.trading_allowance_claim_status",
+    "person.trading_allowance_full_relief",
+    # microcosm#1550 (microcosm#1095, Y1): the UC limited capability flags.
+    "person.uc_limited_capability_for_WRA",
+    "person.uc_limited_capability_for_work",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

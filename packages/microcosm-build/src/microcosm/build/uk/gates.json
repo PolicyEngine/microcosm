@@ -1324,7 +1324,13 @@
           "household.itl1_code",
           "household.itl2_code",
           "household.itl3_code",
-          "household.ward_code"
+          "household.ward_code",
+          "person.pip_dl_points",
+          "person.pip_m_points",
+          "person.trading_allowance_claim_status",
+          "person.trading_allowance_full_relief",
+          "person.uc_limited_capability_for_WRA",
+          "person.uc_limited_capability_for_work"
         ],
         "reviewed_exclusions": {
           "household.property_wealth": "policyengine-uk derives property_wealth from main_residence_value, other_residential_property_value and non_residential_property_value; a persisted copy overrides that sum and has no uprating index, so the candidate must drop it (microcosm#1106, the uk-data#543 defect).",
