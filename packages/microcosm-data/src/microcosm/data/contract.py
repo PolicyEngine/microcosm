@@ -998,8 +998,16 @@ _UK_CERTIFICATION_PART_EVIDENCE_FILES: Mapping[str, str] = {
     "calibration_seam": "terminal_gates.json",
     "release_cut": "release_cut_gates.json",
 }
-_UK_CERTIFICATION_SCORE_RECEIPT_FILE = "score_vs_enhanced_frs.json"
-_UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
+#: The head-to-head receipt against the cut's reference, the current
+#: national build (microcosm#1095); certification schema 1 named
+#: ``score_vs_enhanced_frs.json``, a strict score against the enhanced FRS.
+#: Only new builds are validated (the assemblers call this contract), at the
+#: spec they are assembled under, so schema 1 has no path here.
+_UK_CERTIFICATION_SCORE_RECEIPT_FILE = "score_vs_reference.json"
+_UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 2
+_UK_CERTIFICATION_REFERENCE_FIELDS = frozenset(
+    {"release", "build", "filename", "sha256", "built_with_model_package"}
+)
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
 _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
@@ -1156,6 +1164,8 @@ _UK_CERTIFICATION_REQUIRED_FIELDS = frozenset(
         # The spine whose stage receipts the release cut measured, bound by
         # the certifier to the parent the calibration recorded.
         "parent_spine",
+        # The current national build the cut was compared with.
+        "reference",
         "parts",
         "spec",
         "doctrine",
@@ -3499,6 +3509,35 @@ def _check_uk_release_certification(
             f"{file} release_id {certification.get('release_id')!r} does not "
             f"match the release under validation ({release_id!r})."
         )
+    reference = certification.get("reference")
+    if (
+        not isinstance(reference, Mapping)
+        or set(reference) != _UK_CERTIFICATION_REFERENCE_FIELDS
+    ):
+        failures.append(
+            f"{file} reference must name the build the cut was compared with: "
+            f"exactly {sorted(_UK_CERTIFICATION_REFERENCE_FIELDS)}."
+        )
+    else:
+        package = reference.get("built_with_model_package")
+        if (
+            reference.get("release") != _UK_NATIONAL_RELEASE_ID
+            or not isinstance(reference.get("build"), str)
+            or not reference.get("build")
+            or not isinstance(reference.get("filename"), str)
+            or not reference.get("filename")
+            or not isinstance(reference.get("sha256"), str)
+            or not _SHA256_RE.fullmatch(reference.get("sha256"))
+            or not isinstance(package, Mapping)
+            or set(package) != {"name", "version"}
+            or package.get("name") != "policyengine-uk"
+            or not isinstance(package.get("version"), str)
+        ):
+            failures.append(
+                f"{file} reference must be a build of {_UK_NATIONAL_RELEASE_ID} "
+                "with its file name, sha256 digest and built-with "
+                "policyengine-uk version."
+            )
     parent_spine = certification.get("parent_spine")
     parent_sha = (
         parent_spine.get("sha256") if isinstance(parent_spine, Mapping) else None

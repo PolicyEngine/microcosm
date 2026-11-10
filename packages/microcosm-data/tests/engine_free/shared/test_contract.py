@@ -1808,9 +1808,7 @@ def _write_uk_national_release_dir(tmp_path: Path) -> Path:
     (national / "release_cut_gates.json").write_text(
         json.dumps({"fixture": "release_cut"})
     )
-    (national / "score_vs_enhanced_frs.json").write_text(
-        json.dumps({"fixture": "score"})
-    )
+    (national / "score_vs_reference.json").write_text(json.dumps({"fixture": "score"}))
     certification = _green_uk_certification(
         TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
         release_id=UK_NATIONAL_RELEASE_ID,
@@ -1820,7 +1818,7 @@ def _write_uk_national_release_dir(tmp_path: Path) -> Path:
             "calibration_seam": _sha256(national / "terminal_gates.json"),
             "release_cut": _sha256(national / "release_cut_gates.json"),
         },
-        score_receipt_sha256=_sha256(national / "score_vs_enhanced_frs.json"),
+        score_receipt_sha256=_sha256(national / "score_vs_reference.json"),
     )
     certification_path = national / "release_certification.json"
     certification_path.write_text(json.dumps(certification))
@@ -6060,7 +6058,7 @@ def _green_uk_certification(
             "statuses": {"passed": len(scope)},
         }
     certification = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "uk_release_certification",
         "country": "uk",
         "release_id": release_id,
@@ -6071,6 +6069,16 @@ def _green_uk_certification(
             "size_bytes": 1,
         },
         "parent_spine": {"sha256": "a" * 64},
+        "reference": {
+            "release": "microcosm-uk-2024-25-national",
+            "build": "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e",
+            "filename": "microcosm_uk_2024_25.h5",
+            "sha256": "9" * 64,
+            "built_with_model_package": {
+                "name": "policyengine-uk",
+                "version": "2.174.1",
+            },
+        },
         "parts": parts,
         "spec": {
             "gates_manifest_sha256": contract._UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
@@ -6086,7 +6094,7 @@ def _green_uk_certification(
         "doctrine": {"payload": {"epochs": 1500}, "overrides": {}},
         "diagnostics_sha256": diagnostics_sha256,
         "score_receipt": {
-            "filename": "score_vs_enhanced_frs.json",
+            "filename": "score_vs_reference.json",
             "sha256": score_receipt_sha256,
         },
         "exclusions_evaluated_on": "2026-08-27",
@@ -6192,6 +6200,32 @@ def test_uk_release_certification_refusals(monkeypatch) -> None:
     del certification["score_receipt"]
     assert any(
         "exactly the certification fields" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    # Schema 2 names the build the cut was compared with (microcosm#1095);
+    # a schema-1 certification against the enhanced FRS no longer validates.
+    certification = _green_uk_certification(key)
+    del certification["reference"]
+    assert any(
+        "exactly the certification fields" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+    for broken in (
+        {"release": "microcosm-uk-2024-25-dense"},
+        {"sha256": "not-a-digest"},
+        {"built_with_model_package": {"name": "policyengine-us", "version": "1"}},
+    ):
+        certification = _green_uk_certification(key)
+        certification["reference"].update(broken)
+        assert any(
+            "reference must be a build of" in line
+            for line in _certification_failures(certification, monkeypatch, key)
+        ), broken
+    certification = _green_uk_certification(key)
+    certification["schema_version"] = 1
+    assert any(
+        "schema_version must be the integer 2" in line
         for line in _certification_failures(certification, monkeypatch, key)
     )
 

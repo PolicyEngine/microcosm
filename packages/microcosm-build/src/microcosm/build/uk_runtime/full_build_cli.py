@@ -825,18 +825,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="National role only: allow a Ledger artifact whose feed commit is not the committed Chronicle pin.",
     )
     parser.add_argument(
-        "--incumbent-h5",
+        "--reference-h5",
         type=Path,
-        help="National role only: the incumbent dataset the finished candidate is evaluated against.",
+        help=(
+            "National role only: the current national build the finished "
+            "candidate is compared with (microcosm#1095)."
+        ),
     )
     parser.add_argument(
-        "--incumbent-sha256",
-        help="National role only: the incumbent's SHA-256, verified before it is read.",
-    )
-    parser.add_argument(
-        "--incumbent-label",
-        default="enhanced_frs_2024_25",
-        help="National role only: the incumbent's label in the score receipt.",
+        "--reference-record",
+        type=Path,
+        help=(
+            "National role only: the cut's record of that build "
+            "(tools/resolve_uk_reference.py), checked against the file."
+        ),
     )
     parser.add_argument(
         "--logbook-prev-row-digest",
@@ -3194,7 +3196,7 @@ def _execute_national_build(
         "chronicle_provenance": dict(registry_document["chronicle_provenance"]),
     }
     record["inputs"] = inputs
-    record["incumbent"] = national_role.incumbent_arguments(args)
+    record["reference"] = national_role.reference_arguments(args)
     # 3. The solve and the seam battery, evaluated in the graph.
     stage(
         telemetry,
@@ -3528,7 +3530,7 @@ def _close_national_attempt(
     """Stage the published bundle, evaluate, close the telemetry, spool the row.
 
     The seam's order: the manifest and the staged bundle's hand-over first,
-    then the incumbent evaluation, which waits for no upload and runs before
+    then the comparison with the reference, which waits for no upload and runs before
     the telemetry completes, then the build record and the manifest rewritten
     with the delivery summary and the sums refreshed. The build record is
     rewritten after the hand-over, so the bundle the emitter holds keeps the
@@ -3556,9 +3558,9 @@ def _close_national_attempt(
         )
         staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
-        evaluation = national_role.evaluate_against_incumbent(
+        evaluation = national_role.evaluate_against_reference(
             args,
-            incumbent=record.get("incumbent"),
+            reference=record.get("reference"),
             inputs=record["inputs"],
             output_paths=paths,
             telemetry=telemetry,

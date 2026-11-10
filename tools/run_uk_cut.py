@@ -19,6 +19,14 @@ its outputs for inspection; nothing here deletes a spine, a calibration run
 or a release directory. Re-run ``all`` after fixing the cause; a failed
 national run is moved aside only with ``--retry-national``.
 
+The cut checks and certifies its candidate against the current build of the
+national line, as the Hub's ``releases.json`` names it (microcosm#1095). The
+``reference`` step resolves it once per cut, into ``<cut>/reference/`` with
+its record; every later step reads that record, so a promotion while the cut
+runs does not change what it is compared with. ``--re-resolve-reference``
+sets the cut's reference aside and resolves the current build again; the
+score and the certification then run again against it.
+
 Outward-facing steps are opt-in. ``--publish`` publishes for inspection
 only, always with ``--no-latest --tag-only``, so the repository's main
 branch and its ``latest-*.json`` pointers never move. Promotion and the
@@ -53,6 +61,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Protocol
+
+from microcosm.build.uk_runtime.cut_reference import (
+    UK_CUT_REFERENCE_RECORD_NAME,
+    UKCutReference,
+    check_uk_cut_reference,
+    fetch_uk_cut_reference,
+    read_uk_cut_reference,
+    verify_uk_cut_reference_file,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UK_DIR = REPO_ROOT / "packages/microcosm-build/src/microcosm/build/uk"
@@ -166,21 +183,10 @@ def committed_source_pins(uk_dir: Path = UK_DIR) -> dict[str, dict[str, Any]]:
     return pins
 
 
-def _gate_reference_identity(uk_dir: Path) -> Mapping[str, str]:
-    gates = json.loads((uk_dir / "gates.json").read_text())
-    entries = gates["gates"] if isinstance(gates, Mapping) else gates
-    for entry in entries:
-        if entry.get("gate") == "input_mass_parity":
-            params = entry["parameters"]
-            return params["reference_registry"][params["reference"]]["identity"]
-    raise CutError("gates.json declares no input_mass_parity reference identity.")
-
-
 #: The ``*_pin`` selectors a source may carry, each naming the committed pin
 #: a field is read from. Any other ``*_pin`` is refused, never ignored.
 PIN_SELECTORS: Mapping[str, frozenset[str]] = {
     "archive_sha256_pin": frozenset({"frs_release"}),
-    "revision_pin": frozenset({"gates:input_mass_parity"}),
     "path_in_repo_pin": frozenset({"chronicle_feed"}),
 }
 
@@ -208,7 +214,6 @@ def load_input_sources(
     stage_pins = committed_source_pins(uk_dir)
     feed = json.loads((uk_dir / "chronicle_feed.json").read_text())
     frs_release = json.loads((uk_dir / "frs_release.json").read_text())
-    reference = _gate_reference_identity(uk_dir)
     extra = manifest.get("file_pins", {})
     sources: list[InputSource] = []
     for raw in manifest["sources"]:
@@ -230,13 +235,6 @@ def load_input_sources(
                     "consumer_facts.jsonl": feed["facts_sha256"],
                 }[member]
                 files.append(PinnedFile(member, digest))
-            elif key == "incumbent_efrs":
-                if member != reference["filename"]:
-                    raise CutError(
-                        f"incumbent member {member} is not the gate's "
-                        f"reference {reference['filename']}."
-                    )
-                files.append(PinnedFile(member, reference["sha256"]))
             elif member in extra:
                 files.append(PinnedFile(member, extra[member]["sha256"]))
             elif member in stage_pins:
@@ -255,8 +253,6 @@ def load_input_sources(
                 raise CutError(
                     "frs_2024_25 revision disagrees with uk/frs_release.json."
                 )
-        if raw.get("revision_pin") == "gates:input_mass_parity":
-            revision = reference["revision"]
         if raw["kind"] == "url" and not url:
             raise CutError(f"{key}: the pin carries no https URL.")
         sources.append(
@@ -605,6 +601,21 @@ class CutPaths:
         return self.cut / "national"
 
     @property
+    def reference_dir(self) -> Path:
+        return self.cut / "reference"
+
+    @property
+    def reference_record(self) -> Path:
+        return self.reference_dir / UK_CUT_REFERENCE_RECORD_NAME
+
+    def reference_h5(self, reference: UKCutReference) -> Path:
+        return self.reference_dir / reference.filename
+
+    @property
+    def score_receipt(self) -> Path:
+        return self.run_dir / "score_vs_reference.json"
+
+    @property
     def candidate_h5(self) -> Path:
         return self.run_dir / f"{CANDIDATE_NAME}.h5"
 
@@ -675,11 +686,11 @@ def national_argv(
     python: str,
     spine_sha256: str,
     sources: Mapping[str, InputSource],
+    reference: UKCutReference,
     dry_run: bool,
     logbook_prev_row_digest: str | None = None,
 ) -> list[str]:
     chronicle = {pin.name: pin.sha256 for pin in sources["chronicle_uk"].files}
-    incumbent = sources["incumbent_efrs"].files[0]
     argv = [
         python,
         str(REPO_ROOT / "tools/build_uk_full.py"),
@@ -689,8 +700,8 @@ def national_argv(
         "--ledger-facts", str(paths.inputs / "chronicle_uk"),
         "--ledger-facts-sha256", chronicle["consumer_facts.jsonl"],
         "--ledger-manifest-sha256", chronicle["manifest.json"],
-        "--incumbent-h5", str(paths.input_file("incumbent", incumbent.name)),
-        "--incumbent-sha256", incumbent.sha256,
+        "--reference-h5", str(paths.reference_h5(reference)),
+        "--reference-record", str(paths.reference_record),
         # The build otherwise submits its graph to the public Orrery whenever
         # staging is remote; the graph files stay in the run directory.
         "--no-publish-orrery",
@@ -704,20 +715,19 @@ def national_argv(
 
 
 def score_argv(
-    paths: CutPaths, *, python: str, candidate_sha256: str, sources: Mapping
+    paths: CutPaths, *, python: str, candidate_sha256: str, reference: UKCutReference
 ) -> list[str]:
-    incumbent = sources["incumbent_efrs"].files[0]
     return [
         python,
         str(REPO_ROOT / "tools/score_uk_national_candidate.py"),
         "--candidate-h5", str(paths.candidate_h5),
         "--candidate-sha256", candidate_sha256,
-        "--incumbent-h5", str(paths.input_file("incumbent", incumbent.name)),
-        "--incumbent-sha256", incumbent.sha256,
+        "--reference-h5", str(paths.reference_h5(reference)),
+        "--reference-record", str(paths.reference_record),
         "--registry-json", str(paths.run_dir / "national_target_registry.json"),
         "--band-edge-registry-json",
         str(paths.run_dir / "national_contract_registry.json"),
-        "--output-json", str(paths.run_dir / "score_vs_incumbent.json"),
+        "--output-json", str(paths.score_receipt),
     ]  # fmt: skip
 
 
@@ -749,7 +759,8 @@ def certify_argv(
         "--ledger-manifest-sha256", chronicle["manifest.json"],
         "--input-mass-reference",
         str(paths.input_file("input_mass_reference", reference.name)),
-        "--score-receipt", str(paths.run_dir / "score_vs_incumbent.json"),
+        "--score-receipt", str(paths.score_receipt),
+        "--reference-record", str(paths.reference_record),
         "--release-id", RELEASE_ID,
     ]  # fmt: skip
     if logbook_prev_row_digest:
@@ -771,7 +782,7 @@ def assemble_argv(paths: CutPaths, *, python: str) -> list[str]:
         str(paths.run_dir / f"{CANDIDATE_NAME}.terminal_gates.json"),
         "--release-cut-gate-json",
         str(paths.run_dir / f"{CANDIDATE_NAME}.release_cut_gates.json"),
-        "--score-receipt", str(paths.run_dir / "score_vs_incumbent.json"),
+        "--score-receipt", str(paths.score_receipt),
         "--out-dir", "releases",
     ]  # fmt: skip
 
@@ -869,19 +880,51 @@ def candidate_sha256(paths: CutPaths) -> str:
     return str(record["artifacts"]["staging_h5"]["sha256"])
 
 
-def score_done(paths: CutPaths) -> tuple[bool, str]:
-    """The fields the certifier reads: the scored candidate and the verdict."""
+def reference_done(paths: CutPaths) -> tuple[bool, str]:
+    """The cut's reference: a record, and the file it names."""
 
-    receipt = _read_json(paths.run_dir / "score_vs_incumbent.json")
+    if not paths.reference_record.exists():
+        return False, "no reference yet"
+    try:
+        reference = read_uk_cut_reference(paths.reference_record)
+        verify_uk_cut_reference_file(reference, paths.reference_h5(reference))
+    except ValueError as error:
+        return False, str(error)
+    return True, f"compared with {reference.label}"
+
+
+def cut_reference(paths: CutPaths) -> UKCutReference:
+    """The reference the cut recorded; a step that needs it refuses without it."""
+
+    done, detail = reference_done(paths)
+    if not done:
+        raise CutError(f"the cut has no usable reference: {detail}.")
+    return read_uk_cut_reference(paths.reference_record)
+
+
+def _names_the_reference(record: object, reference: UKCutReference) -> bool:
+    return isinstance(record, Mapping) and (
+        record.get("release"),
+        record.get("build"),
+        record.get("sha256"),
+    ) == (reference.release, reference.build, reference.sha256)
+
+
+def score_done(paths: CutPaths) -> tuple[bool, str]:
+    """The fields the certifier reads: the candidate and the reference scored."""
+
+    receipt = _read_json(paths.score_receipt)
     if receipt is None:
         return False, "no score receipt"
     scored = ((receipt.get("artifacts") or {}).get("candidate") or {}).get("sha256")
     if scored != candidate_sha256(paths):
         return False, "score receipt names another candidate"
-    verdict = (receipt.get("evaluation") or {}).get("verdict")
-    if verdict != "passed":
-        return False, f"score verdict is {verdict!r}"
-    return True, "score passed"
+    if (receipt.get("evaluation") or {}).get("schema_version") != 2:
+        return False, "score receipt is not a head-to-head with the reference"
+    reference = cut_reference(paths)
+    if not _names_the_reference(receipt.get("reference"), reference):
+        return False, "score receipt compared with another reference"
+    return True, f"compared with {reference.label}"
 
 
 def certify_done(paths: CutPaths) -> tuple[bool, str]:
@@ -892,6 +935,8 @@ def certify_done(paths: CutPaths) -> tuple[bool, str]:
         return False, "certification is not shippable"
     if (cert.get("candidate") or {}).get("sha256") != candidate_sha256(paths):
         return False, "certification names another candidate"
+    if not _names_the_reference(cert.get("reference"), cut_reference(paths)):
+        return False, "certification names another reference"
     return True, "certified shippable"
 
 
@@ -1467,6 +1512,47 @@ def run_spine(runner: Runner, *, staging_local_only: bool, retry: bool = False) 
         raise CutError(f"the spine finished but is not usable: {detail}")
 
 
+def run_reference(
+    runner: Runner, *, re_resolve: bool = False, hub_download=None
+) -> UKCutReference:
+    """Resolve the current national build once per cut, and keep its record."""
+
+    paths = runner.paths
+    if re_resolve and paths.reference_dir.exists():
+        aside = paths.reference_dir.with_name(
+            f"reference.superseded-{datetime.now(UTC):%Y%m%dT%H%M%S%fZ}"
+        )
+        paths.reference_dir.rename(aside)
+        runner.log(f"[reference] kept the earlier reference as {aside.name}")
+    done, detail = reference_done(paths)
+    if done:
+        runner.log(f"[reference] done: {detail}")
+        return read_uk_cut_reference(paths.reference_record)
+    if paths.reference_dir.exists():
+        raise CutError(
+            f"{paths.reference_dir} holds an unusable reference ({detail}); pass "
+            "--re-resolve-reference to set it aside and resolve the current "
+            "build again."
+        )
+    runner.record("reference", status="running", started_at=_now())
+    try:
+        reference = fetch_uk_cut_reference(
+            RELEASE_ID, paths.reference_dir, hub_download=hub_download
+        )
+    except ValueError as error:
+        runner.record("reference", status="failed", error=str(error)[:600])
+        raise CutError(f"the cut has no reference to compare with: {error}") from error
+    runner.record(
+        "reference",
+        status="done",
+        finished_at=_now(),
+        reference=reference.label,
+        sha256=reference.sha256,
+    )
+    runner.log(f"[reference] compared with {reference.label} ({reference.sha256})")
+    return reference
+
+
 def run_national(
     runner: Runner, *, retry: bool, logbook_prev_row_digest: str | None
 ) -> None:
@@ -1493,6 +1579,7 @@ def run_national(
         python=runner.python,
         spine_sha256=spine,
         sources=runner.sources,
+        reference=cut_reference(paths),
         logbook_prev_row_digest=logbook_prev_row_digest,
     )
     dry_run = runner.state()["steps"].get("national-dry-run", {})
@@ -1511,19 +1598,19 @@ def run_score(runner: Runner) -> None:
         runner.log(f"[score] done: {detail}")
         return
     runner.log(f"[score] re-scoring the candidate ({detail})")
-    _set_aside(runner, "score", paths.run_dir / "score_vs_incumbent.json")
+    _set_aside(runner, "score", paths.score_receipt)
     runner.run(
         "score",
         score_argv(
             paths,
             python=runner.python,
             candidate_sha256=candidate_sha256(paths),
-            sources=runner.sources,
+            reference=cut_reference(paths),
         ),
     )
     done, detail = score_done(paths)
     if not done:
-        raise CutError(f"the candidate does not pass the incumbent score: {detail}")
+        raise CutError(f"the comparison with the reference is not usable: {detail}")
 
 
 def national_logbook_row(paths: CutPaths) -> str:
@@ -1591,6 +1678,10 @@ def stage1_done(paths: CutPaths, previous_h5: Path) -> tuple[bool, str]:
 def run_stage1(runner: Runner, previous_h5: Path | None) -> None:
     paths = runner.paths
     output = paths.diagnostics / "stage1_comparison.json"
+    if previous_h5 is None and reference_done(paths)[0]:
+        # The interim stage-1 comparison (microcosm#1276) is with the cut's
+        # own reference unless the operator names another file.
+        previous_h5 = paths.reference_h5(cut_reference(paths))
     if previous_h5 is not None:
         done, detail = stage1_done(paths, previous_h5)
         if done:
@@ -1600,8 +1691,8 @@ def run_stage1(runner: Runner, previous_h5: Path | None) -> None:
     if previous_h5 is None:
         runner.record("stage1", status="skipped", reason="no --previous-h5")
         runner.log(
-            "[stage1] skipped: pass --previous-h5 <promoted cut's H5> for the "
-            "interim stage-1 comparison (diagnostic; microcosm#1276)"
+            "[stage1] skipped: the cut has no reference; pass --previous-h5 for "
+            "the interim stage-1 comparison (diagnostic; microcosm#1276)"
         )
         return
     paths.diagnostics.mkdir(parents=True, exist_ok=True)
@@ -1712,6 +1803,11 @@ def write_receipt(runner: Runner, extra: Mapping[str, Any]) -> None:
             }
             for source in runner.sources.values()
         },
+        "reference": (
+            read_uk_cut_reference(paths.reference_record).to_record()
+            if paths.reference_record.exists()
+            else None
+        ),
         "spine_sha256": spine_sha256(paths),
         "candidate_sha256": candidate_sha256(paths)
         if (paths.run_dir / "build_record.json").exists()
@@ -1779,7 +1875,19 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
         help="move an unfinished spine attempt aside and build a fresh one",
     )
     parser.add_argument("--retry-national", action="store_true")
-    parser.add_argument("--previous-h5", type=Path, help="for the stage-1 comparison")
+    parser.add_argument(
+        "--previous-h5",
+        type=Path,
+        help="for the stage-1 comparison; by default the cut's reference",
+    )
+    parser.add_argument(
+        "--re-resolve-reference",
+        action="store_true",
+        help=(
+            "set the cut's reference aside and compare with the national "
+            "line's current build again"
+        ),
+    )
     parser.add_argument(
         "--logbook-prev-row-digest",
         help=(
@@ -1860,9 +1968,10 @@ def preflight(args: argparse.Namespace, paths: CutPaths) -> list[Check]:
     return checks
 
 
-def status(paths: CutPaths) -> None:
+def status(paths: CutPaths, *, check_current=None) -> None:
     print(f"cut {paths.cut}")
     for name, check in (
+        ("reference", reference_done),
         ("spine", spine_done),
         ("national", national_done),
         ("score", score_done),
@@ -1874,6 +1983,24 @@ def status(paths: CutPaths) -> None:
         except Exception as error:  # an earlier step is missing
             done, detail = False, f"not reached ({type(error).__name__})"
         print(f"  {'done' if done else 'todo'} {name}: {detail}")
+    if paths.reference_record.exists():
+        print(f"  {_current_build_note(paths, check_current)}")
+
+
+def _current_build_note(paths: CutPaths, check_current=None) -> str:
+    """Whether the national line's current build has moved since the fetch."""
+
+    recorded = read_uk_cut_reference(paths.reference_record)
+    try:
+        current = (check_current or check_uk_cut_reference)(RELEASE_ID)
+    except Exception as error:  # the Hub's answer is only a note here
+        return f"note: could not read the current build ({type(error).__name__})"
+    if current.get("build") == recorded.build:
+        return "note: the reference is still the current national build"
+    return (
+        f"note: the current national build is now {current.get('build')}; this "
+        f"cut compares with {recorded.build} (--re-resolve-reference to move it)"
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1922,6 +2049,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "preflight":
             return 0
         runner = Runner(paths=paths, sources=sources)
+        run_reference(runner, re_resolve=args.re_resolve_reference)
         run_spine(
             runner, staging_local_only=not args.spine_telemetry, retry=args.retry_spine
         )

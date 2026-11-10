@@ -464,9 +464,10 @@ def _stage_and_finalize(
             "release_cut_gates.json",
         ),
         "spine_gates": (spine_report_path, "spine_gates.json"),
-        "score_vs_enhanced_frs": (
+        # The head-to-head with the reference (microcosm#1095).
+        "score_vs_reference": (
             args.score_receipt,
-            "score_vs_enhanced_frs.json",
+            "score_vs_reference.json",
         ),
     }
 
@@ -553,8 +554,8 @@ def _stage_and_finalize(
                         "spine report",
                     ),
                     (
-                        "score_vs_enhanced_frs",
-                        evidence["score_vs_enhanced_frs"],
+                        "score_vs_reference",
+                        evidence["score_vs_reference"],
                         "score receipt",
                     ),
                 )

@@ -12,9 +12,12 @@ diagnostics -> candidate bytes). A candidate's shippability verdict comes
 only from the certification this driver writes.
 
 The battery always runs at release-candidate strictness: evidence_absent
-gaps block. The rule-1 score receipt is cross-pinned into the certification
-(the audit's third carried defect), so the score is signed run evidence
-rather than a null slot.
+gaps block. The head-to-head score receipt is cross-pinned into the
+certification (the audit's third carried defect), so the comparison is signed
+run evidence rather than a null slot. The certification names the reference
+the cut was compared with, the current national build the cut recorded
+(``--reference-record``, microcosm#1095), and refuses a receipt measured
+against any other.
 """
 
 from __future__ import annotations
@@ -372,6 +375,7 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         spine_sidecar=sidecar,
         build_record=build_record,
         score_receipt_path=args.score_receipt,
+        reference_record=json.loads(args.reference_record.read_text()),
         exclusions_evaluated_on=evaluated_on,
         certification_path=args.certification_json,
     )
@@ -408,6 +412,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--ledger-manifest-sha256", required=True, type=_sha256)
     parser.add_argument("--input-mass-reference", required=True, type=Path)
     parser.add_argument("--score-receipt", required=True, type=Path)
+    parser.add_argument(
+        "--reference-record",
+        required=True,
+        type=Path,
+        help="The cut's record of the reference it was compared with.",
+    )
     parser.add_argument("--release-id", required=True)
     parser.add_argument("--release-cut-gate-json", type=Path)
     parser.add_argument("--certification-json", type=Path)
@@ -429,6 +439,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--release-cut-gate-json": args.release_cut_gate_json,
         "--certification-json": args.certification_json,
         "--score-receipt": args.score_receipt,
+        "--reference-record": args.reference_record,
     }
     resolved: dict[Path, str] = {}
     for flag, path in distinct.items():

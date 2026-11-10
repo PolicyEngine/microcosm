@@ -45,7 +45,6 @@ def test_every_declared_input_resolves_to_a_committed_pin():
         "hmrc_personal_incomes_ods",
         "chronicle_uk",
         "input_mass_reference",
-        "incumbent_efrs",
     }
     for source in sources.values():
         assert source.files
@@ -80,10 +79,6 @@ def test_the_runner_pins_are_the_build_pins():
     assert sources["frs_2024_25"].revision == frs["huggingface_revision"]
     assert sources["frs_2024_25"].archive_sha256 == frs["zip_sha256"]
     assert sources["frs_2024_25"].filename == frs["zip_filename"]
-    identity = cut._gate_reference_identity(cut.UK_DIR)
-    incumbent = sources["incumbent_efrs"]
-    assert incumbent.revision == identity["revision"]
-    assert incumbent.files[0].sha256 == identity["sha256"]
     stage_pins = cut.committed_source_pins()
     for key in (
         "frs_2024_25",
@@ -190,6 +185,40 @@ def _paths(tmp_path: Path) -> cut.CutPaths:
     return cut.CutPaths(tmp_path, "test", "a" * 40)
 
 
+REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+
+
+def _reference(paths: cut.CutPaths, *, build: str = REFERENCE_BUILD, data=b"ref"):
+    """Put a reference and its record in the cut, as the reference step does."""
+
+    from microcosm.build.uk_runtime.cut_reference import (
+        UKCutReference,
+        write_uk_cut_reference,
+    )
+
+    reference = UKCutReference(
+        release=cut.RELEASE_ID,
+        build=build,
+        repo_id=cut.PUBLISH_REPO,
+        path_in_repo=f"releases/{cut.RELEASE_ID}/{build}/microcosm_uk_2024_25.h5",
+        filename="microcosm_uk_2024_25.h5",
+        sha256=_sha(data),
+        size_bytes=len(data),
+        built_with_model_package={"name": "policyengine-uk", "version": "2.174.1"},
+        built_with_core_package={"name": "policyengine-core", "version": "3.33.3"},
+        evidence={
+            "key": "release_certification",
+            "filename": "release_certification.json",
+            "sha256": "1" * 64,
+        },
+        resolved_at="2026-11-10T12:00:00Z",
+    )
+    paths.reference_dir.mkdir(parents=True, exist_ok=True)
+    paths.reference_h5(reference).write_bytes(data)
+    write_uk_cut_reference(paths.reference_record, reference)
+    return reference
+
+
 def test_spine_argv_parses():
     from microcosm.build.uk_runtime import spine_build
 
@@ -206,11 +235,14 @@ def test_national_argv_parses(tmp_path, dry_run):
     from microcosm.build.uk_runtime import full_build_cli
 
     sources = {s.key: s for s in cut.load_input_sources()}
+    paths = _paths(tmp_path)
+    reference = _reference(paths)
     argv = cut.national_argv(
-        _paths(tmp_path),
+        paths,
         python="py",
         spine_sha256="b" * 64,
         sources=sources,
+        reference=reference,
         dry_run=dry_run,
         logbook_prev_row_digest="c" * 64,
     )
@@ -218,6 +250,9 @@ def test_national_argv_parses(tmp_path, dry_run):
     assert args.release_role == "national"
     assert args.dry_run is dry_run
     assert args.input_sha256 == "b" * 64
+    # The build compares its candidate with the cut's own reference.
+    assert args.reference_h5 == paths.reference_h5(reference)
+    assert args.reference_record == paths.reference_record
 
 
 @pytest.mark.parametrize("dry_run", [True, False])
@@ -228,11 +263,13 @@ def test_the_national_build_never_publishes_to_the_orrery(tmp_path, dry_run):
     from microcosm.build.uk_runtime.orrery_publication import publication_enabled
 
     sources = {s.key: s for s in cut.load_input_sources()}
+    paths = _paths(tmp_path)
     argv = cut.national_argv(
-        _paths(tmp_path),
+        paths,
         python="py",
         spine_sha256="b" * 64,
         sources=sources,
+        reference=_reference(paths),
         dry_run=dry_run,
     )
     assert "--publish-orrery" not in argv
@@ -258,6 +295,8 @@ def test_certify_and_assemble_argv_parse(tmp_path):
         )[2:]
     )
     assert certify.release_id == cut.RELEASE_ID
+    assert certify.reference_record == paths.reference_record
+    assert certify.score_receipt == paths.score_receipt
     assemble = _tool("assemble_uk_release_dir")._parse_args(
         cut.assemble_argv(paths, python="py")[2:]
     )
@@ -265,9 +304,9 @@ def test_certify_and_assemble_argv_parse(tmp_path):
 
 
 def test_score_argv_names_only_flags_the_scorer_declares(tmp_path, capsys):
-    sources = {s.key: s for s in cut.load_input_sources()}
+    paths = _paths(tmp_path)
     argv = cut.score_argv(
-        _paths(tmp_path), python="py", candidate_sha256="f" * 64, sources=sources
+        paths, python="py", candidate_sha256="f" * 64, reference=_reference(paths)
     )
     with pytest.raises(SystemExit):
         _tool("score_uk_national_candidate").main(["--help"])
@@ -513,12 +552,17 @@ class FakeBuild:
         (run / "logbook-spool").mkdir()
         (run / "logbook-spool" / f"{BUILD_ROW}.json").write_text("{}")
 
+    def _reference(self) -> dict:
+        record = json.loads(self.paths.reference_record.read_text())
+        return {key: record[key] for key in ("release", "build", "sha256")}
+
     def score(self, log_path):
-        (self.paths.run_dir / "score_vs_incumbent.json").write_text(
+        self.paths.score_receipt.write_text(
             json.dumps(
                 {
                     "artifacts": {"candidate": {"sha256": _sha(b"candidate")}},
-                    "evaluation": {"verdict": "passed"},
+                    "reference": self._reference(),
+                    "evaluation": {"schema_version": 2},
                 }
             )
         )
@@ -529,7 +573,11 @@ class FakeBuild:
             self._report(shippable=True)
         )
         (run / f"{cut.CANDIDATE_NAME}.release_certification.json").write_text(
-            self._report(shippable=True, candidate={"sha256": _sha(b"candidate")})
+            self._report(
+                shippable=True,
+                candidate={"sha256": _sha(b"candidate")},
+                reference=self._reference(),
+            )
         )
 
     def assemble(self, log_path):
@@ -544,8 +592,10 @@ class FakeBuild:
         pass
 
 
-def _runner(tmp_path, fake=None, signer=None):
+def _runner(tmp_path, fake=None, signer=None, *, reference=True):
     paths = _paths(tmp_path)
+    if reference:
+        _reference(paths)
     fake = fake or FakeBuild(paths, signer=signer)
     sources = {s.key: s for s in cut.load_input_sources()}
     runner = cut.Runner(
@@ -664,25 +714,60 @@ def test_retrying_the_national_run_keeps_the_failed_attempt(tmp_path):
     assert len(aside) == 1 and (aside[0] / "evidence.json").read_text() == "kept"
 
 
-def test_a_losing_candidate_is_not_certified(tmp_path):
-    runner, fake = _runner(tmp_path)
+def test_a_candidate_that_fits_worse_than_its_reference_is_certified(tmp_path):
+    """The comparison is a report (microcosm#1095): no loss decides the cut."""
 
-    def failing_score(log_path):
-        (runner.paths.run_dir / "score_vs_incumbent.json").write_text(
+    runner, fake = _runner(tmp_path)
+    original_score = fake.score
+
+    def worse_score(log_path):
+        original_score(log_path)
+        receipt = json.loads(runner.paths.score_receipt.read_text())
+        receipt["evaluation"]["losses"] = {
+            "candidate_full_loss": 0.5,
+            "reference_full_loss": 0.01,
+        }
+        runner.paths.score_receipt.write_text(json.dumps(receipt))
+
+    _all(runner)
+    runner.paths.score_receipt.unlink()
+    fake.score = worse_score
+    cut.run_score(runner)
+    assert cut.score_done(runner.paths)[0]
+
+
+def test_a_comparison_with_another_reference_is_redone_then_refused(tmp_path):
+    runner, fake = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+
+    def other_reference_score(log_path):
+        runner.paths.score_receipt.write_text(
             json.dumps(
                 {
                     "artifacts": {"candidate": {"sha256": _sha(b"candidate")}},
-                    "evaluation": {"verdict": "failed"},
+                    "reference": {
+                        "release": cut.RELEASE_ID,
+                        "build": "x",
+                        "sha256": "0" * 64,
+                    },
+                    "evaluation": {"schema_version": 2},
                 }
             )
         )
 
-    fake.score = failing_score
-    cut.run_spine(runner, staging_local_only=True)
-    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
-    with pytest.raises(cut.CutError, match="does not pass the incumbent score"):
+    fake.score = other_reference_score
+    with pytest.raises(cut.CutError, match="another reference"):
         cut.run_score(runner)
     assert "certify" not in fake.calls
+
+
+def test_a_cut_without_a_reference_builds_nothing_that_compares(tmp_path):
+    runner, fake = _runner(tmp_path, reference=False)
+    cut.run_spine(runner, staging_local_only=True)
+    with pytest.raises(cut.CutError, match="no usable reference"):
+        cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    assert fake.calls == ["spine"]
 
 
 @given(
@@ -762,10 +847,10 @@ def test_retried_score_and_certification_keep_the_earlier_evidence(tmp_path):
     runner, fake = _runner(tmp_path)
     cut.run_spine(runner, staging_local_only=True)
     cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
-    receipt = runner.paths.run_dir / "score_vs_incumbent.json"
-    receipt.write_text('{"evaluation": {"verdict": "failed"}}')
+    receipt = runner.paths.score_receipt
+    receipt.write_text('{"evaluation": {"schema_version": 1, "verdict": "failed"}}')
     cut.run_score(runner)
-    kept = list(runner.paths.run_dir.glob("score_vs_incumbent.json.superseded-*"))
+    kept = list(runner.paths.run_dir.glob("score_vs_reference.json.superseded-*"))
     assert len(kept) == 1 and "failed" in kept[0].read_text()
     certification = (
         runner.paths.run_dir / f"{cut.CANDIDATE_NAME}.release_certification.json"
@@ -1025,7 +1110,7 @@ def test_the_signing_key_reaches_only_the_steps_that_sign_or_verify(
     cut.run_spine(runner, staging_local_only=True)
     cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
     # Make the score step run, so its environment is seen too.
-    (runner.paths.run_dir / "score_vs_incumbent.json").unlink(missing_ok=True)
+    runner.paths.score_receipt.unlink(missing_ok=True)
     cut.run_score(runner)
     cut.run_certify(runner)
     cut.run_assemble(runner)
@@ -1165,3 +1250,132 @@ def test_an_unexpected_hub_error_says_what_it_was(hub, monkeypatch):
     (check,) = cut.hub_checks()
     assert not check.ok
     assert check.detail == "RuntimeError: the emitter's spool is locked"
+
+
+# --------------------------------------------------------------------------- #
+# The reference: the current national build, resolved once per cut            #
+# --------------------------------------------------------------------------- #
+
+
+def _reference_hub(tmp_path):
+    from test_support.microcosm_build.uk_cut_reference import (
+        UK_NATIONAL_RELEASE,
+        UKReferenceHub,
+    )
+
+    hub = UKReferenceHub(tmp_path / "hub-root")
+    hub.publish(UK_NATIONAL_RELEASE, REFERENCE_BUILD, dataset=b"current build")
+    return hub
+
+
+def test_the_reference_is_resolved_once_and_kept(tmp_path):
+    runner, _ = _runner(tmp_path, reference=False)
+    hub = _reference_hub(tmp_path)
+
+    reference = cut.run_reference(runner, hub_download=hub)
+
+    assert reference.build == REFERENCE_BUILD
+    assert runner.paths.reference_h5(reference).read_bytes() == b"current build"
+    assert cut.reference_done(runner.paths)[0]
+    state = json.loads(runner.paths.state.read_text())["steps"]["reference"]
+    assert state["status"] == "done" and state["reference"] == reference.label
+    # A promotion after the fetch moves nothing in this cut.
+    hub.publish(cut.RELEASE_ID, "uk-frs-calibration-attempt-later", dataset=b"newer")
+    calls = len(hub.calls)
+    assert cut.run_reference(runner, hub_download=hub).build == REFERENCE_BUILD
+    assert len(hub.calls) == calls
+
+
+def test_re_resolving_sets_the_reference_aside_and_moves_to_the_current_build(
+    tmp_path,
+):
+    runner, _ = _runner(tmp_path, reference=False)
+    hub = _reference_hub(tmp_path)
+    cut.run_reference(runner, hub_download=hub)
+    hub.publish(cut.RELEASE_ID, "uk-frs-calibration-attempt-later", dataset=b"newer")
+
+    reference = cut.run_reference(runner, re_resolve=True, hub_download=hub)
+
+    assert reference.build == "uk-frs-calibration-attempt-later"
+    kept = list(runner.paths.cut.glob("reference.superseded-*"))
+    assert len(kept) == 1 and (kept[0] / "reference.json").exists()
+
+
+def test_an_unusable_reference_is_never_resolved_over(tmp_path):
+    runner, _ = _runner(tmp_path)
+    runner.paths.reference_h5(cut.cut_reference(runner.paths)).write_bytes(b"x")
+    with pytest.raises(cut.CutError, match="--re-resolve-reference"):
+        cut.run_reference(runner, hub_download=_reference_hub(tmp_path))
+
+
+def test_a_hub_without_a_certified_current_build_stops_the_cut(tmp_path):
+    from test_support.microcosm_build.uk_cut_reference import UKReferenceHub
+
+    runner, _ = _runner(tmp_path, reference=False)
+    hub = UKReferenceHub(tmp_path / "hub-root")
+    hub.publish(
+        cut.RELEASE_ID,
+        REFERENCE_BUILD,
+        dataset=b"current build",
+        evidence={"kind": "uk_release_certification", "shippable": False},
+    )
+    with pytest.raises(cut.CutError, match="no reference to compare with"):
+        cut.run_reference(runner, hub_download=hub)
+    state = json.loads(runner.paths.state.read_text())["steps"]["reference"]
+    assert state["status"] == "failed"
+
+
+def test_a_certification_against_another_reference_is_not_done(tmp_path):
+    runner, _ = _runner(tmp_path)
+    _all(runner)
+    assert cut.certify_done(runner.paths)[0]
+    _reference(runner.paths, build="uk-frs-calibration-attempt-later", data=b"other")
+    assert cut.score_done(runner.paths) == (
+        False,
+        "score receipt compared with another reference",
+    )
+    assert cut.certify_done(runner.paths) == (
+        False,
+        "certification names another reference",
+    )
+
+
+def test_stage1_compares_with_the_cut_reference_by_default(tmp_path):
+    runner, fake = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    seen = {}
+
+    def stage1(argv, cwd, log_path, env):
+        seen["argv"] = argv
+        return 0
+
+    runner.execute = stage1
+    cut.run_stage1(runner, None)
+    reference = cut.cut_reference(runner.paths)
+    assert f"previous={runner.paths.reference_h5(reference)}" in seen["argv"]
+
+
+def test_status_says_when_the_current_build_has_moved(tmp_path):
+    runner, _ = _runner(tmp_path)
+    out = io.StringIO()
+    with redirect_stdout(out):
+        cut.status(runner.paths, check_current=lambda release: {"build": "later"})
+    text = out.getvalue()
+    assert f"done reference: compared with {cut.RELEASE_ID}@{REFERENCE_BUILD}" in text
+    assert "the current national build is now later" in text
+    out = io.StringIO()
+    with redirect_stdout(out):
+        cut.status(
+            runner.paths, check_current=lambda release: {"build": REFERENCE_BUILD}
+        )
+    assert "still the current national build" in out.getvalue()
+
+
+def test_the_receipt_records_the_reference(tmp_path):
+    runner, _ = _runner(tmp_path)
+    _all(runner)
+    cut.write_receipt(runner, {"tag": "t", "published": False})
+    receipt = json.loads(runner.paths.receipt.read_text())
+    assert receipt["reference"]["build"] == REFERENCE_BUILD
+    assert "incumbent_efrs" not in receipt["inputs"]

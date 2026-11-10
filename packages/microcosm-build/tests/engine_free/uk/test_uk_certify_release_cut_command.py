@@ -35,7 +35,8 @@ def test_certifier_pins_carry_the_byte_sizes_the_logbook_digest_requires(
         "build_record.json",
         "terminal_gates.json",
         "input_mass_reference.json",
-        "score_vs_incumbent.json",
+        "score_vs_reference.json",
+        "reference.json",
     ):
         placeholders[name] = tmp_path / name
         placeholders[name].write_text("{}")
@@ -78,7 +79,9 @@ def test_certifier_pins_carry_the_byte_sizes_the_logbook_digest_requires(
                 "--input-mass-reference",
                 str(placeholders["input_mass_reference.json"]),
                 "--score-receipt",
-                str(placeholders["score_vs_incumbent.json"]),
+                str(placeholders["score_vs_reference.json"]),
+                "--reference-record",
+                str(placeholders["reference.json"]),
                 "--release-id",
                 "microcosm-uk-2024-25-national",
                 "--release-cut-gate-json",
@@ -146,7 +149,12 @@ def test_certifier_refuses_a_spine_that_is_not_the_candidates_recorded_parent(
     ledger = tmp_path / "ledger"
     ledger.mkdir()
     (ledger / "consumer_facts.jsonl").write_text('{"fact": 1}\n')
-    for name in ("terminal_gates.json", "input_mass_reference.json", "score.json"):
+    for name in (
+        "terminal_gates.json",
+        "input_mass_reference.json",
+        "score.json",
+        "reference.json",
+    ):
         (tmp_path / name).write_text("{}")
     monkeypatch.setattr(certify, "resolve_predecessor", lambda digest: None)
     monkeypatch.setattr(certify, "record_terminal_attempt", lambda **kwargs: None)
@@ -180,6 +188,8 @@ def test_certifier_refuses_a_spine_that_is_not_the_candidates_recorded_parent(
                 str(tmp_path / "input_mass_reference.json"),
                 "--score-receipt",
                 str(tmp_path / "score.json"),
+                "--reference-record",
+                str(tmp_path / "reference.json"),
                 "--release-id",
                 "microcosm-uk-2024-25-national",
                 "--release-cut-gate-json",

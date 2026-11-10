@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -40,7 +41,9 @@ __all__ = [
     "UK_CUT_REFERENCE_RELEASES",
     "UK_CUT_REFERENCE_SCHEMA_VERSION",
     "UKCutReference",
+    "UK_CUT_REFERENCE_RECORD_NAME",
     "check_uk_cut_reference",
+    "fetch_uk_cut_reference",
     "read_uk_cut_reference",
     "resolve_uk_cut_reference",
     "verify_uk_cut_reference_file",
@@ -49,6 +52,8 @@ __all__ = [
 
 UK_CUT_REFERENCE_KIND = "uk_cut_reference"
 UK_CUT_REFERENCE_SCHEMA_VERSION = 1
+#: The record's file name beside the reference's dataset in a cut.
+UK_CUT_REFERENCE_RECORD_NAME = "reference.json"
 
 #: Each line's registry variant and the build evidence its fetch reads.
 UK_CUT_REFERENCE_RELEASES: Mapping[str, tuple[str, str]] = {
@@ -420,3 +425,41 @@ def verify_uk_cut_reference_file(reference: UKCutReference, path: str | Path) ->
             f"{reference.label} has {reference.sha256}."
         )
     return source
+
+
+def fetch_uk_cut_reference(
+    release: str,
+    output_dir: str | Path,
+    *,
+    hub_download: _HubDownload | None = None,
+    now: Callable[[], datetime] | None = None,
+) -> UKCutReference:
+    """Resolve the current build of ``release`` into ``output_dir``, once.
+
+    Copies the verified dataset there and writes its record beside it
+    (:data:`UK_CUT_REFERENCE_RECORD_NAME`). Refuses a directory that already
+    holds a record, so a run keeps the reference it started with.
+    """
+
+    directory = Path(output_dir)
+    record_path = directory / UK_CUT_REFERENCE_RECORD_NAME
+    if record_path.exists():
+        raise ValueError(
+            f"{directory} already holds a reference ({record_path}); a run keeps "
+            "the reference it started with. Use a new directory to resolve again."
+        )
+    source, reference = resolve_uk_cut_reference(
+        release, hub_download=hub_download, now=now
+    )
+    directory.mkdir(parents=True, exist_ok=True)
+    destination = directory / reference.filename
+    partial = destination.with_name(destination.name + ".partial")
+    shutil.copyfile(source, partial)
+    try:
+        verify_uk_cut_reference_file(reference, partial)
+    except ValueError:
+        partial.unlink(missing_ok=True)
+        raise
+    partial.replace(destination)
+    write_uk_cut_reference(record_path, reference)
+    return reference

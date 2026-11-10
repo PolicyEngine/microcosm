@@ -24,20 +24,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from microcosm.build.uk_runtime.cut_reference import (
+    UK_CUT_REFERENCE_RECORD_NAME,
     UK_CUT_REFERENCE_RELEASES,
     check_uk_cut_reference,
-    resolve_uk_cut_reference,
-    verify_uk_cut_reference_file,
-    write_uk_cut_reference,
+    fetch_uk_cut_reference,
 )
-
-REFERENCE_RECORD_NAME = "reference.json"
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -54,23 +50,12 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 def fetch_reference(release: str, output_dir: Path, *, hub_download=None) -> dict:
     """Download the current build of ``release`` into ``output_dir``."""
 
-    record_path = output_dir / REFERENCE_RECORD_NAME
-    if record_path.exists():
-        raise ValueError(
-            f"{output_dir} already holds a reference ({record_path}); a run keeps "
-            "the reference it started with. Use a new directory to resolve again."
-        )
-    source, reference = resolve_uk_cut_reference(release, hub_download=hub_download)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    destination = output_dir / reference.filename
-    shutil.copyfile(source, destination)
-    verify_uk_cut_reference_file(reference, destination)
-    write_uk_cut_reference(record_path, reference)
+    reference = fetch_uk_cut_reference(release, output_dir, hub_download=hub_download)
     return {
         "reference": reference.label,
         "sha256": reference.sha256,
-        "dataset": str(destination),
-        "record": str(record_path),
+        "dataset": str(output_dir / reference.filename),
+        "record": str(output_dir / UK_CUT_REFERENCE_RECORD_NAME),
     }
 
 

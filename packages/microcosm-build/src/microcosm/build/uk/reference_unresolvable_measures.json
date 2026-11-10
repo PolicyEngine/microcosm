@@ -1,0 +1,5 @@
+{
+  "schema_version": 3,
+  "description": "Measures a reference build is known not to carry, scoped per reference (microcosm#1095): each key is a reference's <release>@<build>, and each entry under it, keyed entity.variable, lets a target bound through that measure be pruned from BOTH arms of the head-to-head comparison on the common surface (microcosm#823). An unlisted unresolvable measure refuses the comparison rather than pruning. Entries under a build that is no longer the cut's reference are dormant. Every entry is a complete approval receipt in the reviewed-exclusion schema, in force from approved_on through expires_on.",
+  "references": {}
+}
