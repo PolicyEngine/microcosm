@@ -534,7 +534,7 @@ class UKNationalTargetKernel(_NationalKernel):
     # (frs_relationships) before it compiles. That check only refuses, so
     # test_uk_graph lists it refusal-only, and this kernel computes through
     # nothing its shared hash leaves out: it needs no hash of its own
-    # (microcosm#931 ruling 4).
+    # (microcosm#931, ruled 9 Nov (late)).
     ref = "uk.full.national_targets@1"
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -723,7 +723,7 @@ class UKNationalProblemKernel(_NationalKernel):
         # since the resolver reads zeros where a frame lacks the column. The
         # name lives in annuity_trust_column, which holds nothing else, so
         # this hash leaves frs_spine out, and an edit there does not re-solve
-        # the national line (microcosm#931 ruling 4).
+        # the national line (microcosm#931, ruled 9 Nov (late)).
         return hashlib.sha256(
             canonical_json(
                 {

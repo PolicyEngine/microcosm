@@ -237,8 +237,8 @@ OWNER_MANAGER_COLUMNS = (
 #: ANNUITY_AND_TRUST_INCOME_COLUMN, a calibration-only descriptor that the
 #: Table 3.7 other-income measure adds (microcosm#1428 review, finding 1). The
 #: descriptor's name lives in annuity_trust_column, which holds nothing else,
-#: so the nodes that read it key on it without keying on this module
-#: (microcosm#931 ruling 4).
+#: so the dense measures and the national problem, which read it, key on it
+#: without keying on this module (microcosm#931, ruled 9 Nov (late)).
 FRS_ANNUITY_AND_TRUST_PENSION_TYPES = (4, 5)
 #: Each person's company car from the FRS job tab, the four carriers the
 #: company_cars stage reads to set policyengine-uk's company car inputs

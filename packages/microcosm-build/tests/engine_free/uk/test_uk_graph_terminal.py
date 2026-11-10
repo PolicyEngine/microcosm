@@ -1574,7 +1574,7 @@ def test_each_gate_phase_refuses_a_stale_or_missing_phase_code(phase, code) -> N
     """Each full gate phase's node carries its own code, which the kernel
     checks before it evaluates anything (microcosm#931 ruling 6), through the
     check the spine gates share (gate_phase_codes.require_current_phase_code;
-    ruling 3)."""
+    microcosm#931, ruled 9 Nov (late))."""
     from types import SimpleNamespace
 
     from microcosm.build.uk_runtime.graph_terminal import (

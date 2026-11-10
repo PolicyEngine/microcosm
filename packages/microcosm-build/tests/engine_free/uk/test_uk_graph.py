@@ -1192,7 +1192,7 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
         "hashes, so no gate kernel's hash binds the module "
         "(test_no_uk_graph_kernel_hashes_the_phase_codes), and an edit that "
         "changes what source_hash returns changes the parameter and the check "
-        "alike (microcosm#931 ruling 3)"
+        "alike (microcosm#931, ruled 9 Nov (late))"
     ),
     (
         "microcosm.build.uk_runtime.ledger_targets",
@@ -1207,7 +1207,7 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
         "and the full build's target compilation and the national targets "
         "both reach it there, so neither computes through frs_relationships "
         "(test_the_household_type_check_refuses_before_the_targets_compile; "
-        "microcosm#931 ruling 4)"
+        "microcosm#931, ruled 9 Nov (late))"
     ),
 }
 #: Names a stage reads from a module that neither its node nor any node
@@ -2290,18 +2290,52 @@ def test_each_gate_battery_phase_keys_on_its_own_reach() -> None:
 def test_each_gate_kernel_checks_its_phase_code_first() -> None:
     """Each gate battery's kernel refuses a stale or missing ``<phase>_code``
     before it reads anything of its node but its parameters, as the stale-code
-    check's refusal-only reason says (microcosm#931 ruling 3): its run calls
-    gate_phase_codes.require_current_phase_code in a statement of its own, on
-    its node's parameters, the phase it evaluates and its own battery's table,
-    and no statement before that reads the context beyond its parameters (the
-    node's artifacts, sources and population). So the spine gates refuse a
-    stale code as the full gates do. A kernel that read a phase-code table
-    outside the check would compute through gate_phase_codes, which the
-    kernel rule's test would find unhashed, since the rule does not follow
-    the listed check."""
+    check's refusal-only reason says (microcosm#931, ruled 9 Nov (late)). Its
+    run calls gate_phase_codes.require_current_phase_code in a statement of
+    its own, on its node's parameters, the phase it evaluates and its own
+    battery's table. No statement before that reads the context beyond its
+    parameters (the node's artifacts, sources and population), returns or
+    yields, so every path through the run reaches the check or refuses
+    before it. The run binds ``phase`` once, from its node's parameter,
+    before the check, and never again, so the phase it evaluates is the phase
+    it checked. So the spine gates refuse a stale code as the full gates do.
+    A kernel that read a phase-code table outside the check would compute
+    through gate_phase_codes, which the kernel rule's test would find
+    unhashed, since the rule does not follow the listed check."""
     import ast
 
     from microcosm.build.uk_runtime import gate_phase_codes
+
+    nested = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef
+
+    def exits(node) -> bool:
+        """Whether ``node`` returns or yields, outside the functions, lambdas
+        and classes it defines."""
+
+        pending = [node]
+        while pending:
+            item = pending.pop()
+            if isinstance(item, ast.Return | ast.Yield | ast.YieldFrom):
+                return True
+            pending.extend(
+                child
+                for child in ast.iter_child_nodes(item)
+                if not isinstance(child, nested)
+            )
+        return False
+
+    def binds_phase(node) -> bool:
+        """Whether ``node`` binds or deletes the name ``phase``: an assignment
+        or loop target, an augmented or annotated assignment, a ``with`` or
+        walrus target, an exception handler, an import or a match capture."""
+
+        if isinstance(node, ast.Name):
+            return node.id == "phase" and isinstance(node.ctx, ast.Store | ast.Del)
+        if isinstance(node, ast.ExceptHandler | ast.MatchAs | ast.MatchStar):
+            return node.name == "phase"
+        if isinstance(node, ast.alias):
+            return (node.asname or node.name.partition(".")[0]) == "phase"
+        return False
 
     check = (gate_phase_codes.__name__, "require_current_phase_code")
     assert check in _REFUSAL_ONLY_HELPERS
@@ -2339,7 +2373,16 @@ def test_each_gate_kernel_checks_its_phase_code_first() -> None:
                 for sub in ast.walk(item)
                 if isinstance(sub, ast.Name) and sub.id == "context"
             ), (ref, ast.unparse(item))
-        # The phase the run evaluates is the one it checked.
+            assert not exits(item), (ref, ast.unparse(item))
+        # The phase the run evaluates is the one it checked: the run binds it
+        # once, before the check, anywhere in its body, nested scopes included.
+        bound = [
+            ast.unparse(item)
+            for item in run.body
+            for sub in ast.walk(item)
+            if binds_phase(sub)
+        ]
+        assert bound == ["phase = str(context.params['phase'])"], (ref, bound)
         evaluated = [
             sub
             for item in run.body[index + 1 :]
@@ -2357,14 +2400,49 @@ def test_each_gate_kernel_checks_its_phase_code_first() -> None:
         ), ref
 
 
+def test_the_phase_code_check_refuses_what_its_tables_leave_out() -> None:
+    """The stale-code check's two other branches (microcosm#931, ruled 9 Nov
+    (late)). A phase its battery's table leaves out computes through nothing
+    of its own, so its node passes carrying no ``<phase>_code`` and is
+    refused carrying one, whatever its value; a battery with no table is
+    refused. Both tables cover every phase their kernels run today, so no
+    gate node reaches either branch."""
+    from microcosm.build.uk_runtime.gate_phase_codes import (
+        UK_FULL_GATE_PHASE_CODE,
+        UK_SPINE_GATE_PHASE_CODE,
+        require_current_phase_code,
+    )
+
+    tables = {"spine": UK_SPINE_GATE_PHASE_CODE, "full": UK_FULL_GATE_PHASE_CODE}
+    for battery, other in (("spine", "full"), ("full", "spine")):
+        for phase, code in tables[other].items():
+            assert phase not in tables[battery], (battery, phase)
+            require_current_phase_code({"phase": phase}, phase, battery=battery)
+            for value in ("0" * 64, code()):
+                with pytest.raises(
+                    ValueError, match=f"UK {battery} gate {phase}-only code"
+                ):
+                    require_current_phase_code(
+                        {"phase": phase, f"{phase}_code": value},
+                        phase,
+                        battery=battery,
+                    )
+    for phase, code in UK_SPINE_GATE_PHASE_CODE.items():
+        with pytest.raises(ValueError, match="No UK gate battery 'local'"):
+            require_current_phase_code(
+                {"phase": phase, f"{phase}_code": code()}, phase, battery="local"
+            )
+
+
 def test_no_uk_graph_kernel_hashes_the_phase_codes() -> None:
     """The phase codes and their stale-code check live in gate_phase_codes,
     which no UK graph kernel's key covers, the gate kernels' implementation
-    hashes among them (microcosm#931 ruling 3a). A phase's own code reaches
-    its key through the ``<phase>_code`` parameter alone, so an edit to what
-    one phase alone computes through moves that parameter and re-keys no node
-    whose kernel hashes graph_evidence or graph_terminal, which define the
-    gate kernels, and neither of those carries the tables, the code
+    hashes among them (microcosm#931, ruled 9 Nov (late)). A phase's own code
+    reaches its key through the ``<phase>_code`` parameter alone, so an edit
+    to a phase's list in gate_phase_codes moves that parameter, which re-keys
+    that phase's node and every node after it, and moves no kernel's hash,
+    graph_evidence's and graph_terminal's hashers included: neither of those
+    modules, which define the gate kernels, carries the tables, the code
     functions or the check."""
     from microcosm.build.uk_runtime import (
         gate_phase_codes,
@@ -2400,8 +2478,8 @@ def test_no_uk_graph_kernel_hashes_the_phase_codes() -> None:
 
 
 def test_the_household_type_check_refuses_before_the_targets_compile() -> None:
-    """The household-type check's refusal-only reason (microcosm#931 ruling
-    4): ledger_targets' check is listed, its one caller is
+    """The household-type check's refusal-only reason (microcosm#931, ruled
+    9 Nov (late)): ledger_targets' check is listed, its one caller is
     compile_uk_target_registry, which calls it in a statement of its own, on
     the contract's targets, before the loop that compiles the references, and
     the full build's target compilation and the national targets both reach
@@ -2480,8 +2558,10 @@ def test_the_household_type_check_refuses_before_the_targets_compile() -> None:
 
 def test_every_reader_of_the_annuity_and_trust_column_hashes_its_module() -> None:
     """The annuity and trust column's name lives in annuity_trust_column,
-    which holds that name alone, and every module that reads it imports it
-    from there (microcosm#931 ruling 4). The measure resolver reads zeros
+    which holds that name alone, and every uk_runtime module that reads it
+    imports it from there, or reads it as an attribute of
+    annuity_trust_column itself, never of another module that imports it
+    (microcosm#931, ruled 9 Nov (late)). The measure resolver reads zeros
     where a frame lacks the column, so a renamed constant would change the
     measures without re-keying them, and the name cannot be listed as
     unbound. Every stage and kernel whose code reads it hashes the module:
@@ -2490,7 +2570,13 @@ def test_every_reader_of_the_annuity_and_trust_column_hashes_its_module() -> Non
     and the dense measures and the national problem, which compute through
     nothing in frs_spine, so their keys leave it out
     (test_uk_target_compile_modules holds both kernels' hashes to an edit to
-    either module)."""
+    either module). frs_spine itself is held as the household-type test holds
+    frs_relationships: every key that covers it is the create kernel's or a
+    spine stage's, and neither runs on the local or the national line on a
+    bound spine, whose root is the bound spine checkpoint, so an edit to
+    frs_spine re-keys no node of either line there."""
+    import ast
+
     from microcosm.build.uk_runtime import annuity_trust_column, frs_spine
 
     column = (annuity_trust_column.__name__, "ANNUITY_AND_TRUST_INCOME_COLUMN")
@@ -2507,6 +2593,17 @@ def test_every_reader_of_the_annuity_and_trust_column_hashes_its_module() -> Non
         facts = _module_definitions(name, _HELPER_SCOPE)
         assert column[1] not in facts.definitions, name
         assert facts.imports.get(column[1], column) == column, name
+        through = sorted(
+            ast.unparse(node)
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.Attribute)
+            and node.attr == column[1]
+            and not (
+                isinstance(node.value, ast.Name)
+                and facts.modules.get(node.value.id) == column[0]
+            )
+        )
+        assert not through, (name, through)
     stages = {
         stage: annuity_trust_column.__name__ in hashed
         for stage, (_, hashed, walk) in _stage_walks().items()
@@ -2528,6 +2625,16 @@ def test_every_reader_of_the_annuity_and_trust_column_hashes_its_module() -> Non
         assert frs_spine.__name__ not in walk.reach, label
         assert not [item for item in walk.stops if item[0] == frs_spine.__name__]
         assert frs_spine.__name__ not in key, label
+    keyed = sorted(
+        label
+        for walks in _kernel_rule_walks().values()
+        for label, (_, key) in walks.items()
+        if frs_spine.__name__ in key
+    )
+    assert "uk.create@1" in keyed, keyed
+    assert all(
+        label == "uk.create@1" or label.startswith("uk.stage.") for label in keyed
+    ), keyed
 
 
 def test_each_gate_battery_walks_the_engine_its_build_hands_it() -> None:

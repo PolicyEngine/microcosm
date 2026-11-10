@@ -337,7 +337,8 @@ _STAGE_HELPER_MODULES = {
     # annual income descriptors on frs_annual_income's share columns, and the
     # evidence shares iterate HMRC's distributional inputs. It zeros a drawn
     # row's annuity and trust descriptor, whose name it reads from
-    # annuity_trust_column, as the root does (microcosm#931 ruling 4).
+    # annuity_trust_column, as the root does (microcosm#931, ruled 9 Nov
+    # (late)).
     "hmrc_spi_income_spine": (
         spi_income,
         spi_rank_transport,
@@ -373,7 +374,7 @@ _STAGE_HELPER_MODULES = {
     # trace's digest, ages people by birth month, caps pension contributions
     # with their receipt, and codes council tax bands in the shared band order
     # (microcosm#931). It writes the annuity and trust descriptor under the
-    # name annuity_trust_column holds (microcosm#931 ruling 4).
+    # name annuity_trust_column holds (microcosm#931, ruled 9 Nov (late)).
     "frs_spine": (
         uc_relationships,
         annuity_trust_column,

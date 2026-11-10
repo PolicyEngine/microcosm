@@ -12,15 +12,18 @@ The four functions and two tables lived in ``graph_evidence`` and
 ``graph_terminal``, which define the gate kernels and which every spine
 stage kernel, the dense population kernels and the export kernels hash too,
 so an edit to a phase's list of modules re-keyed every node whose kernel
-hashes either file. They moved here unchanged in what they hash, with the
-one check both batteries call (microcosm#931 ruling 3a). Only the graph
-construction, which sets each node's parameter, and that check read this
-module. The check is listed refusal-only in test_uk_graph, and no kernel
-hashes this module: a phase's own code reaches its key through the
-parameter, which node_key hashes, and both gate kernels' runs call
-:func:`require_current_phase_code` before they evaluate anything, so a node
-whose parameter differs from the code this process computes is refused
-(microcosm#931 ruling 3b, for the spine gates).
+hashes either file, and every node after one. They moved here unchanged in
+what they hash, with the one check both batteries call (microcosm#931,
+ruled 9 Nov (late)). Only the graph construction, which sets each node's
+parameter, and that check read this module. The check is listed
+refusal-only in test_uk_graph, and no kernel hashes this module: a phase's
+own code reaches its key through the parameter, which node_key hashes, and
+both gate kernels' runs call :func:`require_current_phase_code` before they
+evaluate anything, so a node whose parameter differs from the code this
+process computes is refused whenever its kernel runs; the spine gates'
+refusal was ruled on 9 Nov (late) too. A record stored under the node's key
+is reused without running the kernel, so the check does not guard a cache
+hit.
 """
 
 from __future__ import annotations
@@ -322,17 +325,20 @@ def require_current_phase_code(
     params: Mapping[str, object], phase: str, *, battery: str
 ) -> None:
     """Refuse a gate node unless its ``<phase>_code`` parameter is its phase's
-    own code as this process computes it (microcosm#931 ruling 3).
+    own code as this process computes it (microcosm#931, ruled 9 Nov (late)).
 
     ``battery`` is ``"spine"`` or ``"full"``, the battery whose table holds the
     phase's code (:data:`UK_SPINE_GATE_PHASE_CODE`,
     :data:`UK_FULL_GATE_PHASE_CODE`); a phase its table leaves out computes
     through nothing of its own, and its node must carry no parameter. The
-    graph construction sets the parameter and node_key hashes it, so a node
-    declared in another process, or replayed from a stored graph, with a stale
-    or missing parameter is refused before its kernel evaluates anything. The
-    check reads only its arguments and the phase's code, and writes nothing,
-    so it cannot change what its caller computes: test_uk_graph lists it as
+    graph construction sets the parameter, and node_key hashes it. A node
+    with a stale or missing parameter, one declared in another process for
+    instance, is refused whenever its kernel runs, before the kernel
+    evaluates anything, so no gate evaluates its phase under a key that names
+    other phase code. A record stored under the node's key is reused without
+    running the kernel, so the check does not guard a cache hit. The check
+    reads only its arguments and the phase's code, and writes nothing, so it
+    cannot change what its caller computes: test_uk_graph lists it as
     refusal-only, and no gate kernel's hash binds this module.
     """
     tables = {"spine": UK_SPINE_GATE_PHASE_CODE, "full": UK_FULL_GATE_PHASE_CODE}

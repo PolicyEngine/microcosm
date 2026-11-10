@@ -797,7 +797,7 @@ class UKFullGateKernel(KernelBase):
     checks before it evaluates anything
     (:data:`.gate_phase_codes.UK_FULL_GATE_PHASE_CODE`,
     :func:`.gate_phase_codes.require_current_phase_code`; microcosm#931
-    rulings 3 and 6).
+    ruling 6, and the module as ruled on 9 Nov (late)).
     """
 
     ref = "uk.full-gates@1"

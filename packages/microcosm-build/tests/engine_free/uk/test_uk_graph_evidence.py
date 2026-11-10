@@ -620,10 +620,13 @@ def _spine_gate_context(phase: str, **changes):
 def test_each_spine_gate_phase_refuses_a_stale_or_missing_phase_code(phase, code):
     """Each spine gate phase's node carries its own code, which the kernel
     checks before it reads anything of its node but its parameters, as the
-    full gates check theirs (microcosm#931 ruling 3b): a graph declaration
-    replayed from another process cannot key a spine gate on stale phase
-    code. The node's own declared code passes the check, and the kernel goes
-    on to read its artifacts."""
+    full gates check theirs (microcosm#931, ruled 9 Nov (late)): a spine gate
+    node whose ``<phase>_code`` is stale or missing is refused whenever it
+    runs, and no spine gate evaluates its phase under a key that names other
+    phase code. A record stored under the node's key is reused without
+    running the kernel, so the check does not guard a cache hit. The node's
+    own declared code passes the check, and the kernel goes on to read its
+    artifacts."""
     kernel, declared = _spine_gate_context(phase)
     with pytest.raises(_ArtifactReadError):
         kernel.run(declared)

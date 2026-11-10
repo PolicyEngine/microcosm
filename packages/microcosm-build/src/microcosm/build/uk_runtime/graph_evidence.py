@@ -358,9 +358,12 @@ class UKSpineGateKernel(KernelBase):
     module, as for ``stochastic_assignment`` and ``take_up_contract``. The
     kernel refuses a stale or missing ``<phase>_code`` before it evaluates
     anything, as the full gates do
-    (:func:`.gate_phase_codes.require_current_phase_code`; microcosm#931
-    ruling 3b), so a graph declaration replayed from another process cannot
-    key a spine gate on stale phase code.
+    (:func:`.gate_phase_codes.require_current_phase_code`; microcosm#931,
+    ruled 9 Nov (late)), so a spine gate node whose ``<phase>_code`` is stale
+    or missing is refused whenever it runs, and no spine gate evaluates its
+    phase under a key that names other phase code. A record stored under the
+    node's key is reused without running the kernel, so the check does not
+    guard a cache hit.
     """
 
     ref = "uk.spine-gates@1"
@@ -454,8 +457,8 @@ class UKSpineGateKernel(KernelBase):
             )
         # The phase's own code keys the node through its parameter, not this
         # kernel's hash, so a node whose parameter is stale or missing is
-        # refused before anything is read or evaluated (microcosm#931 ruling
-        # 3b), as the full gates refuse theirs.
+        # refused before anything is read or evaluated (microcosm#931, ruled
+        # 9 Nov (late)), as the full gates refuse theirs.
         require_current_phase_code(context.params, phase, battery="spine")
         release_candidate = bool(context.params["release_candidate"])
         synthetic_smoke = bool(context.params["synthetic_smoke"])

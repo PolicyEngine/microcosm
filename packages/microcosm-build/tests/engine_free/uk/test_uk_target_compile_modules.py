@@ -323,9 +323,9 @@ def test_an_edit_to_frs_spine_or_frs_relationships_leaves_the_kernels_keys(
     tmp_path, monkeypatch, kernel, module, edited_module
 ):
     """No target or problem kernel hashes frs_spine or frs_relationships
-    (microcosm#931 ruling 4). The dense measures and the national problem
-    read nothing of frs_spine's but the annuity and trust column's name,
-    which lives in annuity_trust_column. The target compilation and the
+    (microcosm#931, ruled 9 Nov (late)). The dense measures and the national
+    problem read nothing of frs_spine's but the annuity and trust column's
+    name, which lives in annuity_trust_column. The target compilation and the
     national targets reach the ONS household type domain only through
     ledger_targets' household-type check, which only refuses and is listed
     refusal-only in test_uk_graph. So on a bound spine an edit to either file
@@ -348,7 +348,7 @@ def test_an_edit_to_the_annuity_and_trust_column_rekeys_the_measures(
     """The measure resolver reads zeros where a frame lacks the annuity and
     trust column, so a renamed constant would change the measures without
     re-keying them: the dense measures and the national problem hash the
-    column's module (microcosm#931 ruling 4)."""
+    column's module (microcosm#931, ruled 9 Nov (late))."""
     from microcosm.build.uk_runtime import annuity_trust_column
 
     kernel, _ = _KERNELS_BY_REF[ref]
