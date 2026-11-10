@@ -1898,25 +1898,16 @@ def _country_words(name: str) -> set[str]:
     return words & {"us", "uk"}
 
 
-def _word_scope(name: str) -> str | None:
-    """The scope of a file below ``tools/``, by the words of its name."""
+def _tool_scope(name: str) -> str | None:
+    """The scope of a file below ``tools/``: a country when it is a word of the
+    file name and the other country's letters appear nowhere in the name."""
 
     if PurePosixPath(name).suffix.lower() in ci_test_plan.DOC_SUFFIXES:
         return None
-    countries = _country_words(name)
-    return countries.pop() if len(countries) == 1 else "shared"
-
-
-def _letters_scope(name: str) -> str | None:
-    """The scope of a file below ``tools/`` by the rule the words replaced: a
-    country's two letters anywhere in the lower-cased file name."""
-
-    if PurePosixPath(name).suffix.lower() in ci_test_plan.DOC_SUFFIXES:
-        return None
-    lowered = name.lower()
-    if "us" in lowered and "uk" not in lowered:
+    words, lowered = _country_words(name), name.lower()
+    if "us" in words and "uk" not in lowered:
         return "us"
-    if "uk" in lowered and "us" not in lowered:
+    if "uk" in words and "us" not in lowered:
         return "uk"
     return "shared"
 
@@ -1941,16 +1932,36 @@ def _tool_names(draw: st.DrawFn) -> str:
 
 @_PROPERTY
 @given(name=_tool_names())
-def test_a_tool_belongs_to_a_country_exactly_when_it_alone_is_a_word_of_its_name(
+def test_a_tool_belongs_to_a_country_exactly_when_its_name_holds_it_alone(
     name: str,
 ) -> None:
     """Invariant: a file below ``tools/`` that isn't documentation scopes to a
-    country exactly when that country, and not the other, is a word of its
-    file name, and to shared otherwise."""
+    country exactly when that country is a word of its file name and the
+    other country's letters appear nowhere in the name, and to shared
+    otherwise."""
 
-    scope = _word_scope(name)
+    scope = _tool_scope(name)
     event(f"scope {scope}")
     assert ci_test_plan.scope_for_path(f"tools/{name}") == scope
+
+
+@_PROPERTY
+@given(name=_tool_names())
+def test_a_tool_change_runs_each_country_whose_letters_its_name_holds(
+    name: str,
+) -> None:
+    """Invariant: a change to a file below ``tools/`` that isn't documentation
+    selects each country whose two letters its lower-cased file name holds
+    anywhere, as a word or inside one, and both countries when it holds
+    neither."""
+
+    assume(PurePosixPath(name).suffix.lower() not in ci_test_plan.DOC_SUFFIXES)
+    lowered = name.lower()
+    held = {country for country in ("us", "uk") if country in lowered}
+    event(f"letters of {sorted(held) or 'neither'}")
+    selected = ci_test_plan.select_countries([f"tools/{name}"])
+    for country in held or {"us", "uk"}:
+        assert selected[f"run_{country}"], (name, selected)
 
 
 @pytest.mark.parametrize(
@@ -1964,8 +1975,12 @@ def test_a_tool_belongs_to_a_country_exactly_when_it_alone_is_a_word_of_its_name
         ("tools/status.py", "shared"),
         ("tools/focus_report.py", "shared"),
         ("tools/census_download.py", "shared"),
-        ("tools/census_uk_local_targets.py", "uk"),
-        ("tools/validate_uk_housing_imputation.py", "uk"),
+        # One country as a word, and the other's letters inside another word.
+        ("tools/census_uk_local_targets.py", "shared"),
+        ("tools/validate_uk_housing_imputation.py", "shared"),
+        ("tools/uk_to_usa_crosswalk.py", "shared"),
+        ("tools/us_ukraine_aid.py", "shared"),
+        ("tools/run_engine_uk_tests.sh", "uk"),
         # Both countries, or none as a word.
         ("tools/compare_us_uk_targets.py", "shared"),
         ("tools/buildUSCandidate.py", "shared"),
@@ -1975,31 +1990,20 @@ def test_a_tool_belongs_to_a_country_exactly_when_it_alone_is_a_word_of_its_name
         ("tools/route_a/run_us.sh", "us"),
     ],
 )
-def test_a_tool_takes_the_country_its_file_name_holds_as_a_word(
+def test_a_tool_takes_the_country_its_file_name_holds_alone(
     path: str, scope: str
 ) -> None:
     assert ci_test_plan.scope_for_path(path) == scope
 
 
-def test_a_tool_change_selects_the_country_its_name_holds_as_a_word() -> None:
-    assert ci_test_plan.select_countries(["tools/status.py"]) == {
-        "run_us": True,
-        "run_uk": True,
-    }
-    assert ci_test_plan.select_countries(["tools/census_uk_local_targets.py"]) == {
+def test_a_tool_change_selects_the_country_its_name_holds_alone() -> None:
+    both = {"run_us": True, "run_uk": True}
+    assert ci_test_plan.select_countries(["tools/status.py"]) == both
+    assert ci_test_plan.select_countries(["tools/census_uk_local_targets.py"]) == both
+    assert ci_test_plan.select_countries(["tools/run_engine_uk_tests.sh"]) == {
         "run_us": False,
         "run_uk": True,
     }
-
-
-# UK tools whose names hold "us" inside another word.
-_UK_TOOLS_WITH_US_INSIDE_A_WORD = (
-    "tools/build_uk_brma_household_table.py",
-    "tools/census_uk_data_target_parity.py",
-    "tools/census_uk_local_targets.py",
-    "tools/pin_uk_bonus_sacrifice_anchor.py",
-    "tools/validate_uk_housing_imputation.py",
-)
 
 
 def _checkout_files(directory: str) -> list[str]:
@@ -2023,13 +2027,10 @@ def _checkout_files(directory: str) -> list[str]:
     return sorted(set(listed.stdout.decode().split("\0")) - {""})
 
 
-def test_whole_words_rescope_a_tool_only_where_its_letters_hid_inside_a_word() -> None:
-    """Differential check of the whole-word rule against the letters rule it
-    replaced, over every file below ``tools/`` in the checkout. Where the
-    countries whose letters a name holds are the countries it holds as words,
-    the two rules agree. Elsewhere the file takes its whole-word scope. On
-    2026-11-10 the rules differed on five UK tools, which moved from shared to
-    uk, and on none of the other 199 files."""
+def test_every_tool_in_the_checkout_takes_the_scope_its_name_gives_it() -> None:
+    """Every file below ``tools/`` in the checkout takes the scope its file
+    name gives it, and a change to it selects each country whose letters the
+    name holds."""
 
     files = _checkout_files("tools")
     assert files
@@ -2037,16 +2038,14 @@ def test_whole_words_rescope_a_tool_only_where_its_letters_hid_inside_a_word() -
         if ci_test_plan.group_name_for_test_path(PurePosixPath(path)) is not None:
             continue  # A test module takes its group's country.
         name = PurePosixPath(path).name
-        letters = {country for country in ("us", "uk") if country in name.lower()}
-        hid = letters != _country_words(name)
-        expected = _word_scope(name) if hid else _letters_scope(name)
-        assert ci_test_plan.scope_for_path(path) == expected, path
-    for path in _UK_TOOLS_WITH_US_INSIDE_A_WORD:
-        name = PurePosixPath(path).name
-        assert (_letters_scope(name), ci_test_plan.scope_for_path(path)) == (
-            "shared",
-            "uk",
-        )
+        scope = _tool_scope(name)
+        assert ci_test_plan.scope_for_path(path) == scope, path
+        if scope is None:
+            continue  # Documentation selects no country.
+        selected = ci_test_plan.select_countries([path])
+        for country in ("us", "uk"):
+            if country in name.lower():
+                assert selected[f"run_{country}"], path
 
 
 def test_documentation_only_changes_select_no_country_engine() -> None:

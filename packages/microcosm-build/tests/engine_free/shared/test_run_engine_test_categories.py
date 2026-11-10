@@ -190,11 +190,15 @@ def _plans(
 ) -> tuple[dict[str, ci_test_plan.TestGroup], tuple[Path, ...]]:
     """A registry of engine-us and engine-uk groups, and each group's files."""
 
+    if draw(st.booleans()):
+        # The repository plan's shape: one engine-us group for each category
+        # the runner runs, alone or with up to two more groups.
+        more = draw(st.lists(_CATEGORIES, max_size=2))
+        us_categories = draw(st.permutations([*_LIGHT, "workflow", *more]))
+    else:
+        us_categories = draw(st.lists(_CATEGORIES, min_size=1, max_size=5))
     jobs = [
-        *(
-            ("engine-us", category)
-            for category in draw(st.lists(_CATEGORIES, min_size=1, max_size=5))
-        ),
+        *(("engine-us", category) for category in us_categories),
         *(
             ("engine-uk", category)
             for category in draw(st.lists(_CATEGORIES, max_size=2))
@@ -331,14 +335,38 @@ def test_the_runner_refuses_to_start_when_the_plan_lists_a_group_it_never_runs(
 
     lines = str(refused.value).splitlines()
     assert lines[0] == (
-        "the US runner refuses to start: its tasks must run each file the plan "
-        "lists for engine-us once, and `python3 tools/ci_test_plan.py verify` "
-        "names each group the runner never runs:"
+        "the US runner refuses to start, because its tasks must run each file "
+        "the plan lists for engine-us exactly once. `python3 "
+        "tools/ci_test_plan.py verify` names each group the runner never runs. "
+        "Files:"
     )
     assert lines[1:] == [
         f"  {path.relative_to(ci_test_plan.ROOT)}: no task runs it"
         for path in ci_test_plan.selected_files("engine-workflow-us")
     ]
+
+
+def test_task_file_errors_name_a_missing_a_repeated_and_an_unlisted_file() -> None:
+    """``build_tasks`` draws every task from the plan's groups, so it can leave
+    a listed file out and can't repeat one or add one. This test hands
+    ``task_file_errors`` all three cases."""
+
+    listed = ci_test_plan.selected_files_for_job("engine-us")
+    first, second = listed[:2]
+    outside = ci_test_plan.ROOT / "packages/example/tests/elsewhere/test_other.py"
+    tasks = (
+        TaskSpec("contract", 0, tuple(path for path in listed if path != second)),
+        TaskSpec("contract", 1, (first, outside)),
+    )
+
+    def shown(path: Path) -> Path:
+        return path.relative_to(ci_test_plan.ROOT)
+
+    assert runner.task_file_errors(tasks) == (
+        f"{shown(second)}: no task runs it",
+        f"{shown(first)}: the tasks run it 2 times",
+        f"{shown(outside)}: a task runs it, and the plan doesn't list it for engine-us",
+    )
 
 
 # What the runner imports from ``tools/``.

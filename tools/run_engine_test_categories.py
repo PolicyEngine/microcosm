@@ -391,10 +391,10 @@ def build_tasks(
     errors = task_file_errors((*light, *workflows))
     if errors:
         raise SystemExit(
-            "the US runner refuses to start: its tasks must run each file the "
-            f"plan lists for {US_RUNNER_JOB} once, and `python3 "
-            "tools/ci_test_plan.py verify` names each group the runner never runs:"
-            "\n  " + "\n  ".join(errors)
+            "the US runner refuses to start, because its tasks must run each "
+            f"file the plan lists for {US_RUNNER_JOB} exactly once. `python3 "
+            "tools/ci_test_plan.py verify` names each group the runner never "
+            "runs. Files:\n  " + "\n  ".join(errors)
         )
     return tuple(light), workflows
 

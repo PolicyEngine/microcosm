@@ -106,9 +106,11 @@ distributes files across two pytest workers with `--dist loadfile`.
 Changed-file selection only controls the more resource-intensive country jobs.
 A documentation-only pull request selects neither country; a US-only or UK-only
 pull request selects that country; shared, mixed, unknown, or empty changed-path
-sets select both. Main pushes select both without querying the pull-request API.
-The UK integration job follows the same UK selection as the ordinary UK engine
-job.
+sets select both. A file below `tools/` belongs to a country when that country
+is a whole word of its file name and the other country's letters appear nowhere
+in the name; any other tool is shared. Main pushes select both without querying
+the pull-request API. The UK integration job follows the same UK selection as
+the ordinary UK engine job.
 
 The US engine job runs contract and scenario categories in small pytest
 processes with at most two processes active at once, then runs each complete
