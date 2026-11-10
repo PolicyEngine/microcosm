@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime.pension_coherence import (
     cap_net_pay_contributions,
     coherence_receipt,
 )
+from microcosm.build.uk_runtime.receipt_counts import rounded_count, support_band
 from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
 
@@ -41,6 +42,7 @@ __all__ = [
     "WEEKS_IN_YEAR",
     "UKFRSSpineStageTransform",
     "artifact_by_table",
+    "benefits_by_recipient",
     "build_uk_frs_spine_frame",
     "frs_claimant_or_partner",
     "map_codes",
@@ -175,6 +177,110 @@ BENEFIT_CODES = {
     "pip_m": (97, 118),
     "pip_dl": (96, 117),
 }
+
+#: The disability benefits that move to the household member they are received
+#: for (A3a of the November event-data plan's PR3, microcosm#1095). The FRS
+#: records a benefit received for someone else on the receiving adult's
+#: BENEFITS row, with WHOREC1 to WHOREC5 naming the person it is for: 1 to 14 a
+#: household member's person number, 97 someone outside the household, negative
+#: values missing (FRS 2024-25 BENEFITS dictionary, UKDS SN 9563). Every Child
+#: Disability Payment row sits on an adult's row and names the child, while DLA
+#: for children sits on the child's own row, so without the move a Scottish
+#: child's payment counted as a parent's.
+BENEFIT_RECIPIENT_FAMILIES = (
+    "attendance_allowance",
+    "dla_sc",
+    "dla_m",
+    "pip_dl",
+    "pip_m",
+)
+BENEFIT_RECIPIENT_CODES = tuple(
+    sorted(code for name in BENEFIT_RECIPIENT_FAMILIES for code in BENEFIT_CODES[name])
+)
+BENEFIT_RECIPIENT_COLUMNS = tuple(f"whorec{number}" for number in range(1, 6))
+#: FRS person numbers within a household, and WHOREC's code for someone outside.
+FRS_PERSON_NUMBER_RANGE = (1, 14)
+FRS_NOT_A_HOUSEHOLD_MEMBER = 97
+BENEFIT_RECIPIENT_RULE = (
+    "a disability benefit row (Attendance Allowance, DLA and Child Disability "
+    "Payment, PIP and Adult Disability Payment) moves to the household members "
+    "its WHOREC1 to WHOREC5 name where they name anyone other than the row's "
+    "own person; a row naming two or more splits its amount evenly between "
+    "them; a row naming nobody, only its own person, someone outside the "
+    "household (97) or a person number the household doesn't hold stays where "
+    "it is; other benefits never move"
+)
+
+
+def benefits_by_recipient(
+    benefits: pd.DataFrame, person_ids: Collection[int]
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """The BENEFITS rows with each disability benefit on the person it is for.
+
+    ``benefits`` is the normalized table (``household_id`` and ``person_id``
+    built as :func:`normalize_ids` builds them); ``person_ids`` are the frame's
+    people. :data:`BENEFIT_RECIPIENT_RULE` says which rows move. The evidence
+    counts the rows that moved in the receipts' rounded counts and support
+    bands, never exactly.
+    """
+
+    frame = benefits.reset_index(drop=True)
+    columns = [column for column in BENEFIT_RECIPIENT_COLUMNS if column in frame]
+    code = _number(frame, "benefit").astype("int64").to_numpy()
+    candidates = np.flatnonzero(np.isin(code, BENEFIT_RECIPIENT_CODES))
+    moved: list[int] = []
+    split: list[int] = []
+    naming_outside = 0
+    naming_unheld = 0
+    pieces: list[pd.DataFrame] = []
+    if columns and len(candidates):
+        held = {int(person_id) for person_id in person_ids}
+        named = (
+            frame.loc[candidates, columns]
+            .apply(pd.to_numeric, errors="coerce")
+            .to_numpy(dtype=float)
+        )
+        household = _number(frame, "household_id").astype("int64").to_numpy()
+        own = _number(frame, "person_id").astype("int64").to_numpy()
+        amount = _number(frame, "benamt").to_numpy()
+        low, high = FRS_PERSON_NUMBER_RANGE
+        for position, row in enumerate(candidates):
+            numbers = named[position][np.isfinite(named[position])]
+            naming_outside += int((numbers == FRS_NOT_A_HOUSEHOLD_MEMBER).any())
+            members = numbers[(numbers >= low) & (numbers <= high)].astype(np.int64)
+            ids = list(dict.fromkeys((household[row] * 1000 + members).tolist()))
+            recipients = [person_id for person_id in ids if person_id in held]
+            naming_unheld += int(len(recipients) < len(ids))
+            if not recipients or recipients == [int(own[row])]:
+                continue
+            piece = frame.loc[[row] * len(recipients)].copy()
+            piece["person_id"] = np.asarray(recipients, dtype=np.int64)
+            piece["benamt"] = amount[row] / len(recipients)
+            pieces.append(piece)
+            (moved if len(recipients) == 1 else split).append(int(row))
+    changed = sorted(moved + split)
+    result = frame
+    if pieces:
+        result = pd.concat([frame.drop(index=changed), *pieces], ignore_index=True)
+    households = (
+        _number(frame, "household_id").to_numpy()[changed] if changed else np.array([])
+    )
+    evidence: dict[str, object] = {
+        "rule": BENEFIT_RECIPIENT_RULE,
+        "codes": list(BENEFIT_RECIPIENT_CODES),
+        # Record counts are rounded, never exact (UKDS CD137 cl. 8).
+        "rows_moved": rounded_count(len(moved)),
+        "rows_split": rounded_count(len(split)),
+        "households": support_band(len(set(households.tolist()))),
+        "by_code": {
+            str(benefit): rounded_count(int((code[changed] == benefit).sum()))
+            for benefit in BENEFIT_RECIPIENT_CODES
+        },
+        "rows_naming_someone_outside": rounded_count(naming_outside),
+        "rows_naming_a_person_number_not_held": rounded_count(naming_unheld),
+    }
+    return result, evidence
+
 
 # FRS adult HOURTOT: total hours of care provided per week, a banded derived
 # variable (FRS derived-variable specification). Each code maps to the lower
@@ -387,6 +493,7 @@ class UKFRSSpineStageTransform:
         self._sentinel_mapped_rows: int | None = None
         self._access_fund: dict[str, object] | None = None
         self._net_pay: dict[str, object] | None = None
+        self._benefit_recipients: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         evidence: dict[str, object] = {}
@@ -397,6 +504,7 @@ class UKFRSSpineStageTransform:
         self._sentinel_mapped_rows = int((capital == UC_CAPITAL_UNAVAILABLE).sum())
         self._access_fund = dict(evidence["access_fund"])
         self._net_pay = dict(evidence["net_pay_contributions"])
+        self._benefit_recipients = dict(evidence["benefit_recipients"])
         return result
 
     @staticmethod
@@ -411,6 +519,7 @@ class UKFRSSpineStageTransform:
             self._sentinel_mapped_rows is None
             or self._access_fund is None
             or self._net_pay is None
+            or self._benefit_recipients is None
         ):
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
@@ -422,6 +531,7 @@ class UKFRSSpineStageTransform:
                 },
                 "access_fund": dict(self._access_fund),
                 "net_pay_contributions": dict(self._net_pay),
+                "benefit_recipients": dict(self._benefit_recipients),
             }
         }
 
@@ -667,7 +777,12 @@ def _assemble_frame(
     for column in FRS_COMPANY_CAR_CARRIER_COLUMNS:
         pe_person[column] = company_cars[column].to_numpy()
     _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)
-    _add_benefits(pe_person, person, frs["benefits"])
+    recipient_benefits, recipient_evidence = benefits_by_recipient(
+        frs["benefits"], person["person_id"]
+    )
+    if evidence is not None:
+        evidence["benefit_recipients"] = recipient_evidence
+    _add_benefits(pe_person, person, recipient_benefits)
     # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
     # on reported receipt so that care_hours qualifies carers for the UC carer
     # element without paying the allowance to every carer (#882).

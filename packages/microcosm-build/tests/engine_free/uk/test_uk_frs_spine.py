@@ -45,6 +45,7 @@ from microcosm.build.uk_runtime.frs_relationships import (
 )
 from microcosm.build.uk_runtime.frs_spine import (
     BENEFIT_CODES,
+    BENEFIT_RECIPIENT_RULE,
     BSP_MONTHLY_RATES,
     FRS_COMPANY_CAR_CARRIER_COLUMNS,
     FRS_COMPANY_CAR_FUEL_CODES,
@@ -64,6 +65,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     UKFRSSpineStageTransform,
     _add_benefits,
     access_fund_annual,
+    benefits_by_recipient,
     build_uk_frs_spine_frame,
     completed_months,
     frs_claimant_or_partner,
@@ -2494,6 +2496,107 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     assert reported.to_numpy().sum() == pytest.approx(
         (110.40 + 28.70 + 72.65 + 28.70 + 73.90 + 29.20) * WEEKS_IN_YEAR
     )
+
+
+def _recipient_rows() -> pd.DataFrame:
+    """One household's disability benefit rows, as the normalized BENEFITS table.
+
+    Person 1 is a parent, 2 a child with DLA on her own row, 3 and 4 children
+    whose Child Disability Payment sits on the parent's row (WHOREC names them).
+    """
+
+    return pd.DataFrame(
+        {
+            "household_id": [1] * 8,
+            "person_id": [1001, 1001, 1001, 1002, 1001, 1001, 1001, 1001],
+            "benefit": [121, 122, 121, 1, 12, 19, 96, 13],
+            "var2": [0] * 8,
+            "var3": [0] * 8,
+            "benamt": [72.65, 28.70, 100.0, 29.20, 72.65, 50.0, 73.90, 83.30],
+            # 3 and 4: the children; 2: her own row; 97: someone outside the
+            # household; 9: a person number the household doesn't hold; -1:
+            # missing. The income support and Carer's Allowance rows name a
+            # child too, and never move.
+            "whorec1": [3, 3, 3, 2, 97, 3, 9, 3],
+            "whorec2": [-1, -1, 4, -1, -1, -1, -1, -1],
+            "whorec3": [-1] * 8,
+            "whorec4": [-1] * 8,
+            "whorec5": [-1] * 8,
+        }
+    )
+
+
+def test_disability_benefits_move_to_the_household_member_they_are_for() -> None:
+    """A Child Disability Payment row on a parent's record moves to the child (A3a).
+
+    The FRS records it on the receiving adult's row with WHOREC naming the
+    child; a row naming two children splits evenly, and a row naming its own
+    person, someone outside the household or a person number the household
+    doesn't hold stays, as every non-disability row does.
+    """
+
+    rows = _recipient_rows()
+    moved, evidence = benefits_by_recipient(rows, [1001, 1002, 1003, 1004])
+
+    by_person = (
+        moved.assign(weekly=moved["benamt"])
+        .groupby(["person_id", "benefit"])["weekly"]
+        .sum()
+    )
+    assert by_person[(1003, 121)] == pytest.approx(72.65 + 50.0)
+    assert by_person[(1004, 121)] == pytest.approx(50.0)
+    assert by_person[(1003, 122)] == pytest.approx(28.70)
+    assert (1001, 121) not in by_person and (1001, 122) not in by_person
+    # The child's own DLA, the AA naming someone outside the household and the
+    # PIP naming a person number the household doesn't hold stay put.
+    assert by_person[(1002, 1)] == pytest.approx(29.20)
+    assert by_person[(1001, 12)] == pytest.approx(72.65)
+    assert by_person[(1001, 96)] == pytest.approx(73.90)
+    # Other benefits never move, whatever WHOREC says.
+    assert by_person[(1001, 19)] == pytest.approx(50.0)
+    assert by_person[(1001, 13)] == pytest.approx(83.30)
+    # Nothing is gained or lost.
+    assert moved["benamt"].sum() == pytest.approx(rows["benamt"].sum())
+
+    assert evidence["rule"] == BENEFIT_RECIPIENT_RULE
+    # One or two rows of each kind: the receipt rounds them, never exact.
+    assert evidence["rows_moved"] == "<3"
+    assert evidence["rows_split"] == "<3"
+    assert evidence["households"] == "<3"
+    assert evidence["by_code"]["121"] == "<3"
+    assert evidence["by_code"]["1"] == 0
+    assert evidence["rows_naming_someone_outside"] == "<3"
+    assert evidence["rows_naming_a_person_number_not_held"] == "<3"
+
+
+def test_moved_disability_benefits_reach_the_childs_reported_amounts() -> None:
+    """After the move the parent reports no DLA care, and each child reports her own."""
+
+    rows = _recipient_rows()
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003, 1004]})
+    pe_person = pd.DataFrame(index=person.index)
+    moved, _ = benefits_by_recipient(rows, person["person_id"])
+
+    _add_benefits(pe_person, person, moved)
+
+    weekly = pe_person.div(WEEKS_IN_YEAR)
+    assert weekly["dla_sc_reported"].tolist() == pytest.approx(
+        [0.0, 29.20, 72.65 + 50.0, 50.0]
+    )
+    assert weekly["dla_m_reported"].tolist() == pytest.approx([0.0, 0.0, 28.70, 0.0])
+    assert weekly["attendance_allowance_reported"].tolist() == pytest.approx(
+        [72.65, 0.0, 0.0, 0.0]
+    )
+
+
+def test_a_benefits_table_without_whorec_is_left_as_it_is() -> None:
+    """A table with no WHOREC columns (a synthetic fixture's) moves nothing."""
+
+    rows = _recipient_rows().drop(columns=[f"whorec{n}" for n in range(1, 6)])
+    moved, evidence = benefits_by_recipient(rows, [1001, 1002, 1003, 1004])
+
+    pd.testing.assert_frame_equal(moved, rows)
+    assert evidence["rows_moved"] == 0 and evidence["rows_split"] == 0
 
 
 def test_weekly_benefits_annualise_at_52_weeks() -> None:
