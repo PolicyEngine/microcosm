@@ -75,8 +75,9 @@ def _pooled_asec(draw) -> pd.DataFrame:
 # has a 2021 record: P0's is usable; P1's carries a self-employment allocation
 # flag, P2's a wage sentinel, P3's a self-employment sentinel and P4's a wage
 # allocation flag, so those four fall back to the current wage (0 for P3,
-# whose current wage is a sentinel). The 2021 rows and P0's 2024 row have no
-# previous year in the pool and default to 0.
+# whose current wage is a sentinel). P5 has no 2021 record, so it falls back
+# to its current wage too. The 2021 rows and P0's 2024 row have no previous
+# year in the pool and default to 0.
 _EVERY_BRANCH = pd.DataFrame(
     {
         "source_year": [
@@ -91,17 +92,31 @@ _EVERY_BRANCH = pd.DataFrame(
             2021,
             2022,
             2024,
+            2022,
         ],
-        "PERIDNUM": ["P0", "P0", "P1", "P1", "P2", "P2", "P3", "P3", "P4", "P4", "P0"],
-        "WSAL_VAL": [100, 200, 300, 400, -1, 500, 50, -1, 70, 80, 900],
-        "SEMP_VAL": [10, 20, 0, 0, 0, 0, -9999, 0, 0, 0, 0],
-        "I_ERNVAL": [0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0],
-        "I_SEVAL": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        "PERIDNUM": [
+            "P0",
+            "P0",
+            "P1",
+            "P1",
+            "P2",
+            "P2",
+            "P3",
+            "P3",
+            "P4",
+            "P4",
+            "P0",
+            "P5",
+        ],
+        "WSAL_VAL": [100, 200, 300, 400, -1, 500, 50, -1, 70, 80, 900, 600],
+        "SEMP_VAL": [10, 20, 0, 0, 0, 0, -9999, 0, 0, 0, 0, 0],
+        "I_ERNVAL": [0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0],
+        "I_SEVAL": [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     }
 )
 _EVERY_BRANCH_EXPECTED = (
-    [0.0, 100.0, 0.0, 400.0, 0.0, 500.0, 0.0, 0.0, 0.0, 80.0, 0.0],
-    [False, True, False, False, False, False, False, False, False, False, False],
+    [0.0, 100.0, 0.0, 400.0, 0.0, 500.0, 0.0, 0.0, 0.0, 80.0, 0.0, 600.0],
+    [False, True] + [False] * 10,
 )
 
 

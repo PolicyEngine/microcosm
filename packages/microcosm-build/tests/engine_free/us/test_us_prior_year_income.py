@@ -671,8 +671,13 @@ def test_source_reconciliation_requires_the_wage_under_one_of_its_names(
     gate = us_prior_year_income_source_reconciliation_gate(
         module._replace_person_table(result, person)
     )
+    names = ["employment_income_last_year", US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN]
     assert not gate.passed
-    assert gate.details["missing_outputs"] == [US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN]
+    assert gate.details["missing_outputs"] == []
+    assert gate.details["missing_wage_names"] == names
+    assert gate.failures == (
+        f"ASEC prior-year wage missing under both its names: {names}.",
+    )
 
 
 @pytest.mark.parametrize(

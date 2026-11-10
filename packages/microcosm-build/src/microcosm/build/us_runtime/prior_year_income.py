@@ -23,12 +23,17 @@ the auxiliary name :data:`US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN`
 define no variable of that name, so no rule reads it, and the engine still
 computes ``employment_income_last_year`` with its own formula.  The
 stored-input register lists the column in
-``microcosm.data.stored_inputs.US_AUXILIARY_STORED_COLUMNS``.  An analysis
-that needs two observed years of earnings, such as a microsimulation history
-anchored on matched CPS records, reads it where
-``previous_year_income_available`` is true.  Only the support-clone pass
-writes it.  The stacked multispine pool merges only a source operator's
-declared outputs, so a stacked build does not carry it.
+``microcosm.data.stored_inputs.US_AUXILIARY_STORED_COLUMNS``.  Only ASEC
+rows (``person_support_channel == "asec"``) where
+``previous_year_income_available`` is true hold an observed prior-year wage;
+PUF-support rows copy that flag from their ASEC source but hold the QRF's
+prediction.  An analysis that needs two observed years of earnings, such as a
+microsimulation history anchored on matched CPS records, reads those ASEC
+rows.  Only the support-clone pass writes the column.  The stacked multispine
+pool merges only a source operator's declared outputs, so a stacked build
+does not carry it, and ACS pooling calls
+:func:`without_us_prior_year_income_auxiliary_columns` first, since no ACS
+transfer target fills it.
 """
 
 from __future__ import annotations
@@ -83,6 +88,7 @@ __all__ = [
     "us_prior_year_income_stage_spec",
     "us_prior_year_income_summary",
     "with_us_prior_year_income_inputs",
+    "without_us_prior_year_income_auxiliary_columns",
 ]
 
 QRF: Any | None = None
@@ -718,6 +724,24 @@ def _replace_person_table(frame: Frame, person: pd.DataFrame) -> Frame:
     )
 
 
+def without_us_prior_year_income_auxiliary_columns(frame: Frame) -> Frame:
+    """Return ``frame`` without the prior-year auxiliary person columns.
+
+    Only ASEC and PUF-support rows carry a prior-year wage.  A step that adds
+    rows from another source, such as ACS pooling, calls this first, so the
+    column never holds a missing value.  It returns ``frame`` itself when the
+    frame carries none of the columns.
+    """
+
+    person = frame.table("person")
+    present = [
+        column for column in US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS if column in person
+    ]
+    if not present:
+        return frame
+    return _replace_person_table(frame, person.drop(columns=present))
+
+
 def with_us_prior_year_income_inputs(
     frame: Frame,
     *,
@@ -1058,20 +1082,21 @@ def us_prior_year_income_source_reconciliation_gate(frame: Frame) -> GateResult:
         )
         if column in actual
     ]
-    wage_missing = not {
-        _FORMULA_OWNED_OUTPUT,
-        US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN,
-    }.intersection(compare_columns)
+    wage_names = [_FORMULA_OWNED_OUTPUT, US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN]
+    wage_missing = not set(wage_names).intersection(compare_columns)
     missing_outputs = sorted(
         set(US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS) - set(compare_columns)
-        | ({US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN} if wage_missing else set())
     )
-    if missing_sources or missing_outputs:
+    if missing_sources or missing_outputs or wage_missing:
         failures = []
         if missing_sources:
             failures.append(f"ASEC source columns missing: {missing_sources}.")
         if missing_outputs:
             failures.append(f"ASEC persisted outputs missing: {missing_outputs}.")
+        if wage_missing:
+            failures.append(
+                f"ASEC prior-year wage missing under both its names: {wage_names}."
+            )
         return GateResult(
             name="prior_year_income_source_reconciliation",
             passed=False,
@@ -1079,6 +1104,7 @@ def us_prior_year_income_source_reconciliation_gate(frame: Frame) -> GateResult:
             details={
                 "missing_sources": missing_sources,
                 "missing_outputs": missing_outputs,
+                "missing_wage_names": wage_names if wage_missing else [],
             },
         )
 

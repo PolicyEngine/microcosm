@@ -68,6 +68,10 @@ from microcosm.build.us_runtime.base_pool import (
 from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
 )
+from microcosm.build.us_runtime.prior_year_income import (
+    US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS,
+    without_us_prior_year_income_auxiliary_columns,
+)
 from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     us_puma_ladder_assignment_summary,
@@ -356,7 +360,20 @@ def build_optional_acs_multispine(
                 ),
             }
         )
-    pooled = with_optional_acs_spine(base, transferred_frame, **pool_options)
+    # Only ASEC and PUF-support rows carry the prior-year wage, and no ACS
+    # transfer target fills it, so pooling would leave it missing on every
+    # ACS row. This step drops it from the base first and names it in the
+    # provenance.
+    dropped_base_columns = [
+        column
+        for column in US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS
+        if column in base.table("person")
+    ]
+    pooled = with_optional_acs_spine(
+        without_us_prior_year_income_auxiliary_columns(base),
+        transferred_frame,
+        **pool_options,
+    )
     del transferred_frame
 
     provenance = {
@@ -386,6 +403,8 @@ def build_optional_acs_multispine(
         provenance["local_hours_source"] = hours_source
     if modeled_hours is not None:
         provenance["hours_modeled_completion"] = modeled_hours
+    if dropped_base_columns:
+        provenance["dropped_base_person_columns"] = dropped_base_columns
     if income_receipt is not None:
         provenance["fit_configuration"]["income_donor_channel"] = income_receipt[
             "resolved_donor_channel"

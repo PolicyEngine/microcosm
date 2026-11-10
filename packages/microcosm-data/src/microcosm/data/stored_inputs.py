@@ -264,7 +264,8 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: conditioning or calibration that no rule consumes, so storing one makes no
 #: tax-benefit modeling claim. Unlike a pending engine input, an auxiliary
 #: column waits for no engine variable, so its entry does not expire with an
-#: engine bump; an analysis reads it by joining on ``person_id``.
+#: engine bump. An analysis joins on ``person_id``, and each reason says
+#: which rows hold source values and which hold imputations.
 #: :data:`US_STORED_NON_VARIABLE_COLUMNS` takes in every entry, and each
 #: reason starts with ``Auxiliary``.
 US_AUXILIARY_STORED_COLUMNS: Mapping[str, str] = MappingProxyType(

@@ -543,6 +543,7 @@ from microcosm.build.us_runtime.prior_year_income import (
     us_prior_year_income_stage_spec,
     us_prior_year_income_summary,
     with_us_prior_year_income_inputs,
+    without_us_prior_year_income_auxiliary_columns,
 )
 from microcosm.build.us_runtime.public_assistance_type_source import (
     ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS,
@@ -1869,6 +1870,7 @@ __all__ = [
     "us_prior_year_income_stage_spec",
     "us_prior_year_income_summary",
     "with_us_prior_year_income_inputs",
+    "without_us_prior_year_income_auxiliary_columns",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
