@@ -134,7 +134,11 @@ changes what `microcosm.data.load("us")` loads.
 5. Publish with the printed `publish_command`. Before anything is handed to
    the emitter, the command reads the base build's `release_manifest.json` on
    the Hub, from its folder at `main`, and refuses unless its dataset has the
-   base-year H5's file name and SHA-256. Publishing does not make the build
+   base-year H5's file name and SHA-256, and every other file it declares,
+   apart from the manifests and `sha256sums.txt`, is in the annual build's
+   manifest with the same path and SHA-256. A Hub that cannot be asked (a
+   403, or a server error after retries) stops the command with that error.
+   Publishing does not make the build
    current. To make it the annual release's current build, run the printed
    `promote_command` after review, or add `--make-current` to the publish
    command. Either changes only the annual release.
