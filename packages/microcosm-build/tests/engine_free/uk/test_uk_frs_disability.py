@@ -315,3 +315,40 @@ def test_the_carer_link_reads_a_copy_households_members_by_person_number() -> No
     not_drawn = ~people["person_household_id"].isin([5, 6, 7, 8]).to_numpy()
     assert link[not_drawn].tolist() == original[not_drawn].tolist()
     assert link[people["person_id"].eq(1001).to_numpy()].all()
+
+
+def test_the_carer_link_takes_a_share_from_other_households() -> None:
+    """The SPI channel draws its outside carers at the survey's own share
+    (spi_income), so the share can be passed in; a share resting on one or two
+    households, and a route carried by one or two, is withheld."""
+
+    from microcosm.build.uk_runtime import frs_disability
+
+    people = _carer_link_people()
+    weights = np.ones(len(people))
+    # Households 1 to 4 make the base: 11 reports the allowance.
+    base = frs_disability.carer_link_share(people, weights=weights, min_hours=35.0)
+    assert base == (0.5, 4)
+    outside = people["person_household_id"].isin([5, 6, 7, 8]).to_numpy()
+    for share, drawn in ((1.0, 4), (0.0, 0)):
+        link, evidence = frs_disability.derive_carer_link(
+            people, weights=weights, min_hours=35.0, share=(share, 30)
+        )
+        assert int(link[outside].sum()) == drawn
+        assert evidence["share"] == share
+        assert evidence["share_support"] == "30+"
+    _, thin = frs_disability.derive_carer_link(
+        people, weights=weights, min_hours=35.0, share=(1.0, 2)
+    )
+    assert thin["share"] == "<3"
+    _, collapsed = frs_disability.derive_carer_link(
+        people,
+        weights=weights,
+        min_hours=35.0,
+        support_keys=np.zeros(len(people), dtype=np.int64),
+    )
+    assert collapsed["routes_at_the_line"]["outside_drawn"] == {
+        "records": "<3",
+        "support": "<3",
+        "true": "<3",
+    }

@@ -1530,6 +1530,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     "owned_company_is_main_employment",
     "owned_company_carries_on_trade",
     "owned_company_carries_on_property_business",
+    # The carer link, taken again on the channel's households from the
+    # re-imputed disability benefits (A3, microcosm#1095).
+    "cares_for_severely_disabled_person",
     # The rows stage 1 drew, read by property_components (microcosm#840).
     "person_is_spi_income_recipient",
 )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     rounded_count,
     small_cell_share,
     support_band,
@@ -80,7 +83,8 @@ YEAR_RULE = "survey_year"
 #: (María's decision (a) of 2026-10-28). A carer with care hours and no link in
 #: the care tab keeps the engine's default, true; everyone else is false. Armed
 #: Forces Independence Payment is not seen: the FRS can't tell it from other
-#: Armed Forces Compensation Scheme payments.
+#: Armed Forces Compensation Scheme payments. The SPI channel takes the link
+#: again on its households from the benefits it re-imputes (spi_income).
 CARER_LINK_COLUMN = "cares_for_severely_disabled_person"
 CARER_LINK_PARAMETERS = "the carer link from frs_care_recipients and the disability categories, with gov.dwp.carers_allowance.min_hours at the survey year"
 CARER_LINK_SEED = 0
@@ -400,19 +404,19 @@ def uk_dwp_carers_allowance_min_hours(year: int) -> float:
     )
 
 
-def derive_carer_link(
-    person: pd.DataFrame, *, weights: np.ndarray, min_hours: float
-) -> tuple[np.ndarray, dict[str, object]]:
-    """The carer link for every person, and its evidence (see :data:`CARER_LINK_COLUMN`).
+class _CarerRoutes(NamedTuple):
+    """Where each person stands on the carer link's routes."""
 
-    ``person`` carries ``person_id`` (the FRS person number is ``person_id``
-    modulo 1,000 on spine rows and copies alike) and ``person_household_id``, the
-    care carriers and
-    the categories this stage derives; ``weights`` are the persons' household
-    design weights. The evidence gives each route's records in rounded counts
-    and support bands, and the share the drawn route takes.
-    """
+    ids: np.ndarray
+    households: np.ndarray
+    carer: np.ndarray
+    outside: np.ndarray
+    member_qualifies: np.ndarray
+    hours: np.ndarray
+    reported: np.ndarray
 
+
+def _carer_routes(person: pd.DataFrame) -> _CarerRoutes:
     ids = person["person_id"].to_numpy(dtype=np.int64)
     households = person["person_household_id"].to_numpy(dtype=np.int64)
     mask = (
@@ -420,9 +424,6 @@ def derive_carer_link(
         if FRS_CARE_RECIPIENTS_COLUMN in person
         else np.zeros(len(person), dtype=np.int64)
     )
-    hours = _amount(person, "care_hours").to_numpy(dtype=float)
-    reported = _amount(person, "carers_allowance_reported").to_numpy(dtype=float) > 0
-    weights = np.asarray(weights, dtype=float)
     qualifies = np.zeros(len(person), dtype=bool)
     for column, categories in CARER_LINK_QUALIFYING.items():
         qualifies |= person[column].astype(str).isin(categories).to_numpy()
@@ -441,55 +442,129 @@ def derive_carer_link(
             member_qualifies[holds] |= np.asarray(
                 [(int(h), number) in qualifying for h in households[holds]], dtype=bool
             )
-    outside = ((mask >> FRS_CARE_OUTSIDE_BIT) & 1) == 1
-    carer = mask != 0
-    linked = carer & member_qualifies
-    drawn_route = carer & outside & ~member_qualifies
-    household_route = carer & ~outside
-    no_link = ~carer & (hours > 0)
-    at_line = hours >= float(min_hours)
-    base = household_route & at_line & ~reported
+    return _CarerRoutes(
+        ids=ids,
+        households=households,
+        carer=mask != 0,
+        outside=((mask >> FRS_CARE_OUTSIDE_BIT) & 1) == 1,
+        member_qualifies=member_qualifies,
+        hours=_amount(person, "care_hours").to_numpy(dtype=float),
+        reported=_amount(person, "carers_allowance_reported").to_numpy(dtype=float) > 0,
+    )
+
+
+def carer_link_share(
+    person: pd.DataFrame, *, weights: np.ndarray, min_hours: float
+) -> tuple[float | None, int]:
+    """The share the carer link draws outside carers at, and its households.
+
+    Of the carers who care only within their household, whose care hours reach
+    ``min_hours`` and who report no Carer's Allowance, the share by ``weights``
+    whose main recipients include a qualifying member; None where none of them
+    has weight. The second value is the distinct households that base rests
+    on, for the receipt to band.
+    """
+
+    routes = _carer_routes(person)
+    weights = np.asarray(weights, dtype=float)
+    base = (
+        routes.carer
+        & ~routes.outside
+        & (routes.hours >= float(min_hours))
+        & ~routes.reported
+    )
     base_weight = float(weights[base].sum())
     share = (
-        float(weights[base & member_qualifies].sum()) / base_weight
+        float(weights[base & routes.member_qualifies].sum()) / base_weight
         if base_weight > 0.0
         else None
     )
-    draws = stable_identity_uniforms(ids, seed=CARER_LINK_SEED, salt=CARER_LINK_SALT)
+    return share, len(set(routes.households[base].tolist()))
+
+
+def derive_carer_link(
+    person: pd.DataFrame,
+    *,
+    weights: np.ndarray,
+    min_hours: float,
+    share: tuple[float | None, int] | None = None,
+    support_keys: np.ndarray | None = None,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """The carer link for every person, and its evidence (see :data:`CARER_LINK_COLUMN`).
+
+    ``person`` carries ``person_id`` (the FRS person number is ``person_id``
+    modulo 1,000 on spine rows and copies alike) and ``person_household_id``,
+    the care carriers and the categories this stage derives; ``weights`` are
+    the persons' household weights. ``share`` is the drawn route's share and
+    the households it rests on, by default :func:`carer_link_share` of
+    ``person``; the SPI channel passes the survey's own (``spi_income``).
+    ``support_keys`` are what the evidence counts support in, by default each
+    person's household; the SPI channel passes source households, so a survey
+    household's copies count once. The evidence gives each route's records in
+    rounded counts and support bands, withheld where one or two households
+    carry them, and the share the drawn route takes.
+    """
+
+    routes = _carer_routes(person)
+    weights = np.asarray(weights, dtype=float)
+    if share is None:
+        share = carer_link_share(person, weights=weights, min_hours=min_hours)
+    share_value, share_households = share
+    keys = routes.households if support_keys is None else np.asarray(support_keys)
+    linked = routes.carer & routes.member_qualifies
+    drawn_route = routes.carer & routes.outside & ~routes.member_qualifies
+    household_route = routes.carer & ~routes.outside
+    no_link = ~routes.carer & (routes.hours > 0)
+    at_line = routes.hours >= float(min_hours)
+    draws = stable_identity_uniforms(
+        routes.ids, seed=CARER_LINK_SEED, salt=CARER_LINK_SALT
+    )
     positions = np.asarray(draws, dtype=float).copy()
     if drawn_route.any():
         positions[drawn_route] = lineage_balanced_positions(
             at_line[drawn_route],
             positions[drawn_route],
             weights[drawn_route],
-            identities=ids[drawn_route],
+            identities=routes.ids[drawn_route],
             salt=CARER_LINK_SALT,
         )
-    drawn = drawn_route & (positions < (share or 0.0))
+    drawn = drawn_route & (positions < (share_value or 0.0))
     link = linked | drawn | no_link
 
+    def counted(selected: np.ndarray) -> int | str:
+        # Record counts are rounded, never exact, and withheld where one or
+        # two households carry them (UKDS CD137 cl. 8).
+        households = len(set(keys[selected].tolist()))
+        if 0 < households < UK_DISCLOSURE_FLOOR:
+            return UK_WITHHELD
+        return rounded_count(int(selected.sum()))
+
     def route(selected: np.ndarray) -> dict[str, object]:
-        # Record counts are rounded, never exact (UKDS CD137 cl. 8).
         return {
-            "records": rounded_count(int(selected.sum())),
-            "support": support_band(len(set(households[selected].tolist()))),
-            "true": rounded_count(int((selected & link).sum())),
+            "records": counted(selected),
+            "support": support_band(len(set(keys[selected].tolist()))),
+            "true": counted(selected & link),
         }
 
-    base_support = len(set(households[base].tolist()))
     evidence: dict[str, object] = {
         "column": CARER_LINK_COLUMN,
         "rule": CARER_LINK_PARAMETERS,
         "min_hours": float(min_hours),
-        "share": None if share is None else small_cell_share(share, base_support),
-        "share_support": support_band(base_support),
+        "share": (
+            None
+            if share_value is None
+            else small_cell_share(share_value, share_households)
+        ),
+        "share_support": support_band(share_households),
         "routes_at_the_line": {
-            "household_qualifying": route(at_line & household_route & member_qualifies),
+            "household_qualifying": route(
+                at_line & household_route & routes.member_qualifies
+            ),
             "household_not_qualifying": route(
-                at_line & household_route & ~member_qualifies
+                at_line & household_route & ~routes.member_qualifies
             ),
             "outside_with_a_qualifying_member": route(
-                at_line & carer & outside & member_qualifies
+                at_line & routes.carer & routes.outside & routes.member_qualifies
             ),
             "outside_drawn": route(at_line & drawn_route),
             "no_link": route(at_line & no_link),
