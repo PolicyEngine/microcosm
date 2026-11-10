@@ -568,20 +568,16 @@ def test_certified_enrichment_lists_its_complete_build_folder_with_the_h5_once(
         build_folder_candidate, tmp_path, monkeypatch
     )
     wheels = (tmp_path / "country.whl",)
-    # The release contract replays this build's H5 comparison and loader
-    # checks, which take the parent H5 and the tested wheels.
-    monkeypatch.setattr(
-        release_module,
-        "validate_release_dir",
-        lambda release_dir, **options: validate_release_dir(
-            release_dir,
-            **{"parent_h5": parent, "compatibility_wheels": wheels, **options},
-        ),
-    )
     calls_before_preparation = len(compatibility_calls)
 
+    # The release contract replays this build's H5 comparison and loader
+    # checks, which take the parent H5 and the tested wheels.
     prepared = release_module.prepare_build_folder_release(
-        release, artifact_root=root, repository="policyengine/populace-us"
+        release,
+        artifact_root=root,
+        repository="policyengine/populace-us",
+        parent_h5=parent,
+        compatibility_wheels=wheels,
     )
 
     assert len(compatibility_calls) == calls_before_preparation + 1

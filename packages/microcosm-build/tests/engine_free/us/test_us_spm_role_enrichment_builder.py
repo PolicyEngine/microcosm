@@ -404,7 +404,6 @@ def test_real_builder_manifest_certifies_and_prepares_its_build_folder(
 ):
     """Exercise the emitted manifest; synthetic source/runtime probes stay local."""
     from microcosm.data import release as publisher
-    from microcosm.data.contract import validate_release_dir
 
     _build(inputs)
     candidate_release = _release(inputs)
@@ -466,16 +465,12 @@ def test_real_builder_manifest_certifies_and_prepares_its_build_folder(
     }
     # The release contract replays the H5 comparison and the loader checks,
     # which take the parent H5 and the tested wheels.
-    monkeypatch.setattr(
-        publisher,
-        "validate_release_dir",
-        lambda release_dir, **options: validate_release_dir(
-            release_dir,
-            **{"parent_h5": inputs.parent, "compatibility_wheels": wheels, **options},
-        ),
-    )
     prepared = publisher.prepare_build_folder_release(
-        certified, artifact_root=artifact_root, repository="policyengine/populace-us"
+        certified,
+        artifact_root=artifact_root,
+        repository="policyengine/populace-us",
+        parent_h5=inputs.parent,
+        compatibility_wheels=wheels,
     )
     assert len(compatibility_calls) == 3  # Certification, its replay, preparation.
     assert (prepared.release, prepared.build) == (

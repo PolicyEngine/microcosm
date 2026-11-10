@@ -148,22 +148,16 @@ def test_the_donor_is_a_build_of_its_own_release_never_the_national_default(
 ) -> None:
     _build(lineage)
     certified = _certify(lineage, monkeypatch, [])
-    options = {"parent_h5": lineage.parent, "compatibility_wheels": _WHEELS}
+    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("use no Hub"))
     # The release contract replays the H5 comparison and the loader checks,
     # which take the parent H5 and the tested wheels.
-    monkeypatch.setattr(
-        publisher,
-        "validate_release_dir",
-        lambda release_dir, **kwargs: validate_release_dir(
-            release_dir, **{**options, **kwargs}
-        ),
-    )
-    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("use no Hub"))
+    options = {"parent_h5": lineage.parent, "compatibility_wheels": _WHEELS}
 
     prepared = publisher.prepare_build_folder_release(
         certified,
         artifact_root=_artifacts(lineage),
         repository="policyengine/populace-us",
+        **options,
     )
 
     assert (prepared.release, prepared.build) == (
