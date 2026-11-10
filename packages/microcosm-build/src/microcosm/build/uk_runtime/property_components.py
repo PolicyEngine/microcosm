@@ -61,7 +61,7 @@ PRIS counts them among its landlords.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -71,7 +71,10 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.stochastic_assignment import (
+    keyed_tie_order,
+    stable_identity_uniforms,
+)
 from microcosm.build.uk_runtime.hmrc_property_rental import (
     HMRC_PROPERTY_RENTAL_RECEIPTS_BAND_LOWER_BOUNDS,
     HMRC_PROPERTY_RENTAL_RECORD_SETS,
@@ -259,14 +262,32 @@ class FinanceCostModelSpec:
 
 @dataclass(frozen=True)
 class ReceiptsAllocationSpec:
-    """The ``allocate_property_rental_income`` operation."""
+    """The ``allocate_property_rental_income`` operation.
+
+    ``tie_salt`` keys the walk's tie-break: landlords tied on profit take the
+    order of a uniform keyed on their person_id under ``walk_seed`` and this
+    salt, then of their ids (microcosm#931).
+    """
 
     band_lower_bounds: tuple[int, ...]
     walk_seed: int
+    tie_salt: str
     maximum_top_band_multiplier: float
 
     @classmethod
-    def from_parameters(cls, parameters: Mapping[str, Any]) -> ReceiptsAllocationSpec:
+    def from_parameters(
+        cls,
+        parameters: Mapping[str, Any],
+        *,
+        salts_in_use: Collection[str] = (),
+    ) -> ReceiptsAllocationSpec:
+        """The declared operation, refused where it drifts from the stage's rules.
+
+        ``salts_in_use`` names the salts the stage's other draws key on the
+        same person ids (the stage passes its finance-cost draws'): a tie
+        salt equal to one of them would order tied landlords by that draw.
+        """
+
         bounds = tuple(int(v) for v in parameters["band_lower_bounds"])
         if bounds != HMRC_PROPERTY_RENTAL_RECEIPTS_BAND_LOWER_BOUNDS:
             raise PropertyComponentsError(
@@ -286,9 +307,20 @@ class ReceiptsAllocationSpec:
             raise PropertyComponentsError(
                 "maximum_top_band_multiplier must be finite and above 1."
             )
+        tie_salt = parameters.get("tie_salt")
+        if not isinstance(tie_salt, str) or not tie_salt:
+            raise PropertyComponentsError(
+                "allocate_property_rental_income must declare a non-empty tie_salt."
+            )
+        if tie_salt in set(salts_in_use):
+            raise PropertyComponentsError(
+                "the receipts walk's tie_salt must differ from the salts of the "
+                "stage's other draws on the same person ids."
+            )
         return cls(
             band_lower_bounds=bounds,
             walk_seed=int(parameters["walk_seed"]),
+            tie_salt=tie_salt,
             maximum_top_band_multiplier=multiplier,
         )
 
@@ -671,7 +703,9 @@ def allocate_property_rental_income(
 ) -> ReceiptsAllocation:
     """Receipts for every person with ``profit`` above zero (zero elsewhere).
 
-    Ranked by profit (person id breaks ties), walked top band first into
+    Ranked by profit, landlords tied on profit in the order of a uniform
+    keyed on their person id under the walk seed and the tie salt, then of
+    their ids (``keyed_tie_order``), walked top band first into
     Table 13's bands, each filled to its share of the individuals-basis
     landlords times the landlords' weight here, linear within a bounded band
     from its upper bound down, never below profit; the open top band takes
@@ -691,7 +725,11 @@ def allocate_property_rental_income(
     top_down = list(reversed(bands))
     if not len(landlord):
         raise PropertyComponentsError("no landlord with profit above zero to allocate.")
-    order = landlord[np.lexsort((ids[landlord], -profit[landlord]))]
+    order = landlord[
+        keyed_tie_order(
+            -profit[landlord], ids[landlord], seed=spec.walk_seed, salt=spec.tie_salt
+        )
+    ]
     ranked_weights = weights[order]
     landlord_weight = float(ranked_weights.sum())
     published_landlords = float(sum(band.landlords for band in bands))
@@ -822,7 +860,11 @@ def allocate_property_rental_income(
     on = profit > 0.0
     receipt = {
         "population": "persons with profit from property other than sub-letting above zero",
-        "order": "profit descending, person_id ascending",
+        "order": (
+            "profit descending, landlords tied on profit in ascending order of a "
+            "uniform keyed on person_id under walk_seed and tie_salt, then "
+            "person_id ascending"
+        ),
         "walk": {"seed": spec.walk_seed, "offset": offset},
         "band_basis": (
             "PRIS 2024-25 Table 13 (all tax entities) x Table 1 individuals' "
@@ -928,7 +970,8 @@ class UKPropertyComponentsStageTransform:
             _operation(self.stage, IMPUTE_FRS_PROPERTY_FINANCE_COSTS_KIND)
         )
         receipts_spec = ReceiptsAllocationSpec.from_parameters(
-            _operation(self.stage, ALLOCATE_PROPERTY_RENTAL_INCOME_KIND)
+            _operation(self.stage, ALLOCATE_PROPERTY_RENTAL_INCOME_KIND),
+            salts_in_use=(finance_spec.incidence_salt, finance_spec.amount_salt),
         )
         verify = _operation(self.stage, VERIFY_VENDORED_FACT_RESOURCE_KIND)
         if (

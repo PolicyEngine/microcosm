@@ -10,6 +10,8 @@ from microcosm.build.stochastic_assignment import (
     assign_binary_with_anchored_residual,
     clipped_normal_from_uniforms,
     integer_record_keys,
+    keyed_tie_order,
+    keyed_tie_uniforms,
     sample_categorical_from_counts,
     stable_identity_uniform,
     stable_identity_uniforms,
@@ -337,3 +339,88 @@ def test_the_latent_attribute_band_is_the_shared_band_at_four_sigma() -> None:
             assert binomial_share_tolerance(target=target, rows=rows, sigma=4.0) == (
                 before
             )
+
+
+# --- keyed tie-breaks (microcosm#931) ----------------------------------------
+
+_TIE = {"seed": 7, "salt": "test:tie"}
+
+
+def _ties(n: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+    """Synthetic distinct integer ids and values drawn from a few atoms."""
+
+    ids = rng.choice(10**12, n, replace=False).astype(np.int64)
+    values = rng.integers(0, 6, n).astype(float)
+    return ids, values
+
+
+def test_keyed_tie_order_is_the_id_order_where_nothing_ties() -> None:
+    rng = np.random.default_rng(3)
+    ids = rng.choice(10**12, 500, replace=False).astype(np.int64)
+    values = rng.permutation(500).astype(float) * 1.5
+
+    order = keyed_tie_order(values, ids, **_TIE)
+
+    np.testing.assert_array_equal(order, np.lexsort((ids, values)))
+    np.testing.assert_array_equal(
+        keyed_tie_order(-values, ids, **_TIE), np.lexsort((ids, -values))
+    )
+
+
+def test_keyed_tie_order_sorts_ties_on_their_uniforms_then_ids() -> None:
+    # The full form the helper's contract states: np.lexsort((ids, u,
+    # primary)) with u every record's uniform, though only tied records are
+    # drawn. NaNs tie with each other and -0.0 with 0.0.
+    rng = np.random.default_rng(4)
+    for trial in range(60):
+        ids, values = _ties(int(rng.integers(1, 80)), rng)
+        if trial % 3 == 0:
+            values[rng.random(values.size) < 0.2] = np.nan
+        if trial % 4 == 0:
+            values[values == 0.0] = -0.0
+        uniforms = stable_identity_uniforms(ids, **_TIE)
+
+        order = keyed_tie_order(values, ids, **_TIE)
+
+        np.testing.assert_array_equal(order, np.lexsort((ids, uniforms, values)))
+        np.testing.assert_array_equal(np.sort(order), np.arange(values.size))
+    np.testing.assert_array_equal(
+        keyed_tie_uniforms(ids, **_TIE), stable_identity_uniforms(ids, **_TIE)
+    )
+
+
+def test_keyed_tie_order_breaks_a_tie_otherwise_than_the_ids_would() -> None:
+    # Three records tie; their uniforms, not their ids, set their order.
+    ids = np.asarray([11, 12, 13, 14, 15], dtype=np.int64)
+    values = np.asarray([2.0, 1.0, 1.0, 1.0, 0.0])
+    tied = ids[1:4]
+    keyed = tied[np.argsort(stable_identity_uniforms(tied, **_TIE))]
+    assert keyed.tolist() != sorted(keyed.tolist())
+
+    order = keyed_tie_order(values, ids, **_TIE)
+
+    assert ids[order].tolist() == [15, *keyed.tolist(), 11]
+
+
+def test_keyed_tie_order_does_not_depend_on_the_row_order() -> None:
+    rng = np.random.default_rng(5)
+    ids, values = _ties(300, rng)
+    expected = ids[keyed_tie_order(values, ids, **_TIE)]
+    for _ in range(5):
+        rows = rng.permutation(ids.size)
+        order = keyed_tie_order(values[rows], ids[rows], **_TIE)
+        np.testing.assert_array_equal(ids[rows][order], expected)
+
+
+def test_keyed_tie_order_draws_on_its_salt_and_refuses_unusable_ids() -> None:
+    rng = np.random.default_rng(6)
+    ids, values = _ties(200, rng)
+    salted = keyed_tie_order(values, ids, seed=7, salt="test:other")
+    assert not np.array_equal(keyed_tie_order(values, ids, **_TIE), salted)
+    with pytest.raises(TypeError, match="integer ids"):
+        keyed_tie_order([1.0, 1.0], [1.0, 2.0], **_TIE)
+    with pytest.raises(ValueError, match="each record once"):
+        keyed_tie_order([1.0, 1.0], np.asarray([3, 3]), **_TIE)
+    with pytest.raises(ValueError, match="aligned"):
+        keyed_tie_order([1.0, 1.0, 2.0], np.asarray([3, 4]), **_TIE)
+    assert keyed_tie_order([], np.asarray([], dtype=np.int64), **_TIE).size == 0

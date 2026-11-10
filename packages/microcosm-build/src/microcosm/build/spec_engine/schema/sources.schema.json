@@ -10678,6 +10678,8 @@
       "wealth_measure",
       "investable_wealth_columns",
       "selection",
+      "seed",
+      "salt",
       "maximum_copy_weight",
       "copy_rule",
       "id_remapping",
@@ -10769,6 +10771,13 @@
       "selection": {
        "type": "string"
       },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string",
+       "minLength": 1
+      },
       "maximum_copy_weight": {
        "type": "number"
       },
@@ -10812,6 +10821,8 @@
       "stratum_lower",
       "copies",
       "stratum_rule",
+      "seed",
+      "salt",
       "copy_rule",
       "id_remapping",
       "flag_column",
@@ -10838,6 +10849,13 @@
       },
       "stratum_rule": {
        "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string",
+       "minLength": 1
       },
       "copy_rule": {
        "type": "string"
@@ -13342,6 +13360,7 @@
       "order",
       "walk",
       "walk_seed",
+      "tie_salt",
       "within_band",
       "top_band",
       "maximum_top_band_multiplier",
@@ -13378,6 +13397,10 @@
       },
       "walk_seed": {
        "type": "integer"
+      },
+      "tie_salt": {
+       "type": "string",
+       "minLength": 1
       },
       "within_band": {
        "type": "string"

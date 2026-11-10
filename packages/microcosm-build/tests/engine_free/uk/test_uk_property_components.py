@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from microcosm.build import load_country_spec
+from microcosm.build.source_manifest import SourceOperationSpec
+from microcosm.build.stochastic_assignment import (
+    binomial_share_tolerance,
+    stable_identity_uniforms,
+)
+from microcosm.build.uk_runtime import copy_id_table
+from microcosm.build.uk_runtime import property_components as components
 from microcosm.build.uk_runtime.hmrc_property_rental import (
     HMRC_PROPERTY_RENTAL_EXPENSE_TYPES,
     HMRC_PROPERTY_RENTAL_RECEIPTS_BAND_LOWER_BOUNDS,
@@ -151,6 +160,30 @@ class TestDeclaredParameters:
         parameters["band_lower_bounds"] = [0, 10_000, 100_000]
         with pytest.raises(PropertyComponentsError, match="Table 13"):
             ReceiptsAllocationSpec.from_parameters(parameters)
+
+    def test_the_walk_declares_a_tie_salt_of_its_own(self) -> None:
+        # The receipts walk keys its tie-break on person ids under walk_seed
+        # and its own salt (microcosm#931): empty or missing is refused, and so
+        # is a salt the finance-cost draws key the same person ids on.
+        parameters = _parameters(ALLOCATE_PROPERTY_RENTAL_INCOME_KIND)
+        finance = FinanceCostModelSpec.from_parameters(
+            _parameters(IMPUTE_FRS_PROPERTY_FINANCE_COSTS_KIND)
+        )
+        in_use = (finance.incidence_salt, finance.amount_salt)
+        spec = ReceiptsAllocationSpec.from_parameters(parameters, salts_in_use=in_use)
+        assert spec.tie_salt == "allocate_property_rental_income:tie"
+        assert spec.walk_seed == 0
+        for bad in ("", None):
+            with pytest.raises(PropertyComponentsError, match="tie_salt"):
+                ReceiptsAllocationSpec.from_parameters({**parameters, "tie_salt": bad})
+        without = {key: value for key, value in parameters.items() if key != "tie_salt"}
+        with pytest.raises(PropertyComponentsError, match="tie_salt"):
+            ReceiptsAllocationSpec.from_parameters(without)
+        for salt in in_use:
+            with pytest.raises(PropertyComponentsError, match="tie_salt"):
+                ReceiptsAllocationSpec.from_parameters(
+                    {**parameters, "tie_salt": salt}, salts_in_use=in_use
+                )
 
 
 class TestFRSConcept:
@@ -442,6 +475,116 @@ class TestReceiptsWalk:
         second, _ = self._allocate(ids[order], profit[order], weights[order])
         np.testing.assert_allclose(first.receipts[order], second.receipts)
 
+    @staticmethod
+    def _by_id(monkeypatch):
+        """The walk's order before microcosm#931: ties by person id alone."""
+
+        monkeypatch.setattr(
+            components,
+            "keyed_tie_order",
+            lambda primary, ids, **_: np.lexsort((np.asarray(ids), primary)),
+        )
+
+    def test_distinct_profits_take_the_receipts_of_the_id_order(
+        self, monkeypatch
+    ) -> None:
+        # The tie-break only reorders exact ties, so on distinct profits
+        # every receipt and every cell of the receipt is the id order's bit
+        # for bit; only the declared order's wording moves (microcosm#931).
+        ids, profit, weights = _landlords()
+        keyed, _ = self._allocate(ids, profit, weights, receipts_per_profit=2.0)
+        self._by_id(monkeypatch)
+        by_id, _ = self._allocate(ids, profit, weights, receipts_per_profit=2.0)
+
+        np.testing.assert_array_equal(keyed.receipts, by_id.receipts)
+        assert {**keyed.receipt, "order": None} == {**by_id.receipt, "order": None}
+        assert keyed.receipt["order"] == (
+            "profit descending, landlords tied on profit in ascending order of a "
+            "uniform keyed on person_id under walk_seed and tie_salt, then "
+            "person_id ascending"
+        )
+
+    def test_tied_landlords_take_their_receipts_in_keyed_order(
+        self, monkeypatch
+    ) -> None:
+        # Six landlords of equal weight tie on profit inside one bounded band:
+        # the walk places them in the order of their keyed uniforms, which is
+        # not their id order, so the first takes the highest receipt. Their
+        # receipts are the id order's, among themselves permuted, and every
+        # other landlord's is unchanged (microcosm#931).
+        ids, profit, weights = _landlords()
+        tied = np.flatnonzero(profit > 0.0)[100:106]
+        profit[tied] = float(np.median(profit[profit > 0.0]))
+        weights[tied] = 1_000.0
+        spec = ReceiptsAllocationSpec.from_parameters(
+            _parameters(ALLOCATE_PROPERTY_RENTAL_INCOME_KIND)
+        )
+        uniforms = stable_identity_uniforms(
+            ids[tied], seed=spec.walk_seed, salt=spec.tie_salt
+        )
+        keyed_order = tied[np.lexsort((ids[tied], uniforms))]
+        assert keyed_order.tolist() != sorted(keyed_order.tolist())
+
+        keyed, _ = self._allocate(ids, profit, weights, receipts_per_profit=2.0)
+        receipts = keyed.receipts[keyed_order]
+        assert len(set(receipts.tolist())) == len(tied)
+        assert (np.diff(receipts) < 0.0).all()
+        self._by_id(monkeypatch)
+        by_id, _ = self._allocate(ids, profit, weights, receipts_per_profit=2.0)
+        np.testing.assert_array_equal(
+            np.sort(keyed.receipts[tied]), np.sort(by_id.receipts[tied])
+        )
+        others = np.setdiff1d(np.arange(len(ids)), tied)
+        np.testing.assert_array_equal(keyed.receipts[others], by_id.receipts[others])
+        order = np.random.default_rng(5).permutation(len(ids))
+        monkeypatch.undo()
+        again, _ = self._allocate(
+            ids[order], profit[order], weights[order], receipts_per_profit=2.0
+        )
+        np.testing.assert_allclose(keyed.receipts[order], again.receipts)
+
+    def test_clone_zero_takes_the_top_receipt_of_tied_clones_at_its_share(
+        self, monkeypatch
+    ) -> None:
+        # Sixty source landlords, each as three geographic clones of equal
+        # weight tied on profit, among the synthetic landlords. Walked by id,
+        # clone 0 took the highest receipt of its family every time; keyed on
+        # each clone's own id, at about a third of the families, inside the
+        # four-sigma binomial band (design verifier P10; microcosm#931).
+        ids, profit, weights = _landlords()
+        families, clone_count = 60, 3
+        sources = np.arange(1, families + 1, dtype=np.int64) * 7 + 900_000
+        clone_ids = np.concatenate(
+            [
+                sources,
+                *(
+                    copy_id_table.mint(sources, "geographic_support", k)
+                    for k in range(1, clone_count)
+                ),
+            ]
+        )
+        ids = np.concatenate([ids, clone_ids])
+        profit = np.concatenate(
+            [profit, np.tile(np.linspace(3_000.0, 9_000.0, families), clone_count)]
+        )
+        weights = np.concatenate([weights, np.full(families * clone_count, 900.0)])
+        clones = slice(len(ids) - families * clone_count, len(ids))
+
+        def tops(allocation) -> np.ndarray:
+            receipts = allocation.receipts[clones].reshape(clone_count, families)
+            assert all(len(set(column)) == clone_count for column in receipts.T)
+            return np.argmax(receipts, axis=0)
+
+        keyed, _ = self._allocate(ids, profit, weights, receipts_per_profit=2.0)
+        share = float((tops(keyed) == 0).mean())
+        band = binomial_share_tolerance(
+            target=1 / clone_count, rows=families, sigma=4.0
+        )
+        assert abs(share - 1 / clone_count) <= band
+        self._by_id(monkeypatch)
+        by_id, _ = self._allocate(ids, profit, weights, receipts_per_profit=2.0)
+        assert float((tops(by_id) == 0).mean()) == 1.0
+
 
 class TestStageTransform:
     def _frame(self):
@@ -519,6 +662,41 @@ class TestStageTransform:
         )
         with pytest.raises(PropertyComponentsError, match="build period 2024"):
             transform(moved)
+
+    def test_the_stage_refuses_a_tie_salt_its_finance_costs_draw_on(self) -> None:
+        # The receipts walk and the finance-cost draws key the same person
+        # ids, so the stage refuses a tie salt equal to either draw's salt
+        # (microcosm#931).
+        from microcosm.build.uk_runtime.property_components import (
+            UKPropertyComponentsStageTransform,
+        )
+
+        stage = _stage()
+        finance = FinanceCostModelSpec.from_parameters(
+            _parameters(IMPUTE_FRS_PROPERTY_FINANCE_COSTS_KIND)
+        )
+        for salt in (finance.incidence_salt, finance.amount_salt):
+            operations = tuple(
+                SourceOperationSpec(
+                    kind=op.kind,
+                    parameters=(
+                        {**op.parameters, "tie_salt": salt}
+                        if op.kind == ALLOCATE_PROPERTY_RENTAL_INCOME_KIND
+                        else dict(op.parameters)
+                    ),
+                )
+                for op in stage.operations
+            )
+            transform = UKPropertyComponentsStageTransform(
+                stage=replace(stage, operations=operations),
+                uprating_factors={
+                    "property_income": 1.0,
+                    "property_finance_costs": 1.0,
+                },
+                facts=_facts(landlords=1_000.0, receipts=1_000_000.0),
+            )
+            with pytest.raises(PropertyComponentsError, match="tie_salt"):
+                transform(self._frame())
 
     def test_the_stage_adds_frs_costs_back_and_gives_every_landlord_receipts(
         self, tmp_path
