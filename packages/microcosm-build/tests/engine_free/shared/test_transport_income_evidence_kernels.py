@@ -87,6 +87,7 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.executor import Population, _project_context
 from microcosm.graph.kernel import ArtifactValue, NumericScope
+from test_support.microcosm_build import static_reach_cases
 from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.first_party_imports import hashed_module_names
 from test_support.microcosm_build.static_reach import Cut, reach
@@ -1926,11 +1927,11 @@ def _walk(ref, cuts=(HIERARCHY_GUARD,)):
 
 @pytest.mark.parametrize("ref", sorted(KERNELS))
 def test_each_kernel_hashes_every_module_its_run_can_reach(ref) -> None:
-    # A static walk of run(), over every branch with the defaults,
-    # decorators, class attributes and module-level constants it reaches,
-    # names exactly the listed modules outside microcosm.graph. The trace
-    # test sees only the modules one run executes, so a new constant read
-    # from an unlisted module would pass it and leave the hash short.
+    # A static walk of run() and its class, which over-approximates what a
+    # run can reach (static_reach's docstring lists how), names exactly the
+    # listed modules outside microcosm.graph. The trace test sees only the
+    # modules one run executes, so a new constant read from an unlisted
+    # module would pass it and leave the hash short.
     walked = _walk(ref)
     listed = _outside_graph(INCOME_EVIDENCE_KERNEL_MODULES[ref])
     reached = _outside_graph(walked.modules)
@@ -1971,6 +1972,31 @@ def test_the_walk_sees_a_constant_the_trace_cant(kernel_traces) -> None:
     shortened[ref] = tuple(name for name in shortened[ref] if name != dropped)
     assert _unlisted(ref, kernel_traces[ref], shortened) == set()
     assert _outside_graph(_walk(ref).modules) - set(shortened[ref]) == {dropped}
+
+
+@pytest.fixture(scope="module")
+def walk_case_paths(tmp_path_factory):
+    return static_reach_cases.write(tmp_path_factory.mktemp("walk-cases"))
+
+
+@pytest.mark.parametrize(
+    ("module", "qualname"),
+    sorted(static_reach_cases.ROOTS),
+    ids=[module for module, _ in sorted(static_reach_cases.ROOTS)],
+)
+def test_the_walk_reaches_each_way_code_names_a_module(
+    walk_case_paths, module, qualname
+) -> None:
+    # Each synthetic root reaches its targets one way the walk's docstring
+    # lists (an alias, a dunder, a literal getattr, a lazy export, a scope
+    # rule), and its walk reaches exactly those targets.
+    walked = reach(
+        f"{static_reach_cases.PACKAGE}.{module}", qualname, paths=walk_case_paths
+    )
+    assert (
+        static_reach_cases.targets(walked)
+        == static_reach_cases.ROOTS[(module, qualname)]
+    )
 
 
 def test_the_module_stays_outside_the_batterys_binding_closure() -> None:

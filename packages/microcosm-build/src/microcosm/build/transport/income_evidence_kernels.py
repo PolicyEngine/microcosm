@@ -34,11 +34,13 @@ first-party module whose source its ``run()`` executes, and every first-party
 module outside ``microcosm.graph`` whose constants it reads.
 ``microcosm.graph.kernel`` and ``microcosm.graph.decl`` stay out, as in the
 evidence kernels' lists. Two tests check each list. A trace of one run checks
-the executed modules, and can't see a constant read. A static walk of
-``run()``'s source (``test_support/microcosm_build/static_reach.py``) follows
-every branch and constant outside ``microcosm.graph``, and leaves out one
-guarded branch that no decoded target opens. A comment marks each entry whose
-module a run only reads constants from.
+the executed modules, and can't see a constant read. A static walk of the
+kernel's class and ``run()`` from source
+(``test_support/microcosm_build/static_reach.py``) over-approximates what a run
+can reach, in the ways that module's docstring lists. Outside
+``microcosm.graph`` it must name exactly the listed modules, less one guarded
+branch that no decoded target opens. A comment marks each entry whose module a
+run only reads constants from.
 ``evidence_contract`` hashes only the kernels it lists, and this module stays
 outside the gate battery's binding closure, so adding it re-keys no battery.
 
@@ -807,7 +809,7 @@ class OmissionRegisterKernel(KernelBase):
         # Tie the problem to this run's fit: the solution must be the one
         # solved from it, every weight unit on its axis must hold a record, and
         # each record's frame weight (its weight unit's, which the frame
-        # broadcasts) must be the solution's, bit for bit.
+        # broadcasts) must equal the solution's as a float64 value.
         solution = decode_solution(
             payloads["solution"],
             problem_sha256=problem.sha256,
