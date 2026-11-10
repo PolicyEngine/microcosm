@@ -2,7 +2,9 @@
 
 Engine-free. A stand-in CLI answers ``--version``, ``capabilities`` and
 ``compile`` the way ``tools/refresh_axiom_input_surface.py`` calls them, and
-writes the artifact each test gives it.
+writes the artifact each test gives it. A stand-in ``--dense-python`` reads
+the dense probe's jobs from stdin and answers each entity from the outcomes
+its test gives it.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from hypothesis import given
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from tools import refresh_axiom_input_surface as refresh
@@ -92,6 +94,15 @@ def _format_3() -> dict:
     return artifact
 
 
+def _wrapper(path: Path, script: Path) -> Path:
+    """An executable at ``path`` that runs ``script`` under this interpreter."""
+    path.write_text(
+        f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf-8"
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    return path
+
+
 def _engine(tmp_path: Path, advertised, artifact: dict | None = None) -> Path:
     script = tmp_path / "stand_in_engine.py"
     script.write_text(
@@ -101,12 +112,7 @@ def _engine(tmp_path: Path, advertised, artifact: dict | None = None) -> Path:
         ),
         encoding="utf-8",
     )
-    engine = tmp_path / "axiom-rules-engine"
-    engine.write_text(
-        f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf-8"
-    )
-    engine.chmod(engine.stat().st_mode | stat.S_IXUSR)
-    return engine
+    return _wrapper(tmp_path / "axiom-rules-engine", script)
 
 
 _MODULE_TEXT = b"stand-in module; the stand-in CLI ignores it\n"
@@ -165,19 +171,23 @@ def test_an_engine_of_another_format_refuses(tmp_path, advertised) -> None:
         refresh.engine_identity(_engine(tmp_path, advertised))
 
 
-@pytest.mark.parametrize("written", [2, 3.0, None])
-def test_an_artifact_off_the_engines_format_refuses(tmp_path, written) -> None:
+@pytest.mark.parametrize(
+    ("advertised", "written"), [(3, 2), (3, 3.0), (3, None), (2, 3)]
+)
+def test_an_artifact_off_the_engines_format_refuses(
+    tmp_path, advertised, written
+) -> None:
     artifact = _format_3()
     artifact["artifact_format_version"] = written
-    engine = _engine(tmp_path, 3, artifact)
-    assert refresh.engine_identity(engine)[1] == 3
+    engine = _engine(tmp_path, advertised, artifact)
+    assert refresh.engine_identity(engine)[1] == advertised
     module = _rulespec_root(tmp_path) / "nz" / "m.yaml"
     with pytest.raises(
         refresh.SurfaceError,
-        match=f"has artifact format {written!r}; .* names format 3",
+        match=f"has artifact format {written!r}; .* names format {advertised}",
     ):
         refresh.compile_module(
-            engine, module, module.parents[1], tmp_path / "m.json", 3
+            engine, module, module.parents[1], tmp_path / "m.json", advertised
         )
 
 
@@ -205,8 +215,9 @@ def test_a_format_3_artifact_gives_the_format_2_snapshot(tmp_path) -> None:
 _BLOCKER = refresh._CROSS_ENTITY.format(
     dependency="hh_income", derived="person_benefit", entity="Household"
 )
-#: Advice in each of the three forms engine 753ce7d9 writes
-#: (``cross_entity_advice``, src/dense.rs:560-590).
+#: Advice in each form engine 753ce7d9 writes (``cross_entity_advice``,
+#: src/dense.rs:560-590): for a Scalar root, for a filtered entity's rows, and
+#: for a read through a relation, with one the program declares and with none.
 _ADVICE = (
     "This dense program's root is the entity-free `Scalar`, whose rows hold "
     "no `Household`: compile it for `Household` instead, or compile only "
@@ -220,6 +231,12 @@ _ADVICE = (
     "between `Person` and `Household`, such as `member_of_household`, which "
     "this program declares, or compile only outputs that do not reach "
     "`person_benefit`",
+    "Dense evaluates the rows of one entity and reads another entity's rule "
+    "only through a relation, by design: read `hh_income` with a related "
+    "aggregate (`only`, `sum`, `min`, `max`, `count_where`) over a relation "
+    "between `Person` and `Household` (this program declares none; a "
+    "`data_relation` whose `arguments` name both entities is one), or compile "
+    "only outputs that do not reach `person_benefit`",
 )
 
 
@@ -260,6 +277,7 @@ _NAME = st.text(
 _TRIPLE = st.tuples(_NAME, _NAME, _NAME)
 
 
+@settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(_TRIPLE, _TRIPLE, st.text(max_size=80))
 def test_property_a_cross_entity_blocker_explains_exactly_its_names(
     blocked, read, advice
@@ -273,12 +291,246 @@ def test_property_a_cross_entity_blocker_explains_exactly_its_names(
         )
 
     blocker = message(blocked)
+    assert refresh.explained(blocker, [blocker])
+    assert refresh.explained(f"{blocker}. {advice}", [blocker])
     same = blocked == read
     assert refresh.explained(message(read), [blocker]) is same
     assert refresh.explained(f"{message(read)}. {advice}", [blocker]) is same
 
 
-@given(_NAME, st.text(max_size=120))
-def test_property_a_versioned_blocker_explains_only_itself(name, message) -> None:
+@settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(_NAME, _NAME, st.text(max_size=120))
+def test_property_a_versioned_blocker_explains_only_itself(name, other, text) -> None:
+    # Its own text matches. Another rule's versioned text matches only under
+    # the same name, and no text matches with advice after it.
     versioned = refresh._VERSIONED.format(name=name)
-    assert refresh.explained(message, [versioned]) is (message == versioned)
+    assert refresh.explained(versioned, [versioned])
+    assert refresh.explained(refresh._VERSIONED.format(name=other), [versioned]) is (
+        other == name
+    )
+    assert refresh.explained(text, [versioned]) is (text == versioned)
+    assert not refresh.explained(f"{versioned}. {text}", [versioned])
+
+
+# ---------------------------------------------------------------------------
+# Dense mode
+# ---------------------------------------------------------------------------
+
+#: Stands in for ``--dense-python``. It ignores the probe after ``-c``, writes
+#: the jobs it reads from stdin to JOBS, and answers every entity a job names
+#: from OUTCOMES.
+_DENSE_STAND_IN = """\
+import json
+import sys
+
+OUTCOMES = json.loads({outcomes!r})
+if sys.argv[1:2] != ["-c"]:
+    sys.exit(f"unexpected arguments {{sys.argv[1:]}}")
+jobs = json.load(sys.stdin)
+with open({jobs!r}, "w", encoding="utf-8") as handle:
+    json.dump(jobs, handle)
+results = []
+for job in jobs:
+    entities = {{entity: OUTCOMES[entity] for entity in job["entities"]}}
+    results.append({{"module": job["module"], "entities": entities}})
+json.dump(results, sys.stdout)
+"""
+_CATALOG = {"h": "nz:h", "p": "nz:p"}
+#: Household's dense program as the walk sees it: root input ``h``.
+_HOUSEHOLD = {
+    "root_entity": "Household",
+    "root_inputs": ["h"],
+    "input_catalog": _CATALOG,
+}
+
+
+def _cross_entity_artifact() -> dict:
+    """A Person rule that reads a Household rule, as format 3.
+
+    The walk blocks Person's dense program with ``_BLOCKER`` and finds
+    Household's unblocked.
+    """
+    artifact = _format_3()
+    artifact["program"]["derived"] = [
+        {
+            "name": "person_benefit",
+            "entity": "Person",
+            "expr": {
+                "kind": "add",
+                "left": {"kind": "input", "name": "p"},
+                "right": {"kind": "derived", "name": "hh_income"},
+            },
+            "versions": [],
+        },
+        {
+            "name": "hh_income",
+            "entity": "Household",
+            "expr": {"kind": "input", "name": "h"},
+            "versions": [],
+        },
+    ]
+    artifact["metadata"]["input_catalog"] = [
+        {"slot": slot, "canonical_request_name": name}
+        for slot, name in _CATALOG.items()
+    ]
+    return artifact
+
+
+def _dense_python(tmp_path: Path, outcomes: dict) -> Path:
+    script = tmp_path / "stand_in_dense.py"
+    script.write_text(
+        _DENSE_STAND_IN.format(
+            outcomes=json.dumps(outcomes), jobs=str(tmp_path / "dense_jobs.json")
+        ),
+        encoding="utf-8",
+    )
+    return _wrapper(tmp_path / "dense-python", script)
+
+
+def _dense_run(tmp_path: Path, outcomes: dict) -> tuple[dict, dict | None]:
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    return refresh.build_snapshot(
+        country="nz",
+        rulespec_root=_rulespec_root(tmp_path),
+        rulespec_commit="0" * 40,
+        engine_bin=_engine(tmp_path, 3, _cross_entity_artifact()),
+        engine_commit="1" * 40,
+        dense_python=_dense_python(tmp_path, outcomes),
+        artifact_dir=artifacts,
+    )
+
+
+@pytest.mark.parametrize("advice", ["", *(f". {advice}" for advice in _ADVICE)])
+def test_dense_mode_records_the_walks_text_for_a_cross_entity_error(
+    tmp_path, advice
+) -> None:
+    # Engines from 4d7ec14f on add advice to the error. The snapshot keeps
+    # the walk's text, so a change in the engine's advice can't move it.
+    snapshot, differential = _dense_run(
+        tmp_path, {"Household": _HOUSEHOLD, "Person": {"error": _BLOCKER + advice}}
+    )
+    root = tmp_path / "rulespec"
+    jobs = json.loads((tmp_path / "dense_jobs.json").read_text(encoding="utf-8"))
+    assert jobs == [
+        {
+            "module": str(root / "nz" / "m.yaml"),
+            "root": str(root),
+            "entities": ["Household", "Person"],
+        }
+    ]
+    assert snapshot["engine"]["surface"] == refresh.SURFACE_DENSE
+    assert snapshot["modules"] == [
+        {
+            "path": "nz/m.yaml",
+            "sha256": hashlib.sha256(_MODULE_TEXT).hexdigest(),
+            "status": "dense_unsupported",
+            "inputs": {"Household": ["h"]},
+            "canonical_inputs": _CATALOG,
+            "error": f"Person: {_BLOCKER}",
+            "dense_unsupported_entities": ["Person"],
+            "cli_walk_inputs": {"Person": ["p"]},
+        }
+    ]
+    assert differential == {
+        "entity_programs": 2,
+        "dense_compiled": 1,
+        "input_mismatches": [],
+        "status_mismatches": [],
+        "catalog_mismatches": [],
+    }
+
+
+@pytest.mark.parametrize(
+    ("outcomes", "match"),
+    [
+        pytest.param(
+            {
+                "Household": _HOUSEHOLD,
+                "Person": {
+                    "error": _BLOCKER.replace("`hh_income`", "`hh_wealth`")
+                    + f". {_ADVICE[2]}"
+                },
+            },
+            r"nz/m\.yaml \[Person\]: dense error not explained by the artifact walk",
+            id="another-cross-entity-read",
+        ),
+        pytest.param(
+            {
+                "Household": _HOUSEHOLD,
+                "Person": {"error": "dense compilation does not yet support `y`"},
+            },
+            r"nz/m\.yaml \[Person\]: dense error not explained by the artifact walk",
+            id="a-new-limitation",
+        ),
+        pytest.param(
+            {
+                "Household": {"error": f"{_BLOCKER}. {_ADVICE[0]}"},
+                "Person": {"error": _BLOCKER},
+            },
+            r"nz/m\.yaml \[Household\]: dense error not explained by the "
+            r"artifact walk",
+            id="an-entity-the-walk-doesnt-block",
+        ),
+        pytest.param(
+            {
+                "Household": {"error": refresh._NO_PROGRAM.format("Household")},
+                "Person": {"error": _BLOCKER},
+            },
+            r"nz/m\.yaml: dense reports no Household program",
+            id="no-program",
+        ),
+        pytest.param(
+            {
+                "Household": {**_HOUSEHOLD, "root_entity": "Person"},
+                "Person": {"error": _BLOCKER},
+            },
+            r"nz/m\.yaml: asked for Household, dense rooted at Person",
+            id="another-root",
+        ),
+        pytest.param(
+            {
+                "Household": {**_HOUSEHOLD, "root_inputs": ["h", "h"]},
+                "Person": {"error": _BLOCKER},
+            },
+            r"nz/m\.yaml \[Household\]: duplicate root inputs",
+            id="duplicate-root-inputs",
+        ),
+    ],
+)
+def test_dense_mode_refuses_what_the_walk_cant_account_for(
+    tmp_path, outcomes, match
+) -> None:
+    with pytest.raises(refresh.SurfaceError, match=match):
+        _dense_run(tmp_path, outcomes)
+
+
+def test_dense_mode_counts_where_dense_and_the_walk_disagree(tmp_path) -> None:
+    # Dense compiles Person although the walk blocks it, reads an input the
+    # walk doesn't, and reports another catalog for Household.
+    snapshot, differential = _dense_run(
+        tmp_path,
+        {
+            "Household": {
+                **_HOUSEHOLD,
+                "root_inputs": ["h", "q"],
+                "input_catalog": {"h": "nz:h"},
+            },
+            "Person": {
+                "root_entity": "Person",
+                "root_inputs": ["p"],
+                "input_catalog": _CATALOG,
+            },
+        },
+    )
+    assert differential == {
+        "entity_programs": 2,
+        "dense_compiled": 2,
+        "input_mismatches": [("nz/m.yaml", "Household", ["q"], [])],
+        "status_mismatches": [("nz/m.yaml", "Person", _BLOCKER)],
+        "catalog_mismatches": [("nz/m.yaml", "Household")],
+    }
+    (module,) = snapshot["modules"]
+    assert module["status"] == "compiled"
+    assert module["inputs"] == {"Household": ["h", "q"], "Person": ["p"]}
+    assert module["canonical_inputs"] == {"h": "nz:h", "p": "nz:p", "q": None}

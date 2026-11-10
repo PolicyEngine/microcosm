@@ -60,21 +60,22 @@ closure the dense compiler builds. It collects the ``input`` and
 ``where`` of ``sum_related`` and ``count_related``: inputs read there are
 related-entity (relation) inputs, not root inputs.
 
-Dense-compile blockers are read from the artifact: a reference from E's
-closure to a rule on another non-Scalar entity, or a rule in that closure
+The walk reads dense-compile blockers from the artifact: a reference from
+E's closure to a rule on another non-Scalar entity, or a rule in that closure
 with more than one version or an end-bounded version. The engine iterates
 derived rules in ``HashMap`` order, so when several blockers exist, which
 one its error names varies from process to process. The snapshot therefore
 records the lexicographically first blocker, in the engine's own message
 format, plus a count of the rest. In dense mode every dense error must equal
 one of the computed blockers. One exception: engines from 4d7ec14f (#292) on
-follow a cross-entity message with ". " and advice that names the relation
-to read through (``cross_entity_advice`` in the engine's ``src/dense.rs``).
-The walk can't build that advice, so a cross-entity blocker also matches an
-error that starts with its text and ". ", and the snapshot keeps the walk's
-text. Anything else aborts the run: a new kind of dense limitation is a
-review event, not a silent snapshot change. In CLI-only mode, only these two
-blocker kinds are detected.
+follow a cross-entity message with ". " and advice (``cross_entity_advice``
+in the engine's ``src/dense.rs``), which suggests compiling for the other
+entity, reading the rule through a relation, or compiling only the outputs
+that don't reach the reading rule. The walk can't build that advice, so a
+cross-entity blocker also matches an error that starts with its text and
+". ", and the snapshot keeps the walk's text. Anything else aborts the run:
+a new kind of dense limitation is a review event, not a silent snapshot
+change. In CLI-only mode, the walk detects only these two blocker kinds.
 
 The walk reads CLI artifact formats 2 and 3, and each artifact must carry
 the format the engine's ``capabilities`` names. Format 3 (engine 590d1dc9,
