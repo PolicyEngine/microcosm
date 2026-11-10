@@ -93,6 +93,8 @@ __all__ = [
     "RELEASE_ROLES",
     "REQUIRED_RELEASE_FILES",
     "RETIRED_BUILD_FIELDS",
+    "US_ANNUAL_BASE_DATASET_FILES",
+    "US_ANNUAL_RELEASE_ID",
     "US_EVIDENCE_RELEASE_ID",
     "US_FISCAL_STORED_INPUTS_STAGE",
     "US_LOCAL_AREA_SPM_MEASUREMENT_STAGE",
@@ -226,19 +228,22 @@ _ROLE_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 #: repository's default, holds every national build however it was made
 #: (calibrated, SPM source enrichments, compatibility recertifications,
 #: exact-k builds); the local-area release holds the ACS builds; and
-#: receipt-qualified donors and evidence-tier builds have releases of their
-#: own, which are never the default. Builds keep their ``populace-us-2024-…``
-#: IDs.
+#: receipt-qualified donors, evidence-tier builds and annual projections of a
+#: national build have releases of their own, which are never the default.
+#: Builds keep their ``populace-us-2024-…`` IDs; an annual build's ID is its
+#: base national build's ID followed by ``-annual-<YYYYMMDDTHHMMSSZ>-<hex8>``.
 US_NATIONAL_RELEASE_ID = "microcosm-us-2024-national"
 US_LOCAL_RELEASE_ID = "microcosm-us-2024-local"
 US_RECEIPT_DONOR_RELEASE_ID = "microcosm-us-2024-receipt-donor"
 US_EVIDENCE_RELEASE_ID = "microcosm-us-2024-evidence"
+US_ANNUAL_RELEASE_ID = "microcosm-us-2024-annual"
 US_RELEASES: Mapping[str, str] = MappingProxyType(
     {
         US_NATIONAL_RELEASE_ID: "national",
         US_LOCAL_RELEASE_ID: "local_area",
         US_RECEIPT_DONOR_RELEASE_ID: "national",
         US_EVIDENCE_RELEASE_ID: "national",
+        US_ANNUAL_RELEASE_ID: "national",
     }
 )
 #: The dataset file a new build of each US release declares. Builds moved by
@@ -249,8 +254,15 @@ US_RELEASE_DATASET_FILES: Mapping[str, str] = MappingProxyType(
         US_LOCAL_RELEASE_ID: "microcosm_us_2024_acs_local.h5",
         US_RECEIPT_DONOR_RELEASE_ID: "microcosm_us_2024_receipt_qualified.h5",
         US_EVIDENCE_RELEASE_ID: "microcosm_us_2024.h5",
+        US_ANNUAL_RELEASE_ID: "microcosm_us_2024.h5",
     }
 )
+#: The file names an annual build's base-year H5 may have. It is its base
+#: national build's dataset, byte for byte and under that build's file name:
+#: the national release's dataset file for a new build, or the name kept by a
+#: build the switch moved. Each projected year's H5 is
+#: ``microcosm_us_<year>.h5``.
+US_ANNUAL_BASE_DATASET_FILES = ("microcosm_us_2024.h5", "populace_us_2024.h5")
 #: The prefix of every US build ID, and of every US release in the tagged
 #: layout, where the release was the build.
 _US_BUILD_ID_PREFIX = "populace-us-"
@@ -1845,7 +1857,9 @@ def _check_release_manifest(
         _check_default_dataset_artifact(default_datasets, artifacts, failures)
         if is_us_release(release_id):
             _check_us_release_artifacts(manifest, artifacts, failures)
-            _check_us_release_dataset_file(artifacts, release_id, failures)
+            _check_us_release_dataset_file(
+                artifacts, release_id, failures, manifest=manifest
+            )
     else:
         _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
         for key, entry in artifacts.items():
@@ -1931,14 +1945,23 @@ def _check_us_release_artifacts(
 
 
 def _check_us_release_dataset_file(
-    artifacts: Mapping, release_id: str, failures: list[str]
+    artifacts: Mapping,
+    release_id: str,
+    failures: list[str],
+    *,
+    manifest: Mapping | None = None,
 ) -> None:
     """A new build of a US release declares that release's dataset file.
 
     So a receipt-qualified donor or an evidence-tier build can never be
     published into the national release, and new builds use the
-    ``microcosm_`` names.
+    ``microcosm_`` names. An annual build (``manifest`` is its release
+    manifest) declares its own files instead
+    (:func:`_check_us_annual_dataset_files`).
     """
+    if release_id == US_ANNUAL_RELEASE_ID:
+        _check_us_annual_dataset_files(manifest or {}, artifacts, failures)
+        return
     expected = US_RELEASE_DATASET_FILES.get(release_id)
     if expected is None:
         return
@@ -1951,6 +1974,54 @@ def _check_us_release_dataset_file(
         failures.append(
             f"release_manifest.json for release {release_id!r} must declare one "
             f"microdata artifact, {expected!r}; it declares {declared}."
+        )
+
+
+def _check_us_annual_dataset_files(
+    manifest: Mapping, artifacts: Mapping, failures: list[str]
+) -> None:
+    """An annual build's H5 files: its base year's, and one per projected year.
+
+    The projected years are the artifacts ``metadata.dataset_years`` maps a
+    year to, other than ``default_datasets.national``, which is the base
+    year's. Each projected year's artifact is ``microcosm_us_<year>``, in
+    ``microcosm_us_<year>.h5``. The one other microdata artifact is the base
+    national build's dataset, under one of :data:`US_ANNUAL_BASE_DATASET_FILES`.
+    """
+    metadata = manifest.get("metadata")
+    families = metadata.get("dataset_years") if isinstance(metadata, Mapping) else None
+    defaults = manifest.get("default_datasets")
+    base_key = defaults.get("national") if isinstance(defaults, Mapping) else None
+    projected: dict[object, object] = {}
+    for years in families.values() if isinstance(families, Mapping) else ():
+        if isinstance(years, Mapping):
+            projected.update(
+                {key: year for year, key in years.items() if key != base_key}
+            )
+    for key, year in projected.items():
+        expected = f"microcosm_us_{year}"
+        entry = artifacts.get(key) if isinstance(key, str) else None
+        path = entry.get("path") if isinstance(entry, Mapping) else None
+        if key != expected or path != f"{expected}.h5":
+            failures.append(
+                f"release_manifest.json for release {US_ANNUAL_RELEASE_ID!r} must "
+                f"declare its {year} H5 as artifact {expected!r} in "
+                f"{expected + '.h5'!r}; it declares artifact {key!r} in {path!r}."
+            )
+    base_files = sorted(
+        str(entry.get("path"))
+        for key, entry in artifacts.items()
+        if isinstance(entry, Mapping)
+        and entry.get("kind") == "microdata"
+        and key not in projected
+    )
+    if len(base_files) != 1 or base_files[0] not in US_ANNUAL_BASE_DATASET_FILES:
+        failures.append(
+            f"release_manifest.json for release {US_ANNUAL_RELEASE_ID!r} must "
+            "declare one microdata artifact besides its projected years, the "
+            "base national build's dataset under that build's file name ("
+            + " or ".join(repr(name) for name in US_ANNUAL_BASE_DATASET_FILES)
+            + f"); it declares {base_files}."
         )
 
 
@@ -5933,6 +6004,27 @@ def _check_local_area_gates(gate_summary: Mapping, failures: list[str]) -> None:
             )
 
 
+def _refuse_misplaced_annual_years(release_dir: Path, manifest: object) -> None:
+    """Refuse a build-folder build whose release does not match its annual years.
+
+    In the build-folder layout only builds of :data:`US_ANNUAL_RELEASE_ID`
+    declare ``metadata.dataset_years``, and each of them must
+    (:func:`microcosm.data.annual_projections.annual_release_refusal`). It
+    runs before a release's contract chooses its validator, so a source
+    enrichment, a recertification or an evidence-tier build is held to it
+    too. A tagged release keeps its optional annual family.
+    """
+    if not isinstance(manifest, Mapping):
+        return
+    from microcosm.data.annual_projections import annual_release_refusal
+
+    refusal = annual_release_refusal(release_dir.name, manifest)
+    if refusal is not None:
+        raise ReleaseContractError(
+            release_dir, [f"annual projection extension: {refusal}"]
+        )
+
+
 def _release_build_details(release_manifest: object) -> Mapping | None:
     """The fields that describe how a release's build was made.
 
@@ -7134,6 +7226,7 @@ def validate_release_dir(
             manifest_probe = json.loads(manifest_probe_path.read_text())
         except (OSError, ValueError):
             manifest_probe = None
+        _refuse_misplaced_annual_years(release_dir, manifest_probe)
         if isinstance(manifest_probe, Mapping) and "release_type" in manifest_probe:
             from microcosm.data.source_enrichment import (
                 SOURCE_ENRICHMENT_RELEASE_TYPE,
@@ -7693,6 +7786,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
             manifest_probe = json.loads(manifest_probe_path.read_text())
         except (OSError, ValueError):
             manifest_probe = None
+        _refuse_misplaced_annual_years(release_dir, manifest_probe)
         if (
             isinstance(manifest_probe, Mapping)
             and manifest_probe.get("release_type", "calibration") != "calibration"
