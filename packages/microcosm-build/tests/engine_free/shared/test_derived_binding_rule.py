@@ -20,10 +20,15 @@ from pathlib import Path
 import microcosm
 from test_support.microcosm_build.derived_binding_rule import (
     FIRST_PARTY_SCOPE,
+    FRAME_SCOPE,
     LAZY_EXPORT_TABLES,
     NO_LAZY_EXPORTS,
     BindingRule,
+    Findings,
+    KernelWalk,
+    KeyedWalk,
     RuleTables,
+    findings,
     hashed_modules,
     local_containers,
     module_definitions,
@@ -63,14 +68,18 @@ def test_the_refusal_check_sees_each_way_a_function_writes() -> None:
 
 def test_the_refusal_check_lets_a_function_write_into_containers_it_creates():
     """Control for ``local_containers`` (microcosm#931): a function that
-    stores into, deletes from, augments or calls an in-place method on a
-    container its own scope creates, and that no other binding reaches,
-    writes nothing outside itself, a closure over it included. A store into
-    an item of an item or an attribute of one, an augmented store into an
-    item (``seen = list(rows)`` holds the rows' own objects), a store through
-    a name bound otherwise anywhere in the function (an alias, a parameter, a
-    loop target or an unpacked binding), one through a name a nested scope
-    binds, which in the function is a global, a container built by a
+    stores into, deletes from, augments with a new container or calls an
+    in-place method on a container its own scope creates, and that no other
+    binding reaches, writes nothing outside itself, a closure over it
+    included. A store into an item of an item or an attribute of one, an
+    augmented store into an item (``seen = list(rows)`` holds the rows' own
+    objects), a store through a name bound otherwise anywhere in the function
+    (an alias, a parameter, a loop target, an unpacked binding, an import, a
+    nested definition, an exception or match capture, or a global
+    declaration), one through a name only a nested scope binds (a class body
+    included), which in the function is a global, an augmentation by a
+    handed value, whose reflected operator can return itself, an in-place
+    call handed a parameter's in-place method, a container built by a
     ``dict`` the function binds, and returning the container still count."""
     refusing = {
         "local dict": (
@@ -113,6 +122,9 @@ def test_the_refusal_check_lets_a_function_write_into_containers_it_creates():
             "    bad += [row for row in rows if row < 0]\n"
             "    if bad:\n"
             "        raise ValueError(bad)\n"
+        ),
+        "local set joined by a new set": (
+            "def f(rows):\n    seen = set()\n    seen |= {row for row in rows}\n"
         ),
         "local item deleted": (
             "def f(rows):\n"
@@ -174,6 +186,49 @@ def test_the_refusal_check_lets_a_function_write_into_containers_it_creates():
         "bound only in a nested scope": (
             "def f(rows):\n    def note():\n        seen = {}\n\n    seen['a'] = 1\n"
         ),
+        "bound only in a class body": (
+            "def f(rows):\n    class Holder:\n        seen = {}\n\n    seen['a'] = 1\n"
+        ),
+        "rebound by an import": (
+            "def f(rows):\n    seen = {}\n    from m import TABLE as seen\n    seen['a'] = 1\n"
+        ),
+        "rebound by a nested function": (
+            "def f(rows):\n"
+            "    seen = {}\n\n"
+            "    def seen():\n"
+            "        pass\n\n"
+            "    seen['a'] = 1\n"
+        ),
+        "rebound by an exception capture": (
+            "def f(rows):\n"
+            "    seen = {}\n"
+            "    try:\n"
+            "        rows[0]\n"
+            "    except LookupError as seen:\n"
+            "        seen['a'] = 1\n"
+        ),
+        "rebound by a match capture": (
+            "def f(values):\n"
+            "    seen = {}\n"
+            "    match values:\n"
+            "        case seen:\n"
+            "            seen['a'] = 1\n"
+        ),
+        "declared global": (
+            "def f(rows):\n    global seen\n    seen = {}\n    seen['a'] = 1\n"
+        ),
+        "augmented by a handed value": (
+            "def f(values):\n    seen = []\n    seen += values\n    seen[0] = 1\n"
+        ),
+        "joined by a handed value": (
+            "def f(values):\n    seen = set()\n    seen |= values\n    seen.add(1)\n"
+        ),
+        "handed a parameter's method": (
+            "def f(rows, values):\n    seen = list(rows)\n    seen.sort(key=values.pop)\n"
+        ),
+        "handed a parameter's method within a call": (
+            "def f(values):\n    seen = []\n    seen.extend(iter(values.pop, None))\n"
+        ),
     }
     for label, source in {**refusing, **writing}.items():
         function = ast.parse(source).body[0]
@@ -181,8 +236,84 @@ def test_the_refusal_check_lets_a_function_write_into_containers_it_creates():
     # The containers it counts as the function's own.
     function = ast.parse(refusing["closure over a local"]).body[0]
     assert local_containers(function) == {"seen"}
-    function = ast.parse(writing["unpacked binding"]).body[0]
-    assert local_containers(function) == frozenset()
+    for label in ("unpacked binding", "declared global", "augmented by a handed value"):
+        function = ast.parse(writing[label]).body[0]
+        assert local_containers(function) == frozenset(), label
+
+
+def test_the_shared_checks_report_what_they_find(tmp_path, monkeypatch) -> None:
+    """Control for the checks the countries share (microcosm#931): each
+    reports what is planted for it. ``refusal_only_violations`` names each
+    listed check, a kernel's method included, that writes;
+    ``core_modules_off_run_graph_path`` a listed core module the walk from
+    run_graph never meets; ``findings`` each walk's modules outside its key,
+    the stops outside the key, the listed stops met and the core names read
+    outside the Frame's modules. Two rules whose tables differ classify the
+    same alias each by its own tables, whichever classifies first."""
+    scratch = f"shared_checks_{uuid.uuid4().hex[:8]}"
+    package = tmp_path / "microcosm" / scratch
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "checks.py").write_text(
+        "def refuses(frame):\n"
+        "    if frame is None:\n"
+        "        raise ValueError('no frame')\n\n"
+        "def writes(frame):\n"
+        "    frame[0] = 1\n\n"
+        "class Kernel:\n"
+        "    def check(self, frame):\n"
+        "        frame.clear()\n"
+    )
+    (package / "decls.py").write_text("TABLE = {'a': 1}\n")
+    (package / "aliases.py").write_text("from .decls import TABLE\n\nALIAS = TABLE\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    prefix = f"microcosm.{scratch}."
+    rule = BindingRule(
+        RuleTables(
+            core_modules={
+                "microcosm.graph.executor": "control",
+                f"{prefix}decls": "control",
+            },
+            refusal_only={
+                (f"{prefix}checks", "refuses"): "control",
+                (f"{prefix}checks", "writes"): "control",
+                (f"{prefix}checks", "Kernel.check"): "control",
+            },
+        )
+    )
+    assert rule.refusal_only_violations() == [
+        (f"{prefix}checks", "Kernel.check"),
+        (f"{prefix}checks", "writes"),
+    ]
+    assert rule.core_modules_off_run_graph_path() == [f"{prefix}decls"]
+
+    walk = KernelWalk(
+        reach={"m.keyed": frozenset({"a"}), "m.missed": frozenset({"b"})},
+        stops=frozenset({("m.keyed", "NAME"), ("m.other", "NAME")}),
+        core=frozenset(),
+        met={("m.stop", "STOP"): frozenset({"a"})},
+        core_names=frozenset(
+            {("microcosm.graph.decl", "ArtifactType"), (f"{FRAME_SCOPE}x", "Frame")}
+        ),
+    )
+    assert findings({"k@1": {"k@1": KeyedWalk(walk, frozenset({"m.keyed"}))}}) == (
+        Findings(
+            {"k@1": ["m.missed"]},
+            frozenset({("m.other", "NAME")}),
+            frozenset({("m.stop", "STOP")}),
+            frozenset({("microcosm.graph.decl", "ArtifactType")}),
+        )
+    )
+
+    alias = (f"{prefix}aliases", "ALIAS")
+    declared = RuleTables(core_modules={}, declaration_modules=(f"{prefix}decls",))
+    undeclared = RuleTables(core_modules={})
+    for order in ((declared, undeclared), (undeclared, declared)):
+        kinds = {
+            tables.declaration_modules: BindingRule(tables).helper_kind(*alias)
+            for tables in order
+        }
+        assert kinds == {(f"{prefix}decls",): "name", (): "value"}
 
 
 def test_the_helper_rule_follows_each_way_a_stage_names_a_helper(

@@ -397,20 +397,25 @@ def local_containers(node) -> frozenset[str]:
     dict, list or set display or comprehension, or a call of ``dict``,
     ``list`` or ``set``), every other binding of it anywhere in the function,
     nested scopes included, is one too, and it is a parameter of neither the
-    function nor anything nested in it. A bare annotation binds nothing, and
-    an augmented assignment to the name itself keeps it local, since a
-    container's augmented operators change it in place or refuse. A call
-    counts only where the function binds no name ``dict``, ``list`` or
-    ``set`` of its own; one its module binds at its top level is not seen."""
+    function nor anything nested in it, nor declared ``global`` or
+    ``nonlocal`` in either. A bare annotation binds nothing. An augmented
+    assignment to the name itself is a binding whose value must be a new
+    container too: ``x += v`` can rebind ``x`` to whatever ``v``'s reflected
+    operator returns, ``v`` itself included, since Python tries that operator
+    before a list's in-place concatenation, and after a set's in-place
+    operator declines a value that is not a set. A call counts only where the
+    function binds no name ``dict``, ``list`` or ``set`` of its own; one its
+    module binds at its top level is not seen."""
 
     parameters: set[str] = set()
     for sub in ast.walk(node):
         if isinstance(sub, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
             parameters |= _parameters(sub)
-    # Each single-name binding with its value, and the name targets they and
-    # the bindings of no new object (a bare annotation, an augmented
-    # assignment to a name) account for.
+    # Each single-name binding with its value, each augmented assignment to a
+    # name with its value, and the name targets they and a bare annotation,
+    # which binds nothing, account for.
     valued: dict[int, tuple[str, ast.expr]] = {}
+    augmented: list[tuple[str, ast.expr]] = []
     accounted: set[int] = set()
     for sub in ast.walk(node):
         if (
@@ -425,10 +430,11 @@ def local_containers(node) -> frozenset[str]:
                 valued[id(sub)] = (sub.target.id, sub.value)
             accounted.add(id(sub.target))
         elif isinstance(sub, ast.AugAssign) and isinstance(sub.target, ast.Name):
+            augmented.append((sub.target.id, sub.value))
             accounted.add(id(sub.target))
     # Every other binding: loop, with, walrus, unpacking and comprehension
     # targets, deletions, imports, nested definitions, exception and match
-    # captures.
+    # captures, and global and nonlocal declarations.
     other: set[str] = set()
     for sub in ast.walk(node):
         if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Store | ast.Del):
@@ -446,6 +452,8 @@ def local_containers(node) -> frozenset[str]:
                 other.add(sub.name)
         elif isinstance(sub, ast.MatchMapping) and sub.rest is not None:
             other.add(sub.rest)
+        elif isinstance(sub, ast.Global | ast.Nonlocal):
+            other.update(sub.names)
     stored = {
         sub.id
         for sub in ast.walk(node)
@@ -459,7 +467,9 @@ def local_containers(node) -> frozenset[str]:
         if key in own and _fresh_container(value, calls)
     }
     stale = {
-        name for name, value in valued.values() if not _fresh_container(value, calls)
+        name
+        for name, value in (*valued.values(), *augmented)
+        if not _fresh_container(value, calls)
     }
     return frozenset(fresh - stale - other - parameters)
 
@@ -488,6 +498,19 @@ def _item_of(target, local: frozenset[str]) -> bool:
     )
 
 
+def _hands_in_place_method(call, local: frozenset[str]) -> bool:
+    """An argument of ``call`` names an in-place method of anything but a
+    local container, which the call can run: ``seen.sort(key=values.pop)``."""
+
+    return any(
+        isinstance(inner, ast.Attribute)
+        and inner.attr in IN_PLACE_CALLS
+        and not (isinstance(inner.value, ast.Name) and inner.value.id in local)
+        for argument in (*call.args, *(keyword.value for keyword in call.keywords))
+        for inner in ast.walk(argument)
+    )
+
+
 def writes_nothing(node) -> bool:
     """Whether a function can only refuse: it returns nothing but None, or its
     sole parameter unrebound, and writes nothing outside itself: no store
@@ -497,11 +520,14 @@ def writes_nothing(node) -> bool:
 
     A container the function creates is its own (``local_containers``): it
     may store into or delete one item of it, call an in-place method on it,
-    or augment it as a whole. A nested store (into an item of an item, or an
-    attribute of one), an augmented store into an item, which can change in
-    place an object the function was handed, and a store through any other
-    name, an alias of the container included, are still writes, and
-    returning the container returns a value."""
+    or augment it as a whole by a new container. A nested store (into an
+    item of an item, or an attribute of one), an augmented store into an
+    item, which can change in place an object the function was handed, a
+    store through any other name, an alias of the container included, and
+    an in-place call on it that is handed another object's in-place method
+    (``seen.sort(key=values.pop)``) are still writes, and returning the
+    container returns a value. A method handed to any other call
+    (``sorted(rows, key=values.pop)``) is not seen."""
 
     parameters = _parameters(node)
     rebound = {
@@ -546,7 +572,9 @@ def writes_nothing(node) -> bool:
                 isinstance(function, ast.Attribute)
                 and function.attr in IN_PLACE_CALLS
                 and not (
-                    isinstance(function.value, ast.Name) and function.value.id in local
+                    isinstance(function.value, ast.Name)
+                    and function.value.id in local
+                    and not _hands_in_place_method(sub, local)
                 )
             ):
                 return False
