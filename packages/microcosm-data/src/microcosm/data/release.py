@@ -70,6 +70,7 @@ from microcosm.data.contract import (
     NATIONAL_DEFAULT_DATASET_ROLE,
     RELEASE_MANIFEST_FILE_ROLE,
     RELEASE_ROLES,
+    US_EVIDENCE_RELEASE_ID,
     US_RELEASES,
     _uk_line_cut_tag_re,
     line_for_release_id,
@@ -414,7 +415,8 @@ def prepare_build_folder_release(
 ) -> BuildFolderRelease:
     """Check a build-folder release's build and list the files it publishes.
 
-    The release contract runs first. Each artifact is read from the release
+    The release contract runs first: the evidence contract for a build of
+    the US evidence-tier release, the certified one otherwise. Each artifact is read from the release
     directory, or else from ``artifact_root`` (the H5 and the calibration
     weights live beside the candidate), and must match the SHA-256 its
     manifest records. ``repository``, when given, must be the one the
@@ -428,9 +430,17 @@ def prepare_build_folder_release(
     """
     release_dir = Path(release_dir)
     named_repository, release, build = build_folder_identity(release_dir)
-    contract_warnings = validate_release_dir(release_dir, artifact_root=artifact_root)
-    for contract_warning in contract_warnings:
-        warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
+    contract_warnings: list[str] = []
+    if release == US_EVIDENCE_RELEASE_ID:
+        # An evidence-tier build records the validation checks it failed, so
+        # its own contract runs; the certified one would refuse it.
+        validate_evidence_release_dir(release_dir)
+    else:
+        contract_warnings = validate_release_dir(
+            release_dir, artifact_root=artifact_root
+        )
+        for contract_warning in contract_warnings:
+            warnings.warn(f"release contract: {contract_warning}", stacklevel=2)
     if repository is not None and repository != named_repository:
         raise ValueError(
             f"release {release!r} names {named_repository} in its artifacts, not "
