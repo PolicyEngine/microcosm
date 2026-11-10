@@ -374,9 +374,9 @@ def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions(
     # the energy rake, so it alone keys on the module that sets the level, and
     # the assembled gate, which every later spine stage waits on, does not
     # (the re-review of microcosm#1420, E; microcosm#931 ruling 6).
-    from microcosm.build.uk_runtime import energy_pricing, graph_evidence
+    from microcosm.build.uk_runtime import energy_pricing, gate_phase_codes
 
-    codes = graph_evidence.UK_SPINE_GATE_PHASE_CODE
+    codes = gate_phase_codes.UK_SPINE_GATE_PHASE_CODE
     assert transferred.params["transferred_code"] == codes["transferred"]()
     assert assembled.params["assembled_code"] == codes["assembled"]()
     assert "transferred_code" not in assembled.params
@@ -384,12 +384,12 @@ def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions(
     hashed = []
     with monkeypatch.context() as patch:
         patch.setattr(
-            graph_evidence,
+            gate_phase_codes,
             "source_hash",
             lambda *objects: hashed.append(objects) or "",
         )
-        graph_evidence.uk_spine_transferred_only_code_hash.__wrapped__()
-        graph_evidence.uk_spine_assembled_only_code_hash.__wrapped__()
+        gate_phase_codes.uk_spine_transferred_only_code_hash.__wrapped__()
+        gate_phase_codes.uk_spine_assembled_only_code_hash.__wrapped__()
     transferred_modules, assembled_modules = hashed
     assert energy_pricing in transferred_modules
     assert energy_pricing not in assembled_modules
@@ -572,6 +572,87 @@ def test_sample_admission_holds_under_the_default_atomic_law(synthetic_smoke):
     assert compiled.order.index("uk.full.sample") < compiled.order.index(
         "uk.full.identity"
     )
+
+
+class _ArtifactReadError(Exception):
+    """A spine gate read its node's artifacts."""
+
+
+class _UnreadArtifacts(dict):
+    """Stage evidence a refused spine gate must not read: any read raises."""
+
+    def get(self, *args, **kwargs):
+        raise _ArtifactReadError(args)
+
+    def __getitem__(self, key):
+        raise _ArtifactReadError(key)
+
+
+def _spine_gate_context(phase: str, **changes):
+    """A spine gate kernel and a context with the node's declared parameters,
+    ``changes`` applied (a ``None`` value removes the parameter), and
+    artifacts any read of which raises :class:`_ArtifactReadError`."""
+    from microcosm.build.uk_runtime.graph_evidence import (
+        UKSpineGateKernel,
+        uk_spine_gate_manifest,
+    )
+
+    country = load_country_spec("uk")
+    gated = add_uk_spine_gate_nodes(
+        uk_spine_graph(country), spec=country, engine_identity="test-engine"
+    )
+    params = dict(gated.node(f"spine.gates.{phase}").params)
+    for key, value in changes.items():
+        if value is None:
+            params.pop(key, None)
+        else:
+            params[key] = value
+    kernel = UKSpineGateKernel(
+        gates=uk_spine_gate_manifest(country),
+        engine=None,
+        engine_identity="test-engine",
+    )
+    return kernel, SimpleNamespace(params=params, artifacts=_UnreadArtifacts())
+
+
+@pytest.mark.parametrize("phase", ["assembled", "transferred"])
+@pytest.mark.parametrize("code", ["0" * 64, None])
+def test_each_spine_gate_phase_refuses_a_stale_or_missing_phase_code(phase, code):
+    """Each spine gate phase's node carries its own code, which the kernel
+    checks before it reads anything of its node but its parameters, as the
+    full gates check theirs (microcosm#931 ruling 3b): a graph declaration
+    replayed from another process cannot key a spine gate on stale phase
+    code. The node's own declared code passes the check, and the kernel goes
+    on to read its artifacts."""
+    kernel, declared = _spine_gate_context(phase)
+    with pytest.raises(_ArtifactReadError):
+        kernel.run(declared)
+    kernel, context = _spine_gate_context(phase, **{f"{phase}_code": code})
+    with pytest.raises(ValueError, match=f"UK spine gate {phase}-only code"):
+        kernel.run(context)
+
+
+def test_each_spine_gate_node_carries_its_own_phase_code() -> None:
+    """The assembled and transferred gate nodes each carry their phase's own
+    code, and only their own (microcosm#931 ruling 6); the full gate nodes'
+    are held in test_uk_graph_terminal."""
+    from microcosm.build.uk_runtime.gate_phase_codes import UK_SPINE_GATE_PHASE_CODE
+    from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_manifest
+
+    country = load_country_spec("uk")
+    gated = add_uk_spine_gate_nodes(
+        uk_spine_graph(country), spec=country, engine_identity="test-engine"
+    )
+    phases = uk_spine_gate_manifest(country).phases
+    assert set(phases) == {"assembled", "transferred"}
+    for phase in phases:
+        params = gated.node(f"spine.gates.{phase}").params
+        code = UK_SPINE_GATE_PHASE_CODE.get(phase)
+        assert {key for key in params if key.endswith("_code")} == (
+            {f"{phase}_code"} if code is not None else set()
+        ), phase
+        if code is not None:
+            assert params[f"{phase}_code"] == code(), phase
 
 
 def test_the_spine_gate_kernel_keys_on_its_checks_not_the_energy_level(monkeypatch):

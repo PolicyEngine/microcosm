@@ -14,6 +14,7 @@ from microcosm.build.uk_runtime.full_certification import (
     append_uk_full_certification_node,
     register_uk_full_certification_kernel,
 )
+from microcosm.build.uk_runtime.gate_phase_codes import uk_terminal_only_code_hash
 from microcosm.build.uk_runtime.graph_build import (
     SPINE_PROVENANCE_TYPE,
     UKFullBuildConfig,
@@ -29,7 +30,6 @@ from microcosm.build.uk_runtime.graph_terminal import (
     decode_full_gate_report,
     register_uk_full_gate_kernels,
     register_uk_terminal_kernels,
-    uk_terminal_only_code_hash,
 )
 from microcosm.graph import (
     ArtifactInput,
