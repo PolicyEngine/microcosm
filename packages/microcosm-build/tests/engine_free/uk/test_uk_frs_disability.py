@@ -185,3 +185,109 @@ def test_disability_stage_resolves_the_survey_year_not_the_frame_period(
     assert years == [2024, 2024]
     assert uk_time_period(result) == "2023"
     assert result.table("person")["aa_category"].tolist() == ["HIGHER"]
+
+
+def _carer_link_people() -> pd.DataFrame:
+    """Eleven one- or two-person households, each carer at 35 hours a week.
+
+    Households 1 and 3: the carer's main recipient (member 2) qualifies
+    (middle-rate DLA care, lower-rate Attendance Allowance). Households 2 and
+    4: member 2 gets none of the benefits. Households 5 to 8: the main
+    recipient lives outside. Household 9: care hours and no link in the care
+    tab. Household 10: no care at all. Household 11: a qualifying member and
+    reported Carer's Allowance, so it stays out of the share's base.
+    """
+
+    from microcosm.build.uk_runtime.frs_spine import FRS_CARE_OUTSIDE_BIT
+
+    rows = []
+    member = 1 << 2
+    outside = 1 << FRS_CARE_OUTSIDE_BIT
+    carers = {
+        1: (member, "MIDDLE", "NONE", 0.0),
+        2: (member, "NONE", "NONE", 0.0),
+        3: (member, "NONE", "LOWER", 0.0),
+        4: (member, "NONE", "NONE", 0.0),
+        5: (outside, None, None, 0.0),
+        6: (outside, None, None, 0.0),
+        7: (outside, None, None, 0.0),
+        8: (outside, None, None, 0.0),
+        9: (0, None, None, 0.0),
+        10: (0, None, None, 0.0),
+        11: (member, "HIGHER", "NONE", 5000.0),
+    }
+    for household, (mask, dla, aa, reported) in carers.items():
+        rows.append(
+            {
+                "person_id": household * 1000 + 1,
+                "person_household_id": household,
+                "frs_care_recipients": mask,
+                "care_hours": 0.0 if household == 10 else 35.0,
+                "carers_allowance_reported": reported,
+                "aa_category": "NONE",
+                "dla_sc_category": "NONE",
+                "pip_dl_category": "NONE",
+            }
+        )
+        if dla is not None:
+            rows.append(
+                {
+                    "person_id": household * 1000 + 2,
+                    "person_household_id": household,
+                    "frs_care_recipients": 0,
+                    "care_hours": 0.0,
+                    "carers_allowance_reported": 0.0,
+                    "aa_category": aa,
+                    "dla_sc_category": dla,
+                    "pip_dl_category": "NONE",
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_the_carer_link_follows_the_main_recipient_and_draws_outside_carers() -> None:
+    """A3's choices of 10 Nov 2026: a qualifying household recipient makes it
+    true, a non-qualifying one false, and outside carers are drawn at the share
+    of non-reporting household carers at the line whose recipient qualifies."""
+
+    from microcosm.build.uk_runtime import frs_disability
+
+    people = _carer_link_people()
+    link, evidence = frs_disability.derive_carer_link(
+        people, weights=np.ones(len(people)), min_hours=35.0
+    )
+    by_id = dict(zip(people["person_id"], link, strict=True))
+
+    assert by_id[1001] and by_id[3001] and by_id[11001]
+    assert not by_id[2001] and not by_id[4001]
+    # Two of the four household carers in the base qualify: a share of a half,
+    # which the weight-balanced draw gives exactly two equal-weight outside
+    # carers.
+    assert evidence["share"] == 0.5
+    assert sum(by_id[household * 1000 + 1] for household in (5, 6, 7, 8)) == 2
+    # No link in the care tab keeps the engine's default; no care is false.
+    assert by_id[9001]
+    assert not by_id[10001]
+    # Recipients themselves aren't carers.
+    assert not by_id[1002] and not by_id[2002]
+    routes = evidence["routes_at_the_line"]
+    assert routes["outside_drawn"] == {"records": "3-9", "support": "3-9", "true": "<3"}
+    assert routes["no_link"]["true"] == "<3"
+    assert evidence["rule"] == frs_disability.CARER_LINK_PARAMETERS
+
+
+def test_the_carer_link_draw_is_reproducible() -> None:
+    from microcosm.build.uk_runtime import frs_disability
+
+    people = _carer_link_people()
+    first, _ = frs_disability.derive_carer_link(
+        people, weights=np.ones(len(people)), min_hours=35.0
+    )
+    second, _ = frs_disability.derive_carer_link(
+        people.iloc[::-1].reset_index(drop=True),
+        weights=np.ones(len(people)),
+        min_hours=35.0,
+    )
+    first_by_id = dict(zip(people["person_id"], first, strict=True))
+    second_by_id = dict(zip(people["person_id"].iloc[::-1], second, strict=True))
+    assert first_by_id == second_by_id

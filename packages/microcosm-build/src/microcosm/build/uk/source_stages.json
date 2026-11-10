@@ -867,6 +867,11 @@
      "kind": "derive",
      "parameters": "disability flags from the fiscal-converted gov.dwp tree at the survey year",
      "year_rule": "survey_year"
+    },
+    {
+     "kind": "derive",
+     "parameters": "the carer link from frs_care_recipients and the disability categories, with gov.dwp.carers_allowance.min_hours at the survey year",
+     "year_rule": "survey_year"
     }
    ],
    "outputs": [
@@ -877,9 +882,10 @@
     "pip_dl_category",
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
-    "is_severely_disabled_for_benefits"
+    "is_severely_disabled_for_benefits",
+    "cares_for_severely_disabled_person"
    ],
-   "notes": "Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed. is_severely_disabled_for_benefits is the tax credit severe disability condition on the derived categories (DLA care at the highest rate, PIP daily living at the enhanced rate, or higher-rate Attendance Allowance), so it agrees with policyengine-uk's own formula (pe-uk#1946, uk-data#494); an Armed Forces Compensation Scheme payment alone no longer counts, since FRS code 8 cannot be told apart from Armed Forces Independence Payment."
+   "notes": "Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed. is_severely_disabled_for_benefits is the tax credit severe disability condition on the derived categories (DLA care at the highest rate, PIP daily living at the enhanced rate, or higher-rate Attendance Allowance), so it agrees with policyengine-uk's own formula (pe-uk#1946, uk-data#494); an Armed Forces Compensation Scheme payment alone no longer counts, since FRS code 8 cannot be told apart from Armed Forces Independence Payment. cares_for_severely_disabled_person, the carer link (A3 of the November event-data plan's PR3, microcosm#1095, Mar\u00eda's choices of 2026-11-10), is true for a carer whose main care recipients (frs_spine.frs_care_recipients) include a household member with Attendance Allowance, DLA care at the middle or highest rate (Child Disability Payment's included), or PIP or Adult Disability Payment daily living. A carer whose main recipients include someone outside the household and no such member is drawn at the share, by design weight, of the in-household carers whose care hours reach gov.dwp.carers_allowance.min_hours and who report no Carer's Allowance that have such a member, on an identity-keyed uniform balanced by weight within the strata of care hours at or above the minimum and below it, as carers_allowance_take_up drew its pool (Mar\u00eda's decision (a) of 2026-10-28). A carer with care hours and no link in the care tab keeps the engine's default, true, and everyone else is false; Armed Forces Independence Payment is not seen, since the FRS can't tell it from other Armed Forces Compensation Scheme payments. The stage receipt gives each route's records in rounded counts and support bands, and the drawn route's share."
   },
   {
    "stage": "frs_education",

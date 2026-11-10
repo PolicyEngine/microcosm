@@ -262,6 +262,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "afcs_reported",
             "esa_contrib_reported",
             "esa_income_reported",
+            # The carer link's reads (A3).
+            "frs_care_recipients",
+            "care_hours",
+            "carers_allowance_reported",
         )
     ),
     "frs_education": frozenset(
@@ -919,6 +923,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "is_disabled_for_benefits",
                 "is_enhanced_disabled_for_benefits",
                 "is_severely_disabled_for_benefits",
+                "cares_for_severely_disabled_person",
             ),
             "bool",
         ),

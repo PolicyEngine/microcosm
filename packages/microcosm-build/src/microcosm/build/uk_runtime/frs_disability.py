@@ -9,16 +9,29 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime.carers_allowance_take_up import (
+    lineage_balanced_positions,
+)
 from microcosm.build.uk_runtime.cgt_structure import (
     _assert_closed_world_operations,
 )
 from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
-from microcosm.build.uk_runtime.frs_spine import WEEKS_IN_YEAR
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_CARE_OUTSIDE_BIT,
+    FRS_CARE_RECIPIENTS_COLUMN,
+    WEEKS_IN_YEAR,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.receipt_counts import (
+    rounded_count,
+    small_cell_share,
+    support_band,
 )
 from microcosm.frame import Frame
 
@@ -49,6 +62,35 @@ FRS_DISABILITY_OUTPUT_COLUMNS = (
     "is_severely_disabled_for_benefits",
 )
 YEAR_RULE = "survey_year"
+#: The carer link (A3 of the November event-data plan's PR3, microcosm#1095;
+#: María's choices of 2026-11-10): policyengine-uk's input
+#: ``cares_for_severely_disabled_person`` (2.177.3, pe-uk#2860), whether the
+#: person a carer cares for gets a benefit that makes them severely disabled for
+#: Carer's Allowance or a qualifying disability benefit for Carer Support
+#: Payment. The engine reads it only where care_hours reach the minimum. It is
+#: true for a carer whose main care recipients (frs_spine.frs_care_recipients)
+#: include a household member with Attendance Allowance, DLA care (Child
+#: Disability Payment's included) at the middle or highest rate, or PIP or Adult
+#: Disability Payment daily living. A carer whose main recipients include
+#: someone outside the household and no such member is drawn at the share, by
+#: design weight, of the in-household carers whose care hours reach the minimum
+#: and who report no Carer's Allowance that have such a member, on an
+#: identity-keyed uniform balanced by weight within the strata of care hours at
+#: or above the minimum and below it, as carers_allowance_take_up drew its pool
+#: (María's decision (a) of 2026-10-28). A carer with care hours and no link in
+#: the care tab keeps the engine's default, true; everyone else is false. Armed
+#: Forces Independence Payment is not seen: the FRS can't tell it from other
+#: Armed Forces Compensation Scheme payments.
+CARER_LINK_COLUMN = "cares_for_severely_disabled_person"
+CARER_LINK_PARAMETERS = "the carer link from frs_care_recipients and the disability categories, with gov.dwp.carers_allowance.min_hours at the survey year"
+CARER_LINK_SEED = 0
+CARER_LINK_SALT = "cares_for_severely_disabled_person_outside_household"
+#: The categories of a qualifying benefit for the carer link.
+CARER_LINK_QUALIFYING = {
+    "aa_category": ("LOWER", "HIGHER"),
+    "dla_sc_category": ("MIDDLE", "HIGHER"),
+    "pip_dl_category": ("STANDARD", "ENHANCED"),
+}
 
 
 @dataclass(frozen=True)
@@ -90,24 +132,48 @@ class UKFRSDisabilityStageTransform:
         stage: SourceStageSpec,
         category_rates: UKDWPDisabilityCategoryRates | None = None,
         flag_rates: UKDWPDisabilityFlagRates | None = None,
+        carer_min_hours: float | None = None,
     ) -> None:
         self.stage = stage
         self.category_rates = category_rates
         self.flag_rates = flag_rates
+        self.carer_min_hours = carer_min_hours
+        self._carer_link: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         _assert_frs_disability_stage_parameters(self.stage)
         year = resolve_uk_year_rule(YEAR_RULE)
-        return add_frs_disability(
+        evidence: dict[str, object] = {}
+        result = add_frs_disability(
             frame,
             category_rates=self.category_rates
             or uk_dwp_disability_category_rates(year),
             flag_rates=self.flag_rates or uk_dwp_disability_flag_rates(year),
+            carer_min_hours=(
+                self.carer_min_hours
+                if self.carer_min_hours is not None
+                else uk_dwp_carers_allowance_min_hours(year)
+            ),
+            evidence=evidence,
         )
+        self._carer_link = dict(evidence["carer_link"])
+        return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
-        return FRS_DISABILITY_OUTPUT_COLUMNS
+        return (*FRS_DISABILITY_OUTPUT_COLUMNS, CARER_LINK_COLUMN)
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        """Report how the carer link fell, by route, in rounded counts."""
+
+        if self._carer_link is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {
+            "evidence": {
+                "stage": "frs_disability",
+                "carer_link": dict(self._carer_link),
+            }
+        }
 
 
 def uk_dwp_disability_category_rates(
@@ -202,6 +268,10 @@ def _assert_frs_disability_stage_parameters(stage: SourceStageSpec) -> None:
                     "year_rule": YEAR_RULE,
                 },
             ),
+            (
+                "derive",
+                {"parameters": CARER_LINK_PARAMETERS, "year_rule": YEAR_RULE},
+            ),
         ),
     )
 
@@ -211,6 +281,8 @@ def add_frs_disability(
     *,
     category_rates: UKDWPDisabilityCategoryRates,
     flag_rates: UKDWPDisabilityFlagRates,
+    carer_min_hours: float | None = None,
+    evidence: dict[str, object] | None = None,
 ) -> Frame:
     person = frame.table("person").copy()
     derived = derive_frs_disability(
@@ -218,6 +290,25 @@ def add_frs_disability(
     )
     for column in FRS_DISABILITY_OUTPUT_COLUMNS:
         person[column] = derived[column].to_numpy()
+    if carer_min_hours is not None:
+        household = frame.table("household")
+        weight_by_household = dict(
+            zip(
+                household["household_id"].to_numpy(),
+                np.asarray(frame.weights_for("household").values, dtype=float),
+                strict=True,
+            )
+        )
+        link, link_evidence = derive_carer_link(
+            person,
+            weights=person["person_household_id"]
+            .map(weight_by_household)
+            .to_numpy(float),
+            min_hours=carer_min_hours,
+        )
+        person[CARER_LINK_COLUMN] = link
+        if evidence is not None:
+            evidence["carer_link"] = link_evidence
     result = uk_national_frame(
         person=person,
         benunit=frame.table("benunit"),
@@ -299,6 +390,103 @@ def derive_frs_disability(
         | (values["pip_dl_category"] == "ENHANCED")
     ).to_numpy(dtype=bool)
     return values
+
+
+def uk_dwp_carers_allowance_min_hours(year: int) -> float:
+    """``gov.dwp.carers_allowance.min_hours`` at ``year``, as the carers stage reads it."""
+
+    return _parameter_value(
+        _uk_dwp_tree(year).carers_allowance.min_hours, f"{year}-01-01"
+    )
+
+
+def derive_carer_link(
+    person: pd.DataFrame, *, weights: np.ndarray, min_hours: float
+) -> tuple[np.ndarray, dict[str, object]]:
+    """The carer link for every person, and its evidence (see :data:`CARER_LINK_COLUMN`).
+
+    ``person`` carries the spine's ``person_id`` (household id times 1,000 plus
+    the FRS person number) and ``person_household_id``, the care carriers and
+    the categories this stage derives; ``weights`` are the persons' household
+    design weights. The evidence gives each route's records in rounded counts
+    and support bands, and the share the drawn route takes.
+    """
+
+    ids = person["person_id"].to_numpy(dtype=np.int64)
+    households = person["person_household_id"].to_numpy(dtype=np.int64)
+    mask = (
+        person[FRS_CARE_RECIPIENTS_COLUMN].to_numpy(dtype=np.int64)
+        if FRS_CARE_RECIPIENTS_COLUMN in person
+        else np.zeros(len(person), dtype=np.int64)
+    )
+    hours = _amount(person, "care_hours").to_numpy(dtype=float)
+    reported = _amount(person, "carers_allowance_reported").to_numpy(dtype=float) > 0
+    weights = np.asarray(weights, dtype=float)
+    qualifies = np.zeros(len(person), dtype=bool)
+    for column, categories in CARER_LINK_QUALIFYING.items():
+        qualifies |= person[column].astype(str).isin(categories).to_numpy()
+    qualifying_ids = set(ids[qualifies].tolist())
+    member_qualifies = np.zeros(len(person), dtype=bool)
+    for number in range(1, FRS_CARE_OUTSIDE_BIT):
+        holds = ((mask >> number) & 1) == 1
+        if holds.any():
+            member_ids = households[holds] * 1000 + number
+            member_qualifies[holds] |= np.isin(member_ids, list(qualifying_ids))
+    outside = ((mask >> FRS_CARE_OUTSIDE_BIT) & 1) == 1
+    carer = mask != 0
+    linked = carer & member_qualifies
+    drawn_route = carer & outside & ~member_qualifies
+    household_route = carer & ~outside
+    no_link = ~carer & (hours > 0)
+    at_line = hours >= float(min_hours)
+    base = household_route & at_line & ~reported
+    base_weight = float(weights[base].sum())
+    share = (
+        float(weights[base & member_qualifies].sum()) / base_weight
+        if base_weight > 0.0
+        else None
+    )
+    draws = stable_identity_uniforms(ids, seed=CARER_LINK_SEED, salt=CARER_LINK_SALT)
+    positions = np.asarray(draws, dtype=float).copy()
+    if drawn_route.any():
+        positions[drawn_route] = lineage_balanced_positions(
+            at_line[drawn_route],
+            positions[drawn_route],
+            weights[drawn_route],
+            identities=ids[drawn_route],
+            salt=CARER_LINK_SALT,
+        )
+    drawn = drawn_route & (positions < (share or 0.0))
+    link = linked | drawn | no_link
+
+    def route(selected: np.ndarray) -> dict[str, object]:
+        # Record counts are rounded, never exact (UKDS CD137 cl. 8).
+        return {
+            "records": rounded_count(int(selected.sum())),
+            "support": support_band(len(set(households[selected].tolist()))),
+            "true": rounded_count(int((selected & link).sum())),
+        }
+
+    base_support = len(set(households[base].tolist()))
+    evidence: dict[str, object] = {
+        "column": CARER_LINK_COLUMN,
+        "rule": CARER_LINK_PARAMETERS,
+        "min_hours": float(min_hours),
+        "share": None if share is None else small_cell_share(share, base_support),
+        "share_support": support_band(base_support),
+        "routes_at_the_line": {
+            "household_qualifying": route(at_line & household_route & member_qualifies),
+            "household_not_qualifying": route(
+                at_line & household_route & ~member_qualifies
+            ),
+            "outside_with_a_qualifying_member": route(
+                at_line & carer & outside & member_qualifies
+            ),
+            "outside_drawn": route(at_line & drawn_route),
+            "no_link": route(at_line & no_link),
+        },
+    }
+    return link, evidence
 
 
 def _amount(person: pd.DataFrame, column: str) -> pd.Series:
