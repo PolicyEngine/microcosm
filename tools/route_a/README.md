@@ -136,11 +136,10 @@ release ID while retaining the shared checkpoint root. With
 `PRUNE_BASE_CHECKPOINTS=1`, base `*.frame.h5` files are removed after hashing the
 finished H5. The hand-off file written at the end (`ROUTE_A_DONE.json` or
 `ROUTE_A_BLOCKED.json`) records the candidate paths and preflight verdicts,
-plus a suggested manual publication command in `next`; the driver never runs
-it. That suggestion still names `tools/publish_release.sh`, which refuses the
-US repository since its switch to `releases.json`; publish the build with
-`microcosm-publish-release-build` as the root README's "Releasing & alerts"
-describes.
+plus two manual commands the driver never runs: `publish_command` publishes
+the build through the emitter into its folder of `microcosm-us-2024-national`,
+and `promote_command` then makes it that release's current build (the root
+README's "Releasing & alerts").
 
 ## Published run's release argv
 

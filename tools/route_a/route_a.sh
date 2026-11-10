@@ -646,9 +646,12 @@ json.dump({
     "preflight_base": pfb,
     "preflight_release": pfr,
     "publisher_preflight_only": pub,
+    "publish_command": f"uv run microcosm-publish-release-build {rel_dir} --repo-id policyengine/populace-us --artifact-root {art}",
+    "promote_command": f"uv run microcosm-publish-release-build {rel_dir} --repo-id policyengine/populace-us --promote",
     "next": (
-        "Publication is Max's call: tools/publish_release.sh "
-        f"{rel_dir} --repo-id policyengine/populace-us --artifact-root {art}"
+        "Publication is Max's call: publish_command publishes the build into "
+        "its folder of the national release, and promote_command then makes "
+        "it the release's current build."
     ),
 }, open(out, "w"), indent=1)
 EOF
