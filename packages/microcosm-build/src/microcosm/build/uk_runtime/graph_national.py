@@ -510,9 +510,10 @@ class _NationalKernel(KernelBase):
             # Chronicle schema versions and fact-key epochs the facts are
             # checked against (chronicle_epoch), the register codec
             # (graph_targets) and the canonical encoding of their artifacts.
-            # What only one of them computes through, it hashes in its own
-            # implementation hash below; test_uk_graph derives each kernel's
-            # set from what its code names.
+            # What only the problem computes through, it hashes in its own
+            # implementation hash below, and the targets compute through
+            # nothing else; test_uk_graph derives each kernel's set from what
+            # its code names.
             chronicle_epoch,
             graph_targets,
             canonical_json,
@@ -528,22 +529,13 @@ class _NationalKernel(KernelBase):
 
 
 class UKNationalTargetKernel(_NationalKernel):
+    # The national register is compiled through ledger_targets, which checks
+    # the household-type bindings against the ONS household type domain
+    # (frs_relationships) before it compiles. That check only refuses, so
+    # test_uk_graph lists it refusal-only, and this kernel computes through
+    # nothing its shared hash leaves out: it needs no hash of its own
+    # (microcosm#931 ruling 4).
     ref = "uk.full.national_targets@1"
-
-    def implementation_hash(self) -> str:
-        from . import frs_relationships
-
-        # The national register is compiled through ledger_targets, which
-        # checks the household-type bindings against the ONS household type
-        # domain (frs_relationships) (microcosm#931).
-        return hashlib.sha256(
-            canonical_json(
-                {
-                    "national": super().implementation_hash(),
-                    "targets": source_hash(frs_relationships),
-                }
-            )
-        ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
         inputs = load_uk_national_target_inputs(
@@ -702,11 +694,11 @@ class UKNationalProblemKernel(_NationalKernel):
 
         from .. import gate_battery
         from . import (
+            annuity_trust_column,
             atomic_area_support,
             dfe_spring_term,
             diagnostics,
             frs_annual_income,
-            frs_spine,
             graph_population,
             hmrc_income,
             income_tax_rate_classes,
@@ -722,22 +714,26 @@ class UKNationalProblemKernel(_NationalKernel):
         # (graph_population, national_frame), the engine's scratch frame
         # (atomic_area_support, frame_materialize and the engine adapter's
         # contracts), the resolver's inputs and measures (dfe_spring_term,
-        # frs_annual_income, frs_spine's annuity and trust column,
-        # hmrc_income, income_tax_rate_classes, lcfs_consumption and
-        # uc_target_measurements), the national rows (local_rowwise), the
-        # constraint matrix's monetary check (monetary_binding), and the
-        # target geography levels (diagnostics) and JSON-safe values
-        # (gate_battery) its payload records.
+        # frs_annual_income, hmrc_income, income_tax_rate_classes,
+        # lcfs_consumption and uc_target_measurements), the national rows
+        # (local_rowwise), the constraint matrix's monetary check
+        # (monetary_binding), and the target geography levels (diagnostics)
+        # and JSON-safe values (gate_battery) its payload records. As the
+        # dense measures do, it binds the annuity and trust column's name,
+        # since the resolver reads zeros where a frame lacks the column. The
+        # name lives in annuity_trust_column, which holds nothing else, so
+        # this hash leaves frs_spine out, and an edit there does not re-solve
+        # the national line (microcosm#931 ruling 4).
         return hashlib.sha256(
             canonical_json(
                 {
                     "national": super().implementation_hash(),
                     "problem": source_hash(
+                        annuity_trust_column,
                         atomic_area_support,
                         dfe_spring_term,
                         diagnostics,
                         frs_annual_income,
-                        frs_spine,
                         graph_population,
                         hmrc_income,
                         income_tax_rate_classes,

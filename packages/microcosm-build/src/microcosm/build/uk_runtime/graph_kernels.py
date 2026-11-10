@@ -71,6 +71,7 @@ from .. import (
 )
 from . import (
     advani_summers,
+    annuity_trust_column,
     birth_month,
     bus_fare_pricing,
     bus_support_pricing,
@@ -334,10 +335,13 @@ _STAGE_HELPER_MODULES = {
     # kinds, gate outcomes and the HMRC replay report (microcosm#931). It
     # binds the copy-id table as the leaves do. The imputation refreshes the
     # annual income descriptors on frs_annual_income's share columns, and the
-    # evidence shares iterate HMRC's distributional inputs.
+    # evidence shares iterate HMRC's distributional inputs. It zeros a drawn
+    # row's annuity and trust descriptor, whose name it reads from
+    # annuity_trust_column, as the root does (microcosm#931 ruling 4).
     "hmrc_spi_income_spine": (
         spi_income,
         spi_rank_transport,
+        annuity_trust_column,
         copy_id_table,
         employer_pension_contributions,
         *_FEED_FACT_MODULES,
@@ -368,9 +372,11 @@ _STAGE_HELPER_MODULES = {
     # declared radix from the table too. The root reads its tabs through
     # trace's digest, ages people by birth month, caps pension contributions
     # with their receipt, and codes council tax bands in the shared band order
-    # (microcosm#931).
+    # (microcosm#931). It writes the annuity and trust descriptor under the
+    # name annuity_trust_column holds (microcosm#931 ruling 4).
     "frs_spine": (
         uc_relationships,
+        annuity_trust_column,
         copy_id_table,
         birth_month,
         council_tax_constants,

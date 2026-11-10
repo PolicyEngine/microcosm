@@ -14,6 +14,9 @@ from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.trace import sha256_file
 from microcosm.build.uk_runtime import copy_id_table
+from microcosm.build.uk_runtime.annuity_trust_column import (
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
+)
 from microcosm.build.uk_runtime.birth_month import (
     UK_BIRTH_MONTH_COLUMN,
     uk_months_since_last_birthday,
@@ -232,11 +235,11 @@ OWNER_MANAGER_COLUMNS = (
 #: (ITTOIA 2005 s. 717). SPI Table 3.7 counts both as other income (note 6),
 #: so the part they make of private_pension_income is stored apart, in
 #: ANNUITY_AND_TRUST_INCOME_COLUMN, a calibration-only descriptor that the
-#: Table 3.7 other-income measure adds (microcosm#1428 review, finding 1).
+#: Table 3.7 other-income measure adds (microcosm#1428 review, finding 1). The
+#: descriptor's name lives in annuity_trust_column, which holds nothing else,
+#: so the nodes that read it key on it without keying on this module
+#: (microcosm#931 ruling 4).
 FRS_ANNUITY_AND_TRUST_PENSION_TYPES = (4, 5)
-#: The descriptor: each person's annual annuity and trust payments, already
-#: inside private_pension_income. No engine input reads it.
-ANNUITY_AND_TRUST_INCOME_COLUMN = "annuity_and_trust_income"
 #: Each person's company car from the FRS job tab, the four carriers the
 #: company_cars stage reads to set policyengine-uk's company car inputs
 #: (PolicyEngine/uk-autumn-budget-dashboard-2026#316); see

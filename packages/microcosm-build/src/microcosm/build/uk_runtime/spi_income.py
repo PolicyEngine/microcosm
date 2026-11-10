@@ -19,6 +19,9 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.annuity_trust_column import (
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
+)
 from microcosm.build.uk_runtime.frs_annual_income import (
     ANNUAL_SHARE_COLUMNS,
     EMPLOYMENT_INCOME_ANNUAL_SHARE,
@@ -38,7 +41,6 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_UBISJA_COLUMN,
 )
 from microcosm.build.uk_runtime.frs_spine import (
-    ANNUITY_AND_TRUST_INCOME_COLUMN,
     FRS_LANDLORD_CARRIER_COLUMN,
     ISA_INTEREST_COLUMN,
     WEEKS_IN_YEAR,

@@ -18,6 +18,9 @@ from microcosm.build.target_materialization import (
     evaluate_named_term,
     named_term_leaves,
 )
+from microcosm.build.uk_runtime.annuity_trust_column import (
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
+)
 from microcosm.build.uk_runtime.atomic_area_support import (
     without_uk_native_alias_columns,
 )
@@ -41,7 +44,6 @@ from microcosm.build.uk_runtime.frs_annual_income import (
     SELF_EMPLOYMENT_INCOME_ANNUAL_SHARE,
     SELF_EMPLOYMENT_INCOME_OTHER_SPELLS,
 )
-from microcosm.build.uk_runtime.frs_spine import ANNUITY_AND_TRUST_INCOME_COLUMN
 from microcosm.build.uk_runtime.high_value_homes import (
     high_value_home_mask,
     uk_high_value_home_thresholds,
@@ -302,10 +304,10 @@ def savings_interest_outside_isas(frame: Any) -> np.ndarray:
 #: private_pension_income, where the engine's means tests, household income
 #: and tax read them (microcosm#1428). The frame stores each person's annuity
 #: and trust payments at the dataset's year
-#: (frs_spine.ANNUITY_AND_TRUST_INCOME_COLUMN), and their share of the stored
-#: private pension carries them to the measurement year on the engine's own
-#: private pension path. A frame without the column (the enhanced FRS
-#: reference) reads the engine's other income alone. A reserved name.
+#: (annuity_trust_column.ANNUITY_AND_TRUST_INCOME_COLUMN), and their share of
+#: the stored private pension carries them to the measurement year on the
+#: engine's own private pension path. A frame without the column (the enhanced
+#: FRS reference) reads the engine's other income alone. A reserved name.
 UK_SPI_OTHER_INVESTMENT_INCOME = "other_investment_income_spi_concept"
 
 

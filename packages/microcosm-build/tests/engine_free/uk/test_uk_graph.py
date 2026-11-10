@@ -1194,6 +1194,21 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
         "changes what source_hash returns changes the parameter and the check "
         "alike (microcosm#931 ruling 3)"
     ),
+    (
+        "microcosm.build.uk_runtime.ledger_targets",
+        "_assert_household_type_bindings_declared",
+    ): (
+        "compares the target contract's ons_household_type bindings with the "
+        "ONS household type domain (frs_relationships) and refuses a binding "
+        "outside it, two composition rows binding one value, or composition "
+        "rows that leave a value unbound, writing only into the dict and set "
+        "it creates. Its one caller, compile_uk_target_registry, calls it in a "
+        "statement of its own before the loop that compiles the references, "
+        "and the full build's target compilation and the national targets "
+        "both reach it there, so neither computes through frs_relationships "
+        "(test_the_household_type_check_refuses_before_the_targets_compile; "
+        "microcosm#931 ruling 4)"
+    ),
 }
 #: Names a stage reads from a module that neither its node nor any node
 #: upstream of it hashes, each with why an edit to them cannot leave the
@@ -2382,6 +2397,137 @@ def test_no_uk_graph_kernel_hashes_the_phase_codes() -> None:
     }
     for module in (graph_evidence, graph_terminal):
         assert not moved & set(vars(module)), module.__name__
+
+
+def test_the_household_type_check_refuses_before_the_targets_compile() -> None:
+    """The household-type check's refusal-only reason (microcosm#931 ruling
+    4): ledger_targets' check is listed, its one caller is
+    compile_uk_target_registry, which calls it in a statement of its own, on
+    the contract's targets, before the loop that compiles the references, and
+    the full build's target compilation and the national targets both reach
+    that caller. Neither kernel computes through frs_relationships another
+    way, so neither key hashes it. The kernels that compute through it for
+    their own reasons still hash it: the frs_relationships stage, whose
+    transform it defines, and the assembled spine gate, whose own code holds
+    the domain its enum gate checks. Unlisted, the check would put the domain
+    in both kernels' walks, which the kernel rule's test would find
+    unhashed."""
+    import ast
+
+    from microcosm.build.uk_runtime import frs_relationships, ledger_targets
+
+    check = (ledger_targets.__name__, "_assert_household_type_bindings_declared")
+    caller = (ledger_targets.__name__, "compile_uk_target_registry")
+    assert check in _REFUSAL_ONLY_HELPERS
+    build = Path(ledger_targets.__file__).parents[1]
+    naming = sorted(
+        path.relative_to(build).as_posix()
+        for path in build.rglob("*.py")
+        if check[1] in path.read_text(encoding="utf-8")
+    )
+    assert naming == ["uk_runtime/ledger_targets.py"], naming
+
+    def calls_check(node) -> bool:
+        return any(
+            isinstance(sub, ast.Call)
+            and _named(check[0], sub.func, _HELPER_SCOPE) == {check}
+            for sub in ast.walk(node)
+        )
+
+    definitions = _module_definitions(check[0], _HELPER_SCOPE).definitions
+    callers = sorted(
+        name
+        for name, node in definitions.items()
+        if name != check[1] and calls_check(node)
+    )
+    assert callers == [caller[1]], callers
+    body = definitions[caller[1]].body
+    (index,) = [
+        position
+        for position, statement in enumerate(body)
+        if isinstance(statement, ast.Expr) and calls_check(statement)
+    ]
+    assert ast.unparse(body[index].value) == (
+        "_assert_household_type_bindings_declared(_uk_contract_targets())"
+    )
+    assert not any(calls_check(statement) for statement in body[index + 1 :])
+    loops = [
+        position
+        for position, statement in enumerate(body)
+        if isinstance(statement, ast.For)
+        and ast.unparse(statement.iter) == "spec.target_references"
+    ]
+    assert loops and index < min(loops), (index, loops)
+    domain = frs_relationships.__name__
+    rule = _kernel_rule_walks()
+    for ref in ("uk.full.target_compilation@1", "uk.full.national_targets@1"):
+        ((walk, key),) = rule[ref].values()
+        assert caller[1] in walk.reach.get(caller[0], ()), ref
+        assert domain not in walk.reach, ref
+        assert not [item for item in walk.stops if item[0] == domain], ref
+        assert domain not in key, ref
+    keyed = sorted(
+        label
+        for walks in rule.values()
+        for label, (_, key) in walks.items()
+        if domain in key
+    )
+    assert keyed == ["uk.spine-gates@1 assembled", "uk.stage.frs_relationships@1"]
+    assert domain in rule["uk.spine-gates@1"]["uk.spine-gates@1 assembled"].walk.reach
+    _, hashed, stage = _stage_walks()["frs_relationships"]
+    assert domain in stage.reach and domain in hashed
+
+
+def test_every_reader_of_the_annuity_and_trust_column_hashes_its_module() -> None:
+    """The annuity and trust column's name lives in annuity_trust_column,
+    which holds that name alone, and every module that reads it imports it
+    from there (microcosm#931 ruling 4). The measure resolver reads zeros
+    where a frame lacks the column, so a renamed constant would change the
+    measures without re-keying them, and the name cannot be listed as
+    unbound. Every stage and kernel whose code reads it hashes the module:
+    the spine root, which writes the column; the SPI income stage, which
+    zeros it on the rows it draws, though it could chain on the root's key;
+    and the dense measures and the national problem, which compute through
+    nothing in frs_spine, so their keys leave it out
+    (test_uk_target_compile_modules holds both kernels' hashes to an edit to
+    either module)."""
+    from microcosm.build.uk_runtime import annuity_trust_column, frs_spine
+
+    column = (annuity_trust_column.__name__, "ANNUITY_AND_TRUST_INCOME_COLUMN")
+    holder = _module_definitions(column[0], _HELPER_SCOPE).definitions
+    assert set(holder) == {column[1]}
+    assert _helper_kind(*column) == "name"
+    runtime = Path(frs_spine.__file__).parent
+    for path in sorted(runtime.glob("*.py")):
+        if path.stem == "annuity_trust_column":
+            continue
+        name = frs_spine.__package__
+        if path.stem != "__init__":
+            name = f"{name}.{path.stem}"
+        facts = _module_definitions(name, _HELPER_SCOPE)
+        assert column[1] not in facts.definitions, name
+        assert facts.imports.get(column[1], column) == column, name
+    stages = {
+        stage: annuity_trust_column.__name__ in hashed
+        for stage, (_, hashed, walk) in _stage_walks().items()
+        if column in walk.stops
+    }
+    assert {"frs_spine", "hmrc_spi_income_spine"} <= set(stages), stages
+    assert all(stages.values()), stages
+    readers = {
+        label: (walk, key)
+        for walks in _kernel_rule_walks().values()
+        for label, (walk, key) in walks.items()
+        if column in walk.stops
+    }
+    assert {"uk.full.measures@1", "uk.full.national_problem@1"} <= set(readers)
+    for label, (_, key) in readers.items():
+        assert annuity_trust_column.__name__ in key, label
+    for label in ("uk.full.measures@1", "uk.full.national_problem@1"):
+        walk, key = readers[label]
+        assert frs_spine.__name__ not in walk.reach, label
+        assert not [item for item in walk.stops if item[0] == frs_spine.__name__]
+        assert frs_spine.__name__ not in key, label
 
 
 def test_each_gate_battery_walks_the_engine_its_build_hands_it() -> None:
