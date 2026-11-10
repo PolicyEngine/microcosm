@@ -391,15 +391,16 @@ def test_prepare_build_folder_release_publishes_the_checksum_ledger(
 def test_build_folder_identity_says_where_a_tagged_release_publishes(
     release_dir: Path,
 ) -> None:
-    """A US release publishes with tags through tools/publish_release.sh; the
-    other UK releases take no new builds once the UK repository records its
-    builds in releases.json."""
+    """A directory named after a US build ID is no release: US builds
+    publish into the US releases, and the other UK releases take no new
+    builds, once their repositories record their builds in releases.json."""
     with pytest.raises(
         ValueError, match="does not publish into build folders"
     ) as refusal:
         release_module.build_folder_identity(release_dir)
 
-    assert "tools/publish_release.sh" in str(refusal.value)
+    assert "microcosm-us-2024-national" in str(refusal.value)
+    assert "tools/publish_release.sh" not in str(refusal.value)
     assert "take no new builds" in str(refusal.value)
 
 
@@ -2087,3 +2088,61 @@ def test_transient_errors_while_checking_an_existing_tag_propagate(
             artifact_root=artifact_root,
         )
     assert LATEST_POINTER_PATH not in hub._commits[hub._refs["main"]]
+
+
+def _microcosm_named_artifacts(artifact_root: Path) -> Path:
+    """The artifact root with the dataset and weights under the names new US
+    builds declare."""
+    for name in ("populace_us_2024.h5", "populace_us_2024_calibration.npz"):
+        (artifact_root / name).rename(
+            artifact_root / name.replace("populace_", "microcosm_")
+        )
+    return artifact_root
+
+
+def test_prepare_build_folder_release_lists_a_us_national_build(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    national = _as_us_national_build_folder_release(release_dir)
+    root = _microcosm_named_artifacts(artifact_root)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+
+    prepared = release_module.prepare_build_folder_release(national, artifact_root=root)
+
+    assert prepared.repository == "policyengine/populace-us"
+    assert (prepared.release, prepared.build) == (US_NATIONAL_RELEASE_ID, RELEASE_ID)
+    assert prepared.release_role == "national"
+    roles = {item.name: item.role for item in prepared.files}
+    assert roles["microcosm_us_2024.h5"] == "dataset"
+    assert roles["microcosm_us_2024_calibration.npz"] == "calibration_weights"
+
+
+def test_prepare_build_folder_release_refuses_a_build_of_another_role(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """An ACS local-area build declares the local-area role; the national
+    release, whose role is national, refuses it."""
+    national = _as_us_national_build_folder_release(release_dir)
+    manifest_path = national / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["dataset_role"] = "non_default_local_area"
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+
+    with pytest.raises(ValueError, match="role"):
+        release_module.prepare_build_folder_release(
+            national, artifact_root=_microcosm_named_artifacts(artifact_root)
+        )
+
+
+def test_the_tagged_publisher_refuses_the_us_national_release(
+    release_dir: Path, artifact_root: Path
+) -> None:
+    national = _as_us_national_build_folder_release(release_dir)
+
+    with pytest.raises(ValueError, match="microcosm-publish-release-build"):
+        release_module.prepare_release(national, artifact_root=artifact_root)
