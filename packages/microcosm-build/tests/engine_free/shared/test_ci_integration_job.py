@@ -180,7 +180,7 @@ def test_country_engine_jobs_bound_their_process_concurrency() -> None:
     engine_us = _ENGINE_US_SCRIPT.read_text(encoding="utf-8")
     engine_uk = _ENGINE_UK_SCRIPT.read_text(encoding="utf-8")
 
-    assert "-n 2 --dist loadfile" in engine_free
+    assert "-n 4 --dist loadfile" in engine_free
     assert "-m tools.run_engine_test_categories" in engine_us
     assert "--json-report engine-us-timings.json" in engine_us
     assert "--markdown-report engine-us-timings.md" in engine_us
