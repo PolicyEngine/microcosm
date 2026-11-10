@@ -564,6 +564,14 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--allow-incomplete-reform-validation",
+        action="store_true",
+        help=(
+            "Publish even if reform_validation.json records that out-of-sample "
+            "reforms were skipped (--skip-out-of-sample-reforms)."
+        ),
+    )
+    parser.add_argument(
         "--allow-missing-staging",
         action="store_true",
         help=(
@@ -656,7 +664,9 @@ def _run(args: argparse.Namespace) -> int:
         )
     else:
         refusal = publication_refusal(
-            release_dir, allow_missing_staging=args.allow_missing_staging
+            release_dir,
+            allow_incomplete_reform_validation=args.allow_incomplete_reform_validation,
+            allow_missing_staging=args.allow_missing_staging,
         )
         if refusal is not None:
             print(refusal, file=sys.stderr)

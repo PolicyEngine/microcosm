@@ -5197,6 +5197,65 @@ def test_the_package_stage_prints_the_emitter_publication_commands(
 
 
 @requires_pytables
+@requires_pytables
+def test_the_package_stage_declares_every_file_it_writes_as_an_artifact(
+    tmp_path, monkeypatch
+):
+    """The emitter publishes a build folder's manifests, checksum ledger and
+    declared artifacts only, so every file the package stage writes into the
+    release directory, the evidence JSON included, is a declared artifact; a
+    ledger line for an undeclared file would name a file the published
+    folder lacks (review of #1571)."""
+
+    _pin_built_with_versions(monkeypatch)
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    declared = {entry["path"] for entry in release_manifest["artifacts"].values()}
+    written = {path.name for path in release_dir.iterdir()}
+    publisher_files = {"release_manifest.json", "build_manifest.json", "sha256sums.txt"}
+    assert written - publisher_files <= declared
+    assert {"held_back_columns.json", "run_identity.json"} <= declared
+    ledger = {
+        line.split()[1]
+        for line in (release_dir / "sha256sums.txt").read_text().splitlines()
+    }
+    assert ledger - publisher_files <= declared
+
+
+def test_a_run_that_will_package_refuses_an_earlier_release_directory_first(
+    tmp_path: Path,
+) -> None:
+    """--stage all refuses an --out that already has the local-area release's
+    directory while parsing its arguments, before hours of materialize,
+    calibrate, qa and finalize (review of #1571)."""
+    module = _load_tool_module()
+    out = tmp_path / "release"
+    (out / "releases" / "microcosm-us-2024-local").mkdir(parents=True)
+
+    with pytest.raises(SystemExit):
+        module._parse_args(
+            [
+                "--stage",
+                "all",
+                "--staging-h5",
+                str(tmp_path / "staging.h5"),
+                "--checkpoint-dir",
+                str(tmp_path / "ckpt"),
+                "--feed",
+                str(tmp_path / "facts.jsonl"),
+                "--out-h5",
+                str(tmp_path / "out.h5"),
+                "--out",
+                str(out),
+            ]
+        )
+
+
 def test_package_refuses_a_release_directory_from_an_earlier_package(
     tmp_path, monkeypatch
 ):

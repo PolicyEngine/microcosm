@@ -5905,6 +5905,14 @@ def do_package(args) -> dict:
             "diagnostics",
             release_dir / "calibration_diagnostics.json",
         )
+    # The emitter publishes a build folder's manifests, checksum ledger and
+    # declared artifacts only (microcosm#1570), so every other file written
+    # above, the evidence JSON included, is declared, as the UK dense
+    # assembler declares its evidence.
+    for name in contract_files:
+        key = Path(name).stem
+        if name != "build_manifest.json" and key not in artifacts:
+            artifacts[key] = _artifact(name, "diagnostics", release_dir / name)
 
     release_manifest = {
         "schema_version": 1,
@@ -6198,6 +6206,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--out-h5 is required for calibrate/qa/finalize/package.")
     if "package" in stages and args.out is None:
         parser.error("--out is required for the package stage.")
+    if "package" in stages:
+        # Refused here as well as when the package stage starts, so a run of
+        # every stage stops before hours of the others.
+        earlier = args.out.joinpath(*RELEASE_DIR_PARTS)
+        if earlier.exists() or earlier.is_symlink():
+            parser.error(
+                f"{earlier} already exists from an earlier package; remove it, "
+                "or package into another --out."
+            )
     if args.out_h5 is not None and args.out_summary is None:
         args.out_summary = args.out_h5.with_suffix(".summary.json")
     if args.gate_report is None:

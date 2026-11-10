@@ -1406,8 +1406,15 @@ def _is_absent_revision_error(exc: BaseException) -> bool:
 
 
 def _is_absent_entry_error(exc: BaseException) -> bool:
-    """A Hub (or fake) answer that the file does not exist at that revision."""
-    return bool({cls.__name__ for cls in type(exc).__mro__} & _ABSENT_ENTRY_ERRORS)
+    """A Hub (or fake) answer that the file does not exist at that revision.
+
+    huggingface_hub's ``LocalEntryNotFoundError`` is also an
+    ``EntryNotFoundError`` and a ``FileNotFoundError``, but it is raised when
+    the Hub could not be asked (a 403, a 5xx that outlasted the retries, or
+    offline with nothing cached), so it is not that answer.
+    """
+    names = {cls.__name__ for cls in type(exc).__mro__}
+    return bool(names & _ABSENT_ENTRY_ERRORS) and "LocalEntryNotFoundError" not in names
 
 
 def _require_tag_describes_release(
@@ -1603,15 +1610,30 @@ def latest_line_release(repo_id: str, *, line: str, api=None) -> LatestPointer:
     )
 
 
+def never_cached_offline(error: BaseException) -> bool:
+    """Whether huggingface_hub is offline and the file was never cached.
+
+    Offline, the cache is all a reader has, so a ``releases.json`` that was
+    never cached reads as absent, as the pointer files then do.
+    """
+    try:
+        from huggingface_hub import constants
+        from huggingface_hub.utils import LocalEntryNotFoundError
+    except ImportError:  # pragma: no cover - declared dependency
+        return False
+    return bool(constants.HF_HUB_OFFLINE) and isinstance(error, LocalEntryNotFoundError)
+
+
 def _releases_record_bytes(api: object, *, repo_id: str) -> bytes | None:
     """The repository's ``releases.json``, or ``None`` when the Hub says it
-    has none; any other failure to read it propagates."""
+    has none, or, offline, when it was never cached
+    (:func:`never_cached_offline`); any other failure to read it propagates."""
     try:
         local = api.hf_hub_download(
             repo_id=repo_id, filename=RELEASES_RECORD_PATH, repo_type="dataset"
         )
     except Exception as exc:
-        if missing_on_hub(exc):
+        if missing_on_hub(exc) or never_cached_offline(exc):
             return None
         raise
     return Path(local).read_bytes()

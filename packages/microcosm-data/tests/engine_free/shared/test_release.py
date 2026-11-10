@@ -1576,6 +1576,70 @@ def test_latest_evidence_release_refuses_an_evidence_release_without_a_current_b
         latest_evidence_release("policyengine/populace-us", api=hub)
 
 
+@pytest.mark.parametrize("status_code", [None, 403, 503])
+def test_a_hub_that_could_not_be_asked_is_not_an_absent_file(
+    status_code: int | None,
+) -> None:
+    """LocalEntryNotFoundError is also an EntryNotFoundError and a
+    FileNotFoundError, but says nothing about the file; only the Hub's answer
+    that it is absent counts (review of #1571)."""
+    from test_support.microcosm_data import hub_errors
+
+    assert not release_module._is_absent_entry_error(
+        hub_errors.hub_unreachable("r", "f", status_code=status_code)
+    )
+    assert release_module._is_absent_entry_error(
+        hub_errors.missing_on_hub("r", "f", "main")
+    )
+
+
+def _evidence_pointer_without_releases_record(hub: FakeHub, monkeypatch) -> None:
+    """A repository before its switch, with latest-evidence.json, whose
+    releases.json the Hub cannot be asked for."""
+    from test_support.microcosm_data import hub_errors
+
+    payload = latest_evidence_pointer_payload(EVIDENCE_RELEASE_ID)
+    hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
+    download = hub.hf_hub_download
+
+    def no_releases_record(*, repo_id, filename, repo_type, revision=None):
+        if filename == "releases.json":
+            raise hub_errors.hub_unreachable(repo_id, filename, revision)
+        return download(
+            repo_id=repo_id, filename=filename, repo_type=repo_type, revision=revision
+        )
+
+    monkeypatch.setattr(hub, "hf_hub_download", no_releases_record)
+
+
+def test_latest_evidence_release_offline_reads_a_cached_pointer_before_the_switch(
+    hub: FakeHub, monkeypatch
+) -> None:
+    """Offline, a releases.json that was never cached reads as absent, as in
+    the loader, so the cached latest-evidence.json still answers (review of
+    #1571)."""
+    from huggingface_hub import constants
+
+    _evidence_pointer_without_releases_record(hub, monkeypatch)
+    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", True)
+
+    pointer = latest_evidence_release("policyengine/populace-us", api=hub)
+
+    assert pointer.release_id == EVIDENCE_RELEASE_ID
+
+
+def test_latest_evidence_release_online_refuses_when_the_hub_cannot_be_asked(
+    hub: FakeHub, monkeypatch
+) -> None:
+    from huggingface_hub import constants
+
+    _evidence_pointer_without_releases_record(hub, monkeypatch)
+    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", False)
+
+    with pytest.raises(LocalEntryNotFoundError):
+        latest_evidence_release("policyengine/populace-us", api=hub)
+
+
 def test_certified_latest_pointer_keeps_its_certified_shape(hub: FakeHub) -> None:
     """The certified pointer payload gains no tier field — its bytes are the
     pre-#506 shape, so existing consumers see no drift."""

@@ -322,11 +322,24 @@ def _annual_build_dir(tmp_path):
                         "sha256": _BASE_SHA256,
                     }
                 },
-                "artifacts": {"microcosm_us_2024": dataset},
+                "artifacts": {
+                    "microcosm_us_2024": dataset,
+                    "calibration_diagnostics": _CARRIED_DIAGNOSTICS,
+                },
             }
         )
     )
     return release_dir
+
+
+#: A file the annual build carries from its base build unchanged.
+_CARRIED_DIAGNOSTICS = {
+    "kind": "diagnostics",
+    "path": "calibration_diagnostics.json",
+    "repo_id": _US_REPOSITORY,
+    "sha256": "e" * 64,
+    "role": "calibration_diagnostics",
+}
 
 
 class _BaseOnTheHub:
@@ -340,14 +353,22 @@ class _BaseOnTheHub:
     def hf_hub_download(self, *, repo_id, filename, repo_type, revision):
         import json
 
-        from test_support.microcosm_data.hub_errors import missing_on_hub
+        from test_support.microcosm_data.hub_errors import (
+            hub_unreachable,
+            missing_on_hub,
+        )
 
         self.requests.append((repo_id, filename, repo_type, revision))
         if self.problem == "absent":
             raise missing_on_hub(repo_id, filename, revision)
         if self.problem == "unreachable":
             raise RuntimeError("the Hub did not answer")
+        if self.problem == "cannot_ask":
+            raise hub_unreachable(repo_id, filename, revision, status_code=403)
         sha256 = "d" * 64 if self.problem == "other_sha256" else _BASE_SHA256
+        diagnostics = dict(_CARRIED_DIAGNOSTICS)
+        if self.problem == "other_carried_file":
+            diagnostics["sha256"] = "f" * 64
         manifest = {
             "release": "microcosm-us-2024-national",
             "build": _BASE_BUILD,
@@ -359,9 +380,18 @@ class _BaseOnTheHub:
                     "repo_id": repo_id,
                     "sha256": sha256,
                     "role": "dataset",
-                }
+                },
+                "calibration_diagnostics": diagnostics,
             },
         }
+        if self.problem == "missing_carried_file":
+            manifest["artifacts"]["us_source_coverage"] = {
+                "kind": "diagnostics",
+                "path": "us_source_coverage.json",
+                "repo_id": repo_id,
+                "sha256": "a" * 64,
+                "role": "us_source_coverage",
+            }
         local = self.directory / filename
         local.parent.mkdir(parents=True, exist_ok=True)
         local.write_text(json.dumps(manifest))
@@ -375,6 +405,10 @@ class _BaseOnTheHub:
         ("absent", "not published"),
         ("other_sha256", "sha256"),
         ("unreachable", "did not answer"),
+        # Every file the annual build carries from its base build must be the
+        # published base build's (review of #1571).
+        ("other_carried_file", "calibration_diagnostics"),
+        ("missing_carried_file", "us_source_coverage"),
     ],
 )
 def test_an_annual_build_is_handed_over_only_once_its_base_build_is_published(
@@ -426,3 +460,58 @@ def test_an_annual_build_is_handed_over_only_once_its_base_build_is_published(
             "main",
         )
     ]
+
+
+def test_a_hub_that_could_not_be_asked_is_not_read_as_an_unpublished_base(
+    tmp_path,
+) -> None:
+    """huggingface_hub raises LocalEntryNotFoundError, also a FileNotFoundError,
+    when it could not ask the Hub (a 403, or a 5xx after its retries). That is
+    not the Hub's answer that the base build is absent, so it propagates
+    instead of reading as "not published" (review of #1571)."""
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    from microcosm.data import annual_projections
+
+    release_dir = _annual_build_dir(tmp_path)
+
+    with pytest.raises(LocalEntryNotFoundError):
+        annual_projections.require_base_publication(
+            _BaseOnTheHub(tmp_path, "cannot_ask"),
+            release_dir,
+            repo_id=_US_REPOSITORY,
+        )
+
+
+@pytest.mark.parametrize("allow", [False, True])
+def test_the_command_takes_the_incomplete_reform_validation_override(
+    tmp_path, monkeypatch, capsys, allow
+) -> None:
+    """The shared refusal of a build made with --skip-out-of-sample-reforms
+    names --allow-incomplete-reform-validation, as the tagged command did, so
+    the emitter command takes it too (review of #1571)."""
+    release_dir = tmp_path / "microcosm-us-2024-national"
+    release_dir.mkdir()
+    (release_dir / "reform_validation.json").write_text(
+        json.dumps({"out_of_sample_simulated": False})
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "prepare_build_folder_release",
+        lambda path, **_kwargs: _prepared(path),
+    )
+
+    exit_code = release_publication.main(
+        [
+            str(release_dir),
+            "--preflight-only",
+            *(["--allow-incomplete-reform-validation"] if allow else []),
+        ]
+    )
+
+    error_output = capsys.readouterr().err
+    if allow:
+        assert exit_code == 0
+    else:
+        assert exit_code == 1
+        assert "--allow-incomplete-reform-validation" in error_output

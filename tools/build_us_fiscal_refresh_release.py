@@ -2547,6 +2547,37 @@ def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
         )
 
 
+#: Files the release manifest declares whenever they exist, written only by
+#: a run that does not skip their check, with the option that skips it.
+_SKIPPABLE_CHECK_FILES = (
+    ("reform_validation.json", "skip_reform_validation", "--skip-reform-validation"),
+    ("demographics.json", "skip_demographics", "--skip-demographics"),
+)
+
+
+def _refuse_skipped_checks_left_files(release_dir: Path, args) -> None:
+    """Refuse a skipped check's file left in the release directory.
+
+    The directory is named after the build's release (microcosm#1570), so a
+    rerun into the same --out finds an earlier attempt's files, and the
+    release manifest declares these whenever they exist. A run that skips
+    the check never rewrites its file, so the earlier attempt's would be
+    published as this build's.
+    """
+
+    left = [
+        f"{name} ({option})"
+        for name, flag, option in _SKIPPABLE_CHECK_FILES
+        if getattr(args, flag, False) and (Path(release_dir) / name).exists()
+    ]
+    if left:
+        raise RuntimeError(
+            f"Release directory {release_dir} holds {', '.join(left)} from an "
+            "earlier attempt, which this run skips and so would not rewrite. "
+            "Remove those files or choose a new --out before rerunning."
+        )
+
+
 def _write_final_household_weight_evidence(
     release_dir: Path,
     export_frame: Frame,
@@ -13213,6 +13244,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # so it is known here whether or not --release-id gives the build ID.
     _refuse_certified_release_dir_reuse(
         args.out.resolve() / "releases" / _release_for_build(args)
+    )
+    _refuse_skipped_checks_left_files(
+        args.out.resolve() / "releases" / _release_for_build(args), args
     )
     pinned_incumbent_payload: dict[str, object] | None = None
     pinned_incumbent_sha256: str | None = None

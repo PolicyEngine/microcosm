@@ -630,7 +630,7 @@ if [ "$PF_BLOCKED" = 0 ]; then
 fi
 "$PY" - "$OUTF" "$STATE" "$C" "$PC" "$PEUS" "$BASE_H5" "$BASE_SHA" "$RID" "$REL_DIR" "$REL_OUT/artifacts" \
   "$PFB" "$PFR" "$PUB_VERDICT" <<'EOF'
-import json, sys
+import json, shlex, sys
 (out, state, commit, pcommit, peus, base_h5, base_sha, rid, rel_dir, art, pfb, pfr, pub) = sys.argv[1:]
 json.dump({
     "state": state,
@@ -646,8 +646,8 @@ json.dump({
     "preflight_base": pfb,
     "preflight_release": pfr,
     "publisher_preflight_only": pub,
-    "publish_command": f"uv run microcosm-publish-release-build {rel_dir} --repo-id policyengine/populace-us --artifact-root {art}",
-    "promote_command": f"uv run microcosm-publish-release-build {rel_dir} --repo-id policyengine/populace-us --promote",
+    "publish_command": shlex.join(["uv", "run", "microcosm-publish-release-build", rel_dir, "--repo-id", "policyengine/populace-us", "--artifact-root", art]),
+    "promote_command": shlex.join(["uv", "run", "microcosm-publish-release-build", rel_dir, "--repo-id", "policyengine/populace-us", "--promote"]),
     "next": (
         "Publication is Max's call: publish_command publishes the build into "
         "its folder of the national release, and promote_command then makes "
