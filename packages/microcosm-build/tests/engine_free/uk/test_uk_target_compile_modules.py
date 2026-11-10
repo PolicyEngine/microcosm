@@ -310,6 +310,51 @@ def test_an_edit_to_calibration_run_leaves_the_kernels_keys(
     assert kernel.implementation_hash() == before
 
 
+@pytest.mark.parametrize(
+    "edited_module",
+    ("frs_spine", "frs_relationships"),
+)
+@pytest.mark.parametrize(
+    ("kernel", "module"),
+    _TARGET_AND_PROBLEM_KERNELS,
+    ids=[kernel.ref for kernel, _ in _TARGET_AND_PROBLEM_KERNELS],
+)
+def test_an_edit_to_frs_spine_or_frs_relationships_leaves_the_kernels_keys(
+    tmp_path, monkeypatch, kernel, module, edited_module
+):
+    """No target or problem kernel hashes frs_spine or frs_relationships
+    (microcosm#931 ruling 4). The dense measures and the national problem
+    read nothing of frs_spine's but the annuity and trust column's name,
+    which lives in annuity_trust_column. The target compilation and the
+    national targets reach the ONS household type domain only through
+    ledger_targets' household-type check, which only refuses and is listed
+    refusal-only in test_uk_graph. So on a bound spine an edit to either file
+    re-keys none of these kernels, and the national line does not re-solve
+    for it. In the in-graph build the spine stages that hash them still
+    re-key every node after them."""
+    edited = importlib.import_module(f"microcosm.build.uk_runtime.{edited_module}")
+    before = kernel.implementation_hash()
+    source = Path(edited.__file__)
+    copy = tmp_path / source.name
+    copy.write_bytes(source.read_bytes() + b"\n# an edited line\n")
+    monkeypatch.setattr(edited, "__file__", str(copy))
+    assert kernel.implementation_hash() == before
+
+
+@pytest.mark.parametrize("ref", ("uk.full.measures@1", "uk.full.national_problem@1"))
+def test_an_edit_to_the_annuity_and_trust_column_rekeys_the_measures(
+    tmp_path, monkeypatch, ref
+):
+    """The measure resolver reads zeros where a frame lacks the annuity and
+    trust column, so a renamed constant would change the measures without
+    re-keying them: the dense measures and the national problem hash the
+    column's module (microcosm#931 ruling 4)."""
+    from microcosm.build.uk_runtime import annuity_trust_column
+
+    kernel, _ = _KERNELS_BY_REF[ref]
+    assert_an_edit_rekeys(kernel, annuity_trust_column, tmp_path, monkeypatch)
+
+
 def test_an_edit_to_calibration_run_leaves_the_preflight_and_the_solve(
     tmp_path, monkeypatch
 ):

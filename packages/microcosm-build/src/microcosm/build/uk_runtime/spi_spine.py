@@ -12,6 +12,9 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.annuity_trust_column import (
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
+)
 from microcosm.build.uk_runtime.employer_pension_contributions import (
     draw_employer_pension_contributions,
     employer_scheme_and_sector,
@@ -29,7 +32,6 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     _raw_source_person_ids,
     _read_raw_frs_table,
 )
-from microcosm.build.uk_runtime.frs_spine import ANNUITY_AND_TRUST_INCOME_COLUMN
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_population_policy
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
