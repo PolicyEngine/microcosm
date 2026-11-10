@@ -1,23 +1,30 @@
 """Re-certify a published release for a newer country model, bytes unchanged.
 
-A ``compatibility_recertification`` release is a child of one published,
-certified US calibration release. It republishes the parent's microdata and
-every other parent artifact byte for byte under a new id, and adds what the
-parent cannot say for itself: that the same bytes were loaded and scored under
-a newer policyengine-us, what that engine reads and ignores differently, and
-how far the headline results moved. It transforms no data and never
-recalibrates.
+A ``compatibility_recertification`` build is a child of one published,
+certified US calibration build. It is a new build of the national release
+(``microcosm-us-2024-national``), published into its own folder
+``releases/<release>/<build>/`` with a ``populace-us-…`` build ID. It
+republishes the parent's microdata (under the release's dataset file name,
+``microcosm_us_2024.h5``) and every other parent artifact byte for byte, and
+adds what the parent cannot say for itself: that the same bytes were loaded
+and scored under a newer policyengine-us, what that engine reads and ignores
+differently, and how far the headline results moved. It transforms no data and
+never recalibrates.
 
 **Parent identity comes from the parent's own published manifest.** The child
 carries the parent's ``release_manifest.json`` and ``build_manifest.json``
 byte for byte (``parent_release_manifest.json``, ``parent_build_manifest.json``)
 and records their SHA-256 in ``compatibility_recertification.json``. That
 manifest pins every parent artifact's digest, so it is the whole lineage; no
-parent is a code constant. Validation is offline: it checks the child against
-the carried manifest and replays the current release contract on the parent
-reconstructed from the carried files. Publication adds the online anchor
-(:func:`require_parent_publication`): before any upload, the parent tag on the
-Hub must serve exactly the carried manifest bytes.
+parent is a code constant. A parent in a build folder is named by ``release``
+and ``build``, and one that keeps only its tag by ``build_id`` and
+``revision``; :func:`microcosm.data.build_folder_manifests.referenced_build`
+says where either one's files are read. Validation is offline: it checks the
+child against the carried manifest and replays the current release contract
+on the parent reconstructed from the carried files. Publication adds the
+online anchor (:func:`require_parent_publication`): before anything is
+handed over, the parent's build folder (at ``main``) or tag on the Hub must
+serve exactly the carried manifest bytes.
 
 **What is measured, and how it is bound.**
 
@@ -68,9 +75,16 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from types import MappingProxyType
 
+from microcosm.data.build_folder_manifests import ReferencedBuild, referenced_build
 from microcosm.data.contract import (
+    BUILD_MANIFEST_FILE_ROLE,
     PUBLISHER_CLAIM_BASIS,
+    US_NATIONAL_RELEASE_ID,
+    US_RELEASE_DATASET_FILES,
     ReleaseContractError,
+    is_us_release,
+    publishes_to_build_folder,
+    release_artifact_role,
     required_release_files,
 )
 
@@ -87,7 +101,10 @@ DRIFT_SCHEMA_VERSION = 1
 SCORES_KIND = "compatibility_recertification_scores"
 DRIFT_KIND = "compatibility_drift"
 REPO_ID = "policyengine/populace-us"
+#: The prefix of every US build ID, the child's and its parent's.
 US_RELEASE_PREFIX = "populace-us-"
+#: The release a recertification is a build of.
+CHILD_RELEASE = US_NATIONAL_RELEASE_ID
 NATIONAL_DEFAULT_ROLE = "national_default"
 #: Roles a parent may declare. The identity checks do not depend on the role;
 #: the local-area contract's own replay is what a second role needs.
@@ -105,9 +122,10 @@ CHILD_OWNED_FILES = (
     PARENT_RELEASE_MANIFEST_FILE,
     PARENT_BUILD_MANIFEST_FILE,
 )
-#: The child's own artifacts, by manifest key, besides the carried ones.
+#: The child's own artifacts, by manifest key, besides the carried ones. The
+#: build manifest is not one: the build-folder publisher uploads it itself,
+#: and refuses a file named twice.
 CHILD_ARTIFACT_KEYS = {
-    "build_manifest": "build_manifest.json",
     "compatibility_recertification": REPORT_FILE,
     "parent_release_manifest": PARENT_RELEASE_MANIFEST_FILE,
     "parent_build_manifest": PARENT_BUILD_MANIFEST_FILE,
@@ -116,6 +134,12 @@ CERTIFIED_ARTIFACT_KEYS = {
     "compatibility_recertification_loader": RECEIPT_FILE,
     "compatibility_drift": DRIFT_FILE,
 }
+#: Artifact keys a parent may not use: the child's own evidence would replace
+#: the parent's artifact, and ``build_manifest`` is the role the build-folder
+#: publisher gives the child's build manifest.
+_RESERVED_PARENT_ARTIFACT_KEYS = frozenset(
+    {*CHILD_ARTIFACT_KEYS, *CERTIFIED_ARTIFACT_KEYS, BUILD_MANIFEST_FILE_ROLE}
+)
 #: The runtime a recertification proves: the country model, its Core and the
 #: calculator that registers the native SPM role, by import name.
 IMPORT_NAMES = MappingProxyType(
@@ -156,6 +180,7 @@ PRODUCER_SOURCE_FILES = (
     "packages/microcosm-data/src/microcosm/data/source_enrichment.py",
     "packages/microcosm-data/src/microcosm/data/stored_inputs.py",
     "packages/microcosm-data/src/microcosm/data/contract.py",
+    "packages/microcosm-data/src/microcosm/data/build_folder_manifests.py",
 )
 SCORING_PERIOD = 2024
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -823,25 +848,121 @@ def is_recertification(release_dir: Path | str) -> bool:
 # The parent, from its published manifest.
 # ---------------------------------------------------------------------------
 
+_PARENT_ID = re.compile(r"populace-us-[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def build_details(manifest: Mapping) -> Mapping:
+    """The fields that describe how a build was made, in either layout.
+
+    A tagged release manifest keeps them in its ``build`` object; a
+    build-folder manifest at its top level, where ``build`` is the build ID.
+    """
+
+    from microcosm.data.contract import _release_build_details
+
+    return _mapping(_release_build_details(manifest))
+
+
+def _is_build_folder_us_release(release: object) -> bool:
+    """Whether ``release`` is a US release whose builds have their own folders.
+
+    These are the four release names; a US build's own release in the tagged
+    layout (``populace-us-…``) keeps its tag.
+    """
+
+    return (
+        isinstance(release, str)
+        and is_us_release(release)
+        and publishes_to_build_folder(release)
+    )
+
+
+def _parent_identity(parent: Mapping) -> tuple[ReferencedBuild, str, str]:
+    """Where the parent is published, its local directory's name, its build ID.
+
+    A parent in a build folder (``release`` and ``build``) is read at
+    ``main`` from ``releases/<release>/<build>/``, and its directory is named
+    after its release, as its contract needs. A parent that keeps only its
+    tag (``build_id`` and ``revision``) is read at that tag from
+    ``releases/<build_id>/``, and its directory is named after its build ID.
+
+    Raises:
+        ValueError: The reference has neither form, mixes them, or names a
+            release or build ID that is not a US one (so no name built from it
+            can leave the directory it is joined to).
+    """
+
+    location = referenced_build(parent)
+    if parent.get("release") is not None:
+        directory, build_id = parent.get("release"), parent.get("build")
+        if not _is_build_folder_us_release(directory):
+            raise ValueError(
+                f"parent release {directory!r} is not a US release that "
+                "publishes into build folders"
+            )
+    else:
+        build_id = parent.get("build_id")
+        directory = build_id
+    if not isinstance(build_id, str) or _PARENT_ID.fullmatch(build_id) is None:
+        raise ValueError(f"parent build {build_id!r} is not a US build ID")
+    return location, str(directory), build_id
+
+
+def parent_build_id(parent: Mapping) -> str:
+    """The parent's build ID, from a parent block in either form."""
+
+    return _parent_identity(parent)[2]
+
+
+def _publishable_parent_path(path: str) -> bool:
+    """Whether the publisher wrote a parent artifact at ``path``.
+
+    A release file is uploaded to the parent's directory and a root artifact
+    to its own path; neither publisher writes into another release's
+    directory, or outside the repository.
+    """
+
+    return not (
+        path.startswith("/")
+        or "\\" in path
+        or posixpath.normpath(path) != path
+        or ".." in path.split("/")
+        or path.split("/", 1)[0] == "releases"
+    )
+
 
 def describe_parent(
-    parent_release_dir: Path | str, parent_artifact_root: Path | str
+    parent_release_dir: Path | str,
+    parent_artifact_root: Path | str,
+    *,
+    dataset_file: str | None = None,
 ) -> dict:
     """The parent block a child records, read from the parent's published files.
 
-    ``parent_release_dir`` holds the parent's ``releases/<id>/`` files as the
-    Hub serves them at the parent tag; ``parent_artifact_root`` holds its root
-    artifacts (the H5 and the calibration NPZ). Every artifact the manifest
-    declares must be present with the digest it pins, in exactly one of the
-    two places: a bare filename in the release directory is a release file,
-    anything else a root artifact. Offline, that placement rests on where the
-    files sit locally; publication authenticates it against the parent tag on
-    the Hub (:func:`require_parent_publication`), so a root artifact moved into
-    the release directory cannot publish at the wrong path.
+    ``parent_release_dir`` holds the parent's release files as the Hub serves
+    them: from its build folder ``releases/<release>/<build>/`` at ``main``,
+    in a directory named after its release, or from ``releases/<id>/`` at its
+    tag, in a directory named after its build ID. ``parent_artifact_root``
+    holds its root artifacts (the H5 and the calibration NPZ), under
+    ``dataset_file`` for the H5 when that is given (a child's copy of it).
+    Every artifact the manifest declares must be present with the digest it
+    pins, in exactly one of the two places: a bare filename in the release
+    directory is a release file, anything else a root artifact. Offline, that
+    placement rests on where the files sit locally; publication authenticates
+    it against the published parent on the Hub
+    (:func:`require_parent_publication`), so a root artifact moved into the
+    release directory cannot publish at the wrong path.
 
-    A parent artifact key that the child uses for its own evidence is refused:
+    A parent artifact key that the child uses for its own files is refused:
     the child's entry would replace it, and the artifact would silently leave
-    the child's manifest.
+    the child's manifest. An artifact that is the parent's own build manifest,
+    which builds that keep only their tag may declare, is checked against the
+    parent's ``build_manifest.json`` and not carried: the child carries those
+    bytes as ``parent_build_manifest.json``.
+
+    The block names the parent as its publisher did: by ``repo_id``,
+    ``release`` and ``build`` for a build folder, by ``build_id``, ``repo_id``
+    and ``revision`` (its tag) otherwise.
 
     Raises:
         ValueError: The parent is not a supported published release, or a
@@ -855,12 +976,26 @@ def describe_parent(
     manifest = json.loads(manifest_path.read_text())
     if not isinstance(manifest, Mapping):
         raise ValueError("parent release_manifest.json must be an object")
-    parent_id = parent_release_dir.name
-    build = _mapping(manifest.get("build"))
-    if build.get("build_id") != parent_id:
-        raise ValueError(
-            "parent release directory must be named for the manifest's build.build_id"
-        )
+    details = build_details(manifest)
+    directory = parent_release_dir.name
+    build_folder = isinstance(manifest.get("build"), str)
+    if build_folder:
+        if manifest.get("release") != directory:
+            raise ValueError(
+                "parent release directory must be named for the manifest's release"
+            )
+        if not _is_build_folder_us_release(directory):
+            raise ValueError("only a US release can be recertified by this lane")
+        parent_id = manifest["build"]
+        reference = {"repo_id": REPO_ID, "release": directory, "build": parent_id}
+    else:
+        parent_id = directory
+        if details.get("build_id") != parent_id:
+            raise ValueError(
+                "parent release directory must be named for the manifest's "
+                "build.build_id"
+            )
+        reference = {"build_id": parent_id, "repo_id": REPO_ID, "revision": parent_id}
     if not parent_id.startswith(US_RELEASE_PREFIX):
         raise ValueError("only a US release can be recertified by this lane")
     if manifest.get("release_type") not in PARENT_RELEASE_TYPES:
@@ -874,33 +1009,41 @@ def describe_parent(
             f"parent dataset_role {role!r} is not supported yet; this lane "
             f"recertifies {SUPPORTED_PARENT_ROLES} releases"
         )
+    artifacts = _mapping(manifest.get("artifacts"))
+    national = _mapping(manifest.get("default_datasets")).get("national")
+    dataset_path = _mapping(artifacts.get(national)).get("path")
     release_files, root_artifacts = {}, {}
-    for key, raw in _mapping(manifest.get("artifacts")).items():
-        if key in CHILD_ARTIFACT_KEYS or key in CERTIFIED_ARTIFACT_KEYS:
-            raise ValueError(
-                f"parent artifact key {key!r} is one the child writes its own "
-                "evidence under; the parent artifact would leave the child manifest"
-            )
+    for key, raw in artifacts.items():
         entry = _mapping(raw)
         path, sha = entry.get("path"), entry.get("sha256")
         if not isinstance(path, str) or not isinstance(sha, str):
             raise ValueError(f"parent artifact {key!r} has no path and sha256")
-        # The publisher writes a release file to releases/<id>/<name> and a
-        # root artifact to its own path; it writes nothing to another
-        # release's directory. A path it would not resolve to one of those two
-        # places cannot be republished faithfully, so it is refused.
-        if (
-            path.startswith("/")
-            or "\\" in path
-            or posixpath.normpath(path) != path
-            or ".." in path.split("/")
-            or path.split("/", 1)[0] == "releases"
-        ):
+        if path == "build_manifest.json":
+            if not build_path.is_file() or sha256_file(build_path) != sha:
+                raise ValueError(
+                    f"parent artifact {path!r} is missing or differs from its pin"
+                )
+            continue
+        if key in _RESERVED_PARENT_ARTIFACT_KEYS:
+            raise ValueError(
+                f"parent artifact key {key!r} is one the child writes its own "
+                "files under; the parent artifact would leave the child manifest"
+            )
+        # A path the publisher would not resolve to a release file or a root
+        # artifact cannot be republished faithfully, so it is refused.
+        if not _publishable_parent_path(path):
             raise ValueError(
                 f"parent artifact {key!r} path {path!r} is not a release file or "
                 "root artifact path the publisher would write"
             )
-        if entry.get("revision") != parent_id or entry.get("repo_id") != REPO_ID:
+        if entry.get("repo_id") != REPO_ID:
+            raise ValueError(f"parent artifact {key!r} must be in {REPO_ID}")
+        if build_folder and "revision" in entry:
+            raise ValueError(
+                f"parent artifact {key!r} pins revision {entry['revision']!r}; a "
+                "build folder's files pin none"
+            )
+        if not build_folder and entry.get("revision") != parent_id:
             raise ValueError(
                 f"parent artifact {key!r} must pin {REPO_ID} at the parent tag"
             )
@@ -911,7 +1054,8 @@ def describe_parent(
                 )
             local, place = parent_release_dir / path, release_files
         else:
-            local, place = parent_artifact_root / path, root_artifacts
+            stored = dataset_file if dataset_file and path == dataset_path else path
+            local, place = parent_artifact_root / stored, root_artifacts
         if path in release_files or path in root_artifacts:
             raise ValueError(f"parent declares artifact path {path!r} twice")
         if not local.is_file() or sha256_file(local) != sha:
@@ -919,29 +1063,28 @@ def describe_parent(
                 f"parent artifact {path!r} is missing or differs from its pin"
             )
         place[path] = sha
-    national = _mapping(manifest.get("default_datasets")).get("national")
-    dataset = _mapping(_mapping(manifest.get("artifacts")).get(national))
+    dataset = _mapping(artifacts.get(national))
     if dataset.get("kind") != "microdata" or dataset.get("path") not in root_artifacts:
         raise ValueError(
             "parent default_datasets.national must name a root microdata artifact"
         )
-    for name in required_release_files(parent_id):
+    for name in required_release_files(directory):
         if name in {"release_manifest.json", "build_manifest.json"}:
             continue
         if name not in release_files:
             raise ValueError(f"parent manifest must declare its required file {name!r}")
     return {
-        "build_id": parent_id,
-        "repo_id": REPO_ID,
-        "revision": parent_id,
+        **reference,
         "release_type": manifest.get("release_type", "calibration"),
         "dataset_role": role,
         "release_manifest_sha256": sha256_file(manifest_path),
         "build_manifest_sha256": sha256_file(build_path),
         "built_with_model_package": dict(
-            _mapping(build.get("built_with_model_package"))
+            _mapping(details.get("built_with_model_package"))
         ),
-        "built_with_core_package": dict(_mapping(build.get("built_with_core_package"))),
+        "built_with_core_package": dict(
+            _mapping(details.get("built_with_core_package"))
+        ),
         "release_files": dict(sorted(release_files.items())),
         "root_artifacts": dict(sorted(root_artifacts.items())),
         "dataset": {
@@ -952,7 +1095,94 @@ def describe_parent(
     }
 
 
-_PARENT_ID = re.compile(r"populace-us-[A-Za-z0-9][A-Za-z0-9._-]*")
+# ---------------------------------------------------------------------------
+# The child's layout: a build of the national release.
+# ---------------------------------------------------------------------------
+
+
+def child_dataset(parent: Mapping, release: str) -> dict:
+    """The child's dataset: the parent's H5 bytes under ``release``'s file name.
+
+    The key is the file name without ``.h5`` (``microcosm_us_2024``), as new
+    US builds name it.
+
+    Raises:
+        ValueError: ``release`` is not a US release with a dataset file.
+    """
+
+    filename = US_RELEASE_DATASET_FILES.get(release)
+    if filename is None:
+        raise ValueError(
+            f"{release!r} is not a US release that publishes into build folders"
+        )
+    return {
+        "artifact": filename.removesuffix(".h5"),
+        "filename": filename,
+        "sha256": _mapping(parent.get("dataset")).get("sha256"),
+    }
+
+
+def child_artifact_path(parent: Mapping, release: str, path: str) -> str:
+    """Where the child keeps the parent artifact at ``path``.
+
+    Only the H5 moves: to ``release``'s dataset file name.
+    """
+
+    if path == _mapping(parent.get("dataset")).get("filename"):
+        return child_dataset(parent, release)["filename"]
+    return path
+
+
+def child_artifact_entry(key: str, path: str, *, kind: str, sha256: object) -> dict:
+    """One of the child's own artifacts, as a build folder's manifest lists it."""
+
+    return {
+        "kind": kind,
+        "path": path,
+        "repo_id": REPO_ID,
+        "sha256": sha256,
+        "role": release_artifact_role(key, kind),
+    }
+
+
+def carried_artifacts(
+    parent_manifest: Mapping, parent: Mapping, release: str
+) -> dict[str, dict]:
+    """The parent's artifacts as the child's release manifest declares them.
+
+    Each keeps its fields but its ``revision``, and gets the role a build
+    folder's manifest records; the H5 moves to ``release``'s dataset file and
+    key. The parent's own build manifest, if it declared one, is left out.
+
+    Raises:
+        ValueError: ``release`` has no dataset file, or another parent artifact
+            already has the dataset's new key or file name.
+    """
+
+    dataset = child_dataset(parent, release)
+    parent_key = _mapping(parent.get("dataset")).get("artifact")
+    artifacts: dict[str, dict] = {}
+    for key, raw in _mapping(parent_manifest.get("artifacts")).items():
+        entry = {
+            name: value
+            for name, value in _mapping(raw).items()
+            if name not in {"revision", "role"}
+        }
+        if entry.get("path") == "build_manifest.json":
+            continue
+        if key == parent_key:
+            key, entry["path"] = dataset["artifact"], dataset["filename"]
+        elif key == dataset["artifact"] or entry.get("path") == dataset["filename"]:
+            raise ValueError(
+                f"parent artifact {key!r} already has the key or file name the "
+                f"child gives the parent's H5 ({dataset['artifact']!r}, "
+                f"{dataset['filename']!r})"
+            )
+        artifacts[key] = {
+            **entry,
+            "role": release_artifact_role(key, entry.get("kind")),
+        }
+    return artifacts
 
 
 def _bare_release_filename(name: object) -> bool:
@@ -967,24 +1197,25 @@ def _bare_release_filename(name: object) -> bool:
 def _reconstructed_parent(release_dir: Path, parent: Mapping, staging: Path) -> Path:
     """The parent's release directory, rebuilt from the bytes the child carries.
 
-    The parent id and every carried file name are checked before anything is
-    created, and every write is contained in ``staging`` (Sol r4 finding 3).
+    The directory is named after the parent's release for a build-folder
+    parent, and after its build ID for one that keeps only its tag, as
+    re-running the parent's contract needs. The parent reference and every
+    carried file name are checked before anything is created, and every write
+    is contained in ``staging`` (Sol r4 finding 3).
 
     Raises:
-        ValueError: The report names a parent id or file that would leave
-            the staging directory.
+        ValueError: The report names a parent or file that would leave the
+            staging directory.
     """
 
-    parent_id = parent.get("build_id")
+    _, directory_name, _ = _parent_identity(parent)
     names = list(_mapping(parent.get("release_files")))
-    if not isinstance(parent_id, str) or _PARENT_ID.fullmatch(parent_id) is None:
-        raise ValueError(f"parent build_id {parent_id!r} is not a US release id")
     if not all(_bare_release_filename(name) for name in names):
         raise ValueError("parent release_files must be bare file names")
     staging = Path(staging).resolve()
-    directory = staging / parent_id
+    directory = staging / directory_name
     if directory.parent != staging:
-        raise ValueError(f"parent build_id {parent_id!r} escapes the staging directory")
+        raise ValueError(f"parent {directory_name!r} escapes the staging directory")
     directory.mkdir()
     shutil.copyfile(
         release_dir / PARENT_RELEASE_MANIFEST_FILE, directory / "release_manifest.json"
@@ -1053,7 +1284,9 @@ def replay_parent_contract(
         evidence_file_present = (
             parent_dir / contract.US_STORED_INPUTS_EVIDENCE_FILE
         ).exists()
-    manifest_build = _mapping(manifest.get("build"))
+    # The release manifest's build details: its build object in the tagged
+    # layout, its top level in the build-folder layout.
+    manifest_build = build_details(manifest)
     raw_blocks = [
         holder.get("gate_evidence", _ABSENT)
         for holder in (_mapping(build), manifest_build)
@@ -2184,7 +2417,7 @@ def claim_entries(
             "there is nothing to recertify"
         )
     built_with = _mapping(
-        _mapping(parent_manifest.get("build")).get("built_with_model_package")
+        build_details(parent_manifest).get("built_with_model_package")
     ).get("version")
     _check_recertification_claim(specifier, tested=model_version, built_with=built_with)
     model = compatibility_claim_entry(
@@ -2253,17 +2486,26 @@ def validate_recertification_candidate(
 ) -> dict:
     """Check a recertification child; return its report or raise.
 
+    The child is a build of a US release in the build-folder layout: its
+    directory is named after the release, both manifests name the release and
+    a new ``populace-us-…`` build ID, and no artifact pins a revision.
+
     Checks, in order: the carried parent manifests and the parent block; every
-    parent artifact republished byte for byte with the child's revision; the
-    parent's contract replayed on the carried bytes; the child's own manifest
-    under the general release-manifest checks; and, once compatibility has
-    passed, the loader replay, the claim and the drift, each recomputed. With
-    ``require_compatibility`` (certification output, publish preflight and
-    publication) a pending child is refused, the loader replay must bind the
-    three wheels, and every producer is authenticated against this checkout.
+    parent artifact republished byte for byte (the H5 under the release's
+    dataset file name); the parent's contract replayed on the carried bytes;
+    the child's own manifest under the general release-manifest checks; and,
+    once compatibility has passed, the loader replay, the claim and the drift,
+    each recomputed. With ``require_compatibility`` (certification output,
+    publish preflight and publication) a pending child is refused, the loader
+    replay must bind the three wheels in ``compatibility_wheels``, and every
+    producer is authenticated against this checkout. The H5 is read from
+    ``artifact_root``.
     """
 
-    from microcosm.data.contract import _check_release_manifest
+    from microcosm.data.contract import (
+        _check_build_folder_identity,
+        _check_release_manifest,
+    )
 
     release_dir = Path(release_dir)
     artifact_root = Path(artifact_root) if artifact_root is not None else None
@@ -2272,8 +2514,12 @@ def validate_recertification_candidate(
     build = _json(release_dir / "build_manifest.json", failures)
     report = _json(release_dir / REPORT_FILE, failures)
     release_id = release_dir.name
+    build_id = manifest.get("build")
     parent = _mapping(report.get("parent"))
-    parent_id = parent.get("build_id")
+    try:
+        parent_id: str | None = parent_build_id(parent)
+    except ValueError:
+        parent_id = None
     if manifest.get("release_type") != RECERTIFICATION_RELEASE_TYPE:
         failures.append(
             f"release_manifest.json must declare release_type={RECERTIFICATION_RELEASE_TYPE}"
@@ -2285,18 +2531,26 @@ def validate_recertification_candidate(
         failures.append(
             f"{REPORT_FILE} must be a schema-{REPORT_SCHEMA_VERSION} report"
         )
+    if not _is_build_folder_us_release(release_id):
+        failures.append(
+            "a recertification is a build in a build folder of a US release; its "
+            f"directory must be named after that release, not {release_id!r}"
+        )
     if (
-        not isinstance(parent_id, str)
-        or release_id == parent_id
-        or not release_id.startswith(US_RELEASE_PREFIX)
+        parent_id is None
+        or not isinstance(build_id, str)
+        or build_id == parent_id
+        or not build_id.startswith(US_RELEASE_PREFIX)
     ):
-        failures.append("a recertification needs a NEW US release id, not its parent's")
+        failures.append("a recertification needs a NEW US build ID, not its parent's")
     if (
-        _mapping(manifest.get("build")).get("build_id") != release_id
-        or build.get("build_id") != release_id
+        manifest.get("release") != release_id
+        or build.get("release") != release_id
+        or build.get("build") != build_id
     ):
         failures.append(
-            "both manifests' build_id must name the child release directory"
+            "both manifests must name the release directory's release and the "
+            "same build"
         )
     if build.get("release_type") != RECERTIFICATION_RELEASE_TYPE:
         failures.append(
@@ -2340,45 +2594,47 @@ def validate_recertification_candidate(
         )
     parent_manifest = json.loads(carried_manifest.read_text())
 
-    # 2. Every parent artifact republished, bytes unchanged.
+    # 2. Every parent artifact republished, bytes unchanged; only the H5's
+    # name changes, to the release's dataset file.
     dataset = _mapping(report.get("dataset"))
-    if dataset != parent.get("dataset"):
+    expected_dataset = child_dataset(parent, release_id)
+    if dataset != expected_dataset:
         failures.append(
-            f"{REPORT_FILE} dataset must be the parent's microdata, unchanged"
+            f"{REPORT_FILE} dataset must be the parent's microdata, unchanged, "
+            f"under {expected_dataset['filename']}"
         )
     child_artifacts = _mapping(manifest.get("artifacts"))
-    expected_artifacts = {}
-    for key, raw in _mapping(parent_manifest.get("artifacts")).items():
-        entry = dict(_mapping(raw))
-        entry["revision"] = release_id
-        expected_artifacts[key] = entry
+    try:
+        expected_artifacts = carried_artifacts(parent_manifest, parent, release_id)
+    except ValueError as exc:
+        failures.append(str(exc))
+        expected_artifacts = {}
     for key, name in CHILD_ARTIFACT_KEYS.items():
-        expected_artifacts[key] = {
-            "kind": "evidence",
-            "path": name,
-            "repo_id": REPO_ID,
-            "revision": release_id,
-            "sha256": sha256_file(release_dir / name)
+        expected_artifacts[key] = child_artifact_entry(
+            key,
+            name,
+            kind="evidence",
+            sha256=sha256_file(release_dir / name)
             if (release_dir / name).is_file()
             else None,
-        }
+        )
     compatibility = _mapping(report.get("compatibility"))
     passed = compatibility.get("status") == "passed"
     if passed:
         for key, name in CERTIFIED_ARTIFACT_KEYS.items():
-            expected_artifacts[key] = {
-                "kind": "diagnostics",
-                "path": name,
-                "repo_id": REPO_ID,
-                "revision": release_id,
-                "sha256": sha256_file(release_dir / name)
+            expected_artifacts[key] = child_artifact_entry(
+                key,
+                name,
+                kind="diagnostics",
+                sha256=sha256_file(release_dir / name)
                 if (release_dir / name).is_file()
                 else None,
-            }
+            )
     if dict(child_artifacts) != expected_artifacts:
         failures.append(
-            "release manifest artifacts must be the parent's, re-pinned to the child "
-            "tag, plus the child's own evidence, each hashing to its file"
+            "release manifest artifacts must be the parent's, in the build-folder "
+            "layout with the H5 under the release's dataset file, plus the "
+            "child's own evidence, each hashing to its file"
         )
     for name, sha in _mapping(parent.get("release_files")).items():
         if not (release_dir / name).is_file() or sha256_file(release_dir / name) != sha:
@@ -2389,17 +2645,25 @@ def validate_recertification_candidate(
         )
     else:
         for path, sha in _mapping(parent.get("root_artifacts")).items():
-            local = artifact_root / path
+            child_path = child_artifact_path(parent, release_id, path)
+            local = artifact_root / child_path
             if not local.is_file() or sha256_file(local) != sha:
-                failures.append(f"root artifact {path} must keep the parent bytes")
-            if (release_dir / path).exists() or (release_dir / path).is_symlink():
                 failures.append(
-                    f"root artifact {path} must live only in artifact_root, never in "
-                    "the release directory"
+                    f"root artifact {child_path} must keep the parent bytes"
+                )
+            # The build-folder publisher reads an artifact from the release
+            # directory before the artifact root.
+            if (release_dir / child_path).exists() or (
+                release_dir / child_path
+            ).is_symlink():
+                failures.append(
+                    f"root artifact {child_path} must live only in artifact_root, "
+                    "never in the release directory"
                 )
     expected_files = {
         *CHILD_ARTIFACT_KEYS.values(),
         "release_manifest.json",
+        "build_manifest.json",
         *_mapping(parent.get("release_files")),
         *(CERTIFIED_ARTIFACT_KEYS.values() if passed else ()),
     }
@@ -2410,28 +2674,6 @@ def validate_recertification_candidate(
             f"child's own; unexpected {sorted(present - expected_files)}, missing "
             f"{sorted(expected_files - present)}"
         )
-    elif not failures:
-        # The publisher decides from the same directory what it uploads where.
-        # Every carried artifact must land at its manifest-resolved path in
-        # the child: release files under releases/<child>/, root artifacts at
-        # their root paths.
-        from microcosm.data import release as publisher
-
-        planned_root = publisher._release_manifest_root_artifacts(release_dir)
-        planned_release = {
-            *publisher._release_manifest_release_artifacts(release_dir),
-            *required_release_files(release_id),
-        }
-        if (
-            planned_root != dict(_mapping(parent.get("root_artifacts")))
-            or not set(_mapping(parent.get("release_files"))) <= planned_release
-        ):
-            failures.append(
-                "the publisher would not upload every carried artifact to its "
-                "manifest path: root "
-                f"{sorted(planned_root)} against "
-                f"{sorted(_mapping(parent.get('root_artifacts')))}"
-            )
 
     # 3. The parent passes today's contract on the carried bytes.
     parent_contract = replay_parent_contract(
@@ -2447,28 +2689,30 @@ def validate_recertification_candidate(
             f"{REPORT_FILE} parent_contract must equal the replayed contract"
         )
 
-    # 4. The child's manifest is a release manifest; its fields are the parent's.
-    parent_build = _mapping(parent_manifest.get("build"))
+    # 4. The child's manifests are a build folder's; their fields the parent's.
+    parent_build = build_details(parent_manifest)
     for field in ("built_with_model_package", "built_with_core_package"):
-        if _mapping(_mapping(manifest.get("build")).get(field)) != _mapping(
-            parent_build.get(field)
-        ):
-            failures.append(
-                f"build.{field} must stay the parent's: the H5 was built with it"
-            )
-    if _mapping(manifest.get("build")).get("built_at") != parent_build.get("built_at"):
-        failures.append("build.built_at must stay the parent's: the H5 was built then")
-    if _mapping(manifest.get("build")).get("recertified_from") != parent_id:
-        failures.append("build.recertified_from must name the parent")
-    for field in (
-        "schema_version",
-        "default_datasets",
-        "calibration_diagnostics",
-        "dataset_role",
-    ):
+        if _mapping(manifest.get(field)) != _mapping(parent_build.get(field)):
+            failures.append(f"{field} must stay the parent's: the H5 was built with it")
+    if manifest.get("built_at") != parent_build.get("built_at"):
+        failures.append("built_at must stay the parent's: the H5 was built then")
+    if manifest.get("recertified_from") != parent_id:
+        failures.append("recertified_from must name the parent's build")
+    for field in ("schema_version", "calibration_diagnostics", "dataset_role"):
         if manifest.get(field) != parent_manifest.get(field):
             failures.append(f"release manifest {field} must stay the parent's")
+    if manifest.get("default_datasets") != {
+        **_mapping(parent_manifest.get("default_datasets")),
+        "national": expected_dataset["artifact"],
+    }:
+        failures.append(
+            "release manifest default_datasets must be the parent's, naming the "
+            "H5 by its key in the child"
+        )
     _check_release_manifest(manifest, release_id, failures)
+    _check_build_folder_identity(
+        build, release_id, filename="build_manifest.json", failures=failures
+    )
     calibration = _mapping(build.get("calibration"))
     diagnostics_sha = _mapping(parent.get("release_files")).get(
         "calibration_diagnostics.json"
@@ -2535,12 +2779,20 @@ def validate_recertification_candidate(
 def _describe_carried_parent(
     release_dir: Path, parent: Mapping, artifact_root: Path | None, staging: Path
 ) -> dict:
-    """:func:`describe_parent` on the parent rebuilt from the carried bytes."""
+    """:func:`describe_parent` on the parent rebuilt from the carried bytes.
+
+    The H5 is read from the child's artifact root, where it has the dataset
+    file name of the child's release.
+    """
 
     directory = _reconstructed_parent(release_dir, parent, staging)
     if artifact_root is None:
         raise ValueError("artifact_root is required")
-    return describe_parent(directory, artifact_root)
+    return describe_parent(
+        directory,
+        artifact_root,
+        dataset_file=child_dataset(parent, release_dir.name)["filename"],
+    )
 
 
 def _check_certified_compatibility(
@@ -2598,7 +2850,7 @@ def _check_certified_compatibility(
             "compatibility.stored_column_changes must be the replay's changes with "
             "their reviewed reasons"
         )
-    parent_build = _mapping(parent_manifest.get("build"))
+    parent_build = build_details(parent_manifest)
     baseline_engine = {
         "model": _mapping(parent_build.get("built_with_model_package")),
         "core": _mapping(parent_build.get("built_with_core_package")),
@@ -2706,7 +2958,8 @@ def certify_recertification(
     The loader replay runs under the installed runtime with the three wheels;
     the three score documents must be the ones the drift recomputes from. The
     claim is declared here and recorded as the declarer's, with the drift
-    summary beside it. The candidate and its H5 are left unchanged.
+    summary beside it. ``output_dir`` keeps the candidate directory's name,
+    its release. The candidate and its H5 are left unchanged.
     """
 
     from microcosm.data.source_enrichment import (
@@ -2717,7 +2970,8 @@ def certify_recertification(
     release_dir, output_dir = Path(release_dir), Path(output_dir)
     if output_dir.exists() or output_dir.name != release_dir.name:
         raise ValueError(
-            "output_dir must be new and keep the candidate release id as its basename"
+            "output_dir must be new and keep the candidate directory's name, its "
+            "release, as its basename"
         )
     specifier = parse_compatibility_claim_requirement(
         compatible_model_specifier, package="policyengine-us"
@@ -2736,7 +2990,7 @@ def certify_recertification(
     parent_manifest = json.loads(
         (release_dir / PARENT_RELEASE_MANIFEST_FILE).read_text()
     )
-    parent_build = parent_manifest["build"]
+    parent_build = build_details(parent_manifest)
     models, cores, claims = claim_entries(
         parent_manifest,
         tested_packages=tested_packages,
@@ -2787,17 +3041,18 @@ def certify_recertification(
             ),
         }
         write_json(staged / REPORT_FILE, report)
+        # The candidate's manifest is already in the build-folder layout, so
+        # the new entries are written in it: a role and no revision.
         manifest = json.loads((staged / "release_manifest.json").read_text())
         manifest["compatible_model_packages"] = models
         manifest["compatible_core_packages"] = cores
         for key, name in {**CHILD_ARTIFACT_KEYS, **CERTIFIED_ARTIFACT_KEYS}.items():
-            manifest["artifacts"][key] = {
-                "kind": "diagnostics" if key in CERTIFIED_ARTIFACT_KEYS else "evidence",
-                "path": name,
-                "repo_id": REPO_ID,
-                "revision": release_dir.name,
-                "sha256": sha256_file(staged / name),
-            }
+            manifest["artifacts"][key] = child_artifact_entry(
+                key,
+                name,
+                kind="diagnostics" if key in CERTIFIED_ARTIFACT_KEYS else "evidence",
+                sha256=sha256_file(staged / name),
+            )
         write_json(staged / "release_manifest.json", manifest)
         validate_recertification_candidate(
             staged,
@@ -2829,23 +3084,30 @@ def require_parent_publication(
     repo_id: str,
     artifact_root: Path | str | None,
 ) -> None:
-    """Refuse unless the parent tag on the Hub serves what the child carries.
+    """Refuse unless the published parent on the Hub serves what the child carries.
 
-    Runs after the publisher constructs its Hub client and before any branch,
-    commit or upload. Two checks, both against the parent's immutable tag:
+    Runs after the publisher constructs its Hub client and before anything is
+    handed over or uploaded. The parent is read where
+    :func:`microcosm.data.build_folder_manifests.referenced_build` says: at
+    ``main`` from its build folder ``releases/<release>/<build>/``, which
+    never changes, or at its immutable tag from ``releases/<id>/`` for a
+    parent that keeps only its tag. Two checks, both there:
 
     - the carried ``release_manifest.json`` and ``build_manifest.json`` are
       byte for byte the parent's published ones. The release manifest pins
-      every parent artifact's digest, so this anchors the whole lineage;
-    - every parent artifact sits on the Hub where the child will publish it:
-      each carried release file under ``releases/<parent>/`` and each root
-      artifact at its root path, with the pinned digest (an LFS file's
-      SHA-256, or the git blob id of the carried bytes). Offline, which
-      artifacts are release files rests on where the files sit locally; this
-      is what stops a root artifact moved into the release directory from
-      publishing at the wrong path.
+      every parent artifact's digest, so this anchors the whole lineage, and
+      a child is never published before its parent;
+    - every parent artifact is on the Hub with the pinned digest (an LFS
+      file's SHA-256, or the git blob id of the carried bytes): in a build
+      folder, every file in that folder; at a tag, each carried release file
+      under ``releases/<parent>/`` and each root artifact at its root path.
+      Offline, which artifacts are release files rests on where the files sit
+      locally; at a tag this is what stops a root artifact moved into the
+      release directory from publishing as a release file. The child's copy
+      of the H5 is read from ``artifact_root`` under its own name.
 
-    Absence and difference both refuse. A transient Hub failure propagates.
+    ``api`` needs ``hf_hub_download`` and ``get_paths_info``. Absence and
+    difference both refuse. A transient Hub failure propagates.
     """
 
     from microcosm.data.release import _is_absent_entry_error, _is_absent_revision_error
@@ -2853,17 +3115,24 @@ def require_parent_publication(
     release_dir = Path(release_dir)
     report = json.loads((release_dir / REPORT_FILE).read_text())
     parent = _mapping(report.get("parent"))
-    parent_id, revision = parent.get("build_id"), parent.get("revision")
-    if parent.get("repo_id") != repo_id:
+    location, _, parent_id = _parent_identity(parent)
+    revision = location.revision
+    build_folder = parent.get("release") is not None
+    where = (
+        f"in its build folder at {revision!r}"
+        if build_folder
+        else f"at tag {revision!r}"
+    )
+    if location.repo_id != repo_id:
         raise ValueError(
-            f"the recertification's parent lives in {parent.get('repo_id')!r}, "
+            f"the recertification's parent lives in {location.repo_id!r}, "
             f"not the publication repo {repo_id!r}"
         )
     for carried, remote_name in (
         (PARENT_RELEASE_MANIFEST_FILE, "release_manifest.json"),
         (PARENT_BUILD_MANIFEST_FILE, "build_manifest.json"),
     ):
-        path_in_repo = f"releases/{parent_id}/{remote_name}"
+        path_in_repo = f"{location.folder}/{remote_name}"
         try:
             remote = Path(
                 api.hf_hub_download(
@@ -2878,12 +3147,12 @@ def require_parent_publication(
                 raise
             raise ValueError(
                 f"parent {parent_id!r} is not published: {path_in_repo} is absent "
-                f"at tag {revision!r} in {repo_id} ({exc}). A recertification "
+                f"{where} in {repo_id} ({exc}). A recertification "
                 "republishes only a published parent."
             ) from exc
         if remote != (release_dir / carried).read_bytes():
             raise ValueError(
-                f"{path_in_repo} at tag {revision!r} differs from the carried "
+                f"{path_in_repo} {where} differs from the carried "
                 f"{carried}; refusing to publish a child of a parent the Hub does "
                 "not serve."
             )
@@ -2896,13 +3165,22 @@ def require_parent_publication(
     expected = {}
     forbidden = set()
     for name, sha in _mapping(parent.get("release_files")).items():
-        expected[f"releases/{parent_id}/{name}"] = (sha, release_dir / name)
-        forbidden.add(name)
+        expected[f"{location.folder}/{name}"] = (sha, release_dir / name)
+        if not build_folder:
+            forbidden.add(name)
     root = Path(artifact_root) if artifact_root is not None else None
     for path, sha in _mapping(parent.get("root_artifacts")).items():
-        expected[path] = (sha, None if root is None else root / path)
+        local = (
+            None
+            if root is None
+            else root / child_artifact_path(parent, release_dir.name, path)
+        )
+        if build_folder:
+            expected[f"{location.folder}/{path}"] = (sha, local)
+            continue
+        expected[path] = (sha, local)
         if "/" not in path:
-            forbidden.add(f"releases/{parent_id}/{path}")
+            forbidden.add(f"{location.folder}/{path}")
     published = {
         getattr(info, "path", None): info
         for info in get_paths_info(
@@ -2912,9 +3190,9 @@ def require_parent_publication(
             repo_type="dataset",
         )
     }
-    # One location per artifact: a parent that publishes an artifact at both
-    # its release-file and its root location leaves the child's placement
-    # ambiguous, and the publisher would upload only one of them.
+    # One location per artifact: a tagged parent that publishes an artifact at
+    # both its release-file and its root location leaves the child's placement
+    # ambiguous. A build folder has one location for every file.
     doubled = sorted(path for path in forbidden if path in published)
     if doubled:
         raise ValueError(
@@ -2925,9 +3203,8 @@ def require_parent_publication(
         info = published.get(path_in_repo)
         if info is None:
             raise ValueError(
-                f"parent {parent_id!r} publishes no {path_in_repo} at tag "
-                f"{revision!r}; the child would publish an artifact the parent "
-                "does not have there"
+                f"parent {parent_id!r} publishes no {path_in_repo} {where}; the "
+                "child would publish an artifact the parent does not have there"
             )
         lfs = getattr(info, "lfs", None)
         if lfs is not None:
@@ -2941,7 +3218,7 @@ def require_parent_publication(
             )
         if not matches:
             raise ValueError(
-                f"{path_in_repo} at tag {revision!r} is not the artifact the child "
+                f"{path_in_repo} {where} is not the artifact the child "
                 "carries; refusing to publish it there"
             )
 
