@@ -426,25 +426,17 @@ _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
 # armed. Held in lockstep with the committed spec by the build-shard sync
 # tests. The QRF tail-concentration gate and its pins were removed in
 # microcosm#1276.
-_UK_INPUT_MASS_RELATIVE_TOLERANCE = 4.521811483823806
+_UK_INPUT_MASS_RELATIVE_TOLERANCE = 5.9984285545209834
 _UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL = 0.0
-# Independent publication pin for the active reviewed reference source. The data
-# shard cannot import the build shard, so keep this in lockstep with
-# uk/gates.json reference_registry["efrs-post-calibration"].identity.
-_UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
-_UK_INPUT_MASS_REFERENCE_IDENTITY = {
-    "filename": "enhanced_frs_2024_25.h5",
-    "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-    "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
-    "vintage": "2024_25",
-}
-# Independent publication pin for the canonical
-# {"reference": {"identity": ..., "totals": ...}} evidence emitted from the
-# reviewed 131-column enhanced-FRS reference. The totals remain uncommitted
-# under the UKDS EUL; keep this in lockstep with
-# UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 in the build shard.
-_UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c"
+# The reference kind the spec names (microcosm#1095): the current build of the
+# cut's own line. The report records which build that was; the data shard
+# cannot import the build shard, so keep this in lockstep with uk/gates.json.
+_UK_INPUT_MASS_ACTIVE_REFERENCE = "current_build"
+_UK_INPUT_MASS_REFERENCE_IDENTITY_FIELDS = frozenset(
+    {"filename", "revision", "sha256", "vintage"}
+)
+_UK_CUT_REFERENCE_RELEASES = frozenset(
+    {"microcosm-uk-2024-25-national", "microcosm-uk-2024-25-dense"}
 )
 _UK_TERMINAL_GATE_DETAIL_FIELDS = {
     "uk_release_input_coverage": frozenset(
@@ -575,13 +567,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "0d148ddccb8f126e4d64cfce94e820cec8d2adaccfc57fb87bb5f5ef2fc09106"
+    "ae9257b96da095b1c950f57727c0abb2c392e0cae8be23498f70eb3b6fb2a3f9"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d3b13d6ce2a87aa0d9b87066cd46c3aa03b6c031dbb4c9d5ec44dc33e273bf63"
+    "75d36c4b3001aa0c2d902da239e4f1a99f5693ad2b2083f74b82093ed0700126"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "a7c86e189ecaea1061f7e280f0c63d5a6e13449e4a1f3a1be618eae8909a12e0"
+    "23bcfbf72d5e1f28b4d127cb79e8513b0c9b8de2c9bf2c61aab139a7e4475906"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -819,13 +811,10 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_cgt_projection_entrants",
     }
 )
-# The input-mass binding's evidence payload wraps the reviewed reference
-# digest as {"reference_evidence_sha256": ...} before the executor's
-# canonical hash; this pins the wrapped digest so the entry's evidence line
-# still binds the enhanced-FRS incumbent totals.
-_UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
-)
+# The input-mass binding's evidence payload digests the reference build's
+# own totals (microcosm#1095), so it differs from cut to cut and is not pinned:
+# the entry's details name the build, and its evidence line binds that build's
+# totals.
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
 # is a vintage pin that moves with every reviewed register edit (the same
@@ -1147,10 +1136,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "21c3d7bc17d2e80dccc87d9d063f96dd51f6f93e9631cf429bdc7fbc7be16fc3"
+            "c829049dcb1f52d3903985ecd71d01e21f09b1193bf11d47550f0fa47dc301e1"
         ),
         "policy_sha256": (
-            "49bd5dbb2a744ad9c61bd67c67ccfaf34a3d25a0fb321acd4a98b060d123b8bb"
+            "76511c61eaf7a026165a2056c75dc79e525b0d12d017fbd902e5ecda2d95cd51"
         ),
     },
 }
@@ -2404,6 +2393,30 @@ def _check_uk_terminal_gate_links(
             )
 
 
+def _uk_input_mass_reference_named(identity: object, label: object) -> bool:
+    """Whether an input-mass report names the UK build it compared with."""
+
+    if not isinstance(identity, Mapping) or set(identity) != set(
+        _UK_INPUT_MASS_REFERENCE_IDENTITY_FIELDS
+    ):
+        return False
+    if not isinstance(label, str) or label.count("@") != 1:
+        return False
+    release, build = label.split("@", 1)
+    sha256 = identity.get("sha256")
+    return (
+        release in _UK_CUT_REFERENCE_RELEASES
+        and bool(build)
+        and identity.get("revision") == build
+        and isinstance(sha256, str)
+        and _SHA256_RE.fullmatch(sha256) is not None
+        and all(
+            isinstance(identity.get(field), str) and identity.get(field)
+            for field in ("filename", "vintage")
+        )
+    )
+
+
 def _uk_terminal_observable_matches(observed: object, expected: object) -> bool:
     """Compare JSON observables without letting booleans masquerade as counts."""
 
@@ -2639,12 +2652,14 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
                 "reference_scope_note must be a non-empty string."
             )
-        identity = input_mass.get("reference_identity")
-        if identity != _UK_INPUT_MASS_REFERENCE_IDENTITY:
+        if not _uk_input_mass_reference_named(
+            input_mass.get("reference_identity"), input_mass.get("reference_label")
+        ):
             failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
-                "reference_identity must match the active reviewed "
-                f"efrs-post-calibration reference {_UK_INPUT_MASS_REFERENCE_IDENTITY}."
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details must "
+                "name the reference build it compared with: reference_label "
+                "<release>@<build> of a UK line, and reference_identity with that "
+                "build's file name and sha256."
             )
         if not _uk_terminal_observable_matches(
             input_mass.get("relative_tolerance"),
@@ -2951,15 +2966,6 @@ def _check_uk_terminal_gate_report(
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.evidence_sha256 "
                 "must exactly match build_manifest.json terminal_gate_evidence."
-            )
-        if (
-            "input_mass_parity" in build_evidence
-            and evidence.get("input_mass_parity")
-            != _UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
-        ):
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity evidence "
-                "digest must bind the reviewed enhanced-FRS incumbent totals."
             )
         diagnostic_weights: Mapping | None = None
         if calibration_diagnostics is not None:
@@ -3331,15 +3337,6 @@ def _check_uk_gate_battery_report(
             owner=f"evidence_sha256[{entry_id!r}]",
             value=digest,
             failures=failures,
-        )
-    if (
-        "uk_input_mass_parity" in evidence
-        and evidence.get("uk_input_mass_parity")
-        != _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
-    ):
-        failures.append(
-            f"{file} uk_input_mass_parity evidence digest must bind the "
-            "reviewed enhanced-FRS incumbent totals."
         )
     if (
         "uk_degenerate_release_surface" in evidence

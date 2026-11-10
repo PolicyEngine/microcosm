@@ -124,6 +124,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     coerce_reviewed_exclusions,
     load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
+    uk_input_mass_carriers,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
 )
@@ -1143,18 +1144,31 @@ def _validate_input_mass_exclusion_references(
     *,
     label: str,
 ) -> None:
-    unknown = sorted(set(register) - set(UK_INPUT_MASS_REFERENCE_REGISTRY))
-    if unknown:
+    from microcosm.build.uk_runtime.cut_reference import UK_CUT_REFERENCE_RELEASES
+
+    malformed = sorted(
+        name
+        for name in register
+        if name.count("@") != 1
+        or name.split("@", 1)[0] not in UK_CUT_REFERENCE_RELEASES
+        or not name.split("@", 1)[1]
+    )
+    if malformed:
         raise ValueError(
-            f"{label} names unknown input-mass reference(s) {unknown}; known "
-            f"references are {sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)}."
+            f"{label} names {malformed}; an input-mass exclusion is signed for "
+            "one reference build, named <release>@<build> for a UK line "
+            "(microcosm#1095)."
         )
 
 
 def _resolve_input_mass_exclusions(
     context: EvidenceContext, *, reference: str
 ) -> tuple[Mapping[str, UKReviewedExclusion], str]:
-    """Active-reference input-mass exclusions and their content source."""
+    """The exclusions signed for this reference build, and their source.
+
+    ``reference`` is the build's ``<release>@<build>``; entries signed for
+    any other build are dormant (microcosm#1095).
+    """
 
     committed = uk_default_input_mass_reviewed_exclusions()
     _validate_input_mass_exclusion_references(
@@ -1780,13 +1794,15 @@ def _evaluate_input_mass_parity(
             f"uk/gates.json declares input-mass reference {reference_name!r} "
             f"but known references are {sorted(coerced_registry)}."
         )
+    reference = context.artifacts["input_mass_reference"]
+    descriptor = coerced_registry[reference_name].descriptor_for(reference)
     if register != UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
             f"runtime loads {UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     exclusions, _source = _resolve_input_mass_exclusions(
-        context, reference=reference_name
+        context, reference=reference.label
     )
     exclusions, out_of_line = _in_line(exclusions, context)
     policy = UKInputMassParityPolicy(
@@ -1800,12 +1816,14 @@ def _evaluate_input_mass_parity(
     # carries the spine's WAS property_wealth, which the reference also
     # stores, so comparing it there would call the signed exclusion stale
     # (microcosm#1106).
+    export_frame = uk_release_export_frame(context.frame)
     result = uk_input_mass_parity_gate(
-        uk_input_mass_totals(uk_release_export_frame(context.frame)),
-        context.artifacts["input_mass_reference"],
-        descriptor=coerced_registry[reference_name],
+        uk_input_mass_totals(export_frame),
+        reference,
+        descriptor=descriptor,
         policy=policy,
         now=_exclusion_clock(context),
+        candidate_carriers=uk_input_mass_carriers(export_frame),
         **kwargs,
     )
     return _with_out_of_line(result, context, out_of_line)
@@ -1817,10 +1835,11 @@ def _input_mass_reference_evidence(
     reference_name = str(parameters["reference"])
     reference = context.artifacts["input_mass_reference"]
     exclusions, source = _resolve_input_mass_exclusions(
-        context, reference=reference_name
+        context, reference=reference.label
     )
     return {
         "reference": reference_name,
+        "reference_label": reference.label,
         "reference_evidence_sha256": _input_mass_reference_evidence_sha256(reference),
         "exclusions_policy": source,
         "reviewed_exclusions": _exclusion_payload(exclusions),

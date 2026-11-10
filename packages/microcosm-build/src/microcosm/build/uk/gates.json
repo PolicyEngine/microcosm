@@ -1824,24 +1824,18 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "reference": "efrs-post-calibration",
+        "reference": "current_build",
         "reference_registry": {
-          "efrs-post-calibration": {
-            "identity": {
-              "filename": "enhanced_frs_2024_25.h5",
-              "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-              "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
-              "vintage": "2024_25"
-            },
-            "totals_sha256": "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c",
-            "scope_note": "Channel-blind post-calibration enhanced-FRS production incumbent, pinned to the 2024-25 line; its artifact carries the SPI-synthetic rows structurally but no admin-restored mass in the SPI-channel-exclusive columns, so those columns are comparable only through per-reference reviewed exclusions."
+          "current_build": {
+            "kind": "current_build",
+            "scope_note": "The current build of the cut's own release line, as releases.json named it when the cut fetched its inputs (microcosm#1095): totals at each build's own solved weights, on the export surface."
           }
         },
-        "relative_tolerance": 4.521811483823806,
+        "relative_tolerance": 5.9984285545209834,
         "minimum_reference_total": 0.0,
         "reviewed_exclusions_resource": "input_mass_reviewed_exclusions.json"
       },
-      "notes": "Weighted input-mass parity against the active named reference in the registry, with reviewed exclusions scoped per reference so a channel-blind reference exclusion does not suppress comparison against a future channel-aware reference. The tolerance is the worst surviving measured drift at the reviewed floor, exact, with no headroom; the reviewed per-reference exclusions (charitable_investment_gifts, signed at +15,168.8% on the post-#710 surface; owned_land, signed for seed variance) were retired on 2026-09-22 when the first release-cut certification measured both inside the fence (-99.0% and -73.5% against the enhanced FRS reference, microcosm#967); the register is empty and the gate's current failures are the two genuine breaches it names. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators. Totals stay uncommitted under the UKDS licence, supplied per-run and pinned by totals_sha256; missing sidecar evidence records evidence_absent. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical). Sensitivity floor, recorded rather than silent (microcosm#706 review): the tolerance is the worst surviving measured drift, and that edge is currently set by a column whose deviation is explained (vintage plus SPI composition, microcosm#703's head-to-head receipt), so at this value the gate is a gross mass-loss/explosion fence rather than a regression detector — the compared population sits at median 0.24 and p90 0.63. Tightening runs through this register: each explained top drift that earns a receipt lets the tolerance re-mint at the worst unexplained survivor, with the full distribution and the exclusions-versus-tolerance tradeoff in experiments/630-uk-gate-adjudication-receipts.md."
+      "notes": "Weighted input-mass parity against the current build of the cut's own line (microcosm#1095, replacing the enhanced-FRS reference): the national line against the national current build, the dense line against the dense one. The spec names the reference kind, not a file; each report records the build it compared with, its identity and the totals digest. A zeroed or missing column fails at any tolerance, the #278 signature. The tolerance is the exact maximum drift between the consecutive promoted national cuts a6299504 and eeb6093e over the 259 columns carried by at least three distinct source households, with no headroom (median 0.020, p90 0.22, p99 1.06; none zeroed or dropped), signed by María on 2026-11-10; it ratchets down as each newly certified pair is measured, the release-arm method of weighted_integrity.py. Reviewed exclusions are signed for one reference build and go dormant once a promotion moves the reference past it. A column one or two source households carry on either side is checked but its figures are withheld from the report. The totals are licensed-data aggregates written beside the cut's reference, never committed; missing evidence records evidence_absent. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators."
     },
     {
       "id": "uk_local_geography_ladder_post_calibration",

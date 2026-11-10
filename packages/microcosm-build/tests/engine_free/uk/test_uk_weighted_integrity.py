@@ -25,8 +25,8 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
+    UK_CURRENT_BUILD_REFERENCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
-    UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
     UKInputMassParityPolicy,
     UKInputMassReference,
@@ -39,6 +39,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     load_uk_reference_scoped_exclusion_register,
     load_uk_reviewed_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
+    uk_input_mass_carriers,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
@@ -94,12 +95,17 @@ def _frame(
     )
 
 
+REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+REFERENCE_LABEL = f"microcosm-uk-2024-25-national@{REFERENCE_BUILD}"
+
+
 def _reference(totals, **overrides) -> UKInputMassReference:
     fields = {
-        "filename": "enhanced_frs_2024_25.h5",
-        "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-        "sha256": ("e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"),
+        "filename": "microcosm_uk_2024_25.h5",
+        "revision": REFERENCE_BUILD,
+        "sha256": "9" * 64,
         "vintage": "2024_25",
+        "label": REFERENCE_LABEL,
     }
     fields.update(overrides)
     return UKInputMassReference(totals=totals, **fields)
@@ -107,12 +113,12 @@ def _reference(totals, **overrides) -> UKInputMassReference:
 
 def _descriptor(**overrides) -> UKInputMassReferenceDescriptor:
     fields = {
-        "name": "efrs-post-calibration",
-        "filename": "enhanced_frs_2024_25.h5",
-        "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-        "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
+        "name": "current_build",
+        "filename": "microcosm_uk_2024_25.h5",
+        "revision": REFERENCE_BUILD,
+        "sha256": "9" * 64,
         "vintage": "2024_25",
-        "totals_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+        "totals_sha256": "8" * 64,
         "scope_note": "Seeded scoped-reference note.",
     }
     fields.update(overrides)
@@ -277,80 +283,34 @@ def test_input_mass_reference_identity_is_recorded() -> None:
     )
 
     assert gate.details["reference_identity"] == {
-        "filename": "enhanced_frs_2024_25.h5",
-        "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-        "sha256": ("e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"),
+        "filename": "microcosm_uk_2024_25.h5",
+        "revision": REFERENCE_BUILD,
+        "sha256": "9" * 64,
         "vintage": "2024_25",
     }
+    assert gate.details["reference_label"] == REFERENCE_LABEL
 
 
-def test_input_mass_reference_rejects_substituted_totals_at_approved_identity(
-    tmp_path,
-) -> None:
-    caller_self_reference = _reference(
-        {"employment_income": 1.0},
+def test_the_descriptor_is_made_from_the_reference_itself() -> None:
+    """The spec names the kind; the identity and totals digest the gate checks
+    are the reference build's own (microcosm#1095)."""
+
+    reference = _reference({"employment_income": 1.0})
+    descriptor = UK_CURRENT_BUILD_REFERENCE.descriptor_for(reference)
+
+    assert descriptor.identity == reference.identity
+    gate = uk_input_mass_parity_gate(
+        {"employment_income": 1.0}, reference, descriptor=descriptor, policy=_policy()
     )
-
+    assert gate.passed
+    other = _reference({"employment_income": 2.0})
     with pytest.raises(ValueError, match="reference totals must match the reviewed"):
         uk_input_mass_parity_gate(
-            {"employment_income": 1.0},
-            caller_self_reference,
-            descriptor=_descriptor(),
-            policy=_policy(),
+            {"employment_income": 1.0}, other, descriptor=descriptor, policy=_policy()
         )
-    path = tmp_path / "self-reference.json"
-    path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "identity": caller_self_reference.identity,
-                "totals": dict(caller_self_reference.totals),
-            }
-        ),
-        encoding="utf-8",
-    )
-    with pytest.raises(ValueError, match="did not match any reviewed reference"):
-        load_uk_input_mass_reference(path)
-
-
-def test_input_mass_reference_identity_pin_cannot_be_shadowed_from_cwd(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    shadow = {
-        "schema_version": 3,
-        "source": {
-            "repo_id": "caller/repo",
-            "repo_type": "model",
-            "filename": "caller.h5",
-            "revision": "caller",
-            "sha256": "b" * 64,
-            "url": "https://example.invalid/caller.h5",
-            "vintage": "caller",
-            "period": "2023",
-            "size_bytes": 1,
-        },
-        "nonzero_shares": {"employment_income": 1.0},
-        "input_entities": {"employment_income": "person"},
-    }
-    (tmp_path / "efrs_parity_reference.json").write_text(
-        json.dumps(shadow), encoding="utf-8"
-    )
-    monkeypatch.chdir(tmp_path)
-    caller_reference = _reference(
-        {"employment_income": 1.0},
-        filename="caller.h5",
-        revision="caller",
-        sha256="b" * 64,
-        vintage="caller",
-    )
-
-    with pytest.raises(ValueError, match="identity must match the reviewed"):
-        uk_input_mass_parity_gate(
-            {"employment_income": 1.0},
-            caller_reference,
-            descriptor=_descriptor(),
-            policy=_policy(),
+    with pytest.raises(ValueError, match="names no build"):
+        UK_CURRENT_BUILD_REFERENCE.descriptor_for(
+            _reference({"employment_income": 1.0}, label=None)
         )
 
 
@@ -409,30 +369,28 @@ def test_input_mass_policy_and_reference_validation() -> None:
 
 
 def test_input_mass_reference_registry_coercion_is_closed_world() -> None:
-    descriptor = next(iter(UK_INPUT_MASS_REFERENCE_REGISTRY.values()))
-
     coerced = coerce_input_mass_reference_registry(
-        {"efrs-post-calibration": descriptor.spec_payload()}, label="fixture"
+        {"current_build": UK_CURRENT_BUILD_REFERENCE.spec_payload()}, label="fixture"
     )
 
     assert coerced == dict(UK_INPUT_MASS_REFERENCE_REGISTRY)
-    extra = descriptor.spec_payload()
-    extra["unexpected"] = "ignored?"
-    with pytest.raises(ValueError, match="fields must be exactly"):
+    extra = {**UK_CURRENT_BUILD_REFERENCE.spec_payload(), "unexpected": "x"}
+    with pytest.raises(ValueError, match="must be exactly"):
+        coerce_input_mass_reference_registry({"current_build": extra}, label="fixture")
+    # A reference pinned by file identity, as the enhanced FRS was, is refused.
+    pinned = {
+        "identity": {
+            "filename": "a.h5",
+            "revision": "r",
+            "sha256": "0" * 64,
+            "vintage": "v",
+        },
+        "totals_sha256": "0" * 64,
+        "scope_note": "pinned",
+    }
+    with pytest.raises(ValueError, match="no longer accepted"):
         coerce_input_mass_reference_registry(
-            {"efrs-post-calibration": extra}, label="fixture"
-        )
-    malformed = descriptor.spec_payload()
-    malformed["identity"] = {**descriptor.identity, "sha256": "A" * 64}
-    with pytest.raises(ValueError, match="sha256 must be a lowercase sha256"):
-        coerce_input_mass_reference_registry(
-            {"efrs-post-calibration": malformed}, label="fixture"
-        )
-    bad_totals = descriptor.spec_payload()
-    bad_totals["totals_sha256"] = "not-a-sha"
-    with pytest.raises(ValueError, match="totals_sha256"):
-        coerce_input_mass_reference_registry(
-            {"efrs-post-calibration": bad_totals}, label="fixture"
+            {"efrs-post-calibration": pinned}, label="fixture"
         )
 
 
@@ -541,42 +499,10 @@ def test_committed_exclusion_registers_load() -> None:
         resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     )
 
-    assert set(input_mass) == {"efrs-post-calibration"}
-    # The 2026-09-21 retirements (charitable_investment_gifts and owned_land
-    # measured inside the fence on the first national candidate) stand; the
-    # certifier rehearsal on the 2026-09-30 build earned the FRS education
-    # input the enhanced-FRS reference barely carries (microcosm#1063 c9).
-    # The gate fails an entry as stale the day a build brings the column
-    # inside the fence, which the 2 October final build did for adult_ema
-    # (+74% against the reference): its entry is retired. The 3 October final
-    # build's certifier earned three more, signed 2026-10-04: the FRS
-    # access-fund outlier at the weight bound (expiring with the owed period
-    # rule) and the SPI channel's two legacy-benefit leaves. All three are
-    # retired with the microcosm#1095 ports: spi_benefit_coherence zeroes
-    # income-based JSA and Working Tax Credit on SPI rows, and on the
-    # review-head arm the columns sit at +316% and +103% of the reference and
-    # the access fund at +62%, its household off the weight bound, all inside
-    # the fence, so the gate fails them as stale. property_wealth joins with
-    # microcosm#1106 (signed 2026-10-11): the release leaves it to the engine,
-    # so the reference carries a column the candidate no longer ships. The
-    # QRF tail register went with its gate (microcosm#1276).
-    # tax_free_savings_income joins with microcosm#1360 (signed 2026-10-28):
-    # under the additive ISA income contract the candidate stores ISA interest
-    # apart, and the engine sums it into the column the reference stores.
-    assert set(input_mass["efrs-post-calibration"]) == {
-        "dfe_education_spending",
-        "property_wealth",
-        "tax_free_savings_income",
-    }
-    for record in input_mass["efrs-post-calibration"].values():
-        assert record.approved_by == "juaristi22"
-        assert record.approved_on in {"2026-10-02", "2026-10-11", "2026-10-28"}
-        assert record.expires_on in {"2027-04-02", "2027-04-11", "2027-04-28"}
-        assert (
-            "microcosm#1063" in record.adjudication
-            or "microcosm#1106" in record.adjudication
-            or "microcosm#1360" in record.adjudication
-        )
+    # The enhanced-FRS reference's three entries (dfe_education_spending,
+    # property_wealth, tax_free_savings_income) retired with it
+    # (microcosm#1095); entries are now signed for one reference build.
+    assert input_mass == {}
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()
     )
@@ -921,43 +847,76 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
         "reference",
         "reference_scope_note",
         "reference_identity",
+        "reference_label",
+        "withheld_thin_columns",
     }
 
 
-def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> None:
-    path = tmp_path / "reference.json"
-    path.write_text(
-        json.dumps(
+def test_input_mass_reference_round_trips_the_cut_schema(tmp_path) -> None:
+    path = tmp_path / "input_mass_reference.json"
+    payload = {
+        "schema_version": 2,
+        "kind": "uk_input_mass_reference",
+        "label": REFERENCE_LABEL,
+        "identity": {
+            "filename": "microcosm_uk_2024_25.h5",
+            "revision": REFERENCE_BUILD,
+            "sha256": "9" * 64,
+            "vintage": "2024_25",
+        },
+        "totals": {"employment_income": 10.5},
+        "carriers": {"employment_income": 7},
+    }
+    path.write_text(json.dumps(payload))
+
+    reference = load_uk_input_mass_reference(path)
+
+    assert reference.label == REFERENCE_LABEL
+    assert reference.revision == REFERENCE_BUILD
+    assert dict(reference.totals) == {"employment_income": 10.5}
+    assert dict(reference.carriers) == {"employment_income": 7}
+    for broken, message in (
+        ({"schema_version": 1}, "retired with microcosm#1095"),
+        ({"label": "microcosm-uk-2024-25-national@other"}, "does not name the build"),
+        ({"carriers": None}, "'carriers' objects"),
+    ):
+        path.write_text(json.dumps({**payload, **broken}))
+        with pytest.raises(ValueError, match=message):
+            load_uk_input_mass_reference(path)
+
+
+def test_carriers_count_source_households_not_rows() -> None:
+    """Clones repeat their source household; a person counts its household's."""
+
+    household_ids = np.arange(1, 5, dtype=np.int64)
+    frame = uk_national_frame(
+        person=pd.DataFrame(
             {
-                "schema_version": 1,
-                "identity": {
-                    "filename": "enhanced_frs_2024_25.h5",
-                    "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-                    "sha256": (
-                        "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"
-                    ),
-                    "vintage": "2024_25",
-                },
-                "totals": {"employment_income": 10.5},
+                "person_id": np.arange(101, 105, dtype=np.int64),
+                "person_household_id": household_ids,
+                "person_benunit_id": np.arange(201, 205, dtype=np.int64),
+                "employment_income": np.arange(1, 5, dtype=float),
+                "rare_flag": np.array([True, True, False, False]),
             }
-        )
+        ),
+        benunit=pd.DataFrame({"benunit_id": np.arange(201, 205, dtype=np.int64)}),
+        household=pd.DataFrame(
+            {
+                "household_id": household_ids,
+                "household_weight": np.ones(4),
+                "council_tax": np.full(4, 10.0),
+                # Two clones of one source household, and two others.
+                "household_source_id": np.array([7, 7, 8, 9], dtype=np.int64),
+            }
+        ),
+        time_period="2023",
     )
 
-    # The licensed 131-column totals are intentionally unavailable to CI;
-    # make the small fixture present the reviewed digest while checking the
-    # measurement schema and registry identity resolution.
-    with patch.object(
-        weighted_integrity,
-        "_input_mass_reference_evidence_sha256",
-        return_value=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
-    ):
-        reference = load_uk_input_mass_reference(path)
+    carriers = uk_input_mass_carriers(frame)
 
-    assert reference.filename == "enhanced_frs_2024_25.h5"
-    assert dict(reference.totals) == {"employment_income": 10.5}
-    with pytest.raises(ValueError, match="schema_version"):
-        path.write_text(json.dumps({"schema_version": 9}))
-        load_uk_input_mass_reference(path)
+    assert carriers["rare_flag"] == 1
+    assert carriers["employment_income"] == 3
+    assert carriers["council_tax"] == 3
 
 
 def test_expired_exclusion_stops_suppressing_and_names_its_receipt() -> None:

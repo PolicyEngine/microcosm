@@ -29,7 +29,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     uk_zero_weight_strata_gate,
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
-    UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+    UK_CURRENT_BUILD_REFERENCE,
     UKInputMassReferenceDescriptor,
     UKReviewedExclusion,
 )
@@ -865,26 +865,23 @@ def test_ported_june_parity_gates_reject_empty_evidence() -> None:
     assert "evidence is empty" in " ".join(fit.failures)
 
 
-def _input_mass_reference(totals=None) -> UKInputMassReference:
+REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+
+
+def _input_mass_reference(totals=None, carriers=None) -> UKInputMassReference:
     return UKInputMassReference(
         totals=({"employment_income": 10.0} if totals is None else totals),
-        filename="enhanced_frs_2024_25.h5",
-        revision="a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-        sha256=("e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"),
+        filename="microcosm_uk_2024_25.h5",
+        revision=REFERENCE_BUILD,
+        sha256="9" * 64,
         vintage="2024_25",
+        label=f"microcosm-uk-2024-25-national@{REFERENCE_BUILD}",
+        carriers=carriers,
     )
 
 
 def _input_mass_descriptor() -> UKInputMassReferenceDescriptor:
-    return UKInputMassReferenceDescriptor(
-        name="efrs-post-calibration",
-        filename="enhanced_frs_2024_25.h5",
-        revision="a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-        sha256="e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
-        vintage="2024_25",
-        totals_sha256=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
-        scope_note="Seeded scoped-reference note.",
-    )
+    return UK_CURRENT_BUILD_REFERENCE.descriptor_for(_input_mass_reference())
 
 
 def _input_mass_policy(**overrides) -> UKInputMassParityPolicy:
@@ -893,13 +890,16 @@ def _input_mass_policy(**overrides) -> UKInputMassParityPolicy:
     return UKInputMassParityPolicy(**fields)
 
 
-def _input_mass_gate(candidate_totals, reference=None, *, policy=None):
+def _input_mass_gate(
+    candidate_totals, reference=None, *, policy=None, candidate_carriers=None
+):
     with patch(VALIDATE_REFERENCE, return_value=None):
         return uk_input_mass_parity_gate(
             candidate_totals,
             _input_mass_reference() if reference is None else reference,
             descriptor=_input_mass_descriptor(),
             policy=_input_mass_policy() if policy is None else policy,
+            candidate_carriers=candidate_carriers,
         )
 
 
@@ -910,7 +910,10 @@ def test_zeroed_input_column_fails_by_name() -> None:
     assert gate.name == "input_mass_parity"
     assert "employment_income" in gate.failures[0]
     assert "mass is zero" in gate.failures[0]
-    assert gate.details["reference_identity"]["filename"] == ("enhanced_frs_2024_25.h5")
+    assert gate.details["reference_identity"]["filename"] == "microcosm_uk_2024_25.h5"
+    assert gate.details["reference_label"] == (
+        f"microcosm-uk-2024-25-national@{REFERENCE_BUILD}"
+    )
 
 
 def test_999_permille_mass_loss_fails_by_name() -> None:
@@ -933,6 +936,40 @@ def test_stale_weighted_integrity_exclusions_fail() -> None:
 
     assert not gate.passed
     assert "Stale reviewed input-mass exclusions" in gate.failures[0]
+
+
+def test_a_thin_column_is_checked_but_its_figures_are_withheld() -> None:
+    """One or two source households on a side: the verdict stands, the
+    figures never reach the report (microcosm#1095)."""
+
+    reference = _input_mass_reference(
+        totals={"employment_income": 10.0, "rare_flag": 4.0},
+        carriers={"employment_income": 900, "rare_flag": 2},
+    )
+    gate = _input_mass_gate(
+        {"employment_income": 30.0, "rare_flag": 0.0},
+        reference,
+        candidate_carriers={"employment_income": 950, "rare_flag": 0},
+    )
+
+    assert not gate.passed
+    rare = [failure for failure in gate.failures if failure.startswith("rare_flag:")]
+    assert rare == [
+        "rare_flag: its mass check failed on a column one or two source "
+        "households carry on one side; the figures are withheld."
+    ]
+    employment = [f for f in gate.failures if f.startswith("employment_income:")]
+    assert employment and "30" in employment[0]
+    assert "rare_flag" not in gate.details["worst_drifts"]
+    assert "employment_income" in gate.details["worst_drifts"]
+    assert gate.details["withheld_thin_columns"] == ["rare_flag"]
+
+
+def test_without_carriers_nothing_is_withheld() -> None:
+    gate = _input_mass_gate({"employment_income": 0.0})
+
+    assert gate.details["withheld_thin_columns"] == []
+    assert "mass is zero" in gate.failures[0]
 
 
 def test_weighted_integrity_type_errors_are_named() -> None:

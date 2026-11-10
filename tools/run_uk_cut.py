@@ -63,12 +63,15 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from microcosm.build.uk_runtime.cut_reference import (
+    UK_CUT_REFERENCE_INPUT_MASS_NAME,
     UK_CUT_REFERENCE_RECORD_NAME,
     UKCutReference,
     check_uk_cut_reference,
     fetch_uk_cut_reference,
     read_uk_cut_reference,
+    uk_cut_reference_evidence_done,
     verify_uk_cut_reference_file,
+    write_uk_cut_reference_evidence,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -612,6 +615,10 @@ class CutPaths:
         return self.reference_dir / reference.filename
 
     @property
+    def reference_input_mass(self) -> Path:
+        return self.reference_dir / UK_CUT_REFERENCE_INPUT_MASS_NAME
+
+    @property
     def score_receipt(self) -> Path:
         return self.run_dir / "score_vs_reference.json"
 
@@ -741,7 +748,6 @@ def certify_argv(
     logbook_prev_row_digest: str | None = None,
 ) -> list[str]:
     chronicle = {pin.name: pin.sha256 for pin in sources["chronicle_uk"].files}
-    reference = sources["input_mass_reference"].files[0]
     argv = [
         python,
         str(REPO_ROOT / "tools/certify_uk_release_cut.py"),
@@ -757,8 +763,7 @@ def certify_argv(
         "--ledger-facts", str(paths.inputs / "chronicle_uk"),
         "--ledger-facts-sha256", chronicle["consumer_facts.jsonl"],
         "--ledger-manifest-sha256", chronicle["manifest.json"],
-        "--input-mass-reference",
-        str(paths.input_file("input_mass_reference", reference.name)),
+        "--input-mass-reference", str(paths.reference_input_mass),
         "--score-receipt", str(paths.score_receipt),
         "--reference-record", str(paths.reference_record),
         "--release-id", RELEASE_ID,
@@ -890,6 +895,9 @@ def reference_done(paths: CutPaths) -> tuple[bool, str]:
         verify_uk_cut_reference_file(reference, paths.reference_h5(reference))
     except ValueError as error:
         return False, str(error)
+    evidence, detail = uk_cut_reference_evidence_done(reference, paths.reference_dir)
+    if not evidence:
+        return False, detail
     return True, f"compared with {reference.label}"
 
 
@@ -1513,9 +1521,18 @@ def run_spine(runner: Runner, *, staging_local_only: bool, retry: bool = False) 
 
 
 def run_reference(
-    runner: Runner, *, re_resolve: bool = False, hub_download=None
+    runner: Runner,
+    *,
+    re_resolve: bool = False,
+    hub_download=None,
+    write_evidence=write_uk_cut_reference_evidence,
 ) -> UKCutReference:
-    """Resolve the current national build once per cut, and keep its record."""
+    """Resolve the current national build once per cut, and keep its record.
+
+    Beside the dataset and its record go the evidence the gates read from it
+    (its input-mass totals and carriers). A reference whose evidence is
+    missing gets it written again; nothing re-resolves.
+    """
 
     paths = runner.paths
     if re_resolve and paths.reference_dir.exists():
@@ -1528,6 +1545,18 @@ def run_reference(
     if done:
         runner.log(f"[reference] done: {detail}")
         return read_uk_cut_reference(paths.reference_record)
+    if paths.reference_record.exists():
+        reference = read_uk_cut_reference(paths.reference_record)
+        try:
+            verify_uk_cut_reference_file(reference, paths.reference_h5(reference))
+        except ValueError:
+            pass
+        else:
+            write_evidence(
+                reference, paths.reference_h5(reference), paths.reference_dir
+            )
+            runner.log(f"[reference] wrote the evidence for {reference.label}")
+            return reference
     if paths.reference_dir.exists():
         raise CutError(
             f"{paths.reference_dir} holds an unusable reference ({detail}); pass "
@@ -1539,6 +1568,7 @@ def run_reference(
         reference = fetch_uk_cut_reference(
             RELEASE_ID, paths.reference_dir, hub_download=hub_download
         )
+        write_evidence(reference, paths.reference_h5(reference), paths.reference_dir)
     except ValueError as error:
         runner.record("reference", status="failed", error=str(error)[:600])
         raise CutError(f"the cut has no reference to compare with: {error}") from error

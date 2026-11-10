@@ -41,19 +41,25 @@ __all__ = [
     "UK_CUT_REFERENCE_RELEASES",
     "UK_CUT_REFERENCE_SCHEMA_VERSION",
     "UKCutReference",
+    "UK_CUT_REFERENCE_INPUT_MASS_NAME",
     "UK_CUT_REFERENCE_RECORD_NAME",
     "check_uk_cut_reference",
     "fetch_uk_cut_reference",
     "read_uk_cut_reference",
     "resolve_uk_cut_reference",
+    "uk_cut_reference_evidence_done",
     "verify_uk_cut_reference_file",
     "write_uk_cut_reference",
+    "write_uk_cut_reference_evidence",
 ]
 
 UK_CUT_REFERENCE_KIND = "uk_cut_reference"
 UK_CUT_REFERENCE_SCHEMA_VERSION = 1
 #: The record's file name beside the reference's dataset in a cut.
 UK_CUT_REFERENCE_RECORD_NAME = "reference.json"
+#: The reference's input-mass totals and carriers, written beside it: the
+#: input-mass gate's reference (licensed-data aggregates, never committed).
+UK_CUT_REFERENCE_INPUT_MASS_NAME = "input_mass_reference.json"
 
 #: Each line's registry variant and the build evidence its fetch reads.
 UK_CUT_REFERENCE_RELEASES: Mapping[str, tuple[str, str]] = {
@@ -463,3 +469,55 @@ def fetch_uk_cut_reference(
     partial.replace(destination)
     write_uk_cut_reference(record_path, reference)
     return reference
+
+
+def write_uk_cut_reference_evidence(
+    reference: UKCutReference, h5_path: str | Path, output_dir: str | Path
+) -> dict[str, Path]:
+    """Write the evidence the gates read from the reference, beside it.
+
+    The input-mass totals and carriers of the build's export frame at its own
+    solved weights (:func:`~.weighted_integrity.uk_input_mass_reference_payload`).
+    The file holds licensed-data aggregates: it stays with the cut, as the
+    reference's dataset does.
+    """
+
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        uk_input_mass_reference_payload,
+    )
+
+    source = verify_uk_cut_reference_file(reference, h5_path)
+    directory = Path(output_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    payload = uk_input_mass_reference_payload(
+        source,
+        label=reference.label,
+        filename=reference.filename,
+        revision=reference.build,
+        sha256=reference.sha256,
+    )
+    destination = directory / UK_CUT_REFERENCE_INPUT_MASS_NAME
+    partial = destination.with_name(destination.name + ".partial")
+    partial.write_text(json.dumps(payload, sort_keys=True, allow_nan=False))
+    partial.replace(destination)
+    return {"input_mass_reference": destination}
+
+
+def uk_cut_reference_evidence_done(
+    reference: UKCutReference, output_dir: str | Path
+) -> tuple[bool, str]:
+    """Whether the reference's evidence is beside it and names this build."""
+
+    path = Path(output_dir) / UK_CUT_REFERENCE_INPUT_MASS_NAME
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False, f"no {UK_CUT_REFERENCE_INPUT_MASS_NAME} beside the reference"
+    identity = payload.get("identity") if isinstance(payload, Mapping) else None
+    if (
+        not isinstance(identity, Mapping)
+        or payload.get("label") != reference.label
+        or identity.get("sha256") != reference.sha256
+    ):
+        return False, f"{UK_CUT_REFERENCE_INPUT_MASS_NAME} names another build"
+    return True, f"evidence for {reference.label}"

@@ -352,7 +352,7 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         local_ledger_unsupported=local_ledger_unsupported,
         parity_evidence=parity_evidence,
         fit_weight_records=rehydrate_uk_fit_weight_records(sidecar),
-        input_mass_reference=load_uk_input_mass_reference(args.input_mass_reference),
+        input_mass_reference=_input_mass_reference(args),
         exclusions_evaluated_on=evaluated_on,
         spine_frame=spine_frame,
     )
@@ -391,6 +391,25 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
             name: part["statuses"] for name, part in certification["parts"].items()
         },
     }
+
+
+def _input_mass_reference(args: argparse.Namespace):
+    """The cut's input-mass reference, refused unless it is the cut's reference.
+
+    The score and the input-mass gate compare with one build (microcosm#1095):
+    the reference record names it, and the input-mass file must too.
+    """
+
+    reference = json.loads(args.reference_record.read_text())
+    loaded = load_uk_input_mass_reference(args.input_mass_reference)
+    label = f"{reference.get('release')}@{reference.get('build')}"
+    if loaded.label != label or loaded.sha256 != reference.get("sha256"):
+        raise SystemExit(
+            f"error: the input-mass reference names {loaded.label} "
+            f"({loaded.sha256}), not the cut's reference {label}; write it from "
+            "the cut's reference (tools/run_uk_cut.py's reference step)."
+        )
+    return loaded
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:

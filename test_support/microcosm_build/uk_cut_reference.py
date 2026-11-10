@@ -185,3 +185,36 @@ class UKReferenceHub:
             return str(self._files[filename])
         except KeyError as exc:
             raise missing_on_hub(repo_id, filename, revision) from exc
+
+
+def stub_reference_evidence(reference, h5_path, output_dir):
+    """Write a reference's evidence without reading its dataset as a frame.
+
+    The stand-in datasets here are a few bytes, not H5 files; the input-mass
+    file carries the identity the done-checks read and one synthetic column.
+    """
+
+    from microcosm.build.uk_runtime.cut_reference import (
+        UK_CUT_REFERENCE_INPUT_MASS_NAME,
+    )
+
+    destination = Path(output_dir) / UK_CUT_REFERENCE_INPUT_MASS_NAME
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "kind": "uk_input_mass_reference",
+                "label": reference.label,
+                "identity": {
+                    "filename": reference.filename,
+                    "revision": reference.build,
+                    "sha256": reference.sha256,
+                    "vintage": "2024_25",
+                },
+                "totals": {"employment_income": 1.0},
+                "carriers": {"employment_income": 3},
+            }
+        )
+    )
+    return {"input_mass_reference": destination}

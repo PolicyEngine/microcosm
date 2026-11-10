@@ -195,6 +195,9 @@ def _tables(*, n: int = 4, weights=None):
         {
             "household_id": household_ids,
             "household_weight": np.asarray(weights, dtype=float),
+            # Each household its own survey source, as the input-mass gate's
+            # carriers read them (microcosm#1095).
+            "household_source_id": household_ids + 1000,
             "household_is_spi_synthetic": np.arange(n) % 2 == 1,
             "household_is_capital_gains_clone": np.arange(n) % 4 >= 2,
             "owned_land": land,
@@ -227,13 +230,20 @@ def _parity(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**fields)
 
 
-def _reference() -> UKInputMassReference:
+REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+REFERENCE_LABEL = f"microcosm-uk-2024-25-national@{REFERENCE_BUILD}"
+
+
+def _reference(totals=None) -> UKInputMassReference:
+    """The current build's input-mass reference (microcosm#1095)."""
+
     return UKInputMassReference(
-        totals={"employment_income": 10.0},
-        filename="enhanced_frs_2023_24.h5",
-        revision="655dd07e4bb9c777b00dac044949611f1feb824f",
-        sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-        vintage="2023_24",
+        totals={"employment_income": 10.0} if totals is None else totals,
+        filename="microcosm_uk_2024_25.h5",
+        revision=REFERENCE_BUILD,
+        sha256="9" * 64,
+        vintage="2024_25",
+        label=REFERENCE_LABEL,
     )
 
 
@@ -1088,20 +1098,13 @@ class TestBatteryRegressions:
         assert "uk_soc2020_sub_major_group_enum_domain" in passed
 
     def test_input_mass_parity_compares_the_release_surface(self) -> None:
-        # The frame carries the spine's WAS property_wealth and the reference
-        # stores its own total within tolerance. Compared on the raw frame the
-        # signed exclusion would be stale and the gate would fail; the gate
-        # compares the export frame, where the column is absent, so the
-        # exclusion is in force and nothing is stale (microcosm#1106).
+        # The frame carries the spine's WAS property_wealth, which the release
+        # leaves to the engine (microcosm#1106); the current build's export
+        # does not carry it either. The gate compares the export frame, so the
+        # spine's copy never enters the comparison as a candidate-only column.
         person, benunit, household = _tables()
         household = household.assign(property_wealth=100.0)
-        reference = UKInputMassReference(
-            totals={"employment_income": 10.0, "property_wealth": 400.0},
-            filename="enhanced_frs_2023_24.h5",
-            revision="655dd07e4bb9c777b00dac044949611f1feb824f",
-            sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-            vintage="2023_24",
-        )
+        reference = _reference()
         battery = _run_battery(
             (person, benunit, household),
             parity=_parity(),
@@ -1112,7 +1115,8 @@ class TestBatteryRegressions:
         assert outcome.status is GateStatus.PASSED, outcome.result.failures
         details = outcome.result.details
         assert details["stale_exclusions"] == []
-        assert "property_wealth" in details["reviewed_exclusions"]
+        assert "property_wealth" not in details["candidate_only_columns"]
+        assert details["reference_label"] == REFERENCE_LABEL
 
     def test_empty_fit_records_fail_closed(self) -> None:
         # Present-but-empty is not absent: a fit stage that ran and emitted
@@ -1255,11 +1259,11 @@ class TestExclusionDiscipline:
 
     def test_an_expired_register_fails_closed(self) -> None:
         # The committed input-mass register carries no entry since the
-        # 2026-09-21 retirements, so the expiry discipline is exercised on an
-        # injected receipt that lapses before the clock below; the other two
-        # registers still expire from their committed entries.
+        # enhanced-FRS reference retired (microcosm#1095), so the expiry
+        # discipline is exercised on an injected receipt, signed for the
+        # reference build, that lapses before the clock below.
         lapsed = {
-            "efrs-post-calibration": {
+            REFERENCE_LABEL: {
                 "owned_land": {
                     "reason": "injected: a reviewed exclusion whose window has closed",
                     "approved_by": "juaristi22",
@@ -2070,14 +2074,7 @@ class TestBindingUnits:
         entry = {e.id: e for e in uk_gates.gates}["uk_input_mass_parity"]
         drifted = dict(entry.parameters)
         drifted["reference_registry"] = {
-            name: (
-                {
-                    **payload,
-                    "totals_sha256": "0" * 64,
-                }
-                if name == "efrs-post-calibration"
-                else payload
-            )
+            name: {**payload, "scope_note": "a drifted scope note"}
             for name, payload in drifted["reference_registry"].items()
         }
         binding = UK_GATE_REGISTRY["input_mass_parity"]
@@ -2823,3 +2820,50 @@ class TestGateOnlyAreaSupport:
             "bound_despite_support_floor/census_households"
         ]
         assert result.details["out_of_line_exclusions"] == ["local_authority/LA_B"]
+
+
+class TestInputMassReferenceBuild:
+    """The exclusions a gate applies are the ones signed for its reference build."""
+
+    def test_an_exclusion_signed_for_another_build_is_dormant(self) -> None:
+        signed = {
+            "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-older": {
+                "employment_income": {
+                    "reason": "injected: signed for an earlier reference build",
+                    "approved_by": "juaristi22",
+                    "adjudication": "microcosm#1095 (test)",
+                    "approved_on": "2026-11-01",
+                    "expires_on": "2027-03-01",
+                }
+            }
+        }
+        person, benunit, household = _tables()
+        battery = _run_battery(
+            (person, benunit, household),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+            extra_artifacts={
+                # The candidate carries far more than the reference: past the
+                # tolerance, which an exclusion for this build would excuse.
+                "input_mass_reference": _reference({"employment_income": 1.0e-3}),
+                "reviewed_input_mass_exclusions": signed,
+            },
+        )
+        outcome = {o.entry.id: o for o in battery.outcomes}["uk_input_mass_parity"]
+        # The entry is for another build, so the drift fails here.
+        assert outcome.status is GateStatus.FAILED
+        assert outcome.result.details["reviewed_exclusions"] == {}
+
+    def test_an_exclusion_key_that_names_no_build_is_refused(self) -> None:
+        person, benunit, household = _tables()
+        battery = _run_battery(
+            (person, benunit, household),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+            extra_artifacts={
+                "reviewed_input_mass_exclusions": {"efrs-post-calibration": {}},
+            },
+        )
+        outcome = {o.entry.id: o for o in battery.outcomes}["uk_input_mass_parity"]
+        assert outcome.status is GateStatus.FAILED
+        assert "<release>@<build>" in " ".join(outcome.result.failures)

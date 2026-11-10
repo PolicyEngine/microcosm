@@ -13,6 +13,7 @@ from test_support.microcosm_build.uk_cut_reference import (
     UK_NATIONAL_RELEASE,
     UKReferenceHub,
     sha256_of,
+    stub_reference_evidence,
 )
 from tools import resolve_uk_reference as tool
 
@@ -41,7 +42,9 @@ def test_output_dir_keeps_the_dataset_and_its_record(hub, tmp_path: Path) -> Non
 
     assert (
         tool.main(
-            ["--release", UK_DENSE_RELEASE, "--output-dir", str(out)], hub_download=hub
+            ["--release", UK_DENSE_RELEASE, "--output-dir", str(out)],
+            hub_download=hub,
+            write_evidence=stub_reference_evidence,
         )
         == 0
     )
@@ -50,6 +53,7 @@ def test_output_dir_keeps_the_dataset_and_its_record(hub, tmp_path: Path) -> Non
     assert reference.build == DENSE_BUILD
     assert (out / reference.filename).read_bytes() == b"dense"
     assert reference.sha256 == sha256_of(b"dense")
+    assert (out / "input_mass_reference.json").exists()
 
 
 def test_a_directory_that_holds_a_reference_is_refused(
@@ -57,9 +61,10 @@ def test_a_directory_that_holds_a_reference_is_refused(
 ) -> None:
     out = tmp_path / "reference"
     args = ["--release", UK_NATIONAL_RELEASE, "--output-dir", str(out)]
-    assert tool.main(args, hub_download=hub) == 0
+    stub = stub_reference_evidence
+    assert tool.main(args, hub_download=hub, write_evidence=stub) == 0
 
-    assert tool.main(args, hub_download=hub) == 1
+    assert tool.main(args, hub_download=hub, write_evidence=stub) == 1
     assert "keeps the reference it started with" in capsys.readouterr().err
 
 

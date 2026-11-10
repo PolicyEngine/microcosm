@@ -13,9 +13,11 @@ build, and checks what a cut would compare with now::
 ``--check`` reads the release record, the build's manifest and its
 certification evidence, and downloads no dataset. ``--output-dir`` downloads
 the dataset, verifies its SHA-256, copies it there and writes
-``reference.json`` beside it; pass both paths to the build's
-``--reference-*`` options. It refuses a directory that already holds a
-reference, so a run keeps the one it started with.
+``reference.json`` beside it, with ``input_mass_reference.json`` (the
+build's input-mass totals and carriers, licensed-data aggregates that stay
+with the run). A dense build takes ``--input-mass-reference`` from it. It
+refuses a directory that already holds a reference, so a run keeps the one
+it started with.
 
 Reading ``policyengine/populace-uk-private`` needs ``HF_TOKEN``.
 """
@@ -33,6 +35,7 @@ from microcosm.build.uk_runtime.cut_reference import (
     UK_CUT_REFERENCE_RELEASES,
     check_uk_cut_reference,
     fetch_uk_cut_reference,
+    write_uk_cut_reference_evidence,
 )
 
 
@@ -47,26 +50,47 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def fetch_reference(release: str, output_dir: Path, *, hub_download=None) -> dict:
-    """Download the current build of ``release`` into ``output_dir``."""
+def fetch_reference(
+    release: str,
+    output_dir: Path,
+    *,
+    hub_download=None,
+    write_evidence=write_uk_cut_reference_evidence,
+) -> dict:
+    """Download the current build of ``release`` into ``output_dir``.
+
+    Beside the dataset and its record go the evidence the gates read from it:
+    its input-mass totals and carriers (``input_mass_reference.json``), which
+    a dense build takes with ``--input-mass-reference``.
+    """
 
     reference = fetch_uk_cut_reference(release, output_dir, hub_download=hub_download)
+    written = write_evidence(reference, output_dir / reference.filename, output_dir)
     return {
         "reference": reference.label,
         "sha256": reference.sha256,
         "dataset": str(output_dir / reference.filename),
         "record": str(output_dir / UK_CUT_REFERENCE_RECORD_NAME),
+        **{name: str(path) for name, path in written.items()},
     }
 
 
-def main(argv: Sequence[str] | None = None, *, hub_download=None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    hub_download=None,
+    write_evidence=write_uk_cut_reference_evidence,
+) -> int:
     args = _parse_args(argv)
     try:
         if args.check:
             summary = check_uk_cut_reference(args.release, hub_download=hub_download)
         else:
             summary = fetch_reference(
-                args.release, args.output_dir.expanduser(), hub_download=hub_download
+                args.release,
+                args.output_dir.expanduser(),
+                hub_download=hub_download,
+                write_evidence=write_evidence,
             )
     except ValueError as exc:
         print(f"refused: {exc}", file=sys.stderr)

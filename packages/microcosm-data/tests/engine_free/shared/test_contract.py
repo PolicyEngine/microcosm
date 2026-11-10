@@ -89,47 +89,26 @@ UK_EVIDENCE_GATE_NAMES = {
     "release_parity": ("export_surface", "target_surface", "target_fit"),
     "input_mass_parity": ("input_mass_parity",),
 }
+UK_INPUT_MASS_REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+UK_INPUT_MASS_REFERENCE_LABEL = (
+    f"microcosm-uk-2024-25-national@{UK_INPUT_MASS_REFERENCE_BUILD}"
+)
 UK_INPUT_MASS_REFERENCE_IDENTITY = {
-    "filename": "enhanced_frs_2024_25.h5",
-    "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-    "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
+    "filename": "microcosm_uk_2024_25.h5",
+    "revision": UK_INPUT_MASS_REFERENCE_BUILD,
+    "sha256": "9" * 64,
     "vintage": "2024_25",
 }
-UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c"
-)
-UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
+UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = "8" * 64
+UK_INPUT_MASS_ACTIVE_REFERENCE = "current_build"
 UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
-    "Channel-blind post-calibration enhanced-FRS production incumbent, pinned "
-    "to the 2024-25 line; structurally lacks the SPI clone channel, so "
-    "SPI-channel-exclusive columns are comparable only through per-reference "
-    "reviewed exclusions."
+    "The current build of the cut's own release line, as releases.json named "
+    "it when the cut fetched its inputs (microcosm#1095): totals at each "
+    "build's own solved weights, on the export surface."
 )
-# The committed per-reference register (microcosm#1063 c9): the policy payloads
-# sealed into the input-mass evidence digest.
-UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
-    "dfe_education_spending": {
-        "reason": "The candidate carries DfE education spending through the build (GBP 98.8bn against the incumbent's GBP 52.8m, +187,061%): the enhanced-FRS reference carries almost none of this input, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
-        "approved_on": "2026-10-02",
-        "expires_on": "2027-04-02",
-    },
-    "property_wealth": {
-        "reason": "The candidate no longer ships household.property_wealth: policyengine-uk derives it as the sum of main_residence_value, other_residential_property_value and non_residential_property_value, and a persisted copy overrides that sum and has no uprating index (microcosm#1106, the uk-data#543 defect). The enhanced-FRS reference stores its own WAS total, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. The gate compares the release surface (the export frame, reviewed exclusions dropped) on both paths, the national seam and the release cut; the three components stay compared.",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#1106 (#1145): part B measured on the A9 candidate at 2025 and on the final-head arm c7 of 2026-10-11; ruling 2026-10-11 in session",
-        "approved_on": "2026-10-11",
-        "expires_on": "2027-04-11",
-    },
-    "tax_free_savings_income": {
-        "reason": "The candidate no longer ships person.tax_free_savings_income: policyengine-uk derives it as the sum of individual_savings_account_interest_income, which the candidate stores apart from non-ISA interest under the additive ISA income contract, and a persisted copy overrides that sum and is never uprated (microcosm#1360). The enhanced-FRS reference stores it in the legacy gross layout, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. Non-ISA savings_interest_income stays compared; it falls below the reference's gross total by the ISA part.",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#1360 folded into microcosm#1418's PR B (ruling 2026-10-28 in session)",
-        "approved_on": "2026-10-28",
-        "expires_on": "2027-04-28",
-    },
-}
+# The committed per-reference register is empty since the enhanced-FRS
+# reference retired (microcosm#1095).
+UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -227,20 +206,20 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "0d148ddccb8f126e4d64cfce94e820cec8d2adaccfc57fb87bb5f5ef2fc09106"
+    "ae9257b96da095b1c950f57727c0abb2c392e0cae8be23498f70eb3b6fb2a3f9"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d3b13d6ce2a87aa0d9b87066cd46c3aa03b6c031dbb4c9d5ec44dc33e273bf63"
+    "75d36c4b3001aa0c2d902da239e4f1a99f5693ad2b2083f74b82093ed0700126"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "a7c86e189ecaea1061f7e280f0c63d5a6e13449e4a1f3a1be618eae8909a12e0"
+    "23bcfbf72d5e1f28b4d127cb79e8513b0c9b8de2c9bf2c61aab139a7e4475906"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
 )
-UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
-)
+# The input-mass evidence digest covers the reference build's own totals, so
+# it is not pinned (microcosm#1095); a fixture value stands in.
+UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = "7" * 64
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 #: microcosm#1240: the two report-only high-value homes gates.
 UK_DIAGNOSTIC_ENTRY_IDS = frozenset(
@@ -1182,7 +1161,7 @@ def _terminal_gate_details(name: str) -> dict:
         return {
             "candidate_name": "uk_release_candidate",
             "reference_name": UK_INPUT_MASS_REFERENCE_IDENTITY["filename"],
-            "relative_tolerance": 4.521811483823806,
+            "relative_tolerance": 5.9984285545209834,
             "minimum_reference_total": 0.0,
             "columns_checked": 1,
             "columns_below_reference_floor": 0,
@@ -1198,6 +1177,8 @@ def _terminal_gate_details(name: str) -> dict:
             "reference": UK_INPUT_MASS_ACTIVE_REFERENCE,
             "reference_scope_note": UK_INPUT_MASS_REFERENCE_SCOPE_NOTE,
             "reference_identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
+            "reference_label": UK_INPUT_MASS_REFERENCE_LABEL,
+            "withheld_thin_columns": [],
         }
     if name == "take_up_signal":
         # Mirrors uk_take_up_signal_gate's per-column detail block.
@@ -3248,37 +3229,33 @@ def test_exact_k_uk_terminal_rejects_unreviewed_input_mass_identity(
         validate_release_dir(directory)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "reference_identity must match the active reviewed" in failures
+    assert "must name the reference build it compared with" in failures
 
 
-def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
+def test_exact_k_uk_terminal_requires_the_reference_label(
     tmp_path: Path,
 ) -> None:
+    """The report must say which build it compared with (microcosm#1095)."""
+
     directory = _write_uk_release_dir(
         tmp_path,
         UK_EXACT_K_RELEASE_ID,
         tier="frs",
     )
-    payload, _evidence = _terminal_gate_payload(
+    payload, evidence = _terminal_gate_payload(
         release_id=UK_EXACT_K_RELEASE_ID,
         calibration_diagnostics_sha256=_sha256(
             directory / "calibration_diagnostics.json"
         ),
         evidence_stages=("input_mass_parity",),
     )
-    substituted = _canonical_sha256(
-        {
-            "reference": {
-                "identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
-                "totals": {"employment_income": 1.0},
-            }
-        }
+    payload["gates"]["input_mass_parity"]["details"]["reference_label"] = (
+        "microcosm-uk-2024-25-national@another-build"
     )
-    payload["attestation"]["evidence_sha256"]["input_mass_parity"] = substituted
     _refresh_terminal_gate_attestation(payload)
     build_path = directory / "build_manifest.json"
     build = json.loads(build_path.read_text())
-    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
+    build["terminal_gate_evidence"] = evidence
     build_path.write_text(json.dumps(build))
     _write_terminal_and_refresh_manifest_hashes(directory, payload)
 
@@ -3286,7 +3263,7 @@ def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
         validate_release_dir(directory)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "must bind the reviewed enhanced-FRS incumbent totals" in failures
+    assert "must name the reference build it compared with" in failures
 
 
 def test_exact_k_uk_terminal_rejects_evidence_gate_without_its_stage(
@@ -5006,18 +4983,7 @@ def test_uk_gate_battery_pins_are_in_lockstep_with_the_contract() -> None:
         contract_module._UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
         == UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
     )
-    assert (
-        contract_module._UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
-        == UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
-    )
-    assert UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 == _canonical_sha256(
-        {
-            "reference": UK_INPUT_MASS_ACTIVE_REFERENCE,
-            "reference_evidence_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
-            "exclusions_policy": "committed",
-            "reviewed_exclusions": UK_INPUT_MASS_REVIEWED_EXCLUSIONS,
-        }
-    )
+    assert not hasattr(contract_module, "_UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256")
 
 
 def test_exact_k_uk_gate_battery_report_validates_end_to_end(tmp_path: Path) -> None:
@@ -5310,9 +5276,12 @@ def test_exact_k_uk_gate_battery_rejects_a_recorded_signing_error(
     assert "attestation must contain exactly" in _battery_failures(directory)
 
 
-def test_exact_k_uk_gate_battery_rejects_an_unpinned_input_mass_evidence(
+def test_exact_k_uk_gate_battery_accepts_any_reference_builds_evidence(
     tmp_path: Path,
 ) -> None:
+    """The input-mass evidence digest covers the reference build's totals,
+    which change with every cut, so no digest is pinned (microcosm#1095)."""
+
     directory, payload = _write_battery_release(tmp_path)
     payload["evidence_sha256"]["uk_input_mass_parity"] = "b" * 64
     _rewrite_battery_report(directory, payload)
@@ -5322,7 +5291,7 @@ def test_exact_k_uk_gate_battery_rejects_an_unpinned_input_mass_evidence(
     build_path.write_text(json.dumps(build))
     _refresh_terminal_manifest_hashes(directory)
 
-    assert "bind the reviewed enhanced-FRS" in _battery_failures(directory)
+    validate_release_dir(directory)
 
 
 def test_exact_k_uk_gate_battery_rejects_mixed_manifest_evidence_vocabulary(

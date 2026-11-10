@@ -130,19 +130,20 @@ from microcosm.build.gates import (
     GateResult,
     input_mass_parity_gate,
 )
-from microcosm.build.input_mass import input_mass_totals
+from microcosm.build.input_mass import PERSON_REFERENCE_COLUMNS, input_mass_totals
 from microcosm.build.uk_runtime.national_frame import UK_EXPORTED_WEIGHT_COLUMNS
 from microcosm.frame import Frame
 
 __all__ = [
     "UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE",
     "UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE",
+    "UK_CURRENT_BUILD_REFERENCE",
     "UK_INPUT_MASS_PARITY_GATE_NAME",
-    "UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256",
     "UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE",
     "UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE",
     "UKInputMassParityPolicy",
     "UKInputMassReference",
+    "UKCurrentBuildReference",
     "UKInputMassReferenceDescriptor",
     "UKReviewedExclusion",
     "UK_INPUT_MASS_REFERENCE_REGISTRY",
@@ -155,7 +156,9 @@ __all__ = [
     "load_uk_reference_scoped_exclusion_register",
     "load_uk_reviewed_exclusion_register",
     "uk_default_input_mass_reviewed_exclusions",
+    "uk_input_mass_carriers",
     "uk_input_mass_parity_gate",
+    "uk_input_mass_reference_payload",
     "uk_input_mass_totals",
     "uk_qrf_tail_concentration_columns",
 ]
@@ -170,14 +173,11 @@ UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE = (
     "local_target_fit_reviewed_exclusions.json"
 )
 
-# Canonical sha256 of {"reference": {"identity": ..., "totals": ...}} for
-# the weighted input surface emitted from the pinned enhanced-FRS artifact by
-# build_uk_efrs_parity_reference.py. The totals remain uncommitted under the
-# UKDS EUL; this reviewed digest lets the gate and publication contract bind
-# them without disclosing them.
-UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c"
-)
+#: The input-mass reference file a cut writes from its reference build
+#: (microcosm#1095): schema 2 names the build and carries each column's
+#: carriers. Schema 1 held the enhanced FRS's totals, which retired with it.
+UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION = 2
+UK_INPUT_MASS_REFERENCE_KIND = "uk_input_mass_reference"
 
 
 _SHA256_HEX = frozenset("0123456789abcdef")
@@ -247,24 +247,69 @@ class UKInputMassReferenceDescriptor:
         }
 
 
-_UK_INPUT_MASS_REFERENCE_DESCRIPTOR = UKInputMassReferenceDescriptor(
-    name="efrs-post-calibration",
-    filename="enhanced_frs_2024_25.h5",
-    revision="a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-    sha256="e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
-    vintage="2024_25",
-    totals_sha256=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+@dataclass(frozen=True)
+class UKCurrentBuildReference:
+    """The input-mass reference kind: the current build of the cut's own line.
+
+    The spec names the kind, not a file (microcosm#1095): a cut compares its
+    candidate with the build its line's ``releases.json`` named when the cut
+    fetched its inputs, and every report records which build that was. The
+    concrete descriptor is made from the reference file the cut wrote
+    (:meth:`descriptor_for`), so the identity and totals digest the gate
+    checks are the reference's own.
+    """
+
+    name: str
+    scope_note: str
+
+    def __post_init__(self) -> None:
+        for field_name in ("name", "scope_note"):
+            value = getattr(self, field_name)
+            if (
+                not isinstance(value, str)
+                or not value.strip()
+                or value != value.strip()
+            ):
+                raise ValueError(
+                    f"UK input-mass reference {field_name} must be a non-empty "
+                    "trimmed string."
+                )
+
+    def spec_payload(self) -> dict[str, object]:
+        """The gates.json registry entry shape."""
+
+        return {"kind": "current_build", "scope_note": self.scope_note}
+
+    def descriptor_for(
+        self, reference: UKInputMassReference
+    ) -> UKInputMassReferenceDescriptor:
+        if reference.label is None:
+            raise ValueError(
+                "The input-mass reference names no build; a cut's reference file "
+                "records the build it was measured from."
+            )
+        return UKInputMassReferenceDescriptor(
+            name=self.name,
+            filename=reference.filename,
+            revision=reference.revision,
+            sha256=reference.sha256,
+            vintage=reference.vintage,
+            totals_sha256=_input_mass_reference_evidence_sha256(reference),
+            scope_note=self.scope_note,
+        )
+
+
+UK_CURRENT_BUILD_REFERENCE = UKCurrentBuildReference(
+    name="current_build",
     scope_note=(
-        "Channel-blind post-calibration enhanced-FRS production incumbent, "
-        "pinned to the 2024-25 line; its artifact carries the SPI-synthetic "
-        "rows structurally but no admin-restored mass in the "
-        "SPI-channel-exclusive columns, so those columns are comparable "
-        "only through per-reference reviewed exclusions."
+        "The current build of the cut's own release line, as releases.json "
+        "named it when the cut fetched its inputs (microcosm#1095): totals "
+        "at each build's own solved weights, on the export surface."
     ),
 )
 
 UK_INPUT_MASS_REFERENCE_REGISTRY = MappingProxyType(
-    {_UK_INPUT_MASS_REFERENCE_DESCRIPTOR.name: _UK_INPUT_MASS_REFERENCE_DESCRIPTOR}
+    {UK_CURRENT_BUILD_REFERENCE.name: UK_CURRENT_BUILD_REFERENCE}
 )
 
 _REVIEWED_EXCLUSION_FIELDS = frozenset(
@@ -466,57 +511,43 @@ def coerce_reviewed_exclusions(
 
 def coerce_input_mass_reference_registry(
     value: object, *, label: str
-) -> dict[str, UKInputMassReferenceDescriptor]:
-    """Validate the closed-world input-mass reference registry."""
+) -> dict[str, UKCurrentBuildReference]:
+    """Validate the closed-world input-mass reference registry.
+
+    Its one kind is the current build of the cut's own line
+    (``{"kind": "current_build", "scope_note": ...}``); a file pinned by
+    identity, as the enhanced-FRS entry was, is refused.
+    """
 
     if not isinstance(value, Mapping) or not value:
         raise TypeError(f"{label} reference_registry must be a non-empty mapping.")
-    records: dict[str, UKInputMassReferenceDescriptor] = {}
+    records: dict[str, UKCurrentBuildReference] = {}
     for name, entry in value.items():
         if not isinstance(name, str) or not name.strip() or name != name.strip():
             raise ValueError(
                 f"{label} reference_registry names must be non-empty trimmed "
                 f"strings; got {name!r}."
             )
-        if isinstance(entry, UKInputMassReferenceDescriptor):
-            descriptor = entry
-            if descriptor.name != name:
+        if isinstance(entry, UKCurrentBuildReference):
+            if entry.name != name:
                 raise ValueError(
                     f"{label} reference_registry entry {name!r} carries "
-                    f"descriptor name {descriptor.name!r}."
+                    f"reference name {entry.name!r}."
                 )
-            records[name] = descriptor
+            records[name] = entry
             continue
         if not isinstance(entry, Mapping):
             raise TypeError(
                 f"{label} reference_registry entry {name!r} must be an object."
             )
-        expected_entry_fields = {"identity", "totals_sha256", "scope_note"}
-        if set(entry) != expected_entry_fields:
+        if set(entry) != {"kind", "scope_note"} or entry.get("kind") != "current_build":
             raise ValueError(
-                f"{label} reference_registry entry {name!r} fields must be "
-                f"exactly {sorted(expected_entry_fields)}, got {sorted(entry)}."
+                f"{label} reference_registry entry {name!r} must be exactly "
+                '{"kind": "current_build", "scope_note": ...}; a reference pinned '
+                "by file identity is no longer accepted (microcosm#1095)."
             )
-        identity = entry["identity"]
-        if not isinstance(identity, Mapping):
-            raise TypeError(
-                f"{label} reference_registry entry {name!r} identity must be an object."
-            )
-        expected_identity_fields = {"filename", "revision", "sha256", "vintage"}
-        if set(identity) != expected_identity_fields:
-            raise ValueError(
-                f"{label} reference_registry entry {name!r} identity fields "
-                f"must be exactly {sorted(expected_identity_fields)}, got "
-                f"{sorted(identity)}."
-            )
-        records[name] = UKInputMassReferenceDescriptor(
-            name=name,
-            filename=identity["filename"],
-            revision=identity["revision"],
-            sha256=identity["sha256"],
-            vintage=identity["vintage"],
-            totals_sha256=entry["totals_sha256"],
-            scope_note=entry["scope_note"],
+        records[name] = UKCurrentBuildReference(
+            name=name, scope_note=entry["scope_note"]
         )
     return dict(sorted(records.items()))
 
@@ -794,49 +825,61 @@ def uk_default_input_mass_reviewed_exclusions() -> Mapping[
 
 
 def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
-    """Load frozen reference totals emitted by the #609 measurement tooling.
+    """Load the input-mass reference a cut wrote from its reference build.
 
-    Schema: ``{"schema_version": 1, "identity": {filename, revision, sha256,
-    vintage}, "totals": {column: weighted_total}}`` — totals keys are flat
-    frame column names, matching :func:`uk_input_mass_totals`. The identity
-    names the pinned artifact the totals were measured from and is recorded
-    verbatim in the gate details and the attestation evidence digest.
+    Schema 2: ``{"schema_version": 2, "kind": "uk_input_mass_reference",
+    "label": "<release>@<build>", "identity": {filename, revision, sha256,
+    vintage}, "totals": {column: weighted_total}, "carriers": {column:
+    distinct source households}}``. The revision is the build, the totals
+    and carriers are :func:`uk_input_mass_totals` and
+    :func:`uk_input_mass_carriers` of the build's export frame at its own
+    solved weights (:func:`uk_input_mass_reference_payload`). The file stays
+    beside the cut's reference: its totals are licensed-data aggregates.
     """
 
     path = Path(source)
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
         raise ValueError(f"{path}: input-mass reference must be a JSON object.")
-    if payload.get("schema_version") != 1:
+    if payload.get("schema_version") != UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION:
         raise ValueError(
-            f"{path}: input-mass reference schema_version must be 1, got "
-            f"{payload.get('schema_version')!r}."
+            f"{path}: input-mass reference schema_version must be "
+            f"{UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION}, got "
+            f"{payload.get('schema_version')!r}; the enhanced-FRS totals retired "
+            "with microcosm#1095, so write the reference from the line's current "
+            "build (tools/resolve_uk_reference.py)."
+        )
+    if payload.get("kind") != UK_INPUT_MASS_REFERENCE_KIND:
+        raise ValueError(
+            f"{path}: input-mass reference kind must be {UK_INPUT_MASS_REFERENCE_KIND!r}."
         )
     identity = payload.get("identity")
     if not isinstance(identity, Mapping):
         raise ValueError(f"{path}: input-mass reference needs an 'identity' object.")
     totals = payload.get("totals")
-    if not isinstance(totals, Mapping):
-        raise ValueError(f"{path}: input-mass reference needs a 'totals' object.")
-    reference = UKInputMassReference(
+    carriers = payload.get("carriers")
+    if not isinstance(totals, Mapping) or not isinstance(carriers, Mapping):
+        raise ValueError(
+            f"{path}: input-mass reference needs 'totals' and 'carriers' objects."
+        )
+    label = payload.get("label")
+    if not isinstance(label, str) or label.count("@") != 1:
+        raise ValueError(
+            f"{path}: input-mass reference label must be <release>@<build>."
+        )
+    if label.split("@", 1)[1] != identity.get("revision"):
+        raise ValueError(
+            f"{path}: input-mass reference label {label!r} does not name the "
+            f"build its identity records ({identity.get('revision')!r})."
+        )
+    return UKInputMassReference(
         totals=dict(totals),
         filename=str(identity.get("filename", "")),
         revision=str(identity.get("revision", "")),
         sha256=str(identity.get("sha256", "")),
         vintage=str(identity.get("vintage", "")),
-    )
-    observed_digest = _input_mass_reference_evidence_sha256(reference)
-    for descriptor in UK_INPUT_MASS_REFERENCE_REGISTRY.values():
-        if (
-            reference.identity == descriptor.identity
-            and observed_digest == descriptor.totals_sha256
-        ):
-            return reference
-    known = sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)
-    raise ValueError(
-        f"{path}: input-mass reference sidecar did not match any reviewed "
-        f"reference {known}; observed identity {reference.identity} with "
-        f"canonical evidence sha256 {observed_digest}."
+        label=label,
+        carriers=dict(carriers),
     )
 
 
@@ -856,8 +899,22 @@ class UKInputMassReference:
     revision: str
     sha256: str
     vintage: str
+    label: str | None = None
+    carriers: Mapping[str, int] | None = None
 
     def __post_init__(self) -> None:
+        if self.carriers is not None:
+            carriers: dict[str, int] = {}
+            for name, count in self.carriers.items():
+                if type(count) is not int or count < 0:
+                    raise ValueError(
+                        "UK input-mass reference carriers must be non-negative "
+                        f"integers; got {name!r} -> {count!r}."
+                    )
+                carriers[str(name)] = count
+            object.__setattr__(
+                self, "carriers", MappingProxyType(dict(sorted(carriers.items())))
+            )
         if not isinstance(self.totals, Mapping) or not self.totals:
             raise ValueError(
                 "UK input-mass reference totals must be a non-empty mapping."
@@ -918,12 +975,6 @@ def _input_mass_reference_evidence_sha256(
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _validate_input_mass_reference(reference: UKInputMassReference) -> None:
-    _validate_input_mass_reference_for_descriptor(
-        reference, _UK_INPUT_MASS_REFERENCE_DESCRIPTOR
-    )
-
-
 def _validate_input_mass_reference_for_descriptor(
     reference: UKInputMassReference,
     descriptor: UKInputMassReferenceDescriptor,
@@ -935,8 +986,7 @@ def _validate_input_mass_reference_for_descriptor(
         raise ValueError(
             "UK input-mass reference identity must match the reviewed "
             f"{descriptor.name}; expected {expected_identity}, got "
-            f"{reference.identity}. Known references: "
-            f"{sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)}."
+            f"{reference.identity}."
         )
     observed_digest = _input_mass_reference_evidence_sha256(reference)
     if observed_digest != descriptor.totals_sha256:
@@ -1020,6 +1070,161 @@ def uk_input_mass_totals(
     return totals
 
 
+def uk_input_mass_carriers(
+    frame: Frame,
+    *,
+    columns: Iterable[str] | None = None,
+) -> dict[str, int]:
+    """Distinct source households carrying each column :func:`uk_input_mass_totals` sums.
+
+    A column's carriers are the distinct ``household_source_id`` values among
+    rows of positive weight whose value is nonzero (a boolean: ``True``),
+    counted as the stage receipts count support
+    (:func:`~microcosm.build.uk_runtime.receipt_counts.distinct_count`):
+    support copies and clones repeat their source household, so they count
+    once. A person or benefit unit row counts its household's source. A
+    figure resting on fewer than ``UK_DISCLOSURE_FLOOR`` carriers is withheld
+    from what a report prints (microcosm#1095).
+    """
+
+    from microcosm.build.uk_runtime.receipt_counts import (
+        distinct_count,
+        source_household_ids,
+    )
+
+    schema = frame.schema
+    household = frame.table("household")
+    household_sources = pd.Series(
+        source_household_ids(household, stage="input-mass carriers"),
+        index=household[schema.id_column("household")].to_numpy(),
+    )
+    person = frame.table("person")
+    person_sources = household_sources.reindex(
+        person[schema.membership_column("household")].to_numpy()
+    ).to_numpy()
+    benunit_sources = None
+    if "benunit" in frame.entities:
+        first_member = (
+            pd.DataFrame(
+                {
+                    "benunit": person[schema.membership_column("benunit")].to_numpy(),
+                    "source": person_sources,
+                }
+            )
+            .drop_duplicates("benunit")
+            .set_index("benunit")["source"]
+        )
+        benunit_sources = first_member.reindex(
+            frame.table("benunit")[schema.id_column("benunit")].to_numpy()
+        ).to_numpy()
+    sources_by_entity = {
+        "household": household_sources.to_numpy(),
+        "person": person_sources,
+        "benunit": benunit_sources,
+    }
+    structural = {schema.person_id_column, *PERSON_REFERENCE_COLUMNS}
+    for group in schema.group_entities:
+        structural.add(schema.id_column(group))
+        structural.add(schema.membership_column(group))
+    requested = None if columns is None else {str(name) for name in columns}
+    carriers: dict[str, int] = {}
+    for entity in frame.entities:
+        sources = sources_by_entity.get(entity)
+        if sources is None:
+            continue
+        table = frame.table(entity)
+        weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
+        for column in table.columns:
+            if column in structural or column in UK_EXPORTED_WEIGHT_COLUMNS:
+                continue
+            if requested is not None and column not in requested:
+                continue
+            values = table[column]
+            if pd.api.types.is_bool_dtype(values):
+                nonzero = values.fillna(False).to_numpy(dtype=bool)
+            elif pd.api.types.is_numeric_dtype(values):
+                numeric = pd.to_numeric(values, errors="coerce").fillna(0.0)
+                nonzero = numeric.to_numpy(dtype=np.float64) != 0.0
+            else:
+                continue
+            carriers[column] = distinct_count(sources, nonzero, weights)
+    return carriers
+
+
+def uk_input_mass_reference_payload(
+    h5_path: str | Path,
+    *,
+    label: str,
+    filename: str,
+    revision: str,
+    sha256: str,
+    vintage: str = "2024_25",
+) -> dict[str, object]:
+    """The schema-2 input-mass reference a cut writes from its reference build.
+
+    Totals and carriers come from the build's export frame at its own solved
+    weights (:func:`~.weight_year.uk_recorded_solve_year_frame`), so a build
+    an earlier policyengine-uk wrote compares on the weights it was solved
+    with, as the candidate does.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        load_uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.weight_year import uk_recorded_solve_year_frame
+
+    frame, _provenance = load_uk_national_frame(h5_path)
+    export = uk_release_export_frame(uk_recorded_solve_year_frame(frame))
+    return {
+        "schema_version": UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION,
+        "kind": UK_INPUT_MASS_REFERENCE_KIND,
+        "label": label,
+        "identity": {
+            "filename": filename,
+            "revision": revision,
+            "sha256": sha256,
+            "vintage": vintage,
+        },
+        "totals": uk_input_mass_totals(export),
+        "carriers": uk_input_mass_carriers(export),
+    }
+
+
+def _thin_columns(
+    candidate_carriers: Mapping[str, int] | None,
+    reference_carriers: Mapping[str, int] | None,
+) -> frozenset[str]:
+    """Columns one or two source households carry on either side."""
+
+    from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR
+
+    if candidate_carriers is None or reference_carriers is None:
+        return frozenset()
+    return frozenset(
+        column
+        for column in set(candidate_carriers) | set(reference_carriers)
+        if any(
+            0 < count < UK_DISCLOSURE_FLOOR
+            for count in (
+                candidate_carriers.get(column),
+                reference_carriers.get(column),
+            )
+            if count is not None
+        )
+    )
+
+
+def _withheld_failure(message: str, thin: frozenset[str]) -> str:
+    column = message.split(":", 1)[0]
+    if column not in thin:
+        return message
+    return (
+        f"{column}: its mass check failed on a column one or two source "
+        "households carry on one side; the figures are withheld."
+    )
+
+
 def uk_input_mass_parity_gate(
     candidate_totals: Mapping[str, float],
     reference: UKInputMassReference,
@@ -1028,8 +1233,9 @@ def uk_input_mass_parity_gate(
     policy: UKInputMassParityPolicy,
     candidate_name: str = "uk_release_candidate",
     now: date | None = None,
+    candidate_carriers: Mapping[str, int] | None = None,
 ) -> GateResult:
-    """Require persisted UK input mass to survive against a frozen reference.
+    """Require persisted UK input mass to survive against the reference.
 
     Wraps :func:`microcosm.build.gates.input_mass_parity_gate` verbatim — a
     zero candidate total fails at any tolerance (the #278 signature),
@@ -1039,6 +1245,12 @@ def uk_input_mass_parity_gate(
     within tolerance is stale and **fails**; an exclusion outside the audited
     surface (absent from the reference, or below the reference floor) is
     dormant and reported.
+
+    Given both sides' carriers (``candidate_carriers`` and the reference's
+    own), a column one or two source households carry on either side is still
+    checked, but its figures never reach the report: its failure reads by
+    name, and it leaves ``worst_drifts`` for ``withheld_thin_columns``
+    (UKDS disclosure control, microcosm#1095).
     """
 
     if not isinstance(reference, UKInputMassReference):
@@ -1085,7 +1297,8 @@ def uk_input_mass_parity_gate(
         if probe.passed:
             stale.append(column)
 
-    failures = list(base.failures)
+    thin = _thin_columns(candidate_carriers, reference.carriers)
+    failures = [_withheld_failure(message, thin) for message in base.failures]
     if stale:
         failures.append(
             "Stale reviewed input-mass exclusions — the column is within "
@@ -1105,6 +1318,14 @@ def uk_input_mass_parity_gate(
         failures=tuple(failures),
         details={
             **dict(base.details),
+            "worst_drifts": {
+                name: drift
+                for name, drift in dict(base.details["worst_drifts"]).items()
+                if name not in thin
+            },
+            "withheld_thin_columns": sorted(
+                thin & (set(reference.totals) | set(candidate_totals))
+            ),
             "stale_exclusions": stale,
             "dormant_exclusions": dormant,
             "expired_exclusions": expired,
@@ -1113,6 +1334,7 @@ def uk_input_mass_parity_gate(
             "reference": descriptor.name,
             "reference_scope_note": descriptor.scope_note,
             "reference_identity": reference.identity,
+            "reference_label": reference.label,
         },
     )
 

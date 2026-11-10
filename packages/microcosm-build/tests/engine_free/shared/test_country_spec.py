@@ -1835,7 +1835,10 @@ class TestUKGatesManifest:
             params["uk_weight_ratio"]["maximum_max_to_median_ratio"]
             == 1_151.2542195939373
         )
-        assert params["uk_input_mass_parity"]["relative_tolerance"] == 4.521811483823806
+        # The a6299504 -> eeb6093e pair's exact maximum (microcosm#1095).
+        assert (
+            params["uk_input_mass_parity"]["relative_tolerance"] == 5.9984285545209834
+        )
         assert params["uk_input_mass_parity"]["minimum_reference_total"] == 0.0
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]

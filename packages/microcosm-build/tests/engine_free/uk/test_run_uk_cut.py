@@ -44,7 +44,6 @@ def test_every_declared_input_resolves_to_a_committed_pin():
         "aps_2024_25",
         "hmrc_personal_incomes_ods",
         "chronicle_uk",
-        "input_mass_reference",
     }
     for source in sources.values():
         assert source.files
@@ -120,18 +119,6 @@ def test_an_unknown_pin_selector_is_refused(tmp_path):
     path.write_text(json.dumps(manifest))
     with pytest.raises(cut.CutError, match="unknown pin selector"):
         cut.load_input_sources(path)
-
-
-def test_the_hosted_mass_reference_is_the_one_the_gate_binds():
-    from microcosm.build.uk_runtime.weighted_integrity import (
-        UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
-    )
-
-    manifest = json.loads(cut.CUT_INPUTS.read_text())
-    pin = manifest["file_pins"]["uk_input_mass_reference.json"]
-    assert pin["canonical_evidence_sha256"] == UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
-    source = next(s for s in manifest["sources"] if s["key"] == "input_mass_reference")
-    assert source["path_in_repo"].endswith(UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256)
 
 
 def test_every_spine_tab_flag_has_a_pinned_input():
@@ -213,9 +200,14 @@ def _reference(paths: cut.CutPaths, *, build: str = REFERENCE_BUILD, data=b"ref"
         },
         resolved_at="2026-11-10T12:00:00Z",
     )
+    from test_support.microcosm_build.uk_cut_reference import stub_reference_evidence
+
     paths.reference_dir.mkdir(parents=True, exist_ok=True)
     paths.reference_h5(reference).write_bytes(data)
     write_uk_cut_reference(paths.reference_record, reference)
+    stub_reference_evidence(
+        reference, paths.reference_h5(reference), paths.reference_dir
+    )
     return reference
 
 
@@ -1257,6 +1249,12 @@ def test_an_unexpected_hub_error_says_what_it_was(hub, monkeypatch):
 # --------------------------------------------------------------------------- #
 
 
+def _stub_evidence(reference, h5_path, output_dir):
+    from test_support.microcosm_build.uk_cut_reference import stub_reference_evidence
+
+    return stub_reference_evidence(reference, h5_path, output_dir)
+
+
 def _reference_hub(tmp_path):
     from test_support.microcosm_build.uk_cut_reference import (
         UK_NATIONAL_RELEASE,
@@ -1272,7 +1270,9 @@ def test_the_reference_is_resolved_once_and_kept(tmp_path):
     runner, _ = _runner(tmp_path, reference=False)
     hub = _reference_hub(tmp_path)
 
-    reference = cut.run_reference(runner, hub_download=hub)
+    reference = cut.run_reference(
+        runner, hub_download=hub, write_evidence=_stub_evidence
+    )
 
     assert reference.build == REFERENCE_BUILD
     assert runner.paths.reference_h5(reference).read_bytes() == b"current build"
@@ -1282,7 +1282,10 @@ def test_the_reference_is_resolved_once_and_kept(tmp_path):
     # A promotion after the fetch moves nothing in this cut.
     hub.publish(cut.RELEASE_ID, "uk-frs-calibration-attempt-later", dataset=b"newer")
     calls = len(hub.calls)
-    assert cut.run_reference(runner, hub_download=hub).build == REFERENCE_BUILD
+    assert (
+        cut.run_reference(runner, hub_download=hub, write_evidence=_stub_evidence).build
+        == REFERENCE_BUILD
+    )
     assert len(hub.calls) == calls
 
 
@@ -1291,10 +1294,12 @@ def test_re_resolving_sets_the_reference_aside_and_moves_to_the_current_build(
 ):
     runner, _ = _runner(tmp_path, reference=False)
     hub = _reference_hub(tmp_path)
-    cut.run_reference(runner, hub_download=hub)
+    cut.run_reference(runner, hub_download=hub, write_evidence=_stub_evidence)
     hub.publish(cut.RELEASE_ID, "uk-frs-calibration-attempt-later", dataset=b"newer")
 
-    reference = cut.run_reference(runner, re_resolve=True, hub_download=hub)
+    reference = cut.run_reference(
+        runner, re_resolve=True, hub_download=hub, write_evidence=_stub_evidence
+    )
 
     assert reference.build == "uk-frs-calibration-attempt-later"
     kept = list(runner.paths.cut.glob("reference.superseded-*"))
@@ -1305,7 +1310,9 @@ def test_an_unusable_reference_is_never_resolved_over(tmp_path):
     runner, _ = _runner(tmp_path)
     runner.paths.reference_h5(cut.cut_reference(runner.paths)).write_bytes(b"x")
     with pytest.raises(cut.CutError, match="--re-resolve-reference"):
-        cut.run_reference(runner, hub_download=_reference_hub(tmp_path))
+        cut.run_reference(
+            runner, hub_download=_reference_hub(tmp_path), write_evidence=_stub_evidence
+        )
 
 
 def test_a_hub_without_a_certified_current_build_stops_the_cut(tmp_path):
@@ -1320,7 +1327,7 @@ def test_a_hub_without_a_certified_current_build_stops_the_cut(tmp_path):
         evidence={"kind": "uk_release_certification", "shippable": False},
     )
     with pytest.raises(cut.CutError, match="no reference to compare with"):
-        cut.run_reference(runner, hub_download=hub)
+        cut.run_reference(runner, hub_download=hub, write_evidence=_stub_evidence)
     state = json.loads(runner.paths.state.read_text())["steps"]["reference"]
     assert state["status"] == "failed"
 
@@ -1379,3 +1386,36 @@ def test_the_receipt_records_the_reference(tmp_path):
     receipt = json.loads(runner.paths.receipt.read_text())
     assert receipt["reference"]["build"] == REFERENCE_BUILD
     assert "incumbent_efrs" not in receipt["inputs"]
+
+
+def test_the_cut_takes_its_input_mass_reference_from_its_own_reference(tmp_path):
+    """The hosted enhanced-FRS totals are gone; certify reads the totals the
+    reference step wrote from the cut's reference build (microcosm#1095)."""
+
+    manifest = json.loads(cut.CUT_INPUTS.read_text())
+    assert "input_mass_reference" not in {s["key"] for s in manifest["sources"]}
+    assert "file_pins" not in manifest
+    runner, _ = _runner(tmp_path)
+    argv = cut.certify_argv(
+        runner.paths,
+        python="py",
+        candidate_sha256="d" * 64,
+        spine_sha256="e" * 64,
+        sources=runner.sources,
+    )
+    assert argv[argv.index("--input-mass-reference") + 1] == str(
+        runner.paths.reference_input_mass
+    )
+
+
+def test_a_reference_without_its_evidence_gets_it_written_not_re_resolved(tmp_path):
+    runner, _ = _runner(tmp_path)
+    runner.paths.reference_input_mass.unlink()
+    assert not cut.reference_done(runner.paths)[0]
+
+    reference = cut.run_reference(
+        runner, hub_download=None, write_evidence=_stub_evidence
+    )
+
+    assert reference.build == REFERENCE_BUILD
+    assert cut.reference_done(runner.paths)[0]

@@ -1382,7 +1382,11 @@ def test_the_national_graph_review_invariant_is_kept(
 def test_the_review_registers_load_from_the_package():
     registers = REAL_REVIEW_REGISTERS()
     assert len(registers) == 4
-    assert all(registers)
+    # The input-mass register (the second) is empty since the enhanced-FRS
+    # reference retired (microcosm#1095); its entries are signed per build.
+    degenerate, input_mass, exclusions, floor = registers
+    assert degenerate and exclusions and floor
+    assert input_mass == {}
 
 
 def test_out_inside_the_repository_is_refused(build_1, repo, capsys):
