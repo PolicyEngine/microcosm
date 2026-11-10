@@ -1,8 +1,9 @@
 """Engine lockstep for the Carer's Allowance take-up stage (microcosm#1319).
 
 The stage opens the claim flag to carers whose care hours meet the engine's
-condition, who care for a person the engine holds severely disabled
-(microcosm#1418), who report no allowance, and whom the engine's earnings test
+condition, whom cares_for_severely_disabled_person, the input the engine reads,
+holds caring for a severely disabled person (microcosm#1418; A3,
+microcosm#1095), who report no allowance, and whom the engine's earnings test
 holds gainfully employed at the survey year; in Scotland the flag is Carer
 Support Payment's. These tests fail if policyengine-uk moves the hours
 condition or the earnings limit, adds a condition the stage does not read, or
@@ -152,8 +153,8 @@ def _frame():
     """Five 35-hour carers, each living with an 85-year-old in a benefit unit
     of their own: over the limit in Wales and in Scotland, under it in Wales,
     a reporter, and one over the limit in Wales whose household member draws
-    no qualifying benefit. The other four members draw the higher rate of
-    Attendance Allowance."""
+    no qualifying benefit, so the carer link is false for them alone. The
+    other four members draw the higher rate of Attendance Allowance."""
 
     weekly_pay = np.asarray([165.0, 165.0, 120.0, 100.0, 165.0])
     reported = np.asarray([0.0, 0.0, 0.0, 81.9 * 52, 0.0])
@@ -166,6 +167,7 @@ def _frame():
             "employment_income": weekly_pay * 52,
             "care_hours": [35.0] * 5,
             ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS: [35.0] * 5,
+            ca.CARERS_ALLOWANCE_CARER_LINK: [True] * 4 + [False],
             "carers_allowance_reported": reported,
             "would_claim_carers_allowance": reported > 0,
             "aa_category": ["NONE"] * 5,
@@ -181,6 +183,7 @@ def _frame():
             "employment_income": [0.0] * 5,
             "care_hours": [0.0] * 5,
             ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS: [0.0] * 5,
+            ca.CARERS_ALLOWANCE_CARER_LINK: [False] * 5,
             "carers_allowance_reported": [0.0] * 5,
             "would_claim_carers_allowance": [False] * 5,
             "aa_category": ["HIGHER"] * 4 + ["NONE"],

@@ -80,11 +80,12 @@ YEAR_RULE = "survey_year"
 #: and who report no Carer's Allowance that have such a member, on an
 #: identity-keyed uniform balanced by weight within the strata of care hours at
 #: or above the minimum and below it, as carers_allowance_take_up drew its pool
-#: (María's decision (a) of 2026-10-28). A carer with care hours and no link in
-#: the care tab keeps the engine's default, true; everyone else is false. Armed
-#: Forces Independence Payment is not seen: the FRS can't tell it from other
-#: Armed Forces Compensation Scheme payments. The SPI channel takes the link
-#: again on its households from the benefits it re-imputes (spi_income).
+#: before it read this link (María's decision (a) of 2026-10-28). A carer with
+#: care hours and no link in the care tab keeps the engine's default, true;
+#: everyone else is false. Armed Forces Independence Payment is not seen: the
+#: FRS can't tell it from other Armed Forces Compensation Scheme payments. The
+#: SPI channel takes the link again on its households from the benefits it
+#: re-imputes (spi_income).
 CARER_LINK_COLUMN = "cares_for_severely_disabled_person"
 CARER_LINK_PARAMETERS = "the carer link from frs_care_recipients and the disability categories, with gov.dwp.carers_allowance.min_hours at the survey year"
 CARER_LINK_SEED = 0
