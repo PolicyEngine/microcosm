@@ -36,10 +36,14 @@ their versioned names, not their code, as in the UK.
 from __future__ import annotations
 
 import ast
+import contextlib
 import functools
-from collections.abc import Callable
+import importlib
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from types import MappingProxyType
+from types import FunctionType, MappingProxyType, MethodType, ModuleType
+
+import pytest
 
 import microcosm.build.transport as transport_package
 from microcosm.build import graph_atomic_geography
@@ -56,6 +60,7 @@ from microcosm.build.transport.gate_kernels import GateBatteryKernel
 from microcosm.build.transport.registry import build_transport_registry
 from microcosm.calibrate.ordered_kernels import CalibrateOrderedAdamKernel
 from microcosm.frame import rules_kernels
+from microcosm.frame.rules import RulesEngine
 from microcosm.frame.rules_kernels import (
     SimulateCounterfactualKernel,
     SimulateRulesByRefKernel,
@@ -83,9 +88,12 @@ from test_support.microcosm_build.transport_population import UNIT_RULE
 #: What catches an edit to the Frame, whose three modules share it.
 _FRAME_REASON = (
     "the kernels compute on frames, and the executor holds every population "
-    "version in one. No transport key hashes it; the transport graph tests, "
-    "which run composed graphs through run_graph (test_transport_composed_graph "
-    "and test_nz_transport_toy_graph among them), catch an edit that changes a "
+    "version in one. The rule asks no transport kernel to hash it, and an "
+    "edit to it re-keys only the kernels whose keys name it for their own "
+    "reasons (the matrix kernels, the ordered solve, the battery, the rules "
+    "kernels and export among them); the transport graph tests, which run "
+    "composed graphs through run_graph (test_transport_composed_graph and "
+    "test_nz_transport_toy_graph among them), catch an edit that changes a "
     "value on their fixtures, and the Frame's own tests the rest"
 )
 #: The core modules every node runs through, which the rule neither follows
@@ -197,8 +205,10 @@ REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
         "(artifact_types.KERNEL_OUTPUTS), and returns nothing. The table it "
         "reads types the outputs of every kernel, the problem's and the "
         "diagnostics' among them, whose modules (calibrate.artifacts, "
-        "diagnostics.schema) only the kernels that write those outputs "
-        "compute through"
+        "diagnostics.schema) only the kernels that write or read those "
+        "outputs compute through (the battery, the ordered solve and the "
+        "weights audit among the readers), and the rule holds each of those "
+        "to hash them"
     ),
     ("microcosm.build.reference_profiles", "_validate_interval_resolution"): (
         "binds recorded interval scaling to the selected factors, and to the "
@@ -332,7 +342,58 @@ def _package_sources(package) -> list[tuple[str, Path]]:
     ]
 
 
-def test_the_rule_sees_every_kernel_the_transport_registers(tmp_path) -> None:
+@pytest.fixture(scope="module")
+def toy_registry(tmp_path_factory):
+    """build_transport_registry itself, built engine-free with the toy
+    package's engines, and the engines it was handed, by binding id."""
+
+    root = tmp_path_factory.mktemp("rulespec")
+    rows = write_rulespec_tree(root)
+    engines = {row["id"]: ToyRulesEngine(root, row) for row in rows}
+    prepared = build_transport_registry(
+        toy_rules_bindings(rows), root, unit_rule=UNIT_RULE, engines_by_binding=engines
+    )
+    return prepared, MappingProxyType(engines)
+
+
+def _holds(root, targets: frozenset[int]) -> bool:
+    """Whether ``root`` holds an object whose id is in ``targets``, at any
+    depth: through its attributes, slots included, mappings, collections,
+    bound methods, partials and closures."""
+
+    pending, seen = [root], set()
+    while pending:
+        item = pending.pop()
+        if id(item) in targets:
+            return True
+        if id(item) in seen or isinstance(
+            item, type | ModuleType | str | bytes | int | float
+        ):
+            continue
+        seen.add(id(item))
+        if isinstance(item, Mapping):
+            pending.extend((*item.keys(), *item.values()))
+        elif isinstance(item, tuple | list | set | frozenset):
+            pending.extend(item)
+        elif isinstance(item, functools.partial):
+            pending.extend((item.func, *item.args, *item.keywords.values()))
+        elif isinstance(item, MethodType):
+            pending.extend((item.__self__, item.__func__))
+        elif isinstance(item, FunctionType):
+            for cell in item.__closure__ or ():
+                with contextlib.suppress(ValueError):
+                    pending.append(cell.cell_contents)
+        else:
+            pending.extend(getattr(item, "__dict__", {}).values())
+            for cls in type(item).__mro__:
+                slots = getattr(cls, "__slots__", ())
+                for name in (slots,) if isinstance(slots, str) else slots:
+                    with contextlib.suppress(AttributeError):
+                        pending.append(getattr(item, name))
+    return False
+
+
+def test_the_rule_sees_every_kernel_the_transport_registers(toy_registry) -> None:
     """The kernels the rule walks are every kernel class the transport package
     defines, all registered, and the eight the registry registers from
     elsewhere: the shared atomic geography's four, the ordered solve and the
@@ -351,14 +412,7 @@ def test_the_rule_sees_every_kernel_the_transport_registers(tmp_path) -> None:
         SimulateCounterfactualKernel,
         SimulateSolveZeroKernel,
     }
-    # The registry itself, built engine-free with the toy package's engines.
-    rows = write_rulespec_tree(tmp_path)
-    prepared = build_transport_registry(
-        toy_rules_bindings(rows),
-        tmp_path,
-        unit_rule=UNIT_RULE,
-        engines_by_binding={row["id"]: ToyRulesEngine(tmp_path, row) for row in rows},
-    )
+    prepared, _ = toy_registry
     assert {
         ref: type(prepared.kernels.get(ref)) for ref in prepared.kernels.refs()
     } == {ref: type(kernel) for ref, kernel in kernels.items()}
@@ -463,13 +517,16 @@ def test_the_kernel_rule_stops_only_where_its_reasons_hold() -> None:
                 assert id(sub) in hashing, (module, sub.lineno)
 
 
-def test_the_registry_hands_the_kernels_what_the_tables_list() -> None:
-    """build_transport_registry builds AxiomEngine engines and hands their
-    mapping to exactly the rules kernels and the evidence producers, which
-    hand it to the input closure alone (it also returns the mapping, in the
-    TransportRegistry its caller runs the graph with), and builds the battery
-    with the transport gate registry: the objects ``HANDED_CLASSES`` and
-    ``HANDED_VALUES`` list for those kernels."""
+def test_the_registry_hands_the_kernels_what_the_tables_list(toy_registry) -> None:
+    """build_transport_registry builds AxiomEngine engines, and no other
+    rules-engine class, and hands their mapping to exactly the rules kernels
+    and the evidence producers, which hand it to the input closure alone (it
+    also returns the mapping, in the TransportRegistry its caller runs the
+    graph with), and builds the battery with the transport gate registry: the
+    objects ``HANDED_CLASSES`` and ``HANDED_VALUES`` list for those kernels.
+    Built with the toy package's engines, the registry's kernels that hold
+    one of the engines it was handed, however they hold it, are exactly the
+    kernels ``HANDED_CLASSES`` lists."""
     builder = module_definitions(registry.__name__, FIRST_PARTY_SCOPE).definitions[
         "build_transport_registry"
     ]
@@ -487,12 +544,23 @@ def test_the_registry_hands_the_kernels_what_the_tables_list() -> None:
             for callee, call in called(node, module)
             if any(
                 isinstance(value, ast.Name) and value.id == argument
-                for value in call.args
+                for value in (*call.args, *(item.value for item in call.keywords))
             )
         }
 
     calls = called(builder, registry.__name__)
-    assert ENGINE_CLASS in {callee for callee, _ in calls}
+    protocol = {name for name in vars(RulesEngine) if not name.startswith("_")}
+    built = {
+        found
+        for sub in ast.walk(builder)
+        if isinstance(sub, ast.Call)
+        for found in _RULE.named(registry.__name__, sub.func)
+        if isinstance(
+            definition := getattr(importlib.import_module(found[0]), found[1]), type
+        )
+        and protocol <= set(dir(definition))
+    }
+    assert built == {ENGINE_CLASS}
     assert handed(builder, registry.__name__, "engine_mapping") == {
         (rules_kernels.__name__, "SimulateRulesByRefKernel"),
         (rules_kernels.__name__, "SimulateCounterfactualKernel"),
@@ -513,6 +581,14 @@ def test_the_registry_hands_the_kernels_what_the_tables_list() -> None:
         SimulateSolveZeroKernel,
         evidence_kernels.TransportInputClosureKernel,
     }
+    prepared, engines = toy_registry
+    injected = frozenset(map(id, engines.values()))
+    holding = {
+        ref
+        for ref in prepared.kernels.refs()
+        if _holds(prepared.kernels.get(ref), injected)
+    }
+    assert holding == set(HANDED_CLASSES), sorted(holding ^ set(HANDED_CLASSES))
     (battery,) = [
         call
         for callee, call in calls
