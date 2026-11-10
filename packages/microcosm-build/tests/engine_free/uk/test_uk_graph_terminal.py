@@ -1589,3 +1589,10 @@ def test_the_dense_gates_refuse_references_of_two_builds() -> None:
         _require_one_reference(
             {"input_mass_reference": mass, "reference_surface": other}
         )
+    # Two files of one national build agree with each other, but the dense
+    # line compares with its own current build (the review of microcosm#1574).
+    national = SimpleNamespace(label="microcosm-uk-2024-25-national@b", sha256="3" * 64)
+    with pytest.raises(ValueError, match="not a build of microcosm-uk-2024-25-dense"):
+        _require_one_reference(
+            {"input_mass_reference": national, "reference_surface": national}
+        )

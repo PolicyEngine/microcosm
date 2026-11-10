@@ -170,6 +170,15 @@ class UKReferenceHub:
             entry["current"] = build
         self._write_record()
 
+    def withdraw(self, release: str, build: str, *, current: str | None = None) -> None:
+        """Mark ``build`` withdrawn; the release's current moves to ``current``."""
+
+        entry = self._releases[release]
+        entry["builds"][build]["withdrawn"] = True
+        if entry["current"] == build or current is not None:
+            entry["current"] = current
+        self._write_record()
+
     def __call__(
         self,
         *,

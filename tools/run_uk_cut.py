@@ -71,6 +71,7 @@ from microcosm.build.uk_runtime.cut_reference import (
     fetch_uk_cut_reference,
     read_uk_cut_reference,
     uk_cut_reference_evidence_done,
+    uk_cut_reference_withdrawal,
     verify_uk_cut_reference_file,
     write_uk_cut_reference_evidence,
 )
@@ -1542,6 +1543,20 @@ def run_reference(
     """
 
     paths = runner.paths
+    if re_resolve and (paths.run_dir / "build_record.json").exists():
+        # After the cut's own promotion the line's current build is this
+        # candidate, and a comparison with itself passes every gate (the review
+        # of microcosm#1574). Checked before the recorded reference moves.
+        current = check_uk_cut_reference(RELEASE_ID, hub_download=hub_download)
+        record = _read_json(paths.run_dir / "build_record.json") or {}
+        if current.get("sha256") == candidate_sha256(paths) or current.get(
+            "build"
+        ) == record.get("build_id"):
+            raise CutError(
+                f"the national line's current build {current.get('build')} is this "
+                "cut's own candidate; a cut cannot compare with itself, so keep the "
+                "recorded reference (drop --re-resolve-reference)."
+            )
     if re_resolve and paths.reference_dir.exists():
         aside = paths.reference_dir.with_name(
             f"reference.superseded-{datetime.now(UTC):%Y%m%dT%H%M%S%fZ}"
@@ -1673,6 +1688,14 @@ def run_certify(runner: Runner) -> None:
     if done:
         runner.log(f"[certify] done: {detail}")
         return
+    # Withdrawal is checked at fetch; a build withdrawn since must not certify
+    # (the review of microcosm#1574). Read-only: the cut keeps its record.
+    withdrawn = uk_cut_reference_withdrawal(cut_reference(paths))
+    if withdrawn:
+        raise CutError(
+            f"{withdrawn}; the cut keeps its recorded reference, so pass "
+            "--re-resolve-reference to compare with the line's current build."
+        )
     _set_aside(
         runner,
         "certify",
@@ -1819,6 +1842,31 @@ def run_publish(runner: Runner, tag: str, *, publish: bool) -> None:
     )
 
 
+def _build_time_evaluation(paths: CutPaths) -> dict[str, Any] | None:
+    """The national build's own comparison, and whether the cut superseded it.
+
+    After ``--re-resolve-reference`` the national step is not rerun, so the
+    build's manifest still names the earlier reference while the score
+    receipt and the certification name the cut's (the review of
+    microcosm#1574).
+    """
+
+    manifest = _read_json(paths.run_dir / "rowwise_candidate_manifest.json") or {}
+    evaluation = manifest.get("evaluation")
+    if not isinstance(evaluation, Mapping) or "reference" not in evaluation:
+        return None
+    built_against = str(evaluation["reference"])
+    current = (
+        read_uk_cut_reference(paths.reference_record).label
+        if paths.reference_record.exists()
+        else None
+    )
+    return {
+        "reference": built_against,
+        "superseded": current is not None and built_against != current,
+    }
+
+
 def write_receipt(runner: Runner, extra: Mapping[str, Any]) -> None:
     paths = runner.paths
     receipt = {
@@ -1845,6 +1893,7 @@ def write_receipt(runner: Runner, extra: Mapping[str, Any]) -> None:
             if paths.reference_record.exists()
             else None
         ),
+        "build_time_evaluation": _build_time_evaluation(paths),
         "spine_sha256": spine_sha256(paths),
         "candidate_sha256": candidate_sha256(paths)
         if (paths.run_dir / "build_record.json").exists()
@@ -2005,7 +2054,7 @@ def preflight(args: argparse.Namespace, paths: CutPaths) -> list[Check]:
     return checks
 
 
-def status(paths: CutPaths, *, check_current=None) -> None:
+def status(paths: CutPaths, *, check_current=None, check_withdrawal=None) -> None:
     print(f"cut {paths.cut}")
     for name, check in (
         ("reference", reference_done),
@@ -2021,17 +2070,22 @@ def status(paths: CutPaths, *, check_current=None) -> None:
             done, detail = False, f"not reached ({type(error).__name__})"
         print(f"  {'done' if done else 'todo'} {name}: {detail}")
     if paths.reference_record.exists():
-        print(f"  {_current_build_note(paths, check_current)}")
+        print(f"  {_current_build_note(paths, check_current, check_withdrawal)}")
 
 
-def _current_build_note(paths: CutPaths, check_current=None) -> str:
+def _current_build_note(
+    paths: CutPaths, check_current=None, check_withdrawal=None
+) -> str:
     """Whether the national line's current build has moved since the fetch."""
 
     recorded = read_uk_cut_reference(paths.reference_record)
     try:
         current = (check_current or check_uk_cut_reference)(RELEASE_ID)
+        withdrawn = (check_withdrawal or uk_cut_reference_withdrawal)(recorded)
     except Exception as error:  # the Hub's answer is only a note here
         return f"note: could not read the current build ({type(error).__name__})"
+    if withdrawn:
+        return f"note: {withdrawn} (--re-resolve-reference to move it)"
     if current.get("build") == recorded.build:
         return "note: the reference is still the current national build"
     return (

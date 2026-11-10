@@ -251,3 +251,30 @@ def test_certifier_refuses_a_reference_surface_of_another_build(tmp_path: Path):
     assert certify._reference_surface(args).label == (
         "microcosm-uk-2024-25-national@build-a"
     )
+
+
+def test_certifier_refuses_a_reference_record_of_the_dense_line(tmp_path: Path):
+    """The certifier compares a national cut with the national line's current
+    build (the review of microcosm#1574)."""
+
+    import argparse
+
+    record = tmp_path / "reference.json"
+    record.write_text(
+        json.dumps(
+            {
+                "release": "microcosm-uk-2024-25-dense",
+                "build": "uk-local-candidate-x",
+                "sha256": "1" * 64,
+            }
+        )
+    )
+    args = argparse.Namespace(
+        reference_record=record,
+        reference_surface=tmp_path / "reference_surface.json",
+        input_mass_reference=tmp_path / "input_mass_reference.json",
+    )
+    with pytest.raises(SystemExit, match="national line's current build"):
+        certify._reference_surface(args)
+    with pytest.raises(SystemExit, match="national line's current build"):
+        certify._input_mass_reference(args)

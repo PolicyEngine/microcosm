@@ -85,6 +85,17 @@ def main(
     write_evidence=write_uk_cut_reference_evidence,
 ) -> int:
     args = _parse_args(argv)
+    from microcosm.build.staging_dataset import hub_offline
+
+    if hub_offline():
+        # A cached releases.json can name a build that is no longer current
+        # (the review of microcosm#1574); run_uk_cut refuses offline too.
+        print(
+            "refused: unset HF_HUB_OFFLINE: the reference is the line's current "
+            "build, which only the Hub's releases.json can say.",
+            file=sys.stderr,
+        )
+        return 1
     try:
         if args.check:
             summary = check_uk_cut_reference(args.release, hub_download=hub_download)

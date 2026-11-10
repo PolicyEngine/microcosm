@@ -6,8 +6,10 @@ incident:
 
 - **Input-mass parity** (#278): a rebuilt or selected artifact can zero an
   untargeted input column while every calibrated target still fits. The gate
-  compares weighted per-column totals against a frozen reference; total loss
-  fails at any tolerance.
+  compares weighted per-column totals against the current build of the cut's
+  own line (microcosm#1095; until then a frozen enhanced-FRS reference);
+  total loss fails at any tolerance, and so does a drop past the reviewed
+  share.
 - **QRF tail concentration** (#462): a weighted QRF can broadcast a
   donor-tail point mass so a handful of records carry most of a column's
   shipped weighted mass while the paired count target is hit exactly. The
@@ -1002,9 +1004,9 @@ class UKInputMassParityPolicy:
 
     There are deliberately no defaults: the US tolerances (0.5 relative, a
     $1e9 USD floor over a 337k-record pool) are calibrated to US incidents
-    and dollar scales. UK values must come from the #609 measurement pass
-    over the certified compact, the pinned eFRS incumbent, and the staging
-    candidate, and be recorded with their derivation when committed.
+    and dollar scales. UK values are measured between consecutive certified
+    builds of a line, the current build being the reference (microcosm#1095),
+    and are recorded with their derivation when committed.
     """
 
     relative_tolerance: float

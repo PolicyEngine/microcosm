@@ -216,3 +216,19 @@ def test_a_malformed_record_is_refused(hub, mutate) -> None:
 
     with pytest.raises(ValueError):
         UKCutReference.from_record(record)
+
+
+def test_a_build_withdrawn_after_the_fetch_no_longer_stands(hub) -> None:
+    """The review of microcosm#1574 (S2): withdrawal is re-read, read-only."""
+
+    from microcosm.build.uk_runtime.cut_reference import uk_cut_reference_withdrawal
+
+    _, reference = resolve_uk_cut_reference(UK_NATIONAL_RELEASE, hub_download=hub)
+    assert uk_cut_reference_withdrawal(reference, hub_download=hub) is None
+    hub.publish(UK_NATIONAL_RELEASE, "uk-frs-calibration-attempt-later", dataset=b"x")
+    # A promotion alone leaves the recorded build standing.
+    assert uk_cut_reference_withdrawal(reference, hub_download=hub) is None
+    hub.withdraw(UK_NATIONAL_RELEASE, reference.build)
+    assert uk_cut_reference_withdrawal(reference, hub_download=hub) == (
+        f"{reference.label} has been withdrawn since the cut resolved it"
+    )

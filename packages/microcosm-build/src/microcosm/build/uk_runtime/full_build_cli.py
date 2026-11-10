@@ -3292,7 +3292,6 @@ def _execute_national_build(
         "measure_resolution": evidence["calibration"].get("measure_resolution"),
         "register": evidence["register"],
         "spine_provenance": spine_provenance,
-        "score_vs_enhanced_frs": None,
     }
     stage(telemetry, "diagnostics", "started")
     diagnostics_outcome = write_uk_calibration_diagnostics(

@@ -687,3 +687,35 @@ def test_compose_refuses_a_receipt_scored_under_another_register(
     path.write_text(json.dumps(receipt), encoding="utf-8")
     certification = compose_uk_release_certification(**green_certification_inputs)
     assert certification["score_receipt"]["evaluation"]["n_pruned"] == 1
+
+
+def test_compose_refuses_a_reference_that_is_the_candidate_itself(
+    green_certification_inputs,
+):
+    """The review of microcosm#1574 (S1): after the cut's own promotion,
+    re-resolving would compare the candidate with itself."""
+
+    by_sha = dict(green_certification_inputs)
+    by_sha["reference_record"] = {
+        **by_sha["reference_record"],
+        "sha256": by_sha["candidate_sha256"],
+    }
+    with pytest.raises(UKReleaseCertificationError, match="candidate itself"):
+        compose_uk_release_certification(**by_sha)
+    by_build = dict(green_certification_inputs)
+    by_build["build_record"] = {
+        **by_build["build_record"],
+        "build_id": by_build["reference_record"]["build"],
+    }
+    with pytest.raises(UKReleaseCertificationError, match="candidate itself"):
+        compose_uk_release_certification(**by_build)
+
+
+def test_compose_refuses_a_reference_of_another_line(green_certification_inputs):
+    inputs = dict(green_certification_inputs)
+    inputs["reference_record"] = {
+        **inputs["reference_record"],
+        "release": "microcosm-uk-2024-25-dense",
+    }
+    with pytest.raises(UKReleaseCertificationError, match="national line"):
+        compose_uk_release_certification(**inputs)

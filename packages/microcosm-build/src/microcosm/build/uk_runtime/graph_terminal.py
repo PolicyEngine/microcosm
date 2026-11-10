@@ -652,14 +652,27 @@ def decode_full_gate_report(payload: bytes | Mapping):
 
 
 def _require_one_reference(supporting: Mapping[str, Any]) -> None:
-    """Refuse an input-mass reference and a surface of two different builds.
+    """Refuse references of two builds, or of another line than the dense one.
 
     The dense line compares with one build, its current one (microcosm#1095):
-    both files come from ``tools/resolve_uk_reference.py`` for that build.
+    both files come from ``tools/resolve_uk_reference.py`` for that build. A
+    national build's files agree with each other, so the line is checked too
+    (the review of microcosm#1574).
     """
+
+    from .release_identity import UK_DENSE_RELEASE_ID
 
     mass = supporting.get("input_mass_reference")
     surface = supporting.get("reference_surface")
+    for name, evidence in (("input-mass reference", mass), ("surface", surface)):
+        if evidence is not None and not str(evidence.label).startswith(
+            f"{UK_DENSE_RELEASE_ID}@"
+        ):
+            raise ValueError(
+                f"The dense build's {name} names {evidence.label}, not a build of "
+                f"{UK_DENSE_RELEASE_ID}; resolve it with tools/resolve_uk_reference.py "
+                f"--release {UK_DENSE_RELEASE_ID}."
+            )
     if mass is None or surface is None:
         return
     if (mass.label, mass.sha256) != (surface.label, surface.sha256):

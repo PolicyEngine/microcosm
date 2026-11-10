@@ -437,8 +437,23 @@ def compose_uk_release_certification(
     """
 
     from microcosm.build.uk_runtime.cut_reference import UKCutReference
+    from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
 
     reference = UKCutReference.from_record(reference_record)
+    if reference.release != UK_NATIONAL_RELEASE_ID:
+        raise UKReleaseCertificationError(
+            f"A national certification compares with the national line; the "
+            f"reference record names {reference.label}."
+        )
+    # After a promotion, re-resolving would name the candidate itself, and a
+    # comparison with itself passes every gate (the review of microcosm#1574).
+    if reference.sha256 == candidate_sha256 or reference.build == build_record.get(
+        "build_id"
+    ):
+        raise UKReleaseCertificationError(
+            f"The cut's reference {reference.label} is the candidate itself; a "
+            "cut cannot be certified against its own build."
+        )
     parts_raw = {
         "spine": _load_part(spine_report_path),
         "calibration_seam": _load_part(seam_report_path),

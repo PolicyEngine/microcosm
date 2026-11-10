@@ -473,7 +473,7 @@ records a `rotated_holdout` limitation with `claim: report_only` and the
 coverage's `holdout` block (`run: true`); without it, `no_out_of_sample_claim`
 and `holdout: {run: false, claim: none}`.
 
-**Incumbent comparison.** Score the candidate, then measure the pinned
+**Incumbent comparison.** This local score still compares with the uk-data incumbent's area weights: it is a different comparison from the gates' reference build (microcosm#1095), and that change leaves it as it was. Score the candidate, then measure the pinned
 incumbent surface:
 
 ```bash

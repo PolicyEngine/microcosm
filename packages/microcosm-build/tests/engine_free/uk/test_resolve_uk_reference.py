@@ -83,3 +83,14 @@ def test_a_release_without_a_certified_current_build_is_refused(
         tool.main(["--release", UK_NATIONAL_RELEASE, "--check"], hub_download=hub) == 1
     )
     assert "refused" in capsys.readouterr().err
+
+
+def test_offline_mode_is_refused(monkeypatch, capsys) -> None:
+    """A cached releases.json can name a build that is no longer current (the
+    review of microcosm#1574); run_uk_cut refuses offline mode too."""
+
+    from microcosm.build import staging_dataset
+
+    monkeypatch.setattr(staging_dataset, "hub_offline", lambda: True)
+    assert tool.main(["--release", "microcosm-uk-2024-25-national", "--check"]) == 1
+    assert "HF_HUB_OFFLINE" in capsys.readouterr().err

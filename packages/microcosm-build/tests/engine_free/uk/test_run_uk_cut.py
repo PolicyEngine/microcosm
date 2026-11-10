@@ -584,6 +584,14 @@ class FakeBuild:
         pass
 
 
+@pytest.fixture(autouse=True)
+def _recorded_reference_stands(monkeypatch):
+    """The certify step and status re-read the recorded build's standing on
+    the Hub; it stands unless a test withdraws it."""
+
+    monkeypatch.setattr(cut, "uk_cut_reference_withdrawal", lambda reference: None)
+
+
 def _runner(tmp_path, fake=None, signer=None, *, reference=True):
     paths = _paths(tmp_path)
     if reference:
@@ -1419,3 +1427,76 @@ def test_a_reference_without_its_evidence_gets_it_written_not_re_resolved(tmp_pa
 
     assert reference.build == REFERENCE_BUILD
     assert cut.reference_done(runner.paths)[0]
+
+
+def test_a_reference_withdrawn_since_the_fetch_stops_certification(
+    tmp_path, monkeypatch
+):
+    """The review of microcosm#1574 (S2): the cut keeps its record, and a
+    build withdrawn since it resolved it does not certify."""
+
+    runner, fake = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    cut.run_score(runner)
+    monkeypatch.setattr(
+        cut,
+        "uk_cut_reference_withdrawal",
+        lambda reference: (
+            f"{reference.label} has been withdrawn since the cut resolved it"
+        ),
+    )
+    with pytest.raises(cut.CutError, match="withdrawn since the cut resolved it"):
+        cut.run_certify(runner)
+    assert "certify" not in fake.calls
+    out = io.StringIO()
+    with redirect_stdout(out):
+        cut.status(
+            runner.paths, check_current=lambda release: {"build": REFERENCE_BUILD}
+        )
+    assert "has been withdrawn since the cut resolved it" in out.getvalue()
+
+
+def test_re_resolving_refuses_the_cut_s_own_candidate(tmp_path):
+    """The review of microcosm#1574 (S1): after the cut's own promotion the
+    line's current build is this candidate."""
+
+    from test_support.microcosm_build.uk_cut_reference import UKReferenceHub
+
+    runner, _ = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    hub = UKReferenceHub(tmp_path / "hub-root")
+    hub.publish(cut.RELEASE_ID, "uk-frs-calibration-attempt-mine", dataset=b"candidate")
+    before = runner.paths.reference_record.read_text()
+    with pytest.raises(cut.CutError, match="own candidate"):
+        cut.run_reference(
+            runner, re_resolve=True, hub_download=hub, write_evidence=_stub_evidence
+        )
+    # The recorded reference never moved.
+    assert runner.paths.reference_record.read_text() == before
+    assert not list(runner.paths.cut.glob("reference.superseded-*"))
+
+
+def test_the_receipt_says_when_the_build_time_evaluation_is_superseded(tmp_path):
+    """The review of microcosm#1574 (N8): after --re-resolve-reference the
+    national step is not rerun, so its own comparison names the old build."""
+
+    runner, _ = _runner(tmp_path)
+    paths = runner.paths
+    assert cut._build_time_evaluation(paths) is None
+    paths.run_dir.mkdir(parents=True)
+    recorded = cut.read_uk_cut_reference(paths.reference_record).label
+    manifest = paths.run_dir / "rowwise_candidate_manifest.json"
+    manifest.write_text(json.dumps({"evaluation": {"reference": recorded}}))
+    assert cut._build_time_evaluation(paths) == {
+        "reference": recorded,
+        "superseded": False,
+    }
+    manifest.write_text(
+        json.dumps({"evaluation": {"reference": f"{cut.RELEASE_ID}@earlier"}})
+    )
+    assert cut._build_time_evaluation(paths) == {
+        "reference": f"{cut.RELEASE_ID}@earlier",
+        "superseded": True,
+    }

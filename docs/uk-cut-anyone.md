@@ -270,6 +270,17 @@ uv run --no-sync python tools/resolve_uk_reference.py --release microcosm-uk-202
 `reference.superseded-<time>`) and resolves the current build again; the
 score and the certification then run again against it.
 
+It refuses to move to the cut's own candidate, which becomes the current build
+once the cut is promoted. A build withdrawn after the fetch stops the certify
+step, and `status` says so; the cut keeps its record until
+`--re-resolve-reference` moves it.
+
+A line with no current build cannot be cut yet: a new line, or one whose only
+current build was withdrawn (`current: null`), refuses at the reference step
+until `releases.json` names a current build again. There is no way yet to pin
+a listed build instead. The release ids and the registry year are code
+constants, so the next FRS year needs a code change too.
+
 ## Signing keys
 
 Gate reports, release-cut certifications and dense gate reports are signed

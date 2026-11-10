@@ -67,6 +67,7 @@ from microcosm.build.uk_runtime.release_certification import (
     run_uk_release_cut_battery,
     uk_release_parity_evidence,
 )
+from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
 )
@@ -394,6 +395,24 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     }
 
 
+def _national_reference_record(args: argparse.Namespace) -> dict:
+    """The cut's reference record, refused unless it names a national build.
+
+    The certifier certifies the national line, so its reference is the
+    national line's (the review of microcosm#1574): a dense build's files
+    agree with a dense record, so the line itself is checked here.
+    """
+
+    reference = json.loads(args.reference_record.read_text())
+    if reference.get("release") != UK_NATIONAL_RELEASE_ID:
+        raise SystemExit(
+            f"error: the reference record names {reference.get('release')}, not "
+            f"{UK_NATIONAL_RELEASE_ID}; the certifier compares a national cut with "
+            "the national line's current build."
+        )
+    return reference
+
+
 def _input_mass_reference(args: argparse.Namespace):
     """The cut's input-mass reference, refused unless it is the cut's reference.
 
@@ -401,7 +420,7 @@ def _input_mass_reference(args: argparse.Namespace):
     the reference record names it, and the input-mass file must too.
     """
 
-    reference = json.loads(args.reference_record.read_text())
+    reference = _national_reference_record(args)
     loaded = load_uk_input_mass_reference(args.input_mass_reference)
     label = f"{reference.get('release')}@{reference.get('build')}"
     if loaded.label != label or loaded.sha256 != reference.get("sha256"):
@@ -420,7 +439,7 @@ def _reference_surface(args: argparse.Namespace):
     score and the input-mass gate compare with (microcosm#1095).
     """
 
-    reference = json.loads(args.reference_record.read_text())
+    reference = _national_reference_record(args)
     loaded = load_uk_reference_surface(args.reference_surface)
     label = f"{reference.get('release')}@{reference.get('build')}"
     if loaded.label != label or loaded.sha256 != reference.get("sha256"):

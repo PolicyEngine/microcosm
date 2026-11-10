@@ -49,6 +49,7 @@ __all__ = [
     "read_uk_cut_reference",
     "resolve_uk_cut_reference",
     "uk_cut_reference_evidence_done",
+    "uk_cut_reference_withdrawal",
     "uk_input_mass_reference_payload",
     "verify_uk_cut_reference_file",
     "write_uk_cut_reference",
@@ -310,6 +311,40 @@ def _checked_evidence(
     else:
         _check_dense_gate_summary(payload, release=release, build=certified.build)
     return {"key": evidence_key, "filename": path.name, "sha256": _sha256(path)}
+
+
+def uk_cut_reference_withdrawal(
+    reference: UKCutReference, *, hub_download: _HubDownload | None = None
+) -> str | None:
+    """Why the cut's recorded reference no longer stands, read-only, or None.
+
+    A build is usually withdrawn because something is wrong with it, so a cut
+    that resolved it earlier must not certify against it afterwards (the
+    review of microcosm#1574). Reads the release record only and never moves
+    the cut to another build: that stays the operator's
+    ``--re-resolve-reference``.
+    """
+
+    from microcosm.data.releases_record import (
+        RELEASES_RECORD_PATH,
+        parse_releases_record,
+    )
+
+    if hub_download is None:
+        from huggingface_hub import hf_hub_download as hub_download
+    path = hub_download(
+        repo_id=reference.repo_id, filename=RELEASES_RECORD_PATH, repo_type="dataset"
+    )
+    record = parse_releases_record(Path(path).read_bytes())
+    entry = record.releases.get(reference.release)
+    if entry is None:
+        return f"{RELEASES_RECORD_PATH} no longer lists {reference.release}"
+    build = entry.builds.get(reference.build)
+    if build is None:
+        return f"{RELEASES_RECORD_PATH} no longer lists {reference.label}"
+    if build.withdrawn:
+        return f"{reference.label} has been withdrawn since the cut resolved it"
+    return None
 
 
 def check_uk_cut_reference(
