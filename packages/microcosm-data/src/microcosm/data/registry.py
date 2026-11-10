@@ -37,7 +37,13 @@ class DatasetSpec:
         hf_repo: The Hugging Face **dataset** repo holding the artifact, e.g.
             ``"policyengine/populace-us"``.
         filename: The artifact filename within ``hf_repo``, e.g.
-            ``"populace_us_2024.h5"``.
+            ``"populace_us_2024.h5"``: the file at the repository's root,
+            and the name a tagged build's manifest declares.
+        build_folder_filename: The dataset file name new builds of
+            ``release`` declare, when it differs from ``filename``: the US
+            national release's builds declare ``microcosm_us_2024.h5``,
+            while the builds the US switch moved into folders keep
+            ``filename``. The loader accepts either for a listed build.
         engine_module: The importable module holding the dataset class, e.g.
             ``"policyengine_us.data"``.
         engine_class: The class in ``engine_module`` that reads the H5 and is
@@ -69,6 +75,14 @@ class DatasetSpec:
     variant: str = DEFAULT_VARIANT
     pointer_path: str = "latest.json"
     release: str | None = None
+    build_folder_filename: str | None = None
+
+    @property
+    def dataset_filenames(self) -> tuple[str, ...]:
+        """The dataset file names a build of this entry may declare."""
+        if self.build_folder_filename is None:
+            return (self.filename,)
+        return (self.filename, self.build_folder_filename)
 
     @property
     def key(self) -> tuple[str, int, str]:
@@ -189,5 +203,11 @@ register(
         engine_module="policyengine_us.data",
         engine_class="USSingleYearDataset",
         engine_package="policyengine-us",
+        # Every US national build goes into this release once the repository
+        # records its builds in releases.json (microcosm#1570); until then
+        # the loader follows latest.json. New builds declare the new file
+        # name; the builds the switch moved keep populace_us_2024.h5.
+        release="microcosm-us-2024-national",
+        build_folder_filename="microcosm_us_2024.h5",
     )
 )

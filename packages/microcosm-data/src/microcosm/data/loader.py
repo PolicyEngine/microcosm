@@ -466,10 +466,14 @@ def _certified_release_from_manifest(
             f"{artifact_repo_id!r} "
             f"does not match registry repo {spec.hf_repo!r}."
         )
-    if artifact_path != spec.filename:
+    accepted_paths = (
+        spec.dataset_filenames if build_folder_release else (spec.filename,)
+    )
+    if artifact_path not in accepted_paths:
+        expected = " or ".join(repr(name) for name in accepted_paths)
         raise ValueError(
             f"Release {release_id!r} {artifact_label} artifact path {artifact_path!r} "
-            f"does not match registry filename {spec.filename!r}."
+            f"does not match registry filename {expected}."
         )
     if not isinstance(artifact_sha256, str) or not _SHA256_PATTERN.fullmatch(
         artifact_sha256
