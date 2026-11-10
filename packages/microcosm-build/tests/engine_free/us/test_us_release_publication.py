@@ -7,6 +7,8 @@ tests never start an emitter or reach the Hub.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from microcosm.build import release_publication
@@ -194,3 +196,78 @@ def test_a_recertification_is_never_promoted(tmp_path, monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="compatibility recertification"):
         release_publication.promote_release_build(release_dir, client=_NoEmitter())
+
+
+#: A compatibility narrowing an earlier certification recorded.
+NARROWED_RECORD = {"model": {"from": "policyengine-us>=2.2.1,<3", "to": "==2.2.1"}}
+#: The versions a declared compatibility range was measured against.
+MEASURED_RECORD = {"policyengine-us": {"measured": ["2.2.1"]}}
+
+
+def _with_claim_records(tmp_path, monkeypatch):
+    """A national release directory whose build records a narrowing and a
+    claim measurement, with its checks passing."""
+    from microcosm.data import source_enrichment
+
+    release_dir = tmp_path / "microcosm-us-2024-national"
+    release_dir.mkdir()
+    monkeypatch.setattr(
+        release_publication, "publication_refusal", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "prepare_build_folder_release",
+        lambda path, **_kwargs: _prepared(path),
+    )
+    monkeypatch.setattr(
+        source_enrichment, "recorded_narrowed_claims", lambda _path: NARROWED_RECORD
+    )
+    monkeypatch.setattr(
+        source_enrichment, "recorded_claim_measurement", lambda _path: MEASURED_RECORD
+    )
+    return release_dir
+
+
+def test_the_preflight_reports_the_builds_claim_records(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """As the tagged command did, the preflight's verdict carries an
+    enrichment's or recertification's recorded narrowing and claim
+    measurement, and stderr says both for whoever reads it (microcosm#1570)."""
+    release_dir = _with_claim_records(tmp_path, monkeypatch)
+
+    exit_code = release_publication.main([str(release_dir), "--preflight-only"])
+
+    output = capsys.readouterr()
+    assert exit_code == 0
+    verdict = json.loads(output.out)
+    assert verdict["narrowed_claims"] == NARROWED_RECORD
+    assert verdict["claim_measurement"] == MEASURED_RECORD
+    assert "compatibility narrowing" in output.err
+    assert "measured against only the versions recorded here" in output.err
+
+
+def test_publication_says_the_builds_claim_records_on_stderr(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """Publication needs no preflight first, so it says the same records."""
+    from types import SimpleNamespace
+
+    release_dir = _with_claim_records(tmp_path, monkeypatch)
+    outcome = SimpleNamespace(
+        as_json=lambda: {"published": True},
+        explanation=lambda: "published",
+        succeeded=True,
+    )
+    monkeypatch.setattr(
+        release_publication,
+        "publish_release_build",
+        lambda *_args, **_kwargs: outcome,
+    )
+
+    exit_code = release_publication.main([str(release_dir)])
+
+    error_output = capsys.readouterr().err
+    assert exit_code == 0
+    assert "compatibility narrowing" in error_output
+    assert "measured against only the versions recorded here" in error_output
