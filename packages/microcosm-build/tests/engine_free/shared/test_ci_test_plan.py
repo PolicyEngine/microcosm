@@ -1898,13 +1898,15 @@ def _country_words(name: str) -> set[str]:
     return words & {"us", "uk"}
 
 
-def _tool_scope(name: str) -> str | None:
-    """The scope of a file below ``tools/``: a country when it is a word of the
-    file name and the other country's letters appear nowhere in the name."""
+def _tool_scope(path: str) -> str | None:
+    """The scope of a file below ``tools/`` that no earlier rule claims: a
+    country when it is a word of the file name and the other country's letters
+    appear nowhere in the lower-cased path."""
 
+    name = path.rsplit("/", 1)[-1]
     if PurePosixPath(name).suffix.lower() in ci_test_plan.DOC_SUFFIXES:
         return None
-    words, lowered = _country_words(name), name.lower()
+    words, lowered = _country_words(name), path.lower()
     if "us" in words and "uk" not in lowered:
         return "us"
     if "uk" in words and "us" not in lowered:
@@ -1930,38 +1932,49 @@ def _tool_names(draw: st.DrawFn) -> str:
     return name
 
 
-@_PROPERTY
-@given(name=_tool_names())
-def test_a_tool_belongs_to_a_country_exactly_when_its_name_holds_it_alone(
-    name: str,
-) -> None:
-    """Invariant: a file below ``tools/`` that isn't documentation scopes to a
-    country exactly when that country is a word of its file name and the
-    other country's letters appear nowhere in the name, and to shared
-    otherwise."""
+@st.composite
+def _tool_paths(draw: st.DrawFn) -> str:
+    """A file below ``tools/`` and up to two directories, which no earlier rule
+    claims: a test module sits three parts below a ``tests`` directory, and a
+    runtime package four directories down."""
 
-    scope = _tool_scope(name)
+    directories = draw(st.lists(_tool_names(), max_size=2))
+    return "/".join(["tools", *directories, draw(_tool_names())])
+
+
+@_PROPERTY
+@given(path=_tool_paths())
+def test_a_tool_belongs_to_a_country_exactly_when_its_path_holds_it_alone(
+    path: str,
+) -> None:
+    """Invariant: a file below ``tools/`` that no earlier rule claims scopes to
+    a country exactly when that country is a word of its file name and the
+    other country's letters appear nowhere in its lower-cased path, to
+    ``None`` when it is documentation, and to shared otherwise."""
+
+    scope = _tool_scope(path)
     event(f"scope {scope}")
-    assert ci_test_plan.scope_for_path(f"tools/{name}") == scope
+    event("in a directory" if path.count("/") > 1 else "directly in tools/")
+    assert ci_test_plan.scope_for_path(path) == scope
 
 
 @_PROPERTY
-@given(name=_tool_names())
-def test_a_tool_change_runs_each_country_whose_letters_its_name_holds(
-    name: str,
+@given(path=_tool_paths())
+def test_a_tool_change_runs_each_country_whose_letters_its_path_holds(
+    path: str,
 ) -> None:
-    """Invariant: a change to a file below ``tools/`` that isn't documentation
-    selects each country whose two letters its lower-cased file name holds
-    anywhere, as a word or inside one, and both countries when it holds
-    neither."""
+    """Invariant: a change to a file below ``tools/`` that no earlier rule
+    claims and that isn't documentation selects each country whose two letters
+    its lower-cased path holds anywhere, as a word or inside one, in the file
+    name or a directory, and both countries when it holds neither."""
 
-    assume(PurePosixPath(name).suffix.lower() not in ci_test_plan.DOC_SUFFIXES)
-    lowered = name.lower()
+    assume(PurePosixPath(path).suffix.lower() not in ci_test_plan.DOC_SUFFIXES)
+    lowered = path.lower()
     held = {country for country in ("us", "uk") if country in lowered}
     event(f"letters of {sorted(held) or 'neither'}")
-    selected = ci_test_plan.select_countries([f"tools/{name}"])
+    selected = ci_test_plan.select_countries([path])
     for country in held or {"us", "uk"}:
-        assert selected[f"run_{country}"], (name, selected)
+        assert selected[f"run_{country}"], (path, selected)
 
 
 @pytest.mark.parametrize(
@@ -1985,21 +1998,29 @@ def test_a_tool_change_runs_each_country_whose_letters_its_name_holds(
         ("tools/compare_us_uk_targets.py", "shared"),
         ("tools/buildUSCandidate.py", "shared"),
         ("tools/uK_targets.py", "shared"),
-        # The file name decides, not its directory.
+        # Only the file name can name a country, but the other country's
+        # letters count anywhere in the path.
         ("tools/us_bundle_generation/core.py", "shared"),
         ("tools/route_a/run_us.sh", "us"),
+        ("tools/us_bundle_generation/uk_parity.py", "shared"),
+        ("tools/uk_inputs/us_targets.py", "shared"),
+        ("tools/focus/run_uk.sh", "shared"),
+        # Lower-casing, not case folding: a long s isn't an s.
+        ("tools/uk_uſ.py", "uk"),
     ],
 )
-def test_a_tool_takes_the_country_its_file_name_holds_alone(
-    path: str, scope: str
-) -> None:
+def test_a_tool_takes_the_country_its_path_holds_alone(path: str, scope: str) -> None:
     assert ci_test_plan.scope_for_path(path) == scope
 
 
-def test_a_tool_change_selects_the_country_its_name_holds_alone() -> None:
+def test_a_tool_change_selects_the_country_its_path_holds_alone() -> None:
     both = {"run_us": True, "run_uk": True}
     assert ci_test_plan.select_countries(["tools/status.py"]) == both
     assert ci_test_plan.select_countries(["tools/census_uk_local_targets.py"]) == both
+    assert (
+        ci_test_plan.select_countries(["tools/us_bundle_generation/uk_parity.py"])
+        == both
+    )
     assert ci_test_plan.select_countries(["tools/run_engine_uk_tests.sh"]) == {
         "run_us": False,
         "run_uk": True,
@@ -2027,24 +2048,28 @@ def _checkout_files(directory: str) -> list[str]:
     return sorted(set(listed.stdout.decode().split("\0")) - {""})
 
 
-def test_every_tool_in_the_checkout_takes_the_scope_its_name_gives_it() -> None:
-    """Every file below ``tools/`` in the checkout takes the scope its file
-    name gives it, and a change to it selects each country whose letters the
-    name holds."""
+def test_every_tool_in_the_checkout_takes_the_scope_its_path_gives_it() -> None:
+    """Every file below ``tools/`` in the checkout that no earlier rule claims
+    takes the scope its path gives it, and a change to it selects each country
+    whose letters the path holds."""
 
     files = _checkout_files("tools")
     assert files
     for path in files:
         if ci_test_plan.group_name_for_test_path(PurePosixPath(path)) is not None:
             continue  # A test module takes its group's country.
-        name = PurePosixPath(path).name
-        scope = _tool_scope(name)
+        if any(
+            f"/src/microcosm/build/{country}_runtime/" in f"/{path}"
+            for country in ("us", "uk")
+        ):
+            continue  # A file of a country's runtime package takes that country.
+        scope = _tool_scope(path)
         assert ci_test_plan.scope_for_path(path) == scope, path
         if scope is None:
             continue  # Documentation selects no country.
         selected = ci_test_plan.select_countries([path])
         for country in ("us", "uk"):
-            if country in name.lower():
+            if country in path.lower():
                 assert selected[f"run_{country}"], path
 
 

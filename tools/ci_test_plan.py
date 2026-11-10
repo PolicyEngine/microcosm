@@ -786,14 +786,16 @@ def verify() -> None:
 def scope_for_path(value: str) -> str | None:
     """Return ``shared``, ``us``, ``uk``, or ``None`` for documentation.
 
-    A file below ``tools/`` belongs to a country when that country is a word of
-    its file name and the other country's letters appear nowhere in the name.
-    A word is a maximal run of ASCII letters, read without case:
-    ``run_engine_us_tests.sh`` holds the words run, engine, us, tests and sh.
-    ``status.py`` holds no country as a word, and
-    ``census_uk_local_targets.py`` holds the letters us inside census, so both
-    are shared. A name that holds a country's letters anywhere therefore
-    selects that country's tests.
+    Documentation, test modules and the country runtime packages take their
+    scope first, wherever they sit. Any other file below ``tools/`` belongs to
+    a country when that country is a word of its file name and the other
+    country's letters appear nowhere in its lower-cased path. A word is a
+    maximal run of ASCII letters, read without case: ``run_engine_us_tests.sh``
+    holds the words run, engine, us, tests and sh. ``status.py`` holds no
+    country as a word, ``census_uk_local_targets.py`` holds the letters us
+    inside census, and ``us_bundle_generation/uk_parity.py`` holds them in its
+    directory, so all three are shared. A path that holds a country's letters
+    anywhere therefore selects that country's tests.
     """
 
     path = PurePosixPath(value)
@@ -817,7 +819,7 @@ def scope_for_path(value: str) -> str | None:
     if "/src/microcosm/build/uk_runtime/" in f"/{normalized}":
         return "uk"
     if normalized.startswith("tools/"):
-        lowered = path.name.lower()
+        lowered = normalized.lower()
         words = {word.lower() for word in _WORD.findall(path.name)}
         for country, other in (("us", "uk"), ("uk", "us")):
             if country in words and other not in lowered:

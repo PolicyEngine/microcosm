@@ -204,9 +204,13 @@ def _plans(
             for category in draw(st.lists(_CATEGORIES, max_size=2))
         ),
     ]
+    counts = [draw(st.integers(1, 4)) for _ in jobs]
+    # Now and then a group with no file, which the plan refuses before any rule.
+    if draw(st.integers(0, 7)) == 0:
+        counts[draw(st.integers(0, len(jobs) - 1))] = 0
     groups: dict[str, ci_test_plan.TestGroup] = {}
     files: list[Path] = []
-    for index, (job, category) in enumerate(jobs):
+    for index, ((job, category), count) in enumerate(zip(jobs, counts, strict=True)):
         country = job.removeprefix("engine-")
         directory = (f"group_{index}", country)
         groups[f"group-{index}"] = ci_test_plan.TestGroup(
@@ -218,7 +222,7 @@ def _plans(
         )
         files.extend(
             Path("/plan/packages/example/tests", *directory, f"test_{index}_{n}.py")
-            for n in range(draw(st.integers(1, 4)))
+            for n in range(count)
         )
     return groups, tuple(sorted(files))
 
@@ -236,13 +240,20 @@ def test_the_runner_runs_each_listed_file_once_or_refuses_to_start(
 ) -> None:
     """Invariant: the runner's tasks hold each file the plan lists for
     engine-us once and no other file, or the runner refuses before it starts
-    any task. It refuses exactly when ``verify`` names a group the runner never
-    runs, and its refusal names each file of those groups.
+    any task. It refuses, naming the group, when an engine-us group holds no
+    file. Otherwise it refuses exactly when ``verify`` names a group the
+    runner never runs, and its refusal names each file of those groups.
 
     The rule, stated here: for each category it runs, the runner runs the last
     engine-us group that reports the category."""
 
     groups, files = plan
+    filled = {path.parent.parts[-2:] for path in files}
+    empty = [
+        name
+        for name, spec in groups.items()
+        if spec.job == "engine-us" and spec.directory not in filled
+    ]
     last = {
         spec.report_category: name
         for name, spec in groups.items()
@@ -268,9 +279,14 @@ def test_the_runner_runs_each_listed_file_once_or_refuses_to_start(
             "CATEGORY_GROUPS",
             ci_test_plan.reporting_groups_for_job("engine-us"),
         )
-        listed = ci_test_plan.selected_files_for_job("engine-us")
-        unrun = {name: ci_test_plan.selected_files(name) for name in never_run}
         named = [error.split(":")[0] for error in ci_test_plan.us_runner_errors()]
+        # The plan itself refuses to list an empty group's files.
+        listed = () if empty else ci_test_plan.selected_files_for_job("engine-us")
+        unrun = (
+            {}
+            if empty
+            else {name: ci_test_plan.selected_files(name) for name in never_run}
+        )
         try:
             light, workflows = build_tasks(
                 contract_batch_size=contract_batch_size,
@@ -281,8 +297,12 @@ def test_the_runner_runs_each_listed_file_once_or_refuses_to_start(
         else:
             refused = None
 
-    event("refused" if refused is not None else "built")
     assert named == never_run
+    if empty:
+        event("refused: a group holds no file")
+        assert refused in {f"group is empty: {name}" for name in empty}
+        return
+    event("refused" if refused is not None else "built")
     if never_run:
         assert refused is not None
         assert refused.splitlines()[1:] == [
