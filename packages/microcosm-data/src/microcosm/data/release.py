@@ -70,6 +70,7 @@ from microcosm.data.contract import (
     NATIONAL_DEFAULT_DATASET_ROLE,
     RELEASE_MANIFEST_FILE_ROLE,
     RELEASE_ROLES,
+    US_RELEASES,
     _uk_line_cut_tag_re,
     line_for_release_id,
     publishes_to_build_folder,
@@ -308,16 +309,18 @@ class PreparedRelease:
 #: Where a build-folder release publishes from: the workspace command that
 #: hands each build to the emitter (``microcosm.build.release_publication``).
 BUILD_FOLDER_PUBLICATION_COMMAND = "microcosm-publish-release-build"
-#: Where a release that does not publish into build folders goes. Every US
-#: release publishes with tags and ``latest.json``. No publisher takes builds
-#: of the other UK releases once the UK repository records its builds in
-#: ``releases.json``; its switch moves the June 2023 build into a build
-#: folder of release ``populace-uk-2023``.
+#: Where a release that does not publish into build folders goes. Once its
+#: repository records its builds in ``releases.json``, every US build
+#: publishes into one of the US releases (``microcosm.data.contract.
+#: US_RELEASES``), and the other UK releases take no new builds; the UK
+#: switch moved the June 2023 build into a build folder of release
+#: ``populace-uk-2023``.
 TAGGED_RELEASE_ADVICE = (
-    "US releases publish with tags and latest.json through "
-    "tools/publish_release.sh; the June 2023 UK release and "
-    "populace-uk-<year>-<tier>-k<N> releases take no new builds once the UK "
-    "repository records its builds in releases.json."
+    "US builds publish into microcosm-us-2024-national, -local, "
+    "-receipt-donor or -evidence, in a directory named after the release; "
+    "the June 2023 UK release and populace-uk-<year>-<tier>-k<N> releases "
+    "take no new builds once the UK repository records its builds in "
+    "releases.json."
 )
 
 
@@ -440,6 +443,13 @@ def prepare_build_folder_release(
         raise ValueError(
             f"release {release!r} declares dataset_role {dataset_role!r}, which "
             "has no role in releases.json."
+        )
+    expected_role = US_RELEASES.get(release)
+    if expected_role is not None and release_role != expected_role:
+        raise ValueError(
+            f"release {release!r} has role {expected_role!r} in releases.json, but "
+            f"this build declares dataset_role {dataset_role!r} (role "
+            f"{release_role!r}); publish it into a release of its role."
         )
     root = Path(artifact_root) if artifact_root is not None else None
     sources: list[tuple[str, str, Path, str | None]] = [
