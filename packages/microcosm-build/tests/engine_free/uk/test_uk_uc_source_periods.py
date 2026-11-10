@@ -614,8 +614,9 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert reference.value_operation == "monthly_window_average"
         assert reference.period_match_policy == "source_window"
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == esa_quarters
-    # P3 of the November event-data plan: DWP's PIP cases, held out of the
-    # solve, on the cube's four quarter-end points inside calendar 2025.
+    # P3 of the November event-data plan: DWP's PIP cases on the cube's four
+    # quarter-end points inside calendar 2025. The award split binds (P2); the
+    # other rows are held out of the solve.
     pip_months = ["2025-01", "2025-04", "2025-07", "2025-10"]
     pip_cases = [reference for reference in references if reference.family == "dwp_pip"]
     assert len(pip_cases) == 94
