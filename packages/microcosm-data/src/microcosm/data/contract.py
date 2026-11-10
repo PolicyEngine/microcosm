@@ -428,6 +428,8 @@ _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
 # microcosm#1276.
 _UK_INPUT_MASS_RELATIVE_TOLERANCE = 5.9984285545209834
 _UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL = 0.0
+# The share of its reference total a column may lose (microcosm#1095).
+_UK_INPUT_MASS_MAXIMUM_RELATIVE_DROP = 0.9
 # The reference kind the spec names (microcosm#1095): the current build of the
 # cut's own line. The report records which build that was; the data shard
 # cannot import the build shard, so keep this in lockstep with uk/gates.json.
@@ -526,6 +528,8 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "reference_name",
             "relative_tolerance",
             "minimum_reference_total",
+            "maximum_relative_drop",
+            "excess_drops",
             "columns_checked",
             "columns_below_reference_floor",
             "candidate_only_columns",
@@ -567,13 +571,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "f40c27c3dbea19a5feaad8befb44eb5c5659f5c7324654baf5a057caec18b6c7"
+    "cf51aee26cf948252263ba0dfc91740365c786d3c0b526493f862b71dd21dc6f"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "ea6212e014fd04a706052ce61ea2bf38bc9f3d51a56dbd485a4ef53f3b07a9be"
+    "6a9dfa199be27318e2d56b823e2f25d0641d46ba6367cfaa2c355d8e5e35882b"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "55ac83cf85793249124561579c179eef7ed9556d3781c76f011ccfff401cd0ee"
+    "25f06188047432fc3a5aaaa383cf8bb36773d64626bdffb6ba02ce3a44a11d09"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -1136,10 +1140,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "26c8c3acb20c314143019ccb4859c20eebe06d0b4b5961433ba2800d7c0b795e"
+            "b39e9be5f9e133b1938284e76a1373b9cba20eb9aebc39111c567669d86f420b"
         ),
         "policy_sha256": (
-            "920d90b73e79523c72f95d86b2b0c7a99a5b7925e44fd559481991883f32ddec"
+            "b2c5f5f5c20fdb11a41f39653767bd79cc8f8f84274ebf6f852075ef6abb09ef"
         ),
     },
 }
@@ -2678,6 +2682,20 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
                 "minimum_reference_total must equal the committed spec value "
                 f"{_UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL}."
+            )
+        if not _uk_terminal_observable_matches(
+            input_mass.get("maximum_relative_drop"),
+            _UK_INPUT_MASS_MAXIMUM_RELATIVE_DROP,
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                "maximum_relative_drop must equal the committed spec value "
+                f"{_UK_INPUT_MASS_MAXIMUM_RELATIVE_DROP}."
+            )
+        if input_mass.get("excess_drops") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
+                "requires details.excess_drops to be an empty list."
             )
         if input_mass.get("stale_exclusions") != []:
             failures.append(

@@ -1788,6 +1788,12 @@ def _evaluate_input_mass_parity(
     register = kwargs.pop("reviewed_exclusions_resource", None)
     relative_tolerance = kwargs.pop("relative_tolerance", None)
     minimum_reference_total = kwargs.pop("minimum_reference_total", None)
+    maximum_relative_drop = kwargs.pop("maximum_relative_drop", None)
+    if maximum_relative_drop is None:
+        raise ValueError(
+            "uk/gates.json input_mass_parity declares no maximum_relative_drop; "
+            "the drop limit is part of the reviewed policy (microcosm#1095)."
+        )
     coerced_registry = coerce_input_mass_reference_registry(
         declared_registry, label="uk/gates.json input_mass_parity"
     )
@@ -1816,6 +1822,7 @@ def _evaluate_input_mass_parity(
     policy = UKInputMassParityPolicy(
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
+        maximum_relative_drop=maximum_relative_drop,
         reviewed_exclusions=exclusions,
     )
     # The reference is compared against the surface the release ships: the
@@ -2432,6 +2439,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "reviewed_exclusions_resource",
                 "relative_tolerance",
                 "minimum_reference_total",
+                "maximum_relative_drop",
                 "candidate_name",
             }
         ),

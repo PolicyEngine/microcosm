@@ -135,8 +135,9 @@ uv run --no-sync python tools/certify_uk_release_cut.py \
 
 The input-mass, export-surface and input-coverage gates compare the candidate
 with the reference: its totals within the relative tolerance gates.json
-declares (each line's input totals keep their own exclusions, keyed
-`<release>@<build>`), its exported columns (a column only the candidate
+declares, no column losing more than its declared share of the reference's
+total (`maximum_relative_drop`), and each line's reviewed exclusions keyed
+`<release>@<build>`; its exported columns (a column only the candidate
 exports must be a declared extra, an entry the reference now carries is
 reported as redundant), and the inputs it carries (each must reach the
 candidate's export with signal, less the coverage manifest's reviewed

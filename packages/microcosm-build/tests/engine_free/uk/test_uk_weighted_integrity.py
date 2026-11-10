@@ -126,7 +126,12 @@ def _descriptor(**overrides) -> UKInputMassReferenceDescriptor:
 
 
 def _policy(**overrides) -> UKInputMassParityPolicy:
-    fields = {"relative_tolerance": 0.5, "minimum_reference_total": 0.0}
+    fields = {
+        "relative_tolerance": 0.5,
+        "minimum_reference_total": 0.0,
+        # Within a 0.5 tolerance a drop past 0.5 already fails; 1.0 adds none.
+        "maximum_relative_drop": 1.0,
+    }
     fields.update(overrides)
     return UKInputMassParityPolicy(**fields)
 
@@ -801,8 +806,9 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
     """Without exclusions the UK wrapper must reproduce the US gate verbatim.
 
     Same failure lines, same verdict, same details — the UK result may only
-    add the reference identity and the (empty) stale/dormant register fields
-    the #609 discipline requires on top of the shared gate.
+    add the reference identity, the (empty) stale/dormant register fields
+    the #609 discipline requires, and the drop limit (microcosm#1095), which
+    at 1.0 adds no failure on top of the shared gate.
     """
 
     from microcosm.build.gates import input_mass_parity_gate
@@ -849,7 +855,10 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
         "reference_identity",
         "reference_label",
         "withheld_thin_columns",
+        "maximum_relative_drop",
+        "excess_drops",
     }
+    assert ported.details["excess_drops"] == []
 
 
 def test_input_mass_reference_round_trips_the_cut_schema(tmp_path) -> None:

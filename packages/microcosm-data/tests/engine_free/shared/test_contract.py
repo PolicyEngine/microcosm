@@ -206,13 +206,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "f40c27c3dbea19a5feaad8befb44eb5c5659f5c7324654baf5a057caec18b6c7"
+    "cf51aee26cf948252263ba0dfc91740365c786d3c0b526493f862b71dd21dc6f"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "ea6212e014fd04a706052ce61ea2bf38bc9f3d51a56dbd485a4ef53f3b07a9be"
+    "6a9dfa199be27318e2d56b823e2f25d0641d46ba6367cfaa2c355d8e5e35882b"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "55ac83cf85793249124561579c179eef7ed9556d3781c76f011ccfff401cd0ee"
+    "25f06188047432fc3a5aaaa383cf8bb36773d64626bdffb6ba02ce3a44a11d09"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
@@ -1163,6 +1163,8 @@ def _terminal_gate_details(name: str) -> dict:
             "reference_name": UK_INPUT_MASS_REFERENCE_IDENTITY["filename"],
             "relative_tolerance": 5.9984285545209834,
             "minimum_reference_total": 0.0,
+            "maximum_relative_drop": 0.9,
+            "excess_drops": [],
             "columns_checked": 1,
             "columns_below_reference_floor": 0,
             "candidate_only_columns": [],
@@ -5025,6 +5027,33 @@ def test_exact_k_uk_gate_battery_rejects_loosened_input_mass_tolerance(
     _rewrite_battery_report(directory, payload)
 
     assert "relative_tolerance must equal the committed spec value" in (
+        _battery_failures(directory)
+    )
+
+
+def test_exact_k_uk_gate_battery_rejects_a_loosened_input_mass_drop_limit(
+    tmp_path: Path,
+) -> None:
+    # The drop limit is committed spec too (microcosm#1095).
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_input_mass_parity"]["details"]
+    details["maximum_relative_drop"] = 1.0
+    _rewrite_battery_report(directory, payload)
+
+    assert "maximum_relative_drop must equal the committed spec value" in (
+        _battery_failures(directory)
+    )
+
+
+def test_exact_k_uk_gate_battery_rejects_a_passing_report_with_excess_drops(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_input_mass_parity"]["details"]
+    details["excess_drops"] = ["employment_income"]
+    _rewrite_battery_report(directory, payload)
+
+    assert "requires details.excess_drops to be an empty list" in (
         _battery_failures(directory)
     )
 

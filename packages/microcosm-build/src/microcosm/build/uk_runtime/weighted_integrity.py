@@ -1010,11 +1010,22 @@ class UKInputMassParityPolicy:
 
     relative_tolerance: float
     minimum_reference_total: float
+    #: The largest share of its reference total a column's total may lose
+    #: (microcosm#1095): with a symmetric tolerance above one, the drift test
+    #: alone fails no drop short of zero.
+    maximum_relative_drop: float
     reviewed_exclusions: Mapping[str, UKReviewedExclusion] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         tolerance = float(self.relative_tolerance)
         floor = float(self.minimum_reference_total)
+        drop = float(self.maximum_relative_drop)
+        if not math.isfinite(drop) or not 0.0 <= drop <= 1.0:
+            raise ValueError(
+                "UK input-mass maximum_relative_drop must be a share in [0, 1], "
+                f"got {self.maximum_relative_drop!r}."
+            )
+        object.__setattr__(self, "maximum_relative_drop", drop)
         if not math.isfinite(tolerance) or tolerance < 0.0:
             raise ValueError(
                 "UK input-mass relative_tolerance must be finite and "
@@ -1041,6 +1052,7 @@ class UKInputMassParityPolicy:
         return {
             "relative_tolerance": self.relative_tolerance,
             "minimum_reference_total": self.minimum_reference_total,
+            "maximum_relative_drop": self.maximum_relative_drop,
             "reviewed_exclusions": {
                 name: record.policy_payload()
                 for name, record in sorted(self.reviewed_exclusions.items())
@@ -1216,6 +1228,37 @@ def _thin_columns(
     )
 
 
+def _excess_drops(
+    candidate_totals: Mapping[str, float],
+    reference_totals: Mapping[str, float],
+    *,
+    maximum_relative_drop: float,
+    minimum_reference_total: float,
+) -> dict[str, float]:
+    """Columns whose total fell by more than the reviewed share of the reference's.
+
+    Drift is the shared gate's, signed: ``(candidate - reference) /
+    |reference|``. A column absent from the candidate or at exactly zero is
+    the shared gate's failure already, and a reference total at or below the
+    floor is skipped as the shared gate skips it.
+    """
+
+    drops: dict[str, float] = {}
+    for column, reference_total in reference_totals.items():
+        reference_total = float(reference_total)
+        if abs(reference_total) <= minimum_reference_total:
+            continue
+        if column not in candidate_totals:
+            continue
+        candidate_total = float(candidate_totals[column])
+        if candidate_total == 0.0:
+            continue
+        drift = (candidate_total - reference_total) / abs(reference_total)
+        if drift < -maximum_relative_drop:
+            drops[str(column)] = drift
+    return drops
+
+
 def _withheld_failure(message: str, thin: frozenset[str]) -> str:
     column = message.split(":", 1)[0]
     if column not in thin:
@@ -1252,6 +1295,11 @@ def uk_input_mass_parity_gate(
     checked, but its figures never reach the report: its failure reads by
     name, and it leaves ``worst_drifts`` for ``withheld_thin_columns``
     (UKDS disclosure control, microcosm#1095).
+
+    The shared gate's tolerance is symmetric, so above one it fails no drop
+    short of zero; ``policy.maximum_relative_drop`` bounds how much of its
+    reference total a column may lose (microcosm#1095). A reviewed exclusion
+    covers both checks, and is stale only if the column passes both.
     """
 
     if not isinstance(reference, UKInputMassReference):
@@ -1275,6 +1323,15 @@ def uk_input_mass_parity_gate(
         minimum_reference_total=policy.minimum_reference_total,
         reviewed_exclusions=exclusions,
     )
+    all_drops = _excess_drops(
+        candidate_totals,
+        reference.totals,
+        maximum_relative_drop=policy.maximum_relative_drop,
+        minimum_reference_total=policy.minimum_reference_total,
+    )
+    drops = {
+        column: drift for column, drift in all_drops.items() if column not in exclusions
+    }
 
     stale: list[str] = []
     dormant: list[str] = []
@@ -1295,11 +1352,21 @@ def uk_input_mass_parity_gate(
             relative_tolerance=policy.relative_tolerance,
             minimum_reference_total=policy.minimum_reference_total,
         )
-        if probe.passed:
+        # Stale only if the column passes the drop limit too.
+        if probe.passed and column not in all_drops:
             stale.append(column)
 
     thin = _thin_columns(candidate_carriers, reference.carriers)
     failures = [_withheld_failure(message, thin) for message in base.failures]
+    for column, drift in sorted(drops.items()):
+        failures.append(
+            _withheld_failure(
+                f"{column}: {candidate_name} total fell by {-drift:.6g} of the "
+                f"reference's, beyond the reviewed maximum drop "
+                f"{policy.maximum_relative_drop:.6g}.",
+                thin,
+            )
+        )
     if stale:
         failures.append(
             "Stale reviewed input-mass exclusions — the column is within "
@@ -1327,6 +1394,9 @@ def uk_input_mass_parity_gate(
             "withheld_thin_columns": sorted(
                 thin & (set(reference.totals) | set(candidate_totals))
             ),
+            "maximum_relative_drop": policy.maximum_relative_drop,
+            # Names only: a column's drift is in worst_drifts unless it is thin.
+            "excess_drops": sorted(drops),
             "stale_exclusions": stale,
             "dormant_exclusions": dormant,
             "expired_exclusions": expired,

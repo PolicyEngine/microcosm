@@ -925,7 +925,12 @@ def _input_mass_descriptor() -> UKInputMassReferenceDescriptor:
 
 
 def _input_mass_policy(**overrides) -> UKInputMassParityPolicy:
-    fields = {"relative_tolerance": 0.5, "minimum_reference_total": 0.0}
+    fields = {
+        "relative_tolerance": 0.5,
+        "minimum_reference_total": 0.0,
+        # Within a 0.5 tolerance a drop past 0.5 already fails; 1.0 adds none.
+        "maximum_relative_drop": 1.0,
+    }
     fields.update(overrides)
     return UKInputMassParityPolicy(**fields)
 
@@ -976,6 +981,66 @@ def test_stale_weighted_integrity_exclusions_fail() -> None:
 
     assert not gate.passed
     assert "Stale reviewed input-mass exclusions" in gate.failures[0]
+
+
+def test_a_drop_past_the_limit_fails_inside_a_wide_tolerance() -> None:
+    """The symmetric tolerance above one fails no drop short of zero; the drop
+    limit bounds how much of its reference total a column may lose
+    (microcosm#1095)."""
+
+    policy = _input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9)
+    within = _input_mass_gate({"employment_income": 1.5}, policy=policy)
+    assert within.passed, within.failures
+    assert within.details["excess_drops"] == []
+    assert within.details["maximum_relative_drop"] == 0.9
+
+    beyond = _input_mass_gate({"employment_income": 0.5}, policy=policy)
+    assert not beyond.passed
+    assert beyond.details["excess_drops"] == ["employment_income"]
+    assert any(
+        failure.startswith("employment_income:")
+        and "beyond the reviewed maximum drop 0.9" in failure
+        for failure in beyond.failures
+    )
+    # Growth inside the tolerance still passes.
+    assert _input_mass_gate({"employment_income": 60.0}, policy=policy).passed
+
+
+def test_a_reviewed_exclusion_covers_a_drop_and_stays_live() -> None:
+    policy = _input_mass_policy(
+        relative_tolerance=6.0,
+        maximum_relative_drop=0.9,
+        reviewed_exclusions={"employment_income": _entry("Seeded drop entry.")},
+    )
+    gate = _input_mass_gate({"employment_income": 0.5}, policy=policy)
+    assert gate.passed, gate.failures
+    assert gate.details["excess_drops"] == []
+    # The column still drops past the limit, so the entry is not stale.
+    assert gate.details["stale_exclusions"] == []
+
+
+def test_a_thin_column_drop_fails_by_name_only() -> None:
+    reference = _input_mass_reference(
+        totals={"employment_income": 10.0, "rare_flag": 4.0},
+        carriers={"employment_income": 900, "rare_flag": 2},
+    )
+    gate = _input_mass_gate(
+        {"employment_income": 10.0, "rare_flag": 0.2},
+        reference,
+        policy=_input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9),
+        candidate_carriers={"employment_income": 950, "rare_flag": 2},
+    )
+    assert not gate.passed
+    rare = [failure for failure in gate.failures if failure.startswith("rare_flag:")]
+    assert len(rare) == 1
+    assert "figures are withheld" in rare[0]
+    assert "0.95" not in rare[0]
+
+
+@pytest.mark.parametrize("drop", [-0.1, 1.5, float("nan")])
+def test_the_drop_limit_is_a_share(drop) -> None:
+    with pytest.raises(ValueError, match="maximum_relative_drop"):
+        _input_mass_policy(maximum_relative_drop=drop)
 
 
 def test_a_thin_column_is_checked_but_its_figures_are_withheld() -> None:
