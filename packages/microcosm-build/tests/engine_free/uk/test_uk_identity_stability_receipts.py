@@ -2234,22 +2234,28 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         # spi_support's two helpers, a wrapper or an alias:
         # - a wrapper is a function of any of the three stages' modules named
         #   _exact... that refers to one;
-        # - an alias is a name one of those modules binds to one outside every
-        #   function, at module level or in a class body: imported under
-        #   another name (from ... import _importance_weights_with_exact_total
-        #   as _total), or assigned from an expression that refers to one
+        # - an alias is a name one of those modules, or spi_support, which
+        #   defines the helpers, binds to one outside every function, at
+        #   module level or in a class body: imported under another name
+        #   (from ... import _importance_weights_with_exact_total as _total),
+        #   or assigned from an expression that refers to one
         #   (_total = _importance_weights_with_exact_total, or a
         #   functools.partial of it).
-        # Wrappers and aliases are found to a fixed point over the three
+        # Wrappers and aliases are found to a fixed point over those four
         # modules, so one module's wrapper or alias counts where another module
         # refers to it, and a reference to an alias counts as a reference to a
-        # wrapper does. Every function, method and nested function counts its
-        # own references, not those of the functions it nests. A lambda's
+        # wrapper does. Only the three stages' modules' functions are counted.
+        # Every function, method and nested function counts its own
+        # references, not those of the functions it nests. A lambda's
         # reference counts in the function that writes it, and a local alias, a
         # local partial or a local import under another name counts once, where
         # it names the helper or wrapper. What is counted is references, not
         # calls: a loop that corrects twice, or a local alias called twice,
-        # counts once.
+        # counts once. Wrappers are looked for only in the three stages'
+        # modules, so a correction made through a function of another module
+        # that corrects a total itself (spi_band_donors' _exact_incumbent_total,
+        # or the spi_support functions that call the fallback) is not counted,
+        # nor one through a helper looked up by a name built at run time.
         helpers = {"_exact_total_correction", "_importance_weights_with_exact_total"}
         stages = ("cgt_support_split", *weighing)
         modules = {graph_kernels._stage_module(stage) for stage in stages}
@@ -2344,8 +2350,12 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
             } == {function.name for function in functions.values()}
             every[module.__name__] = functions
             trees[module.__name__] = tree
+        # spi_support defines the helpers and can alias them too, so its
+        # bindings outside every function join the alias scan; its functions
+        # are not among the counted correction sites.
+        trees[spi_support.__name__] = ast.parse(inspect.getsource(spi_support))
         # The names a reference to which counts: the helpers, the wrappers'
-        # names and the aliases, to a fixed point over all three modules.
+        # names and the aliases, to a fixed point over the four modules.
         counted = set(helpers)
         while True:
             wrappers = {

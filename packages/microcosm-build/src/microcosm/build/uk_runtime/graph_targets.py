@@ -286,8 +286,8 @@ class UKFullTargetCompilationKernel(_TargetKernel):
         # does not compute through the ONS household type domain
         # (frs_relationships): ledger_targets checks the household-type
         # bindings against it before it compiles, and that check only
-        # refuses, so test_uk_graph lists it refusal-only (microcosm#931
-        # ruling 4).
+        # refuses, so test_uk_graph lists it refusal-only (microcosm#931,
+        # ruled 9 Nov (late)).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -528,7 +528,7 @@ class UKFullMeasureKernel(_TargetKernel):
         # It lives in annuity_trust_column, which holds nothing else, not in
         # frs_spine, which writes the column, so this hash leaves frs_spine
         # out, and on a bound spine an edit there leaves the measures' key
-        # alone (microcosm#931 ruling 4).
+        # alone (microcosm#931, ruled 9 Nov (late)).
         return hashlib.sha256(
             canonical_json(
                 {

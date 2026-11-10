@@ -12,9 +12,10 @@ and measure_simulation's resolver reads it.
 The resolver reads zeros where a frame lacks the column, so a renamed constant
 would change the measures without re-keying them, and every node whose code
 reads the name binds this module. It holds the name alone, nothing that
-computes, so the target and problem kernels key on the name without keying on
-frs_spine, every edit to which would otherwise re-solve the national line on a
-bound spine (microcosm#931 ruling 4).
+computes, so the dense measures and the national problem key on the name
+without keying on frs_spine, every edit to which would otherwise re-solve the
+local and the national line on a bound spine (microcosm#931, ruled 9 Nov
+(late)).
 """
 
 from __future__ import annotations
