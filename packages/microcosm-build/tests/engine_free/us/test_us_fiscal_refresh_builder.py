@@ -6675,20 +6675,22 @@ def _run_green_register_release(
         )
         return
 
-    # The run's last step checks the release directory against the certified
-    # contract; this harness's diagnostics are stubs, so the call is recorded
-    # and the contract's own checks run below.
+    # The run leaves the release contract to the publication command's
+    # preflight, as before the build-folder layout: a diagnostic run's output
+    # is written, not refused at its end. Any call would be recorded here.
     validated: list[tuple[Path, Path | None]] = []
 
     def record_certified_contract(directory, *, artifact_root=None):
         validated.append((Path(directory), artifact_root))
         return []
 
-    monkeypatch.setattr(builder, "validate_release_dir", record_certified_contract)
+    from microcosm.data import contract
+
+    monkeypatch.setattr(contract, "validate_release_dir", record_certified_contract)
 
     builder.main()
 
-    assert validated == [(release_dir.resolve(), out.resolve() / "artifacts")]
+    assert validated == []
     assert captured["terminal_gate_events"] == [
         "input_coverage",
         "input_mass_parity",
@@ -12290,11 +12292,10 @@ def _finish_with_recorded_contract(
     artifact_root: Path,
     evidence_release: bool = False,
 ) -> tuple[dict[str, str], list[tuple[str, Path, Path | None]]]:
-    """Run the builder's last step with the release contracts recorded.
+    """Run the builder's last step, recording any release contract it runs.
 
-    The fixtures' diagnostics are stubs the contract would refuse; the call
-    records which contract would run, on which directory, so each test
-    checks the rewritten manifests itself.
+    It runs none: the publication command's preflight runs the contract, so
+    each test checks the rewritten manifests itself.
     """
     validated: list[tuple[str, Path, Path | None]] = []
 
@@ -12305,8 +12306,10 @@ def _finish_with_recorded_contract(
     def evidence(directory):
         validated.append(("evidence", Path(directory), None))
 
-    monkeypatch.setattr(builder, "validate_release_dir", certified)
-    monkeypatch.setattr(builder, "validate_evidence_release_dir", evidence)
+    from microcosm.data import contract
+
+    monkeypatch.setattr(contract, "validate_release_dir", certified)
+    monkeypatch.setattr(contract, "validate_evidence_release_dir", evidence)
     commands = builder._finish_build_folder_release(
         release_dir,
         build=build,
@@ -12454,7 +12457,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         artifact_root=artifact_root,
     )
 
-    assert validated == [("certified", release_dir, artifact_root)]
+    assert validated == []
     assert commands == publication_commands(
         release_dir, repo_id=builder.REPO_ID, artifact_root=artifact_root
     )
@@ -12955,7 +12958,7 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
         artifact_root=artifact_root,
     )
 
-    assert validated == [("certified", release_dir, artifact_root)]
+    assert validated == []
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     assert release_manifest["release"] == US_NATIONAL_RELEASE_ID
@@ -13037,7 +13040,7 @@ def test_an_evidence_run_finishes_its_build_in_the_evidence_release(
         evidence_release=True,
     )
 
-    assert validated == [("evidence", release_dir, None)]
+    assert validated == []
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     for document in (release_manifest, build_manifest):
@@ -14453,34 +14456,28 @@ def test_us_release_id_guard() -> None:
             )
 
 
-def test_a_run_without_base_h5_reads_the_published_base_under_its_own_name(
+def test_a_run_without_base_h5_reads_the_national_release_s_current_build(
     monkeypatch, tmp_path
 ) -> None:
-    """The base a run downloads was published by an earlier build, so it
-    keeps that build's file name; only the files a run writes take the
-    ``microcosm_`` names (microcosm#1570)."""
-    import huggingface_hub
+    """Without --base-h5 a run starts from the US national release's current
+    build, SHA-verified by the loader: from releases.json once the repository
+    has one, from latest.json until then. The root file stops changing at the
+    switch, since builds in folders write no root files (microcosm#1570)."""
+    import microcosm.data
 
     builder = _load_builder_module()
-    requested: list[dict[str, str]] = []
+    requested: list[tuple] = []
 
-    def fake_download(**kwargs):
-        requested.append(kwargs)
-        return str(tmp_path / kwargs["filename"])
+    def fake_download(country, year=None, **options):
+        requested.append((country, year, options))
+        return tmp_path / "microcosm_us_2024.h5"
 
-    monkeypatch.setattr(huggingface_hub, "hf_hub_download", fake_download)
+    monkeypatch.setattr(microcosm.data, "download", fake_download)
 
     path = builder._download_base_h5()
 
-    assert requested == [
-        {
-            "repo_id": "policyengine/populace-us",
-            "filename": "populace_us_2024.h5",
-            "repo_type": "dataset",
-        }
-    ]
-    assert path == tmp_path / "populace_us_2024.h5"
-    assert builder.DATASET_FILENAME != "populace_us_2024.h5"
+    assert requested == [("us", 2024, {})]
+    assert path == tmp_path / "microcosm_us_2024.h5"
 
 
 class _TestEmitter:

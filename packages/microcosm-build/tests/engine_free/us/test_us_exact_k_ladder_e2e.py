@@ -340,15 +340,17 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
         exact_k_ladder=ladder_receipt,
     )
     # The run's last step rewrites both manifests for the national release and
-    # checks them against the certified contract, which these stub
-    # diagnostics would not pass; the call is recorded instead.
+    # leaves the certified contract, which these stub diagnostics would not
+    # pass, to the publication command's preflight; any call is recorded.
+    from microcosm.data import contract
+
     validated: list[Path] = []
 
     def record_certified_contract(directory, *, artifact_root=None):
         validated.append(Path(directory))
         return []
 
-    monkeypatch.setattr(builder, "validate_release_dir", record_certified_contract)
+    monkeypatch.setattr(contract, "validate_release_dir", record_certified_contract)
     commands = builder._finish_build_folder_release(
         release_dir,
         build=release_id,
@@ -356,7 +358,7 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
         evidence_release=False,
     )
 
-    assert validated == [release_dir]
+    assert validated == []
     assert "microcosm-publish-release-build" in commands["publish_command"]
     assert commands["promote_command"].endswith("--promote")
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
