@@ -2571,3 +2571,13 @@ def test_property_the_replay_accepts_a_measurement_iff_it_is_the_derived_one():
         assert all("claim_measurement" in failure for failure in failures)
 
     check()
+
+
+def test_the_producer_inventories_cover_the_build_folder_rewrite() -> None:
+    """Both enrichment builders rewrite their manifests for their release with
+    microcosm.data.build_folder_manifests, so producer authentication hashes
+    that module too, as the recertification's inventory does."""
+    helper = "packages/microcosm-data/src/microcosm/data/build_folder_manifests.py"
+
+    assert helper in enrichment.PRODUCER_SOURCE_FILES
+    assert helper in enrichment.RECEIPT_RELEASE_PRODUCER_FILES
