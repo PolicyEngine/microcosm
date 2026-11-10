@@ -2707,6 +2707,30 @@ def test_a_us_build_folder_release_must_declare_its_release_s_dataset_file(
     assert dataset_file in failures
 
 
+def test_the_receipt_donor_release_takes_only_receipt_source_enrichments(
+    release_dir: Path,
+) -> None:
+    """A calibrated national build that names its dataset after the donor's
+    file is still not a receipt-qualified donor (review of #1571)."""
+    donor = _as_us_build_folder_release(release_dir, release=US_RECEIPT_DONOR_RELEASE)
+
+    def rename_the_dataset(manifest):
+        manifest["artifacts"]["microcosm_us_2024"]["path"] = (
+            "microcosm_us_2024_receipt_qualified.h5"
+        )
+
+    _rewrite_release_manifest(donor, rename_the_dataset)
+    build_path = donor / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    build_manifest["dataset"]["filename"] = "microcosm_us_2024_receipt_qualified.h5"
+    build_path.write_text(json.dumps(build_manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(donor)
+
+    assert "receipt source enrichment" in "\n".join(excinfo.value.failures)
+
+
 def test_release_roles_record_national_and_local_area() -> None:
     assert contract.RELEASE_ROLES == {
         "national_default": "national",

@@ -303,6 +303,18 @@ def test_the_h5_may_not_live_in_the_release_directory(candidate):
         )
 
 
+def test_a_recertification_is_a_build_of_the_national_release_only(candidate):
+    """A recertification republishes a calibrated national build's data, so a
+    directory named after another US release, here the receipt-donor
+    release, whose role is also national, is refused (review of #1571)."""
+    release_dir, artifact_root = candidate
+    moved = release_dir.with_name("microcosm-us-2024-receipt-donor")
+    release_dir.rename(moved)
+
+    with pytest.raises(ReleaseContractError, match="build of the national release"):
+        recert.validate_recertification_candidate(moved, artifact_root=artifact_root)
+
+
 # ---------------------------------------------------------------------------
 # Which parents a recertification accepts.
 # ---------------------------------------------------------------------------
