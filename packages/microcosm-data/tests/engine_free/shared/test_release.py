@@ -2146,3 +2146,36 @@ def test_the_tagged_publisher_refuses_the_us_national_release(
 
     with pytest.raises(ValueError, match="microcosm-publish-release-build"):
         release_module.prepare_release(national, artifact_root=artifact_root)
+
+
+def test_prepare_build_folder_release_checks_an_evidence_build_with_its_contract(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """An evidence-tier build ships its failures on purpose, so the build-
+    folder publisher checks it with the evidence contract, never the
+    certified one."""
+    national = _as_us_national_build_folder_release(release_dir)
+    evidence = national.rename(national.with_name("microcosm-us-2024-evidence"))
+    for name in ("release_manifest.json", "build_manifest.json"):
+        manifest = json.loads((evidence / name).read_text())
+        manifest["release"] = "microcosm-us-2024-evidence"
+        (evidence / name).write_text(json.dumps(manifest))
+    checked = []
+    monkeypatch.setattr(
+        release_module,
+        "validate_release_dir",
+        lambda _path, **_kwargs: pytest.fail("the certified contract ran"),
+    )
+    monkeypatch.setattr(
+        release_module,
+        "validate_evidence_release_dir",
+        lambda path: checked.append(Path(path)),
+    )
+
+    prepared = release_module.prepare_build_folder_release(
+        evidence, artifact_root=_microcosm_named_artifacts(artifact_root)
+    )
+
+    assert checked == [evidence]
+    assert prepared.release == "microcosm-us-2024-evidence"
+    assert prepared.release_role == "national"
