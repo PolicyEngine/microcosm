@@ -890,6 +890,78 @@ def _effective_mass_diagnostics(
     return diagnostics
 
 
+def _source_households_by_entity(
+    tables: Mapping[str, pd.DataFrame],
+) -> dict[str, np.ndarray] | None:
+    """Each entity's rows' source household, or None without lineage.
+
+    A benefit unit takes its first member's household's source. Every built
+    frame carries ``household_source_id`` (the input-mass gate fails closed
+    without it); a hand-made fixture may not.
+    """
+
+    from microcosm.build.uk_runtime.receipt_counts import SOURCE_HOUSEHOLD_COLUMN
+
+    household = tables["household"]
+    if SOURCE_HOUSEHOLD_COLUMN not in household.columns:
+        return None
+    sources = household[SOURCE_HOUSEHOLD_COLUMN].to_numpy()
+    by_household = pd.Series(sources, index=household["household_id"].to_numpy())
+    person = tables["person"]
+    person_sources = by_household.reindex(
+        person["person_household_id"].to_numpy()
+    ).to_numpy()
+    first_member = (
+        pd.DataFrame(
+            {
+                "benunit": person["person_benunit_id"].to_numpy(),
+                "source": person_sources,
+            }
+        )
+        .drop_duplicates("benunit")
+        .set_index("benunit")["source"]
+    )
+    return {
+        "household": sources,
+        "person": person_sources,
+        "benunit": first_member.reindex(
+            tables["benunit"]["benunit_id"].to_numpy()
+        ).to_numpy(),
+    }
+
+
+def _columns_on_fewer_than_floor_sources(
+    column_values: Mapping[str, tuple[str, Any]],
+    *,
+    defaults: Mapping[str, object],
+    effective_weights: Mapping[str, np.ndarray],
+    sources: Mapping[str, np.ndarray] | None,
+) -> frozenset[str]:
+    """Columns whose effective signal one or two source households carry.
+
+    Their per-column figures would rest on fewer cases than the UKDS floor
+    of three, so the report withholds them (zero carriers is no cell).
+    """
+
+    if sources is None:
+        return frozenset()
+    from microcosm.build.uk_runtime.receipt_counts import (
+        UK_DISCLOSURE_FLOOR,
+        distinct_count,
+    )
+
+    thin: set[str] = set()
+    for name, (entity, values) in column_values.items():
+        if name not in defaults or entity not in sources:
+            continue
+        weights = np.asarray(effective_weights[entity], dtype=np.float64)
+        signal = _nondefault_signal_mask(values, defaults[name]) & (weights > 0.0)
+        carriers = distinct_count(sources[entity], signal)
+        if 0 < carriers < UK_DISCLOSURE_FLOOR:
+            thin.add(name)
+    return frozenset(thin)
+
+
 def _family_effective_mass_diagnostics(
     manifest: UKReleaseInputCoverageManifest,
     *,
@@ -1215,6 +1287,14 @@ def uk_release_input_coverage_gate(
         if float(details["effective_signal_mass_share"]) < floor
     }
     degenerate = raw_degenerate | insufficient_effective_mass
+    # The UKDS floor: figures for a column one or two source households carry
+    # are withheld from the report; the verdict still stands on them.
+    withheld = _columns_on_fewer_than_floor_sources(
+        present_values,
+        defaults=defaults,
+        effective_weights=effective_weights,
+        sources=_source_households_by_entity(tables),
+    )
     base = input_column_coverage_gate(
         present_values.keys(),
         required_columns=required,
@@ -1235,10 +1315,14 @@ def uk_release_input_coverage_gate(
         prefix = f"{name}: required reference input column is present but every "
         failures = [failure for failure in failures if not failure.startswith(prefix)]
         column_details = diagnostics[name]
+        share = (
+            "withheld (fewer than three source households carry it)"
+            if name in withheld
+            else f"{float(column_details['effective_signal_mass_share']):.12g}"
+        )
         failures.append(
             f"{name}: required reference input column carries non-default "
-            f"signal on effective population mass share "
-            f"{float(column_details['effective_signal_mass_share']):.12g}, below "
+            f"signal on effective population mass share {share}, below "
             f"the reviewed floor {floor:.12g}; zero-weight support or numerical "
             "dust is not release coverage. Rebuild the source channel with a "
             "reviewed positive population-mass allocation."
@@ -1271,7 +1355,18 @@ def uk_release_input_coverage_gate(
             "rationale": manifest.effective_mass_coverage.rationale,
         },
         "insufficient_effective_mass": sorted(insufficient_effective_mass),
-        "effective_mass_by_column": diagnostics,
+        "effective_mass_by_column": {
+            name: (
+                {
+                    "entity": column_details["entity"],
+                    "source_households": "<3",
+                    "figures": "withheld",
+                }
+                if name in withheld
+                else column_details
+            )
+            for name, column_details in diagnostics.items()
+        },
         "wrong_entity_columns": wrong_entities,
         "family_effective_mass": family_diagnostics,
         "family_build_state": family_build_state,

@@ -339,3 +339,59 @@ def test_effective_input_signal_measures_by_the_gates_own_rule() -> None:
     entity, signal = carried["employment_income"]
     assert entity == "person"
     assert signal.tolist() == [False, True, False]
+
+
+def test_figures_resting_on_fewer_than_three_source_households_are_withheld() -> None:
+    """The UKDS floor of three (CD171): a required column one or two source
+    households carry keeps its verdict, and its figures leave the report."""
+
+    def gate(source_ids):
+        frame = _weighted_person_frame(
+            {
+                # Signal on two rows: one source household, or two.
+                "dividend_income": np.asarray([500.0, 500.0, 0.0, 0.0]),
+                "employment_income": np.asarray([1.0, 2.0, 3.0, 4.0]),
+            },
+            np.asarray([1_000.0, 1_000.0, 1_000.0, 1_000.0]),
+            source_ids=source_ids,
+        )
+        return uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"dividend_income": 0.0, "employment_income": 0.0}),
+            reference_surface=reference_surface("dividend_income", "employment_income"),
+            manifest=_manifest(()),
+        )
+
+    for source_ids in ([11, 11, 12, 13], [11, 12, 13, 14]):
+        result = gate(source_ids)
+        assert result.passed, result.failures
+        by_column = result.details["effective_mass_by_column"]
+        assert by_column["dividend_income"] == {
+            "entity": "person",
+            "source_households": "<3",
+            "figures": "withheld",
+        }
+        assert by_column["employment_income"]["effective_signal_mass_share"] == 1.0
+
+    # Every row a clone of one source household: even a column on every row
+    # rests on one case, so its figures are withheld too.
+    result = gate([11, 11, 11, 11])
+    assert (
+        "effective_signal_mass_share"
+        not in (result.details["effective_mass_by_column"]["employment_income"])
+    )
+    # Three source households carry it: the figures are reported.
+    spread = _weighted_person_frame(
+        {"dividend_income": np.asarray([500.0, 500.0, 500.0, 0.0])},
+        np.asarray([1_000.0] * 4),
+        source_ids=[11, 12, 13, 14],
+    )
+    reported = uk_release_input_coverage_gate(
+        spread,
+        _StubEngine({"dividend_income": 0.0}),
+        reference_surface=reference_surface("dividend_income"),
+        manifest=_manifest(()),
+    )
+    assert reported.details["effective_mass_by_column"]["dividend_income"][
+        "effective_signal_mass_share"
+    ] == pytest.approx(0.75)

@@ -72,10 +72,14 @@ def _weighted_person_frame(
     weight_kind: WeightKind = WeightKind.DESIGN,
     mass_log: tuple[MassChangeRecord, ...] = (),
     time_period: str | None = None,
+    source_ids: np.ndarray | None = None,
 ) -> Frame:
     weights = np.asarray(household_weights, dtype=float)
     n = len(weights)
     ids = np.arange(1, n + 1, dtype="int64")
+    household = pd.DataFrame({"household_id": ids})
+    if source_ids is not None:
+        household["household_source_id"] = np.asarray(source_ids)
     person = pd.DataFrame(
         {
             "person_id": ids,
@@ -88,7 +92,7 @@ def _weighted_person_frame(
         {
             "person": person,
             "benunit": pd.DataFrame({"benunit_id": ids}),
-            "household": pd.DataFrame({"household_id": ids}),
+            "household": household,
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(values=weights, kind=weight_kind)},
