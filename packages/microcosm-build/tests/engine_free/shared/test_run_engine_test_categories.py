@@ -488,27 +488,26 @@ def test_the_us_engine_script_exits_with_its_runner_status(
     tmp_path: Path, status: int
 ) -> None:
     """``engine-us`` runs ``bash tools/run_engine_us_tests.sh``, so the job
-    passes or fails on that script's exit status. This sources the script in a
-    shell whose only ``uv`` exits with ``status``, so no engine runs. If the
-    script let ``|| true`` or a later command replace the runner's status, the
-    failing cases here would fail."""
+    passes or fails on that script's exit status. This runs a copy of the
+    script on a ``PATH`` whose only ``uv`` exits with ``status``, so no engine
+    runs. The copy drops ``/usr/bin/time -v``, which macOS lacks, and keeps
+    every other character. If the script let ``|| true`` or a later command
+    replace the runner's status, the failing cases here would fail."""
 
     uv = tmp_path / "uv"
     uv.write_text(f"#!/bin/sh\nexit {status}\n", encoding="utf-8")
     uv.chmod(0o755)
+    script = (ci_test_plan.ROOT / "tools/run_engine_us_tests.sh").read_text(
+        encoding="utf-8"
+    )
+    assert script.count("/usr/bin/time -v uv ") == 1
+    copy = tmp_path / "run_engine_us_tests.sh"
+    copy.write_text(script.replace("/usr/bin/time -v uv ", "uv "), encoding="utf-8")
     bash = shutil.which("bash")
     assert bash is not None
 
     run = subprocess.run(
-        [
-            bash,
-            "-c",
-            # A function stands in for ``/usr/bin/time``, whose ``-v`` macOS
-            # lacks, and runs the command it times.
-            'function /usr/bin/time { shift; "$@"; }; source "$1"',
-            "bash",
-            str(ci_test_plan.ROOT / "tools/run_engine_us_tests.sh"),
-        ],
+        [bash, str(copy)],
         cwd=tmp_path,
         env={"PATH": str(tmp_path)},
         capture_output=True,
