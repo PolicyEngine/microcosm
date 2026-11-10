@@ -13,8 +13,16 @@ composition gate on its output and writes a JSON receipt of aggregates.
   carries the household's ``HSUP_WGT`` times 0.01, and each file is rescaled to
   one third of income year 2024's weighted person population.
   ``--weighting person`` uses ``MARSUPWT / 100 / 3`` instead.
-- Draw keys use the pool's full lineage: ``source_year`` (income year),
+- Each person carries the pool's full lineage: ``source_year`` (income year),
   ``source_household_id`` (``PH_SEQ``) and ``source_person_id`` (``PERIDNUM``).
+  The tree's kernel picks which of them key its draws. The script wraps
+  ``immigration._stable_person_draws`` and records, for each draw call, the
+  key that reproduces its draws: ``full`` (all three columns), ``legacy``
+  (``source_year`` and ``source_person_id``) or ``person_id``.
+- ``--draw-keys full`` or ``--draw-keys legacy`` hands that key to every draw
+  call that brings none of its own, so runs of two trees can share their
+  draws and differ only in method. It needs a tree whose
+  ``_stable_person_draws`` takes ``keys``.
 - Seed 0 and period 2024, Route A's ``--target-year``.
 
 A refusal is recorded as the receipt's ``error`` instead of raised. Main's tree
@@ -43,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import subprocess
 import sys
@@ -92,6 +101,12 @@ parser.add_argument(
     help="commit the tree came from, when src_root is not a git checkout",
 )
 parser.add_argument("--labels-out", type=Path)
+parser.add_argument(
+    "--draw-keys",
+    choices=("native", "full", "legacy"),
+    default="native",
+    help="key the tree's draws as its kernel does (native) or force one key",
+)
 args = parser.parse_args()
 
 ROOT = args.src_root.resolve()
@@ -107,6 +122,100 @@ from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 assert Path(immigration.__file__).resolve().is_relative_to(ROOT), immigration.__file__
+
+KEY_COLUMNS = {
+    "full": ("source_year", "source_household_id", "source_person_id"),
+    "legacy": ("source_year", "source_person_id"),
+    "person_id": ("person_id",),
+}
+KEY_LABELS = {
+    "full": "source_year:source_household_id(PH_SEQ):source_person_id(PERIDNUM)",
+    "legacy": "source_year:source_person_id(PERIDNUM)",
+    "person_id": "person_id",
+}
+kernel_draws = immigration._stable_person_draws
+if (
+    args.draw_keys != "native"
+    and "keys" not in inspect.signature(kernel_draws).parameters
+):
+    raise SystemExit(
+        f"--draw-keys {args.draw_keys} needs a tree whose _stable_person_draws "
+        "takes keys"
+    )
+draw_calls: list[dict[str, object]] = []
+
+
+def _joined_keys(person: pd.DataFrame, columns: tuple[str, ...]) -> pd.Series:
+    keys = person[columns[0]].astype(str)
+    for column in columns[1:]:
+        keys = keys + ":" + person[column].astype(str)
+    return keys.reset_index(drop=True)
+
+
+def _hashed_draws(keys: pd.Series, *, seed: int, salt: str) -> np.ndarray:
+    """The kernel's draw for each key: blake2b of ``seed:salt:key`` over 2**64."""
+
+    return np.fromiter(
+        (
+            int.from_bytes(
+                hashlib.blake2b(
+                    f"{seed}:{salt}:{key}".encode(), digest_size=8
+                ).digest(),
+                byteorder="big",
+                signed=False,
+            )
+            / float(2**64)
+            for key in keys
+        ),
+        dtype=np.float64,
+        count=len(keys),
+    )
+
+
+def _recording_draws(person: pd.DataFrame, **kwargs: object) -> np.ndarray:
+    """Run the kernel's draw and record which key reproduces it."""
+
+    caller_keys = kwargs.get("keys")
+    forced = args.draw_keys != "native" and caller_keys is None
+    if forced:
+        kwargs["keys"] = _joined_keys(person, KEY_COLUMNS[args.draw_keys])
+    draws = np.asarray(kernel_draws(person, **kwargs))
+    salt = str(kwargs["salt"])
+    if len(person) == 0:
+        draw_calls.append({"salt": salt, "rows": 0, "key": None, "forced": forced})
+        return draws
+    rows = np.unique(
+        np.r_[
+            np.arange(min(1000, len(person))),
+            np.arange(max(0, len(person) - 1000), len(person)),
+        ]
+    )
+
+    def reproduces(keys: pd.Series) -> bool:
+        expected = _hashed_draws(keys.iloc[rows], seed=int(kwargs["seed"]), salt=salt)
+        return bool(np.array_equal(expected, draws[rows]))
+
+    named = [
+        name
+        for name, columns in KEY_COLUMNS.items()
+        if set(columns).issubset(person.columns)
+        and reproduces(_joined_keys(person, columns))
+    ]
+    if caller_keys is not None:
+        if not reproduces(pd.Series(caller_keys).astype(str).reset_index(drop=True)):
+            raise SystemExit(f"draw call {salt!r} does not use its caller's keys")
+        key = "caller" + (f"={named[0]}" if len(named) == 1 else "")
+    elif len(named) == 1:
+        key = named[0]
+    else:
+        raise SystemExit(f"draw call {salt!r}: keys {named} reproduce its draws")
+    draw_calls.append(
+        {"salt": salt, "rows": int(len(person)), "key": key, "forced": forced}
+    )
+    return draws
+
+
+immigration._stable_person_draws = _recording_draws
 
 
 def _archive_path(name: str) -> Path:
@@ -230,7 +339,14 @@ receipt = {
         if args.weighting == "household"
         else "MARSUPWT / 100 / 3 per file"
     ),
-    "draw_keys": "source_year:source_household_id(PH_SEQ):source_person_id(PERIDNUM)",
+    "draw_keys": {
+        "requested": args.draw_keys,
+        "used": {
+            name: KEY_LABELS.get(name, name)
+            for name in sorted({str(call["key"]) for call in draw_calls})
+        },
+        "calls": draw_calls,
+    },
     "stage_seconds": round(stage_seconds, 1),
     "error": error,
 }
@@ -328,6 +444,13 @@ if error is None and args.labels_out is not None:
 
 print("weighting:", args.weighting)
 print("source commit:", source_commit, f"({source_commit_from})")
+print(
+    "draw keys:",
+    args.draw_keys,
+    "->",
+    receipt["draw_keys"]["used"],
+    f"over {len(draw_calls)} draw calls",
+)
 print("archives:", [(a["income_year"], a["rows"], a["peinusyr_max"]) for a in archives])
 if error is not None:
     print("REFUSED:", error)

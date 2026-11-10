@@ -596,8 +596,8 @@ authorization tuple (`gate`, `plan_sha256`, `prompt_sha256`,
 not claim public-key or cryptographic signature verification.
 
 Attested legacy scoring checks a schema-9 pool against reconstructions that
-follow today's late-producer registry, as main does, except where microcosm
-#767 changed it. The frozen resource
+follow today's late-producer registry, as main does, except for the two
+producer contracts microcosm #767 changed. The frozen resource
 `us/legacy_schema16_late_producer_schedule.json`, which loads only if its
 recomputed payload SHA-256 equals
 `02e618cc656eb39990ed99dca2b30a52794e01e2b06a3c2df87ca4a7d85ab086`, supplies two
@@ -621,8 +621,14 @@ longer hash to the sealed payload
 execution rows also bind today's `acs_transfer_execution_contract_identity` on
 this path, as on main, so #767's schema-3 transfer contract reaches it there;
 main's own post-transfer changes since `7c4a5ac0` already moved that identity
-for all nineteen transfer groups. Restoring all of these to sealed history is
-separate work. The pool's operator order must be the
+for all nineteen transfer groups. Post-clone source execution rows likewise
+bind today's source-stage binding, which hashes the whole packaged
+`us/source_stages.json` and carries each bound stage's resolved spec. #767
+rewrote the `immigration_status` stage, so its change reaches the fifteen
+source rows that bind a stage spec (direct housing assistance binds none).
+Main has changed `source_stages.json` in fourteen commits since `7c4a5ac0`, so
+on main too this binding refuses a pool whose rows bound an older file.
+Restoring all of these to sealed history is separate work. The pool's operator order must be the
 literal eleven-step order ending at `by_origin_battery`, from before
 `us_immigration_composition_gate` existed, and the loader replays its
 immigration transfer targets as ordinary transfer receipts, without the paired

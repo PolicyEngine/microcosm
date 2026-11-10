@@ -70,7 +70,7 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
     assert projected["sha256"] == (
-        "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef"
+        "7cdedd5bf056f1407910eddcd40ad0660bd7ef2d6defe224612c02b3476cbf15"
     )
     assert {
         name: component["sha256"] for name, component in projected["components"].items()
@@ -85,7 +85,7 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
             "cacc6c11e114dbae3aaa2761cc6b3fcb1191cd9b689b1c2bd096614c51ebff8b"
         ),
         "late_producer_schedule": (
-            "80321bdcd6b2278da993ac6156b97b5b7532ed671e19caddc6cea19f1ace8816"
+            "bdc3ab40ac748822cea2712a517e6ec60b22674337b10bc0176a81809db07466"
         ),
         "metric_registry": (
             "832245589a8ec5a33fc151e60662a245d411a636ef62debb884d65abcad3024a"

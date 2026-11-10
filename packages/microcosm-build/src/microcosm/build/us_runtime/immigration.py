@@ -343,6 +343,13 @@ _PAROLE_ASEC_ARRIVAL_CODES: Mapping[str, tuple[int, ...]] = {
     "nicaragua": _POST_2021_ARRIVAL_CODES,
     "venezuela": _POST_2021_ARRIVAL_CODES,
 }
+#: First exact (ACS YOEP) arrival year of each parole program. The windows
+#: have no end year, although Operation Allies Welcome ended in 2022: the
+#: stacked transfer asks the ACS arm for its own mass share of each national
+#: target and refuses a candidate shortfall, and at the ACS's own weights the
+#: 2024 1-year holds 70,123 Afghan-born non-citizens who arrived in 2021-2022,
+#: fewer than the 73,566 OAW target. So, like the 2024 ASEC's code 28
+#: (2022-2024), the Afghan window also takes 2023-2024 arrivals.
 _PAROLE_ACS_MIN_ARRIVAL_YEAR: Mapping[str, int] = {
     "afghanistan": 2021,
     "ukraine": 2022,
