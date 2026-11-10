@@ -380,6 +380,24 @@ def publication_request(
     )
 
 
+def _refuse_recertification_as_current(release_dir: Path | str) -> None:
+    """Refuse to make a compatibility recertification its release's current build.
+
+    A recertification republishes its parent's data under a wider
+    compatibility claim. As with the tagged publisher, which never moved
+    ``latest.json`` to one, it is published without becoming current, and
+    consumers load it with ``build=``.
+    """
+    from microcosm.data import compatibility_recertification
+
+    if compatibility_recertification.is_recertification(release_dir):
+        raise ValueError(
+            f"{Path(release_dir)} holds a compatibility recertification, which "
+            "is published without becoming its release's current build; "
+            "publish it without --make-current, and load it with build=."
+        )
+
+
 def publish_release_build(
     release_dir: Path | str,
     *,
@@ -404,10 +422,12 @@ def publish_release_build(
     files; it hands nothing over unless the emitter's write-access check
     passes. A recertification is handed over only once the Hub shows its
     parent published with the manifest it carries, as the tagged publisher
-    required.
+    required, and never with ``make_current``.
     """
     if client is None:
         _refuse_offline()
+    if make_current:
+        _refuse_recertification_as_current(release_dir)
     named_repository, _, _ = build_folder_identity(release_dir)
     _refuse_pointer_files(named_repository)
     prepared = prepare_build_folder_release(
@@ -443,10 +463,12 @@ def promote_release_build(
 ) -> ReleasePublication:
     """Make a published build, named by its local manifest, the current build.
 
-    It refuses and checks write access as :func:`publish_release_build` does.
+    It refuses and checks write access as :func:`publish_release_build` does,
+    and refuses a compatibility recertification, which is never current.
     """
     if client is None:
         _refuse_offline()
+    _refuse_recertification_as_current(release_dir)
     named_repository, release, build = build_folder_identity(release_dir)
     if repository is not None and repository != named_repository:
         raise ValueError(
@@ -489,12 +511,18 @@ def _parser() -> argparse.ArgumentParser:
     action.add_argument(
         "--make-current",
         action="store_true",
-        help="Make the build the release's current build when it is published.",
+        help=(
+            "Make the build the release's current build when it is published "
+            "(refused for a compatibility recertification)."
+        ),
     )
     action.add_argument(
         "--promote",
         action="store_true",
-        help="Make this already published build the release's current build.",
+        help=(
+            "Make this already published build the release's current build "
+            "(refused for a compatibility recertification)."
+        ),
     )
     action.add_argument(
         "--preflight-only",
