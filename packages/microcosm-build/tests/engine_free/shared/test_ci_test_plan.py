@@ -7,13 +7,14 @@ import itertools
 import json
 import os
 import shlex
+import string
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 import yaml
-from hypothesis import HealthCheck, event, given, settings
+from hypothesis import HealthCheck, assume, event, given, settings
 from hypothesis import strategies as st
 
 from tools import ci_test_plan
@@ -149,51 +150,28 @@ def test_registry_directories_are_unique() -> None:
 def test_workflow_jobs_match_registered_test_and_infrastructure_jobs() -> None:
     source = ci_test_plan.WORKFLOW.read_text(encoding="utf-8")
 
-    assert ci_test_plan.workflow_job_errors(source) == ()
+    assert set(ci_test_plan.load_workflow(source)["jobs"]) == {
+        *ci_test_plan.JOBS,
+        *ci_test_plan.WORKFLOW_INFRASTRUCTURE_JOBS,
+    }
 
 
-def test_workflow_rejects_a_separate_behavioral_test_job() -> None:
-    source = """\
-jobs:
-  engine-free:
-    steps:
-      - run: pytest
-  invented-compatibility-test:
-    steps:
-      - run: node verify.mjs
-"""
+@pytest.mark.parametrize(
+    "job", ["invented-compatibility-test", "_invented-compatibility-test"]
+)
+def test_workflow_rejects_a_separate_behavioral_test_job(job: str) -> None:
+    steps = "    steps:\n      - run: node verify.mjs\n"
+    source = _edited(_WHEELS, f"{_WHEELS}  {job}:\n{steps}")
 
-    assert (
-        "invented-compatibility-test: workflow job has no registered test "
-        "category or approved infrastructure role"
-        in ci_test_plan.workflow_job_errors(source)
-    )
-
-
-def test_workflow_rejects_an_underscore_prefixed_job() -> None:
-    source = """\
-jobs:
-  engine-free:
-    steps:
-      - run: pytest
-  _invented-compatibility-test:
-    steps:
-      - run: node verify.mjs
-"""
-
-    assert (
-        "_invented-compatibility-test: workflow job has no registered test "
-        "category or approved infrastructure role"
-        in ci_test_plan.workflow_job_errors(source)
+    assert _document_errors(source) == (
+        f"{job}: {_NOT_DECLARED}",
+        f"ci: needs must list {job}",
     )
 
 
 def _other_jobs(source: str) -> tuple[str, ...]:
-    return tuple(
-        name
-        for name in ci_test_plan.workflow_job_names(source)
-        if name != ci_test_plan.AGGREGATE_JOB
-    )
+    jobs = ci_test_plan.load_workflow(source)["jobs"]
+    return tuple(name for name in jobs if name != ci_test_plan.AGGREGATE_JOB)
 
 
 def _document_errors(source: str) -> tuple[str, ...]:
@@ -563,7 +541,6 @@ def _edited(old: str, new: str) -> str:
 
 def test_a_complete_aggregate_job_has_no_workflow_errors() -> None:
     assert _document_errors(_AGGREGATE_WORKFLOW) == ()
-    assert ci_test_plan.workflow_job_errors(_AGGREGATE_WORKFLOW) == ()
 
 
 @pytest.mark.parametrize(
@@ -896,6 +873,8 @@ def test_workflow_rejects_a_job_whose_failure_could_pass_ci(
         # Other spellings of the same YAML.
         ("  wheels:\n", '  "wheels":\n'),
         ("  wheels:\n", "  wheels: # builds every wheel\n"),
+        ("jobs:\n", "jobs: # every job of the plan\n"),
+        ("jobs:\n", '"jobs":\n'),
         (_CI_IF, '  ci:\n    if: "always()"\n'),
         (_CI_IF, "  ci:\n    if: always() # even when a job fails\n"),
         (_CI_IF, "  ci:\n    if: >-\n      always()\n"),
@@ -1378,6 +1357,35 @@ def test_verify_workflow_refuses_a_workflow_the_plan_refuses(
     assert str(refused.value).startswith(message)
 
 
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("\n  lint:\n", '\n  "lint":\n'),
+        ("\njobs:\n", "\njobs: # every job of the plan\n"),
+    ],
+)
+def test_verify_and_verify_workflow_agree_on_how_yaml_spells_the_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    old: str,
+    new: str,
+) -> None:
+    """``verify-workflow`` alone reads the workflow's jobs, as PyYAML reads
+    them, and ``verify`` leaves them to it. So a quoted job key, or a comment
+    after ``jobs:``, passes both."""
+
+    source = ci_test_plan.WORKFLOW.read_text(encoding="utf-8")
+    assert source.count(old) == 1
+    workflow = tmp_path / "test.yml"
+    workflow.write_text(source.replace(old, new), encoding="utf-8")
+    monkeypatch.setattr(ci_test_plan, "WORKFLOW", workflow)
+
+    assert ci_test_plan.main(["verify-workflow"]) == 0
+    assert ci_test_plan.main(["verify"]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "verification=ok"
+
+
 def _run_script(
     *arguments: str, bare: bool = True, **environment: str
 ) -> subprocess.CompletedProcess[str]:
@@ -1772,21 +1780,6 @@ def test_require_results_refuses_a_missing_or_malformed_needs_context(
     assert str(refused.value).startswith("NEEDS must hold")
 
 
-def test_workflow_job_parser_ignores_nested_yaml_keys() -> None:
-    source = """\
-jobs:
-  engine-free:
-    strategy:
-      matrix:
-        python-version: ["3.13", "3.14"]
-    steps:
-      - name: Run tests
-        run: pytest
-"""
-
-    assert ci_test_plan.workflow_job_names(source) == ("engine-free",)
-
-
 def test_engine_guard_detection_ignores_strings_but_finds_executable_guards() -> None:
     source = """
 TEXT = '@pytest.mark.requires_uk'
@@ -1825,6 +1818,46 @@ def test_us_reporting_categories_come_from_the_registry() -> None:
     }
 
 
+def test_the_us_runner_runs_every_engine_us_group_of_the_plan() -> None:
+    assert ci_test_plan.US_RUNNER_JOB == "engine-us"
+    assert ci_test_plan.us_runner_errors() == ()
+
+
+@pytest.mark.parametrize(
+    ("category", "never_runs"),
+    [
+        ("parity", "engine-parity-us"),
+        (None, "engine-parity-us"),
+        # The runner runs the later of two groups that report one category.
+        ("contract", "engine-contract-us"),
+    ],
+)
+def test_verify_refuses_an_engine_us_group_the_us_runner_never_runs(
+    monkeypatch: pytest.MonkeyPatch, category: str | None, never_runs: str
+) -> None:
+    monkeypatch.setitem(
+        ci_test_plan.TEST_GROUPS,
+        "engine-parity-us",
+        ci_test_plan.TestGroup(
+            ("engine_parity", "us"),
+            "engine-us",
+            "us",
+            report_category=category,
+            engine_module="policyengine_us",
+        ),
+    )
+    monkeypatch.setattr(ci_test_plan, "test_files", lambda: (Path(__file__),))
+    refusal = (
+        f"{never_runs}: the US runner never runs this group, since it runs one "
+        "engine-us group for each report category in contract, scenario, workflow"
+    )
+
+    assert ci_test_plan.us_runner_errors() == (refusal,)
+    with pytest.raises(SystemExit) as refused:
+        ci_test_plan.verify()
+    assert f"\n  {refusal}\n" in str(refused.value)
+
+
 def test_unknown_non_documentation_paths_select_both_countries() -> None:
     assert ci_test_plan.scope_for_path("new-area/unrecognized.config") == "shared"
     assert ci_test_plan.select_countries(["new-area/unrecognized.config"]) == {
@@ -1849,6 +1882,171 @@ def test_country_specific_source_paths_keep_their_existing_scope(
     path: str, scope: str
 ) -> None:
     assert ci_test_plan.scope_for_path(path) == scope
+
+
+def _country_words(name: str) -> set[str]:
+    """Return the countries that are words of a file name, found one character
+    at a time: a word is a maximal run of ASCII letters, read without case."""
+
+    words = {
+        "".join(run).lower()
+        for letter, run in itertools.groupby(
+            name, lambda character: character in string.ascii_letters
+        )
+        if letter
+    }
+    return words & {"us", "uk"}
+
+
+def _word_scope(name: str) -> str | None:
+    """The scope of a file below ``tools/``, by the words of its name."""
+
+    if PurePosixPath(name).suffix.lower() in ci_test_plan.DOC_SUFFIXES:
+        return None
+    countries = _country_words(name)
+    return countries.pop() if len(countries) == 1 else "shared"
+
+
+def _letters_scope(name: str) -> str | None:
+    """The scope of a file below ``tools/`` by the rule the words replaced: a
+    country's two letters anywhere in the lower-cased file name."""
+
+    if PurePosixPath(name).suffix.lower() in ci_test_plan.DOC_SUFFIXES:
+        return None
+    lowered = name.lower()
+    if "us" in lowered and "uk" not in lowered:
+        return "us"
+    if "uk" in lowered and "us" not in lowered:
+        return "uk"
+    return "shared"
+
+
+# Letters outside ASCII: ``str.lower`` turns the Kelvin sign into "k".
+_OTHER_LETTERS = "Kſé"
+_NAME_PARTS = st.one_of(
+    st.sampled_from(["us", "uk", "US", "Uk", "uS", "UK"]),
+    st.text(alphabet=string.ascii_letters + string.digits + _OTHER_LETTERS, max_size=5),
+)
+# An empty separator joins two parts into one word.
+_SEPARATORS = st.sampled_from(["", "", "_", "-", ".", " ", "2", "K"])
+
+
+@st.composite
+def _tool_names(draw: st.DrawFn) -> str:
+    parts = draw(st.lists(_NAME_PARTS, min_size=1, max_size=5))
+    name = parts[0] + "".join(draw(_SEPARATORS) + part for part in parts[1:])
+    assume(name not in ("", ".", ".."))
+    return name
+
+
+@_PROPERTY
+@given(name=_tool_names())
+def test_a_tool_belongs_to_a_country_exactly_when_it_alone_is_a_word_of_its_name(
+    name: str,
+) -> None:
+    """Invariant: a file below ``tools/`` that isn't documentation scopes to a
+    country exactly when that country, and not the other, is a word of its
+    file name, and to shared otherwise."""
+
+    scope = _word_scope(name)
+    event(f"scope {scope}")
+    assert ci_test_plan.scope_for_path(f"tools/{name}") == scope
+
+
+@pytest.mark.parametrize(
+    ("path", "scope"),
+    [
+        ("tools/run_engine_us_tests.sh", "us"),
+        ("tools/US-targets.json", "us"),
+        # A digit ends a word.
+        ("tools/build_us2024_inputs.py", "us"),
+        # A country's letters inside another word.
+        ("tools/status.py", "shared"),
+        ("tools/focus_report.py", "shared"),
+        ("tools/census_download.py", "shared"),
+        ("tools/census_uk_local_targets.py", "uk"),
+        ("tools/validate_uk_housing_imputation.py", "uk"),
+        # Both countries, or none as a word.
+        ("tools/compare_us_uk_targets.py", "shared"),
+        ("tools/buildUSCandidate.py", "shared"),
+        ("tools/uK_targets.py", "shared"),
+        # The file name decides, not its directory.
+        ("tools/us_bundle_generation/core.py", "shared"),
+        ("tools/route_a/run_us.sh", "us"),
+    ],
+)
+def test_a_tool_takes_the_country_its_file_name_holds_as_a_word(
+    path: str, scope: str
+) -> None:
+    assert ci_test_plan.scope_for_path(path) == scope
+
+
+def test_a_tool_change_selects_the_country_its_name_holds_as_a_word() -> None:
+    assert ci_test_plan.select_countries(["tools/status.py"]) == {
+        "run_us": True,
+        "run_uk": True,
+    }
+    assert ci_test_plan.select_countries(["tools/census_uk_local_targets.py"]) == {
+        "run_us": False,
+        "run_uk": True,
+    }
+
+
+# UK tools whose names hold "us" inside another word.
+_UK_TOOLS_WITH_US_INSIDE_A_WORD = (
+    "tools/build_uk_brma_household_table.py",
+    "tools/census_uk_data_target_parity.py",
+    "tools/census_uk_local_targets.py",
+    "tools/pin_uk_bonus_sacrifice_anchor.py",
+    "tools/validate_uk_housing_imputation.py",
+)
+
+
+def _checkout_files(directory: str) -> list[str]:
+    """Return the tracked and new files below ``directory``, as git lists them."""
+
+    listed = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            directory,
+        ],
+        cwd=ci_test_plan.ROOT,
+        check=True,
+        capture_output=True,
+    )
+    return sorted(set(listed.stdout.decode().split("\0")) - {""})
+
+
+def test_whole_words_rescope_a_tool_only_where_its_letters_hid_inside_a_word() -> None:
+    """Differential check of the whole-word rule against the letters rule it
+    replaced, over every file below ``tools/`` in the checkout. Where the
+    countries whose letters a name holds are the countries it holds as words,
+    the two rules agree. Elsewhere the file takes its whole-word scope. On
+    2026-11-10 the rules differed on five UK tools, which moved from shared to
+    uk, and on none of the other 199 files."""
+
+    files = _checkout_files("tools")
+    assert files
+    for path in files:
+        if ci_test_plan.group_name_for_test_path(PurePosixPath(path)) is not None:
+            continue  # A test module takes its group's country.
+        name = PurePosixPath(path).name
+        letters = {country for country in ("us", "uk") if country in name.lower()}
+        hid = letters != _country_words(name)
+        expected = _word_scope(name) if hid else _letters_scope(name)
+        assert ci_test_plan.scope_for_path(path) == expected, path
+    for path in _UK_TOOLS_WITH_US_INSIDE_A_WORD:
+        name = PurePosixPath(path).name
+        assert (_letters_scope(name), ci_test_plan.scope_for_path(path)) == (
+            "shared",
+            "uk",
+        )
 
 
 def test_documentation_only_changes_select_no_country_engine() -> None:

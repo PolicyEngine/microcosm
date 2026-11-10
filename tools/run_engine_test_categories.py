@@ -8,15 +8,22 @@ import asyncio
 import json
 import sys
 import time
+from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from tools.ci_test_plan import reporting_groups_for_job, selected_files
+from tools.ci_test_plan import (
+    ROOT,
+    US_RUNNER_JOB,
+    reporting_groups_for_job,
+    selected_files,
+    selected_files_for_job,
+)
 from tools.pytest_timing import TIMING_PREFIX
 
-CATEGORY_GROUPS = reporting_groups_for_job("engine-us")
+CATEGORY_GROUPS = reporting_groups_for_job(US_RUNNER_JOB)
 PYTEST_ARGUMENTS = (
     "-v",
     "--tb=short",
@@ -314,17 +321,53 @@ def render_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _category_files(category: str) -> tuple[Path, ...]:
+    """Return the files of the group that reports ``category``, or none."""
+
+    group = CATEGORY_GROUPS.get(category)
+    return () if group is None else selected_files(group)
+
+
+def _shown(path: Path) -> Path:
+    return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+
+
+def task_file_errors(tasks: Iterable[TaskSpec]) -> tuple[str, ...]:
+    """Return an error for each file the tasks don't run as the plan lists it.
+
+    The tasks must hold each file the plan lists for ``US_RUNNER_JOB`` once,
+    and no other file.
+    """
+
+    listed = selected_files_for_job(US_RUNNER_JOB)
+    held = Counter(path for task in tasks for path in task.paths)
+    errors = [f"{_shown(path)}: no task runs it" for path in listed if path not in held]
+    errors.extend(
+        f"{_shown(path)}: the tasks run it {count} times"
+        for path, count in held.items()
+        if count > 1
+    )
+    expected = set(listed)
+    errors.extend(
+        f"{_shown(path)}: a task runs it, and the plan doesn't list it for "
+        f"{US_RUNNER_JOB}"
+        for path in held
+        if path not in expected
+    )
+    return tuple(errors)
+
+
 def build_tasks(
     *, contract_batch_size: int, scenario_batch_size: int
 ) -> tuple[tuple[TaskSpec, ...], tuple[TaskSpec, ...]]:
-    """Build light batches and isolated workflow process specifications."""
+    """Build light batches and isolated workflow process specifications.
 
-    contract_batches = batched(
-        selected_files(CATEGORY_GROUPS["contract"]), contract_batch_size
-    )
-    scenario_batches = batched(
-        selected_files(CATEGORY_GROUPS["scenario"]), scenario_batch_size
-    )
+    Refuse, before any task runs, unless the tasks hold each file the plan
+    lists for ``US_RUNNER_JOB`` exactly once and no other file.
+    """
+
+    contract_batches = batched(_category_files("contract"), contract_batch_size)
+    scenario_batches = batched(_category_files("scenario"), scenario_batch_size)
     by_category = {
         "contract": tuple(
             TaskSpec("contract", index, paths)
@@ -343,8 +386,16 @@ def build_tasks(
                 light.append(tasks[index])
     workflows = tuple(
         TaskSpec("workflow", index, (path,))
-        for index, path in enumerate(selected_files(CATEGORY_GROUPS["workflow"]))
+        for index, path in enumerate(_category_files("workflow"))
     )
+    errors = task_file_errors((*light, *workflows))
+    if errors:
+        raise SystemExit(
+            "the US runner refuses to start: its tasks must run each file the "
+            f"plan lists for {US_RUNNER_JOB} once, and `python3 "
+            "tools/ci_test_plan.py verify` names each group it would not run:"
+            "\n  " + "\n  ".join(errors)
+        )
     return tuple(light), workflows
 
 

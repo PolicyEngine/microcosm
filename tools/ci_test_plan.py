@@ -122,6 +122,13 @@ STEP_CONDITIONS = ("always()", "!cancelled()", "success()")
 # that job without ``ci``, so the tests of the code ``ci`` runs stay in it.
 PLAN_TESTS = "packages/microcosm-build/tests/engine_free/shared/test_ci_test_plan.py"
 PLAN_TESTS_JOB = "engine-free"
+# The job that ``tools/run_engine_test_categories.py`` runs, and the report
+# categories it runs, which are all it runs: contract and scenario files in
+# batches, then each workflow file in a fresh process. It refuses to start
+# unless its tasks hold each file the plan lists for the job exactly once, and
+# ``verify`` refuses a group of the job that it would not run.
+US_RUNNER_JOB = "engine-us"
+US_RUNNER_CATEGORIES = ("contract", "scenario", "workflow")
 # GitHub lists at most this many files of one pull request.
 LISTED_FILES_LIMIT = 3000
 
@@ -131,7 +138,8 @@ DOC_SUFFIXES = {".md", ".rst"}
 
 RequestJSON = Callable[[str, str], Any]
 
-_WORKFLOW_JOB = re.compile(r"^  ([A-Za-z_][A-Za-z0-9_-]*):(?:\s.*)?$")
+# A word of a file name: a maximal run of ASCII letters.
+_WORD = re.compile(r"[A-Za-z]+")
 # Line breaks in YAML 1.1 (PyYAML) that YAML 1.2 reads as ordinary characters.
 _YAML_1_1_LINE_BREAKS = "\x85\u2028\u2029"
 
@@ -197,6 +205,29 @@ def plan_tests_errors() -> tuple[str, ...]:
     )
 
 
+def us_runner_errors() -> tuple[str, ...]:
+    """Return an error for each ``US_RUNNER_JOB`` group the US runner never runs.
+
+    For each category in ``US_RUNNER_CATEGORIES``, the runner runs the one
+    group that ``reporting_groups_for_job`` maps the category to. So it never
+    runs a group with no report category or with another one, nor a group
+    whose category a later group also reports.
+    """
+
+    runs = {
+        group
+        for category, group in reporting_groups_for_job(US_RUNNER_JOB).items()
+        if category in US_RUNNER_CATEGORIES
+    }
+    return tuple(
+        f"{name}: the US runner never runs this group, since it runs one "
+        f"{US_RUNNER_JOB} group for each report category in "
+        f"{', '.join(US_RUNNER_CATEGORIES)}"
+        for name, spec in TEST_GROUPS.items()
+        if spec.job == US_RUNNER_JOB and name not in runs
+    )
+
+
 def selection_condition(job: object) -> str | None:
     """Return the ``if`` the workflow must give one job, or ``None`` for no ``if``."""
 
@@ -204,54 +235,6 @@ def selection_condition(job: object) -> str | None:
     if output is None:
         return None
     return f"needs['{SELECTION_JOB}'].outputs.{output} == 'true'"
-
-
-def workflow_job_names(source: str) -> tuple[str, ...]:
-    """Return top-level job names from the repository's workflow YAML."""
-
-    in_jobs = False
-    names: list[str] = []
-    for line in source.splitlines():
-        if not in_jobs:
-            if line == "jobs:":
-                in_jobs = True
-            continue
-        if line and not line[0].isspace() and not line.startswith("#"):
-            break
-        match = _WORKFLOW_JOB.fullmatch(line)
-        if match is not None:
-            names.append(match.group(1))
-    if not in_jobs:
-        raise ValueError("workflow has no top-level jobs mapping")
-    return tuple(names)
-
-
-def workflow_job_errors(source: str) -> tuple[str, ...]:
-    """Return errors for workflow jobs outside the declared test plan."""
-
-    try:
-        names = workflow_job_names(source)
-    except ValueError as error:
-        return (str(error),)
-
-    errors: list[str] = []
-    seen: set[str] = set()
-    for name in names:
-        if name in seen:
-            errors.append(f"{name}: workflow job is declared more than once")
-        seen.add(name)
-
-    expected = set(JOBS) | set(WORKFLOW_INFRASTRUCTURE_JOBS)
-    errors.extend(
-        f"{name}: workflow job has no registered test category or approved "
-        "infrastructure role"
-        for name in sorted(seen - expected)
-    )
-    errors.extend(
-        f"{name}: registered workflow job is missing"
-        for name in sorted(expected - seen)
-    )
-    return tuple(errors)
 
 
 def load_workflow(source: str) -> object:
@@ -737,15 +720,19 @@ def describe() -> str:
 
 
 def verify() -> None:
-    """Fail if a test path or engine dependency disagrees with the registry."""
+    """Fail if a test path, an engine dependency or a group disagrees with the plan.
+
+    ``verify`` runs on bare ``python3`` and reads no YAML. The workflow, its
+    jobs included, is ``verify-workflow``'s to check.
+    """
 
     files = test_files()
     if not files:
         raise SystemExit("no test files found below packages/*/tests")
 
-    errors = list(workflow_job_errors(WORKFLOW.read_text(encoding="utf-8")))
-    errors.extend(selection_errors())
+    errors = list(selection_errors())
     errors.extend(plan_tests_errors())
+    errors.extend(us_runner_errors())
     counts = {name: 0 for name in TEST_GROUPS}
     seen_directories: dict[tuple[str, str], str] = {}
     seen_report_categories: dict[tuple[str, str], str] = {}
@@ -797,7 +784,14 @@ def verify() -> None:
 
 
 def scope_for_path(value: str) -> str | None:
-    """Return ``shared``, ``us``, ``uk``, or ``None`` for documentation."""
+    """Return ``shared``, ``us``, ``uk``, or ``None`` for documentation.
+
+    A file below ``tools/`` belongs to a country when that country, and not the
+    other, is a word of its file name. A word is a maximal run of ASCII
+    letters, read without case: ``run_engine_us_tests.sh`` holds the words
+    run, engine, us, tests and sh, and neither ``status.py`` nor
+    ``census_uk_local_targets.py`` holds the word us.
+    """
 
     path = PurePosixPath(value)
     normalized = path.as_posix()
@@ -820,11 +814,10 @@ def scope_for_path(value: str) -> str | None:
     if "/src/microcosm/build/uk_runtime/" in f"/{normalized}":
         return "uk"
     if normalized.startswith("tools/"):
-        name = path.name.lower()
-        if "us" in name and "uk" not in name:
-            return "us"
-        if "uk" in name and "us" not in name:
-            return "uk"
+        words = {word.lower() for word in _WORD.findall(path.name)}
+        countries = words & {"us", "uk"}
+        if len(countries) == 1:
+            return countries.pop()
     return "shared"
 
 
