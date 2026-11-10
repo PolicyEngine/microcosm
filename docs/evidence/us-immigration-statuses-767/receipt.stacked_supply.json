@@ -1,0 +1,217 @@
+{
+ "acs": {
+  "csv_hus.zip": "8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0",
+  "csv_pus.zip": "afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894",
+  "household_mass": 141125706.0,
+  "person_mass": 334342004.0
+ },
+ "acs_arm_person_mass": 159947952.85979113,
+ "acs_arm_weight_scale": 0.4783962258591688,
+ "afghan_noncitizen_arrivals_at_acs_weights": {
+  "2021-2022": 71681.0,
+  "2021-2024": 110913.0
+ },
+ "arm_household_share": 0.5,
+ "asec_archives": [
+  {
+   "archive": "asecpub24csv.zip",
+   "household_mass": 132391925.44999999,
+   "income_year": 2023,
+   "person_mass": 320890854.43000007,
+   "sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09"
+  },
+  {
+   "archive": "asecpub25csv.zip",
+   "household_mass": 134963892.8,
+   "income_year": 2024,
+   "person_mass": 325952369.06,
+   "sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b"
+  },
+  {
+   "archive": "asecpub26csv.zip",
+   "household_mass": 137123796.5,
+   "income_year": 2025,
+   "person_mass": 329518151.84999996,
+   "sha256": "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93"
+  }
+ ],
+ "asec_arm_person_mass": 162976184.53,
+ "asec_pool_household_mass": 135028010.2442213,
+ "asec_pool_person_mass": 325952369.06,
+ "composition_band_floor": 0.35,
+ "draws": {
+  "asylee": {
+   "acs_arm_supply_bound": 2292044.6361100897,
+   "acs_candidates_at_acs_weights": 4791101.0,
+   "acs_residual": 76773.24121281803,
+   "asec_arm_population": 78226.75878718197,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 155491.90244515426,
+   "earlier_draws_worst_case_removal": 198844.79859674792,
+   "projected_share_of_target": 1.0,
+   "shortfall_at_bound": 0.0,
+   "target": 155000.0,
+   "worst_case_share_of_target": 0.5046887663689159
+  },
+  "deportation_withheld": {
+   "acs_arm_supply_bound": 6685225.110438908,
+   "acs_candidates_at_acs_weights": 13974243.0,
+   "acs_residual": 0.0,
+   "asec_arm_population": 0.0,
+   "asec_arm_share_of_target": null,
+   "asec_stage_population": 0.0,
+   "earlier_draws_worst_case_removal": 76773.24121281803,
+   "projected_share_of_target": null,
+   "shortfall_at_bound": 0.0,
+   "target": 0.0,
+   "worst_case_share_of_target": null
+  },
+  "paroled_one_year:afghanistan": {
+   "acs_arm_supply_bound": 34291.919865811076,
+   "acs_candidates_at_acs_weights": 71681.0,
+   "acs_residual": 36438.06621330433,
+   "asec_arm_population": 37127.93378669567,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 74154.29223282929,
+   "earlier_draws_worst_case_removal": 0,
+   "projected_share_of_target": 0.9708269261956168,
+   "shortfall_at_bound": 2146.1463474932534,
+   "target": 73566.0,
+   "worst_case_share_of_target": 0.9708269261956168
+  },
+  "paroled_one_year:nicaragua": {
+   "acs_arm_supply_bound": 27188.21430802828,
+   "acs_candidates_at_acs_weights": 56832.0,
+   "acs_residual": 46098.616514044996,
+   "asec_arm_population": 46971.383485955004,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 93112.73319928072,
+   "earlier_draws_worst_case_removal": 0.0,
+   "projected_share_of_target": 0.7968152766088243,
+   "shortfall_at_bound": 18910.402206016715,
+   "target": 93070.0,
+   "worst_case_share_of_target": 0.7968152766088243
+  },
+  "paroled_one_year:ukraine": {
+   "acs_arm_supply_bound": 57045.87955635072,
+   "acs_candidates_at_acs_weights": 119244.0,
+   "acs_residual": 101533.13819319058,
+   "asec_arm_population": 56466.86180680942,
+   "asec_arm_share_of_target": 0.3573852013089204,
+   "asec_stage_population": 112933.72361361884,
+   "earlier_draws_worst_case_removal": 0.0,
+   "projected_share_of_target": 0.718435071918735,
+   "shortfall_at_bound": 44487.258636839855,
+   "target": 158000.0,
+   "worst_case_share_of_target": 0.718435071918735
+  },
+  "paroled_one_year:venezuela": {
+   "acs_arm_supply_bound": 152917.91840720573,
+   "acs_candidates_at_acs_weights": 319647.0,
+   "acs_residual": 58114.8670419351,
+   "asec_arm_population": 59215.1329580649,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 117688.41694796596,
+   "earlier_draws_worst_case_removal": 0.0,
+   "projected_share_of_target": 1.0,
+   "shortfall_at_bound": 0.0,
+   "target": 117330.0,
+   "worst_case_share_of_target": 1.0
+  },
+  "refugee": {
+   "acs_arm_supply_bound": 363808.8482564773,
+   "acs_candidates_at_acs_weights": 760476.0,
+   "acs_residual": 79249.79738097345,
+   "asec_arm_population": 80750.20261902655,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 160451.65727945004,
+   "earlier_draws_worst_case_removal": 123713.9927204219,
+   "projected_share_of_target": 1.0,
+   "shortfall_at_bound": 0.0,
+   "target": 160000.0,
+   "worst_case_share_of_target": 0.5046887663689159
+  },
+  "tps:el_salvador": {
+   "acs_arm_supply_bound": 114363.48816898945,
+   "acs_candidates_at_acs_weights": 239056.0,
+   "acs_residual": 84264.82362148818,
+   "asec_arm_population": 85860.17637851182,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 170410.32409187898,
+   "earlier_draws_worst_case_removal": 0.0,
+   "projected_share_of_target": 1.0,
+   "shortfall_at_bound": 0.0,
+   "target": 170125.0,
+   "worst_case_share_of_target": 1.0
+  },
+  "tps:honduras": {
+   "acs_arm_supply_bound": 22196.628087413716,
+   "acs_candidates_at_acs_weights": 46398.0,
+   "acs_residual": 25372.31794275228,
+   "asec_arm_population": 25852.68205724772,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 52053.03129856825,
+   "earlier_draws_worst_case_removal": 0.0,
+   "projected_share_of_target": 0.9380050784706966,
+   "shortfall_at_bound": 3175.6898553385654,
+   "target": 51225.0,
+   "worst_case_share_of_target": 0.9380050784706966
+  },
+  "tps:nepal": {
+   "acs_arm_supply_bound": 16985.936395355646,
+   "acs_candidates_at_acs_weights": 35506.0,
+   "acs_residual": 3546.428432798562,
+   "asec_arm_population": 3613.571567201438,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 7349.0149911888375,
+   "earlier_draws_worst_case_removal": 0.0,
+   "projected_share_of_target": 1.0,
+   "shortfall_at_bound": 0.0,
+   "target": 7160.0,
+   "worst_case_share_of_target": 1.0
+  },
+  "tps:nicaragua": {
+   "acs_arm_supply_bound": 6960.186690025047,
+   "acs_candidates_at_acs_weights": 14549.0,
+   "acs_residual": 1441.3556898664547,
+   "asec_arm_population": 1468.6443101335453,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 3192.9463618784666,
+   "earlier_draws_worst_case_removal": 0.0,
+   "projected_share_of_target": 1.0,
+   "shortfall_at_bound": 0.0,
+   "target": 2910.0,
+   "worst_case_share_of_target": 1.0
+  },
+  "tps:other_designated": {
+   "acs_arm_supply_bound": 141412.9675715186,
+   "acs_candidates_at_acs_weights": 295598.0,
+   "acs_residual": 10508.027821483449,
+   "asec_arm_population": 10706.972178516551,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 21484.827706756125,
+   "earlier_draws_worst_case_removal": 49690.537583766,
+   "projected_share_of_target": 1.0,
+   "shortfall_at_bound": 0.0,
+   "target": 21215.0,
+   "worst_case_share_of_target": 1.0
+  },
+  "tps:venezuela": {
+   "acs_arm_supply_bound": 338593.5399838922,
+   "acs_candidates_at_acs_weights": 707768.0,
+   "acs_residual": 299670.7260153103,
+   "asec_arm_population": 305344.2739846897,
+   "asec_arm_share_of_target": 0.5046887663689159,
+   "asec_stage_population": 605629.9639509566,
+   "earlier_draws_worst_case_removal": 214137.90563572658,
+   "projected_share_of_target": 1.0,
+   "shortfall_at_bound": 0.0,
+   "target": 605015.0,
+   "worst_case_share_of_target": 0.7103954585140125
+  }
+ },
+ "lowest_worst_case_share_of_target": 0.5046887663689159,
+ "receipt_file": "receipt.head.json",
+ "receipt_sha256": "d9bdd7e626acaf9638c8c696f65ce6b9ba377263eff752dc128498c0abe30a2f",
+ "script_sha256": "7b3490eef29ce1207fd03c08f7d191bf11a6c2b7821aa181679edb9e553aec3a"
+}

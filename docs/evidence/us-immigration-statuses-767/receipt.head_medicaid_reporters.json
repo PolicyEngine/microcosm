@@ -1,0 +1,56 @@
+{
+ "archives": [
+  {
+   "archive": "asecpub24csv.zip",
+   "income_year": 2023,
+   "sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09"
+  },
+  {
+   "archive": "asecpub25csv.zip",
+   "income_year": 2024,
+   "sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b"
+  },
+  {
+   "archive": "asecpub26csv.zip",
+   "income_year": 2025,
+   "sha256": "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93"
+  }
+ ],
+ "column": "NOW_MCAID == 1",
+ "labels_file": "head_4f94e489a.native.labels.pkl",
+ "labels_rows": 421119,
+ "labels_sha256": "363451875c6d7842c59a79e037880d9bcf29f266676a9e1a1586310b0779ff0f",
+ "script_sha256": "ee1efc1a55a511bec5e668f7032e71de68acf58d29e8e996b44609376ae35a72",
+ "statuses": {
+  "ASYLEE": {
+   "now_mcaid_persons_millions": 0.106635,
+   "persons_millions": 0.155492,
+   "rows": 186
+  },
+  "CONDITIONAL_ENTRANT": {
+   "now_mcaid_persons_millions": 0.0,
+   "persons_millions": 0.0,
+   "rows": 0
+  },
+  "DEPORTATION_WITHHELD": {
+   "now_mcaid_persons_millions": 0.0,
+   "persons_millions": 0.0,
+   "rows": 0
+  },
+  "PAROLED_ONE_YEAR": {
+   "now_mcaid_persons_millions": 0.163247,
+   "persons_millions": 0.397889,
+   "rows": 438
+  },
+  "REFUGEE": {
+   "now_mcaid_persons_millions": 0.121047,
+   "persons_millions": 0.160452,
+   "rows": 176
+  },
+  "all restored": {
+   "now_mcaid_persons_millions": 0.39093,
+   "persons_millions": 0.713833,
+   "rows": 800
+  }
+ }
+}

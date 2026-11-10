@@ -35,7 +35,7 @@
   },
   "error": "SourceRuntimeError: PEINUSYR carries value(s) outside the 2024 ASEC domain 0..28: [29.0].",
   "immigration_module_sha256": "df6699344c5fddbb5322baeb22f574be846e43c8c7600fd5dea798189c382042",
-  "script_sha256": "6d1a8899979617dc3d53ec1d776a1825f0d55caf00abfe037e806aebbdc8d8eb",
+  "script_sha256": "7c28e5000282137583839624f97d731b43637d8f2a49cd8bbfb5e25bcb6e47dc",
   "seed": 0,
   "source_commit": "42bb166b1484df036809814434c1acf862b8cbb8",
   "source_commit_from": "argument",

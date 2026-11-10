@@ -106,15 +106,17 @@
     }
   },
   "error": null,
+  "gate_failures": [],
+  "gate_passed": true,
   "immigration_module_sha256": "8871df8b5f86f6bbf8541259a69d52b7db214560e5dacf5ad6db15268368f826",
   "none_ssn_iff_undocumented": true,
   "rows": 421119,
-  "script_sha256": "6d1a8899979617dc3d53ec1d776a1825f0d55caf00abfe037e806aebbdc8d8eb",
+  "script_sha256": "7c28e5000282137583839624f97d731b43637d8f2a49cd8bbfb5e25bcb6e47dc",
   "seed": 0,
   "source_commit": "764ae3aa778cbc9030e286fabc3777e25c18f403",
   "source_commit_from": "argument",
   "source_tree_clean": null,
-  "stage_seconds": 1.2,
+  "stage_seconds": 2.2,
   "time_period": 2024,
   "weights": "HSUP_WGT * 0.01 by PH_SEQ, each file rescaled to one third of income year 2024's weighted person population (asec_pool.pool_asec_sources, anchor_year=2024)"
 }

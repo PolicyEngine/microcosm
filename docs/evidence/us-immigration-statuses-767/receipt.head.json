@@ -354,7 +354,7 @@
     "REFUGEE": 160000.0,
     "TPS": 857650.0
   },
-  "immigration_module_sha256": "c4d81501e63917595bae9cd976ab8068187d78cbb42d7146d5ecd1416209a4b8",
+  "immigration_module_sha256": "ecac0e264521639af5e240fe33edf8f7c3568437497d4eb27dee1862ba7e5b6c",
   "none_ssn_iff_undocumented": true,
   "pew_labor_force": 9699442.858246539,
   "pew_labor_force_control": 9700000.0,
@@ -368,12 +368,12 @@
     "TPS": 1.0028800890820582
   },
   "rows": 421119,
-  "script_sha256": "6d1a8899979617dc3d53ec1d776a1825f0d55caf00abfe037e806aebbdc8d8eb",
+  "script_sha256": "7c28e5000282137583839624f97d731b43637d8f2a49cd8bbfb5e25bcb6e47dc",
   "seed": 0,
-  "source_commit": "e3b2c8ce9404d177a5424b2dd3b1acb6cf385e6f",
+  "source_commit": "4f94e489aba5de4c33444742ac8333e736acba03",
   "source_commit_from": "git",
   "source_tree_clean": true,
-  "stage_seconds": 8.3,
+  "stage_seconds": 10.8,
   "time_period": 2024,
   "weights": "HSUP_WGT * 0.01 by PH_SEQ, each file rescaled to one third of income year 2024's weighted person population (asec_pool.pool_asec_sources, anchor_year=2024)"
 }

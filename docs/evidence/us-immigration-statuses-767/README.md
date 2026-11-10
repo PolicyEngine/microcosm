@@ -28,7 +28,7 @@ the next certified build to that pool. The script:
 - records, for each draw call, the key that reproduces its draws;
 - runs at seed 0 and period 2024, the `--target-year` of
   `tools/route_a/route_a.sh`;
-- runs the composition gate on the output.
+- runs that tree's own composition gate on the output.
 
 `--draw-keys full` hands all three lineage columns to every draw call that
 brings no key of its own, and `--draw-keys legacy` hands it `source_year` and
@@ -42,10 +42,12 @@ of its `immigration.py` and of the script, and every draw call's key.
 
 | File | Tree | Draw keys | Result |
 |---|---|---|---|
-| `receipt.head.json` | this PR at `e3b2c8ce9`, which last merged main at `764ae3aa7` | its own: income year, `PH_SEQ`, `PERIDNUM` | the gate passes with no failures |
-| `receipt.main.json` | main at `764ae3aa7` | its own: income year, `PERIDNUM` | main draws no humanitarian status |
-| `receipt.main_full_keys.json` | main at `764ae3aa7` | this PR's, through `--draw-keys full` | main's method on this PR's draws |
+| `receipt.head.json` | this PR at `4f94e489a`, which last merged main at `764ae3aa7` | its own: income year, `PH_SEQ`, `PERIDNUM` | its gate passes with no failures |
+| `receipt.main.json` | main at `764ae3aa7` | its own: income year, `PERIDNUM` | main draws no humanitarian status; its gate passes |
+| `receipt.main_full_keys.json` | main at `764ae3aa7` | this PR's, through `--draw-keys full` | main's method on this PR's draws; its gate passes |
 | `receipt.pre_sync_42bb166b.json` | this PR at `42bb166b1`, before it merged main `1acd884fe` | none: the stage refuses before its first draw | the stage refuses the 2026 ASEC's `PEINUSYR` code 29 |
+| `receipt.head_medicaid_reporters.json` | this PR at `4f94e489a`, from the head run's labels | its own | 0.391 million of the 0.714 million people in the restored Medicaid statuses report Medicaid at interview |
+| `receipt.stacked_supply.json` | this PR at `4f94e489a`, from `receipt.head.json` and the ACS 2024 1-year PUMS | none: it draws no rows | four draws run short of ACS candidates, and none ends below half its target in the worst case |
 
 The script reran main's tree and the pre-sync tree from `git archive <commit>
 packages`, so those three receipts take their commit from `--source-commit`.
@@ -79,6 +81,86 @@ Weighted persons, in millions:
   million anchor, and that universe's labor force 9.699 million against the 9.7
   million control.
 - In both trees `ssn_card_type` is `NONE` exactly on the undocumented rows.
+
+## Medicaid at interview in the restored statuses
+
+The reform-coverage probe `hr1_medicaid_humanitarian_eligibility_restoration`
+restores the pre-H.R.1 Medicaid status list at 2027 law and counts the people
+it enrolls. `scripts/medicaid_reporters.py` joins the head run's labels to the
+ASEC's `NOW_MCAID` (Medicaid at interview), which `us_runtime/cps_carried.py`
+maps to `has_medicaid_health_coverage_at_interview`, the column the Medicaid
+take-up stage anchors on. `receipt.head_medicaid_reporters.json` holds the
+aggregates, in millions of weighted people:
+
+| Status | People | Report Medicaid at interview |
+|---|---:|---:|
+| Refugee | 0.160 | 0.121 |
+| Asylee | 0.155 | 0.107 |
+| Paroled, one year | 0.398 | 0.163 |
+| All restored | 0.714 | 0.391 |
+
+The stage draws no deportation-withheld or conditional-entrant rows. The
+probe's 10,000-person floor is 2.6% of the 0.391 million reporters.
+
+## The stacked pool's ACS residuals
+
+The `--exact-k` arm of `tools/build_us_fiscal_refresh_release.py`, the only arm
+that runs the improvement gate, takes a pool from
+`tools/build_us_multispine_pool.py`, whose default pipeline stacks the ASEC pool
+and the ACS 2024 1-year. Each arm carries half the ASEC pool's household mass
+(`stacked_spine.DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES`), and the immigration
+stage labels the ASEC rows at the full pool's person mass, so those rows carry
+about half of each draw's target. The ACS transfer's
+`reconcile_us_immigration_humanitarian_transfer` then asks the ACS rows for the
+rest, each draw's residual.
+
+The reconciliation used to refuse any draw whose ACS candidates held less
+weight than its residual. Now such a draw takes every candidate, as the ASEC
+stage's draws do, and its receipt records the shortfall. The reconciliation
+refuses only a draw that ends below 0.35 of its target, the floor of the
+composition gate's band, and the stacked validator replays the same rule.
+Operation Allies Welcome (OAW) parole now takes exact-year ACS arrivals from
+2021 and 2022 only, the program's arrival years; its window used to stay open so
+that the old rule would not refuse it.
+
+`scripts/stacked_supply.py` projects each draw's ACS supply without building a
+stacked pool. It takes the ASEC arm's labelled mass from `receipt.head.json`,
+scaled to the stacked weights, and each draw's candidates from the ACS 2024
+1-year PUMS through the kernel's own candidate rule, weighted as the frame
+weights them and scaled by the ACS arm's weight scale, 0.478.
+`receipt.stacked_supply.json` holds the aggregates, in weighted persons:
+
+| Draw | Target | ASEC arm | ACS residual | ACS supply | Projected share | Worst case |
+|---|---:|---:|---:|---:|---:|---:|
+| Parole, Afghanistan (OAW) | 73,566 | 37,128 | 36,438 | 34,292 | 0.971 | 0.971 |
+| Parole, Ukraine (U4U) | 158,000 | 56,467 | 101,533 | 57,046 | 0.718 | 0.718 |
+| Parole, Nicaragua | 93,070 | 46,971 | 46,099 | 27,188 | 0.797 | 0.797 |
+| Parole, Venezuela | 117,330 | 59,215 | 58,115 | 152,918 | 1.000 | 1.000 |
+| Refugee | 160,000 | 80,750 | 79,250 | 363,809 | 1.000 | 0.505 |
+| Asylee | 155,000 | 78,227 | 76,773 | 2,292,045 | 1.000 | 0.505 |
+| TPS, Venezuela | 605,015 | 305,344 | 299,671 | 338,594 | 1.000 | 0.710 |
+| TPS, El Salvador | 170,125 | 85,860 | 84,265 | 114,363 | 1.000 | 1.000 |
+| TPS, Honduras | 51,225 | 25,853 | 25,372 | 22,197 | 0.938 | 0.938 |
+| TPS, Nicaragua | 2,910 | 1,469 | 1,441 | 6,960 | 1.000 | 1.000 |
+| TPS, Nepal | 7,160 | 3,614 | 3,546 | 16,986 | 1.000 | 1.000 |
+| TPS, other designated | 21,215 | 10,707 | 10,508 | 141,413 | 1.000 | 1.000 |
+
+- Four draws run short of candidates: U4U, Nicaraguan parole, Honduran TPS and
+  OAW. Under the old rule, U4U, the second draw in manifest order, would have
+  stopped every stacked build on these inputs. Under the new rule the four end
+  at 0.718 to 0.971 of their targets.
+- The worst case lets every earlier draw take as much of a draw's candidates as
+  it can, up to its own residual. It holds for parole and TPS draws, which take
+  any non-citizen SSN code. Refugee and asylee draws take only rows the transfer
+  imputes as `OTHER_NON_CITIZEN`, which PUMS cannot show, so their supply column
+  overstates and their worst case counts the ASEC arm alone.
+- The ASEC arm alone carries 0.505 of each target the ASEC stage met, and 0.357
+  of U4U's. No draw falls below the 0.35 floor in the worst case: the lowest is
+  0.505.
+- The projection scales each arm by one factor. A build stands or falls on the
+  reconciliation itself and on the pool's terminal gates, which run the
+  composition gate on the stacked pool (`tools/build_us_multispine_pool.py`),
+  not on this projection.
 
 ## Why the two trees label different rows
 
@@ -172,4 +254,19 @@ rebuild a row-by-row table:
 
 ```bash
 .venv/bin/python -I docs/evidence/us-immigration-statuses-767/scripts/xtab_labels.py main.pkl head.pkl
+```
+
+Count the head run's restored-status Medicaid reporters from its labels:
+
+```bash
+.venv/bin/python -I docs/evidence/us-immigration-statuses-767/scripts/medicaid_reporters.py head.pkl --archive-dir <dir> --out receipt.head_medicaid_reporters.json
+```
+
+Project the stacked pool's ACS supply from the head receipt. Put the ACS 2024
+1-year PUMS files `csv_hus.zip` and `csv_pus.zip`, at the URLs
+`us_runtime/acs_2024_1yr_sources.json` pins, in one directory; the script also
+reads the three ASEC zips for the pool's masses:
+
+```bash
+.venv/bin/python -I docs/evidence/us-immigration-statuses-767/scripts/stacked_supply.py receipt.head.json --acs-dir <acs-dir> --archive-dir <dir> --out receipt.stacked_supply.json
 ```
