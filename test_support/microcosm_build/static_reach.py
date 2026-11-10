@@ -92,7 +92,9 @@ Each lookup outside a cycle runs once per walk: what a name binds in a
 module, what a constant stands for, a package's lazy exports, and a class's
 inherited ``__match_args__``. Lookups that wait on each other in a cycle run
 again, each meeting what the others hold so far, until a pass over the cycle
-adds nothing. So each settles on what it finds once the others are complete,
+adds nothing. A pass that meets a lookup that began before the cycle and
+hasn't settled joins the cycle to that lookup's, and the joined cycle runs
+again as one. So each settles on what it finds once the others are complete,
 whichever the walk met first. Within a cycle, a module's ``__getattr__``
 answers for a name whose lookup hasn't settled, since Python can read the
 module part-built, before it binds the name. A walk that ran each lookup
@@ -118,6 +120,14 @@ What it can't see:
 - code reached by registration rather than by name: a function that a
   decorator records for a framework or a registry to call
   (``singledispatch``, pydantic's validators);
+- a module's ``__getattr__`` where Python calls it outside a cycle of
+  lookups: for a name the module binds, when an import cycle reads the
+  module part-built (the module imports another, which runs
+  ``from module import name`` before the module binds the name); for a sub
+  module's name, which a ``from`` import asks the package for before it
+  imports the sub module, and whose answer takes the sub module's place;
+  and for ``__path__``, which a ``from`` import asks a module that isn't a
+  package for;
 - the import-time code of a module that holds no item the walk reaches, such
   as the ``__init__`` of a package above a reached module, or a module
   imported only for its effects, unless a statement there changes a reached
@@ -162,7 +172,7 @@ from __future__ import annotations
 
 import ast
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -956,17 +966,27 @@ class _Walk:
         # Lookups (see _settled): what each settled one holds; when each
         # unsettled one began, what it holds so far and how to run it again;
         # the unsettled ones in that order; and those another lookup met
-        # unsettled. How many times each lookup in a cycle ran again.
+        # unsettled.
         self._done: dict[tuple[object, ...], tuple[object, ...]] = {}
         self._began: dict[tuple[object, ...], int] = {}
         self._cuts: dict[tuple[object, ...], tuple[object, ...]] = {}
         self._computes: dict[tuple[object, ...], Callable[[], Iterable[object]]] = {}
         self._open: list[tuple[object, ...]] = []
         self._met: set[tuple[object, ...]] = set()
-        self.reruns: dict[tuple[object, ...], int] = defaultdict(int)
+        #: Each time :meth:`_cycle` ran a cycle again, in order: its passes,
+        #: each the lookups it ran and how many items and lookups it added.
+        self.cycles: list[list[tuple[tuple[tuple[object, ...], ...], int]]] = []
         self._begun = 0
         #: When the earliest unsettled lookup that the one under way met began.
         self._low: float = math.inf
+
+    @property
+    def reruns(self) -> Counter[tuple[object, ...]]:
+        """How many times each lookup in a cycle ran again (:attr:`cycles`)."""
+
+        return Counter(
+            key for passes in self.cycles for ran, _ in passes for key in ran
+        )
 
     def module(self, name: str) -> _Module | None:
         if name not in self.paths:
@@ -1033,7 +1053,10 @@ class _Walk:
         and Tarjan's strongly connected components find the cycle. When the
         cycle's first lookup ends, the cycle's lookups run again, each meeting
         what the others hold so far, until a pass adds nothing (see
-        :meth:`_cycle`). So each ends with what it finds once the others are
+        :meth:`_cycle`). A pass can meet a lookup that began before the
+        cycle's first and hasn't settled; the cycle then stays unsettled as
+        part of that lookup's cycle, whose first lookup runs them all again
+        when it ends. So each ends with what it finds once the others are
         complete, whichever the walk met first. That matters where a lookup
         maps another's items rather than adding them: ``X = Y.sub`` in a
         cycle with ``Y`` holds what ``Y.sub`` names, not what ``Y`` names. A
@@ -1065,6 +1088,11 @@ class _Walk:
         if len(members) > 1 or key in self._met:
             self._cycle(members, start)
             items = list(self._cuts[key])
+            if self._low < began:
+                # A pass met a lookup that began earlier and hasn't
+                # settled, so the cycle is part of that lookup's.
+                self._low = min(outer, self._low)
+                return items
         else:
             self._cuts[key] = tuple(items)
         self._low = outer
@@ -1082,25 +1110,30 @@ class _Walk:
         holding in ``_cuts`` its cut. Each pass runs every member again, the
         last to begin first: each run meets what the others hold so far, and
         its lookup then holds what it held and what the run found. A lookup
-        that a run begins and that waits on the cycle joins it. Items and
-        members only grow, and both are finite, so the passes end.
+        that a run begins and that waits on the cycle joins it, and runs from
+        the next pass on. Items and members only grow, and both are finite,
+        so the passes end. :attr:`cycles` records each pass: the lookups it
+        ran and how many items and lookups it added. A run that meets a
+        lookup that began before the first member and hasn't settled lowers
+        ``_low`` below the first member's start, and :meth:`_settled` then
+        leaves the members unsettled.
         """
 
-        grew = True
-        while grew:
-            grew = False
-            for member in reversed(list(members)):
-                self.reruns[member] += 1
+        passes: list[tuple[tuple[tuple[object, ...], ...], int]] = []
+        self.cycles.append(passes)
+        while True:
+            ran = tuple(reversed(members))
+            added = 0
+            for member in ran:
                 found = list(self._computes[member]())
                 joined = self._open[start + len(members) :]
-                if joined:
-                    members.extend(joined)
-                    grew = True
+                members.extend(joined)
                 held = self._cuts[member]
-                now = tuple(dict.fromkeys([*held, *found]))
-                if len(now) > len(held):
-                    self._cuts[member] = now
-                    grew = True
+                self._cuts[member] = tuple(dict.fromkeys([*held, *found]))
+                added += len(joined) + len(self._cuts[member]) - len(held)
+            passes.append((ran, added))
+            if not added:
+                return
 
     def resolve(self, module: str, name: str) -> list[Item]:
         """Every definition ``name`` can bind in ``module``'s top-level scope."""

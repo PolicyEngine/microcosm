@@ -16,6 +16,7 @@ doesn't read, and :data:`BLIND` holds the reads a run makes that the walk's
 from __future__ import annotations
 
 import json
+import random
 import subprocess
 import sys
 import textwrap
@@ -36,6 +37,9 @@ TARGETS = (
     "alias_cycle_dotted",
     "alias_cycle_dotted_first",
     "alias_cycle_join",
+    "alias_cycle_outer",
+    "alias_cycle_sibling",
+    "alias_cycle_two_up",
     "alias_diamond",
     "alias_modules",
     "alias_self_dotted",
@@ -47,6 +51,7 @@ TARGETS = (
     "aug_class",
     "aug_module_effect",
     "aug_store",
+    "aug_value",
     "augassign",
     "base_attr",
     "base_dunder_import",
@@ -75,6 +80,7 @@ TARGETS = (
     "body_nested",
     "class_body_update",
     "class_comp_fill",
+    "class_decorated",
     "class_fill_call",
     "class_fill_del",
     "class_fill_item",
@@ -89,6 +95,7 @@ TARGETS = (
     "class_global_import",
     "class_global_inherit",
     "class_global_match",
+    "class_global_store",
     "class_header",
     "class_iadd",
     "class_import",
@@ -122,12 +129,20 @@ TARGETS = (
     "function_global",
     "function_global_import",
     "getattr_alias",
+    "getattr_bound",
     "getattr_constant",
     "getattr_cycle_a",
     "getattr_cycle_b",
+    "getattr_import_cycle",
+    "getattr_import_cycle_from",
     "getattr_importer",
+    "getattr_init_cycle",
+    "getattr_named",
+    "getattr_path",
     "getattr_renamed",
     "getattr_self",
+    "getattr_settled",
+    "getattr_submodule",
     "global",
     "global_read_class",
     "global_read_first",
@@ -155,6 +170,8 @@ TARGETS = (
     "import_renamed",
     "import_renamed_alias",
     "import_spec",
+    "join_no_growth",
+    "kw_default",
     "kw_fill",
     "lambda",
     "lambda_change",
@@ -182,6 +199,7 @@ TARGETS = (
     "nested_global_value",
     "nested_scope",
     "nonlocal",
+    "outer_cycle",
     "override",
     "partial_import",
     "prop",
@@ -228,9 +246,22 @@ TARGETS = (
 #: t_with_module behind a module binding that the class body has surely
 #: replaced before it reads the name (r_ann_class, r_with_class), and
 #: t_getattr_self behind a package module's ``__getattr__``, which the
-#: package's own ``__getattr__`` never stands for (r_getattr_self).
+#: package's own ``__getattr__`` never stands for (r_getattr_self), and
+#: t_getattr_bound behind a module's ``__getattr__``, which Python never
+#: calls for a name the module binds that code reads as an attribute
+#: (r_getattr_bound), and t_getattr_settled behind one that the walk counts
+#: only while the lookup of the name waits on a cycle that hasn't settled
+#: (r_getattr_settled).
 DECOYS = frozenset(
-    {"ann_module", "body_hidden", "getattr_self", "shadowed", "with_module"}
+    {
+        "ann_module",
+        "body_hidden",
+        "getattr_bound",
+        "getattr_self",
+        "getattr_settled",
+        "shadowed",
+        "with_module",
+    }
 )
 
 #: Each target's source: reads of X or ROWS are recorded, anything else fails.
@@ -3038,16 +3069,207 @@ SOURCES["r_alias_self_dotted"] = """
             case X.Base(v):
                 return v
     """
+# A pass over a cycle can meet a lookup that began before the cycle and
+# hasn't settled. run() meets W first (W.nothing, in a branch that never
+# runs), and W's binding in another such branch begins X's lookup. X and Y
+# form a cycle, and only its second pass reaches cyco.sub, whose sub is W.
+# Python binds X to cyco2, whose Base names a property in __match_args__.
+SOURCES["cyco.__init__"] = ""
+SOURCES["cyco.sub"] = """
+    from microcosm.walkcases.r_alias_cycle_outer import W as sub  # noqa: F401
+    """
+SOURCES["cyco2"] = """
+    from microcosm.walkcases import t_alias_cycle_outer
+
+
+    class Base:
+        __match_args__ = ("left",)
+
+        @property
+        def left(self):
+            return t_alias_cycle_outer.X
+    """
+SOURCES["r_alias_cycle_outer"] = """
+    from microcosm.walkcases import cyco2
+
+    W = cyco2
+    if False:
+        W = X
+    import microcosm.walkcases.cyco.sub  # noqa: E402,F401
+    from microcosm.walkcases import cyco  # noqa: E402
+
+    Y = cyco
+    X = Y.sub
+    Y = X
+    X = Y.sub
+
+
+    def run():
+        if False:
+            W.nothing
+        match X.Base():
+            case X.Base(v):
+                return v
+    """
+# The same, with the lookup under way two lookups up: V's binding begins
+# W's, W's begins the X and Y cycle, and cyct.sub's sub is V.
+SOURCES["cyct.__init__"] = ""
+SOURCES["cyct.sub"] = """
+    from microcosm.walkcases.r_alias_cycle_two_up import V as sub  # noqa: F401
+    """
+SOURCES["cyct2"] = """
+    from microcosm.walkcases import t_alias_cycle_two_up
+
+
+    class Base:
+        __match_args__ = ("left",)
+
+        @property
+        def left(self):
+            return t_alias_cycle_two_up.X
+    """
+SOURCES["r_alias_cycle_two_up"] = """
+    from microcosm.walkcases import cyct2
+
+    V = cyct2
+    if False:
+        V = W
+    W = cyct2
+    if False:
+        W = X
+    import microcosm.walkcases.cyct.sub  # noqa: E402,F401
+    from microcosm.walkcases import cyct  # noqa: E402
+
+    Y = cyct
+    X = Y.sub
+    Y = X
+    X = Y.sub
+
+
+    def run():
+        if False:
+            V.nothing
+        match X.Base():
+            case X.Base(v):
+                return v
+    """
+# The same, with a lookup that waits rather than one under way: U's
+# bindings begin W's, which waits on U, then the X and Y cycle, whose
+# second pass meets W through cycb.sub.
+SOURCES["cycb.__init__"] = ""
+SOURCES["cycb.sub"] = """
+    from microcosm.walkcases.r_alias_cycle_sibling import W as sub  # noqa: F401
+    """
+SOURCES["cycb2"] = """
+    from microcosm.walkcases import t_alias_cycle_sibling
+
+
+    class Base:
+        __match_args__ = ("left",)
+
+        @property
+        def left(self):
+            return t_alias_cycle_sibling.X
+    """
+SOURCES["r_alias_cycle_sibling"] = """
+    from microcosm.walkcases import cycb2
+
+    U = cycb2
+    if False:
+        U = W
+        U = X
+    W = cycb2
+    if False:
+        W = U
+    import microcosm.walkcases.cycb.sub  # noqa: E402,F401
+    from microcosm.walkcases import cycb  # noqa: E402
+
+    Y = cycb
+    X = Y.sub
+    Y = X
+    X = Y.sub
+
+
+    def run():
+        if False:
+            U.nothing
+        match X.Base():
+            case X.Base(v):
+                return v
+    """
+# A cycle whose passes find, only on a later pass, a lookup that began before
+# the cycle's first one. X = X.sub twice reads ocyc.sub.sub on its third pass,
+# which is ocyc_e.Z, and Z names X again in a branch that never runs. Python
+# binds X to ocyc_t. r_outer_cycle_first reads ocyc_e.Z first, so Z's lookup
+# is under way when X's cycle begins; r_outer_cycle meets X first.
+SOURCES["ocyc.__init__"] = ""
+SOURCES["ocyc.sub"] = """
+    from microcosm.walkcases import ocyc_e as _e
+
+    sub = _e.Z
+    """
+SOURCES["ocyc_t"] = """
+    from microcosm.walkcases import t_outer_cycle
+
+
+    class Base:
+        __match_args__ = ("left",)
+
+        @property
+        def left(self):
+            return t_outer_cycle.X
+    """
+SOURCES["ocyc_e"] = """
+    from microcosm.walkcases import ocyc_t
+
+    Z = ocyc_t
+    if False:
+        from microcosm.walkcases.ocyc_x import X
+
+        Z = X
+    """
+SOURCES["ocyc_x"] = """
+    import microcosm.walkcases.ocyc.sub  # noqa: F401
+    from microcosm.walkcases import ocyc
+
+    X = ocyc
+    X = X.sub
+    X = X.sub
+    """
+SOURCES["r_outer_cycle_first"] = """
+    from microcosm.walkcases import ocyc_e
+    from microcosm.walkcases.ocyc_x import X
+
+
+    def run():
+        seen = ocyc_e.Z.Base
+        match X.Base():
+            case X.Base(v):
+                return v, seen
+    """
+SOURCES["r_outer_cycle"] = """
+    from microcosm.walkcases import ocyc_e
+    from microcosm.walkcases.ocyc_x import X
+
+
+    def run():
+        match X.Base():
+            case X.Base(v):
+                seen = ocyc_e.Z.Base
+                return v, seen
+    """
 # Two modules that each define __getattr__ and import x from the other.
 # Whichever Python imports first, the other's ``from ... import x`` finds it
 # part-built and calls its __getattr__. Each __getattr__ answers x only: a
 # from-import asks its source for __path__ first. In r_getattr_cycle Python
 # imports gcyc_b first, so it reads t_getattr_cycle_b; the walk meets gcyc_a's
-# x first. In r_getattr_cycle_first both meet gcyc_a first. Either way the
-# walk reaches both targets, since it doesn't track import order.
+# x first. In r_getattr_cycle_first both meet gcyf_a first. Either way the
+# walk reaches both targets, since it doesn't track import order. gcyf_a and
+# gcyf_b copy the pair: Python imports a module once, so a run of both roots
+# that shared one pair would read only the target of whichever imports first.
 SOURCES.update(
     {
-        f"gcyc_{first}": f"""
+        f"{pair}_{first}": f"""
             from microcosm.walkcases import t_getattr_cycle_{first}
 
 
@@ -3057,8 +3279,9 @@ SOURCES.update(
                 raise AttributeError(name)
 
 
-            from microcosm.walkcases.gcyc_{second} import x
+            from microcosm.walkcases.{pair}_{second} import x
             """
+        for pair in ("gcyc", "gcyf")
         for first, second in (("a", "b"), ("b", "a"))
     }
 )
@@ -3071,7 +3294,7 @@ SOURCES["r_getattr_cycle"] = """
         return x
     """
 SOURCES["r_getattr_cycle_first"] = """
-    from microcosm.walkcases.gcyc_a import x
+    from microcosm.walkcases.gcyf_a import x
 
 
     def run():
@@ -3107,6 +3330,332 @@ SOURCES["r_getattr_self"] = """
         return hook
     """
 
+# Python calls a module's __getattr__ for a name the module binds, outside
+# a cycle of lookups. gic_m imports gic_n before it binds name, and gic_n's
+# from-import finds gic_m part-built; gicf_m does the same and then binds
+# name with a from-import; ginit's __init__ does the same with its own sub
+# module.
+SOURCES["gic_m"] = """
+    def __getattr__(attr):
+        if attr == "name":
+            from microcosm.walkcases import t_getattr_import_cycle
+
+            return t_getattr_import_cycle.X
+        raise AttributeError(attr)
+
+
+    from microcosm.walkcases.gic_n import other  # noqa: E402,F401
+
+    name = 1
+    """
+SOURCES["gic_n"] = """
+    from microcosm.walkcases.gic_m import name
+
+    other = 2
+
+
+    def run():
+        return name
+    """
+SOURCES["r_getattr_import_cycle"] = """
+    from microcosm.walkcases import gic_m  # noqa: F401
+    from microcosm.walkcases.gic_n import run as inner
+
+
+    def run():
+        return inner()
+    """
+SOURCES["gicf_m"] = """
+    def __getattr__(attr):
+        if attr == "name":
+            from microcosm.walkcases import t_getattr_import_cycle_from
+
+            return t_getattr_import_cycle_from.X
+        raise AttributeError(attr)
+
+
+    from microcosm.walkcases.gicf_n import other  # noqa: E402,F401
+    from microcosm.walkcases.gicf_q import name  # noqa: E402,F401
+    """
+SOURCES["gicf_n"] = """
+    from microcosm.walkcases.gicf_m import name
+
+    other = 2
+
+
+    def run():
+        return name
+    """
+SOURCES["gicf_q"] = """
+    name = 1
+    """
+SOURCES["r_getattr_import_cycle_from"] = """
+    from microcosm.walkcases import gicf_m  # noqa: F401
+    from microcosm.walkcases.gicf_n import run as inner
+
+
+    def run():
+        return inner()
+    """
+SOURCES["ginit.__init__"] = """
+    def __getattr__(attr):
+        if attr == "name":
+            from microcosm.walkcases import t_getattr_init_cycle
+
+            return t_getattr_init_cycle.X
+        raise AttributeError(attr)
+
+
+    from microcosm.walkcases.ginit.sub import other  # noqa: E402,F401
+
+    name = 1
+    """
+SOURCES["ginit.sub"] = """
+    from microcosm.walkcases.ginit import name
+
+    other = 2
+
+
+    def run():
+        return name
+    """
+SOURCES["r_getattr_init_cycle"] = """
+    from microcosm.walkcases.ginit.sub import run as inner
+
+
+    def run():
+        return inner()
+    """
+# A from-import asks a package for a sub module's name before it imports
+# the sub module, and a getter that answers takes the sub module's place.
+SOURCES["gsub.__init__"] = """
+    def __getattr__(attr):
+        if attr == "sub":
+            from microcosm.walkcases import t_getattr_submodule
+
+            return t_getattr_submodule.X
+        raise AttributeError(attr)
+    """
+SOURCES["gsub.sub"] = """
+    VALUE = 1
+    """
+SOURCES["r_getattr_submodule"] = """
+    from microcosm.walkcases.gsub import sub
+
+
+    def run():
+        return sub
+    """
+# Every from-import asks a module that isn't a package for __path__.
+SOURCES["gpath"] = """
+    from microcosm.walkcases import t_getattr_path
+
+
+    def __getattr__(attr):
+        t_getattr_path.X
+        raise AttributeError(attr)
+
+
+    x = 1
+    """
+SOURCES["r_getattr_path"] = """
+    from microcosm.walkcases.gpath import x
+
+
+    def run():
+        return x
+    """
+# A keyword-only default runs where Python defines the function.
+SOURCES["r_kw_default"] = """
+    from microcosm.walkcases import t_kw_default
+
+
+    def run(*, value=t_kw_default.X):
+        return value
+    """
+# A reached class's decorators run as Python creates the class.
+SOURCES["cdeco"] = """
+    from microcosm.walkcases import t_class_decorated
+
+
+    def mark(cls):
+        t_class_decorated.X
+        return cls
+    """
+SOURCES["r_class_decorated"] = """
+    from microcosm.walkcases.cdeco import mark
+
+
+    @mark
+    class Kernel:
+        def run(self):
+            return 1
+    """
+# A module's __getattr__ answers only for a name the module hasn't bound:
+# Python never calls gbound's for x, which run() reads as an attribute.
+SOURCES["gbound"] = """
+    from microcosm.walkcases import t_getattr_bound
+
+
+    def __getattr__(attr):
+        t_getattr_bound.X
+        raise AttributeError(attr)
+
+
+    x = 1
+    """
+SOURCES["r_getattr_bound"] = """
+    from microcosm.walkcases import gbound
+
+
+    def run():
+        return gbound.x
+    """
+# ``NAME += value`` uses NAME's module as a value. A module has no
+# __iadd__ or __add__, so Python calls Adder.__radd__ with it, which reads
+# an attribute that the module binds.
+SOURCES["augv"] = """
+    from microcosm.walkcases import t_aug_value
+
+
+    def helper():
+        return t_aug_value.X
+    """
+SOURCES["r_aug_value"] = """
+    from microcosm.walkcases import augv as mod
+
+
+    class Adder:
+        def __radd__(self, other):
+            return other.helper()
+
+
+    def run():
+        global mod
+        mod += Adder()
+    """
+# A reached class's assignment to a name its body declares global runs as
+# Python creates the class.
+SOURCES["gstore_setup"] = """
+    from microcosm.walkcases import t_class_global_store
+
+
+    def make():
+        return t_class_global_store.X
+    """
+SOURCES["r_class_global_store"] = """
+    from microcosm.walkcases.gstore_setup import make
+
+
+    class Kernel:
+        global SEEN
+        SEEN = make()
+
+        def run(self):
+            return 1
+    """
+# getattr under another name in a constant's value: Shape stands for
+# named_get_mod.Base, so the positional pattern reads the property that
+# Base's __match_args__ names.
+SOURCES["named_get_mod"] = """
+    from microcosm.walkcases import t_getattr_named
+
+
+    class Base:
+        __match_args__ = ("left",)
+
+        @property
+        def left(self):
+            return t_getattr_named.X
+    """
+SOURCES["r_getattr_named"] = """
+    from microcosm.walkcases import named_get_mod
+
+    _get = getattr
+    Shape = _get(named_get_mod, "Base")
+
+
+    def run():
+        match Shape():
+            case Shape(v):
+                return v
+    """
+# A lookup that a pass begins and that waits on the cycle, in a pass where
+# no lookup in the cycle grows: the cycle runs again for it. a stands for
+# jnp_b, and jnp_a's a, b and c name each other in branches that never run.
+SOURCES["jnp_a"] = """
+    from microcosm.walkcases import jnp_b
+
+    a = jnp_b
+    if False:
+        a = c.b
+    if False:
+        b = a.c
+    if False:
+        c = b.b
+    """
+SOURCES["jnp_b"] = """
+    from microcosm.walkcases import t_join_no_growth
+
+
+    class Base:
+        __match_args__ = ("left",)
+
+        @property
+        def left(self):
+            return t_join_no_growth.X
+
+
+    if False:
+        from microcosm.walkcases import jnp_a
+
+        a = jnp_a
+        c = a.b
+    """
+SOURCES["r_join_no_growth"] = """
+    from microcosm.walkcases.jnp_a import a
+
+
+    def run():
+        match a.Base():
+            case a.Base(v):
+                return v
+    """
+# lsg_b and lsg_c import name from each other, in a branch that never runs,
+# and lsg_a takes it from lsg_b. That cycle waits on no lookup outside it, so
+# it settles when its first lookup ends, and the lookup of lsg_a's name then
+# settles too: lsg_a binds name for sure, and its __getattr__ doesn't count.
+SOURCES["lsg_a"] = """
+    from microcosm.walkcases import t_getattr_settled
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_settled.X
+        raise AttributeError(attr)
+
+
+    from microcosm.walkcases.lsg_b import *  # noqa: E402,F403
+    """
+SOURCES["lsg_b"] = """
+    from microcosm.walkcases.lsg_c import *  # noqa: F403
+    """
+SOURCES["lsg_c"] = """
+    if False:
+        from microcosm.walkcases.lsg_b import name  # noqa: F401
+    from microcosm.walkcases.lsg_d import *  # noqa: E402,F403
+    """
+SOURCES["lsg_d"] = """
+    name = 1
+    """
+SOURCES["r_getattr_settled"] = """
+    from microcosm.walkcases.lsg_a import name
+
+
+    def run():
+        return name
+    """
+
 # A root that makes a Thing reaches every dunder Thing defines, so it reaches
 # t_add and t_float as well: the walk over-approximates there by design.
 _THING = {"add", "float"}
@@ -3117,6 +3666,8 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_default", "run"): {"default"},
     ("r_metaclass", "Kernel.run"): {"metaclass"},
     ("r_decorator", "Kernel.run"): {"decorator"},
+    ("r_kw_default", "run"): {"kw_default"},
+    ("r_class_decorated", "Kernel.run"): {"class_decorated"},
     # Bindings
     ("r_star", "run"): {"star"},
     ("r_alternative", "run"): {"alternative"},
@@ -3132,6 +3683,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_lazy", "run"): {"lazy"},
     ("r_lazy_assigned", "run"): {"lazy_assigned"},
     ("r_star_lazy", "run"): {"star_lazy"},
+    ("r_getattr_bound", "run"): set(),
     ("r_class_global", "Kernel.run"): {
         "class_global",
         "class_global_alias",
@@ -3164,6 +3716,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_comp_first_iter", "run"): {"comp_first_iter"},
     ("r_self_ref", "Kernel.run"): {"self_ref"},
     ("r_aug_class", "Kernel.run"): {"aug_class"},
+    ("r_aug_value", "run"): {"aug_value"},
     ("r_del_class", "Kernel.run"): {"del_class", "del_module"},
     ("r_with_class", "Kernel.run"): {"with_class"},
     ("r_ann_class", "Kernel.run"): {"ann_class"},
@@ -3235,6 +3788,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_delattr_patch", "Kernel.run"): {"delattr_patch"},
     ("r_class_body_update", "Kernel.run"): {"class_body_update"},
     ("r_class_global_aug", "Kernel.run"): {"class_global_aug"},
+    ("r_class_global_store", "Kernel.run"): {"class_global_store"},
     ("r_aug_store", "run"): {"aug_store"},
     # Changes by name
     ("r_update", "run"): {"update"},
@@ -3282,6 +3836,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_import_name", "run"): {"import_name"},
     ("r_import_renamed", "run"): {"import_renamed", "import_renamed_alias"},
     ("r_getattr_renamed", "run"): {"getattr_renamed"},
+    ("r_getattr_named", "run"): {"getattr_named"},
     # Cost
     ("r_star_diamond", "run"): {"star_diamond"},
     ("r_star_clique", "run"): {"star_clique"},
@@ -3296,6 +3851,13 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_alias_cycle_dotted_first", "run"): {"alias_cycle_dotted_first"},
     ("r_alias_cycle_join", "run"): {"alias_cycle_join"},
     ("r_alias_self_dotted", "run"): {"alias_self_dotted"},
+    ("r_alias_cycle_outer", "run"): {"alias_cycle_outer"},
+    ("r_alias_cycle_two_up", "run"): {"alias_cycle_two_up"},
+    ("r_alias_cycle_sibling", "run"): {"alias_cycle_sibling"},
+    ("r_outer_cycle", "run"): {"outer_cycle"},
+    ("r_outer_cycle_first", "run"): {"outer_cycle"},
+    ("r_join_no_growth", "run"): {"join_no_growth"},
+    ("r_getattr_settled", "run"): set(),
     ("r_getattr_cycle", "run"): {"getattr_cycle_a", "getattr_cycle_b"},
     ("r_getattr_cycle_first", "run"): {"getattr_cycle_a", "getattr_cycle_b"},
     ("r_getattr_self", "run"): set(),
@@ -3312,6 +3874,11 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_partial_import", "run"): set(),
     ("r_getattr_importer", "run"): set(),
     ("r_match_args_constant", "run"): set(),
+    ("r_getattr_import_cycle", "run"): set(),
+    ("r_getattr_import_cycle_from", "run"): set(),
+    ("r_getattr_init_cycle", "run"): set(),
+    ("r_getattr_submodule", "run"): set(),
+    ("r_getattr_path", "run"): set(),
 }
 
 #: Targets a root's walk reaches that its run doesn't read. The walk reaches
@@ -3365,6 +3932,16 @@ BLIND: dict[tuple[str, str], set[str]] = {
     ("r_getattr_importer", "run"): {"getattr_importer"},
     # An explicit __match_args__ other than a tuple of string literals.
     ("r_match_args_constant", "run"): {"match_args_constant"},
+    # A module's __getattr__ that Python calls outside a cycle of lookups: for
+    # a name the module binds, when an import cycle reads the module
+    # part-built; for a sub module's name, which a from-import asks the
+    # package for before it imports the sub module; and for __path__, which a
+    # from-import asks a module that isn't a package for.
+    ("r_getattr_import_cycle", "run"): {"getattr_import_cycle"},
+    ("r_getattr_import_cycle_from", "run"): {"getattr_import_cycle_from"},
+    ("r_getattr_init_cycle", "run"): {"getattr_init_cycle"},
+    ("r_getattr_submodule", "run"): {"getattr_submodule"},
+    ("r_getattr_path", "run"): {"getattr_path"},
 }
 
 
@@ -3487,3 +4064,112 @@ def python_reads(
         )
         for module, qualname in picked
     }
+
+
+#: The package that holds a random tree's modules (see :func:`random_tree`).
+RANDOM_PACKAGE = "microcosm.walkrandom"
+_RANDOM_MODULES = ("m0", "m1", "m2", "m3")
+_RANDOM_SUBMODULES = ("pk.s0", "pk.s1")
+_RANDOM_NAMES = ("a", "b", "c")
+_RANDOM_TARGETS = ("t_0", "t_1", "t_2", "t_3")
+
+
+def _random_module(rng: random.Random, own: str) -> str:
+    """Two to six statements in :func:`random_tree`'s forms, for module ``own``."""
+
+    others = [module for module in _RANDOM_MODULES if module != own]
+    sources = [m for m in (*_RANDOM_MODULES, *_RANDOM_SUBMODULES) if m != own]
+    imported: dict[str, None] = {}
+    lines = []
+    for _ in range(rng.randint(2, 6)):
+        form = rng.randrange(10)
+        name, other = rng.choice(_RANDOM_NAMES), rng.choice(_RANDOM_NAMES)
+        if form == 0:
+            lines.append(f"from {RANDOM_PACKAGE}.{rng.choice(sources)} import {name}")
+        elif form == 1:
+            lines.append(f"from {RANDOM_PACKAGE}.{rng.choice(sources)} import *")
+        elif form in (2, 6):
+            module = rng.choice(others if form == 2 else _RANDOM_TARGETS)
+            imported[module] = None
+            lines.append(f"{name} = {module}")
+        elif form == 3:
+            lines.append(f"{name} = {other}")
+        elif form == 4:
+            lines.append(f"{name} = {other}.{rng.choice(_RANDOM_NAMES)}")
+        elif form == 5:
+            lines.append(f"if False:\n    {name} = {other}")
+        elif form == 7:
+            attribute = rng.choice((*_RANDOM_NAMES, "s0", "s1"))
+            lines.append(f"from {RANDOM_PACKAGE} import pk\n{name} = pk.{attribute}")
+        elif form == 8:
+            target = rng.choice(_RANDOM_TARGETS)
+            imported[target] = None
+            lines.append(f"def __getattr__(attr):\n    return {target}.X")
+        else:
+            attribute = rng.choice(_RANDOM_NAMES)
+            lines.append(f"if False:\n    {name} = {other}.{attribute}")
+    header = [f"from {RANDOM_PACKAGE} import {module}" for module in imported]
+    return "\n".join([*header, *lines]) + "\n"
+
+
+def random_tree(rng: random.Random) -> dict[str, str]:
+    """A random tree of modules, each name's source, as :func:`write_tree` takes it.
+
+    ``m0`` to ``m3``, and ``s0`` and ``s1`` in the package ``pk``, each run
+    two to six statements, each in one of ten forms: a from-import of a name,
+    or a star import, from one of the other five; a name bound to one of
+    ``m0`` to ``m3``, to a target ``t_*``, to an attribute of ``pk`` (``s0``
+    and ``s1`` among them), to another name or to another name's attribute;
+    the last two again in a branch that never runs; and a module
+    ``__getattr__`` that reads a target. ``pk`` defines a ``__getattr__``
+    too. ``r``'s ``run()`` reads ``X`` through two to four of the six
+    modules' names, each through up to two attributes, and ``run2()`` makes
+    the same reads in the opposite order; both then match a class pattern
+    through the first name. So the names can wait on each other in cycles of
+    any shape these forms make.
+    """
+
+    sources = {"__init__": "", **{target: "X = 1\n" for target in _RANDOM_TARGETS}}
+    for module in _RANDOM_MODULES:
+        sources[module] = _random_module(rng, module)
+    target = rng.choice(_RANDOM_TARGETS)
+    sources["pk.__init__"] = (
+        f"from {RANDOM_PACKAGE} import {target}\n\n\n"
+        f"def __getattr__(attr):\n    return {target}.X\n"
+    )
+    for module in _RANDOM_SUBMODULES:
+        sources[module] = _random_module(rng, module)
+    reads = []
+    for _ in range(rng.randint(2, 4)):
+        module = rng.choice((*_RANDOM_MODULES, *_RANDOM_SUBMODULES))
+        name = rng.choice(_RANDOM_NAMES)
+        chain = "".join(
+            f".{rng.choice(_RANDOM_NAMES)}" for _ in range(rng.randint(0, 2))
+        )
+        reads.append((f"{module.replace('.', '_')}_{name}", module, name, chain))
+    imports = sorted(
+        {
+            f"from {RANDOM_PACKAGE}.{module} import {name} as {local}"
+            for local, module, name, _ in reads
+        }
+    )
+    body = [f"    {local}{chain}.X" for local, _, _, chain in reads]
+    first = reads[0][0]
+    match = (
+        f"    match {first}.Base():\n        case {first}.Base(v):\n            pass"
+    )
+    run = "\n".join(["def run():", *body, match])
+    run2 = "\n".join(["def run2():", *reversed(body), match])
+    sources["r"] = "\n".join(imports) + f"\n\n\n{run}\n\n\n{run2}\n"
+    return sources
+
+
+def write_tree(root: Path, sources: dict[str, str]) -> dict[str, Path]:
+    """Write a :func:`random_tree` under ``root``; return its modules' paths."""
+
+    base = root.joinpath("packages", "random", "src", *RANDOM_PACKAGE.split("."))
+    for name, text in sources.items():
+        path = base.joinpath(*name.split(".")).with_suffix(".py")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return module_paths(root)
