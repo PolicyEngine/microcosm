@@ -2,7 +2,7 @@
 
 ``tests/fixtures/us_soi_eitc_table_2_5_feed_rows.jsonl`` holds, verbatim and
 sorted by source record id, the 274 rows of the pinned Chronicle feed
-(``consumer_facts_us_51aa40f.jsonl``, sha256 965a29ac...) that the EITC
+(``consumer_facts_us_41b2fb2.jsonl``, sha256 1d45a89c...) that the EITC
 decomposition uprating reads:
 
 * IRS SOI Publication 1304 Table 2.5, tax year 2023 (``23in25ic.xls``, sha256
@@ -498,7 +498,14 @@ def test_uniform_growth_keeps_each_split_s_bins_summing_to_its_total_row(
 
 def test_fixture_rows_are_verbatim_pinned_feed_rows() -> None:
     """Where the pinned feed is present (not in CI), the fixture is exactly
-    the feed's rows for these record sets, byte for byte."""
+    the feed's rows for these record sets, byte for byte.
+
+    A re-pin that changes any of those rows fails here. Refresh the fixture
+    from the new feed: its lines for the same record sets, sorted by
+    ``lineage.source_record_id``, one per line. Compare the old and new rows
+    field by field first, and check any changed value against the workbooks
+    this module's docstring names.
+    """
 
     feed_path = _load_repo_tool("build_us_target_parity_manifest").DEFAULT_FEED_PATH
     if not feed_path.exists():
@@ -515,4 +522,7 @@ def test_fixture_rows_are_verbatim_pinned_feed_rows() -> None:
         for line in _FIXTURE.read_text(encoding="utf-8").splitlines()
         if line.strip()
     )
-    assert fixture_rows == feed_rows
+    assert fixture_rows == feed_rows, (
+        f"{_FIXTURE.name} differs from {feed_path.name}'s rows for its record "
+        "sets; refresh it as this test's docstring says"
+    )
