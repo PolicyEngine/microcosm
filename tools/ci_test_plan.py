@@ -122,11 +122,11 @@ STEP_CONDITIONS = ("always()", "!cancelled()", "success()")
 # that job without ``ci``, so the tests of the code ``ci`` runs stay in it.
 PLAN_TESTS = "packages/microcosm-build/tests/engine_free/shared/test_ci_test_plan.py"
 PLAN_TESTS_JOB = "engine-free"
-# The job that ``tools/run_engine_test_categories.py`` runs, and the report
-# categories it runs, which are all it runs: contract and scenario files in
-# batches, then each workflow file in a fresh process. It refuses to start
-# unless its tasks hold each file the plan lists for the job exactly once, and
-# ``verify`` refuses a group of the job that it would not run.
+# The job that ``tools/run_engine_test_categories.py`` runs, and the only
+# report categories it runs: contract and scenario files in batches, then each
+# workflow file in a fresh process. The runner refuses to start unless its
+# tasks hold each file the plan lists for the job exactly once, and ``verify``
+# refuses a group of the job that the runner never runs.
 US_RUNNER_JOB = "engine-us"
 US_RUNNER_CATEGORIES = ("contract", "scenario", "workflow")
 # GitHub lists at most this many files of one pull request.

@@ -393,7 +393,7 @@ def build_tasks(
         raise SystemExit(
             "the US runner refuses to start: its tasks must run each file the "
             f"plan lists for {US_RUNNER_JOB} once, and `python3 "
-            "tools/ci_test_plan.py verify` names each group it would not run:"
+            "tools/ci_test_plan.py verify` names each group the runner never runs:"
             "\n  " + "\n  ".join(errors)
         )
     return tuple(light), workflows

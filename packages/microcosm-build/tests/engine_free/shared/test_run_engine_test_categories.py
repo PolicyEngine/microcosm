@@ -333,7 +333,7 @@ def test_the_runner_refuses_to_start_when_the_plan_lists_a_group_it_never_runs(
     assert lines[0] == (
         "the US runner refuses to start: its tasks must run each file the plan "
         "lists for engine-us once, and `python3 tools/ci_test_plan.py verify` "
-        "names each group it would not run:"
+        "names each group the runner never runs:"
     )
     assert lines[1:] == [
         f"  {path.relative_to(ci_test_plan.ROOT)}: no task runs it"
