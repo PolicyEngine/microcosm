@@ -14,8 +14,12 @@ from microcosm.build.uk_runtime.graph import _STAGE_CONSUMES, uk_spine_graph
 from microcosm.build.uk_runtime.household_lineage import (
     UK_COPY_LINEAGE,
     collapse_geographic_clones,
+    fold_geographic_clones,
 )
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    UK_NATIONAL_SCHEMA,
+    uk_national_frame,
+)
 from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 
@@ -87,7 +91,8 @@ def test_only_geographic_clones_fold_into_their_survey_record() -> None:
             inputs=_agreeing(n),
         )
         clone = pool.table(entity)[ladder_clone_index_column(entity)].to_numpy()
-        # Each copy keeps its first clone, which carries both clones' weight.
+        # Each copy keeps its lowest-id clone, clone 0, which carries both
+        # clones' weight.
         assert kept.tolist() == (clone == 0).tolist()
         assert summed[kept].tolist() == [1.0] * 4
     kept, summed = collapse_geographic_clones(
@@ -125,8 +130,78 @@ def test_clones_that_differ_on_what_the_fit_reads_stay_rows_of_their_own() -> No
     assert np.isclose(summed[kept].sum(), 4.0)
 
 
-#: The stages whose fits collapse clones, and the module each one's call is
-#: in: the SPI income stage runs its forests from spi_income.
+def _reversed_tables(frame) -> dict[str, pd.DataFrame]:
+    """Every table's rows in reverse order: each clone 1 before its clone 0."""
+
+    return {
+        name: table.iloc[::-1].reset_index(drop=True)
+        for name, table in _tables(frame).items()
+    }
+
+
+def test_clones_in_reverse_row_order_keep_clone_zero() -> None:
+    """A record trains on its lowest-id clone, clone 0, wherever its row
+    sits: the UK entry orders the fold by the entity's ids, so a frame whose
+    clone 1 rows come first folds as the clone-major one does
+    (microcosm#931)."""
+
+    tables = _reversed_tables(with_geographic_clones(_copies_frame()))
+    for entity in ("household", "person", "benunit"):
+        table = tables[entity]
+        n = len(table)
+        clone = table[ladder_clone_index_column(entity)].to_numpy()
+        assert clone[0] == 1
+        rows, weights = np.ones(n, dtype=bool), np.full(n, 0.5)
+        kept, summed = collapse_geographic_clones(
+            tables, entity, rows, weights, inputs=_agreeing(n)
+        )
+        assert kept.tolist() == (clone == 0).tolist(), entity
+        assert summed[kept].tolist() == [1.0] * 4
+        fold = fold_geographic_clones(
+            tables, entity, rows, weights, inputs=_agreeing(n)
+        )
+        assert fold.kept.tobytes() == kept.tobytes()
+        assert fold.weights.tobytes() == summed.tobytes()
+        # Every clone points at its own record's clone 0, the lowest id the
+        # record's clones carry.
+        ids = table[UK_NATIONAL_SCHEMA.entity_id_column(entity)].to_numpy()
+        assert (clone[fold.representative] == 0).all()
+        assert (fold.key_group[fold.representative] == fold.key_group).all()
+        for group in np.unique(fold.key_group):
+            members = fold.key_group == group
+            assert set(ids[fold.representative[members]]) == {ids[members].min()}
+        assert not fold.varied.any()
+
+
+def test_a_variant_clone_trains_on_its_own_row_in_reverse_row_order() -> None:
+    """The record whose clone 1 differs keeps both rows, each its own
+    variant's representative, and only its rows vary; the other records
+    fold onto clone 0."""
+
+    tables = _reversed_tables(with_geographic_clones(_copies_frame()))
+    clone = tables["household"][ladder_clone_index_column("household")].to_numpy()
+    values = np.zeros(8)
+    differs = int(np.flatnonzero(clone == 1)[0])
+    values[differs] = 1.0
+    fold = fold_geographic_clones(
+        tables,
+        "household",
+        np.ones(8, dtype=bool),
+        np.full(8, 0.5),
+        inputs=pd.DataFrame({"value": values}),
+    )
+    record = fold.key_group == fold.key_group[differs]
+    assert int(record.sum()) == 2
+    assert fold.kept[record].all()
+    assert fold.representative[record].tolist() == np.flatnonzero(record).tolist()
+    assert fold.varied.tolist() == record.tolist()
+    assert fold.kept[~record].tolist() == (clone[~record] == 0).tolist()
+    assert fold.weights[fold.kept & ~record].tolist() == [1.0] * 3
+
+
+#: The stages whose fits fold clones, through either UK entry, and the module
+#: each one's call is in: the SPI income stage runs its forests from
+#: spi_income.
 _COLLAPSING_STAGES = {
     "hmrc_spi_income_spine": "spi_income",
     "spi_housing_shell": "spi_housing_shell",
@@ -135,14 +210,16 @@ _COLLAPSING_STAGES = {
     "salary_sacrifice": "salary_sacrifice",
     "spi_employment_shell": "spi_employment_shell",
 }
+#: The UK entries a fit folds its clones through.
+_FOLD_ENTRIES = frozenset({"collapse_geographic_clones", "fold_geographic_clones"})
 
 
-def _calls_collapse(path: Path) -> bool:
+def _calls_fold(path: Path) -> bool:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     return any(
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id == "collapse_geographic_clones"
+        and node.func.id in _FOLD_ENTRIES
         for node in ast.walk(tree)
     )
 
@@ -155,7 +232,13 @@ def test_every_collapsing_stage_sees_the_lineage_live_at_it() -> None:
     includes the geographic clone index (microcosm#931)."""
 
     runtime = Path(inspect.getfile(graph_kernels)).parent
-    callers = {path.stem for path in runtime.glob("*.py") if _calls_collapse(path)}
+    # The module that defines the two entries calls one from the other.
+    entries = Path(inspect.getfile(fold_geographic_clones)).resolve()
+    callers = {
+        path.stem
+        for path in runtime.glob("*.py")
+        if path.resolve() != entries and _calls_fold(path)
+    }
     assert callers == set(_COLLAPSING_STAGES.values())
     for stage, module in _COLLAPSING_STAGES.items():
         names = {
