@@ -6025,6 +6025,36 @@ def _refuse_misplaced_annual_years(release_dir: Path, manifest: object) -> None:
         )
 
 
+def _refuse_a_receipt_donor_that_is_not_an_enrichment(
+    release_dir: Path, manifest: object
+) -> None:
+    """Refuse a build of :data:`US_RECEIPT_DONOR_RELEASE_ID` that is not a
+    source enrichment.
+
+    The release's role is ``national`` and its rule for the dataset is only a
+    file name, so without this a calibrated national build, or a
+    recertification, named after the donor's file would pass as a donor. The
+    source-enrichment contract then checks that the enrichment is a receipt
+    enrichment.
+    """
+    if release_dir.name != US_RECEIPT_DONOR_RELEASE_ID:
+        return
+    from microcosm.data.source_enrichment import SOURCE_ENRICHMENT_RELEASE_TYPE
+
+    release_type = (
+        manifest.get("release_type") if isinstance(manifest, Mapping) else None
+    )
+    if release_type != SOURCE_ENRICHMENT_RELEASE_TYPE:
+        raise ReleaseContractError(
+            release_dir,
+            [
+                f"{US_RECEIPT_DONOR_RELEASE_ID!r} takes only receipt source "
+                f"enrichments (release_type {SOURCE_ENRICHMENT_RELEASE_TYPE!r}); "
+                f"this build declares release_type {release_type!r}"
+            ],
+        )
+
+
 def _release_build_details(release_manifest: object) -> Mapping | None:
     """The fields that describe how a release's build was made.
 
@@ -7227,6 +7257,7 @@ def validate_release_dir(
         except (OSError, ValueError):
             manifest_probe = None
         _refuse_misplaced_annual_years(release_dir, manifest_probe)
+        _refuse_a_receipt_donor_that_is_not_an_enrichment(release_dir, manifest_probe)
         if isinstance(manifest_probe, Mapping) and "release_type" in manifest_probe:
             from microcosm.data.source_enrichment import (
                 SOURCE_ENRICHMENT_RELEASE_TYPE,

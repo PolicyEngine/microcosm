@@ -2531,10 +2531,11 @@ def validate_recertification_candidate(
         failures.append(
             f"{REPORT_FILE} must be a schema-{REPORT_SCHEMA_VERSION} report"
         )
-    if not _is_build_folder_us_release(release_id):
+    if release_id != CHILD_RELEASE:
         failures.append(
-            "a recertification is a build in a build folder of a US release; its "
-            f"directory must be named after that release, not {release_id!r}"
+            "a recertification is a build of the national release "
+            f"{CHILD_RELEASE!r}, in a build folder; its directory must be named "
+            f"after that release, not {release_id!r}"
         )
     if (
         parent_id is None

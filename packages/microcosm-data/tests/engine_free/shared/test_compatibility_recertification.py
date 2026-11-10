@@ -145,7 +145,7 @@ def test_a_candidate_whose_directory_names_its_build_is_refused(candidate, tmp_p
     release_dir, artifact_root = candidate
     renamed = tmp_path / "renamed" / CHILD_ID
     shutil.copytree(release_dir, renamed)
-    with pytest.raises(ReleaseContractError, match="build folder of a US release"):
+    with pytest.raises(ReleaseContractError, match="build of the national release"):
         recert.validate_recertification_candidate(renamed, artifact_root=artifact_root)
 
 

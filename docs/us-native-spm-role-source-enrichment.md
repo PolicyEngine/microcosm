@@ -227,10 +227,9 @@ The record outlives the warning. `--certify` itself and validation
 operator publishing days later can read what an earlier run gave up rather
 than just `passed`. Both read the record under one tolerance, so neither
 reports a bundle differently from the other, and a bundle that gave nothing up
-prints nothing. Unlike the tagged publisher, `microcosm-publish-release-build`
-prints neither `narrowed_claims` nor `claim_measurement`, in its preflight or
-its publication; run validation on the certified bundle before publishing to
-read them.
+prints nothing. `microcosm-publish-release-build` says both on stderr before
+its preflight and its publication, and its preflight verdict carries them as
+`narrowed_claims` and `claim_measurement`, as the tagged publisher did.
 
 Only the **model** field may be widened. Core keeps the exact pin it has always
 had, and a `core` key in `publisher_claims` is refused rather than honoured.

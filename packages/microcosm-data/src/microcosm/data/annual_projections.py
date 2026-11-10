@@ -37,6 +37,7 @@ import numpy as np
 from packaging.specifiers import SpecifierSet
 
 from microcosm.data.contract import (
+    CHECKSUMS_FILE,
     US_ANNUAL_RELEASE_ID,
     US_NATIONAL_RELEASE_ID,
     publishes_to_build_folder,
@@ -54,6 +55,11 @@ _ANNUAL_BUILD_ID = re.compile(r"(?P<base>.+)-annual-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{
 #: The fields of ``metadata.annual_projection_base``: the base national build
 #: in the build-folder form, and its dataset's file name and SHA-256.
 _BASE_REFERENCE_FIELDS = frozenset({"repo_id", "release", "build", "path", "sha256"})
+#: The files the emitter publishes for every build itself, which an annual
+#: build writes anew instead of carrying from its base build.
+_PUBLISHER_FILES = frozenset(
+    {"release_manifest.json", "build_manifest.json", CHECKSUMS_FILE}
+)
 
 
 @dataclass(frozen=True)
@@ -645,10 +651,13 @@ def require_base_publication(
     where :func:`microcosm.data.build_folder_manifests.referenced_build` says
     for ``metadata.annual_projection_base``: at ``main`` from
     ``releases/microcosm-us-2024-national/<base build>/``, which never
-    changes. It must name that release and build, and its default dataset
-    must be the folder's base-year H5: the same file name and SHA-256. An
-    absent manifest refuses; any other Hub failure propagates. ``api`` needs
-    ``hf_hub_download``.
+    changes. It must name that release and build; its default dataset must
+    be the folder's base-year H5, with the same file name and SHA-256; and
+    every other file it declares, apart from the manifests and the checksum
+    ledger the emitter writes for each build, must be in the annual build's
+    manifest with the same path and SHA-256. An absent manifest refuses; any
+    other Hub failure, including one where the Hub could not be asked,
+    propagates. ``api`` needs ``hf_hub_download``.
     """
     from microcosm.data.build_folder_manifests import referenced_build
     from microcosm.data.release import (
@@ -728,4 +737,24 @@ def require_base_publication(
             f"{published_dataset.get('sha256')!r}, not the base-year H5 "
             f"{local.get('path')!r} with sha256 {local.get('sha256')!r}; an "
             "annual build projects exactly the published base build's bytes"
+        )
+    carried = _object(manifest.get("artifacts"), "release artifacts")
+    differing = sorted(
+        key
+        for key, entry in published_artifacts.items()
+        if key != published_key
+        and isinstance(entry, Mapping)
+        and PurePosixPath(str(entry.get("path", ""))).name not in _PUBLISHER_FILES
+        and not (
+            isinstance(carried.get(key), Mapping)
+            and (carried[key].get("path"), carried[key].get("sha256"))
+            == (entry.get("path"), entry.get("sha256"))
+        )
+    )
+    if differing:
+        raise ValueError(
+            f"the annual build does not carry the published base build's "
+            f"{differing} unchanged ({path_in_repo} declares their paths and "
+            "SHA-256 values); an annual build carries every file of its base "
+            "build as published"
         )
