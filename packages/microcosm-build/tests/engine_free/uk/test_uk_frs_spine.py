@@ -3165,6 +3165,7 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert household["geography_household_key"].is_unique
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
+    assert sidecar["geographic_clone_count"] == 1
     # The build record says which of its stages read the SPI Public Use Tape
     # (microcosm#1095), from the artifacts the run's spec declares. This
     # synthetic spec's SPI stage reads a fabricated tab, not the tape.
@@ -3440,6 +3441,349 @@ def test_driver_keeps_only_the_final_graph_version(
     assert retained == (final,)
     assert set(manifest.populations) == set(manifest.mass_ledgers) == {final}
     assert len(set(compiled.versions.values())) > 1
+
+
+def _driver_arguments(raw_dir: Path, output: Path, spi_tab: Path, hmrc_ods: Path):
+    return [
+        "--frs-raw-dir",
+        str(raw_dir),
+        "--spine-h5",
+        str(output),
+        "--spi-tab",
+        str(spi_tab),
+        "--hmrc-ods",
+        str(hmrc_ods),
+        "--no-staging",
+    ]
+
+
+def test_driver_builds_the_geographic_clone_count_it_is_asked_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--n-clones K`` (microcosm#931) is the geographic_expand node's
+    parameter, the clone count of the transform that makes the clones and of
+    the engine the spine build asks for, which refuses a frame carrying
+    another count. It never reaches the engine identity: the gates' engine
+    identity and the provenance in the sidecar's rules engine are the same at
+    every K, and the rules engine adds the adapter's batch record only at
+    K > 1. The sidecar records K, and every household comes out K times."""
+
+    from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
+
+    pytest.importorskip("tables")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    asked: list[int | None] = []
+
+    class _BatchRecordingEngine(_FakeUKEngine):
+        """The stand-in, with the real adapter's batch record at its clone
+        count (read from the frame alone; no engine is built)."""
+
+        def __init__(self, clones: int | None) -> None:
+            self._adapter = PolicyEngineUKEngine(clones=clones)
+
+        def batch_record(self, frame):
+            return self._adapter.batch_record(frame)
+
+    def recording_rules_engine(*, clones: int | None = None) -> _FakeUKEngine:
+        asked.append(clones)
+        return _BatchRecordingEngine(clones)
+
+    monkeypatch.setattr(tool, "_rules_engine", recording_rules_engine)
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    identities: dict[int, str] = {}
+    sidecars: dict[int, dict] = {}
+    households: dict[int, pd.DataFrame] = {}
+    for clones in (1, 2):
+        output = tmp_path / f"k{clones}" / "spine.h5"
+        output.parent.mkdir()
+        argv = [
+            *_driver_arguments(raw_dir, output, spi_tab, hmrc_ods),
+            "--n-clones",
+            str(clones),
+        ]
+        prepared = tool.prepare_uk_spine_execution(tool.parse_uk_spine_args(argv))
+        expand = prepared.graph.node("geographic_expand")
+        assert expand.params["geographic_clones"] == clones
+        assert prepared.implementations["geographic_expand"].clones == clones
+        identities[clones] = prepared.engine_identity
+        assert tool.main(argv) == 0
+        frame, _ = load_uk_national_frame(output)
+        households[clones] = frame.table("household")
+        sidecars[clones] = json.loads(output.with_suffix(".build.json").read_text())
+    # The preparation and the build each ask for their engine at K.
+    assert asked == [1, 1, 2, 2]
+    assert identities[1] == identities[2]
+    batched = ("engine_batches", "microdf_python")
+    provenance = {
+        clones: {
+            key: value
+            for key, value in sidecar["rules_engine"].items()
+            if key not in batched
+        }
+        for clones, sidecar in sidecars.items()
+    }
+    assert provenance[1] == provenance[2]
+    assert not set(batched) & set(sidecars[1]["rules_engine"])
+    assert sidecars[2]["rules_engine"]["engine_batches"]["batches"] == 2
+    for clones, sidecar in sidecars.items():
+        assert sidecar["geographic_clone_count"] == clones
+        household = households[clones]
+        assert sorted(set(household["household_clone_index"])) == list(range(clones))
+        assert len(household) == clones * len(households[1])
+        assert set(household["source_household_id"]) == set(
+            households[1]["household_id"]
+        )
+
+
+@pytest.mark.parametrize("value", ["0", "101", "-1", "2.5", "two"])
+def test_driver_refuses_a_clone_count_outside_the_copy_id_fields_bound(
+    tmp_path: Path, value: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tool = _load_tool()
+    base = _driver_arguments(
+        tmp_path, tmp_path / "spine.h5", tmp_path / "put2223uk.tab", tmp_path / "x"
+    )
+    with pytest.raises(SystemExit):
+        tool._parse_args([*base, "--n-clones", value])
+    # The refusal names the bound the copy-id field declares.
+    message = capsys.readouterr().err
+    assert "--n-clones must be a whole number from 1 to 100" in message
+    assert tool._parse_args(base).n_clones == 1
+    assert tool._parse_args([*base, "--n-clones", "100"]).n_clones == 100
+
+
+def test_a_release_candidate_spine_takes_one_geographic_clone(
+    tmp_path: Path,
+) -> None:
+    """A release candidate refuses --n-clones above one until microcosm#931
+    group (c) pins the clone count a release builds at: the parser refuses
+    the pair, and so does the preparation the full build hands a spine request
+    it has marked a release candidate after parsing it."""
+
+    tool = _load_tool()
+    base = _driver_arguments(
+        tmp_path, tmp_path / "spine.h5", tmp_path / "put2223uk.tab", tmp_path / "x"
+    )
+    with pytest.raises(SystemExit):
+        tool._parse_args([*base, "--release-candidate", "--n-clones", "2"])
+    assert tool._parse_args([*base, "--release-candidate"]).n_clones == 1
+    requested = tool._parse_args([*base, "--n-clones", "2"])
+    requested.release_candidate = True
+    with pytest.raises(ValueError, match="builds the spine at one geographic clone"):
+        tool.prepare_uk_spine_execution(requested)
+
+
+def test_driver_refuses_a_clone_count_its_synthetic_fixture_does_not_make(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A synthetic fixture's transforms and engine clone at its own
+    config.geographic_clones, so a request for another count is refused while
+    the spine is prepared, before any stage runs (microcosm#931)."""
+
+    from microcosm.build.uk_runtime import graph_kernels
+
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    (fixture / "fixture.json").write_text("{}", encoding="utf-8")
+    tool = _load_tool()
+    spec = _synthetic_spec(stage)
+    monkeypatch.setattr(tool, "load_country_spec", lambda country: spec)
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
+    _stub_policy_readers(monkeypatch)
+    _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    names = tool._uk_spine_stage_names(spec)
+    monkeypatch.setattr(
+        graph_kernels,
+        "fixture_stage_plan_inputs",
+        lambda source: (
+            tuple(SimpleNamespace(stage=name) for name in names),
+            {"geographic_expand": SimpleNamespace(clones=1)},
+        ),
+    )
+    args = tool.parse_uk_spine_args(
+        [
+            "--synthetic-fixture-dir",
+            str(fixture),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--smoke",
+            "--no-staging",
+            "--n-clones",
+            "2",
+        ]
+    )
+    with pytest.raises(ValueError, match="config.geographic_clones"):
+        tool.prepare_uk_spine_execution(args)
+
+
+def test_driver_profiles_every_node_under_its_id_without_moving_a_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--stage-profile-dir`` (the memory guard, microcosm#931) runs every
+    kernel through spine_build's profile proxy, which records each node's RSS
+    and wall time under the node's id. The proxy keys as the kernel it wraps,
+    so a profiled run computes every node under the unprofiled run's key, and
+    a profiled run over the unprofiled run's store finds every node there and
+    runs, and records, none."""
+
+    from microcosm.graph import ContentStore, compile_graph, run_graph
+
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    base = _driver_arguments(raw_dir, tmp_path / "spine.h5", spi_tab, hmrc_ods)
+
+    def prepared(*extra: str):
+        return tool.prepare_uk_spine_execution(
+            tool.parse_uk_spine_args([*base, *extra])
+        )
+
+    def run(execution, store: Path, resume: str):
+        return run_graph(
+            compile_graph(execution.graph),
+            sources=execution.sources,
+            store=ContentStore(store),
+            kernels=execution.kernels,
+            resume=resume,
+            decisions=(),
+        )
+
+    plain = prepared()
+    profile = tmp_path / "profile"
+    profiled = prepared("--stage-profile-dir", str(profile))
+    assert profiled.kernels.refs() == plain.kernels.refs()
+    assert {type(kernel) for kernel in profiled.kernels.as_mapping().values()} == {
+        tool._ProfiledKernel
+    }
+    assert tool._ProfiledKernel not in {
+        type(kernel) for kernel in plain.kernels.as_mapping().values()
+    }
+    unprofiled = run(plain, tmp_path / "plain", "forbid")
+    measured = run(profiled, tmp_path / "profiled", "forbid")
+    keys = {node: receipt.key for node, receipt in unprofiled.nodes.items()}
+    assert {node: receipt.key for node, receipt in measured.nodes.items()} == keys
+    records = json.loads((profile / "stage_profile.json").read_text())["stages"]
+    assert set(records) == set(compile_graph(profiled.graph).order) == set(keys)
+    assert {record["status"] for record in records.values()} == {"succeeded"}
+    assert all(record["peak_rss_bytes"] > 0 for record in records.values())
+    again = tmp_path / "again"
+    served = run(
+        prepared("--stage-profile-dir", str(again)), tmp_path / "plain", "require"
+    )
+    assert all(receipt.hit for receipt in served.nodes.values())
+    assert {node: receipt.key for node, receipt in served.nodes.items()} == keys
+    assert not (again / "stage_profile.json").exists()
+
+
+def _validation_arguments(tmp_path: Path) -> list[str]:
+    """Driver arguments whose inputs exist, for the argument checks alone."""
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir(exist_ok=True)
+    spi_tab = tmp_path / "put2223uk.tab"
+    spi_tab.write_text("", encoding="utf-8")
+    hmrc_ods = tmp_path / "hmrc.ods"
+    hmrc_ods.write_bytes(b"")
+    return _driver_arguments(raw_dir, tmp_path / "spine.h5", spi_tab, hmrc_ods)
+
+
+def test_driver_refuses_a_stage_profile_dir_before_any_node_runs(
+    tmp_path: Path,
+) -> None:
+    """The profiler adds a node's record only once the node has run, so a
+    ``--stage-profile-dir`` it could not add to is refused with the
+    arguments, before any node runs, in a fixed sentence; so is one inside
+    the repository, since a record keeps the message of a failure its node
+    raised (microcosm#931)."""
+
+    from microcosm.build.stage_profile import STAGE_PROFILE_SCHEMA_VERSION
+
+    tool = _load_tool()
+    base = _validation_arguments(tmp_path)
+
+    def validated(directory: Path) -> None:
+        tool._validate_args(
+            tool._parse_args([*base, "--stage-profile-dir", str(directory)])
+        )
+
+    # A new directory, and one holding a profile of this schema, are taken.
+    validated(tmp_path / "new")
+    kept = tmp_path / "kept"
+    kept.mkdir()
+    (kept / "stage_profile.json").write_text(
+        json.dumps({"schema_version": STAGE_PROFILE_SCHEMA_VERSION, "stages": {}}),
+        encoding="utf-8",
+    )
+    validated(kept)
+
+    a_file = tmp_path / "a-file"
+    a_file.write_text("", encoding="utf-8")
+    with pytest.raises(ValueError) as refused:
+        validated(a_file)
+    assert str(refused.value) == "--stage-profile-dir must name a directory."
+    for name, text in (
+        ("unparsed", "{not json"),
+        ("other-schema", json.dumps({"schema_version": 0, "stages": {}})),
+    ):
+        other = tmp_path / name
+        other.mkdir()
+        (other / "stage_profile.json").write_text(text, encoding="utf-8")
+        with pytest.raises(ValueError) as refused:
+            validated(other)
+        assert str(refused.value) == (
+            "--stage-profile-dir holds a stage_profile.json that is not a stage "
+            f"profile of schema version {STAGE_PROFILE_SCHEMA_VERSION}, so no "
+            "node's record could be added to it."
+        )
+    # Named only: nothing is written there.
+    inside = tool._REPOSITORY / "stage-profile-inside-the-repository"
+    with pytest.raises(ValueError, match="must lie outside the repository"):
+        validated(inside)
+    assert not inside.exists()
+
+
+def test_the_logbook_identity_takes_a_clone_count_other_than_one(
+    tmp_path: Path,
+) -> None:
+    """A spine of more geographic clones is another build, so its clone count
+    joins the Logbook identity digest; a one-clone build's digest is hashed
+    from what it always was (microcosm#931)."""
+
+    tool = _load_tool()
+    base = _driver_arguments(
+        tmp_path, tmp_path / "spine.h5", tmp_path / "put2223uk.tab", tmp_path / "x"
+    )
+    configs = {
+        clones: tool._logbook_run_config(
+            tool._parse_args([*base, "--n-clones", str(clones)]),
+            stage_names=("frs_spine", "geographic_expand"),
+            artifact_pins_digest="f" * 64,
+            synthetic_fixture=None,
+        )
+        for clones in (1, 2)
+    }
+    assert set(configs[1]) == {
+        "pipeline",
+        "stages",
+        "artifact_pins_digest",
+        "spine_h5",
+        "synthetic_fixture",
+    }
+    assert configs[2] == {**configs[1], "geographic_clones": 2}
 
 
 def test_driver_refuses_missing_spi_tab(tmp_path: Path) -> None:

@@ -9,7 +9,7 @@ import os
 import sys
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import metadata
@@ -49,6 +49,12 @@ from microcosm.build.observation import (
 )
 from microcosm.build.plan import StageRecord
 from microcosm.build.run_outcome import classify_failure
+from microcosm.build.stage_profile import (
+    STAGE_PROFILE_FILENAME,
+    STAGE_PROFILE_SCHEMA_VERSION,
+    _load_profile_payload,
+    profile_stage,
+)
 from microcosm.build.staging_cli import (
     add_staging_arguments,
     validate_staging_arguments,
@@ -124,7 +130,9 @@ from microcosm.build.uk_runtime.frs_spine import (
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.geographic_expand import (
+    GEOGRAPHIC_CLONE_LIMIT,
     UKGeographicExpandStageTransform,
 )
 from microcosm.build.uk_runtime.geographic_identity import (
@@ -233,6 +241,10 @@ from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 from microcosm.graph import (
     ContentStore,
+    Kernel,
+    KernelContext,
+    KernelRegistry,
+    KernelResult,
     compile_graph,
     run_graph,
     save_run_evidence,
@@ -250,11 +262,19 @@ _REPOSITORY = next(
 )
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
-#: The spine's geographic clone count K (microcosm#931): one, until the spine
-#: build takes a count. The graph's geographic_expand node, the transform it
-#: runs and the engine all take it, and the node refuses a transform that
-#: makes another number of clones.
+#: The spine's geographic clone count K by default (microcosm#931): one, unless
+#: ``--n-clones`` asks for another, from 1 to GEOGRAPHIC_CLONE_LIMIT. The
+#: graph's geographic_expand node, the transform it runs and the engine all
+#: take the count, and the node refuses a transform that makes another number
+#: of clones.
 _GEOGRAPHIC_CLONES = 1
+#: Why a release candidate takes one clone (microcosm#931): the clone count a
+#: release builds at is pinned only from group (c) on.
+_RELEASE_CANDIDATE_CLONES_REFUSAL = (
+    "--release-candidate builds the spine at one geographic clone "
+    "(--n-clones 1): the clone count a release builds at is pinned only from "
+    "microcosm#931 group (c) on."
+)
 #: Declared outputs whose nonzero share no stage record reports: the root's
 #: area-conditioning carriers (frs_spine.FRS_AREA_CONDITIONING_COLUMNS,
 #: microcosm#931), which stay out of every receipt and of the sidecar's
@@ -297,6 +317,22 @@ def _rung_sample_fraction(value: str) -> float:
             "sample fraction must be one of 0.01, 0.10, or 1.0 (the #624 rungs)."
         )
     return fraction
+
+
+def _clone_count_argument(value: str) -> int:
+    """``--n-clones``: a whole number from 1 to the copy-id field's bound."""
+
+    refusal = (
+        "--n-clones must be a whole number from 1 to "
+        f"{GEOGRAPHIC_CLONE_LIMIT}, the geographic_support copy-id field's bound."
+    )
+    try:
+        clones = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(refusal) from error
+    if not 1 <= clones <= GEOGRAPHIC_CLONE_LIMIT:
+        raise argparse.ArgumentTypeError(refusal)
+    return clones
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -375,6 +411,30 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=UK_SAMPLE_SEED_DEFAULT,
         help=f"Raw FRS spine sampling seed (default: {UK_SAMPLE_SEED_DEFAULT}).",
+    )
+    parser.add_argument(
+        "--n-clones",
+        type=_clone_count_argument,
+        default=_GEOGRAPHIC_CLONES,
+        help=(
+            "Geographic clones of every FRS household, from 1 to "
+            f"{GEOGRAPHIC_CLONE_LIMIT} (default: {_GEOGRAPHIC_CLONES}; "
+            "microcosm#931). The geographic_expand stage makes them after the "
+            "stages that read the raw FRS tables, each at an equal share of its "
+            "household's weight, and every later engine call runs clone by "
+            "clone. A release candidate takes one."
+        ),
+    )
+    parser.add_argument(
+        "--stage-profile-dir",
+        type=Path,
+        help=(
+            f"Optional directory for {STAGE_PROFILE_FILENAME}: each graph "
+            "node's entry, peak and exit RSS and its wall time, the spine's "
+            "memory guard (microcosm#931). A node's record keeps the message of "
+            "a failure it raised, so keep the directory private, outside every "
+            "staged output; the build refuses one inside the repository."
+        ),
     )
     parser.add_argument(
         "--was-tab",
@@ -461,6 +521,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("sample seed must be a non-negative integer.")
     if args.smoke and args.release_candidate:
         parser.error("non-release smoke builds refuse --release-candidate.")
+    if args.release_candidate and args.n_clones != 1:
+        parser.error(_RELEASE_CANDIDATE_CLONES_REFUSAL)
     if _is_sampled(args) and args.checkpoint_dir is not None:
         parser.error(
             "sampled spine builds refuse --checkpoint-dir; sampled artifacts "
@@ -517,6 +579,10 @@ def _sample_token(args: argparse.Namespace) -> str:
 
 
 def _validate_args(args: argparse.Namespace) -> None:
+    # The parser refuses the pair too; the full build sets release_candidate
+    # on a spine request it has already parsed, so the refusal holds here.
+    if args.release_candidate and args.n_clones != 1:
+        raise ValueError(_RELEASE_CANDIDATE_CLONES_REFUSAL)
     if args.synthetic_fixture_dir is not None:
         if not args.synthetic_fixture_dir.is_dir():
             raise ValueError(
@@ -550,6 +616,9 @@ def _validate_args(args: argparse.Namespace) -> None:
     }
     if args.emit_nonzero_shares is not None:
         paths["emit_nonzero_shares"] = args.emit_nonzero_shares
+    if args.stage_profile_dir is not None:
+        _validate_stage_profile_dir(args.stage_profile_dir)
+        paths["stage_profile"] = args.stage_profile_dir / STAGE_PROFILE_FILENAME
     resolved: dict[Path, str] = {}
     for label, path in paths.items():
         target = Path(path).expanduser().resolve()
@@ -557,6 +626,68 @@ def _validate_args(args: argparse.Namespace) -> None:
         if other is not None:
             raise ValueError(f"{label} path collides with {other}: {target}.")
         resolved[target] = label
+
+
+def _logbook_run_config(
+    args: argparse.Namespace,
+    *,
+    stage_names: Sequence[str],
+    artifact_pins_digest: str,
+    synthetic_fixture: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """What the Logbook's identity digest is hashed from.
+
+    A spine of more than one geographic clone is another build, so its clone
+    count joins it (microcosm#931); a one-clone build's digest stays as it
+    was.
+    """
+
+    run_config: dict[str, object] = {
+        "pipeline": _PIPELINE,
+        "stages": list(stage_names),
+        "artifact_pins_digest": artifact_pins_digest,
+        "spine_h5": str(args.spine_h5),
+        "synthetic_fixture": synthetic_fixture,
+    }
+    if args.n_clones != 1:
+        run_config["geographic_clones"] = args.n_clones
+    return run_config
+
+
+def _validate_stage_profile_dir(directory: Path) -> None:
+    """Refuse a ``--stage-profile-dir`` before any node runs (microcosm#931).
+
+    The profiler merges a node's record into ``stage_profile.json`` only once
+    the node has run, so a path that is not a directory, or a profile there
+    of another schema, would fail the build after its first node and lose
+    that node's result. A record keeps the message of a failure its node
+    raised, so the directory must also lie outside the repository. Each
+    refusal is a fixed sentence.
+    """
+
+    target = Path(directory).expanduser().resolve()
+    if target.exists() and not target.is_dir():
+        raise ValueError("--stage-profile-dir must name a directory.")
+    repository = _REPOSITORY.resolve()
+    if (repository / "pyproject.toml").is_file() and (
+        target == repository or repository in target.parents
+    ):
+        raise ValueError(
+            "--stage-profile-dir must lie outside the repository: a stage "
+            "profile keeps the message of a failure its node raised, so it "
+            "stays private."
+        )
+    existing = target / STAGE_PROFILE_FILENAME
+    if existing.exists():
+        try:
+            _load_profile_payload(existing)
+        except (OSError, ValueError):
+            raise ValueError(
+                f"--stage-profile-dir holds a {STAGE_PROFILE_FILENAME} that is "
+                "not a stage profile of schema version "
+                f"{STAGE_PROFILE_SCHEMA_VERSION}, so no node's record could be "
+                "added to it."
+            ) from None
 
 
 def _synthetic_fixture_evidence(source: Path | None) -> dict[str, object] | None:
@@ -758,8 +889,8 @@ def _entity_row_counts(frame) -> dict[str, int]:
 
 def _rules_engine(*, clones: int | None = None) -> PolicyEngineUKEngine:
     """The pinned engine; ``clones``, the spine's clone count where the caller
-    knows it, makes the engine refuse a frame of any other clone count, and
-    ``None`` refuses none (microcosm#931)."""
+    knows it, makes the engine refuse a frame carrying another clone count,
+    and ``None`` refuses none (microcosm#931)."""
 
     try:
         import policyengine_uk  # noqa: F401
@@ -988,6 +1119,14 @@ def _build_sidecar(
         "time_period": str(frame.metadata["time_period"]),
         "household_weight_kind": uk_household_weight_kind(frame).value,
         "household_weight_total": float(household_weight.values.sum()),
+        # The spine's geographic clone count K, read from the frame it
+        # describes: the --n-clones the build ran at, since the
+        # geographic_expand node refuses a transform that makes another
+        # count, and one where the frame carries no clone index
+        # (microcosm#931).
+        "geographic_clone_count": geographic_clone_count(
+            frame.table("household"), stage="The spine sidecar"
+        ),
         "entity_row_counts": _entity_row_counts(frame),
         "artifact_pins": artifact_pins,
         "resource_pins": resource_pins,
@@ -1299,6 +1438,46 @@ class _GraphSourceTransform:
         return getattr(transform, name)
 
 
+class _ProfiledKernel(Kernel):
+    """A spine kernel that computes each node inside
+    :func:`~microcosm.build.stage_profile.profile_stage`, under the node's id,
+    in ``--stage-profile-dir`` (the memory guard ruled on 6 Nov, microcosm#931).
+
+    It is the kernel it wraps to everything but ``run``: ``__getattr__``
+    forwards every other attribute, the kernel's reference and capabilities
+    among them, and ``implementation_hash`` is the wrapped kernel's own bound
+    method, so each node keys, hits and stores as it does unprofiled. It
+    declares the graph's kernel protocol for the registry's check but no
+    reference of its own, so it is no kernel class of the UK runtime and the
+    binding rule holds the kernel it wraps. A record keeps the message of a
+    failure the node raised, so the directory is private.
+    """
+
+    def __init__(self, kernel: Kernel, directory: Path) -> None:
+        self._kernel = kernel
+        self._directory = directory
+        self.implementation_hash = kernel.implementation_hash
+
+    def run(self, context: KernelContext) -> KernelResult:
+        with profile_stage(context.node.id, self._directory):
+            return self._kernel.run(context)
+
+    def __getattr__(self, name: str):
+        kernel = self.__dict__.get("_kernel")
+        if kernel is None:
+            raise AttributeError(name)
+        return getattr(kernel, name)
+
+
+def _profiled_kernels(kernels: KernelRegistry, directory: Path) -> KernelRegistry:
+    """``kernels``, each wrapped in :class:`_ProfiledKernel` under its ref."""
+
+    profiled = KernelRegistry()
+    for ref in kernels.refs():
+        profiled.register(_ProfiledKernel(kernels.get(ref), directory))
+    return profiled
+
+
 def _run_plan_with_spine_sampling(
     plan,
     *,
@@ -1554,11 +1733,13 @@ def prepare_uk_spine_execution(
     """Bind source paths and lazy transforms without fitting models or writing files.
 
     Everything ``main`` decides before the graph runs lives here: the stage
-    roster, the private-input checks, the stage implementations (licensed or
-    synthetic fixture), the sampling root, the optional observation wrap, the
-    declared graph sources, and the gate nodes bound to the rules engine.
-    ``observer`` is the staging run bundle's stage observer when that bundle is
-    enabled; ``main`` supplies it, and a caller without telemetry passes none.
+    roster, the private-input checks, the geographic clone count, the stage
+    implementations (licensed or synthetic fixture), the sampling root, the
+    optional observation wrap, the declared graph sources, the gate nodes bound
+    to the rules engine and, with ``--stage-profile-dir``, the profiled
+    kernels. ``observer`` is the staging run bundle's stage observer when that
+    bundle is enabled; ``main`` supplies it, and a caller without telemetry
+    passes none.
     """
 
     _validate_args(args)
@@ -1567,12 +1748,16 @@ def prepare_uk_spine_execution(
     if spec.sources is None:
         raise ValueError("UK country spec has no source stages.")
     stages_by_name = spec.sources.stage_map()
+    # The clone count K enters the graph on the geographic_expand node, the
+    # transform that makes the clones and the engine, which refuses a frame
+    # carrying another count; never the engine's identity (microcosm#931).
+    clones = args.n_clones
     graph = uk_spine_graph(
         spec,
         source_mode="split",
         sample_fraction=args.sample_fraction,
         sample_seed=args.sample_seed,
-        geographic_clones=_GEOGRAPHIC_CLONES,
+        geographic_clones=clones,
     )
     stage_names = _uk_spine_stage_names(spec)
     if (
@@ -1651,7 +1836,7 @@ def prepare_uk_spine_execution(
         raise ValueError("--aps-tab is required when aps_occupation is scheduled.")
     stages = [stages_by_name[name] for name in stage_names]
     synthetic_fixture = _synthetic_fixture_evidence(args.synthetic_fixture_dir)
-    engine = _rules_engine(clones=_GEOGRAPHIC_CLONES)
+    engine = _rules_engine(clones=clones)
     stochastic_contract = load_uk_take_up_contract()
     frs_release = load_uk_frs_release()
     hmrc_spine_transform = _GraphSourceTransform(
@@ -1837,7 +2022,7 @@ def prepare_uk_spine_execution(
     if "geographic_expand" in stage_names:
         implementations["geographic_expand"] = UKGeographicExpandStageTransform(
             stage=stages_by_name["geographic_expand"],
-            clones=_GEOGRAPHIC_CLONES,
+            clones=clones,
         )
     if "geographic_identity" in stage_names:
         implementations["geographic_identity"] = UKGeographicIdentityStageTransform(
@@ -1998,6 +2183,17 @@ def prepare_uk_spine_execution(
                 f"fixture={fixture_stage_names!r}, current={tuple(stage_names)!r}."
             )
         implementations = dict(fixture_implementations)
+        # The fixture's transforms and engine clone at its own
+        # config.geographic_clones (microcosm#931), so the request must ask for
+        # that count; the geographic_expand node would refuse another, only
+        # after the source stages had run.
+        fixture_expand = implementations.get("geographic_expand")
+        if fixture_expand is not None and fixture_expand.clones != clones:
+            raise ValueError(
+                "--n-clones differs from the synthetic fixture's "
+                "config.geographic_clones, the count its transforms and engine "
+                "clone at (microcosm#931)."
+            )
         fixture_by_name = {stage.stage: stage for stage in fixture_stages}
         implementations["frs_hmrc_spine_leaves"] = UKFRSHMRCSpineLeavesStageTransform(
             _synthetic_fixture_input(args.synthetic_fixture_dir, "frs_raw"),
@@ -2073,6 +2269,10 @@ def prepare_uk_spine_execution(
     register_spine_gate_kernel(
         kernels, spec=spec, engine=engine, engine_identity=engine_identity
     )
+    if args.stage_profile_dir is not None:
+        # Each node's RSS and wall time, under its node id; the keys are the
+        # unprofiled kernels' (microcosm#931).
+        kernels = _profiled_kernels(kernels, args.stage_profile_dir.expanduser())
     return PreparedUKSpineExecution(
         graph=graph,
         kernels=kernels,
@@ -2179,13 +2379,12 @@ def _main(argv: list[str] | None = None) -> int:
             _role_pins({**artifact_pins, **input_artifact_pins})
         )
         synthetic_fixture = prepared.synthetic_fixture
-        run_config = {
-            "pipeline": _PIPELINE,
-            "stages": list(stage_names),
-            "artifact_pins_digest": state.input_pins_digest,
-            "spine_h5": str(args.spine_h5),
-            "synthetic_fixture": synthetic_fixture,
-        }
+        run_config = _logbook_run_config(
+            args,
+            stage_names=stage_names,
+            artifact_pins_digest=state.input_pins_digest,
+            synthetic_fixture=synthetic_fixture,
+        )
         state.identity_digest = hashlib.sha256(
             canonical_json_bytes(run_config)
         ).hexdigest()

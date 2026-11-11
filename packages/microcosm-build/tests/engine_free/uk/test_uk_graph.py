@@ -1199,6 +1199,14 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
         "returns its argument unchanged and refuses anything but person, "
         "benunit or household; the support channel's column names call it"
     ),
+    (
+        "microcosm.build.uk_runtime.graph_national",
+        "refuse_clone_first_national_spine",
+    ): (
+        "reads only whether the bound spine's household table carries the "
+        "geographic clone index, and refuses the spine if it does; the "
+        "national problem calls it before it resolves anything (microcosm#931)"
+    ),
     ("microcosm.frame.rules", "assert_rules_engine_country"): (
         "reads the engine's declared country and refuses one that declares "
         "none or another; the stages that take an engine call it before "
@@ -1284,7 +1292,8 @@ _KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
         "a frame without it; their population is the expand's, so their key "
         "chains on it too. The national problem resolves its measures in one "
         "block, which never reads it (full_measure._engine_block_frames; "
-        "checked)"
+        "checked); its early refusal of a clone-first spine reads it only "
+        "through refuse_clone_first_national_spine, a refusal-only helper"
     ),
 }
 #: Where the kernel rule stops, each with why a kernel that names the
@@ -2310,6 +2319,35 @@ def test_the_kernel_rule_sees_every_kernel_the_uk_runtime_defines() -> None:
     assert sum(map(len, listed)) == len(set().union(*listed))
 
 
+def test_the_spine_builds_profile_proxy_is_no_kernel_class() -> None:
+    """``--stage-profile-dir`` wraps every spine kernel in spine_build's
+    private profile proxy, the memory guard (microcosm#931). The proxy
+    declares no ``ref`` of its own, so the census of kernel classes above
+    does not count it, and the rule holds the kernel it wraps. It forwards
+    that kernel's reference and capabilities, and its bound
+    ``implementation_hash``, so it hashes exactly what the kernel hashes and
+    its nodes keep their keys (test_uk_frs_spine runs the driver both ways)."""
+    from microcosm.build.uk_runtime import spine_build
+    from microcosm.graph import Kernel, KernelRegistry
+
+    proxy_class = spine_build._ProfiledKernel
+    assert proxy_class.__module__ == spine_build.__name__
+    defined = kernel_classes_defined(
+        [(spine_build.__name__, Path(spine_build.__file__))]
+    )
+    assert proxy_class not in defined
+    for ref in ("uk.create@1", "uk.stage.frs_brma@1", "uk.spine-gates@1"):
+        kernel = _uk_graph_kernels()[ref]
+        proxy = proxy_class(kernel, Path("unused"))
+        assert isinstance(proxy, Kernel)
+        assert KernelRegistry().register(proxy) is proxy
+        assert proxy.ref == kernel.ref
+        assert proxy.capabilities is kernel.capabilities
+        assert proxy.implementation_hash == kernel.implementation_hash
+        assert proxy.implementation_hash() == kernel.implementation_hash()
+        assert _hashed_modules(proxy) == _hashed_modules(kernel), ref
+
+
 def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     """The stage rule, for every other UK graph kernel (microcosm#931): each
     module holding code a kernel's own methods can run to compute a value is
@@ -2364,9 +2402,9 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     assert population["population"].default == "uk.full.expand"
     # And the premises of their reason for the writers. On the spine, the
     # geographic expansion alone writes the clone index columns, and its key
-    # hashes geographic_clones; the spine build installs it at one clone. The
-    # dense expand refuses a spine carrying them
-    # (test_dense_refuses_a_clone_first_spine_at_any_clone_count).
+    # hashes geographic_clones; the spine build installs it at the clone count
+    # its --n-clones asks for, one by default. The dense expand refuses a spine
+    # carrying them (test_dense_refuses_a_clone_first_spine_at_any_clone_count).
     from microcosm.build.uk_runtime import spine_build
     from microcosm.build.uk_runtime.graph import uk_registry
 

@@ -67,6 +67,7 @@ from test_support.microcosm_build.uk_calibration_run import (  # noqa: F401
     _cgt_projection,
     _signing_key,
 )
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 
 
 @pytest.fixture(autouse=True)
@@ -654,3 +655,64 @@ def test_national_run_config_refuses_an_empty_register():
             registry_document={"national_registry": {}},
             driver_parameters={},
         )
+
+
+def test_the_national_problem_is_the_first_national_node_to_read_the_frame():
+    """The early refusal sits in the first node of the national line that is
+    given the bound frame's slices: the targets read only their sources, so it
+    is the problem (microcosm#931)."""
+
+    national = uk_national_graph(
+        _config(),
+        spine=bound_spine_graph(seam._frame()),
+        spine_population="uk.full.spine_checkpoint",
+        review_date=REVIEW_DATE,
+    )
+    compiled = compile_graph(national.graph)
+    readers = [node for node in compiled.order if national.graph.node(node).inputs]
+    assert readers[0] == NATIONAL_PROBLEM_NODE
+    assert not national.graph.node(NATIONAL_TARGETS_NODE).inputs
+
+
+def test_the_national_line_refuses_a_clone_first_spine_at_one_clone_too(
+    tmp_path, monkeypatch
+):
+    """Every spine since microcosm#931 group (b) carries the geographic clone
+    index, and the national line drops it from its export only from group (c)
+    on, so the problem refuses a bound spine that carries it, at one clone
+    too, before anything is resolved or solved, in one fixed sentence. A spine
+    without it is solved as before (the tests above)."""
+
+    pytest.importorskip("tables")
+    # One clone carries the index too: the refusal must fire at one clone.
+    frame = clone_first_frame(seam._frame(), 1)
+    registry = seam._registry()
+    _patch_target_inputs(monkeypatch, registry)
+    sources = _bound_inputs(tmp_path, frame)
+    national = uk_national_graph(
+        _config(),
+        spine=bound_spine_graph(frame),
+        spine_population="uk.full.spine_checkpoint",
+        review_date=REVIEW_DATE,
+    )
+    with pytest.raises(ValueError) as refused:
+        graph_national.refuse_clone_first_national_spine(frame)
+    message = str(refused.value)
+    assert "'household_clone_index'" in message
+    assert "group (c)" in message
+    with pytest.raises(Exception, match="national line refuses a bound spine"):
+        run_graph(
+            compile_graph(national.graph),
+            sources=sources,
+            store=ContentStore(tmp_path / "store"),
+            kernels=_registry_for_run(),
+        )
+    # One fixed sentence: the same at any clone count and size, so it carries
+    # no count; and nothing is refused without the index.
+    for clones in (2, 3):
+        with pytest.raises(ValueError) as again:
+            graph_national.refuse_clone_first_national_spine(
+                clone_first_frame(seam._frame(), clones)
+            )
+        assert str(again.value) == message
+    assert graph_national.refuse_clone_first_national_spine(seam._frame()) is None

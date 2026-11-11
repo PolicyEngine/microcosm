@@ -103,6 +103,7 @@ from .content_identity import uk_frame_content_identity
 from .diagnostics import uk_target_geography_levels
 from .full_targets import CHRONICLE_SOURCE_CODEC, load_uk_national_target_inputs
 from .gate_scopes import uk_scoped_gate_manifest
+from .geographic_clones import ladder_clone_index_column
 from .graph_build import SPINE_PROVENANCE_TYPE
 from .graph_calibration import (
     UKCalibrationNodes,
@@ -673,13 +674,38 @@ def materialize_uk_national_rows(
     return prepared, restore, rows, dict(evidence)
 
 
+def refuse_clone_first_national_spine(frame: Frame) -> None:
+    """Refuse a bound spine whose households carry a geographic clone index.
+
+    The clone-first spine's geographic_expand stage (microcosm#931) writes
+    ``household_clone_index`` on every spine from group (b) on, at one clone
+    too, and the national line drops the clone indices from its export only
+    from group (c) on. Before that, a national build on a one-clone spine
+    would solve in full and then fail its terminal degenerate-surface gate on
+    the constant indices. So the national problem, the first national node
+    that reads the frame, refuses such a spine before it resolves anything.
+    The message names the column and the group, never a count or a value.
+    """
+
+    column = ladder_clone_index_column("household")
+    if column in frame.table("household").columns:
+        raise ValueError(
+            f"The national line refuses a bound spine that carries {column!r}, "
+            "as every spine since microcosm#931 group (b) does at any clone "
+            "count: it builds on none until group (c) drops the clone indices "
+            "from its export."
+        )
+
+
 class UKNationalProblemKernel(_NationalKernel):
     """One ordered national problem with the doctrine bound into it.
 
     ``resolver_factory`` is instance state like the gate kernels' coverage
     engine: the engine identity the run stands on is provenance recorded by
     the driver, and the dependency declaration on the capabilities binds the
-    installed engine version into the node key.
+    installed engine version into the node key. The first national node that
+    reads the bound frame, it refuses a clone-first spine before anything else
+    (:func:`refuse_clone_first_national_spine`, microcosm#931).
     """
 
     ref = "uk.full.national_problem@1"
@@ -752,6 +778,7 @@ class UKNationalProblemKernel(_NationalKernel):
 
     def run(self, context: KernelContext) -> KernelResult:
         frame = context_frame(context)
+        refuse_clone_first_national_spine(frame)
         registry_document = _registry_artifact(context)
         with tempfile.TemporaryDirectory(
             prefix="microcosm-uk-national-measures-"

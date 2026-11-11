@@ -3,12 +3,15 @@
 Recomputes every E4 column twice from the pure derivations — once in the
 frame's row order, once on row-permuted tables — un-permutes by entity id,
 and also compares the original-order recomputation against the columns
-stored in the artifact. Exit status is nonzero on any mismatch.
+stored in the artifact. Exit status is nonzero on any mismatch. With the
+spine's build sidecar (``--spine-sidecar``) the frame's geographic clone
+count is first checked against the spine's (microcosm#931).
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -39,6 +42,7 @@ from microcosm.build.uk_runtime.frs_take_up import (
     uc_age_eligible_benunits,
     uk_take_up_population_policy,
 )
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
@@ -53,6 +57,7 @@ from microcosm.build.uk_runtime.regional_uprating import (
 from microcosm.build.uk_runtime.spi_band_donors import (
     HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
     SPI_INCOME_BAND_DONOR_CLONE_INDEX,
+    UK_SPI_INCOME_BAND_DONORS_STAGE_NAME,
 )
 from microcosm.build.uk_runtime.was_wealth import (
     allocate_student_loan_balance_to_people,
@@ -99,30 +104,54 @@ def e4_identity_receipt(
     *,
     contract,
     count_resource: Mapping[str, object],
-    lha_category: Sequence[object],
+    lha_category: Sequence[object] | None = None,
+    engine=None,
     permutation_seed: int,
     population_policy=None,
+    rewritten_later: Mapping[str, Sequence[str]] | None = None,
+    reversed_stages: Sequence[str] | None = None,
 ) -> dict[str, object]:
     """Recompute every E4 column in original and permuted row order.
 
-    ``population_policy`` is the engine's working-age bounds the take-up draw
-    used (``uk_take_up_population_policy``); it is read from the engine when
-    not supplied, so a hermetic caller passes one.
+    ``frame`` is the population E4's four stages drew on, at the weights they
+    read: every geographic clone of the raw FRS rows, before the SPI support
+    channel stacked its copies (``_frame_as_draw_stages_saw``, which the tool
+    passes). ``population_policy`` is the engine's working-age bounds the
+    take-up draw used (``uk_take_up_population_policy``); it is read from the
+    engine when not supplied, so a hermetic caller passes one.
+
+    ``lha_category`` is the BRMA draw's predictor, aligned to the benefit-unit
+    rows. Without it, ``engine`` materializes it on the frame the BRMA stage
+    read, as far as the artifact restores it (``_brma_stage_lha_category``):
+    LHA_category reads would_claim_uc, which later stages rewrite, so the
+    final frame's flags would draw some benefit units from another cell.
 
     Two claims are receipted: a row permutation of the input tables changes
     no assignment per entity id, and the original-order recomputation equals
-    the columns stored in the artifact (re-derivation identity).
+    the columns stored in the artifact (re-derivation identity). A column a
+    stage after its own declares writing, in the packaged manifest
+    (``rewritten_later``, by default ``_later_writers`` over the E4 stages,
+    the stages in ``reversed_stages`` excepted), may hold the later stage's
+    value, so it is not compared: the receipt names the stages that wrote
+    it and, under ``rewritten_later_still_equal``, the columns the store
+    still holds bitwise (a later stage may write only rows the scope drops,
+    such as copies). ``is_apprentice`` is held exactly, or where it differs,
+    to its walk on the restored weights (``_apprentice_walk_holds``), since
+    those are the stage's to rounding only; the receipt names it then.
     """
+
+    from microcosm.build.uk_runtime.frs_person_draws import (
+        APPRENTICE_OUTPUT,
+        APPRENTICE_RATE_KEY,
+    )
 
     person = frame.table("person")
     benunit = frame.table("benunit").copy()
     household = frame.table("household")
     if population_policy is None:
         population_policy = uk_take_up_population_policy(uk_time_period(frame))
-    if len(lha_category) != len(benunit):
-        raise ValueError("LHA_category materialization must align to benunit rows.")
-    benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
-    benunit["region"] = _benunit_regions(person, household, benunit)
+    if reversed_stages is None:
+        reversed_stages = _SCOPE_REVERSALS
     # is_apprentice's rate among eligible employees reads the household
     # weights, which a row permutation carries with each household id.
     weight_by_household = dict(
@@ -133,7 +162,9 @@ def e4_identity_receipt(
         )
     )
 
-    def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
+    def draws(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
+        """The take-up, person and household draws, keyed by entity id."""
+
         anchors = aggregate_person_reported_to_benunit(person_t, benunit_t)
         take_up = derive_frs_take_up(
             benunit_t,
@@ -165,6 +196,32 @@ def e4_identity_receipt(
         person_draws.index = person_t["person_id"].to_numpy()
         household_draws = derive_frs_household_draws(household_t, contract=contract)
         household_draws.index = household_t["household_id"].to_numpy()
+        return {
+            "benunit": take_up,
+            "person": person_draws,
+            "household": household_draws,
+        }
+
+    lha_scope = None
+    if lha_category is None:
+        if engine is None:
+            raise ValueError(
+                "e4 identity receipt: pass lha_category, or an engine to "
+                "materialize it on the frame the BRMA stage read."
+            )
+        lha_category, lha_scope = _brma_stage_lha_category(
+            frame,
+            engine=engine,
+            drawn=draws(person, benunit, household),
+            reversed_stages=reversed_stages,
+        )
+    if len(lha_category) != len(benunit):
+        raise ValueError("LHA_category materialization must align to benunit rows.")
+    benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
+    benunit["region"] = _benunit_regions(person, household, benunit)
+
+    def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
+        values = draws(person_t, benunit_t, household_t)
         seed = UK_BRMA_DECLARED_SEEDS["brma"]
         benunit_brma = pd.DataFrame(
             {
@@ -174,14 +231,10 @@ def e4_identity_receipt(
                 ),
             }
         )
-        household_draws["brma"] = collapse_benunit_brma_to_household(
+        values["household"]["brma"] = collapse_benunit_brma_to_household(
             person_t, benunit_brma, household_t, seed=seed
         )
-        return {
-            "benunit": take_up,
-            "person": person_draws,
-            "household": household_draws,
-        }
+        return values
 
     original = recompute(person, benunit, household)
     rng = np.random.default_rng(permutation_seed)
@@ -190,6 +243,12 @@ def e4_identity_receipt(
         benunit.iloc[rng.permutation(len(benunit))].reset_index(drop=True),
         household.iloc[rng.permutation(len(household))].reset_index(drop=True),
     )
+    if rewritten_later is None:
+        rewritten_later = _later_writers(
+            [column for values in original.values() for column in values.columns],
+            checked_stages=_E4_STAGES,
+            reversed_stages=reversed_stages,
+        )
 
     stored = {
         "person": frame.table("person").set_index("person_id"),
@@ -199,6 +258,9 @@ def e4_identity_receipt(
     permutation_mismatches: dict[str, list[str]] = {}
     stored_mismatches: dict[str, list[str]] = {}
     stored_columns_missing: dict[str, list[str]] = {}
+    rewritten: dict[str, dict[str, list[str]]] = {}
+    rewritten_still_equal: dict[str, list[str]] = {}
+    held_to_tolerance: dict[str, list[str]] = {}
     for entity, values in original.items():
         for column in values.columns:
             left = values[column]
@@ -209,11 +271,34 @@ def e4_identity_receipt(
                 stored_columns_missing.setdefault(entity, []).append(column)
                 continue
             kept = stored[entity][column].reindex(left.index)
-            if not np.array_equal(
+            if column in rewritten_later:
+                # Not compared, but said where the store still holds the
+                # recompute: a later writer whose rows the scope does not keep
+                # (copies only, say) leaves these rows as the stage wrote them.
+                rewritten.setdefault(entity, {})[column] = list(rewritten_later[column])
+                if _equal_where_comparable(left, kept):
+                    rewritten_still_equal.setdefault(entity, []).append(column)
+                continue
+            if np.array_equal(
                 left.to_numpy(), kept.to_numpy().astype(left.to_numpy().dtype)
             ):
-                stored_mismatches.setdefault(entity, []).append(column)
-    return {
+                continue
+            if (entity, column) == ("person", APPRENTICE_OUTPUT) and (
+                _apprentice_walk_holds(
+                    person,
+                    stored["person"][column]
+                    .reindex(person["person_id"].to_numpy())
+                    .to_numpy(dtype=bool),
+                    person_weights=person["person_household_id"]
+                    .map(weight_by_household)
+                    .to_numpy(dtype=float),
+                    rate=contract.rate(APPRENTICE_RATE_KEY, contract.build_year),
+                )
+            ):
+                held_to_tolerance.setdefault(entity, []).append(column)
+                continue
+            stored_mismatches.setdefault(entity, []).append(column)
+    receipt: dict[str, object] = {
         "check": "uk_e4_identity_stability",
         "permutation_seed": permutation_seed,
         "identical_under_permutation": not permutation_mismatches,
@@ -221,6 +306,25 @@ def e4_identity_receipt(
         "permutation_mismatches": permutation_mismatches,
         "stored_mismatches": stored_mismatches,
         "stored_columns_missing": stored_columns_missing,
+        "rewritten_later": rewritten,
+        "rewritten_later_still_equal": rewritten_still_equal,
+        "held_to_tolerance": held_to_tolerance,
+        "tolerance_policy": (
+            "permutation: bitwise for every column; stored columns: bitwise, "
+            "except a column a stage after its own declares writing, which is "
+            "not compared (rewritten_later names the stages, and "
+            "rewritten_later_still_equal the columns the store still holds "
+            "bitwise), and is_apprentice, which where it differs is held to "
+            "its walk on the "
+            "restored stage-time weights (they are the stage's to rounding): "
+            "the stored flags must be exactly the eligible employees whose "
+            "keyed uniform lies at or below the largest flagged one's, and "
+            "their weight must lie as near the target as the recompute's, to "
+            f"a relative {_APPRENTICE_WALK_RELATIVE_TOLERANCE:g} of the weight "
+            "of the people aged 21 to 24 (held_to_tolerance names it then); "
+            "brma: bitwise, on LHA_category materialized on the frame frs_brma "
+            "read as far as the artifact restores it (lha_category_scope)"
+        ),
         "columns_by_entity": {
             entity: list(values.columns) for entity, values in original.items()
         },
@@ -228,6 +332,171 @@ def e4_identity_receipt(
             entity: int(len(frame.table(entity))) for entity in frame.entities
         },
     }
+    if lha_scope is not None:
+        receipt["lha_category_scope"] = lha_scope
+    return receipt
+
+
+def _equal_where_comparable(recomputed: pd.Series, stored: pd.Series) -> bool:
+    """Whether ``stored`` holds ``recomputed`` bitwise, False where the
+    stored column cannot be read as the recompute's dtype: a later stage's
+    writes need not keep it."""
+
+    try:
+        kept = stored.to_numpy().astype(recomputed.to_numpy().dtype)
+    except (TypeError, ValueError):
+        return False
+    return bool(np.array_equal(recomputed.to_numpy(), kept))
+
+
+def _brma_stage_lha_category(
+    frame,
+    *,
+    engine,
+    drawn: Mapping[str, pd.DataFrame],
+    reversed_stages: Sequence[str],
+) -> tuple[object, dict[str, object]]:
+    """LHA_category materialized on the frame the BRMA stage read.
+
+    The stage materialized it on its own input (``UKFRSBRMAStageTransform``),
+    which carried no column a later stage first writes and the flags E4's
+    earlier stages drew. policyengine-uk's LHA_category reads both: its
+    bedrooms and its shared-accommodation test read which family counts the
+    household's non-dependants (``uc_non_dependants_counted``), which reads
+    ``claims_universal_credit``, would_claim_uc or a claim at legacy
+    closure; later stages rewrite would_claim_uc, and
+    ``uc_legacy_closure_take_up`` first writes the closure claim's input. So
+    the engine reads ``frame`` without the columns first written after the
+    BRMA stage (``_columns_first_written_after``), with every column an E4
+    stage before it wrote and a later stage declares rewriting put back from
+    the recompute (``drawn``, keyed by entity id). A column a later stage
+    declares rewriting that the artifact cannot restore stays as stored; the
+    scope names each with the stages that rewrite it, salary_sacrifice among
+    them, whose reversal takes back only the records it converted.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+
+    first_later = _columns_first_written_after(_BRMA_STAGE)
+    # The salary-sacrifice reversal takes back only the converted records' pay
+    # and contributions, not what the stage wrote on the others, so the
+    # columns it writes count as rewritten here and are named if carried.
+    rewritten = _rewritten_after(
+        _BRMA_STAGE,
+        reversed_stages=tuple(
+            stage for stage in reversed_stages if stage != _SALARY_SACRIFICE_STAGE
+        ),
+    )
+    last_writer = _last_writers(at_or_before=_BRMA_STAGE)
+    id_columns = {"person": "person_id", "benunit": "benunit_id"}
+    id_columns["household"] = "household_id"
+    tables: dict[str, pd.DataFrame] = {}
+    dropped: set[str] = set()
+    restored: list[str] = []
+    for entity, id_column in id_columns.items():
+        table = frame.table(entity).copy()
+        drop = [column for column in table.columns if column in first_later]
+        dropped.update(drop)
+        table = table.drop(columns=drop)
+        ids = table[id_column].to_numpy()
+        for column in drawn[entity].columns:
+            if (
+                column in rewritten
+                and column in table.columns
+                and last_writer.get(column) in _E4_STAGES
+            ):
+                table[column] = drawn[entity][column].reindex(ids).to_numpy()
+                restored.append(column)
+        tables[entity] = table
+    carried = {
+        column: list(stages)
+        for column, stages in sorted(rewritten.items())
+        if column not in restored
+        and any(column in table.columns for table in tables.values())
+    }
+    staged = uk_national_frame(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
+    lha_category = engine.materialize(
+        _engine_safe_frame(staged), ("LHA_category",), uk_time_period(frame)
+    )["LHA_category"]
+    scope = {
+        "stage": _BRMA_STAGE,
+        "columns_first_written_later": len(dropped),
+        "restored_from_the_recompute": sorted(restored),
+        "carried_as_stored": carried,
+    }
+    return lha_category, scope
+
+
+def _apprentice_walk_holds(
+    person: pd.DataFrame,
+    flags: np.ndarray,
+    *,
+    person_weights: np.ndarray,
+    rate: float,
+) -> bool:
+    """Whether stored ``is_apprentice`` flags are the stage's walk, to rounding.
+
+    ``frs_person_draws`` flags the eligible employees aged 21 to 24 in the
+    order of their identity-keyed uniform until their weight lies nearest
+    ``rate`` times the weight of everyone aged 21 to 24
+    (``derive_is_apprentice``). ``person_weights`` are each person's household
+    weight restored to the stage's to rounding (``_frame_as_draw_stages_saw``),
+    so where two prefixes of the walk lie within rounding of the target a
+    recompute can flag one person more or fewer than the stage did. The
+    stored flags hold where they are exactly the eligible employees whose
+    uniform lies at or below the largest flagged one's, and their weight lies
+    as near the target as the recompute's, to
+    :data:`_APPRENTICE_WALK_RELATIVE_TOLERANCE` of the weight of everyone
+    aged 21 to 24.
+    """
+
+    from microcosm.build.uk_runtime.frs_person_draws import (
+        APPRENTICE_EMPLOYEE_STATUSES,
+        APPRENTICE_MAX_AGE_EXCLUSIVE,
+        APPRENTICE_MIN_AGE,
+        APPRENTICE_OUTPUT,
+        _draws,
+        _nearest_target_threshold,
+    )
+
+    flags = np.asarray(flags, dtype=bool)
+    weights = np.asarray(person_weights, dtype=float)
+    age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=float)
+    in_ages = (age >= APPRENTICE_MIN_AGE) & (age < APPRENTICE_MAX_AGE_EXCLUSIVE)
+    eligible = in_ages & (
+        person["employment_status"]
+        .astype(str)
+        .isin(APPRENTICE_EMPLOYEE_STATUSES)
+        .to_numpy()
+    )
+    uniforms = _draws(person["person_id"].to_numpy(), APPRENTICE_OUTPUT)
+    if (flags & ~eligible).any():
+        return False
+    if flags.any() and not np.array_equal(
+        flags, eligible & (uniforms <= uniforms[flags].max())
+    ):
+        return False
+    population = float(weights[in_ages].sum())
+    target = float(rate) * population
+    threshold = _nearest_target_threshold(
+        target, draws=uniforms[eligible], weights=weights[eligible]
+    )
+    walked = float(weights[eligible & (uniforms < threshold)].sum())
+    stored = float(weights[flags].sum())
+    return abs(stored - target) <= (
+        abs(walked - target) + _APPRENTICE_WALK_RELATIVE_TOLERANCE * population
+    )
 
 
 def e5_identity_receipt(
@@ -235,8 +504,19 @@ def e5_identity_receipt(
     *,
     regional_resource: Mapping[str, object] | None = None,
     permutation_seed: int,
+    rewritten_later: Mapping[str, Sequence[str]] | None = None,
+    reversed_stages: Sequence[str] | None = None,
 ) -> dict[str, object]:
-    """Receipt E5 deterministic layers under row permutation by entity id."""
+    """Receipt E5 deterministic layers under row permutation by entity id.
+
+    A column a stage after its own declares writing, in the packaged manifest
+    (``rewritten_later``, by default ``_later_writers`` over the E5 stages,
+    the stages in ``reversed_stages`` excepted: by default those whose
+    rewrite ``_frame_as_stage_saw`` takes back), may hold the later stage's
+    value, so it is not compared with the store and the receipt names the
+    stages that wrote it: ``student_loans`` re-splits each household's
+    student loan balance after ``was_wealth`` allocated it.
+    """
 
     resource = regional_resource or load_regional_land_values_resource()
 
@@ -325,8 +605,17 @@ def e5_identity_receipt(
         ("household", "property_wealth"): (1e-12, 1e-6),
         ("person", "student_loan_balance"): (1e-12, 1e-6),
     }
+    if rewritten_later is None:
+        rewritten_later = _later_writers(
+            [column for values in original.values() for column in values.columns],
+            checked_stages=_E5_STAGES,
+            reversed_stages=(
+                _SCOPE_REVERSALS if reversed_stages is None else reversed_stages
+            ),
+        )
     mismatches: dict[str, list[str]] = {}
     stored_mismatches: dict[str, list[str]] = {}
+    rewritten: dict[str, dict[str, list[str]]] = {}
     stored_tables = {"household": household, "person": person}
     for entity, values in original.items():
         for column in values.columns:
@@ -341,7 +630,9 @@ def e5_identity_receipt(
             ):
                 mismatches.setdefault(entity, []).append(column)
             stored_table = stored_tables[entity]
-            if column in stored_table.columns:
+            if column in stored_table.columns and column in rewritten_later:
+                rewritten.setdefault(entity, {})[column] = list(rewritten_later[column])
+            elif column in stored_table.columns:
                 stored_rtol, stored_atol = stored_tolerances.get(
                     (entity, column), (rtol, atol)
                 )
@@ -359,6 +650,7 @@ def e5_identity_receipt(
         "permutation_mismatches": mismatches,
         "matches_stored_columns": not stored_mismatches,
         "stored_column_mismatches": stored_mismatches,
+        "rewritten_later": rewritten,
         "tolerance_policy": (
             "permutation: bitwise for the regional-uprating rewrite "
             "(order-independent factor), rtol 1e-12 / atol 1e-6 GBP for the "
@@ -366,7 +658,9 @@ def e5_identity_receipt(
             "/ atol 1e-6 GBP for both layers (re-applying uprating to the "
             "uprated fixed point and re-summing allocations each cost one "
             "float rounding generation, and the scoping's reversal of the "
-            "regional home values' wealth move one more); corporate_wealth "
+            "regional home values' wealth move one more), except a column a "
+            "stage after its own declares writing, which is not compared "
+            "(rewritten_later names the stages); corporate_wealth "
             "fold not reconstructible from the artifact (components consumed) - "
             "unit-tested only"
         ),
@@ -1587,6 +1881,14 @@ def _e8_residential_split(
     return receipt
 
 
+#: The relative tolerance E8 holds each SPI income band donor funding factor
+#: it rebuilds from the stored weights to: the band-donor weights' own. The
+#: rebuilt factors carry the stage's exact-total correction, which moves one
+#: incumbent row by the last bits of the whole frame's total, so they are the
+#: stage's to rounding, not to the stage gate's few ulps (microcosm#931).
+_BAND_DONOR_FUNDING_RTOL = 1e-9
+
+
 def _e8_band_donors(
     frame,
     problems: dict[str, object],
@@ -1626,11 +1928,26 @@ def _e8_band_donors(
     recomputed. A row minted after the stage that the scoping leaves in
     place is refused by count, since the rerun would seat it as a household
     the stage saw. Problems land under ``band_donor_*`` keys.
+
+    The receipt gives the layer in the forms of the stage's capped receipt,
+    at every seating (microcosm#931): the donors and each band's donors in
+    rounded distinct source households; each funding stratum with its donors
+    so counted and its masses and factor withheld, as the stage's funding
+    rows give them; and, for the funding, the stage's rule recomputed from
+    the stored weights (``funding_within_share``), every stratum within the
+    declared reallocation share. The checks compare the exact weights,
+    factors and seats; the receipt writes none of them.
     """
 
     from microcosm.build.uk_runtime.national_frame import (
         uk_household_weight_kind,
         uk_national_frame,
+    )
+    from microcosm.build.uk_runtime.receipt_counts import (
+        UK_WITHHELD,
+        distinct_count,
+        rounded_count,
+        source_household_ids,
     )
     from microcosm.build.uk_runtime.spi_band_donors import (
         HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
@@ -1640,8 +1957,8 @@ def _e8_band_donors(
         SPI_INCOME_BAND_DONOR_LOWER_BOUNDS,
         SPI_INCOME_BAND_DONOR_MASS_CHANGE_REASON,
         SPI_INCOME_BAND_DONOR_SEED,
+        SPI_INCOME_BAND_MAXIMUM_REALLOCATION_SHARE,
         UK_SPI_INCOME_BAND_DONORS_STAGE_NAME,
-        _funding_strata,
         stack_spi_income_band_donors,
     )
     from microcosm.build.uk_runtime.spi_support import SPI_SUPPORT_COPY_ID_FIELD
@@ -1707,7 +2024,16 @@ def _e8_band_donors(
         .astype("int64")
         .to_numpy()
     )
-    receipt["donor_households"] = int(is_donor.sum())
+    # Each donor's true source household, which the receipt counts by, as the
+    # stage's receipt does: a clone's donor and a one-clone donor of the same
+    # survey household are one source (microcosm#931).
+    donor_sources = source_household_ids(
+        household.loc[is_donor], stage=UK_SPI_INCOME_BAND_DONORS_STAGE_NAME
+    )
+    donor_bands = donor_band[is_donor]
+    receipt["donor_households"] = rounded_count(
+        distinct_count(donor_sources, np.ones(len(donor_sources), dtype=bool))
+    )
     stored_seats = pd.Series(donor_band[is_donor], index=donor_source).sort_index()
 
     # Stored-layer consistency.
@@ -1731,7 +2057,11 @@ def _e8_band_donors(
     )
     if without_one or len(carriers_per_household) != len(donor_ids):
         layer["donors_without_exactly_one_carrier"] = int(without_one)
+    # Each band's donors in rounded distinct source households, the form the
+    # stage's capped receipt gives them in; its one donor weight is held here
+    # and against the rerun below, never written.
     band_rows: list[dict[str, object]] = []
+    band_weight: dict[int, float | None] = {}
     unequal = 0
     for band in SPI_INCOME_BAND_DONOR_LOWER_BOUNDS:
         band_weights = weights[is_donor & (donor_band == band)]
@@ -1739,12 +2069,13 @@ def _e8_band_donors(
             band_weights, band_weights[0], rtol=1e-9, atol=1e-6
         ):
             unequal += 1
+        band_weight[int(band)] = float(band_weights[0]) if band_weights.size else None
         band_rows.append(
             {
                 "lower_bound": int(band),
-                "donor_households": int(band_weights.size),
-                "donor_weight": (float(band_weights[0]) if band_weights.size else None),
-                "weighted_taxpayers": float(band_weights.sum()),
+                "donor_households": rounded_count(
+                    distinct_count(donor_sources, donor_bands == band)
+                ),
             }
         )
     if unequal:
@@ -1757,16 +2088,46 @@ def _e8_band_donors(
     # region, within its geographic clone where the frame carries clones)
     # gave up the stratum's donor mass in proportion, so scaling them back to
     # the stratum's whole mass restores them.
-    strata = _funding_strata(household).to_numpy()
-    region_mass = pd.Series(weights).groupby(strata).sum()
-    incumbent_mass = pd.Series(weights[~is_donor]).groupby(strata[~is_donor]).sum()
-    if (incumbent_mass.reindex(region_mass.index).fillna(0.0) <= 0.0).any():
+    strata, factor = _band_donor_funding_factors(household, weights)
+    if factor is None:
         problems["band_donor_funding"] = "a donor stratum has no incumbent mass"
         return receipt
-    factor = incumbent_mass / region_mass.reindex(incumbent_mass.index)
-    receipt["funding"] = {
-        str(stratum): float(value) for stratum, value in factor.sort_index().items()
-    }
+    # The funding rows in the stage's form at every seating: each stratum and
+    # its donors in rounded distinct source households, its masses and factor
+    # withheld (microcosm#931), and the stage's funding rule for the factors.
+    donor_strata = strata[is_donor]
+    receipt["funding"] = [
+        {
+            "stratum": str(stratum),
+            "donor_households": rounded_count(
+                distinct_count(donor_sources, donor_strata == stratum)
+            ),
+            "incumbent_mass": UK_WITHHELD,
+            "donor_mass": UK_WITHHELD,
+            "factor": UK_WITHHELD,
+        }
+        for stratum in sorted(factor.index, key=str)
+    ]
+    # Every stratum's incumbents keep from one less the declared share to all
+    # of its mass. Rebuilt from the stored weights, the factors carry the
+    # stage's exact-total correction, which lands on one incumbent row and
+    # can move a small stratum's factor by far more than the few ulps the
+    # stage holds its own factors to, so they are held at E8's weight
+    # tolerance (_BAND_DONOR_FUNDING_RTOL).
+    rebuilt = factor.to_numpy(dtype=float)
+    floor = 1.0 - SPI_INCOME_BAND_MAXIMUM_REALLOCATION_SHARE
+    within_share = bool(
+        (
+            (rebuilt >= floor * (1.0 - _BAND_DONOR_FUNDING_RTOL))
+            & (rebuilt <= 1.0 + _BAND_DONOR_FUNDING_RTOL)
+        ).all()
+    )
+    receipt["funding_within_share"] = within_share
+    if not within_share:
+        problems["band_donor_funding_share"] = (
+            "a funding stratum's incumbents kept less than one less the declared "
+            "reallocation share of its mass"
+        )
     pre_weights = weights[~is_donor] / pd.Series(strata[~is_donor]).map(
         factor
     ).to_numpy(dtype=float)
@@ -1843,8 +2204,9 @@ def _e8_band_donors(
 
     seats, carrier_ids, evidence = recompute(pre_person, pre_household, pre_weights)
     receipt["seating_recomputed"] = True
+    # Full or capped, as the stage's receipt says (microcosm#931). The mass
+    # scale enters the band weights compared below and is not written.
     receipt["seating_scale"] = evidence["seating_scale"]
-    receipt["mass_scale"] = evidence["mass_scale"]
     missing = int((~stored_seats.index.isin(seats.index)).sum())
     extra = int((~seats.index.isin(stored_seats.index)).sum())
     if missing or extra:
@@ -1859,15 +2221,10 @@ def _e8_band_donors(
         int(row["lower_bound"]): float(row["donor_weight"]) for row in evidence["bands"]
     }
     weight_off = [
-        int(row["lower_bound"])
-        for row in band_rows
-        if row["donor_weight"] is None
-        or not np.isclose(
-            row["donor_weight"],
-            recomputed_weight[int(row["lower_bound"])],
-            rtol=1e-9,
-            atol=1e-6,
-        )
+        band
+        for band, stored_weight in band_weight.items()
+        if stored_weight is None
+        or not np.isclose(stored_weight, recomputed_weight[band], rtol=1e-9, atol=1e-6)
     ]
     if weight_off:
         problems["band_donor_weights_stored"] = weight_off
@@ -1883,6 +2240,34 @@ def _e8_band_donors(
     if not (permuted_seats.equals(seats) and permuted_carriers == carrier_ids):
         problems["band_donor_seats_permutation"] = True
     return receipt
+
+
+def _band_donor_funding_factors(
+    household: pd.DataFrame, weights: np.ndarray
+) -> tuple[np.ndarray, pd.Series | None]:
+    """Each household's funding stratum, and each stratum's funding factor.
+
+    ``household`` and ``weights`` are the frame the SPI income band donor
+    stage wrote (``_frame_as_stage_saw``). The stage scaled every incumbent
+    of a stratum (a region, within its geographic clone where the frame
+    carries clones) by one factor and gave the rest of the stratum's mass to
+    its donors, so the incumbents' mass over the stratum's whole mass is that
+    factor, to rounding. The factor is None where a stratum holds no
+    incumbent mass, which no stage-written frame does.
+    """
+
+    from microcosm.build.uk_runtime.spi_band_donors import (
+        HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
+        _funding_strata,
+    )
+
+    is_donor = household[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR].astype(bool).to_numpy()
+    strata = _funding_strata(household).to_numpy()
+    stratum_mass = pd.Series(weights).groupby(strata).sum()
+    incumbent_mass = pd.Series(weights[~is_donor]).groupby(strata[~is_donor]).sum()
+    if (incumbent_mass.reindex(stratum_mass.index).fillna(0.0) <= 0.0).any():
+        return strata, None
+    return strata, incumbent_mass / stratum_mass.reindex(incumbent_mass.index)
 
 
 def _band_donor_seating_inputs(
@@ -1940,9 +2325,11 @@ def e8_identity_receipt(
     recomputed in full (identity-keyed top-ups at the release calibration
     year) in original and permuted row order against the stored column;
     (4) the SPI income band donors (microcosm#1063) - the stored layer's
-    structure, equal band weights and conserving mass record, and, with the
-    licensed SPI tape (``spi_tab``), the identity-keyed seating rerun on the
-    reconstructed pre-donor frame in original and permuted row order;
+    structure, equal band weights, funding within the declared share and
+    conserving mass record, and, with the licensed SPI tape (``spi_tab``),
+    the identity-keyed seating rerun on the reconstructed pre-donor frame in
+    original and permuted row order, given in the forms of the stage's
+    capped receipt;
     (5) the CGT residential split (microcosm#1063) recomputed from the folded
     pre-split frame with the stage's own function - the solved probability
     carried as arm weights - in original and permuted row order against the
@@ -2139,7 +2526,10 @@ def e8_identity_receipt(
             "student_loan_plan: exact equality; "
             "band-donor seats, bands and "
             "carriers: exact equality; band-donor weights within a band and "
-            "against the rerun: rtol 1e-9 / atol 1e-6; band-donor mass "
+            "against the rerun: rtol 1e-9 / atol 1e-6; band-donor funding "
+            "factors: rebuilt from the stored weights, each from one less the "
+            "declared reallocation share to one at rtol 1e-9 (they carry the "
+            "stage's exact-total correction); band-donor mass "
             "record: new_total against old_total at rtol 1e-9 with declared "
             "factor one; residential-split arms, indices and residential "
             "gains: exact equality; residential-split weights against the "
@@ -2308,6 +2698,120 @@ def e9_identity_receipt(
     }
 
 
+#: The sidecar key the spine build records its geographic clone count under,
+#: and the stage whose receipt records the count it counted its copies on
+#: (microcosm#931).
+_SIDECAR_CLONE_COUNT_KEY = "geographic_clone_count"
+_CGT_SUPPORT_SPLIT_STAGE = "cgt_support_split"
+
+
+def _read_sidecar(path: Path) -> dict[str, object]:
+    """The spine's build sidecar, refused unless it is a JSON object."""
+
+    try:
+        sidecar = json.loads(Path(path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError("The spine sidecar is not valid JSON.") from error
+    if not isinstance(sidecar, dict):
+        raise ValueError("The spine sidecar is not a JSON object.")
+    return sidecar
+
+
+def _is_clone_count(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1
+
+
+def geographic_clone_counts(
+    frame,
+    *,
+    sidecar: Mapping[str, object] | None = None,
+    input_h5: Path | None = None,
+) -> dict[str, int | None]:
+    """The frame's geographic clone count ``K``, checked against its spine.
+
+    The frame carries ``K`` as its household clone indices, 0 to ``K - 1``
+    (``geographic_clones.geographic_clone_count``; a frame without them is
+    one clone). Given the spine's build ``sidecar``, ``K`` must also be the
+    count the spine build recorded (``geographic_clone_count``) and, where
+    the spine ran ``cgt_support_split``, the count that stage's receipt says
+    it counted its copies on; and a sidecar that records its spine's file
+    digest must name ``input_h5``. The receipts scale by ``K`` and E4's
+    engine refuses any other count, so the tool refuses a disagreement by
+    count, and a missing record or another file in a fixed sentence
+    (microcosm#931). Returns the counts by source, ``None`` for a stage the
+    spine did not run.
+    """
+
+    counts: dict[str, int | None] = {
+        "frame": geographic_clone_count(frame.table("household"))
+    }
+    if sidecar is None:
+        return counts
+    recorded_output = sidecar.get("output")
+    digest = (
+        recorded_output.get("sha256") if isinstance(recorded_output, Mapping) else None
+    )
+    if isinstance(digest, str) and input_h5 is not None:
+        hasher = hashlib.sha256()
+        with Path(input_h5).open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                hasher.update(block)
+        if hasher.hexdigest() != digest:
+            raise ValueError(
+                "The spine sidecar records another H5 file than --input-h5: its "
+                "output digest differs."
+            )
+    recorded = sidecar.get(_SIDECAR_CLONE_COUNT_KEY)
+    if not _is_clone_count(recorded):
+        raise ValueError(
+            f"The spine sidecar records no {_SIDECAR_CLONE_COUNT_KEY}, so the "
+            "frame's geographic clone count cannot be checked against the "
+            "spine's (microcosm#931)."
+        )
+    counts["sidecar"] = int(recorded)
+    stages = sidecar.get("stages")
+    if not isinstance(stages, list):
+        raise ValueError("The spine sidecar records no stage list.")
+    counts[_CGT_SUPPORT_SPLIT_STAGE] = None
+    if _CGT_SUPPORT_SPLIT_STAGE in stages:
+        evidence = sidecar.get("stage_evidence")
+        receipt = (
+            evidence.get(_CGT_SUPPORT_SPLIT_STAGE)
+            if isinstance(evidence, Mapping)
+            else None
+        )
+        parameters = receipt.get("parameters") if isinstance(receipt, Mapping) else None
+        stage_count = (
+            parameters.get("clone_count") if isinstance(parameters, Mapping) else None
+        )
+        if not _is_clone_count(stage_count):
+            raise ValueError(
+                f"The spine sidecar's {_CGT_SUPPORT_SPLIT_STAGE} receipt records "
+                "no clone_count, so the count it counted its copies on cannot be "
+                "checked (microcosm#931)."
+            )
+        counts[_CGT_SUPPORT_SPLIT_STAGE] = int(stage_count)
+    if len({count for count in counts.values() if count is not None}) != 1:
+        stage = counts[_CGT_SUPPORT_SPLIT_STAGE]
+        if stage is None:
+            named = "The frame's geographic clone count and the spine sidecar's"
+            found = f"frame {counts['frame']}, sidecar {counts['sidecar']}"
+        else:
+            named = (
+                "The frame's geographic clone count, the spine sidecar's and the "
+                f"one {_CGT_SUPPORT_SPLIT_STAGE} counted its copies on"
+            )
+            found = (
+                f"frame {counts['frame']}, sidecar {counts['sidecar']}, "
+                f"{_CGT_SUPPORT_SPLIT_STAGE} {stage}"
+            )
+        raise ValueError(
+            f"{named} are not one count ({found}); every receipt reads one clone "
+            "count (microcosm#931)."
+        )
+    return counts
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-h5", type=Path, required=True)
@@ -2326,6 +2830,18 @@ def main() -> int:
             "it that layer is checked for structure and mass only."
         ),
     )
+    parser.add_argument(
+        "--spine-sidecar",
+        type=Path,
+        default=None,
+        help=(
+            "The spine's build sidecar (<spine>.build.json). The tool then "
+            "checks the frame's geographic clone count against the sidecar's "
+            "and the one cgt_support_split counted its copies on, refusing by "
+            "count where they differ, and refuses a sidecar whose output "
+            "digest is not --input-h5's."
+        ),
+    )
     args = parser.parse_args()
 
     frame, _provenance = load_uk_national_frame(args.input_h5)
@@ -2336,26 +2852,39 @@ def main() -> int:
     # (microcosm#931); a spine minted by the rule the table replaced is
     # refused once, here, before any receipt reads it.
     _require_copy_ids_on_the_declared_table(frame.table("household"))
+    # The geographic clone count K every receipt reads, checked against the
+    # spine's sidecar where one is given (microcosm#931).
+    clones = geographic_clone_counts(
+        frame,
+        sidecar=None
+        if args.spine_sidecar is None
+        else _read_sidecar(args.spine_sidecar),
+        input_h5=args.input_h5,
+    )
     if args.check == "e4":
         from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
         from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
-        # E4 draws ran on the pre-stack FRS spine and its take-up targets are
+        # E4's stages drew on every geographic clone of the raw FRS rows,
+        # before the SPI rows were stacked, and its take-up targets are
         # unweighted int(rate * n_units): recompute on the survey channel
         # only, or every target moves with the synthetic rows (the post-#717
-        # scoping rule the E5 receipt already applies).
-        frame = _frs_only_frame(frame)
-        engine = PolicyEngineUKEngine()
-        lha_category = engine.materialize(
-            _engine_safe_frame(frame), ("LHA_category",), uk_time_period(frame)
-        )["LHA_category"]
+        # scoping rule the E5 receipt already applies), at the weights the
+        # stages read, as far as the artifact restores them. The engine runs
+        # clone by clone at the spine's clone count, as the stages' did.
+        population_policy = uk_take_up_population_policy(uk_time_period(frame))
         receipt = e4_identity_receipt(
-            frame,
+            _frame_as_draw_stages_saw(
+                frame, state_pension_age=population_policy.state_pension_age
+            ),
             contract=load_uk_take_up_contract(),
             count_resource=load_brma_count_resource(),
-            lha_category=lha_category,
+            engine=PolicyEngineUKEngine(clones=clones["frame"]),
             permutation_seed=args.permutation_seed,
-            population_policy=uk_take_up_population_policy(uk_time_period(frame)),
+            population_policy=population_policy,
+            reversed_stages=_reversals_applied(
+                frame, UK_SPI_INCOME_BAND_DONORS_STAGE_NAME
+            ),
         )
         ok = bool(
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
@@ -2369,10 +2898,11 @@ def main() -> int:
         # population the stage saw. regional_home_values then rewrites both
         # property columns, so the fixed point holds only on the values the
         # uprating left, which the scoping restores from that stage's rank
-        # basis.
+        # basis where the artifact keeps it.
         receipt = e5_identity_receipt(
             _frame_as_stage_saw(frame, _E5_FIRST_STAGE),
             permutation_seed=args.permutation_seed,
+            reversed_stages=_reversals_applied(frame, _E5_FIRST_STAGE),
         )
         ok = bool(
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
@@ -2417,6 +2947,7 @@ def main() -> int:
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
         )
     receipt["input_h5"] = str(args.input_h5)
+    receipt["geographic_clones"] = clones
     args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(
         "identity stability:",
@@ -2453,6 +2984,29 @@ _STACKED_ROW_FLAGS = tuple(_STACKING_STAGE_BY_FLAG)
 #: of the population the block imputed onto; one stacked after it was not.
 _E5_FIRST_STAGE = "was_wealth"
 _E6_FIRST_STAGE = "nts_bus_travel"
+
+#: The stages each receipt recomputes, in the roster's order. A recomputed
+#: column belongs to the last of them that declares writing it, and a stage
+#: after that one that declares writing it again can leave the final frame
+#: holding its value instead of the recomputed stage's (``_later_writers``). E4's
+#: stages run after geographic_expand, on every geographic clone, and before
+#: the SPI support channel stacks its copies (microcosm#931); E5 checks the
+#: wealth stage's layers and the regional uprating's fixed point.
+_E4_STAGES = ("frs_take_up", "frs_person_draws", "frs_household_draws", "frs_brma")
+_E5_STAGES = ("was_wealth", "regional_property_uprating")
+#: The stage whose LHA_category E4's BRMA draw reads
+#: (``_brma_stage_lha_category``).
+_BRMA_STAGE = "frs_brma"
+#: The SPI support channel, whose prior-mass allocation E4's scope takes back
+#: (``_frame_as_draw_stages_saw``).
+_SPI_SUPPORT_STAGE = "spi_support_channel"
+_SPI_PRIOR_MASS_OPERATION = "allocate_zero_weight_prior_mass"
+#: How far, relative to the weight of everyone aged 21 to 24, stored
+#: is_apprentice flags may lie further from the walk's target than the
+#: recompute's on the restored weights (``_apprentice_walk_holds``): the
+#: restored weights are the stage's to a few floats per row, and to the
+#: exact-total corrections of two stages, far inside it.
+_APPRENTICE_WALK_RELATIVE_TOLERANCE = 1e-9
 
 #: The stage that stacks each flag, for artifacts that carry it, when that
 #: stage's mass move is a uniform divisor (``_stage_time_weight_divisor``).
@@ -3153,6 +3707,251 @@ def _frame_as_stage_saw(frame, stage: str):
     )
 
 
+def _reversals_applied(frame, stage: str) -> tuple[str, ...]:
+    """The stages whose rewrite ``_frame_as_stage_saw(frame, stage)`` takes back.
+
+    Each reversal reads a carrier the artifact keeps (the salary-sacrifice
+    stage's pre-conversion pay, the regional home values' rank basis), so an
+    artifact without it, a release say, keeps the later stage's values, and
+    a receipt reports that stage's columns as rewritten later.
+    """
+
+    from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
+    from microcosm.build.uk_runtime.salary_sacrifice import (
+        SALSAC_PRE_CONVERSION_PAY_COLUMN,
+    )
+
+    positions = _roster_positions()
+    applied: list[str] = []
+    if positions[stage] < positions[_SALARY_SACRIFICE_STAGE] and (
+        SALSAC_PRE_CONVERSION_PAY_COLUMN in frame.table("person").columns
+    ):
+        applied.append(_SALARY_SACRIFICE_STAGE)
+    if positions[stage] < positions[_REGIONAL_HOME_VALUES_STAGE] and (
+        RANK_BASIS_COLUMN in frame.table("household").columns
+    ):
+        applied.append(_REGIONAL_HOME_VALUES_STAGE)
+    return tuple(applied)
+
+
+def _frame_as_draw_stages_saw(frame, *, state_pension_age: int | None):
+    """The FRS rows E4's stages drew on, at the weights they read.
+
+    E4's stages ran on every geographic clone of the raw FRS rows, before the
+    SPI support channel stacked its copies, at the weights geographic_expand
+    left (microcosm#931). The rows are ``_frs_only_frame``'s. Their weights
+    are taken back in the roster's reverse order, as far as the artifact
+    allows: every layer stacked after the SPI income band donors folds back
+    onto the row it came from (``_frame_as_stage_saw``, which also reverses
+    the salary-sacrifice conversion); the band donors' funding is taken
+    back, every incumbent of a funding stratum divided by the stratum's
+    factor (``_band_donor_funding_factors``); and the support channel's
+    prior mass is taken back, every base household divided by one less the
+    share the packaged manifest declares for it (``_spi_prior_mass_shares``),
+    the pension-age share where a member is at or over ``state_pension_age``
+    and the share otherwise. Neither move is uniform: the two shares differ,
+    and so do the strata's factors. The folds re-add floats, each move
+    divides in floats, and the stages that move mass correct a row each to
+    an exact total, so the weights are the stages' to rounding, not bit for
+    bit (``_apprentice_walk_holds`` holds the one draw that reads them to
+    that). An artifact without either layer skips its step.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+    from microcosm.build.uk_runtime.spi_support import HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN
+
+    staged = _frame_as_stage_saw(frame, UK_SPI_INCOME_BAND_DONORS_STAGE_NAME)
+    household = staged.table("household")
+    person = staged.table("person")
+    weights = np.asarray(staged.weights_for("household").values, dtype=float).copy()
+    keep = np.ones(len(household), dtype=bool)
+    if HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR in household.columns:
+        donor = household[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR].astype(bool).to_numpy()
+        strata, factor = _band_donor_funding_factors(household, weights)
+        if factor is None:
+            raise ValueError(
+                "A funding stratum of the SPI income band donors holds no "
+                "incumbent mass, so E4's scope cannot take their funding back."
+            )
+        weights[~donor] = weights[~donor] / pd.Series(strata[~donor]).map(
+            factor
+        ).to_numpy(dtype=float)
+        keep &= ~donor
+    if HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN in household.columns:
+        synthetic = household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN].astype(bool).to_numpy()
+        share, pension_age_share = _spi_prior_mass_shares()
+        # The share of each base household's mass the channel moved to its
+        # SPI copies; the household kept one less it.
+        moved_share = np.full(len(household), share)
+        if pension_age_share is not None:
+            if state_pension_age is None:
+                raise ValueError(
+                    "The SPI support channel's pension-age share needs the State "
+                    "Pension age it split the strata at; E4's scope takes it from "
+                    "the take-up population policy."
+                )
+            # The ages of the rows the scope keeps, which the channel read and
+            # refused unless numeric, as this does in a fixed sentence.
+            base = set(household.loc[keep & ~synthetic, "household_id"])
+            members = person.loc[person["person_household_id"].isin(base)]
+            ages = pd.to_numeric(members["age"], errors="coerce")
+            if ages.isna().any():
+                raise ValueError(
+                    "person.age must be numeric to take the SPI support channel's "
+                    "pension-age share back."
+                )
+            older = members.loc[ages.ge(int(state_pension_age)), "person_household_id"]
+            pension_age = household["household_id"].isin(set(older)).to_numpy()
+            moved_share = np.where(pension_age, pension_age_share, share)
+        weights[~synthetic] = weights[~synthetic] / (1.0 - moved_share[~synthetic])
+        keep &= ~synthetic
+    kept = household.loc[keep].reset_index(drop=True)
+    kept_ids = set(kept["household_id"].tolist())
+    kept_person = person.loc[person["person_household_id"].isin(kept_ids)]
+    benunit = staged.table("benunit")
+    return uk_national_frame(
+        person=kept_person.reset_index(drop=True),
+        benunit=benunit.loc[
+            benunit["benunit_id"].isin(set(kept_person["person_benunit_id"]))
+        ].reset_index(drop=True),
+        household=kept,
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(staged),
+        household_weights=weights[keep],
+        mass_log=staged.mass_log,
+    )
+
+
+def _spi_prior_mass_shares() -> tuple[float, float | None]:
+    """The SPI support channel's declared prior-mass share, and its pension-age
+    share where it declares one, from the packaged manifest."""
+
+    (stage,) = [
+        stage
+        for stage in _source_stage_roster()
+        if stage.get("stage") == _SPI_SUPPORT_STAGE
+    ]
+    (operation,) = [
+        operation
+        for operation in stage.get("operations", ())
+        if operation.get("kind") == _SPI_PRIOR_MASS_OPERATION
+    ]
+    pension_age_share = operation.get("pension_age_share")
+    return float(operation["share"]), (
+        None if pension_age_share is None else float(pension_age_share)
+    )
+
+
+def _roster_writes() -> tuple[tuple[str, ...], tuple[frozenset[str], ...]]:
+    """The packaged roster's stage names and, per stage, the columns it
+    declares writing: its outputs and its rewrites."""
+
+    stages = _source_stage_roster()
+    return (
+        tuple(str(stage["stage"]) for stage in stages),
+        tuple(
+            frozenset(
+                str(column)
+                for key in ("outputs", "rewrites")
+                for column in stage.get(key) or ()
+            )
+            for stage in stages
+        ),
+    )
+
+
+def _later_writers(
+    columns: Sequence[str],
+    *,
+    checked_stages: Sequence[str],
+    reversed_stages: Sequence[str] = (),
+) -> dict[str, tuple[str, ...]]:
+    """The stages after each column's own that declare writing it again.
+
+    A recomputed column's own stage is the last of ``checked_stages`` (the
+    stages a receipt recomputes) whose entry in the packaged manifest declares
+    it among its outputs or rewrites. Every stage after that one that declares
+    it too can leave the final frame holding its value, so the receipt does
+    not compare the column with the store (microcosm#931); the stages in
+    ``reversed_stages``, whose rewrite the receipt's scope took back, leave
+    the own stage's value and are not counted. Columns no later stage writes
+    are left out. A column no checked stage declares is refused: the receipt
+    could not place it.
+    """
+
+    names, writes = _roster_writes()
+    own_positions = sorted(names.index(stage) for stage in checked_stages)
+    skipped = set(reversed_stages)
+    later: dict[str, tuple[str, ...]] = {}
+    for column in columns:
+        declaring = [
+            position for position in own_positions if column in writes[position]
+        ]
+        if not declaring:
+            raise ValueError(
+                f"No stage of {list(checked_stages)} declares writing {column!r} in "
+                "the packaged manifest, so the receipt cannot place it."
+            )
+        writers = tuple(
+            names[position]
+            for position in range(declaring[-1] + 1, len(names))
+            if column in writes[position] and names[position] not in skipped
+        )
+        if writers:
+            later[column] = writers
+    return later
+
+
+def _last_writers(*, at_or_before: str) -> dict[str, str]:
+    """Each column a stage up to ``at_or_before`` declares writing, mapped to
+    the last such stage: the stage whose value ``at_or_before`` read."""
+
+    names, writes = _roster_writes()
+    last: dict[str, str] = {}
+    for position in range(names.index(at_or_before) + 1):
+        for column in writes[position]:
+            last[column] = names[position]
+    return last
+
+
+def _rewritten_after(
+    stage: str, *, reversed_stages: Sequence[str] = ()
+) -> dict[str, tuple[str, ...]]:
+    """The columns ``stage`` read that a later stage declares writing again.
+
+    A column a stage up to ``stage`` declares writing, mapped to the later
+    stages that declare it too, the stages in ``reversed_stages`` excepted.
+    """
+
+    names, writes = _roster_writes()
+    end = names.index(stage) + 1
+    seen = set().union(*writes[:end])
+    skipped = set(reversed_stages)
+    rewritten: dict[str, tuple[str, ...]] = {}
+    for column in sorted(seen):
+        writers = tuple(
+            names[position]
+            for position in range(end, len(names))
+            if column in writes[position] and names[position] not in skipped
+        )
+        if writers:
+            rewritten[column] = writers
+    return rewritten
+
+
+def _columns_first_written_after(stage: str) -> frozenset[str]:
+    """The columns a later stage declares writing that no stage up to
+    ``stage`` declares: columns the frame ``stage`` read did not carry."""
+
+    names, writes = _roster_writes()
+    end = names.index(stage) + 1
+    seen = set().union(*writes[:end])
+    return frozenset(set().union(*writes[end:]) - seen)
+
+
 #: The stage whose conversion rewrites pay in place (microcosm#1069 c9).
 _SALARY_SACRIFICE_STAGE = "salary_sacrifice"
 
@@ -3249,6 +4048,10 @@ def _pre_salary_sacrifice_frame(frame):
 _REGIONAL_HOME_VALUES_STAGE = "regional_home_values"
 #: The household columns that stage rewrites, which the reversal restores.
 _REGIONAL_HOME_VALUE_COLUMNS = ("main_residence_value", "property_wealth")
+#: The stages whose rewrite ``_frame_as_stage_saw`` takes back for a stage
+#: before them, when the artifact keeps the carrier (``_reversals_applied``):
+#: what a receipt assumes of a frame it is handed scoped.
+_SCOPE_REVERSALS = (_SALARY_SACRIFICE_STAGE, _REGIONAL_HOME_VALUES_STAGE)
 
 
 def _source_stage_roster() -> list[dict[str, object]]:

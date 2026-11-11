@@ -1,7 +1,7 @@
 The UK fits trained on the frame's FRS rows now fold geographic clones into each survey record before they fit (#931). This covers the SPI stage-2 and reference forests, the housing shell, the UC reporter redraw, the UC capital donor cells, the salary-sacrifice forest and the SPI employment shell.
 
 - **How the fold works.** Each fit passes what it reads: its predictors and targets, or the columns they derive from. A record's clones that agree on it keep one training row, the lowest-id one among them (clone 0 whenever clone 0 is selected and agrees, whatever the row order), with the weight of those clones summed exactly. Clones that differ, through a draw keyed on their own ids or a stage run per area, stay rows of their own, each variant with its own clones' summed weight. SPI, high-value and CGT copies stay rows of their own, as now.
-- **No change today.** Today's spine is one geographic clone (`geographic_expand` runs at K = 1), so every fit's rows and weights stay as they were, value for value.
+- **No change today.** The default spine is one geographic clone (`geographic_expand` runs at K = 1), so every fit's rows and weights stay as they were, value for value.
 - **What changes once the spine clones before enrichment:**
   - the fits see each record once wherever its clones agree, and every clone's value at its share wherever they differ;
   - the reference transport meets no duplicate twins from agreeing clones;

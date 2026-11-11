@@ -343,3 +343,37 @@ def test_microdf_is_recorded_beside_the_batches_alone(
     assert _identity(spine_build._rules_engine_provenance()) == _identity(
         {"package": "policyengine-uk", "version": VERSION}
     )
+
+
+def test_the_spine_engine_takes_the_clone_count_its_identity_does_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # --n-clones reaches the engine the spine build makes, which then refuses
+    # a frame carrying another clone count, but never the provenance the
+    # engine identity is hashed from: the identity is the same at every K
+    # (microcosm#931).
+    import inspect
+    import sys
+    import types
+
+    from microcosm.build.uk_runtime import hmrc_uprating
+
+    _install(monkeypatch, None)
+    monkeypatch.setitem(
+        sys.modules, "policyengine_uk", types.ModuleType("policyengine_uk")
+    )
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    frame = _final_frame((0, 1))
+    identities = set()
+    for clones in (1, 2, 4):
+        engine = spine_build._rules_engine(clones=clones)
+        if clones == 2:
+            assert engine.simulation_batches(frame) == 2
+        else:
+            with pytest.raises(ValueError, match="clone"):
+                engine.simulation_batches(frame)
+        identities.add(_identity(spine_build._rules_engine_provenance()))
+    assert identities == {_identity({"package": "policyengine-uk", "version": VERSION})}
+    assert not inspect.signature(spine_build._rules_engine_provenance).parameters

@@ -1147,12 +1147,14 @@ def test_e8_receipt_reconstructs_the_seating_from_ids() -> None:
     # carriers and the band weights are the stored ones in any row order.
     tool = _identity_tool()
     propensity = _propensity()
-    stacked = stack_spi_income_band_donors(
+    stage = stack_spi_income_band_donors(
         _support_frame(200),
         propensity=propensity,
         band_taxpayers=TAXPAYERS,
         taxpayer_period=2024,
-    ).frame
+    )
+    stacked = stage.frame
+    evidence = stage.evidence()
     problems: dict[str, object] = {}
     receipt = tool._e8_band_donors(
         stacked,
@@ -1163,11 +1165,20 @@ def test_e8_receipt_reconstructs_the_seating_from_ids() -> None:
     )
     assert problems == {}
     assert receipt["seating_recomputed"] is True
-    assert receipt["donor_households"] == 27
-    assert receipt["seating_scale"] == "capped"
+    assert receipt["seating_scale"] == evidence["seating_scale"] == "capped"
     assert receipt["mass"]["declared_factor"] == 1.0
+    # The receipt gives the layer in the stage's capped forms (microcosm#931):
+    # the donors and each band's in rounded distinct source households, and
+    # the stage's own funding rows, masses and factors withheld, with the
+    # funding rule's verdict.
+    assert receipt["donor_households"] == evidence["donor_count"] == rounded_count(27)
     assert [row["lower_bound"] for row in receipt["bands"]] == list(BANDS)
-    assert set(receipt["funding"]) == {"LONDON", "SOUTH_EAST"}
+    assert [row["donor_households"] for row in receipt["bands"]] == [
+        row["donor_households"] for row in evidence["bands"]
+    ]
+    assert receipt["funding"] == evidence["funding"]
+    assert [row["stratum"] for row in receipt["funding"]] == ["LONDON", "SOUTH_EAST"]
+    assert receipt["funding_within_share"] is evidence["funding_within_share"] is True
 
     # Without the tape's propensities the layer is checked for structure and
     # mass only, and the receipt says so.
@@ -1606,22 +1617,24 @@ def test_a_clone_without_candidates_is_refused_without_a_count() -> None:
             lambda clones: pd.array(
                 [None, *clones.to_numpy()[1:].tolist()], dtype="Int64"
             ),
-            "1 household row(s) carry no 'household_clone_index'; SPI income band "
+            "A household row carries no 'household_clone_index'; SPI income band "
             "donors seat each geographic clone.",
         ),
         (
             lambda clones: np.r_[[-1, -1], clones.to_numpy()[2:]],
-            "2 household row(s) carry a negative 'household_clone_index'; SPI "
+            "A household row carries a negative 'household_clone_index'; SPI "
             "income band donors seat each geographic clone.",
         ),
         (
             lambda clones: clones.replace({1: 2}).to_numpy(),
-            "1 of the 3 geographic clone indices from 0 to the largest are carried "
-            "by no household; SPI income band donors seat clones 0 to K - 1.",
+            "A 'household_clone_index' value from 0 to the largest is carried by "
+            "no household; SPI income band donors seat clones 0 to K - 1.",
         ),
     ],
 )
-def test_a_malformed_clone_index_is_refused_by_count(index, message: str) -> None:
+def test_a_malformed_clone_index_is_refused_without_a_count(
+    index, message: str
+) -> None:
     frame = _clone_first_support_frame(60, 2)
     household = frame.table("household").copy()
     household[_CLONE] = index(household[_CLONE])
@@ -2060,16 +2073,21 @@ def test_e8_receipt_replays_the_seating_of_every_clone() -> None:
         "band_taxpayers": TAXPAYERS,
         "permutation_seed": 123,
     }
-    stacked = stack_spi_income_band_donors(
+    stage = stack_spi_income_band_donors(
         _clone_first_support_frame(200, 3), propensity=propensity, **_PUBLISHED
-    ).frame
+    )
+    stacked = stage.frame
+    evidence = stage.evidence()
     problems: dict[str, object] = {}
     receipt = tool._e8_band_donors(stacked, problems, **arguments)
     assert problems == {}
     assert receipt["seating_recomputed"] is True
-    assert receipt["donor_households"] == 3 * 27
-    assert receipt["seating_scale"] == "capped"
-    assert set(receipt["funding"]) == {
+    assert receipt["seating_scale"] == evidence["seating_scale"] == "capped"
+    # Every clone's donors, counted once per survey household and rounded, and
+    # every clone's regions in the stage's funding rows.
+    assert receipt["donor_households"] == evidence["donor_count"]
+    assert receipt["funding"] == evidence["funding"]
+    assert {row["stratum"] for row in receipt["funding"]} == {
         f"{region}|{clone}" for region in ("LONDON", "SOUTH_EAST") for clone in range(3)
     }
 
@@ -2303,11 +2321,19 @@ def test_e8_receipt_reruns_stage_17_on_the_frame_it_wrote(n_clones: int) -> None
     )
 
     # and the check scales each funding stratum back by the stage's own
-    # factor, and the stage rerun there reproduces the stored seats, carriers
-    # and band weights, with the artifact's people in either order and the
-    # pre-donor people permuted, reading each donor once.
-    stored = {row["lower_bound"]: row for row in stage_17.band_rows}
+    # factor,
     factors = {row["stratum"]: row["factor"] for row in stage_17.funding_rows}
+    _, reconstructed = tool._band_donor_funding_factors(
+        scoped.table("household"), scoped.weights_for("household").values
+    )
+    assert reconstructed.to_dict() == pytest.approx(factors, rel=1e-12)
+
+    # and the stage rerun there reproduces the stored seats, carriers and band
+    # weights, with the artifact's people in either order and the pre-donor
+    # people permuted, reading each donor once. The receipt gives the layer in
+    # the stage's capped forms, the exact weights and factors held, never
+    # written.
+    evidence = stage_17.evidence()
     for artifact in (built.artifact, tool._reverse_rows(built.artifact)):
         problems: dict[str, object] = {}
         receipt = tool._e8_band_donors(
@@ -2319,15 +2345,18 @@ def test_e8_receipt_reruns_stage_17_on_the_frame_it_wrote(n_clones: int) -> None
         )
         assert problems == {}
         assert receipt["seating_recomputed"] is True
-        assert receipt["donor_households"] == stage_17.donor_count
-        assert receipt["funding"] == pytest.approx(factors, rel=1e-12)
-        for row in receipt["bands"]:
-            band = stored[row["lower_bound"]]
-            assert row["donor_households"] == band["donor_households"]
-            assert row["donor_weight"] == pytest.approx(band["donor_weight"], rel=1e-12)
-            assert row["weighted_taxpayers"] == pytest.approx(
-                band["weighted_taxpayers"], rel=1e-12
-            )
+        assert receipt["donor_households"] == rounded_count(
+            stage_17.donor_source_households
+        )
+        assert receipt["funding"] == evidence["funding"]
+        assert receipt["funding_within_share"] is True
+        assert receipt["bands"] == [
+            {
+                "lower_bound": row["lower_bound"],
+                "donor_households": rounded_count(row["donor_source_households"]),
+            }
+            for row in stage_17.band_rows
+        ]
 
 
 def test_e8_receipt_reads_each_donor_through_its_later_copies() -> None:
@@ -2431,7 +2460,139 @@ def test_the_e8_entry_hands_the_band_donor_check_the_artifact(monkeypatch) -> No
     assert receipt["pre_salary_sacrifice_restored"] is True
     assert receipt["stored_column_mismatches"] == {}
     assert receipt["band_donors"]["seating_recomputed"] is True
-    assert receipt["band_donors"]["donor_households"] == stage_17.donor_count
+    assert receipt["band_donors"]["donor_households"] == rounded_count(
+        stage_17.donor_source_households
+    )
+
+
+# E8's funding rule on frames the stage funds at the floor (microcosm#931).
+# Every frame below is synthetic.
+
+
+def _floor_funded_frame(n_households: int, salt: str):
+    """``_support_frame``'s households, LONDON's light but for one heavy
+    household and the other region's carrying most of the mass, so the mass
+    scale binds in LONDON, which keeps exactly one less the reallocation
+    share; the stage then makes the whole total exact on one incumbent row."""
+
+    from microcosm.build.stochastic_assignment import stable_identity_uniforms
+
+    frame = _support_frame(n_households)
+    household = frame.table("household")
+    uniforms = stable_identity_uniforms(
+        household["household_id"].to_numpy(), seed=11, salt=salt
+    )
+    london = household["region"].astype(str).eq("LONDON").to_numpy()
+    weights = np.where(london, 1.0 + uniforms, 9_000.0 + 500.0 * uniforms)
+    heavy = np.flatnonzero(london)[0]
+    weights[heavy] = 20_000.0 + 100.0 * uniforms[heavy]
+    return uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=weights,
+    )
+
+
+def _floor_funded_stage():
+    stage = stack_spi_income_band_donors(
+        _floor_funded_frame(900, "j"),
+        propensity=_propensity(),
+        band_taxpayers=TAXPAYERS,
+        taxpayer_period=2024,
+    )
+    floor = 1.0 - spi_band_donors.SPI_INCOME_BAND_MAXIMUM_REALLOCATION_SHARE
+    assert stage.mass_scale < 1.0
+    factors = {row["stratum"]: row["factor"] for row in stage.funding_rows}
+    assert factors["LONDON"] == floor
+    assert stage.funding_within_share is True
+    return stage, floor
+
+
+def _e8_funding(tool, frame) -> tuple[dict[str, object], dict[str, object]]:
+    problems: dict[str, object] = {}
+    receipt = tool._e8_band_donors(
+        frame, problems, propensity=None, band_taxpayers=None, permutation_seed=123
+    )
+    return receipt, problems
+
+
+def test_e8_holds_the_funding_of_a_stratum_the_stage_funds_at_the_floor() -> None:
+    """The factor E8 rebuilds from the stored weights carries the stage's
+    exact-total correction wherever it landed, so E8 holds the funding by
+    the stage's rule at its own weight tolerance, not at the stage gate's
+    few ulps: the stage's output is green."""
+
+    tool = _identity_tool()
+    stage, _ = _floor_funded_stage()
+    receipt, problems = _e8_funding(tool, stage.frame)
+    assert problems == {}
+    assert receipt["funding_within_share"] is True
+
+
+def test_e8_holds_a_floor_factor_moved_by_rounding_and_refuses_one_underfunded():
+    """A floor stratum's incumbent moved down by a trillionth of the
+    stratum's mass, which an exact-total correction can do to a small
+    stratum, takes its rebuilt factor beyond the stage gate's ulps but not
+    E8's tolerance, and is held; moved by a millionth, it is a stratum kept
+    below one less the share, and E8 says so. The other region's incumbent
+    takes the mass up, so the total and its mass record stand."""
+
+    tool = _identity_tool()
+    stage, floor = _floor_funded_stage()
+    household = stage.frame.table("household")
+    weights = np.asarray(stage.frame.weights_for("household").values, dtype=float)
+    london = household["region"].astype(str).eq("LONDON").to_numpy()
+    incumbent = ~household[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR].to_numpy(dtype=bool)
+    in_london = np.flatnonzero(london & incumbent)
+    heaviest = in_london[np.argmax(weights[in_london])]
+    receiver = np.flatnonzero(~london & incumbent)[0]
+    stratum_mass = float(weights[london].sum())
+    for relative, held in ((1e-12, True), (1e-6, False)):
+        moved = weights.copy()
+        moved[heaviest] -= relative * stratum_mass
+        moved[receiver] += relative * stratum_mass
+        frame = _reweighted(stage.frame, moved)
+        _, rebuilt = tool._band_donor_funding_factors(
+            frame.table("household"), frame.weights_for("household").values
+        )
+        assert float(rebuilt["LONDON"]) < floor * (
+            1.0 - spi_band_donors.SPI_INCOME_BAND_FUNDING_RELATIVE_TOLERANCE
+        )
+        receipt, problems = _e8_funding(tool, frame)
+        assert receipt["funding_within_share"] is held
+        assert ("band_donor_funding_share" in problems) is not held
+
+
+def test_e8_refuses_a_stratum_funded_past_its_share() -> None:
+    tool = _identity_tool()
+    propensity = _propensity()
+    stacked = stack_spi_income_band_donors(
+        _support_frame(200),
+        propensity=propensity,
+        band_taxpayers=TAXPAYERS,
+        taxpayer_period=2024,
+    ).frame
+    household = stacked.table("household")
+    weights = np.asarray(stacked.weights_for("household").values, dtype=float).copy()
+    incumbent = ~household[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR].to_numpy(dtype=bool)
+    london = household["region"].astype(str).eq("LONDON").to_numpy()
+    weights[incumbent & london] *= 0.05
+    problems: dict[str, object] = {}
+    receipt = tool._e8_band_donors(
+        _reweighted(stacked, weights),
+        problems,
+        propensity=propensity,
+        band_taxpayers=TAXPAYERS,
+        permutation_seed=123,
+    )
+    assert receipt["funding_within_share"] is False
+    assert problems["band_donor_funding_share"] == (
+        "a funding stratum's incumbents kept less than one less the declared "
+        "reallocation share of its mass"
+    )
 
 
 # The stage gate on a capped seating (microcosm#931). A capped receipt gives

@@ -344,3 +344,20 @@ def test_the_stage_refuses_drifted_parameters(ranks):
     assert stored.table("person")[PRIVATE_SCHOOL_ATTENDANCE_OUTPUT].tolist() == ATTENDS
     evidence = transform.checkpoint_metadata()["evidence"]
     assert evidence["rank_route"] == PRIVATE_SCHOOL_ATTENDANCE_ENGINE_ROUTE
+
+
+def test_the_stage_reads_the_parameters_the_declaration_restates():
+    """microcosm#931: the two parameters the stage's restatement reads
+    are the ones the UK engine-population declaration restates attendance
+    from. A call that runs clone by clone holds every batch's engine equal to
+    the adapter's own tree at exactly those paths, so the stage, reading the
+    adapter's parameters, reads what each batch computed with."""
+    from microcosm.frame.adapters.policyengine_uk_population import (
+        UK_ENGINE_POPULATION,
+    )
+
+    assert set(UK_ENGINE_POPULATION.restated) == {PRIVATE_SCHOOL_ATTENDANCE_OUTPUT}
+    assert (
+        private_school_attendance.PRIVATE_SCHOOL_ATTENDANCE_PARAMETERS
+        == UK_ENGINE_POPULATION.restated[PRIVATE_SCHOOL_ATTENDANCE_OUTPUT]
+    )
