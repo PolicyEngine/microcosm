@@ -25,7 +25,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # ssi_disability_criteria's attested bytes.
     # The opt-in cross-fitted gate calibration moves the fit kernels' bytes.
     assert first.spec_sha256 == (
-        "5b39d83cafb6f312ce73e5550ab36da6676ce265779d615f49c7987f5cc5d36e"
+        "500f4f82db8e4cd96796319076cdf7ff0fff326bde0828e10535b329c5d1c924"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
