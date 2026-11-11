@@ -218,15 +218,21 @@ class TestClosure:
         )
 
     def test_no_input_is_claimed_engine_optional(self) -> None:
-        # The axiom-rules-engine commit in input_surface.engine (04315d94) has
-        # no optional inputs; the closure says why and classes none as
-        # engine-optional.
+        # The axiom-rules-engine commit in input_surface.engine (753ce7d9, the
+        # bindings' engine pin) gives the modules no optional inputs; the
+        # closure says why and classes none as engine-optional.
         assert not any(
             entry.closure_class is ClosureClass.ENGINE_OPTIONAL
             for entry in CLOSURE.entries
         )
         assert "input_surface.engine" in CLOSURE.engine_optional_evidence
-        assert CLOSURE.surface_engine_commit.startswith("04315d94")
+        assert CLOSURE.surface_engine_commit.startswith("753ce7d9")
+        bindings = json.loads(
+            (CLOSURE_PATH.parent / "axiom_rules_bindings.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert CLOSURE.surface_engine_commit == bindings["engine"]["commit"]
         assert CLOSURE.surface_engine_repository == (
             "TheAxiomFoundation/axiom-rules-engine"
         )
