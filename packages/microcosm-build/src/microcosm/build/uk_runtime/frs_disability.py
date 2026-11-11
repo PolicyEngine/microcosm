@@ -21,6 +21,8 @@ from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_CARE_OUTSIDE_BIT,
     FRS_CARE_RECIPIENTS_COLUMN,
+    FRS_UC_CARER_ELEMENT_COLUMN,
+    FRS_UC_LCW_NOT_LINKED,
     WEEKS_IN_YEAR,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -312,6 +314,9 @@ def add_frs_disability(
         )
         person[CARER_LINK_COLUMN] = link
         if evidence is not None:
+            check = carer_link_admin_check(person, link=link, min_hours=carer_min_hours)
+            if check is not None:
+                link_evidence["admin_uc_carer_element_check"] = check
             evidence["carer_link"] = link_evidence
     result = uk_national_frame(
         person=person,
@@ -569,6 +574,112 @@ def derive_carer_link(
         },
     }
     return link, evidence
+
+
+#: A3 (f) of the November event-data plan's PR3 (microcosm#1095; María's
+#: choices of 2026-11-10): DWP's record of the Universal Credit carer element
+#: checks the carer link and changes no value.
+CARER_LINK_ADMIN_CHECK = (
+    "on each benefit unit with a linked Universal Credit claim "
+    "(frs_spine.frs_uc_carer_element NONE or CARER on the UC row's person), "
+    "whether DWP's award holds a carer element against whether the stage holds "
+    "a claimant or partner a carer for Universal Credit, as policyengine-uk's "
+    "is_carer_for_benefits reads one: care_hours at the minimum with the carer "
+    "link true, or Carer's Allowance reported; claims in rounded counts and "
+    "support bands, withheld where one or two households carry them, and each "
+    "side's share the other holds; it changes no value"
+)
+
+
+def carer_link_admin_check(
+    person: pd.DataFrame, *, link: np.ndarray, min_hours: float
+) -> dict[str, object] | None:
+    """The carer link against DWP's record of the UC carer element (:data:`CARER_LINK_ADMIN_CHECK`).
+
+    None where the frame carries no ``frs_uc_carer_element`` (a frame built
+    before the carrier, or the SPI channel's copies, which hold no admin
+    record). A UC award gives no carer element to a carer who has the limited
+    capability for work and work-related activity element, so some claims
+    the stage holds carers for show none in DWP's record by law.
+    """
+
+    if FRS_UC_CARER_ELEMENT_COLUMN not in person:
+        return None
+    status = person[FRS_UC_CARER_ELEMENT_COLUMN].astype(str).to_numpy()
+    benunits = person["person_benunit_id"].to_numpy(dtype=np.int64)
+    households = person["person_household_id"].to_numpy(dtype=np.int64)
+    adult = (
+        person["is_claimant_or_partner"].to_numpy(dtype=bool)
+        if "is_claimant_or_partner" in person
+        else np.ones(len(person), dtype=bool)
+    )
+    hours = _amount(person, "care_hours").to_numpy(dtype=float)
+    reported = _amount(person, "carers_allowance_reported").to_numpy(dtype=float) > 0
+    carer = adult & (
+        ((hours >= float(min_hours)) & np.asarray(link, dtype=bool)) | reported
+    )
+    linked_claim = status != FRS_UC_LCW_NOT_LINKED
+    claim_units = benunits[linked_claim]
+    admin_carer = dict(
+        zip(
+            claim_units.tolist(),
+            (status[linked_claim] == "CARER").tolist(),
+            strict=True,
+        )
+    )
+    claim_household = dict(
+        zip(claim_units.tolist(), households[linked_claim].tolist(), strict=True)
+    )
+    stage_carer_units = set(benunits[carer].tolist())
+    units = np.asarray(sorted(admin_carer), dtype=np.int64)
+    admin = np.asarray([admin_carer[int(unit)] for unit in units], dtype=bool)
+    stage = np.asarray([int(unit) in stage_carer_units for unit in units], dtype=bool)
+    unit_households = np.asarray(
+        [claim_household[int(unit)] for unit in units], dtype=np.int64
+    )
+
+    def households_of(selected: np.ndarray) -> int:
+        return len(set(unit_households[selected].tolist()))
+
+    def counted(selected: np.ndarray) -> int | str:
+        held = households_of(selected)
+        if 0 < held < UK_DISCLOSURE_FLOOR:
+            return UK_WITHHELD
+        return rounded_count(int(selected.sum()))
+
+    def cell(selected: np.ndarray) -> dict[str, object]:
+        return {
+            "claims": counted(selected),
+            "support": support_band(households_of(selected)),
+        }
+
+    def share(numerator: np.ndarray, base: np.ndarray) -> object:
+        # A share of claims, given only where neither of its sides rests on
+        # one or two households, and to three places, so it never gives an
+        # exact count back.
+        if not base.any():
+            return None
+        sides = (numerator, base & ~numerator)
+        if any(0 < households_of(side) < UK_DISCLOSURE_FLOOR for side in sides):
+            return UK_WITHHELD
+        return small_cell_share(
+            round(float(numerator.sum()) / float(base.sum()), 3),
+            households_of(base),
+        )
+
+    return {
+        "carrier": FRS_UC_CARER_ELEMENT_COLUMN,
+        "rule": CARER_LINK_ADMIN_CHECK,
+        "linked_claims": cell(np.ones(len(units), dtype=bool)),
+        "classes": {
+            "both": cell(admin & stage),
+            "dwp_only": cell(admin & ~stage),
+            "stage_only": cell(~admin & stage),
+            "neither": cell(~admin & ~stage),
+        },
+        "dwp_carer_claims_the_stage_holds": share(admin & stage, admin),
+        "stage_carer_claims_dwp_holds": share(admin & stage, stage),
+    }
 
 
 def _amount(person: pd.DataFrame, column: str) -> pd.Series:

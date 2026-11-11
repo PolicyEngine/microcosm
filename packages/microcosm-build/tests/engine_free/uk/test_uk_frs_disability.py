@@ -313,3 +313,104 @@ def test_the_carer_link_takes_a_share_from_other_households() -> None:
         "support": "<3",
         "true": "<3",
     }
+
+
+def test_the_carer_link_is_checked_against_dwps_uc_carer_element() -> None:
+    """A3 (f): DWP's record of the UC carer element checks the link, and
+    changes no value. A claim counts once, by its UC row's carrier, against
+    whether any claimant or partner is a carer for Universal Credit."""
+
+    from microcosm.build.uk_runtime.frs_disability import carer_link_admin_check
+    from microcosm.build.uk_runtime.frs_spine import FRS_UC_CARER_ELEMENT_COLUMN
+    from microcosm.build.uk_runtime.receipt_counts import (
+        UK_WITHHELD,
+        rounded_count,
+        support_band,
+    )
+
+    classes = {
+        # DWP's carer element, care hours, the link, Carer's Allowance reported.
+        "both": ("CARER", 35.0, True, 0.0),
+        "dwp_only": ("CARER", 35.0, False, 0.0),
+        "stage_only": ("NONE", 0.0, False, 81.9 * WEEKS_IN_YEAR),
+        "neither": ("NONE", 20.0, True, 0.0),
+    }
+    rows = []
+    household = 0
+    for status, hours, linked, reported in classes.values():
+        for _ in range(3):
+            household += 1
+            rows.append(
+                {
+                    "person_id": household * 1000 + 1,
+                    "person_household_id": household,
+                    "person_benunit_id": household * 10 + 1,
+                    "is_claimant_or_partner": True,
+                    "care_hours": hours,
+                    "carers_allowance_reported": reported,
+                    FRS_UC_CARER_ELEMENT_COLUMN: status,
+                    "link": linked,
+                }
+            )
+            # A partner off the UC row carries NOT_LINKED and is no carer.
+            rows.append(
+                {
+                    "person_id": household * 1000 + 2,
+                    "person_household_id": household,
+                    "person_benunit_id": household * 10 + 1,
+                    "is_claimant_or_partner": True,
+                    "care_hours": 0.0,
+                    "carers_allowance_reported": 0.0,
+                    FRS_UC_CARER_ELEMENT_COLUMN: "NOT_LINKED",
+                    "link": False,
+                }
+            )
+    # A claim with no linked record is left out, whatever its carer.
+    rows.append(
+        {
+            "person_id": 99001,
+            "person_household_id": 99,
+            "person_benunit_id": 991,
+            "is_claimant_or_partner": True,
+            "care_hours": 35.0,
+            "carers_allowance_reported": 0.0,
+            FRS_UC_CARER_ELEMENT_COLUMN: "NOT_LINKED",
+            "link": True,
+        }
+    )
+    frame = pd.DataFrame(rows)
+    person = frame.drop(columns="link")
+    link = frame["link"].to_numpy(dtype=bool)
+
+    check = carer_link_admin_check(person, link=link, min_hours=35.0)
+
+    assert check["linked_claims"] == {
+        "claims": rounded_count(12),
+        "support": support_band(12),
+    }
+    for name in classes:
+        assert check["classes"][name] == {
+            "claims": rounded_count(3),
+            "support": support_band(3),
+        }
+    assert check["dwp_carer_claims_the_stage_holds"] == 0.5
+    assert check["stage_carer_claims_dwp_holds"] == 0.5
+    # The check reads the link and changes nothing in the frame.
+    pd.testing.assert_frame_equal(person, frame.drop(columns="link"))
+
+    # A class on one or two households is withheld, with the shares it sits in.
+    thin = person.loc[
+        ~person["person_household_id"].isin([4, 5])
+    ]  # dwp_only keeps one household
+    thin_link = link[thin.index.to_numpy()]
+    thin_check = carer_link_admin_check(thin, link=thin_link, min_hours=35.0)
+    assert thin_check["classes"]["dwp_only"]["claims"] == UK_WITHHELD
+    assert thin_check["dwp_carer_claims_the_stage_holds"] == UK_WITHHELD
+
+    # A frame without the carrier, such as the SPI channel's copies, has none.
+    assert (
+        carer_link_admin_check(
+            person.drop(columns=FRS_UC_CARER_ELEMENT_COLUMN), link=link, min_hours=35.0
+        )
+        is None
+    )

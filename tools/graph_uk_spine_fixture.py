@@ -260,6 +260,9 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # DWP's admin-linked UC limited capability status, the carrier the
         # uc_limited_capability stage reads (microcosm#1095, Y1).
         "frs_uc_lcw_status",
+        # DWP's admin-linked UC carer element, the carrier frs_disability
+        # checks the carer link against (microcosm#1095, A3 (f)).
+        "frs_uc_carer_element",
     ),
     "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
@@ -634,6 +637,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "BENAMT": amount,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             }
             for benefit, variant, amount in (
@@ -660,6 +664,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "BENAMT": 81.9,
                     "UCSTART": "",
                     "UCLCW": "",
+                    "UCCAREEL": "",
                     "UCHOUSEL": "",
                 }
             )
@@ -678,6 +683,8 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "UCSTART": ("07/01/2024", "01/15/2022", "")[household_id % 9 // 3],
                     # DWP's limited capability status, blank where the claim is unlinked (Y1).
                     "UCLCW": (2, 0, "")[household_id % 9 // 3],
+                    # DWP's carer element, blank where the claim is unlinked (A3 (f)).
+                    "UCCAREEL": (1, 0, "")[household_id % 9 // 3],
                     "UCHOUSEL": 50.0 if household_id % 2 else "",
                 }
             )

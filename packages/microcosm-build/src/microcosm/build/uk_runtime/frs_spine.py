@@ -36,6 +36,7 @@ from microcosm.frame import Frame, WeightKind
 __all__ = [
     "FRS_CARE_RECIPIENTS_COLUMN",
     "FRS_SPINE_TABLES",
+    "FRS_UC_CARER_ELEMENT_COLUMN",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
     "TIME_PERIOD",
@@ -344,6 +345,20 @@ FRS_CARE_OUTSIDE_BIT = 15
 FRS_UC_LCW_STATUS_COLUMN = "frs_uc_lcw_status"
 FRS_UC_LCW_STATUS_CODES = {0: "NONE", 1: "LCW", 2: "LCWRA"}
 FRS_UC_LCW_NOT_LINKED = "NOT_LINKED"
+#: DWP's carer element on a benefit unit's linked Universal Credit claim:
+#: BENEFITS.UCCAREEL on the UC row, "Weekly Carer Element Amount (Admin UC)"
+#: in SN 9563's UKDA data dictionary, which gives it no value labels. The
+#: 2024-25 end user licence file codes it 0 or 1 on every linked claim, read
+#: here as whether the claim's award holds a carer element (NONE or CARER)
+#: on a claim with a linked record, UCSTART present; any other claim is
+#: NOT_LINKED, whatever the column holds.
+#: Like the limited capability status it is the claim's, on the UC row's
+#: person, every other person carrying NOT_LINKED. frs_disability reads it
+#: only to check the carer link against DWP's record (A3 (f) of the November
+#: event-data plan's PR3, microcosm#1095, María's choices of 2026-11-10); it
+#: is no engine input and leaves at the release boundary.
+FRS_UC_CARER_ELEMENT_COLUMN = "frs_uc_carer_element"
+FRS_UC_CARER_ELEMENT_CODES = {0: "NONE", 1: "CARER"}
 
 # FRS adult RENTPROF (question RentProf): whether the rent from other property
 # in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
@@ -407,6 +422,7 @@ OUTPUT_COLUMNS = (
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
     FRS_UC_LCW_STATUS_COLUMN,
+    FRS_UC_CARER_ELEMENT_COLUMN,
     "uc_is_in_gainful_self_employment",
     "rent_paid_as_boarder",
     "rent_paid_as_lodger",
@@ -884,6 +900,9 @@ def _assemble_frame(
         benefits=frs["benefits"],
     )
     pe_person[FRS_UC_LCW_STATUS_COLUMN] = frs_uc_lcw_status(frs["benefits"], pe_person)
+    pe_person[FRS_UC_CARER_ELEMENT_COLUMN] = frs_uc_carer_element(
+        frs["benefits"], pe_person
+    )
     pe_person["uc_is_in_gainful_self_employment"] = uc_gainful_self_employment(
         _number(person, "empstati").isin(FRS_SELF_EMPLOYED_EMPSTATI).to_numpy(),
         pe_person["self_employment_income"],
@@ -2437,26 +2456,81 @@ def frs_uc_lcw_status(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.nda
     refused rather than guessed (microcosm#1095, Y1).
     """
 
-    if "uclcw" not in benefits.columns:
-        raise KeyError(
-            "The UC limited capability carrier needs the FRS column benefits.uclcw."
-        )
+    return _frs_uc_admin_claim_status(
+        benefits,
+        pe_person,
+        column="uclcw",
+        codes=FRS_UC_LCW_STATUS_CODES,
+        carrier="UC limited capability",
+        known="the data dictionary's",
+    )
+
+
+def frs_uc_carer_element(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.ndarray:
+    """Each person's carrier of DWP's carer element on a linked UC claim.
+
+    BENEFITS.UCCAREEL (``FRS_UC_CARER_ELEMENT_COLUMN``) comes from DWP's
+    administrative record of the claim, on the claim's single UC row, coded 0
+    or 1, and is read only where the claim has a linked record (UCSTART,
+    kept as ``ucstart_raw``, present). The UC row's person carries NONE or
+    CARER, or NOT_LINKED for a claim without one, and every other person
+    NOT_LINKED. A second UC row on one benefit unit, another code on a linked
+    claim, or a UC row whose person isn't on the spine is refused rather than
+    guessed (microcosm#1095, A3 (f)).
+    """
+
+    return _frs_uc_admin_claim_status(
+        benefits,
+        pe_person,
+        column="uccareel",
+        codes=FRS_UC_CARER_ELEMENT_CODES,
+        carrier="UC carer element",
+        known="the 0 and 1 the carrier reads",
+        linked_by_start=True,
+    )
+
+
+def _frs_uc_admin_claim_status(
+    benefits: pd.DataFrame,
+    pe_person: pd.DataFrame,
+    *,
+    column: str,
+    codes: Mapping[int, str],
+    carrier: str,
+    known: str,
+    linked_by_start: bool = False,
+) -> np.ndarray:
+    """One admin UC column of the claim's single UC row, as a person carrier.
+
+    With ``linked_by_start`` the column is read only on a claim whose UCSTART
+    (``ucstart_raw``) is present, the linked claims, and every other claim is
+    NOT_LINKED.
+    """
+
+    if column not in benefits.columns:
+        raise KeyError(f"The {carrier} carrier needs the FRS column benefits.{column}.")
+    if linked_by_start and "ucstart_raw" not in benefits.columns:
+        raise KeyError(f"The {carrier} carrier needs the FRS column benefits.ucstart.")
     uc_rows = benefits.loc[
         _number(benefits, "benefit").isin(BENEFIT_CODES["universal_credit"])
     ]
     if uc_rows["benunit_id"].duplicated().any():
         raise ValueError(
-            "A benefit unit has two FRS UC rows; UCLCW is read as one claim's status."
+            f"A benefit unit has two FRS UC rows; {column.upper()} is read as "
+            "one claim's status."
         )
-    codes = _raw_number(uc_rows, "uclcw")
-    unknown = codes.notna() & ~codes.isin(list(FRS_UC_LCW_STATUS_CODES))
+    values = _raw_number(uc_rows, column)
+    if linked_by_start:
+        start = pd.Series(uc_rows["ucstart_raw"], dtype="string").str.strip()
+        values = values.where((start.notna() & (start != "")).to_numpy())
+    unknown = values.notna() & ~values.isin(list(codes))
     if unknown.any():
         raise ValueError(
-            f"FRS UCLCW codes outside the data dictionary's: "
-            f"{sorted(codes[unknown].unique().tolist())}."
+            f"FRS {column.upper()} codes outside {known}: "
+            f"{sorted(values[unknown].unique().tolist())}."
         )
     status = pd.Series(
-        codes.map(FRS_UC_LCW_STATUS_CODES).fillna(FRS_UC_LCW_NOT_LINKED).to_numpy(),
+        values.map(codes).fillna(FRS_UC_LCW_NOT_LINKED).to_numpy(),
         index=uc_rows["person_id"].to_numpy(),
     )
     person_ids = pe_person["person_id"].to_numpy()

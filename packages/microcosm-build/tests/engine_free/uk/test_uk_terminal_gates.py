@@ -508,6 +508,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         FRS_COMPANY_CAR_CARRIER_COLUMNS,
         FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
         FRS_LANDLORD_CARRIER_COLUMN,
+        FRS_UC_CARER_ELEMENT_COLUMN,
         FRS_UC_LCW_STATUS_COLUMN,
     )
     from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
@@ -533,6 +534,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN}"}
         | {f"person.{FRS_CARE_RECIPIENTS_COLUMN}"}
         | {f"person.{FRS_UC_LCW_STATUS_COLUMN}"}
+        | {f"person.{FRS_UC_CARER_ELEMENT_COLUMN}"}
         | {f"person.{column}" for column in FRS_COMPANY_CAR_CARRIER_COLUMNS}
         | {f"household.{RANK_BASIS_COLUMN}"}
         | {"household.cash_isa", "household.stocks_and_shares_isa"}

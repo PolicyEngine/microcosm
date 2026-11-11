@@ -266,6 +266,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "frs_care_recipients",
             "care_hours",
             "carers_allowance_reported",
+            # Its check against DWP's record of the UC carer element (A3 (f)).
+            "frs_uc_carer_element",
+            "is_claimant_or_partner",
         )
     ),
     "frs_education": frozenset(
@@ -780,7 +783,12 @@ class _Cell:
         return Owned(self.entity, self.column, self.dtype, rewrite=rewrite)
 
 
-_ROOT_PERSON_STRING = {"gender", "marital_status", "frs_uc_lcw_status"}
+_ROOT_PERSON_STRING = {
+    "gender",
+    "marital_status",
+    "frs_uc_lcw_status",
+    "frs_uc_carer_element",
+}
 _ROOT_PERSON_BOOL = {
     "is_household_head",
     "esa_includes_support_component",

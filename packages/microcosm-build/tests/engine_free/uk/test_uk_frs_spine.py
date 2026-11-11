@@ -39,6 +39,7 @@ from microcosm.build.uk_runtime.frs_council_tax import (
     frs_council_tax_operations,
     frs_council_tax_resource_artifact,
 )
+from microcosm.build.uk_runtime.frs_disability import CARER_LINK_PARAMETERS
 from microcosm.build.uk_runtime.frs_relationships import (
     FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
     frs_relationships_operation_parameters,
@@ -57,6 +58,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_COMPANY_CAR_PRICE_BAND_OPEN,
     FRS_COMPANY_CAR_PRICE_BANDS,
     FRS_SPINE_TABLES,
+    FRS_UC_CARER_ELEMENT_COLUMN,
     FRS_UC_LCW_STATUS_COLUMN,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
@@ -73,6 +75,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     frs_care_recipients,
     frs_claimant_or_partner,
     frs_council_tax_band,
+    frs_uc_carer_element,
     frs_uc_lcw_status,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
@@ -546,6 +549,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": 2.0,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -557,6 +561,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": 3.0,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -570,6 +575,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": 4.0,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -583,6 +589,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": 5.0,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -596,6 +603,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": _BSP_STANDARD_WEEKLY,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -607,6 +615,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": 7.0,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
         ],
@@ -781,6 +790,13 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "parameters": "disability flags from the fiscal-converted gov.dwp tree at the survey year",
                             "year_rule": "survey_year",
                         },
+                        # The carer link (A3 of the November event-data plan's
+                        # PR3, microcosm#1095).
+                        {
+                            "kind": "derive",
+                            "parameters": CARER_LINK_PARAMETERS,
+                            "year_rule": "survey_year",
+                        },
                     ],
                     outputs=(
                         "aa_category",
@@ -790,6 +806,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "pip_dl_category",
                         "is_disabled_for_benefits",
                         "is_enhanced_disabled_for_benefits",
+                        "cares_for_severely_disabled_person",
                     ),
                 ),
                 source_stage(
@@ -2455,6 +2472,7 @@ def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
             "BENAMT": 8.0,
             "UCSTART": "",
             "UCLCW": "",
+            "UCCAREEL": "",
             "UCHOUSEL": "",
         }
     )
@@ -2930,6 +2948,10 @@ def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
             instant=f"{period}-01-01",
             source="test stub",
         ),
+    )
+    # The carer link's hours line (A3), gov.dwp.carers_allowance.min_hours.
+    monkeypatch.setattr(
+        frs_disability, "uk_dwp_carers_allowance_min_hours", lambda period: 35.0
     )
     monkeypatch.setattr(
         frs_legacy_proxies,
@@ -4829,7 +4851,9 @@ class TestAccessFundAnnual:
             access_fund_annual(frame)
 
 
-def _uc_row(sernum: int, ucstart: str, uclcw: object = "") -> dict[str, object]:
+def _uc_row(
+    sernum: int, ucstart: str, uclcw: object = "", uccareel: object = ""
+) -> dict[str, object]:
     return {
         "SERNUM": sernum,
         "BENUNIT": 1,
@@ -4839,6 +4863,7 @@ def _uc_row(sernum: int, ucstart: str, uclcw: object = "") -> dict[str, object]:
         "BENAMT": 1.0,
         "UCSTART": ucstart,
         "UCLCW": uclcw,
+        "UCCAREEL": uccareel,
     }
 
 
@@ -5044,6 +5069,86 @@ class TestUCLimitedCapabilityCarrier:
         assert {value for key, value in status.items() if key not in (1001,)} == {
             "NOT_LINKED"
         }
+
+
+class TestUCCarerElementCarrier:
+    """DWP's admin-linked UC carer element on a linked claim (microcosm#1095, A3 (f))."""
+
+    @staticmethod
+    def _benefits(rows) -> pd.DataFrame:
+        return pd.DataFrame(
+            rows,
+            columns=["benunit_id", "person_id", "benefit", "uccareel", "ucstart_raw"],
+        )
+
+    def test_the_uc_rows_person_carries_the_claims_carer_element(self) -> None:
+        benefits = self._benefits(
+            [
+                (101, 1001, 95, 1.0, "07/15/2024"),  # a carer element, claimant
+                (201, 2002, 95, 0.0, "01/15/2022"),  # none, on the partner's row
+                (301, 3001, 95, np.nan, ""),  # no linked record
+                (401, 4001, 96, np.nan, ""),  # PIP daily living, not UC
+                (501, 5001, 95, 1.0, ""),  # a value on a claim with no start
+            ]
+        )
+        person = pd.DataFrame({"person_id": [1001, 1002, 2001, 2002, 3001, 4001, 5001]})
+
+        assert frs_uc_carer_element(benefits, person).tolist() == [
+            "CARER",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NONE",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NOT_LINKED",
+        ]
+
+    def test_the_carrier_refuses_what_it_cannot_read(self) -> None:
+        person = pd.DataFrame({"person_id": [1001, 1002]})
+        with pytest.raises(KeyError, match="uccareel"):
+            frs_uc_carer_element(
+                pd.DataFrame(
+                    {"benunit_id": [101], "person_id": [1001], "benefit": [95]}
+                ),
+                person,
+            )
+        with pytest.raises(KeyError, match="benefits.ucstart"):
+            frs_uc_carer_element(
+                pd.DataFrame(
+                    {
+                        "benunit_id": [101],
+                        "person_id": [1001],
+                        "benefit": [95],
+                        "uccareel": [1.0],
+                    }
+                ),
+                person,
+            )
+        linked = "07/15/2024"
+        with pytest.raises(ValueError, match="two FRS UC rows; UCCAREEL"):
+            frs_uc_carer_element(
+                self._benefits(
+                    [(101, 1001, 95, 1.0, linked), (101, 1002, 95, 1.0, linked)]
+                ),
+                person,
+            )
+        with pytest.raises(ValueError, match="outside the 0 and 1"):
+            frs_uc_carer_element(self._benefits([(101, 1001, 95, 2.0, linked)]), person)
+        with pytest.raises(ValueError, match="does not hold"):
+            frs_uc_carer_element(self._benefits([(101, 9999, 95, 1.0, linked)]), person)
+
+    def test_the_spine_stores_the_carrier_from_the_raw_tab(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 2, 1))
+        tables["benefits"].append(_uc_row(2, "", "", ""))
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        status = person.set_index("person_id")[FRS_UC_CARER_ELEMENT_COLUMN].to_dict()
+        assert status[1001] == "CARER"
+        assert {value for key, value in status.items() if key != 1001} == {"NOT_LINKED"}
 
 
 class TestUCGainfulSelfEmployment:
