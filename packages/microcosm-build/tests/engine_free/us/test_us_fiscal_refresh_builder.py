@@ -6615,7 +6615,7 @@ def _run_green_register_release(
     read_population_structure = builder.population_structure_holdout_from_h5
 
     def population_structure_from_h5(dataset_path, **kwargs):
-        # Records whether the scorer's batch frames were already freed.
+        # Records whether the scorer had already freed its batch frames.
         captured["population_structure_read"] = (
             Path(dataset_path),
             captured.get("scorer_closed", False),

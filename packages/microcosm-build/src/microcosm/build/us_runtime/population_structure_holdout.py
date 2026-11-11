@@ -3,11 +3,11 @@
 The US target surface pins people by state, age and sex, tax returns, and
 Social Security dollars by payment type, but no household-type, marital-status
 or beneficiary-count series. A release can therefore meet every target while
-its older population is mostly married couples and its Social Security dollars
-sit on too few, or synthetic, beneficiaries (microcosm#880, #1212, #1213,
-#1214). This module reports those margins beside
-the other post-export diagnostics. It reads the written H5 directly; nothing
-here is simulated, fitted, or enforced.
+married couples make up most of its older population and its Social Security
+dollars sit on too few, or synthetic, beneficiaries (microcosm#880, #1212,
+#1213, #1214). This module reports those margins beside the other post-export
+diagnostics. It reads the written H5 directly and simulates, fits and enforces
+nothing.
 
 Four comparisons, each against fixed published observations:
 
@@ -22,13 +22,14 @@ Four comparisons, each against fixed published observations:
 A fifth, structural field counts people with more than one positive Social
 Security component. The CPS-carried split assigns each reporter's whole
 benefit to one component, so a positive count points to imputed records
-(microcosm#1214). It is not an exact entitlement check: SSA counts a dually
+(microcosm#1214). It doesn't check entitlement exactly: SSA counts a dually
 entitled beneficiary once in Table 1 and under each benefit in Table 2.
 """
 
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,8 +46,8 @@ SOCIAL_SECURITY_COMPONENTS = (
 )
 MARITAL_STATUSES = ("married", "widowed", "divorced", "separated", "never_married")
 #: CPS ASEC A_MARITL -> the ACS B12002 status rows. Code 3 (spouse absent,
-#: not separated) is "married, spouse absent: other" in B12002, so it counts
-#: as married in both sources.
+#: not separated) matches B12002's "married, spouse absent: other" row, so it
+#: counts as married in both sources.
 A_MARITL_STATUS = MappingProxyType(
     {
         1: "married",
@@ -158,8 +159,9 @@ class SocialSecurityPeople:
 
 
 #: SSA Monthly Statistical Snapshot, December 2024, Table 1 (thousands).
-#: Dual entitlement is counted once. "Under 65" adds the "disabled, under age
-#: 65" and "other" rows; SSI-only recipients are excluded throughout.
+#: The table counts dual entitlement once. "Under 65" adds the "disabled,
+#: under age 65" and "other" rows, and every count leaves out SSI-only
+#: recipients.
 SSA_SNAPSHOT_2024_12_TABLE_1 = MappingProxyType(
     {
         "all": SocialSecurityPeople(65_522, 2_533),
@@ -205,14 +207,29 @@ def _benchmark_people(component: str) -> int:
 def _share(numerator: float, denominator: float) -> float | None:
     """A weighted share, clipped to [0, 1] against float summation residue.
 
-    A group without weight has no share. Validated weights keep every total
-    finite, so a non-finite total raises.
+    A group without weight has no share, and a non-finite total raises.
     """
     if not (np.isfinite(numerator) and np.isfinite(denominator)):
         raise ValueError("Population structure shares need finite totals.")
     if denominator <= 0:
         return None
     return min(1.0, max(0.0, numerator / denominator))
+
+
+def _require_finite(value: Any) -> None:
+    """Refuse any non-finite number, which strict JSON cannot hold.
+
+    Near the float64 limit a subset of weights can sum to infinity while the
+    full total stays finite, so the payload checks every number it reports.
+    """
+    if isinstance(value, Mapping):
+        for item in value.values():
+            _require_finite(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _require_finite(item)
+    elif isinstance(value, (float, np.floating)) and not math.isfinite(value):
+        raise ValueError("Population structure reports only finite numbers.")
 
 
 def _difference_pp(model: float | None, benchmark: float) -> float | None:
@@ -224,7 +241,7 @@ def _relative(model: float, benchmark: float) -> float:
 
 
 def _flag(values: np.ndarray | None, shape: tuple[int, ...]) -> np.ndarray:
-    """A boolean person flag; missing values (NaN, None, NA) are False."""
+    """A boolean person flag that reads missing values (NaN, None, NA) as False."""
     if values is None:
         return np.zeros(shape, dtype=bool)
     import pandas as pd
@@ -239,11 +256,11 @@ def _marital_status(
     is_separated: np.ndarray | None,
     spouse_present: np.ndarray,
 ) -> tuple[np.ndarray, str]:
-    """Status labels per person and the measure used to derive them.
+    """Status labels per person and the measure that derives them.
 
     With ``A_MARITL``, any value outside CPS codes 1-7 (missing, 0, a donor
-    record without a CPS code) is labelled ``unknown`` and reported, so one
-    bad value never blanks the report.
+    record without a CPS code) gets the label ``unknown``, and the report
+    counts it, so one bad value never blanks the report.
     """
     if marital_code is not None:
         codes = np.asarray(marital_code, dtype=np.float64)
@@ -253,9 +270,9 @@ def _marital_status(
         return labels, "A_MARITL (CPS ASEC marital status)"
     # Releases without the raw code: married = a resident spouse in the
     # person's marital unit; widowed and separated from the engine inputs the
-    # relationship stage derives from A_MARITL (codes 4 and 6). Divorced,
-    # never married and spouse-absent people cannot be told apart, so they
-    # are reported together.
+    # relationship stage derives from A_MARITL (codes 4 and 6). These inputs
+    # cannot tell divorced, never-married and spouse-absent people apart, so
+    # the report counts them together.
     shape = spouse_present.shape
     labels = np.full(shape, "other_unmarried_or_spouse_absent", dtype=object)
     labels[_flag(is_separated, shape)] = "separated"
@@ -320,8 +337,8 @@ def population_structure_holdout_payload(
         raise ValueError(
             "Population structure needs finite values and nonnegative weights."
         )
-    # Every reported total sums a subset of these nonnegative weights, so a
-    # finite total keeps the whole payload finite and JSON-serializable.
+    # The usual overflow comes from weights whose total exceeds float64; the
+    # payload checks every reported number again before it returns.
     with np.errstate(over="ignore"):
         weight_total = weights.sum()
     if not np.isfinite(weight_total):
@@ -525,11 +542,12 @@ def population_structure_holdout_payload(
             "income only of people 15 and over, so child beneficiaries under 15 "
             "(within SSA's 3.8M children) enter the model only through "
             "imputation. ACS counts the 2024 resident population; the model's "
-            "household universe follows the CPS ASEC. These are held-out "
-            "diagnostics, not exact population or period matches, calibration "
-            "targets, or release gates."
+            "household universe follows the CPS ASEC. The release neither "
+            "calibrates to these diagnostics nor gates on them, and they match "
+            "neither the population nor the period exactly."
         ),
     }
+    _require_finite(payload)
     if release_id is not None:
         payload["release_id"] = release_id
     return payload
@@ -606,7 +624,7 @@ def population_structure_holdout_from_h5(
 def population_structure_holdout_unavailable(
     error: Exception, *, period: int, release_id: str | None = None
 ) -> dict[str, Any]:
-    """An observational receipt when the H5 cannot be read or measured."""
+    """An observational receipt for when the step cannot read or measure the H5."""
     payload: dict[str, Any] = {
         "schema_version": 1,
         "status": "unavailable",

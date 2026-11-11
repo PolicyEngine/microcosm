@@ -228,7 +228,7 @@ def test_misaligned_or_invalid_arrays_refuse():
     del fixture["components"]["social_security_dependents"]
     with pytest.raises(ValueError, match="component"):
         population_structure_holdout_payload(**fixture, period=2024)
-    # Each weight is finite, but their total overflows float64.
+    # Each weight stays finite, but their total overflows float64.
     fixture = _fixture()
     fixture["weights"] = np.full(6, 1e308)
     with pytest.raises(ValueError, match="finite weight total"):
@@ -262,6 +262,58 @@ def test_a_share_refuses_a_non_finite_total():
     for numerator, denominator in [(np.nan, 1.0), (1.0, np.inf), (np.inf, np.inf)]:
         with pytest.raises(ValueError, match="finite totals"):
             holdout_module._share(numerator, denominator)
+
+
+def test_require_finite_walks_the_whole_payload():
+    holdout_module._require_finite({"a": [1, 2.5, {"b": (0.0, "x", None, True)}]})
+    for bad in (
+        {"a": float("inf")},
+        {"a": [1.0, {"b": float("nan")}]},
+        [np.float64("-inf")],
+    ):
+        with pytest.raises(ValueError, match="only finite numbers"):
+            holdout_module._require_finite(bad)
+
+
+@pytest.mark.filterwarnings("ignore:overflow encountered in reduce:RuntimeWarning")
+@pytest.mark.parametrize(
+    ("case", "refusal"),
+    [
+        ("share_total", "shares need finite totals"),
+        ("component_count", "reports only finite numbers"),
+    ],
+)
+def test_no_payload_carries_a_non_finite_number_near_the_float_limit(case, refusal):
+    # Pairwise summation keeps these weights' total finite, but summing a
+    # subset of them in another order reaches infinity.
+    t = 0.9 * 2.0**968
+    weights = np.array([t, t, t, t, t, t, 0.0, np.finfo(np.float64).max])
+    n = len(weights)
+    assert np.isfinite(weights.sum())
+    if case == "share_total":
+        # The 65+ subset overflows inside a share's total.
+        age = np.where(weights > 0, 70, 30)
+        components = _components(n)
+    else:
+        # The retirement beneficiaries' weighted count overflows, though no
+        # share divides by it.
+        age = np.full(n, 40)
+        components = _components(
+            n,
+            social_security_retirement=np.where(weights > 0, 1.0, 0.0),
+            social_security_survivors=np.where(weights > 0, 0.0, 1.0),
+        )
+    with pytest.raises(ValueError, match=refusal):
+        population_structure_holdout_payload(
+            age=age,
+            is_female=np.zeros(n, dtype=bool),
+            household_id=np.arange(n),
+            marital_unit_id=np.arange(n),
+            marital_code=np.ones(n),
+            components=components,
+            weights=weights,
+            period=2024,
+        )
 
 
 def test_no_weighted_older_people_reports_null_shares():

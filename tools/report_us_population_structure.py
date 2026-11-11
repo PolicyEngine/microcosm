@@ -2,9 +2,9 @@
 """Write the held-out population-structure report for any US release H5.
 
 The fiscal-refresh release writes ``us_population_structure_holdout.json``
-for new builds. This tool runs the same function on an already published or
-local H5, so a release built before the check existed can be audited without
-a rebuild. It reads the H5's person and household tables only; no engine.
+for new builds. This tool runs the same function on a published or local H5,
+so anyone can audit a release that predates the check without rebuilding it.
+It reads only the H5's person and household tables and needs no engine.
 
     uv run python tools/report_us_population_structure.py \\
         populace_us_2024.h5 --release-id populace-us-2024-spm-20260909 \\

@@ -10745,7 +10745,7 @@ def _write_medicare_irmaa_holdout(
 def _write_population_structure_holdout(
     *, release_dir: Path, dataset_path: Path, release_id: str
 ) -> None:
-    """Report held-out population structure; misses never refuse a release.
+    """Report held-out population structure without refusing the release.
 
     It reads marital status and living arrangement of people 65+, and Social
     Security beneficiary counts, from the written H5 without an engine. The
@@ -16711,8 +16711,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
     scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
     post_export_scorer = None
-    # Reads the written H5 without an engine; after the scorer's batch frames
-    # are freed, so it adds no memory on top of them.
+    # Reads the written H5 without an engine, after the scorer frees its
+    # batch frames, so it adds no memory on top of them.
     if telemetry is not None:
         telemetry.stage(
             "population_structure_holdout",
