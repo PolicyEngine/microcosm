@@ -907,12 +907,18 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
 
 
 def _soi_row_merge_member_fact(
-    merge: fiscal_targets.SoiRowMerge, row_id: str, value: float
+    merge: fiscal_targets.SoiRowMerge, row_id: str, value: float, *, period: int = 2023
 ) -> dict[str, object]:
+    """One row of a reviewed SOI row merge as a Ledger fact. ``period`` other
+    than 2023 gives the same row in another tax year's vintage, under that
+    year's source record id."""
+
     lower, upper = (1_000 * int(bound.rstrip("k")) for bound in row_id.split("_to_"))
+    record_id = f"{merge.record_set_id}.{row_id}.{merge.measure_id}"
+    assert "ty2023" in record_id
     return _soi_eitc_child_fact(
-        2023,
-        source_record_id=f"{merge.record_set_id}.{row_id}.{merge.measure_id}",
+        period,
+        source_record_id=record_id.replace("ty2023", f"ty{period}"),
         measure_id=merge.measure_id,
         value=value,
         income_range=row_id,
@@ -922,14 +928,16 @@ def _soi_row_merge_member_fact(
     )
 
 
-@pytest.mark.parametrize("carried", ["one", "every"])
+@pytest.mark.parametrize("carried", ["one", "every", "every_superseded"])
 def test_exclusion_receipt_lists_merge_rows_the_compile_merges(carried) -> None:
     """The receipt's merge rule follows the compile. A feed that carries
     every row of a reviewed SOI row merge compiles them as one target (or
     stops), so the rule lists them as merged. A feed that carries one row,
     not at its published value, compiles it as it is
     (``_merge_misplaced_soi_rows``), so the rule lists it as passed through
-    and merges nothing."""
+    and merges nothing. A feed that also carries a newer vintage of both
+    rows activates that vintage, so the compile never sees the TY2023 rows
+    and the rule lists neither."""
 
     merge = fiscal_targets.US_SOI_MISPLACED_ROW_MERGES[0]
     rows = list(zip(merge.source_row_ids, merge.published_values, strict=True))
@@ -943,6 +951,11 @@ def test_exclusion_receipt_lists_merge_rows_the_compile_merges(carried) -> None:
             for row_id, published in rows
         ]
         carried_ids = sorted(merge.member_names)
+        if carried == "every_superseded":
+            members += [
+                _soi_row_merge_member_fact(merge, row_id, published, period=2024)
+                for row_id, published in rows
+            ]
 
     rule = us_fiscal_target_exclusion_receipt(
         [*packaged_reference_facts(), *members], target_period=2024
@@ -951,8 +964,11 @@ def test_exclusion_receipt_lists_merge_rows_the_compile_merges(carried) -> None:
     if carried == "one":
         assert rule["source_record_ids"] == []
         assert rule["passed_through_source_record_ids"] == carried_ids
-    else:
+    elif carried == "every":
         assert rule["source_record_ids"] == carried_ids
+        assert rule["passed_through_source_record_ids"] == []
+    else:
+        assert rule["source_record_ids"] == []
         assert rule["passed_through_source_record_ids"] == []
 
 
@@ -960,7 +976,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
     """The release surface on the pinned feed: 33,248 compiled targets after
-    Medicaid substitution, 6,100 national_state targets at registry
+    Medicaid substitution, 6,100 national_state targets at surface version
     6775e22cc90d, 32 CHIP rows none of them for an M-CHIP state, no
     other-income row and no tips return count. microcosm#1577 took it from
     33,250 / 6,102 at 3aa2a0830e7d by merging Table 2.5's misplaced TY2023

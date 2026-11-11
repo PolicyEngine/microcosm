@@ -720,11 +720,14 @@ def test_uprating_conserves_each_group_s_controls_for_any_split_tiling(case):
     )
 
 
-@pytest.mark.parametrize("uprated", [False, True])
-def test_coarsening_reads_only_rows_that_uprating_scales(uprated):
+@pytest.mark.parametrize("flag", ["true", "false", None])
+def test_coarsening_reads_only_rows_that_uprating_scales(flag):
     """A Table 2.5 row that the compile doesn't uprate shapes no group: its
     straddle across the $10,000 edge merges groups only when the row
-    carries ``requires_total_eitc_uprating``."""
+    carries ``requires_total_eitc_uprating`` as ``"true"``. The compile
+    writes that key only on the rows it uprates, so a row without the key
+    is the form a real registry holds; ``"false"`` covers a filter that
+    takes any value for yes."""
 
     season = [
         (-_INF, 10_000.0, 100.0),
@@ -740,11 +743,14 @@ def test_coarsening_reads_only_rows_that_uprating_scales(uprated):
         for index, (lower, upper, value) in enumerate(season)
     ]
     straddler = _split_row(1, "bin_0", 5_000.0, 15_000.0, 50.0)
-    if not uprated:
-        straddler = replace(
-            straddler,
-            metadata={**straddler.metadata, "requires_total_eitc_uprating": "false"},
-        )
+    metadata = {
+        key: value
+        for key, value in straddler.metadata.items()
+        if key != "requires_total_eitc_uprating"
+    }
+    if flag is not None:
+        metadata["requires_total_eitc_uprating"] = flag
+    straddler = replace(straddler, metadata=metadata)
     registry = TargetRegistry([*specs, straddler], country="us")
 
     groups = _coarsened_eitc_agi_totals(registry, _eitc_active_agi_totals(registry))[
@@ -753,7 +759,7 @@ def test_coarsening_reads_only_rows_that_uprating_scales(uprated):
 
     expected = (
         [(-_INF, 20_000.0), (20_000.0, _INF)]
-        if uprated
+        if flag == "true"
         else [(lower, upper) for lower, upper, _ in season]
     )
     assert [(group.lower, group.upper) for group in groups] == expected
