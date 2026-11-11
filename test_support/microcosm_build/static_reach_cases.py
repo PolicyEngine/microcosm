@@ -120,6 +120,8 @@ TARGETS = (
     "delattr_patch",
     "dotted",
     "dunder_top",
+    "except_class",
+    "except_module",
     "factory",
     "fill_call",
     "fill_global",
@@ -130,18 +132,32 @@ TARGETS = (
     "function_global_import",
     "getattr_alias",
     "getattr_bound",
+    "getattr_call_cycle",
     "getattr_constant",
     "getattr_cycle_a",
     "getattr_cycle_b",
+    "getattr_hidden_all",
     "getattr_import_cycle",
     "getattr_import_cycle_from",
     "getattr_importer",
     "getattr_init_cycle",
+    "getattr_maybe_branch",
+    "getattr_maybe_deleted",
+    "getattr_maybe_except",
+    "getattr_maybe_global_del",
+    "getattr_maybe_optional",
+    "getattr_maybe_star_all",
+    "getattr_maybe_star_del",
+    "getattr_maybe_target",
+    "getattr_maybe_typing",
+    "getattr_maybe_walrus",
     "getattr_named",
+    "getattr_outside_del",
     "getattr_path",
     "getattr_renamed",
     "getattr_self",
     "getattr_settled",
+    "getattr_sub_attribute",
     "getattr_submodule",
     "global",
     "global_read_class",
@@ -229,7 +245,9 @@ TARGETS = (
     "update",
     "value",
     "walrus",
+    "walrus_class",
     "walrus_comp",
+    "walrus_module",
     "with_class",
     "with_module",
     "with_store",
@@ -1010,6 +1028,41 @@ SOURCES: dict[str, str] = {
         class Kernel:
             SOURCE = t_del_class
             del SOURCE
+            source = SOURCE
+
+            def run(self):
+                return self.source.X
+        """,
+    # The end of an except clause that names a class body's binding undoes
+    # it too, so a read after it reads the module's binding.
+    "r_except_class": """
+        from microcosm.walkcases import t_except_class, t_except_module
+
+        SOURCE = t_except_module
+
+
+        class Kernel:
+            SOURCE = t_except_class
+            try:
+                raise ValueError
+            except ValueError as SOURCE:
+                pass
+            source = SOURCE
+
+            def run(self):
+                return self.source.X
+        """,
+    # A walrus inside a subscript of an assignment's target can be skipped,
+    # so a read after it reads the module's binding too.
+    "r_walrus_class": """
+        from microcosm.walkcases import t_walrus_class, t_walrus_module
+
+        SOURCE = t_walrus_module
+
+
+        class Kernel:
+            rows = {}
+            rows[(SOURCE := t_walrus_class) if False else 0] = 1
             source = SOURCE
 
             def run(self):
@@ -3465,6 +3518,292 @@ SOURCES["r_getattr_path"] = """
     def run():
         return x
     """
+# A module's __getattr__ answers for a name that the module binds only
+# maybe: in a branch that never runs, in an import for type checkers, in a try
+# whose import fails, before a del (at module level, or in a function that
+# declares the name global), before an except clause that names it, or through
+# a star import that a del or an __all__ can undo. A walrus inside a
+# subscript of an assignment's target can be skipped, and a comprehension's
+# name there binds in the comprehension, not the module. A package's
+# __getattr__ answers for a sub module that nothing has imported, read as an
+# attribute.
+SOURCES["gmb_branch"] = """
+    from microcosm.walkcases import t_getattr_maybe_branch
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_branch.X
+        raise AttributeError(attr)
+
+
+    if False:
+        name = 1
+    """
+SOURCES["gmb_typing"] = """
+    from typing import TYPE_CHECKING
+
+    from microcosm.walkcases import t_getattr_maybe_typing
+
+    if TYPE_CHECKING:
+        from microcosm.walkcases.gmb_typed import name
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_typing.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_typed"] = """
+    name = 1
+    """
+SOURCES["gmb_optional"] = """
+    from microcosm.walkcases import t_getattr_maybe_optional
+
+    try:
+        from microcosm.walkcases.gmb_missing import name
+    except ImportError:
+        pass
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_optional.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_missing"] = """
+    raise ImportError("an optional dependency that isn't installed")
+
+    name = 1
+    """
+SOURCES["gmb_deleted"] = """
+    from microcosm.walkcases import t_getattr_maybe_deleted
+
+    name = 1
+    del name
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_deleted.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_global_del"] = """
+    from microcosm.walkcases import t_getattr_maybe_global_del
+
+    name = 1
+
+
+    def _drop():
+        global name
+        del name
+
+
+    _drop()
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_global_del.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_except"] = """
+    from microcosm.walkcases import t_getattr_maybe_except
+
+    name = 1
+    try:
+        raise ValueError
+    except ValueError as name:
+        pass
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_except.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_star_src"] = """
+    name = 1
+    """
+SOURCES["gmb_star_del"] = """
+    from microcosm.walkcases import t_getattr_maybe_star_del
+    from microcosm.walkcases.gmb_star_src import *
+
+    del name
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_star_del.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_star_all_src"] = """
+    name = 1
+
+
+    def _hide():
+        global __all__
+        __all__ = []
+
+
+    _hide()
+    """
+SOURCES["gmb_star_all"] = """
+    from microcosm.walkcases import t_getattr_maybe_star_all
+    from microcosm.walkcases.gmb_star_all_src import *
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_star_all.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_target"] = """
+    from microcosm.walkcases import t_getattr_maybe_target
+
+    rows = {}
+    rows[[name for name in "a"][0]] = 1
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_target.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_walrus"] = """
+    from microcosm.walkcases import t_getattr_maybe_walrus
+
+    rows = {}
+    rows[(name := 1) if False else 0] = 1
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_walrus.X
+        raise AttributeError(attr)
+    """
+SOURCES.update(
+    {
+        f"r_getattr_maybe_{form}": f"""
+        from microcosm.walkcases.gmb_{form} import name
+
+
+        def run():
+            return name
+        """
+        for form in (
+            "branch",
+            "typing",
+            "optional",
+            "deleted",
+            "global_del",
+            "except",
+            "star_del",
+            "star_all",
+            "target",
+            "walrus",
+        )
+    }
+)
+SOURCES["gsa.__init__"] = """
+    def __getattr__(attr):
+        if attr == "sub":
+            from microcosm.walkcases import t_getattr_sub_attribute
+
+            return t_getattr_sub_attribute.X
+        raise AttributeError(attr)
+    """
+SOURCES["gsa.sub"] = """
+    VALUE = 1
+    """
+SOURCES["r_getattr_sub_attribute"] = """
+    from microcosm.walkcases import gsa
+
+
+    def run():
+        return gsa.sub
+    """
+# Python reads a module part-built when the module calls a function while it
+# runs that imports from it; the walk counts the module's binding only.
+SOURCES["gcc_m"] = """
+    from microcosm.walkcases import gcc_h, t_getattr_call_cycle
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_call_cycle.X
+        raise AttributeError(attr)
+
+
+    early = gcc_h.go()
+    name = 1
+    """
+SOURCES["gcc_h"] = """
+    def go():
+        from microcosm.walkcases.gcc_m import name
+
+        return name
+    """
+SOURCES["r_getattr_call_cycle"] = """
+    from microcosm.walkcases.gcc_m import early
+
+
+    def run():
+        return early
+    """
+# Another module deletes a name the module binds for sure.
+SOURCES["god_m"] = """
+    from microcosm.walkcases import t_getattr_outside_del
+
+    name = 1
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_outside_del.X
+        raise AttributeError(attr)
+    """
+SOURCES["god_drop"] = """
+    from microcosm.walkcases import god_m
+
+    del god_m.name
+    """
+SOURCES["r_getattr_outside_del"] = """
+    from microcosm.walkcases import god_drop  # noqa: F401
+    from microcosm.walkcases.god_m import name
+
+
+    def run():
+        return name
+    """
+# A star import leaves a name out through an __all__ that another module
+# sets, which the walk doesn't see.
+SOURCES["gha_src"] = """
+    name = 1
+    """
+SOURCES["gha_set"] = """
+    from microcosm.walkcases import gha_src
+
+    gha_src.__all__ = []
+    """
+SOURCES["gha_m"] = """
+    from microcosm.walkcases import gha_set  # noqa: F401
+    from microcosm.walkcases import t_getattr_hidden_all
+    from microcosm.walkcases.gha_src import *
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_hidden_all.X
+        raise AttributeError(attr)
+    """
+SOURCES["r_getattr_hidden_all"] = """
+    from microcosm.walkcases.gha_m import name
+
+
+    def run():
+        return name
+    """
 # A keyword-only default runs where Python defines the function.
 SOURCES["r_kw_default"] = """
     from microcosm.walkcases import t_kw_default
@@ -3684,6 +4023,18 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_lazy_assigned", "run"): {"lazy_assigned"},
     ("r_star_lazy", "run"): {"star_lazy"},
     ("r_getattr_bound", "run"): set(),
+    ("r_getattr_maybe_branch", "run"): {"getattr_maybe_branch"},
+    ("r_getattr_maybe_typing", "run"): {"getattr_maybe_typing"},
+    ("r_getattr_maybe_optional", "run"): {"getattr_maybe_optional"},
+    ("r_getattr_maybe_deleted", "run"): {"getattr_maybe_deleted"},
+    ("r_getattr_maybe_global_del", "run"): {"getattr_maybe_global_del"},
+    ("r_getattr_maybe_except", "run"): {"getattr_maybe_except"},
+    ("r_getattr_maybe_star_del", "run"): {"getattr_maybe_star_del"},
+    ("r_getattr_maybe_star_all", "run"): {"getattr_maybe_star_all"},
+    ("r_getattr_maybe_target", "run"): {"getattr_maybe_target"},
+    ("r_getattr_maybe_walrus", "run"): {"getattr_maybe_walrus"},
+    ("r_getattr_sub_attribute", "run"): {"getattr_sub_attribute"},
+    ("r_getattr_submodule", "run"): {"getattr_submodule"},
     ("r_class_global", "Kernel.run"): {
         "class_global",
         "class_global_alias",
@@ -3718,6 +4069,8 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_aug_class", "Kernel.run"): {"aug_class"},
     ("r_aug_value", "run"): {"aug_value"},
     ("r_del_class", "Kernel.run"): {"del_class", "del_module"},
+    ("r_except_class", "Kernel.run"): {"except_class", "except_module"},
+    ("r_walrus_class", "Kernel.run"): {"walrus_class", "walrus_module"},
     ("r_with_class", "Kernel.run"): {"with_class"},
     ("r_ann_class", "Kernel.run"): {"ann_class"},
     # Aliases
@@ -3877,7 +4230,9 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_getattr_import_cycle", "run"): set(),
     ("r_getattr_import_cycle_from", "run"): set(),
     ("r_getattr_init_cycle", "run"): set(),
-    ("r_getattr_submodule", "run"): set(),
+    ("r_getattr_call_cycle", "run"): set(),
+    ("r_getattr_outside_del", "run"): set(),
+    ("r_getattr_hidden_all", "run"): set(),
     ("r_getattr_path", "run"): set(),
 }
 
@@ -3885,8 +4240,9 @@ ROOTS: dict[tuple[str, str], set[str]] = {
 #: every dunder of a class it references, both branches of a condition, both
 #: operands of ``or``, every binding of a module-level name (a class body's
 #: ``global`` one too), what each statement in a class body it reaches
-#: names, even a binding that a ``del`` undoes, and in a cycle of imports,
-#: each module's ``__getattr__``, whichever module Python imports first.
+#: names, even a binding that a ``del`` or an ``except`` clause undoes, and
+#: in a cycle of imports, each module's ``__getattr__``, whichever module
+#: Python imports first.
 OVER: dict[tuple[str, str], set[str]] = {
     ("r_alias_cycle", "run"): {"alias_cycle"},
     ("r_getattr_cycle", "run"): {"getattr_cycle_a"},
@@ -3894,6 +4250,8 @@ OVER: dict[tuple[str, str], set[str]] = {
     ("r_global_setter", "run"): {"global_setter_first"},
     ("r_global_read", "Kernel.run"): {"global_read_first"},
     ("r_del_class", "Kernel.run"): {"del_class"},
+    ("r_except_class", "Kernel.run"): {"except_class"},
+    ("r_walrus_class", "Kernel.run"): {"walrus_class"},
     ("r_float", "run"): {"add"},
     ("r_add", "run"): {"float"},
     ("r_prop", "run"): _THING,
@@ -3933,14 +4291,17 @@ BLIND: dict[tuple[str, str], set[str]] = {
     # An explicit __match_args__ other than a tuple of string literals.
     ("r_match_args_constant", "run"): {"match_args_constant"},
     # A module's __getattr__ that Python calls outside a cycle of lookups: for
-    # a name the module binds, when an import cycle reads the module
-    # part-built; for a sub module's name, which a from-import asks the
-    # package for before it imports the sub module; and for __path__, which a
-    # from-import asks a module that isn't a package for.
+    # a name the module's top level binds for sure, when Python reads the
+    # module part-built (through an import cycle, or a function the module
+    # calls while it runs); for a name another module deletes; for a name a
+    # star import leaves out through an __all__ that another module sets; and
+    # for __path__, which a from-import asks a module that isn't a package for.
     ("r_getattr_import_cycle", "run"): {"getattr_import_cycle"},
     ("r_getattr_import_cycle_from", "run"): {"getattr_import_cycle_from"},
     ("r_getattr_init_cycle", "run"): {"getattr_init_cycle"},
-    ("r_getattr_submodule", "run"): {"getattr_submodule"},
+    ("r_getattr_call_cycle", "run"): {"getattr_call_cycle"},
+    ("r_getattr_outside_del", "run"): {"getattr_outside_del"},
+    ("r_getattr_hidden_all", "run"): {"getattr_hidden_all"},
     ("r_getattr_path", "run"): {"getattr_path"},
 }
 

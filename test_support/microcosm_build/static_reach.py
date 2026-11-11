@@ -16,21 +16,34 @@ What the walk follows from a root, a function or a method with its class:
 - Bindings. A name resolves to every definition that can bind it: each
   alternative of a ``try`` or an ``if``, at module or function level, star
   imports, re-exports, and a package's lazy exports through a module-level
-  ``__getattr__``, defined or assigned. Every form of assignment binds: a
-  ``for`` or ``with`` target stands for what the loop iterates or the
-  statement enters, a ``match`` capture for the subject, and a walrus
-  target for its value. A name that a class body declares ``global`` binds
-  at module level, whether or not the walk reaches the class.
+  ``__getattr__``, defined or assigned. A module's ``__getattr__`` answers
+  for a name unless a statement at the module's top level binds the name
+  for sure. A branch, a loop or a ``try`` can skip a binding (an import
+  under ``if TYPE_CHECKING:``, an optional import). A ``del``, or the end
+  of an ``except`` clause that names it, can undo one, in the module's
+  scope or through ``global``. The walk counts a star import as binding a
+  public name for sure only when the other module binds it for sure and
+  nowhere names ``__all__``. It counts an assignment as binding for sure
+  only the names its target spells out: a walrus inside a subscript or an
+  attribute can sit in a branch that doesn't run, and a comprehension's
+  name there binds in the comprehension. A package holds a sub module's
+  name only once something imports the sub module. Every form of
+  assignment binds: a ``for`` or ``with`` target stands for what the loop
+  iterates or the statement enters, a ``match`` capture for the subject,
+  and a walrus target for its value. A name that a class body declares
+  ``global`` binds at module level, whether or not the walk reaches the
+  class.
 - Scopes. Each scope binds only its own names, as Python scopes them. A
   comprehension, lambda or nested function keeps its names to itself, a class
   body's names stay out of its methods, and ``global`` and ``nonlocal`` send a
   name outward. A class body reads a name it binds from its own namespace
   only once a statement at the body's top level has bound it. Before that,
-  when only a branch, a loop or a bare annotation binds it, or when a ``del``
-  can undo it, Python reads the module's binding, so the walk follows that
-  one too. An augmented assignment (``X += 1``) reads its target before it
-  binds it, so a class body's ``X += 1`` reads the module's ``X`` until the
-  body has bound it.
+  when only a branch, a loop, a bare annotation or a walrus inside a
+  subscript or an attribute binds it, or when a ``del`` or the end of an
+  ``except`` clause can undo it, Python can read the module's binding, so
+  the walk follows that one too. An augmented assignment (``X += 1``)
+  reads its target before it binds it, so a class body's ``X += 1`` reads
+  the module's ``X`` until the body has bound it.
 - Aliases. A module-level constant stands for each module, class or function
   its value names: ``_helper = helper_module``, ``_Base = pkg.Base``,
   ``pkg.Base[int]``, either branch of a conditional, each operand of ``and``
@@ -121,13 +134,16 @@ What it can't see:
   decorator records for a framework or a registry to call
   (``singledispatch``, pydantic's validators);
 - a module's ``__getattr__`` where Python calls it outside a cycle of
-  lookups: for a name the module binds, when an import cycle reads the
-  module part-built (the module imports another, which runs
-  ``from module import name`` before the module binds the name); for a sub
-  module's name, which a ``from`` import asks the package for before it
-  imports the sub module, and whose answer takes the sub module's place;
-  and for ``__path__``, which a ``from`` import asks a module that isn't a
-  package for;
+  lookups: for a name the module's top level binds for sure, when Python
+  reads the module part-built (the module imports another, or calls a
+  function while it runs, that runs ``from module import name`` before the
+  module binds the name); for a name that another module deletes
+  (``del module.name``) or that the module removes without ``del``
+  (``delattr``, ``globals()``); for a name that a star import leaves out
+  through an ``__all__`` the walk can't see (one that another module sets,
+  one set through ``globals()``, or one a star import brings in); and for
+  ``__path__``, which a ``from`` import asks a module that isn't a package
+  for;
 - the import-time code of a module that holds no item the walk reaches, such
   as the ``__init__`` of a package above a reached module, or a module
   imported only for its effects, unless a statement there changes a reached
@@ -512,6 +528,43 @@ class _Module:
                     for bound in _stored(target):
                         _add(constants[bound], value)
                 self._changes(node, None)
+        declared = {
+            name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Global)
+            for name in node.names
+        }
+        #: Names that a ``del`` or the end of an ``except ... as`` clause can
+        #: unbind at module level: in the module's scope, or anywhere for a
+        #: name that some scope declares ``global``.
+        self.deleted = frozenset(
+            {unbound for node in _same_scope(tree.body) if (unbound := _undoes(node))}
+            | {
+                unbound
+                for node in ast.walk(tree)
+                if (unbound := _undoes(node)) and unbound in declared
+            }
+        )
+        #: Names a statement at the module's top level binds whenever it runs
+        #: to its end (:func:`_binds`), less those in :attr:`deleted`.
+        self.sure = (
+            frozenset(name for statement in tree.body for name in _binds(statement))
+            - self.deleted
+        )
+        #: The modules that the module's top-level star imports read.
+        self.sure_stars = tuple(
+            binding[0]
+            for statement in tree.body
+            if isinstance(statement, ast.ImportFrom)
+            for bound, binding in _bindings(self, statement).items()
+            if bound == "*"
+        )
+        #: Whether the module names ``__all__`` anywhere, so that it may
+        #: define one: a name in any scope, or a ``global`` declaration.
+        self.names_all = "__all__" in declared or any(
+            isinstance(node, ast.Name) and node.id == "__all__"
+            for node in ast.walk(tree)
+        )
         self.imports = dict(imports)
         self.functions = dict(functions)
         self.classes = dict(classes)
@@ -631,6 +684,39 @@ def _class_bodies(node: ast.ClassDef) -> Iterator[ast.ClassDef]:
             yield from _class_bodies(child)
 
 
+def _undoes(node: ast.AST) -> str | None:
+    """The name a ``del`` target or an ``except ... as`` clause unbinds.
+
+    Python deletes an ``except`` clause's name when the clause ends.
+    """
+
+    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Del):
+        return node.id
+    if isinstance(node, ast.ExceptHandler):
+        return node.name
+    return None
+
+
+def _stored_here(target: ast.AST) -> list[str]:
+    """The names an assignment target binds whenever the assignment runs to
+    its end.
+
+    Only the names the target spells out count: a name, or one inside a
+    tuple, a list or a starred target. Unlike :func:`_stored`, it leaves out
+    names inside a subscript or an attribute: a walrus there can be skipped
+    (``d[(x := 1) if c else 0] = 2``), and a comprehension's names bind in
+    the comprehension.
+    """
+
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, ast.Tuple | ast.List):
+        return [name for element in target.elts for name in _stored_here(element)]
+    if isinstance(target, ast.Starred):
+        return _stored_here(target.value)
+    return []
+
+
 def _binds(node: ast.stmt) -> set[str]:
     """The names a statement binds whenever it runs to its end."""
 
@@ -643,15 +729,15 @@ def _binds(node: ast.stmt) -> set[str]:
             if alias.name != "*"
         }
     if isinstance(node, ast.Assign):
-        return {name for target in node.targets for name in _stored(target)}
+        return {name for target in node.targets for name in _stored_here(target)}
     if isinstance(node, ast.AnnAssign | ast.AugAssign) and node.value is not None:
-        return set(_stored(node.target))
+        return set(_stored_here(node.target))
     if isinstance(node, ast.With | ast.AsyncWith):
         return {
             name
             for item in node.items
             if item.optional_vars is not None
-            for name in _stored(item.optional_vars)
+            for name in _stored_here(item.optional_vars)
         }
     return set()
 
@@ -661,15 +747,15 @@ def _bound_before(body: ast.ClassDef, name: str, node: ast.AST) -> bool:
 
     Only a statement at the body's top level that ends before ``node`` starts
     binds for sure: a branch, a loop or a ``try`` can skip its bindings, a bare
-    annotation binds nothing, and a ``del`` can undo a binding.
+    annotation binds nothing, and a ``del`` or the end of an ``except`` clause
+    that names it can undo a binding.
     """
 
     if not hasattr(node, "lineno"):
         return False
     for child in _same_scope(_inner_parts(body)):
-        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Del):
-            if child.id == name:
-                return False
+        if _undoes(child) == name:
+            return False
     start = (node.lineno, node.col_offset)
     for statement in body.body:
         if (statement.end_lineno, statement.end_col_offset) > start:
@@ -1164,6 +1250,35 @@ class _Walk:
             return [(target, "module", None)] if self.is_module(target) else []
         return self.exported(target, attribute)
 
+    def _binds_for_sure(self, module: str, name: str, seen: tuple[str, ...]) -> bool:
+        """Whether ``module``'s top level binds ``name`` whenever it runs.
+
+        A top-level statement that binds the name whenever it runs to its end
+        (:func:`_binds`) binds it for sure, unless a ``del`` or an ``except``
+        clause can unbind it (:attr:`_Module.deleted`). So does a top-level
+        star import of a public name from a module that binds it for sure and
+        nowhere names ``__all__``, unless the importer can unbind the name.
+        ``seen`` holds the modules whose star imports led here.
+        """
+
+        found = self.module(module)
+        if found is None or module in seen:
+            return False
+        if seen and (
+            found.names_all
+            or "__all__" in found.constants
+            or "__all__" in found.imports
+        ):
+            return False
+        if name in found.sure:
+            return True
+        if name.startswith("_") or name in found.deleted:
+            return False
+        return any(
+            self._binds_for_sure(star, name, (*seen, module))
+            for star in found.sure_stars
+        )
+
     def exported(self, module: str, name: str) -> list[Item]:
         """What ``module.name`` can be, read from outside ``module``."""
 
@@ -1175,7 +1290,11 @@ class _Walk:
         if found is None or name == "__getattr__":
             # Python finds a module's __getattr__ in its namespace only.
             return items
-        if items and ("resolve", module, name) in self._done:
+        if (
+            items
+            and ("resolve", module, name) in self._done
+            and self._binds_for_sure(module, name, ())
+        ):
             # Bound for sure. A lookup that hasn't settled waits on a cycle,
             # where Python can read the module part-built, before it binds
             # the name, so its __getattr__ counts too.
