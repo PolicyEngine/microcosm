@@ -2,9 +2,9 @@
   "schema": "microcosm-modal-us-stage-plan/1",
   "tool": "us-release-head-to-head",
   "stage": "score",
-  "run_id": "route-a-h2h-d844-20261010",
+  "run_id": "route-a-h2h-d844-d1386-r1",
   "source": {
-    "commit": "7639ef8b02f65e295d8311cb51ec801f4030a3cd",
+    "commit": "2cfe3043d747b929e349c8de2486acf80b5f17f2",
     "branch": "main"
   },
   "inputs": {
@@ -13,8 +13,8 @@
       "sha256": "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84"
     },
     "candidate_h5": {
-      "uri": "volume://cas/sha256/417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559/populace_us_2024.h5",
-      "sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559"
+      "uri": "volume://cas/sha256/2d9c8586c45c32e5ca27357317f4de93b526cc51dd28b15b71ed43e47e142e79/populace_us_2024.h5",
+      "sha256": "2d9c8586c45c32e5ca27357317f4de93b526cc51dd28b15b71ed43e47e142e79"
     },
     "ledger_facts": {
       "uri": "volume://cas/sha256/b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801/consumer_facts_us_c5e5bf8.jsonl",

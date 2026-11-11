@@ -26,7 +26,7 @@ INPUTS = {
     ),
     "candidate_h5": (
         "populace_us_2024.h5",
-        "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
+        "2d9c8586c45c32e5ca27357317f4de93b526cc51dd28b15b71ed43e47e142e79",
     ),
     "ledger_facts": (
         "consumer_facts_us_c5e5bf8.jsonl",

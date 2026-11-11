@@ -1624,13 +1624,16 @@ certification still determine whether the release is accepted.
 
 ## Route A head-to-head (d844)
 
-`docs/us-modal-stage-route-a-h2h-plan.json` compares Route A
-(`populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z`) with the US
+`docs/us-modal-stage-route-a-h2h-plan.json` compares the d1386 Route A
+build (`populace-us-2024-b5db384-8b0c1950b65f-20261024T083103Z`) with the US
 default (`populace-us-2024-spm-20260915`) on the frozen
-`consumer_facts_us_c5e5bf8.jsonl` ledger. The plan pins scorer commit
-`7639ef8b02f65e295d8311cb51ec801f4030a3cd` on `main`, the merge of #1171
-(`--workers`, the per-slice release of Core's variable modules, and the
-recycling guard). The runner registration comes from this checkout. A plan's
+`consumer_facts_us_c5e5bf8.jsonl` ledger, the register d844 fixed before any
+result. The d1386 build was calibrated on `consumer_facts_us_51aa40f.jsonl`
+and the default on an older feed, so neither was fit to this register. The
+plan pins scorer commit `2cfe3043d747b929e349c8de2486acf80b5f17f2` on
+`main`, which carries #1171 (`--workers`, the per-slice release of Core's
+variable modules, and the recycling guard) and locks policyengine-us 2.2.1,
+the engine the d1386 manifest names. The runner registration comes from this checkout. A plan's
 pin is immutable: to pick up a later scorer change, update `source.commit`,
 then repeat the local validation and the Modal check.
 
@@ -1662,8 +1665,8 @@ directories and stage to `/work/inputs/incumbent_h5/populace_us_2024.h5`
 and `/work/inputs/candidate_h5/populace_us_2024.h5`. Keep the `.h5` suffix
 and this filename: `_resolved_artifact_path` preserves them for the loader
 and artifact identity. Do not upload either H5 under an extensionless hash.
-The incumbent is 826,917,837 bytes; the ledger is 164,603,204 bytes. The
-candidate's size was not supplied; its digest is the byte identity.
+The incumbent is 826,917,837 bytes, the candidate 2,509,287,855 bytes and
+the ledger 164,603,204 bytes.
 
 **Resources and ceiling.** For the first full attempt, class `head-to-head`
 requests 16 physical cores with CPU limit 16 and 192 GiB with memory limit
@@ -1718,7 +1721,7 @@ that `put` and let check mode verify its digest; do not overwrite it.
 
 ```bash
 INCUMBENT_H5=/path/to/populace-us-2024-spm-20260915/populace_us_2024.h5
-CANDIDATE_H5=/path/to/populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z/populace_us_2024.h5
+CANDIDATE_H5=/path/to/populace-us-2024-b5db384-8b0c1950b65f-20261024T083103Z/populace_us_2024.h5
 LEDGER_FACTS=/path/to/consumer_facts_us_c5e5bf8.jsonl
 python3 tools/modal_us_stage_plan.py upload-commands \
   docs/us-modal-stage-route-a-h2h-plan.json \
@@ -1727,7 +1730,7 @@ python3 tools/modal_us_stage_plan.py upload-commands \
 modal volume put microcosm-us-stage-inputs "$INCUMBENT_H5" \
   cas/sha256/6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84/populace_us_2024.h5
 modal volume put microcosm-us-stage-inputs "$CANDIDATE_H5" \
-  cas/sha256/417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559/populace_us_2024.h5
+  cas/sha256/2d9c8586c45c32e5ca27357317f4de93b526cc51dd28b15b71ed43e47e142e79/populace_us_2024.h5
 modal volume put microcosm-us-stage-inputs "$LEDGER_FACTS" \
   cas/sha256/b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801/consumer_facts_us_c5e5bf8.jsonl
 
@@ -1744,8 +1747,8 @@ client, and Modal then cancels the paid input (this happened to Route A's
 base on 2026-09-29). From the checkout that holds this plan:
 
 ```bash
-mkdir -p modal-runs/route-a-h2h-d844-20261010
-cat > modal-runs/route-a-h2h-d844-20261010/launch.sh <<SH
+mkdir -p modal-runs/route-a-h2h-d844-d1386-r1
+cat > modal-runs/route-a-h2h-d844-d1386-r1/launch.sh <<SH
 #!/bin/bash
 set -euo pipefail
 cd "$PWD"
@@ -1753,7 +1756,7 @@ export PATH="\$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin"
 export MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-h2h-plan.json
 exec modal run --detach tools/modal_us_stage.py --run
 SH
-chmod +x modal-runs/route-a-h2h-d844-20261010/launch.sh
+chmod +x modal-runs/route-a-h2h-d844-d1386-r1/launch.sh
 ```
 
 Submit that script as a transient launchd job. On the build Mac the helper
@@ -1767,7 +1770,7 @@ byte counts and sha256s. Fetch the tiny complete state, including the logs,
 so strict verification covers everything:
 
 ```bash
-R=route-a-h2h-d844-20261010
+R=route-a-h2h-d844-d1386-r1
 mkdir -p "modal-runs/$R"
 modal volume get microcosm-us-stage-runs "runs/$R/receipts" "./modal-runs/$R/"
 modal volume get microcosm-us-stage-runs "runs/$R/state" "./modal-runs/$R/"
