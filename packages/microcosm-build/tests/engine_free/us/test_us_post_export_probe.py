@@ -917,6 +917,27 @@ def test_the_probe_compares_single_record_measurements(probe_tool) -> None:
     ]
     assert narrower["single_record_columns_compared"] == 1
 
+    wider = probe_tool.compare_qrf_tail(
+        _tail_result(measured), _tail_reference({"partnership_income": _LINE_32})
+    )
+
+    assert wider["differences"] == [
+        "single-record columns differ: only probe ['estate_income'], only release []"
+    ]
+    assert wider["single_record_columns_compared"] == 1
+
+    for field, value in (("carriers", 16_002), ("top_k_share", 0.452)):
+        one_field = probe_tool.compare_qrf_tail(
+            _tail_result(
+                {**measured, "partnership_income": {**_LINE_32, field: value}}
+            ),
+            _tail_reference(measured),
+        )
+
+        assert one_field["differences"] == [
+            f"partnership_income: {field} {value!r} vs {_LINE_32[field]!r}"
+        ]
+
 
 def test_the_probe_compares_unmeasured_reasons(probe_tool) -> None:
     """Review N8: an output unmeasured in both runs for different reasons is a
@@ -955,6 +976,15 @@ def test_the_probe_compares_unmeasured_reasons(probe_tool) -> None:
     assert only_release["differences"] == [
         "unmeasured columns differ: only probe [], only release "
         "['taxable_interest_income']"
+    ]
+
+    only_probe = probe_tool.compare_qrf_tail(
+        _tail_result(measured, unmeasured=unmeasured), _tail_reference(measured)
+    )
+
+    assert only_probe["differences"] == [
+        "unmeasured columns differ: only probe ['taxable_interest_income'], "
+        "only release []"
     ]
 
 
