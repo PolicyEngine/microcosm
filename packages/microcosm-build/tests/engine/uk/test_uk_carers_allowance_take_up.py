@@ -262,3 +262,33 @@ def test_the_balanced_draw_is_policyengine_uks_stratified_uniform() -> None:
         weight_balanced_uniforms(strata, draws, weights),
         stratified_uniform(strata, draws, weights),
     )
+
+
+def test_the_engine_pays_a_carer_only_where_the_carer_link_holds() -> None:
+    """A3 (microcosm#1095): policyengine-uk reads cares_for_severely_disabled_person
+    wherever care_hours reach the minimum, for Carer's Allowance, Carer Support
+    Payment and is_carer_for_benefits, which gives the Universal Credit carer
+    element. A carer at the hours who reports no allowance is paid, and counts
+    as a carer for Universal Credit, only where frs_disability writes the link
+    true."""
+    people = {
+        name: {
+            "age": 40,
+            "care_hours": 35.0,
+            "would_claim_carers_allowance": True,
+            "would_claim_uc": True,
+            "cares_for_severely_disabled_person": linked,
+        }
+        for name, linked in (("linked", True), ("unlinked", False))
+    }
+    wales = _simulation(people, 2025)
+    allowance = np.asarray(wales.calculate("carers_allowance_pre_overlap", 2025))
+    assert (allowance > 0).tolist() == [True, False]
+    carer = np.asarray(wales.calculate("is_carer_for_benefits", 2025))
+    assert carer.tolist() == [True, False]
+    element = np.asarray(wales.calculate("uc_carer_element", 2025))
+    assert (element > 0).tolist() == [True, False]
+
+    scotland = _simulation(people, 2025, region="SCOTLAND")
+    support = np.asarray(scotland.calculate("carer_support_payment_pre_overlap", 2025))
+    assert (support > 0).tolist() == [True, False]
