@@ -293,7 +293,11 @@ def test_every_stage_that_counts_by_lineage_binds_the_counting_modules() -> None
 
 def test_counting_module_changes_invalidate_every_stage_that_counts(monkeypatch):
     from microcosm.build import source_lineage
-    from microcosm.build.uk_runtime import graph_kernels, receipt_counts
+    from microcosm.build.uk_runtime import (
+        geographic_clones,
+        graph_kernels,
+        receipt_counts,
+    )
 
     graph = uk_spine_graph()
     registry = uk_registry(graph=graph)
@@ -303,7 +307,7 @@ def test_counting_module_changes_invalidate_every_stage_that_counts(monkeypatch)
         for stage in sorted(graph_kernels._COUNTING_STAGES)
     ]
     control = graph.node("frs_council_tax").kernel
-    for module in (receipt_counts, source_lineage):
+    for module in (receipt_counts, source_lineage, geographic_clones):
         before = {
             ref: registry.implementation_hash(ref) for ref in (*affected, control)
         }
@@ -1218,11 +1222,6 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
 #: can be listed (``_helper_kind``); the tests hold the table to exactly what
 #: they find, so a new one is bound or listed here with its reason.
 _STAGE_UNBOUND_NAMES: dict[tuple[str, str], str] = {
-    ("microcosm.build.uk_runtime.rowwise_dataset", "ladder_clone_index_column"): (
-        "names the geographic clone index columns, which only the dense "
-        "expand writes; no spine stage writes them (checked), so a spine "
-        "frame never carries them and their name moves no spine value"
-    ),
     ("microcosm.frame.concepts", "SOURCE_HOUSEHOLD_ID_COLUMN"): (
         "names the source household column, CopyLineage's default source, "
         "which the support channel writes by its literal name. A node is "
@@ -1245,9 +1244,9 @@ _KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
         )
         for name in ("LAD23_NAMES_SHA256", "LAD23_NAMES_URL")
     },
-    ("microcosm.build.uk_runtime.rowwise_dataset", "ladder_clone_index_column"): (
+    ("microcosm.build.uk_runtime.geographic_clones", "ladder_clone_index_column"): (
         "names the geographic clone index columns, which only the dense expand "
-        "writes, and uk.full.expand@1 hashes rowwise_dataset. The calibrated "
+        "writes, and uk.full.expand@1 hashes geographic_clones. The calibrated "
         "gates' support-family fold reads the household's on the expanded "
         "frame, so their key chains on the expand's; the national gates fold "
         "the national frame, which no ladder expands, and the fold keys on the "
@@ -1559,7 +1558,7 @@ def test_every_name_a_stage_reads_is_hashed_with_it_upstream_or_listed() -> None
     stage's node or by a node upstream of it, whose key the stage's key
     chains on, or the name is listed in ``_STAGE_UNBOUND_NAMES`` with its
     reason; the table lists nothing else (microcosm#931)."""
-    from microcosm.build.uk_runtime import graph_kernels, rowwise_dataset
+    from microcosm.build.uk_runtime import graph_kernels
     from microcosm.graph.decl import compile_graph
 
     graph = uk_spine_graph()
@@ -1593,15 +1592,6 @@ def test_every_name_a_stage_reads_is_hashed_with_it_upstream_or_listed() -> None
     assert set(unlisted) == set(_STAGE_UNBOUND_NAMES), sorted(
         set(unlisted) ^ set(_STAGE_UNBOUND_NAMES)
     )
-    # The geographic clone index columns' reason: no spine node writes them.
-    written = {
-        (owned.entity, owned.column) for node in graph.nodes for owned in node.outputs
-    }
-    for entity in ("person", "benunit", "household"):
-        assert (
-            entity,
-            rowwise_dataset.ladder_clone_index_column(entity),
-        ) not in written
     # The source household column's reason. The support channel writes it by
     # its literal name; a stage that reads it declares it by that name and
     # counts before the copies only beside a copy column, or declares neither
@@ -2167,6 +2157,7 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     import inspect
 
     from microcosm.build.uk_runtime import (
+        geographic_clones,
         graph_build,
         graph_national,
         graph_population,
@@ -2188,6 +2179,18 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     # before they read the columns' name.
     population = inspect.signature(graph_targets.append_uk_target_nodes).parameters
     assert population["population"].default == "uk.full.expand"
+    # And the premise of their reason, that only the dense expand writes the
+    # clone index columns: no spine node writes them. Once the spine's
+    # geographic expansion does, the reason is rewritten with this check.
+    written = {
+        (owned.entity, owned.column)
+        for node in uk_spine_graph().nodes
+        for owned in node.outputs
+    }
+    for entity in ("person", "benunit", "household"):
+        assert (entity, geographic_clones.ladder_clone_index_column(entity)) not in (
+            written
+        )
 
     def calls(module, name: str) -> list:
         tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))

@@ -71,6 +71,10 @@ from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_cgt_support import (
     BAND_INCOMES,
+    NESTING_INCOMES,
+    NESTING_TOP_CELLS,
+    NESTING_WEALTH,
+    NESTING_WEIGHTS,
     PARAMETERS,
     drift,
     support_distribution,
@@ -774,11 +778,11 @@ def _scenario_split_at(clone_count):
 
 def test_the_clone_index_column_is_the_lineages_geographic_branch():
     from microcosm.build.uk_runtime.cgt_support import _GEOGRAPHIC_CLONE_INDEX_COLUMN
+    from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
     from microcosm.build.uk_runtime.household_lineage import (
         GEOGRAPHIC_SUPPORT_BRANCH,
         UK_COPY_LINEAGE,
     )
-    from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 
     (branch,) = [
         branch
@@ -791,6 +795,39 @@ def test_the_clone_index_column_is_the_lineages_geographic_branch():
         == branch.index
         == "household_clone_index"
     )
+
+
+def test_every_spelling_of_the_household_clone_index_is_the_leafs_name():
+    """geographic_clones names the clone index columns and counts the clones
+    (microcosm#931). The household's name is also spelled out in this stage's
+    module, in the SPI support channel's, whose stages key on it there, and as
+    microcosm-frame's engine batch column, whose package does not depend on
+    microcosm-build. Each spelling equals the leaf's name, and rowwise_dataset
+    and this stage's module re-export the leaf's own definitions."""
+    from microcosm.build.uk_runtime import (
+        geographic_clones,
+        rowwise_dataset,
+        spi_support,
+    )
+    from microcosm.frame.adapters.policyengine_uk_population import (
+        UK_SPINE_ENGINE_BATCH_COLUMN,
+    )
+
+    name = geographic_clones.ladder_clone_index_column("household")
+    assert name == f"household_{geographic_clones.ARTIFACT_CLONE_INDEX_COLUMN}"
+    assert (
+        name
+        == cgt_support._GEOGRAPHIC_CLONE_INDEX_COLUMN
+        == spi_support.SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
+        == UK_SPINE_ENGINE_BATCH_COLUMN
+        == "household_clone_index"
+    )
+    for module, names in (
+        (rowwise_dataset, ("ARTIFACT_CLONE_INDEX_COLUMN", "ladder_clone_index_column")),
+        (cgt_support, ("geographic_clone_count",)),
+    ):
+        for attribute in names:
+            assert getattr(module, attribute) is getattr(geographic_clones, attribute)
 
 
 def test_geographic_clone_count_is_one_more_than_the_largest_index():
@@ -1860,22 +1897,11 @@ def test_evidence_is_json_serialisable_with_plain_scalars():
 # clone, the one exception copy_rule names. That copy is then off w / n by
 # about an ulp of the frame's total weight (thousands of ulps of its own, a
 # relative error below 1e-12), within the weights' nesting tolerance and the
-# gate's; at one, three, 11 and 15 clones no correction is needed.
+# gate's; at one, three, 11 and 15 clones no correction is needed. The
+# scenario's data (NESTING_WEIGHTS, NESTING_WEALTH, NESTING_INCOMES and
+# NESTING_TOP_CELLS) are test_support's, shared with
+# test_uk_clone_first_nesting.py, which runs it through G1.
 
-NESTING_WEIGHTS = [
-    900.0,
-    1_800.0,
-    4_020.0,
-    7_620.0,
-    float(np.nextafter(300.0, 0.0)),
-    40.0,
-    1_234.5,
-    9_000.0,
-    0.0,
-]
-NESTING_WEALTH = [7e3, 6e3, 5e3, 4e3, 3e3, 2e3, 1e3, 1.0, 1e6]
-NESTING_INCOMES = [BAND_INCOMES[0]] * 7 + [BAND_INCOMES[37_700], BAND_INCOMES[0]]
-NESTING_TOP_CELLS = {0: {250_000: 1_000_000.0}}
 NESTING_COPIES = [15, 30, 67, 127, 5, 1, 21, 1, 1]
 
 

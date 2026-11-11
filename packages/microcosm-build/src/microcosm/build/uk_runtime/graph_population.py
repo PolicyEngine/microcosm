@@ -50,6 +50,7 @@ from . import (
     atomic_area_support,
     atomic_household_identity,
     brma_area_layer,
+    geographic_clones,
     geography_ladder,
     local_authority_input,
     national_frame,
@@ -61,6 +62,7 @@ from . import (
     rowwise_geography,
     spi_support,
 )
+from .geographic_clones import ladder_clone_index_column
 from .geography_ladder import (
     UK_GEOGRAPHY_LADDER_COLUMNS,
     derive_uk_ladder_locations,
@@ -82,7 +84,7 @@ from .local_authority_input import (
 )
 from .national_frame import UK_NATIONAL_SCHEMA
 from .receipt_counts import rounded_count, source_household_ids
-from .rowwise_dataset import expand_uk_geographic_pool, ladder_clone_index_column
+from .rowwise_dataset import expand_uk_geographic_pool
 
 POPULATION_RECEIPT_TYPE = ArtifactType("microcosm.uk.population-receipt", 1)
 LOCATION_DRAW_TYPE = ArtifactType("microcosm.uk.ladder-location-draw", 1)
@@ -207,17 +209,19 @@ class _PopulationKernel(KernelBase):
         # The dense population nodes also compute through what these call:
         # the sample's household draw and mass normalisation (frame_sampling),
         # its strata columns (spi_support's replacement strata), the clones'
-        # minted ids and copied tables (rowwise_geography), the national frame
-        # they rebuild and the engine adapter's contracts it stamps on them,
-        # the local authority names the geography resolves, the gate's
-        # results, their artifacts' canonical encoding and the normalisation's
-        # weight-update receipt (microcosm#931); test_uk_graph derives the set
-        # from what the kernels name.
+        # minted ids and copied tables (rowwise_geography), the clone index
+        # columns' names (geographic_clones), the national frame they rebuild
+        # and the engine adapter's contracts it stamps on them, the local
+        # authority names the geography resolves, the gate's results, their
+        # artifacts' canonical encoding and the normalisation's weight-update
+        # receipt (microcosm#931); test_uk_graph derives the set from what the
+        # kernels name.
         return source_hash(
             type(self),
             geography_ladder,
             national_sampling,
             rowwise_dataset,
+            geographic_clones,
             graph_evidence,
             frame_sampling,
             gates,
@@ -445,14 +449,16 @@ class UKGeographyIdentityKernel(_PopulationKernel):
         from .. import source_lineage
         from . import household_lineage
 
-        # The clone paths are read through the lineage readers, whose default
-        # source column frame_concepts names, and the draw keys are encoded
-        # canonically (microcosm#931).
+        # The clone paths are read through the lineage readers, on the clone
+        # index column geographic_clones names and the default source column
+        # frame_concepts names, and the draw keys are encoded canonically
+        # (microcosm#931).
         return source_hash(
             type(self),
             atomic_household_identity,
             atomic_area_support,
             rowwise_dataset,
+            geographic_clones,
             household_lineage,
             source_lineage,
             frame_concepts,
@@ -517,7 +523,7 @@ class UKPropertyValueKernel(_PopulationKernel):
         from . import household_lineage, tenure_constants
 
         # The spine keys come through the lineage readers and the clone index
-        # column rowwise_dataset names, the owner mask through
+        # column geographic_clones names, the owner mask through
         # tenure_constants' tenure categories and the owner uniforms through
         # keyed draws; the spine keys and the quantile artifact are encoded
         # canonically (microcosm#931).
@@ -529,6 +535,7 @@ class UKPropertyValueKernel(_PopulationKernel):
             source_lineage,
             frame_concepts,
             rowwise_dataset,
+            geographic_clones,
             tenure_constants,
             keyed_uniform,
             canonical_json,
@@ -871,7 +878,7 @@ class UKPrivateRentKernel(_PopulationKernel):
         from . import household_lineage, receipt_counts
 
         # The spine keys come through the lineage readers and the clone index
-        # column rowwise_dataset names, and are encoded canonically; the
+        # column geographic_clones names, and are encoded canonically; the
         # tie-breaks are keyed draws; the receipt counts source households on
         # national_frame's schema and rounds them in receipt_counts
         # (microcosm#931).
@@ -884,6 +891,7 @@ class UKPrivateRentKernel(_PopulationKernel):
             source_lineage,
             frame_concepts,
             rowwise_dataset,
+            geographic_clones,
             national_frame,
             receipt_counts,
             keyed_uniform,

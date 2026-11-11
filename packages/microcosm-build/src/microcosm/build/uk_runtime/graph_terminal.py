@@ -53,6 +53,7 @@ from ..artifact_files import file_artifact
 from . import geography_ladder, national_frame, weight_year
 from .atomic_area_support import uk_area_code_frames, without_uk_native_alias_columns
 from .dataset_size import UK_SIZE_L2_PARAM_KEYS
+from .geographic_clones import ARTIFACT_CLONE_INDEX_COLUMN, ladder_clone_index_column
 from .geography_ladder import (
     UK_EXPORT_AREA_CODE_COLUMNS,
     export_area_code_columns,
@@ -77,11 +78,7 @@ from .national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from .rowwise_dataset import (
-    ARTIFACT_CLONE_INDEX_COLUMN,
-    ladder_clone_index_column,
-    load_uk_rowwise_dataset,
-)
+from .rowwise_dataset import load_uk_rowwise_dataset
 from .weight_year import uk_dataset_year_frame, uk_weight_projection_factor
 
 EXPORT_DESCRIPTOR_TYPE = ArtifactType("microcosm.uk.full-export-descriptor", 1)
@@ -362,6 +359,7 @@ class UKExportPrepareKernel(KernelBase):
         from .. import gates
         from . import (
             atomic_area_support,
+            geographic_clones,
             graph_population,
             hmrc_uprating,
             local_authority_input,
@@ -372,7 +370,7 @@ class UKExportPrepareKernel(KernelBase):
         # The descriptor also computes through the ladder gate's results and
         # region codes (gates, rowwise_geography, local_authority_input), the
         # area code frames (atomic_area_support), the engine tables
-        # (frame_materialize) and the clone index columns rowwise_dataset
+        # (frame_materialize) and the clone index columns geographic_clones
         # names, the engine's weight projection factor (hmrc_uprating's
         # pins), the frame it rebuilds (graph_population) and the canonical
         # encoding of the descriptor (microcosm#931). The gate report it reads
@@ -388,6 +386,7 @@ class UKExportPrepareKernel(KernelBase):
             hmrc_uprating,
             local_authority_input,
             rowwise_dataset,
+            geographic_clones,
             rowwise_geography,
             frame_materialize,
             canonical_json,

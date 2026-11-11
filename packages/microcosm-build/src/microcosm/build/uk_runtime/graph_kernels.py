@@ -97,6 +97,7 @@ from . import (
     frs_spine,
     frs_take_up,
     gambling_participation,
+    geographic_clones,
     graph_frames,
     hmrc_capital_gains,
     hmrc_company_car_statistics,
@@ -427,8 +428,9 @@ _STAGE_HELPER_MODULES = {
     # and income proxy from cgt_imputation (whose loss relief evaluates a named
     # term), and weigh their copies through spi_support's exact-total
     # correction; the support split also takes the adult age and oldest-adult
-    # rule from cgt_structure, and the residential split its logistic from
-    # cgt_asset_type; the incidence clone sums cgt_imputation's income proxy
+    # rule from cgt_structure and reads the frame's geographic clone count
+    # through geographic_clones, and the residential split takes its logistic
+    # from cgt_asset_type; the incidence clone sums cgt_imputation's income proxy
     # components into the income behind its propensity; the gains spine names
     # HMRC's regional conditioning rows by microcosm.calibrate's UK region tier,
     # and it and the asset types key each walk's offset on its label through
@@ -438,6 +440,7 @@ _STAGE_HELPER_MODULES = {
         *_FEED_FACT_MODULES,
         cgt_imputation,
         cgt_structure,
+        geographic_clones,
         hmrc_capital_gains,
         hmrc_income,
         spi_support,
@@ -835,10 +838,17 @@ _STAGE_HELPER_MODULES = {
 # The receipts' counting rules and the shared lineage readers: every floor
 # counts true source households through receipt_counts, and the FRS-trained
 # fits fold geographic clones through household_lineage, both reading
-# source_lineage on household_lineage's declaration (microcosm#931). An edit
-# to any of the three moves the hash of every stage whose module or helpers
-# import one of them; test_uk_graph derives this set from the imports.
-_COUNTING_MODULES = (receipt_counts, household_lineage, source_lineage)
+# source_lineage on household_lineage's declaration, which names the
+# geographic clone index through geographic_clones (microcosm#931). An edit
+# to any of the four moves the hash of every stage whose module or helpers
+# import one of the first three; test_uk_graph derives this set from the
+# imports.
+_COUNTING_MODULES = (
+    receipt_counts,
+    household_lineage,
+    source_lineage,
+    geographic_clones,
+)
 _COUNTING_STAGES = frozenset(
     {
         "frs_spine",

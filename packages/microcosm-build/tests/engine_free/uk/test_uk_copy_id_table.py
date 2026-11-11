@@ -673,7 +673,10 @@ _DENSE_RULE_MODULES = {
 }
 #: Every module that mints, bounds or decodes spine copy ids; none may also
 #: name the retired rule. Each reads the copy-id table, save the band
-#: donors, which mint through the support channel's clone helper.
+#: donors, which mint through the support channel's clone helper. The
+#: geographic expansion is the one reader among the clone-first steps: it
+#: mints the clones and exports their limit, and the geography identity reads
+#: clone paths from the lineage columns, never from ids.
 _COPY_ID_MODULES = frozenset(
     {
         *(
@@ -683,6 +686,7 @@ _COPY_ID_MODULES = frozenset(
                 "cgt_structure",
                 "cgt_support",
                 "frs_spine",
+                "geographic_expand",
                 "graph_kernels",
                 "high_value_home_support",
                 "spi_band_donors",
