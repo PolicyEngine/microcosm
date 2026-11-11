@@ -88,7 +88,7 @@ YEAR_RULE = "survey_year"
 #: SPI channel takes the link again on its households from the benefits it
 #: re-imputes (spi_income).
 CARER_LINK_COLUMN = "cares_for_severely_disabled_person"
-CARER_LINK_PARAMETERS = "the carer link from frs_care_recipients and the disability categories, with gov.dwp.carers_allowance.min_hours at the survey year"
+CARER_LINK_PARAMETERS = "the carer link from frs_care_recipients, the disability categories and DWP's UC carer element on linked claims, with gov.dwp.carers_allowance.min_hours at the survey year"
 CARER_LINK_SEED = 0
 CARER_LINK_SALT = "cares_for_severely_disabled_person_outside_household"
 #: The categories of a qualifying benefit for the carer link.
@@ -532,7 +532,24 @@ def derive_carer_link(
             salt=CARER_LINK_SALT,
         )
     drawn = drawn_route & (positions < (share_value or 0.0))
-    link = linked | drawn | no_link
+    # B3 of the November event-data plan's PR3 (María's ruling of 2026-11-11):
+    # a claimant or partner at the line on a linked UC claim whose award DWP
+    # records with a carer element cares for a severely disabled person, the
+    # element's condition, whatever the care tab says (frs_spine raises such a
+    # unit's care hours to the line where nobody reported them).
+    dwp_carer = np.zeros(len(person), dtype=bool)
+    if FRS_UC_CARER_ELEMENT_COLUMN in person:
+        benunits = person["person_benunit_id"].to_numpy()
+        carer_units = benunits[
+            person[FRS_UC_CARER_ELEMENT_COLUMN].astype(str).to_numpy() == "CARER"
+        ]
+        adult = (
+            person["is_claimant_or_partner"].to_numpy(dtype=bool)
+            if "is_claimant_or_partner" in person
+            else np.ones(len(person), dtype=bool)
+        )
+        dwp_carer = adult & at_line & np.isin(benunits, carer_units)
+    link = linked | drawn | no_link | dwp_carer
 
     def counted(selected: np.ndarray) -> int | str:
         # Record counts are rounded, never exact, and withheld where one or
@@ -561,6 +578,11 @@ def derive_carer_link(
             else small_cell_share(share_value, share_households)
         ),
         "share_support": support_band(share_households),
+        "dwp_carer_element": {
+            "carers": counted(dwp_carer),
+            "support": support_band(len(set(keys[dwp_carer].tolist()))),
+            "set_true_by_it": counted(dwp_carer & ~(linked | drawn | no_link)),
+        },
         "routes_at_the_line": {
             "household_qualifying": route(
                 at_line & household_route & routes.member_qualifies

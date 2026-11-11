@@ -75,6 +75,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     frs_care_recipients,
     frs_claimant_or_partner,
     frs_council_tax_band,
+    frs_dwp_carer_care_hours,
     frs_uc_carer_element,
     frs_uc_lcw_status,
     parse_frs_uc_claim_start,
@@ -5149,6 +5150,96 @@ class TestUCCarerElementCarrier:
         status = person.set_index("person_id")[FRS_UC_CARER_ELEMENT_COLUMN].to_dict()
         assert status[1001] == "CARER"
         assert {value for key, value in status.items() if key != 1001} == {"NOT_LINKED"}
+
+
+class TestDWPCarerCareHours:
+    """B3 (microcosm#1095; María's ruling of 2026-11-11): DWP's UC carer element
+    on a linked claim puts a carer at the 35-hour line where the survey has none."""
+
+    @staticmethod
+    def _people(rows) -> pd.DataFrame:
+        return pd.DataFrame(
+            rows,
+            columns=[
+                "person_id",
+                "person_benunit_id",
+                "person_household_id",
+                "is_claimant_or_partner",
+                "care_hours",
+                "carers_allowance_reported",
+                FRS_UC_CARER_ELEMENT_COLUMN,
+            ],
+        )
+
+    def test_a_dwp_carer_claim_with_no_carer_at_the_line_takes_35_hours(self) -> None:
+        rows = []
+        for household in range(1, 4):
+            # No care recorded, and care below the line: raised to 35.
+            rows.append(
+                (
+                    household * 1000 + 1,
+                    household * 10 + 1,
+                    household,
+                    True,
+                    0.0,
+                    0.0,
+                    "CARER",
+                )
+            )
+            rows.append(
+                (
+                    household * 1000 + 2,
+                    household * 10 + 1,
+                    household,
+                    True,
+                    0.0,
+                    0.0,
+                    "NOT_LINKED",
+                )
+            )
+        for household in range(4, 7):
+            rows.append(
+                (
+                    household * 1000 + 1,
+                    household * 10 + 1,
+                    household,
+                    True,
+                    20.0,
+                    0.0,
+                    "CARER",
+                )
+            )
+        # A partner already at the line, or Carer's Allowance reported: kept.
+        rows.append((7001, 71, 7, True, 0.0, 0.0, "CARER"))
+        rows.append((7002, 71, 7, True, 50.0, 0.0, "NOT_LINKED"))
+        rows.append((8001, 81, 8, True, 0.0, 4258.8, "CARER"))
+        # No carer element, or no linked record: the survey's answers stand.
+        rows.append((9001, 91, 9, True, 0.0, 0.0, "NONE"))
+        rows.append((10001, 101, 10, True, 10.0, 0.0, "NOT_LINKED"))
+        people = self._people(rows)
+
+        hours, evidence = frs_dwp_carer_care_hours(people)
+
+        by_id = dict(zip(people["person_id"], hours, strict=True))
+        assert [by_id[h * 1000 + 1] for h in range(1, 7)] == [35.0] * 6
+        assert [by_id[h * 1000 + 2] for h in range(1, 4)] == [0.0] * 3
+        assert by_id[7001] == 0.0 and by_id[7002] == 50.0
+        assert by_id[8001] == 0.0 and by_id[9001] == 0.0 and by_id[10001] == 10.0
+        assert evidence["raised"]["support"] == "3-9"
+        assert evidence["raised_from_no_care"]["support"] == "3-9"
+        assert evidence["raised_from_below_the_line"]["support"] == "3-9"
+        assert evidence["hours"] == 35.0
+        # The input frame is left as it was.
+        assert people.loc[people["person_id"] == 1001, "care_hours"].item() == 0.0
+
+    def test_the_spine_raises_a_dwp_carers_hours(self, tmp_path: Path) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 0, 1))
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        hours = person.set_index("person_id")["care_hours"]
+        assert hours[1001] >= 35.0
 
 
 class TestUCGainfulSelfEmployment:

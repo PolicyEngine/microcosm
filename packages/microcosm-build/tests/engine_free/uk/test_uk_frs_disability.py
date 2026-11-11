@@ -414,3 +414,63 @@ def test_the_carer_link_is_checked_against_dwps_uc_carer_element() -> None:
         )
         is None
     )
+
+
+def test_a_dwp_carer_at_the_line_is_linked_whatever_the_care_tab_says() -> None:
+    """B3 (microcosm#1095; María's ruling of 2026-11-11): on a linked UC claim
+    DWP records with a carer element, the unit's carers at the line are linked;
+    elsewhere the care tab decides."""
+
+    from microcosm.build.uk_runtime import frs_disability
+    from microcosm.build.uk_runtime.frs_spine import FRS_UC_CARER_ELEMENT_COLUMN
+
+    rows = []
+    for household in (1, 2, 3, 4):
+        carer = household * 1000 + 1
+        member = household * 1000 + 2
+        # The carer gives their largest band to member 2, who gets no
+        # qualifying benefit, so the care tab alone would leave them false.
+        rows.append(
+            {
+                "person_id": carer,
+                "person_household_id": household,
+                "person_benunit_id": household * 10 + 1,
+                "is_claimant_or_partner": True,
+                frs_disability.FRS_CARE_RECIPIENTS_COLUMN: 1 << 2,
+                "care_hours": 35.0,
+                "carers_allowance_reported": 0.0,
+                FRS_UC_CARER_ELEMENT_COLUMN: "CARER" if household < 4 else "NONE",
+                "aa_category": "NONE",
+                "dla_sc_category": "NONE",
+                "pip_dl_category": "NONE",
+            }
+        )
+        rows.append(
+            {
+                "person_id": member,
+                "person_household_id": household,
+                "person_benunit_id": household * 10 + 2,
+                "is_claimant_or_partner": True,
+                frs_disability.FRS_CARE_RECIPIENTS_COLUMN: 0,
+                "care_hours": 0.0,
+                "carers_allowance_reported": 0.0,
+                FRS_UC_CARER_ELEMENT_COLUMN: "NOT_LINKED",
+                "aa_category": "NONE",
+                "dla_sc_category": "NONE",
+                "pip_dl_category": "NONE",
+            }
+        )
+    person = pd.DataFrame(rows)
+
+    link, evidence = frs_disability.derive_carer_link(
+        person, weights=np.ones(len(person)), min_hours=35.0
+    )
+
+    by_id = dict(zip(person["person_id"], link, strict=True))
+    assert [by_id[h * 1000 + 1] for h in (1, 2, 3)] == [True, True, True]
+    assert not by_id[4001]
+    assert evidence["dwp_carer_element"]["support"] == "3-9"
+    assert (
+        evidence["dwp_carer_element"]["set_true_by_it"]
+        == evidence["dwp_carer_element"]["carers"]
+    )

@@ -29,7 +29,12 @@ from microcosm.build.uk_runtime.pension_coherence import (
     cap_net_pay_contributions,
     coherence_receipt,
 )
-from microcosm.build.uk_runtime.receipt_counts import rounded_count, support_band
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    rounded_count,
+    support_band,
+)
 from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
 
@@ -359,6 +364,23 @@ FRS_UC_LCW_NOT_LINKED = "NOT_LINKED"
 #: is no engine input and leaves at the release boundary.
 FRS_UC_CARER_ELEMENT_COLUMN = "frs_uc_carer_element"
 FRS_UC_CARER_ELEMENT_CODES = {0: "NONE", 1: "CARER"}
+#: B3 of the November event-data plan's PR3 (microcosm#1095; María's ruling of
+#: 2026-11-11): DWP pays the Universal Credit carer element only for caring at
+#: least 35 hours a week for a severely disabled person, so a linked claim whose
+#: award DWP records with the element has a carer in its benefit unit whatever
+#: the survey's care answers say. Where no claimant or partner of that unit
+#: reports 35 or more care hours or Carer's Allowance, the UC row's person takes
+#: the lower edge of the first band at that line (HOURTOT code 5, 35-49 hours);
+#: frs_disability then holds the unit's carers at the line caring for a severely
+#: disabled person. Claims with no linked record keep the survey's answers.
+FRS_DWP_CARER_CARE_HOURS = 35.0
+FRS_DWP_CARER_RULE = (
+    "on a linked Universal Credit claim whose award DWP records with a carer "
+    "element (frs_uc_carer_element CARER), where no claimant or partner of the "
+    "benefit unit reports 35 or more care hours (HOURTOT) or Carer's Allowance, "
+    "the UC row's person takes 35 care hours, the lower edge of HOURTOT's first "
+    "band at the line; other claims and people keep the survey's answers"
+)
 
 # FRS adult RENTPROF (question RentProf): whether the rent from other property
 # in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
@@ -532,6 +554,7 @@ class UKFRSSpineStageTransform:
         self._net_pay: dict[str, object] | None = None
         self._benefit_recipients: dict[str, object] | None = None
         self._care_recipients: dict[str, object] | None = None
+        self._dwp_carer_hours: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         evidence: dict[str, object] = {}
@@ -544,6 +567,7 @@ class UKFRSSpineStageTransform:
         self._net_pay = dict(evidence["net_pay_contributions"])
         self._benefit_recipients = dict(evidence["benefit_recipients"])
         self._care_recipients = dict(evidence["care_recipients"])
+        self._dwp_carer_hours = dict(evidence["dwp_carer_hours"])
         return result
 
     @staticmethod
@@ -560,6 +584,7 @@ class UKFRSSpineStageTransform:
             or self._net_pay is None
             or self._benefit_recipients is None
             or self._care_recipients is None
+            or self._dwp_carer_hours is None
         ):
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
@@ -573,6 +598,7 @@ class UKFRSSpineStageTransform:
                 "net_pay_contributions": dict(self._net_pay),
                 "benefit_recipients": dict(self._benefit_recipients),
                 "care_recipients": dict(self._care_recipients),
+                "dwp_carer_hours": dict(self._dwp_carer_hours),
             }
         }
 
@@ -903,6 +929,9 @@ def _assemble_frame(
     pe_person[FRS_UC_CARER_ELEMENT_COLUMN] = frs_uc_carer_element(
         frs["benefits"], pe_person
     )
+    pe_person["care_hours"], dwp_carer_evidence = frs_dwp_carer_care_hours(pe_person)
+    if evidence is not None:
+        evidence["dwp_carer_hours"] = dwp_carer_evidence
     pe_person["uc_is_in_gainful_self_employment"] = uc_gainful_self_employment(
         _number(person, "empstati").isin(FRS_SELF_EMPLOYED_EMPSTATI).to_numpy(),
         pe_person["self_employment_income"],
@@ -2488,6 +2517,64 @@ def frs_uc_carer_element(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.
         known="the 0 and 1 the carrier reads",
         linked_by_start=True,
     )
+
+
+def frs_dwp_carer_care_hours(
+    pe_person: pd.DataFrame,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """``care_hours`` with DWP's UC carer element applied (:data:`FRS_DWP_CARER_RULE`).
+
+    ``pe_person`` carries ``care_hours``, ``carers_allowance_reported``,
+    ``is_claimant_or_partner``, the person's benefit unit and household, and
+    :data:`FRS_UC_CARER_ELEMENT_COLUMN`. The evidence gives the claims and the
+    people raised in rounded counts and support bands, withheld where one or
+    two households carry them, split by whether the survey recorded no care or
+    care below the line.
+    """
+
+    hours = pe_person["care_hours"].to_numpy(dtype=np.float64).copy()
+    benunits = pe_person["person_benunit_id"].to_numpy()
+    households = pe_person["person_household_id"].to_numpy()
+    adult = pe_person["is_claimant_or_partner"].to_numpy(dtype=bool)
+    reported = (
+        pd.to_numeric(pe_person["carers_allowance_reported"], errors="coerce")
+        .fillna(0.0)
+        .to_numpy()
+        > 0
+    )
+    carer_row = pe_person[FRS_UC_CARER_ELEMENT_COLUMN].astype(str).to_numpy() == "CARER"
+    at_line = adult & ((hours >= FRS_DWP_CARER_CARE_HOURS) | reported)
+    covered = np.isin(benunits, benunits[at_line])
+    raised = carer_row & ~covered
+    before = hours[raised]
+    hours[raised] = FRS_DWP_CARER_CARE_HOURS
+
+    def counted(selected: np.ndarray) -> object:
+        held = len(set(households[selected].tolist()))
+        if 0 < held < UK_DISCLOSURE_FLOOR:
+            return UK_WITHHELD
+        return rounded_count(int(selected.sum()))
+
+    def cell(selected: np.ndarray) -> dict[str, object]:
+        return {
+            "people": counted(selected),
+            "support": support_band(len(set(households[selected].tolist()))),
+        }
+
+    no_care = np.zeros(len(hours), dtype=bool)
+    below = np.zeros(len(hours), dtype=bool)
+    no_care[np.flatnonzero(raised)[before == 0]] = True
+    below[np.flatnonzero(raised)[before > 0]] = True
+    evidence: dict[str, object] = {
+        "carrier": FRS_UC_CARER_ELEMENT_COLUMN,
+        "hours": FRS_DWP_CARER_CARE_HOURS,
+        "rule": FRS_DWP_CARER_RULE,
+        "carer_element_claims": cell(carer_row),
+        "raised": cell(raised),
+        "raised_from_no_care": cell(no_care),
+        "raised_from_below_the_line": cell(below),
+    }
+    return hours, evidence
 
 
 def _frs_uc_admin_claim_status(
