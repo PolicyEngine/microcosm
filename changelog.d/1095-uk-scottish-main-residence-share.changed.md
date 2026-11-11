@@ -1,4 +1,4 @@
-`frs_council_tax` now nets Scotland's second homes and liable empty homes out of the level it scales the Scottish council tax bills to (B11 of the November event-data plan's PR3, microcosm#1095; Vahid's second review of microcosm#1550, Should 2).
+`frs_council_tax` now nets Scotland's second homes and liable empty homes out of the level it scales the Scottish council tax bills to (B11 of the November event-data plan's PR3, microcosm#1095; Vahid's second review of microcosm#1550, Should 2; María's signature of 11 November 2026).
 
 S2(a) levelled the bills to the 2024-25 liability of every chargeable dwelling: CTAXBASE 2025's Band D equivalents before council tax reduction at September 2024 times CTAS 2026's average Band D, about £3.39bn. That liability includes 21,606 second homes and 43,538 empty homes liable for council tax (empty more than 6 months) at September 2024, which no FRS household occupies (Scottish Government, Second Homes and Empty Properties in September 2025, from the councils' CTAXBASE returns, packaged in PolicyEngine/chronicle#436).
 
