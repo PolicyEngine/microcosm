@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.uk_runtime import spi_income, spi_spine
+from microcosm.build.uk_runtime import spi_income, spi_spine, spi_support
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.geographic_expand import expand_uk_geographic_clones
 from microcosm.build.uk_runtime.hmrc_income import (
@@ -1270,6 +1270,38 @@ def test_stage_16_counts_its_pension_age_households_in_sources_at_any_clone_coun
             "source_household_id",
         ].nunique()
         == one[counts[1]]
+    )
+
+
+def test_stage_16_refuses_a_clone_stratum_its_share_left_without_a_copy(
+    monkeypatch,
+) -> None:
+    """At any clone count, a clone's stratum with base mass and no SPI copy
+    refuses the stage, as a one-clone spine's stratum would; it is never
+    given its base mass back (microcosm#931). Here the share never draws
+    clone 2's London households, while every other clone and region keeps
+    its draws."""
+
+    frame = expand_uk_geographic_clones(_share_frame(), clones=3).frame
+    household = frame.table("household")
+    emptied = household.loc[
+        household["household_clone_index"].eq(2) & household["region"].eq("LONDON"),
+        "household_id",
+    ].to_numpy()
+    drawn = spi_support.spi_share_inclusion
+
+    def without_clone_two_london(household_ids, **arguments):
+        return drawn(household_ids, **arguments) & ~np.isin(household_ids, emptied)
+
+    # Unpatched, the share draws a copy in every clone stratum.
+    _share_stage(frame)
+    monkeypatch.setattr(spi_support, "spi_share_inclusion", without_clone_two_london)
+    with pytest.raises(ValueError) as caught:
+        _share_stage(frame)
+    # London's two strata in clone 2, its pension-age households and the rest.
+    assert str(caught.value) == (
+        "Every positive-mass UK base stratum must have rebuilt SPI support; 2 of "
+        "the 24 positive-mass strata have no SPI copy."
     )
 
 

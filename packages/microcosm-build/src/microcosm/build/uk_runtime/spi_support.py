@@ -606,7 +606,8 @@ def build_uk_spi_support_channel(
     and the channel's households are drawn unweighted with one weight per
     region, so without the split the channel holds more pension-age mass than
     the FRS design gives pension-age households (microcosm#1069). Where the
-    frame carries geographic clones, the strata split by clone as well
+    frame carries geographic clones, the strata split by clone as well, and a
+    clone's stratum that the share left without a copy refuses the stage
     (:func:`_allocate_spi_prior_mass`).
     """
 
@@ -1134,7 +1135,12 @@ def _allocate_spi_prior_mass(
     is derived for the allocation only and never written to the frame. A
     household table without the column allocates exactly as before, and so
     does a one-clone spine, whose clone stratum is the same for every
-    household. A positive-mass stratum with no SPI copy is refused, by count.
+    household. A positive-mass stratum with no SPI copy is refused, by count,
+    at every clone count: a clone's stratum that the share left without a
+    copy is not given its base mass back, which would leave that clone short
+    of its SPI share (microcosm#931). The f010, K = 15 arm drew a copy in
+    every clone stratum, and a fuller rung draws more in each, since the share
+    copies each household with about the same probability at every rung.
     """
 
     household = result.household.copy()
