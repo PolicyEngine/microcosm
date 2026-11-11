@@ -140,11 +140,6 @@ def evidence(monkeypatch):
     )
     monkeypatch.setattr(
         runtime,
-        "load_efrs_parity_reference",
-        lambda: SimpleNamespace(input_entities={"income": "household"}),
-    )
-    monkeypatch.setattr(
-        runtime,
         "uk_aggregate_admin_totals",
         lambda frame, manifest: ({"admin": 2.0}, [{"measured": 2.0}]),
     )

@@ -104,7 +104,7 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "reason": ENGINE_DERIVED_EXCLUSION_REASON,
         "tracking_note": (
             "microcosm#1095 (P1 of the November event-data plan): "
-            "policyengine-uk 2.174.1 derives pip_dl_category from "
+            "policyengine-uk 2.177.7 derives pip_dl_category from "
             "pip_dl_points (8 points for the standard rate, 12 for the "
             "enhanced) where no category is supplied for the year; the "
             "pip_points stage stores the points within the stored award, and "
@@ -118,7 +118,7 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "reason": ENGINE_DERIVED_EXCLUSION_REASON,
         "tracking_note": (
             "microcosm#1095 (P1 of the November event-data plan): "
-            "policyengine-uk 2.174.1 derives pip_m_category from pip_m_points "
+            "policyengine-uk 2.177.7 derives pip_m_category from pip_m_points "
             "(8 points for the standard rate, 12 for the enhanced) where no "
             "category is supplied for the year; the pip_points stage stores "
             "the points within the stored award, and the release and "
@@ -154,12 +154,12 @@ EFFECTIVE_MASS_COVERAGE = {
 #: these beyond the reference's own list (microcosm#1095, P1).
 ENGINE_DERIVED_SINCE_REFERENCE: dict[str, str] = {
     "pip_dl_category": (
-        "policyengine-uk 2.174.1, variables/input/pip_dl_category.py through "
+        "policyengine-uk 2.177.7, variables/input/pip_dl_category.py through "
         "utils/pip.py pip_category: from pip_dl_points where no category is "
         "supplied for the year"
     ),
     "pip_m_category": (
-        "policyengine-uk 2.174.1, variables/input/pip_m_category.py through "
+        "policyengine-uk 2.177.7, variables/input/pip_m_category.py through "
         "utils/pip.py pip_category: from pip_m_points where no category is "
         "supplied for the year"
     ),
@@ -168,6 +168,27 @@ RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS = (
     "charitable_investment_gifts",
     "gift_aid",
 )
+#: Inputs the current builds carry that a later build stops carrying on
+#: purpose (microcosm#1095). The coverage gate requires what the cut's
+#: reference carries, so each is a reviewed exclusion until a promotion moves
+#: the reference past it; then it is dormant and leaves. Signed rulings, not
+#: enhanced-FRS parity debt, so they sit here rather than in the ledger.
+RETIRED_SINCE_REFERENCE_EXCLUSIONS: dict[str, dict[str, str]] = {
+    "self_employment_gross_receipts": {
+        "reason": (
+            "microcosm#1550 (microcosm#1439) stops writing it: the trading "
+            "allowance stage stores each trader's trading_allowance_claim_status "
+            "and leaves gross receipts at the engine's zero, since neither the "
+            "FRS nor the SPI records them. The current builds (national "
+            "eeb6093e, dense 38605444) still carry the receipts encoding "
+            "microcosm#1428 wrote (María's signature of 2026-11-10)."
+        ),
+        "tracking_note": (
+            "microcosm#1095: remove once neither line's current build carries it."
+        ),
+    },
+}
+
 RESTORED_REQUIRED_COLUMN_EVIDENCE = {
     "charitable_investment_gifts": {
         "effective_signal_mass_share": 0.00028055329260683216,
@@ -858,53 +879,49 @@ def build_manifest(
 ) -> dict[str, Any]:
     reference = reference or _load(REFERENCE_PATH)
     known_gaps_payload = known_gaps_payload or _load(KNOWN_GAPS_PATH)
+    # The ledger is still checked against the frozen enhanced-FRS facts it
+    # was measured on; neither decides the required inputs any more.
     _validate_known_gaps(reference, known_gaps_payload)
     known_gaps = known_gaps_payload["known_gaps"]
     restored_required = set(known_gaps_payload["restored_required_columns"])
-    populated_layers = {
-        name
-        for name, share in reference["nonzero_shares"].items()
-        if float(share) > 0.0
-    }
-    columns: dict[str, dict[str, str]] = {}
     engine_derived = known_gaps_payload["engine_derived_exclusions"]
-    for name in sorted(populated_layers):
-        exclusion = known_gaps.get(name) or engine_derived.get(name)
-        if exclusion is not None:
-            columns[name] = {
-                "status": "reviewed_exclusion",
-                "reason": str(exclusion["reason"]),
-                "tracking_note": str(exclusion["tracking_note"]),
-            }
-        else:
-            columns[name] = {"status": "required"}
-
-    required = sorted(
-        name for name, entry in columns.items() if entry["status"] == "required"
-    )
-    reviewed = sorted(
-        name
-        for name, entry in columns.items()
-        if entry["status"] == "reviewed_exclusion"
-    )
-    source = reference["source"]
+    # Schema 4 (microcosm#1095): the required inputs are the ones the cut's
+    # reference build carries, measured at gate time, so the manifest
+    # declares only the reviewed exclusions.
+    retired = RETIRED_SINCE_REFERENCE_EXCLUSIONS
+    clash = sorted(set(retired) & ({*known_gaps, *engine_derived} | restored_required))
+    if clash:
+        raise ValueError(
+            "An input retired since the reference cannot also be a known gap, an "
+            f"engine-derived exclusion or a restored input: {clash}."
+        )
+    columns: dict[str, dict[str, str]] = {}
+    for name in sorted({*known_gaps, *engine_derived, *retired}):
+        exclusion = known_gaps.get(name) or engine_derived.get(name) or retired[name]
+        columns[name] = {
+            "status": "reviewed_exclusion",
+            "reason": str(exclusion["reason"]),
+            "tracking_note": str(exclusion["tracking_note"]),
+        }
     candidate_source = known_gaps_payload["candidate_evidence"]["source"]
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "description": (
-            "Declared full-coverage contract for a UK release: every populated "
-            "effective loader input in the pinned enhanced FRS must be persisted "
-            "with non-default signal, or carry a reviewed exclusion with the "
-            "campaign reason and tracking note."
+            "Release input-coverage contract for a UK cut: every loader input "
+            "the current build of the cut's line carries must be persisted "
+            "with non-default signal on the reviewed share of effective "
+            "population mass, unless it carries a reviewed exclusion here "
+            "with its reason and tracking note (microcosm#1095)."
         ),
         "reference": {
-            "derived_from": REFERENCE_PATH.name,
-            "filename": str(source["filename"]),
-            "revision": str(source["revision"]),
-            "sha256": str(source["sha256"]),
-            "vintage": str(source["vintage"]),
-            "period": str(source["period"]),
-            "populated_input_columns": len(populated_layers),
+            "kind": "current_build",
+            "required_inputs": (
+                "The loader inputs the current build of the cut's line "
+                "carries, measured by the coverage gate's own rule; the "
+                "cut's reference step records them in reference_surface.json. "
+                "Until microcosm#1095 they were the populated inputs of the "
+                "frozen enhanced-FRS reference."
+            ),
         },
         "candidate_evidence": {
             "derived_from": KNOWN_GAPS_PATH.name,
@@ -1040,25 +1057,20 @@ def build_manifest(
             ),
         },
         "derivation": (
-            "Surface = efrs_parity_reference.json populated effective loader "
-            "inputs. status='required' when the sha-pinned candidate evidence "
-            "records non-default signal on at least the reviewed owning-entity "
-            "effective-mass share OR the column is pinned in "
-            "restored_required_columns after a source-family restoration; all "
-            "remaining surface columns are reviewed_exclusion with reason "
+            "Columns = the reviewed exclusions of efrs_parity_known_gaps.json: "
+            "its known gaps, with reason "
             f"{EXCLUSION_REASON!r} and a UK_COVERAGE_PROGRESS.md tracking note, "
-            "except the engine_derived_exclusions, which are reviewed_exclusion "
-            "with their own reason because the engine computes them from "
-            "persisted inputs. "
-            "The final release gate applies the same effective-mass floor, and "
-            "distributional restorations must pass it on their required source "
-            "channel."
+            "and its engine_derived_exclusions, with their own reason because "
+            "the engine computes them from persisted inputs; and the inputs "
+            "the current builds carry that a later build stops carrying on "
+            "purpose, each a signed ruling until a promotion moves the "
+            "reference past it. Every other input "
+            "the cut's reference build carries is required. The gate applies "
+            "one effective-mass floor to the reference and the candidate, and "
+            "distributional restorations must pass it on their required "
+            "source channel."
         ),
-        "counts": {
-            "required": len(required),
-            "reviewed_exclusion": len(reviewed),
-            "total": len(columns),
-        },
+        "counts": {"reviewed_exclusion": len(columns)},
         "columns": columns,
     }
 
@@ -1394,8 +1406,9 @@ def main() -> int:
     _write_or_check(MANIFEST_PATH, manifest, check=args.check)
     action = "current" if args.check else "wrote"
     print(
-        f"{action}: {MANIFEST_PATH} — {manifest['counts']['required']} required, "
-        f"{manifest['counts']['reviewed_exclusion']} reviewed exclusions"
+        f"{action}: {MANIFEST_PATH} — "
+        f"{manifest['counts']['reviewed_exclusion']} reviewed exclusions; the "
+        "required inputs come from each cut's reference build"
     )
     return 0
 

@@ -435,7 +435,7 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
         "terminal_gates": "terminal_gates",
         "release_cut_gates": "release_cut_gates",
         "spine_gates": "spine_gates",
-        "score_vs_enhanced_frs": "score_vs_enhanced_frs",
+        "score_vs_reference": "score_vs_reference",
     }
     assert "dataset_role" not in release_manifest
     # The spine ran the SPI stages, so the release says it rests on the tape,
@@ -666,7 +666,7 @@ def test_assemble_refuses_invalid_staging_delivery(
 
 def test_assemble_refuses_missing_score_receipt(assembler_inputs) -> None:
     assembler_inputs["score"].unlink()
-    with pytest.raises(FileNotFoundError, match="score_vs_enhanced_frs"):
+    with pytest.raises(FileNotFoundError, match="score_vs_reference"):
         _load_driver_module().main(assembler_inputs["argv"])
 
 

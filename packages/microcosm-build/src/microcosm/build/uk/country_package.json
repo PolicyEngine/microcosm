@@ -348,7 +348,7 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "incumbent_unresolvable_measures.json",
+      "path": "reference_unresolvable_measures.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

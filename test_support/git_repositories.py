@@ -34,8 +34,11 @@ NO_BACKGROUND_MAINTENANCE: tuple[str, ...] = (
 #: that the code under test runs from ``os.environ``, where no ``-c`` option
 #: reaches it. They override any ``GIT_CONFIG_COUNT`` entries already in the
 #: environment; a ``GIT_CONFIG_PARAMETERS`` there (an outer ``git -c``) still
-#: applies, after them. Code that strips git's repository-local variables
-#: (``git rev-parse --local-env-vars``) drops them.
+#: applies, after them. Code that strips every variable
+#: ``git rev-parse --local-env-vars`` lists drops ``GIT_CONFIG_COUNT`` and so
+#: these settings. The root conftest (``test_support.git_isolation``) and the
+#: Modal runner (``modal_us_stage_plan.git_environment``) keep it, so they
+#: still apply there.
 NO_BACKGROUND_MAINTENANCE_ENV: Mapping[str, str] = MappingProxyType(
     {
         "GIT_CONFIG_COUNT": str(len(NO_BACKGROUND_MAINTENANCE) // 2),
