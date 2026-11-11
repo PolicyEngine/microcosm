@@ -118,6 +118,21 @@ def test_every_workflow_job_caps_its_runtime() -> None:
         assert type(cap) is int and 0 < cap < 360, name
 
 
+def test_every_workflow_job_runs_on_one_pinned_image_with_uv_managed_python() -> None:
+    """A job's image and interpreter must not depend on which runner GitHub assigns.
+
+    ``ubuntu-latest`` moves between images, and uv takes an image's own Python
+    when it holds no managed one, so a leg can run a patch release that
+    predates a fix its tests need.
+    """
+    workflow = yaml.safe_load(_TEST_WORKFLOW.read_text(encoding="utf-8"))
+
+    assert workflow["env"]["UV_MANAGED_PYTHON"] == "1"
+    images = {name: job.get("runs-on") for name, job in workflow["jobs"].items()}
+    assert images
+    assert set(images.values()) == {"ubuntu-24.04"}, images
+
+
 def test_workflow_uses_one_country_selector_only_for_country_jobs() -> None:
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
     selector = workflow.split("\n  select-countries:\n", maxsplit=1)[1].split(
