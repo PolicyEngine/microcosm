@@ -203,7 +203,7 @@ carries the solve peak from the grid log and no wall time (`runtime_restored`
 names the log line). The concept-part receipts under `materialize/` lack the
 source-h5, concept-spec and null-fill-summary digests that `materialize`
 writes. On 2026-09-30 their numerical fields matched the run's own copies,
-which carried those digests in `*_note` fields we added by hand.
+which carried those digests in `*_note` fields we added afterwards.
 
 ## Design
 

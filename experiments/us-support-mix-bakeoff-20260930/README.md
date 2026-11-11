@@ -30,4 +30,4 @@ estimate) and saved weights stayed in its work directory, which no longer
 exists, so a rerun rebuilds them from `compile`. The `materialize/` receipts
 lack the source-h5, concept-spec and null-fill-summary digests that
 `materialize` writes; on 2026-09-30 their numerical fields matched the run's own
-copies, which carried those digests in `*_note` fields we added by hand.
+copies, which carried those digests in `*_note` fields we added afterwards.
