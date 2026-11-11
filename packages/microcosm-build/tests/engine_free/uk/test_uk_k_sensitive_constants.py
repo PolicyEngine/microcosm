@@ -32,6 +32,7 @@ from microcosm.build.uk_runtime import (
     regional_home_values,
     salary_sacrifice,
     spi_band_donors,
+    spi_benefit_coherence,
     spi_employment_shell,
     spi_rank_transport,
     stage_health,
@@ -46,8 +47,9 @@ COUNTS = frozenset(
 #: How the code meets the clone count, each with what it means.
 TREATMENTS = {
     "per clone": (
-        "declared for one clone: the stage applies it within each clone, and "
-        "its check holds K times the stage's figure to it"
+        "declared for one clone: the stage applies it within each clone, and a "
+        "check that reads it over every clone holds K times the stage's figure "
+        "to it"
     ),
     "invariant": "what it counts does not move with K",
     "kept": "it moves with K, and is kept as it is for the reason given",
@@ -401,17 +403,80 @@ K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
     ),
     KSensitiveConstant(
         name="take-up target count",
-        where="stochastic_assignment.assign_binary_with_anchored_residual",
-        read=lambda: _source_names(
-            stochastic_assignment.assign_binary_with_anchored_residual,
-            "int(rate * int(population.sum()))",
+        where=(
+            "frs_take_up.derive_frs_take_up's Child Benefit, Pension Credit and "
+            "Universal Credit draws: the int(rate x n) of "
+            "stochastic_assignment.assign_binary_with_anchored_residual, taken "
+            "within its strata"
         ),
-        value=True,
-        counts="rows",
-        treatment="later",
+        read=lambda: (
+            _source_names(
+                stochastic_assignment.assign_binary_with_anchored_residual,
+                "int(rate * int(population.sum()))",
+                "np.unique(strata)",
+            ),
+            inspect.getsource(frs_take_up.derive_frs_take_up).count("strata=strata"),
+            _source_names(
+                frs_take_up.add_frs_take_up, "clone_index=geographic_clone_indices"
+            ),
+        ),
+        value=(True, 3, True),
+        counts="source count",
+        treatment="per clone",
         reason=(
-            "int(rate x n) rounds once over the rows of every clone; #931 "
-            "group (c) takes it up with the per-clone take-up counts"
+            "frs_take_up hands the draws each benefit unit's geographic clone "
+            "as their strata, so each clone counts its own units, each FRS "
+            "benefit unit once, and clone 0's count is one clone's"
+        ),
+    ),
+    KSensitiveConstant(
+        name="SPI take-up target count",
+        where=(
+            "spi_benefit_coherence._redraw_spi_uc_take_up's Universal Credit "
+            "draw: the int(rate x n) of "
+            "stochastic_assignment.assign_binary_with_anchored_residual"
+        ),
+        read=lambda: (
+            _source_names(
+                spi_benefit_coherence._redraw_spi_uc_take_up,
+                "assign_binary_with_anchored_residual",
+            ),
+            _source_names(spi_benefit_coherence._redraw_spi_uc_take_up, "strata"),
+        ),
+        value=(True, False),
+        counts="rows",
+        treatment="kept",
+        reason=(
+            "int(rate x n) rounds once over the SPI units of every clone: the "
+            "redraw lies outside the stages #931 nests clone 0 on, so it keeps "
+            "one count over every clone, which its clone index as strata would "
+            "take per clone"
+        ),
+    ),
+    KSensitiveConstant(
+        name="apprentice target",
+        where=(
+            "frs_person_draws.derive_is_apprentice's walk target, the rate times "
+            "the weight aged 21 to 24"
+        ),
+        read=lambda: (
+            _source_names(
+                frs_person_draws.derive_is_apprentice,
+                "_clone_rows(person_clone_index",
+                "weights[in_ages & rows]",
+            ),
+            _source_names(
+                frs_person_draws.add_frs_person_draws_with_receipt,
+                "person_clone_index=geographic_clone_indices",
+            ),
+        ),
+        value=(True, True),
+        counts="weight",
+        treatment="per clone",
+        reason=(
+            "each clone walks its own employees to the rate times its own "
+            "weight aged 21 to 24, a 1 / K share, so clone 0's walk is one "
+            "clone's at its weights over K"
         ),
     ),
     KSensitiveConstant(

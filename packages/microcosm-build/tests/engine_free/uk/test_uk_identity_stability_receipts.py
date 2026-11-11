@@ -3630,6 +3630,13 @@ class _E4Contract:
         return SimpleNamespace(raw={"entity": "person"})
 
 
+class _E4UniversalCreditContract(_E4Contract):
+    """The scenario's rates, with Universal Credit's at ``universal_credit``."""
+
+    def __init__(self, universal_credit: float) -> None:
+        self.rates = {**_E4Contract.rates, "universal_credit": universal_credit}
+
+
 class _LHAEngine:
     """LHA_category by whether the benefit unit claims Universal Credit."""
 
@@ -3770,8 +3777,9 @@ def _e4_propensity() -> pd.DataFrame:
     )
 
 
-def _e4_chain(clones: int) -> SimpleNamespace:
-    """The scenario through E4's stages and the later layers; each stage's frame."""
+def _e4_chain(clones: int, contract: _E4Contract | None = None) -> SimpleNamespace:
+    """The scenario through E4's stages and the later layers; each stage's
+    frame. ``contract`` defaults to the scenario's rates."""
 
     from microcosm.build.stochastic_assignment import stable_identity_uniforms
     from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
@@ -3783,7 +3791,11 @@ def _e4_chain(clones: int) -> SimpleNamespace:
         derive_frs_person_draws,
         uk_person_household_weights,
     )
-    from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+    from microcosm.build.uk_runtime.frs_take_up import (
+        UKFRSTakeUpStageTransform,
+        geographic_clone_indices,
+        geographic_clone_zero_rows,
+    )
     from microcosm.build.uk_runtime.geographic_expand import (
         expand_uk_geographic_clones,
     )
@@ -3793,15 +3805,16 @@ def _e4_chain(clones: int) -> SimpleNamespace:
     )
     from microcosm.build.uk_runtime.spi_spine import UKSPISupportChannelStageTransform
 
-    contract = _E4Contract()
+    contract = _E4Contract() if contract is None else contract
     expanded = expand_uk_geographic_clones(_e4_raw_frame(), clones=clones).frame
     taken = UKFRSTakeUpStageTransform(
         contract=contract,
         stage=_manifest_stage("frs_take_up"),
         population_policy=_E4_POLICY,
     )(expanded)
-    # The person draws through their derivation: the stage transform reads
-    # the installed engine's apprentice schedule, which only its receipt uses.
+    # The person draws through their derivation, with what the stage hands
+    # it: the stage transform reads the installed engine's apprentice
+    # schedule, which only its receipt uses.
     person = taken.table("person").copy()
     drawn = derive_frs_person_draws(
         person,
@@ -3810,6 +3823,8 @@ def _e4_chain(clones: int) -> SimpleNamespace:
         person_sources=record_source_households(
             taken, "person", stage="frs_person_draws", before_copies=True
         ),
+        person_clone_zero=geographic_clone_zero_rows(taken, "person"),
+        person_clone_index=geographic_clone_indices(taken, "person"),
     )
     for column in FRS_PERSON_DRAW_OUTPUT_COLUMNS:
         person[column] = drawn[column].to_numpy()
@@ -3951,6 +3966,58 @@ class TestE4OnAFrameTheStagesBuilt:
         }
         assert childcare and childcare <= still_equal
         assert "would_claim_uc" not in still_equal
+
+    @pytest.mark.parametrize("universal_credit", [0.5, 0.4])
+    def test_the_recompute_counts_within_each_clone_at_three_clones(
+        self, universal_credit: float, monkeypatch
+    ) -> None:
+        """At three clones frs_take_up's anchored draws and frs_person_draws'
+        apprentice walk count within each clone (microcosm#931), and E4 hands
+        both recomputes each row's clone, by id: no stored column differs, the
+        store still holds the Child Benefit and Pension Credit flags, which no
+        later layer of the scenario rewrites, and the BRMA stage's
+        would_claim_uc is restored as the stage drew it. Without the clone
+        index, as E4 recomputed before, the walk stops at another prefix and
+        the Child Benefit residual is not the stored one; at a Universal
+        Credit rate of 0.4, whose int(rate x units) rounds otherwise over
+        every clone, the BRMA stage's would_claim_uc, and so its BRMA, differ
+        too."""
+
+        tool = _load_tool()
+        built = _e4_chain(3, _E4UniversalCreditContract(universal_credit))
+        scoped = tool._frame_as_draw_stages_saw(
+            built.final, state_pension_age=_E4_POLICY.state_pension_age
+        )
+        stage_time = built.brma.table("benunit").set_index("benunit_id")
+
+        def recompute() -> tuple[dict[str, object], int]:
+            """The receipt, and how many benefit units the BRMA stage's
+            restored would_claim_uc puts off the stage's."""
+
+            engine = _LHAEngine()
+            receipt = _e4_receipt(tool, scoped, built.contract, engine=engine)
+            (read,) = engine.frames
+            benunit = read.table("benunit").set_index("benunit_id")
+            restored = benunit["would_claim_uc"].to_numpy(dtype=bool)
+            drawn = stage_time["would_claim_uc"].reindex(benunit.index).to_numpy()
+            return receipt, int((restored != drawn.astype(bool)).sum())
+
+        receipt, off = recompute()
+        assert receipt["matches_stored_columns"] is True
+        assert receipt["stored_mismatches"] == {}
+        assert receipt["held_to_tolerance"] == {}
+        still_equal = set(receipt["rewritten_later_still_equal"]["benunit"])
+        assert {"would_claim_child_benefit", "would_claim_pc"} <= still_equal
+        assert off == 0
+
+        monkeypatch.setattr(tool, "geographic_clone_indices", lambda *_: None)
+        pooled, off = recompute()
+        assert "is_apprentice" in pooled["stored_mismatches"]["person"]
+        still_equal = set(pooled["rewritten_later_still_equal"]["benunit"])
+        assert "would_claim_child_benefit" not in still_equal
+        if universal_credit == 0.4:
+            assert off > 0
+            assert "brma" in pooled["stored_mismatches"]["household"]
 
     def test_brma_on_the_final_frames_flags_draws_from_other_cells(self) -> None:
         # The BRMA stage read LHA_category on its own input, carrying
@@ -4183,4 +4250,38 @@ class TestTheApprenticeWalkToRounding:
         )
         assert not tool._apprentice_walk_holds(
             person, three, person_weights=weights, rate=rate
+        )
+
+    def test_the_walk_holds_within_each_clone(self) -> None:
+        # Two clones of the same four employees of weight 1, at a rate of a
+        # half: frs_person_draws flags each clone's first two in draw order,
+        # its own target. Given the clone index, those flags hold, and the
+        # first four in draw order over both clones, one walk over every
+        # clone, do not; without it, the other way round (microcosm#931).
+        tool = _load_tool()
+        one = self._people(4)
+        person = pd.concat(
+            [one, one.assign(person_id=one["person_id"] + 10**9)], ignore_index=True
+        )
+        clones = np.repeat(np.array([0, 1], dtype=np.int64), len(one))
+        order = self._in_draw_order(person)
+        each_clone = np.zeros(len(person), dtype=bool)
+        for clone in (0, 1):
+            each_clone[[i for i in order if clones[i] == clone][:2]] = True
+        over_both = np.zeros(len(person), dtype=bool)
+        over_both[order[:4]] = True
+        # The premise: the two walks flag different people here.
+        assert not np.array_equal(each_clone, over_both)
+        weights = np.ones(len(person))
+        assert tool._apprentice_walk_holds(
+            person, each_clone, person_weights=weights, rate=0.5, clone_index=clones
+        )
+        assert not tool._apprentice_walk_holds(
+            person, over_both, person_weights=weights, rate=0.5, clone_index=clones
+        )
+        assert tool._apprentice_walk_holds(
+            person, over_both, person_weights=weights, rate=0.5
+        )
+        assert not tool._apprentice_walk_holds(
+            person, each_clone, person_weights=weights, rate=0.5
         )

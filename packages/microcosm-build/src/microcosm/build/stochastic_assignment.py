@@ -245,6 +245,8 @@ def assign_binary_with_anchored_residual(
     rate: float,
     anchor: Sequence[bool] | np.ndarray | None = None,
     population: Sequence[bool] | np.ndarray | None = None,
+    *,
+    strata: Sequence[int] | np.ndarray | None = None,
 ) -> np.ndarray:
     """Assign a flag while forcing reported-recipient anchors to true.
 
@@ -255,6 +257,22 @@ def assign_binary_with_anchored_residual(
     rows and rows outside it are never drawn. Anchored overshoot is accepted,
     an anchor outside the population stays true (reported receipt is a fact),
     and the residual fills only non-anchored rows inside the population.
+
+    ``strata``, one integer per row, takes the count within each stratum
+    rather than over every row: each stratum runs the arithmetic above on its
+    own rows alone, with its own target, the need its own anchors leave and
+    the threshold its own non-anchored rows fill, so their order does not
+    matter. A stratum's flags are then the flags its rows take on their own,
+    whatever the other strata hold, and with every row in one stratum they
+    are the flags without strata. A caller whose strata are copies of one
+    population, as geographic clones are (microcosm#931), counts each copy as
+    the population alone is counted, where one count over every copy rounds
+    ``int(rate * n_units)`` once over all of them. Without an anchor there is
+    no count, so strata change nothing, though they are still checked: they
+    must align with ``draws`` and have an integer dtype, which holds no
+    missing value. Unlike :func:`weight_balanced_uniforms`' strata, the
+    labels must be integers: a label a merge left missing would match no
+    stratum, and its rows would keep their anchors alone.
     """
 
     draws = np.asarray(draws, dtype=np.float64)
@@ -265,11 +283,21 @@ def assign_binary_with_anchored_residual(
         population = np.asarray(population, dtype=bool)
         if population.shape != draws.shape:
             raise ValueError("population and draws must align")
+    if strata is not None:
+        strata = _stratum_labels(strata, draws.shape)
     if anchor is None:
         return population & (draws < rate)
     anchor = np.asarray(anchor, dtype=bool)
     if anchor.shape != draws.shape:
         raise ValueError("anchor and draws must align")
+    if strata is not None:
+        result = anchor.copy()
+        for stratum in np.unique(strata):
+            rows = strata == stratum
+            result[rows] = assign_binary_with_anchored_residual(
+                draws[rows], rate, anchor[rows], population[rows]
+            )
+        return result
     result = anchor.copy()
     target = int(rate * int(population.sum()))
     remaining_needed = max(0, target - int((anchor & population).sum()))
@@ -330,3 +358,23 @@ def _validate_rate(rate: Any) -> float:
     if not 0.0 <= value <= 1.0:
         raise ValueError(f"rate must be in [0, 1], got {value}.")
     return value
+
+
+def _stratum_labels(
+    strata: Sequence[int] | np.ndarray, shape: tuple[int, ...]
+) -> np.ndarray:
+    """``strata`` as one integer label per row, or a refusal.
+
+    The labels must align with the draws and have an integer dtype, which
+    holds no missing value: a float holding whole numbers is refused, as
+    :func:`integer_record_keys` refuses float ids, and so is a float, object
+    or nullable column holding a missing value. The refusals name no count,
+    label or row.
+    """
+
+    labels = np.asarray(strata)
+    if labels.shape != shape:
+        raise ValueError("strata and draws must align")
+    if labels.dtype.kind not in "iu":
+        raise TypeError("strata must be integers, one per row, none missing")
+    return labels
