@@ -140,12 +140,247 @@
   "conclusions": {
     "declared_zero_in_consumer_feed": true,
     "explicit_missing_or_suppression_flag_found": false,
-    "underlying_workbook_checked": false,
-    "underlying_source_cells_checked": false,
+    "underlying_workbook_checked": true,
+    "underlying_source_cells_checked": true,
     "zero_semantics_verified": false,
     "interpretation": "The feed declares numeric observations equal to zero. Available metadata does not establish whether those zeros reflect the substantive source data or an extraction/source-data issue. They must not be described as suppressed or missing on this evidence.",
     "deduction": "Capped-fit improvement can coexist with higher uncapped error because errors beyond the cap make equal contributions to the fitted objective. This alone does not establish more accurate EITC estimation.",
     "targets_changed_for_this_audit": false,
-    "target_handling": "All targets remain unchanged across the designs in this run."
+    "target_handling": "All targets remain unchanged across the designs in this run.",
+    "interpretation_after_workbook_check": "The 0 is IRS's published value. The workbook's own all-returns rows imply that the cell holds about 311,000 returns; see workbook_check. IRS has not confirmed this reading."
+  },
+  "workbook_check": {
+    "checked_on": "2026-11-11",
+    "added_after_the_run": true,
+    "method": "Each workbook's first sheet, read with xlrd. Per AGI row, the sum of the four qualifying-children blocks (returns in columns Z, AP, BF and BV; EITC amount in $ thousands in AA, AQ, BG and BW) minus the all-returns EITC columns (J returns, K amount). Rows whose residual exceeds the workbook's rounding (2) are listed.",
+    "workbooks": [
+      {
+        "tax_year": 2023,
+        "chronicle_path": "db/data/irs_soi/table_2_5/23in25ic.xls",
+        "chronicle_commit": "1e42498f263323904bc5831972320e14621b1256",
+        "sha256": "c6a58f637e42e83248b1f6f336fddc5d94ac91e04ccf68b1d089291d2d5fe1a5",
+        "agi_rows_checked": 28,
+        "rows_beyond_rounding": [
+          {
+            "sheet_row": 31,
+            "agi_row": "$20,000 under $25,000",
+            "children_minus_all_returns": {
+              "returns": 1187,
+              "amount_thousands": 297
+            },
+            "child_blocks_returns": {
+              "none": 160909,
+              "one": 1048096,
+              "two": 741595,
+              "three_or_more": 407149
+            },
+            "child_blocks_amount_thousands": {
+              "none": 23243,
+              "one": 3963800,
+              "two": 4682050,
+              "three_or_more": 2919017
+            },
+            "all_returns": {
+              "returns": 2356562,
+              "amount_thousands": 11587813
+            }
+          },
+          {
+            "sheet_row": 32,
+            "agi_row": "$25,000 under $30,000",
+            "children_minus_all_returns": {
+              "returns": 310212,
+              "amount_thousands": 1723778
+            },
+            "child_blocks_returns": {
+              "none": 0,
+              "one": 958331,
+              "two": 645858,
+              "three_or_more": 635160
+            },
+            "child_blocks_amount_thousands": {
+              "none": 0,
+              "one": 2978715,
+              "two": 3574403,
+              "three_or_more": 3812252
+            },
+            "all_returns": {
+              "returns": 1929137,
+              "amount_thousands": 8641592
+            }
+          },
+          {
+            "sheet_row": 33,
+            "agi_row": "$30,000 under $35,000",
+            "children_minus_all_returns": {
+              "returns": -311398,
+              "amount_thousands": -1724074
+            },
+            "child_blocks_returns": {
+              "none": 0,
+              "one": 1024692,
+              "two": 629271,
+              "three_or_more": 0
+            },
+            "child_blocks_amount_thousands": {
+              "none": 0,
+              "one": 2406097,
+              "two": 2844637,
+              "three_or_more": 0
+            },
+            "all_returns": {
+              "returns": 1965361,
+              "amount_thousands": 6974808
+            }
+          }
+        ],
+        "rows_beyond_rounding_sum": {
+          "returns": 1,
+          "amount_thousands": 1
+        },
+        "other_rows_max_abs_residual": {
+          "returns": 1,
+          "amount_thousands": 1
+        },
+        "matches_feed_source_sha256": true,
+        "three_or_more_children_column": [
+          {
+            "sheet_row": 31,
+            "agi_row": "$20,000 under $25,000",
+            "published": {
+              "returns": 407149,
+              "amount_thousands": 2919017
+            },
+            "published_minus_residual": {
+              "returns": 405962,
+              "amount_thousands": 2918720
+            }
+          },
+          {
+            "sheet_row": 32,
+            "agi_row": "$25,000 under $30,000",
+            "published": {
+              "returns": 635160,
+              "amount_thousands": 3812252
+            },
+            "published_minus_residual": {
+              "returns": 324948,
+              "amount_thousands": 2088474
+            }
+          },
+          {
+            "sheet_row": 33,
+            "agi_row": "$30,000 under $35,000",
+            "published": {
+              "returns": 0,
+              "amount_thousands": 0
+            },
+            "published_minus_residual": {
+              "returns": 311398,
+              "amount_thousands": 1724074
+            }
+          },
+          {
+            "sheet_row": 34,
+            "agi_row": "$35,000 under $40,000",
+            "published": {
+              "returns": 312506,
+              "amount_thousands": 1408203
+            },
+            "published_minus_residual": {
+              "returns": 312506,
+              "amount_thousands": 1408203
+            }
+          }
+        ]
+      },
+      {
+        "tax_year": 2022,
+        "chronicle_path": "db/data/irs_soi/table_2_5/22in25ic.xls",
+        "chronicle_commit": "1e42498f263323904bc5831972320e14621b1256",
+        "sha256": "bd890a09ef3a35c577dcc9d94272a7ee40d836453c686d70599372b48b863884",
+        "agi_rows_checked": 28,
+        "rows_beyond_rounding": [],
+        "rows_beyond_rounding_sum": {
+          "returns": 0,
+          "amount_thousands": 0
+        },
+        "other_rows_max_abs_residual": {
+          "returns": 1,
+          "amount_thousands": 1
+        }
+      },
+      {
+        "tax_year": 2021,
+        "chronicle_path": "db/data/irs_soi/table_2_5/21in25ic.xls",
+        "chronicle_commit": "1e42498f263323904bc5831972320e14621b1256",
+        "sha256": "d4429c04a101b70cf23c6412f3246a3bc6a7244bad99f3561e54c302007f3285",
+        "agi_rows_checked": 28,
+        "rows_beyond_rounding": [
+          {
+            "sheet_row": 32,
+            "agi_row": "$25,000 under $30,000",
+            "children_minus_all_returns": {
+              "returns": 107558,
+              "amount_thousands": 26117
+            },
+            "child_blocks_returns": {
+              "none": 166385,
+              "one": 1293601,
+              "two": 749377,
+              "three_or_more": 328472
+            },
+            "child_blocks_amount_thousands": {
+              "none": 29007,
+              "one": 2894812,
+              "two": 3315702,
+              "three_or_more": 1736027
+            },
+            "all_returns": {
+              "returns": 2430277,
+              "amount_thousands": 7949431
+            }
+          },
+          {
+            "sheet_row": 36,
+            "agi_row": "$45,000 under $50,000",
+            "children_minus_all_returns": {
+              "returns": -107557,
+              "amount_thousands": -26118
+            },
+            "child_blocks_returns": {
+              "none": 0,
+              "one": 0,
+              "two": 344449,
+              "three_or_more": 244332
+            },
+            "child_blocks_amount_thousands": {
+              "none": 0,
+              "one": 0,
+              "two": 314654,
+              "three_or_more": 367367
+            },
+            "all_returns": {
+              "returns": 696338,
+              "amount_thousands": 708139
+            }
+          }
+        ],
+        "rows_beyond_rounding_sum": {
+          "returns": 1,
+          "amount_thousands": -1
+        },
+        "other_rows_max_abs_residual": {
+          "returns": 1,
+          "amount_thousands": 2
+        }
+      }
+    ],
+    "reading": "TY2023: the three-or-more cell at $30,000 to $35,000 prints a numeric 0 with no disclosure marker. The child blocks exceed the all-returns columns by 310,212 returns at $25,000 to $30,000 and by 1,187 at $20,000 to $25,000, and fall 311,398 returns ($1,724,074 thousand) short at $30,000 to $35,000; the three residuals sum to 1 return. Subtracting each residual from the three-or-more column gives a smooth column, while the other child columns already run smoothly. The likeliest reading is that IRS placed the $30,000 to $35,000 cell's returns and amount in the $25,000 to $30,000 row (and a few in the $20,000 to $25,000 row). IRS has not confirmed this. TY2021 shows the same pattern in the one-child column ($45,000 to $50,000 prints 0; its returns sit in the $25,000 to $30,000 row); TY2022 shows none.",
+    "conclusions_before_this_check": {
+      "underlying_workbook_checked": false,
+      "underlying_source_cells_checked": false,
+      "zero_semantics_verified": false
+    }
   }
 }

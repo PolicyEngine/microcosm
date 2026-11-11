@@ -2480,17 +2480,36 @@ def generated_blocks(out_dir: Path) -> dict[str, str]:
             sentence += f", versus {_pct(f3['capped_mape'])} for exact-k" if f3 else "; exact-k did not complete"
             sentence += f" ({_pct(f0['capped_mape'])} for the full file's design weights)."
             n = fit[key]["targets"]
-            parts = []
-            for label, f in (
-                ("self-weighted", f1), ("post-stratified", f2), ("for exact-k", f3), ("for the full file", f0),
+            parts, holds_none, adds = [], [], {}
+            for label, design, f in (
+                ("self-weighted", "design1_pps_self_weighted", f1),
+                ("post-stratified", "design2_pps_post_stratified", f2),
+                ("for exact-k", "design3_exact_k_refit", f3),
+                ("for the full file", "full_file", f0),
             ):
                 if not f:
                     continue
                 listed = {w["target"]: abs(w["relative_error"]) for w in f["worst_five"]}
                 total = f["capped_mape"] * n
+                # A household in a zero-valued cell adds at least its weight to the
+                # cell's returns error. If a design's smallest weight exceeds every
+                # error outside its five largest, it holds no household there and
+                # both cell errors are exactly 0.
+                wc = conc[key].get(design)
+                floor = wc["min_over_mean"] * wc["total"] / wc["n"] if wc else None
+                outside = abs(f["worst_five"][-1]["relative_error"])
                 if all(name in listed for name in cell):
                     share = sum(min(listed[name], cap) for name in cell)
+                    adds[label] = 100 * share / n
                     parts.append(f"{_pct((total - share) / (n - len(cell)))} {label}")
+                elif (
+                    floor is not None
+                    and outside < floor
+                    and not any(name in listed for name in cell)
+                    and any(name.endswith(".eitc_returns") for name in cell)
+                ):
+                    holds_none.append((label, floor, outside))
+                    parts.append(f"{_pct(total / (n - len(cell)))} {label}")
                 else:
                     bound = min(abs(f["worst_five"][-1]["relative_error"]), cap) * len(cell)
                     parts.append(
@@ -2501,15 +2520,37 @@ def generated_blocks(out_dir: Path) -> dict[str, str]:
                 f for f in (f1, f2)
                 if all(name in {w["target"] for w in f["worst_five"]} for name in cell)
             ]
+            holders = "both sampled designs hold" if len(listed_both) == 2 else "a sampled design holds"
+            if f3 and {"self-weighted", "post-stratified"} <= set(adds):
+                gap = {
+                    label: 100 * (f["capped_mape"] - f3["capped_mape"])
+                    for label, f in (("self-weighted", f1), ("post-stratified", f2))
+                }
+                share_clause = (
+                    f"account for {adds['post-stratified']:.1f} of the {gap['post-stratified']:.1f}-point capped-MAPE gap "
+                    f"between the post-stratified sample and exact-k, and {adds['self-weighted']:.1f} of the self-weighted "
+                    f"sample's {gap['self-weighted']:.1f}-point gap: {holders} a household there and take the capped "
+                    "maximum on both."
+                )
+            else:
+                share_clause = (
+                    f"weigh on the sampled designs' fit: {holders} a household there and take the capped maximum on both, "
+                    f"which adds {max(adds.values(), default=0):.1f} percentage points to capped MAPE."
+                )
             sentence += (
                 f" {'Two' if len(cell) == 2 else len(cell)} of the {f1['n_zero_valued_targets']} zero-valued targets, "
                 "Table 2.5's EITC returns and amount "
-                "for three or more children at $30,000 to $35,000 of AGI, account for much of the sampled designs' gap: "
-                f"{'both sampled designs hold' if len(listed_both) == 2 else 'a sampled design holds'} a household there and "
-                f"take the capped maximum on both, which adds {100 * len(cell) * cap / n:.1f} percentage points to capped MAPE. "
+                f"for three or more children at $30,000 to $35,000 of AGI, {share_clause} "
                 "IRS's own workbook appears to misplace that cell (see the zero-target note above). Without those targets, capped MAPE is "
                 + ", ".join(parts[:-2]) + f" and {parts[-2]} ({parts[-1]})."
             )
+            names = {"for exact-k": "Exact-k", "self-weighted": "The self-weighted sample",
+                     "post-stratified": "The post-stratified sample", "for the full file": "The full file"}
+            for label, floor, outside in holds_none:
+                sentence += (
+                    f" {names[label]} holds no household in the cell: its smallest weight ({floor:,.1f}) exceeds every "
+                    f"error outside its five largest (at most {outside:.2f}), so both cell errors are 0."
+                )
             sentence += (
                 f" Uncapped MAPE ({_pct(f1['uncapped_mape'])} self-weighted, {_pct(f2['uncapped_mape'])} post-stratified"
                 + (f", {_pct(f3['uncapped_mape'])} exact-k" if f3 else "")

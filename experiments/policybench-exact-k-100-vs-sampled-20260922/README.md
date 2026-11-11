@@ -1,7 +1,7 @@
 # 100-record exact-k versus PolicyBench's sampled 100
 
-This is a local evidence record comparing the frozen PolicyBench sample with a
-support chosen by Microcosm's maintained L0/exact-k calibration path. It does
+This record compares the frozen PolicyBench sample with a support chosen by
+Microcosm's maintained L0/exact-k calibration path. It does
 not evaluate models or certify either design for a benchmark or release.
 Every reported result is rendered from the bundled JSONs by
 `compare_designs.py render-readme`.
@@ -11,9 +11,9 @@ The household comparison is the centerpiece. Household rows are confined to
 this README reports their aggregate contrast. The CSV groups the sampled and
 national-target exact-k sets and sorts each by employment income. Both exports
 include only public-dataset household rows. `design_weight` is the release's
-household weight. `calibrated_weight` is each design's own weight before any
-refit of the sample: the self-weight (eligible weight divided by 100) for
-sampled rows and the national-target refit weight for exact-k rows.
+household weight. `calibrated_weight` is each design's own weight: the
+self-weight (eligible weight divided by 100) for sampled rows, before design 2
+refits them, and the national-target refit weight for exact-k rows.
 `post_stratified_weight` is a sampled row's weight after design 2's national
 refit; exact-k rows leave it empty.
 
@@ -88,13 +88,14 @@ Deduction: these diagnostics indicate how far a selected support behaves as inte
 - **Sampling distribution:** repeated PPS draws with self-weighting and
   post-stratification, using the frozen draw's eligibility and public split.
 
-The record's registered fit measure is uncapped MAPE with equal weight per
-target. On the national set one misplaced IRS cell dominates it (below), so
-the national reading leads with capped MAPE.
+The run's primary fit measure is uncapped MAPE with equal weight per target,
+and capped MAPE is its secondary measure. On the national set one apparently
+misplaced IRS cell dominates the uncapped mean (below), so the national reading
+leads with capped MAPE.
 The denominator is the target's absolute value with a unit floor, matching
 `default_target_loss_scales`
 (`packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:594`).
-Capped MAPE is secondary. The fit tables evaluate each design against the same
+The fit tables evaluate each design against the same
 compiled targets, including targets unsupported by a particular sampled set.
 Kish effective sample size measures weight concentration, not model accuracy.
 
@@ -106,19 +107,25 @@ returns and amount for three or more qualifying children at $30,000 to $35,000
 of AGI.
 
 The feed reproduces IRS's published cell. The TY2023 workbook (`23in25ic.xls`,
-checked 2026-11-11) prints 0 there, yet the schedule's phase-out for three or
-more children runs past $56,000, and the workbook's own rows disagree with that
-0. For $25,000 to $30,000 the four child columns sum to 310,212 more returns
-than the all-returns column; for $30,000 to $35,000 they sum to 311,398 fewer,
-with $1.72 billion less EITC. Summed over $20,000 to $35,000, the
-three-or-more column reconciles with the all-returns rows to one return. The
-likeliest reading is that IRS placed that column's $30,000 to $35,000 returns
-in the rows below, so the true cell holds about 311,000 returns. Both sampled designs hold a
-household in it and take the capped maximum on both targets. Exact-k holds
-none. Every other zero-valued target's error stays at or below each sampled or
-exact-k design's fifth-largest error in [fit.json](fit.json). The
-[zero-target audit](zero_target_audit.json) records the two cells' observations
-and provenance. All targets were held fixed across designs.
+checked 2026-11-11) prints a numeric 0 there, with no disclosure marker, yet
+the schedule's phase-out for three or more children runs past $56,000, and the
+workbook's own rows disagree with that 0. At $30,000 to $35,000 the four child
+columns sum to 311,398 fewer returns than the all-returns column, and $1.72
+billion less EITC. The excess sits in the $25,000 to $30,000 row (310,212
+returns) and the $20,000 to $25,000 row (1,187). Over those three rows the
+child columns reconcile with the all-returns column to one return; every other
+row reconciles to rounding. The likeliest reading is that IRS placed the
+$30,000 to $35,000 cell's returns in those two rows, so the true cell holds
+about 311,000 returns; IRS has not confirmed this. TY2022's workbook shows no
+such gap; TY2021's shows the same pattern in the one-child column. The
+[zero-target audit](zero_target_audit.json) records these workbook figures
+(`workbook_check`) and the two cells' feed observations and provenance.
+
+Both sampled designs hold a household in the cell and take the capped maximum
+on both targets. Exact-k holds none (see the reading below). Every other
+zero-valued target's error stays at or below each sampled or exact-k design's
+fifth-largest error in [fit.json](fit.json). The run held all targets fixed
+across designs.
 Capped error and within-tolerance shares provide additional context; improving
 the capped objective can coexist with increasing an error already above its
 cap (a deduction from the capped loss, documented in the audit).
@@ -126,7 +133,7 @@ cap (a deduction from the capped loss, documented in the audit).
 ## Reading the results
 
 <!-- BEGIN generated:reading -->
-On national_all, capped MAPE is 82.2% for the frozen self-weighted sample and 65.0% after post-stratification, versus 58.7% for exact-k (55.0% for the full file's design weights). Two of the 26 zero-valued targets, Table 2.5's EITC returns and amount for three or more children at $30,000 to $35,000 of AGI, account for much of the sampled designs' gap: both sampled designs hold a household there and take the capped maximum on both, which adds 4.0 percentage points to capped MAPE. IRS's own workbook appears to misplace that cell (see the zero-target note above). Without those targets, capped MAPE is 78.5% self-weighted, 61.3% post-stratified and between 58.5% and 59.0% for exact-k (51.2% for the full file). Uncapped MAPE (1863675480.0% self-weighted, 2116681946.4% post-stratified, 58.7% exact-k) measures little beyond those two cells' absolute misses, so the national reading leads with capped MAPE. Against the 200 repeated post-stratified PPS draws (capped MAPE median 62.7%), exact-k's capped MAPE is lower than in 87% of them, and exact-k's share of targets within 10% (23.4%) is lower than every draw's (their lowest is 25.0%).
+On national_all, capped MAPE is 82.2% for the frozen self-weighted sample and 65.0% after post-stratification, versus 58.7% for exact-k (55.0% for the full file's design weights). Two of the 26 zero-valued targets, Table 2.5's EITC returns and amount for three or more children at $30,000 to $35,000 of AGI, account for 4.0 of the 6.3-point capped-MAPE gap between the post-stratified sample and exact-k, and 4.0 of the self-weighted sample's 23.5-point gap: both sampled designs hold a household there and take the capped maximum on both. IRS's own workbook appears to misplace that cell (see the zero-target note above). Without those targets, capped MAPE is 78.5% self-weighted, 61.3% post-stratified and 59.0% for exact-k (51.2% for the full file). Exact-k holds no household in the cell: its smallest weight (333.5) exceeds every error outside its five largest (at most 1.02), so both cell errors are 0. Uncapped MAPE (1863675480.0% self-weighted, 2116681946.4% post-stratified, 58.7% exact-k) measures little beyond those two cells' absolute misses, so the national reading leads with capped MAPE. Against the 200 repeated post-stratified PPS draws (capped MAPE median 62.7%), exact-k's capped MAPE is lower than in 87% of them, and exact-k's share of targets within 10% (23.4%) is lower than every draw's (their lowest is 25.0%).
 
 On headline, uncapped MAPE is 38.6% for the frozen self-weighted sample and 4.1% after post-stratification, versus 17.9% for exact-k; no target's error reaches the cap, so capped MAPE is the same. Against the 200 repeated post-stratified PPS draws (capped MAPE median 4.9%), every draw's capped MAPE is at or below exact-k's, and exact-k's share of targets within 10% (71.9%) is lower than every draw's (their lowest is 81.2%).
 
