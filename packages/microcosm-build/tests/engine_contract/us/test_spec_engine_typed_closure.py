@@ -199,11 +199,46 @@ def test_missing_physical_column_contract_refuses(
         resolve_typed_closure(mutated, entities=_ENTITIES)
 
 
+def _with_unit_waiver(
+    resources: dict[str, Any], *, expires_on: str
+) -> tuple[dict[str, Any], str]:
+    """Waive one numeric column's unit, as the US catalog once did for 90."""
+
+    mutated = copy.deepcopy(resources)
+    mutated["catalogs"]["metadata_waivers"] = [
+        {
+            "id": "test_unit_waiver",
+            "field": "unit",
+            "authority": "PolicyEngineUSVariableMetadataIndex",
+            "public": False,
+            "expires_on": expires_on,
+            "reason": "A unit waiver written by this test.",
+        }
+    ]
+    row = next(
+        row
+        for row in mutated["catalogs"]["columns"]
+        if row["contract"]["unit"] == "usd"
+    )
+    row["contract"]["unit"] = "unit_not_declared_by_engine_metadata"
+    row["contract"]["unit_waiver"] = "test_unit_waiver"
+    return mutated, row["key"]
+
+
+def test_live_catalog_metadata_waiver_resolves(
+    typed_resources: dict[str, Any],
+) -> None:
+    mutated, key = _with_unit_waiver(typed_resources, expires_on="2999-12-31")
+    result = resolve_typed_closure(mutated, entities=_ENTITIES)
+    column = next(column for column in result.columns if column.key == key)
+    assert column.unit == "unit_not_declared_by_engine_metadata"
+    assert column.unit_waiver == "test_unit_waiver"
+
+
 def test_expired_catalog_metadata_waiver_refuses(
     typed_resources: dict[str, Any],
 ) -> None:
-    mutated = copy.deepcopy(typed_resources)
-    mutated["catalogs"]["metadata_waivers"][0]["expires_on"] = "2000-01-01"
+    mutated, _ = _with_unit_waiver(typed_resources, expires_on="2000-01-01")
     with pytest.raises(TypedClosureError, match="metadata waiver expired"):
         resolve_typed_closure(mutated, entities=_ENTITIES)
 

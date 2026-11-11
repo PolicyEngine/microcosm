@@ -1,10 +1,13 @@
-"""A Draft 2020-12 JSON Schema for calibration diagnostics schema 8.
+"""Draft 2020-12 JSON Schemas for calibration diagnostics schemas 8 and 9.
 
-The schema is generated from :class:`CalibrationDiagnosticsV8`, so it cannot
-drift from the models in field names, types, bounds, enumerations, required
-fields or undeclared-field refusal. The models remain the authority: some of
-their rules cannot be written in a schema generated this way, and the schema's
-description lists each one (:data:`CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS`).
+Each schema is generated from its model (:class:`CalibrationDiagnosticsV8`,
+:class:`CalibrationDiagnosticsV9`), so it cannot drift from the models in field
+names, types, bounds, enumerations, required fields or undeclared-field
+refusal. The models remain the authority: some of their rules cannot be
+written in a schema generated this way, and each schema's description lists
+them (:data:`CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS`,
+:data:`CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_GAPS`). Current builds publish
+schema 9; the schema-8 file stays for documents published before it.
 """
 
 from __future__ import annotations
@@ -17,7 +20,10 @@ from typing import Final
 
 from pydantic import JsonValue
 
-from microcosm.diagnostics.schema import CalibrationDiagnosticsV8
+from microcosm.diagnostics.schema import (
+    CalibrationDiagnosticsV8,
+    CalibrationDiagnosticsV9,
+)
 
 JSON_SCHEMA_DRAFT_2020_12: Final = "https://json-schema.org/draft/2020-12/schema"
 CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_ID: Final = (
@@ -340,6 +346,194 @@ def assert_calibration_diagnostics_v8_json_schema_current(
         else Path(path)
     )
     expected = render_calibration_diagnostics_v8_json_schema().encode("utf-8")
+    if source.read_bytes() != expected:
+        raise ValueError(
+            f"{source} differs from the schema the models generate; "
+            f"regenerate it with `{_REGENERATE_COMMAND}`."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Schema 9: the schema current builds publish
+# ---------------------------------------------------------------------------
+
+CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_ID: Final = (
+    "calibration_diagnostics.v9.schema.json"
+)
+CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_RESOURCE: Final = (
+    f"schemas/{CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_ID}"
+)
+
+_V9_CATALOG_GAPS: Final[tuple[JsonSchemaGap, ...]] = (
+    JsonSchemaGap(
+        key="hierarchy-catalog-identity",
+        rule=(
+            "Each hierarchy_catalogs array lists an ID once, each "
+            "hierarchy_catalogs.dimensions entry lists a value ID once, and "
+            "every category's provider_id is listed in "
+            "hierarchy_catalogs.providers."
+        ),
+        validators=(
+            "HierarchyCatalogs.identifiers_are_unique_and_providers_listed",
+            "HierarchyDimensionEntry.value_ids_are_unique",
+        ),
+    ),
+    JsonSchemaGap(
+        key="hierarchy-references",
+        rule=(
+            "Each targets[].hierarchy refers to a category_id, a geography_id "
+            "and dimension ids that hierarchy_catalogs lists, each value_id is "
+            "listed under its own dimension, and a row lists each dimension "
+            "once."
+        ),
+        validators=(
+            "CalibrationDiagnosticsV9.rows_refer_to_catalog_entries",
+            "CatalogHierarchyReference.dimension_ids_are_unique",
+        ),
+    ),
+)
+
+
+def _v9_gap(gap: JsonSchemaGap) -> JsonSchemaGap:
+    return JsonSchemaGap(
+        key=gap.key,
+        rule=gap.rule,
+        validators=tuple(
+            validator.replace(
+                "CalibrationDiagnosticsV8.", "CalibrationDiagnosticsV9."
+            ).replace("TargetDiagnosticV8.", "TargetDiagnosticV9.")
+            for validator in gap.validators
+        ),
+    )
+
+
+def _v9_gaps() -> tuple[JsonSchemaGap, ...]:
+    gaps: list[JsonSchemaGap] = []
+    for gap in CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_GAPS:
+        if gap.key == "hierarchy-identity":
+            # Schema 9 rows hold IDs; the catalogs hold the labels.
+            gaps.extend(_V9_CATALOG_GAPS)
+        else:
+            gaps.append(_v9_gap(gap))
+    return tuple(gaps)
+
+
+#: The rules the schema-9 models enforce that its generated schema leaves out:
+#: schema 8's, with the row-hierarchy rule replaced by the catalog rules.
+CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_GAPS: Final[tuple[JsonSchemaGap, ...]] = (
+    _v9_gaps()
+)
+
+_V9_TITLE: Final = "Microcosm calibration diagnostics, schema 9"
+_V9_COMMENT: Final = (
+    "Generated from microcosm.diagnostics.CalibrationDiagnosticsV9. Do not "
+    f"edit it; regenerate it with `{_REGENERATE_COMMAND}`."
+)
+
+
+def _v9_description() -> str:
+    gap_lines = "\n".join(
+        f"- {gap.rule}" for gap in CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_GAPS
+    )
+    return (
+        "The calibration_diagnostics.json document, schema 9, that Microcosm "
+        "builds write beside a calibrated dataset. It is schema 8 with each "
+        "provider, category, geography and dimension label declared once, in "
+        "hierarchy_catalogs, and referred to by ID from targets[].hierarchy, so "
+        "one identifier cannot carry two labels. The pydantic models it is "
+        "generated from remain the authority. A document that satisfies this "
+        "schema can still break one of the rules below, which the models "
+        "enforce and this schema does not express, so validate with "
+        "microcosm.diagnostics.parse_calibration_diagnostics for the complete "
+        "contract. Equalities between floating-point values hold within the "
+        "models' tolerances.\n\n"
+        "Rules the models enforce that this schema does not express:\n"
+        f"{gap_lines}\n\n"
+        "Where this schema is stricter than the models' parser:\n"
+        f"- {CALIBRATION_DIAGNOSTICS_V8_JSON_SCHEMA_LITERAL_NOTE}"
+    )
+
+
+def calibration_diagnostics_v9_json_schema() -> dict[str, JsonValue]:
+    """Return the schema-9 JSON Schema generated from the typed models."""
+
+    generated = CalibrationDiagnosticsV9.model_json_schema(mode="validation")
+    generated.pop("title", None)
+    generated.pop("description", None)
+    return {
+        "$schema": JSON_SCHEMA_DRAFT_2020_12,
+        "$id": CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_ID,
+        "$comment": _V9_COMMENT,
+        "title": _V9_TITLE,
+        "description": _v9_description(),
+        **generated,
+    }
+
+
+def render_calibration_diagnostics_v9_json_schema() -> str:
+    """Return the schema-9 schema as the exact text committed to the repository."""
+
+    return (
+        json.dumps(
+            calibration_diagnostics_v9_json_schema(),
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
+
+
+def committed_calibration_diagnostics_v9_json_schema_path() -> Path:
+    """Return the committed schema-9 file, shipped inside the package."""
+
+    return Path(
+        str(
+            files("microcosm.diagnostics").joinpath(
+                CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_RESOURCE
+            )
+        )
+    )
+
+
+def load_calibration_diagnostics_v9_json_schema(
+    path: str | Path | None = None,
+) -> dict[str, JsonValue]:
+    """Read the committed schema-9 schema, or the schema file at ``path``."""
+
+    source = (
+        committed_calibration_diagnostics_v9_json_schema_path()
+        if path is None
+        else Path(path)
+    )
+    return json.loads(source.read_bytes())
+
+
+def write_calibration_diagnostics_v9_json_schema(
+    path: str | Path | None = None,
+) -> Path:
+    """Write freshly generated schema-9 text to the committed file or ``path``."""
+
+    output = (
+        committed_calibration_diagnostics_v9_json_schema_path()
+        if path is None
+        else Path(path)
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(render_calibration_diagnostics_v9_json_schema().encode("utf-8"))
+    return output
+
+
+def assert_calibration_diagnostics_v9_json_schema_current(
+    path: str | Path | None = None,
+) -> None:
+    """Raise unless the file is byte-identical to freshly generated schema-9 text."""
+
+    source = (
+        committed_calibration_diagnostics_v9_json_schema_path()
+        if path is None
+        else Path(path)
+    )
+    expected = render_calibration_diagnostics_v9_json_schema().encode("utf-8")
     if source.read_bytes() != expected:
         raise ValueError(
             f"{source} differs from the schema the models generate; "

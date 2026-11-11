@@ -1,0 +1,130 @@
+{
+  "settings": {
+    "target_set": "national_all"
+  },
+  "result": {
+    "weight_each": 1232343.8385038802,
+    "fit": {
+      "n_targets": 504,
+      "n_zero_valued_targets": 26,
+      "capped_mape": 0.8217276699394914,
+      "uncapped_mape": 18636754.799681842,
+      "median_abs_rel_error": 0.880974003179214,
+      "share_within_10pct": 0.08928571428571429,
+      "share_within_25pct": 0.1865079365079365,
+      "worst_five": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_total",
+          "relative_error": 9391691189.77729
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_returns",
+          "relative_error": 1232343.8385038802
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 408.81753222946315
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 102.45557354484914
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_total",
+          "relative_error": 9.349402039121749
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 408.81753222946315
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 102.45557354484914
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_total",
+          "relative_error": 9.349402039121749
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_returns",
+          "relative_error": 8.535450950593736
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.4k_to_5k.eitc_total",
+          "relative_error": 4.830017834206068
+        }
+      ]
+    },
+    "weights": {
+      "n": 100,
+      "total": 123234383.85038804,
+      "max_over_mean": 0.9999999999999998,
+      "min_over_mean": 0.9999999999999998,
+      "top10_share": 0.09999999999999999,
+      "kish_ess": 100.00000000000007,
+      "n_above_5x_own_median": 0,
+      "n_above_10x_own_median": 0,
+      "equal_share": 1232343.8385038802,
+      "n_above_5x_equal_share": 0,
+      "n_above_10x_equal_share": 0
+    }
+  },
+  "file_total_sensitivity": {
+    "weight_each": 1601598.7092574474,
+    "fit": {
+      "n_targets": 504,
+      "n_zero_valued_targets": 26,
+      "capped_mape": 0.8434230791697641,
+      "uncapped_mape": 24221001.69026917,
+      "median_abs_rel_error": 0.9348712890910045,
+      "share_within_10pct": 0.12896825396825398,
+      "share_within_25pct": 0.2261904761904762,
+      "worst_five": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_total",
+          "relative_error": 12205782199.189768
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_returns",
+          "relative_error": 1601598.7092574474
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 531.6137155411386
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 133.45461232319667
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_total",
+          "relative_error": 12.45045792379445
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 531.6137155411386
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 133.45461232319667
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_total",
+          "relative_error": 12.45045792379445
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.15k_to_16k.eitc_returns",
+          "relative_error": 11.392617593803584
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.4k_to_5k.eitc_total",
+          "relative_error": 6.576902441081939
+        }
+      ]
+    }
+  }
+}

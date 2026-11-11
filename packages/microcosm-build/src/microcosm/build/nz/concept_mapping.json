@@ -412,6 +412,21 @@
       }
     },
     {
+      "canonical_input": "nz:statutes/new_zealand_superannuation/core#input.nz_super_shares_residence_with_person_at_least_adult_age",
+      "concepts": [
+        "fact:person.age"
+      ],
+      "engine_entity": "Person",
+      "engine_input": "nz_super_shares_residence_with_person_at_least_adult_age",
+      "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+      "note": "nz/statutes/new_zealand_superannuation/core.yaml rule nz_super_living_alone (New Zealand Superannuation and Retirement Income Act 2001 s 4A): 'nz_super_single and nz_super_principal_residence_is_qualifying_accommodation and (not nz_super_shares_residence_with_person_at_least_adult_age or nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors)'. The binding returns true when at least one other person with the same frame household id is aged min_age or over. min_age 18 copies parameter nz_super_living_alone_adult_age in the same module (18 from 2026-04-01, source s 4A(3) and (4)) by hand: no RuleSpec formula reads that parameter, so nothing checks min_age against it, and a change to the parameter needs a matching edit here. Differences: the frame's household stands in for the statute's residence, so the binding counts every other person aged 18 or over who carries the person's household id, and misses an adult who shares the residence under another household id; it counts a partner, but nz_super_living_alone requires nz_super_single and nz_super_ordinary_weekly_rate_before_tax branches on nz_super_single first, so the rate never reads a partnered person's value; it counts adult dependent children and temporary visitors, whom nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors carves out, and the input closure defaults that input to false; ages are completed years at the survey reference date, so a co-resident who turns 18 between that date and the assessment reads differently; a person with no household id reads false.",
+      "relation": "approximate",
+      "transform": {
+        "kind": "coresident_adult",
+        "min_age": 18
+      }
+    },
+    {
       "canonical_input": "nz:statutes/new_zealand_superannuation/core#input.nz_super_single",
       "concepts": [
         "fact:person.partner_person_id"

@@ -137,8 +137,8 @@ def test_persisted_draws_are_not_the_engine_fallback_and_stay_exported() -> None
     that is pinned here alongside the divergence.
     """
 
-    from microcosm.build.uk_runtime.terminal_gates import (
-        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     )
 
     ids = np.arange(1, 4097, dtype=np.int64)
@@ -148,5 +148,7 @@ def test_persisted_draws_are_not_the_engine_fallback_and_stay_exported() -> None
     assert agreement < 1e-3, agreement
 
     for column in ("uc_deduction_random_draw", "uc_deduction_type_random_draw"):
-        assert f"benunit.{column}" in UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+        # The draws leave with the release (part of the current build's
+        # export surface since microcosm#1095, no longer a declared extra).
+        assert column not in UK_RELEASE_EXPORT_DROPPED_COLUMNS.get("benunit", ())
         assert column in _stage().outputs

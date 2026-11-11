@@ -38,22 +38,23 @@ from pathlib import Path
 
 import numpy as np
 
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _load_energy_module():
-    """Load the pure library module by path.
+def _load_uk_runtime_module(name: str):
+    """Load one pure UK runtime module by path.
 
-    Importing it through ``microcosm.build`` would load the UK country spec,
-    which refuses a package whose declared resources are missing: the very
-    resource this tool writes on a first run.
+    Importing it through ``microcosm.build.uk_runtime`` would load the UK
+    country spec, which refuses a package whose declared resources are
+    missing: the very resource this tool writes on a first run.
     """
 
     path = (
-        REPO_ROOT
-        / "packages/microcosm-build/src/microcosm/build/uk_runtime/desnz_constituency_energy.py"
+        REPO_ROOT / f"packages/microcosm-build/src/microcosm/build/uk_runtime/{name}.py"
     )
-    spec = importlib.util.spec_from_file_location("desnz_constituency_energy", path)
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot import {path}")
     module = importlib.util.module_from_spec(spec)
@@ -62,7 +63,8 @@ def _load_energy_module():
     return module
 
 
-energy = _load_energy_module()
+energy = _load_uk_runtime_module("desnz_constituency_energy")
+chronicle_feed = _load_uk_runtime_module("chronicle_feed")
 
 UK_PACKAGE = REPO_ROOT / "packages/microcosm-build/src/microcosm/build/uk"
 DEFAULT_FEED_PIN = UK_PACKAGE / "chronicle_feed.json"
@@ -150,6 +152,19 @@ def _feed_identity(pin_path: Path, manifest_path: Path) -> dict[str, object]:
             "fact_row_count",
         )
     }
+
+
+def _pinned_row_contracts(pin_path: Path) -> list[str]:
+    """The row contracts the feed pin lists, refusing a pin that lists none."""
+
+    versions = json.loads(pin_path.read_text(encoding="utf-8")).get(
+        "consumer_fact_schema_versions"
+    )
+    if not isinstance(versions, list) or not versions:
+        raise ValueError(
+            f"{pin_path} lists no consumer_fact_schema_versions for the feed's rows."
+        )
+    return versions
 
 
 def _read_feed(
@@ -263,6 +278,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     _log("Streaming the pinned feed ...")
     facts = _read_feed(args.ledger_facts, markers=markers, identity=identity)
+    # Only the rows this build reads are parsed: each one's row contract must
+    # be one the pin lists and chronicle_epoch declares.
+    chronicle_feed.require_uk_chronicle_feed_subset_row_contracts(
+        consumer_fact_schema_versions_of(facts),
+        pinned_versions=_pinned_row_contracts(args.feed_pin),
+    )
     _log("Loading the atomic supports ...")
     ew, ew_sha = _load_support(args.ew_support, "uk_ew_output_area_2021", provenance)
     scotland, scotland_sha = _load_support(

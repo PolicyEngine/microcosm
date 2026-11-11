@@ -10,6 +10,9 @@ as properties over generated concept frames and unit rules:
   alternative conserves it too;
 - ``sum_over_members`` conserves member totals; ``any_member`` and
   ``reference_member`` read the members and the head;
+- ``person_role`` writes each person's own value on the person table through
+  plain ``encode``: neither encoder defers it, and adding it changes no other
+  binding's output;
 - encoding is deterministic and row-aligned to the unit table;
 - state bindings given as a list, iterator or generator encode, or are
   refused, exactly as the same bindings given as a tuple;
@@ -541,13 +544,79 @@ class TestExecution:
             )
             assert got.deferred == expected.deferred
 
-    def test_unexecutable_group_bindings_are_deferred(self) -> None:
+    def test_only_bindings_without_built_units_are_deferred(self) -> None:
+        # child_age takes person_role, which needs no units: plain encode
+        # writes it on the person table, and neither encoder defers it.
         tables, _, _, _, group = _example()
         encoded = _encode(tables, group)
         assert {binding.engine_input for binding in encoded.deferred} == {
-            "child_age",
             "tax_unit_income",
         }
+        plain = MAPPING.encode(tables)
+        assert "child_age" not in {binding.engine_input for binding in plain.deferred}
+        assert (
+            plain.tables["person"]["child_age"].tolist()
+            == tables["person"]["age"].tolist()
+        )
+
+    @PROPERTY
+    @given(case=unit_frames())
+    def test_person_role_encodes_each_persons_own_value(self, case) -> None:
+        # A person_role entity (Axiom's Child) has one row per person in the
+        # role, so each person's row carries that person's own value. Both
+        # transforms Belgium uses run here: an identity and a predicate.
+        tables, rule, _, _, group = case
+        others = tuple(
+            binding
+            for binding in BINDINGS
+            if binding.group_rule is not GroupRule.PERSON_ROLE
+        )
+        role = (
+            *(b for b in BINDINGS if b.group_rule is GroupRule.PERSON_ROLE),
+            _binding(
+                "child_in_higher_education",
+                ("fact:person.education_enrollment",),
+                Predicate(
+                    clauses=(("fact:person.education_enrollment", ("tertiary",)),)
+                ),
+                GroupRule.PERSON_ROLE,
+                engine_entity="Child",
+            ),
+        )
+        with_role, without = _mapping((*others, *role)), _mapping(others)
+        person = tables["person"]
+
+        encoded = with_role.encode(tables)
+        assert encoded.tables["person"]["child_age"].tolist() == person["age"].tolist()
+        assert encoded.tables["person"]["child_in_higher_education"].tolist() == [
+            value == "tertiary" for value in person["education_enrollment"]
+        ]
+        assert not {b.engine_input for b in encoded.deferred} & {
+            b.engine_input for b in role
+        }
+
+        # Adding the person_role bindings changes no other binding's output.
+        plain = without.encode(tables)
+        pd.testing.assert_frame_equal(
+            encoded.tables["person"].drop(
+                columns=[binding.engine_input for binding in role]
+            ),
+            plain.tables["person"],
+        )
+        pd.testing.assert_frame_equal(
+            encoded.tables["household"], plain.tables["household"]
+        )
+        assert encoded.deferred == plain.deferred
+        grouped = with_role.encode_groups(
+            tables, {"Family": group}, state_bindings=STATE
+        )
+        reference = without.encode_groups(
+            tables, {"Family": group}, state_bindings=STATE
+        )
+        pd.testing.assert_frame_equal(
+            grouped.tables[rule.entity], reference.tables[rule.entity]
+        )
+        assert grouped.deferred == reference.deferred
 
     def test_modules_filter_bindings(self) -> None:
         bindings = [
@@ -1025,7 +1094,8 @@ class TestRefusals:
             MAPPING.encode_groups(tables, {"Family": group}, state_bindings=[other])
 
     def test_unit_composition_needs_membership_in_plain_encode(self) -> None:
-        # plain encode defers every group binding, unit composition included
+        # plain encode defers every group binding but person_role, unit
+        # composition included
         tables, _, _, _, _ = _example()
         deferred = {binding.engine_input for binding in MAPPING.encode(tables).deferred}
         assert {f"unit_{feature.value}" for feature in UnitFeature} <= deferred

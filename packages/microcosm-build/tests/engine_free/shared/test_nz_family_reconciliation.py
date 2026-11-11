@@ -402,6 +402,9 @@ def test_region_99_passes_absolute_bound_and_uses_national_erp_growth_once(
 
 def test_all_51_family_bindings_use_matching_regions_and_unavailable_type_measures():
     bindings = _document("calibration_bindings.json")
+    # G8-r2c G's person interval outputs need the stand-in columns and the
+    # effective interval document; this household check prepares the rest.
+    bindings["columns"] = [row for row in bindings["columns"] if "interval" not in row]
     household = pd.DataFrame(
         {
             "household_id": range(17),

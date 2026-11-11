@@ -16,7 +16,7 @@ described here.
 | `targets.problem@1` | `transport/target_kernels.py` | compute | population slices; params `entities`, `weight_entity`; artifact `surface` | `problem` (`microcosm.calibrate.ordered-problem` v1) |
 | `calibrate.ordered_adam@1` | `calibrate/ordered_kernels.py` | REWEIGHT | one slice on the weight entity; artifact `problem`; params `epochs`, `learning_rate`, `mass`, optional `max_weight_ratio` with `weight_anchor="design"` | weights; `solution`, `result` |
 | `takeup.compare@1` | `transport/target_kernels.py` | compute | one declared source (hold-out facts); population slices; params as `targets.compile@1` plus `entities`, `weight_entity` | `comparison` (`microcosm.targets.comparison` v1) |
-| `diagnostics.calibration@1` | `transport/terminal_kernels.py` | compute | one slice on the weight entity; artifacts `problem`, `solution`, `result`, `surface`; params `weight_entity`, optional `build` | `diagnostics` (`microcosm.diagnostics.calibration` v8) |
+| `diagnostics.calibration@1` | `transport/terminal_kernels.py` | compute | one slice on the weight entity; artifacts `problem`, `solution`, `result`, `surface`; params `weight_entity`, optional `build` | `diagnostics` (`microcosm.diagnostics.calibration` v9) |
 | `gates.battery@1` | `transport/gate_kernels.py` | GATE | params `country`, `gates`, `gates_sha256`, `phase`, `release_candidate`, optional `synthetic_smoke`, `upstream`, and `entities` with `weight_entity`; any artifacts as evidence | `gate_report` (`microcosm.gates.phase-report` v1) |
 | `export.prepare@1` | `transport/terminal_kernels.py` | compute | population slices; the gate reports; params `entities`, `weight_entity`, `time_period`, optional `bindings` | `export_descriptor` |
 | `export.readback@1` | `transport/terminal_kernels.py` | GATE | one declared source (the written H5); artifact `export_descriptor` | `export_readback` |
@@ -106,9 +106,15 @@ that rejects; if it lowers them, the solver's clamp is the tighter bound.
 
 `diagnostics.calibration@1` rebuilds the completed calibration from the
 `problem`, `solution` and `result` artifacts without solving, and emits the
-schema-8 model. Each row describes its target as compiled (its own entity,
-measure and filter), with its hierarchy from the surface's registry. The
-kernel refuses a population whose installed weights are not the solution's,
+schema-9 document (the schema-8 model with its hierarchy labels in
+`hierarchy_catalogs`; a second label for one identifier without a chosen label
+fails the node). Its implementation hash covers the catalogs module
+(`microcosm.diagnostics.catalogs`), the label choices
+(`microcosm.calibrate.hierarchy_labels`) and the geography constants the UK
+choices read, so an edit to a chosen label gives the node a new key and a
+resumed store recomputes it. Each row describes its target as compiled (its
+own entity, measure and filter), with its hierarchy from the surface's
+registry. The kernel refuses a population whose installed weights are not the solution's,
 a result from another solve, and a surface other than the one the problem
 binds (`targets.problem@1` always binds it). So a diagnostics node belongs
 downstream of the one calibration it describes: a build with several
@@ -141,9 +147,37 @@ source and resolved case-exactly with the import system's path finder,
 without executing anything. Closures, partials, bound methods, lambdas,
 nested functions, decorated wrappers, builtins, numpy scalars and other
 objects are refused when the kernel is constructed. The identity is fixed at
-construction; if a binding or a module in its source closure changes
-afterwards (a `dict` field edited in place, a source file rewritten), the
-kernel refuses to run.
+construction. If a binding or a module in its source closure changes
+afterwards (a `dict` field edited in place, a source file rewritten, deleted
+or left unparseable), the kernel raises `KernelIdentityChangedError` from
+`implementation_hash()` and from `run()`. `run()` checks before it evaluates,
+before it returns, and when evaluation raises. The run then refuses with that
+error:
+
+- A change made before `run_graph` derives its node keys refuses the run
+  before anything is written.
+- A change made after the keys are derived is refused when the gate node
+  runs. That covers an edit to a binding while the build runs, and a closure
+  file rewritten during a long build. A gate node served from the store does
+  not run, so nothing is refused there. The record it serves was filed under
+  that key by a run whose checks passed. The executor never files a kernel's
+  `KernelIdentityChangedError` as a `fail` verdict (graph amendment 29), and
+  nothing for the gate node is stored. Nodes the run completed earlier keep
+  their stored results, so a later run with the unedited registry on the same
+  store reuses them and computes the gate afresh. Before amendment 29 that
+  later run was served a `fail` stored under the unedited binding's key.
+
+The executor does not re-derive the hash itself, because it cannot tell this
+kernel's in-memory bindings from the module files other gate kernels hash, and
+a file rewritten under a running process does not change code that process has
+already imported. The check therefore belongs to the kernel. A change made
+during evaluation and undone before the next check is not seen.
+
+The change that introduced amendment 29 moved every `gates.battery@1` node
+key: it edited this kernel's own source, and `export.prepare@1` and
+`transport.package@1` hash that source as well. A `fail` that an earlier
+version filed under a stale identity is therefore under a key that no later
+run derives, so it is never served.
 
 The closure is honest rather than small: `microcosm.build.gates` imports
 `us_runtime` lazily inside one function, so a binding over a gate in that

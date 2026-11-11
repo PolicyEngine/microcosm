@@ -1,0 +1,16 @@
+{
+ "ok": true,
+ "module_file": "/Users/maxghenis/PolicyEngine/_worktrees/acs-local-weighted-frontier-20261002/packages/microcosm-build/src/microcosm/build/us_runtime/target_loss_weights.py",
+ "module_sha256": "5cb426635611ff43423e58181b32943cfeb19972893fb14aae9fa82f106c1640",
+ "module_loaded_from_file": false,
+ "recorded_module_sha256": [
+  "849fbede68e8f5a4c68af26e713dad053213d767ba5f03c12ac1b8685cd33ac7"
+ ],
+ "registry_sha256": "fd25c6002cae0c991842c81399d43a3840f12cba0294021ca8ff6718e22a209f",
+ "n_runs": 46,
+ "n_distinct_weightings": 7,
+ "max_abs_epoch0_relative": 9.256193909346067e-06,
+ "max_abs_final_difference": 0.0,
+ "n_mismatches": 0,
+ "mismatches": []
+}

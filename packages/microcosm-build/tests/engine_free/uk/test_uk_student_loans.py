@@ -351,6 +351,8 @@ def test_committed_stocks_pin_full_2025_to_2030_series() -> None:
                 "realization_bound",
             )
         ],
+        (3, "output"),
+        (3, "formula"),
     ],
 )
 def test_manifest_drift_assert_covers_every_reviewed_parameter(
@@ -448,3 +450,78 @@ def test_top_up_receipt_records_the_taken_rows_lineage() -> None:
         year=2025,
     )
     assert bare.plans["PLAN_2"].topped_up_lineage == {"columns": []}
+
+
+def _balances(result):
+    person = result.frame.table("person")
+    return dict(zip(person["person_id"], person["student_loan_balance"], strict=True))
+
+
+def test_the_household_balance_moves_to_its_borrower_below_the_threshold() -> None:
+    """was_wealth splits the WAS balance before any plan exists; once the plans
+    are set it is the borrower's (microcosm#1095 B9)."""
+    # Household 1: person 1 reports an outstanding loan below the threshold
+    # (Plan 2 at 2025), person 2 holds was_wealth's share. Household 2 has no
+    # borrower and keeps its split.
+    result = assign_student_loan_plans(
+        _frame(
+            ages=[30, 32, 40, 41],
+            repayments=[0.0] * 4,
+            reports_outstanding=[True, False, False, False],
+            education=["TERTIARY", "TERTIARY", "UPPER_SECONDARY", "TERTIARY"],
+            balances=[0.0, 12_000.0, 3_000.0, 1_000.0],
+            households=[1, 1, 2, 2],
+        ),
+        stocks=_stocks(plan_2=0, plan_5=0),
+        year=2025,
+    )
+
+    plans = result.frame.table("person")["student_loan_plan"].tolist()
+    assert plans == ["PLAN_2", "NONE", "NONE", "NONE"]
+    assert _balances(result) == {1: 12_000.0, 2: 0.0, 3: 3_000.0, 4: 1_000.0}
+    assert result.balance["households_resplit"] == 1
+    assert result.balance["rows_changed"] == 2
+    assert result.balance["weighted_balance"] == 16_000.0
+    assert result.balance["weighted_balance_on_borrowers_before"] == 0.0
+    assert result.balance["weighted_balance_on_borrowers_after"] == 12_000.0
+    assert result.evidence()["balance"] == dict(result.balance)
+
+
+def test_borrowers_share_by_repayments_where_any_repays_else_equally() -> None:
+    balance, receipt = allocate_balance_to_borrowers(
+        balance=np.array([1_000.0, 0.0, 3_000.0, 0.0, 600.0, 0.0, 0.0]),
+        repayments=np.array([100.0, 300.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        borrower=np.array([True, True, True, False, True, True, False]),
+        household_ids=np.array([1, 1, 1, 1, 2, 2, 2]),
+        person_weights=np.ones(7),
+    )
+
+    # Household 1: two repayers share 4,000 one to three, and the borrower who
+    # does not repay takes none. Household 2: no borrower repays, so its two
+    # borrowers share 600 equally.
+    np.testing.assert_allclose(balance, [1_000.0, 3_000.0, 0.0, 0.0, 300.0, 300.0, 0.0])
+    assert receipt["households_resplit"] == 2
+    assert receipt["weighted_borrowers_with_balance_after"] == 4.0
+
+
+def test_households_without_a_borrower_or_a_balance_keep_their_split() -> None:
+    before = np.array([500.0, 250.0, 0.0, 0.0])
+    balance, receipt = allocate_balance_to_borrowers(
+        balance=before,
+        repayments=np.zeros(4),
+        borrower=np.array([False, False, True, False]),
+        household_ids=np.array([7, 7, 8, 8]),
+        person_weights=np.array([2.0, 2.0, 3.0, 3.0]),
+    )
+
+    np.testing.assert_array_equal(balance, before)
+    assert receipt["households_resplit"] == 0
+    assert receipt["weighted_balance"] == 1_500.0
+    with pytest.raises(ValueError, match="nonnegative"):
+        allocate_balance_to_borrowers(
+            balance=np.array([-1.0]),
+            repayments=np.zeros(1),
+            borrower=np.array([True]),
+            household_ids=np.array([1]),
+            person_weights=np.ones(1),
+        )

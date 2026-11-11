@@ -613,9 +613,21 @@ def documents(nz=NZ):
                 if scenario["id"] == "VHF"
                 else "money_normalization"
             )
+            # Each variant repeats the wage map and its cents node with its own
+            # aging profile's P1 edges (V1 low, V2 high); VPT re-anchors the
+            # open top at $300,000 (R2C-9).
+            knobs = scenario["knobs"]
             rows = [
                 boundary(prefix, "nz.open"),
-                *calibration_nodes(prefix, prefix, money_resource=resource),
+                *calibration_nodes(
+                    prefix,
+                    prefix,
+                    money_resource=resource,
+                    earnings_profile=knobs.get("aging_index", "central"),
+                    earnings_tail=knobs.get("earnings_tail_anchor", "central"),
+                    measure=knobs.get("income_measure", "central"),
+                    exposure=knobs.get("annual_transfer_exposure"),
+                ),
             ]
             for row in rows:
                 if row["kernel"] == "money.normalize@1":
@@ -654,6 +666,17 @@ def documents(nz=NZ):
             },
             "package": {"id": "nz.package", "artifact_name": "bands"},
             "checkpoints": ["nz.as.bands"],
+            # R2C-29 (G8-x1): R2C-3's VSI, VEX and VPT evidence is each variant's
+            # own gap, which exists only when that variant's calibration and
+            # entitlement branch ran.
+            "gate_evidence": [
+                {
+                    "name": f"scenario_{variant.lower()}",
+                    "scenario": variant,
+                    "phase": "terminal",
+                }
+                for variant in ("VSI", "VEX", "VPT")
+            ],
         },
         "gap_annualisation": {
             "msd_accommodation_supplement_recipients_national": 1,

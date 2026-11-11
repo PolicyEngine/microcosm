@@ -87,23 +87,25 @@ def test_a_scottish_taxpayer_is_classified_on_the_scottish_thresholds(
     assert _bands(people, "SCOTLAND") == [band]
 
 
-def test_scottish_savings_and_dividends_count_against_the_scottish_thresholds():
-    """A known gap against HMRC's classification, pinned so a fix shows.
+def test_scottish_savings_and_dividends_count_against_the_uk_thresholds():
+    """Scottish rates apply to non-savings, non-dividend income only.
 
-    Scottish rates apply to non-savings, non-dividend income only: earnings of
-    40,000 sit in the intermediate band, and 5,000 of dividends on top are
-    taxed at the UK ordinary rate (the total is under the UK higher-rate
-    threshold of 50,270), so HMRC counts no higher rate taxpayer. The engine
-    compares total income with the Scottish thresholds and returns HIGHER.
-    The same person in England is BASIC. Only Scotland's two national rows
-    (hmrc.itl.higher_rate_taxpayers and additional) carry this; the Scottish
-    area cells are unbound.
+    Earnings of 40,000 sit in the intermediate band, and 5,000 of dividends on
+    top are taxed at the UK ordinary rate (the total is under the UK
+    higher-rate threshold of 50,270), so HMRC counts no higher rate taxpayer.
+    Until policyengine-uk 2.177.2 the engine compared total income with the
+    Scottish thresholds and returned HIGHER, a known gap this test pinned so
+    the fix would show; since PolicyEngine/policyengine-uk#2828 it applies the
+    Scottish limits to that income alone, as HMRC does. The same person in
+    England is BASIC. Of the rows that read the band, only Scotland's two
+    national rows (hmrc.itl.higher_rate_taxpayers and additional) move with
+    the fix; the Scottish area cells are unbound.
     """
 
     people = {
         "adult": {"age": 40, "employment_income": 40_000.0, "dividend_income": 5_000.0}
     }
-    assert _bands(people, "SCOTLAND") == ["HIGHER"]
+    assert _bands(people, "SCOTLAND") == ["INTERMEDIATE"]
     assert _bands(people, "ENGLAND") == ["BASIC"]
 
 

@@ -985,17 +985,60 @@ def resolve_dotted_symbol(dotted: str) -> object:
     raise ModuleNotFoundError(dotted, name=dotted)
 
 
+@cache
+def _transport_artifact_types() -> frozenset[tuple[str, int]]:
+    """Each ``(name, schema_version)`` an artifact type in the transport declares."""
+
+    from microcosm.build.transport import (
+        artifact_types,
+        evidence_contract,
+        income_evidence_kernels,
+        takeup_kernels,
+    )
+    from microcosm.graph import ArtifactType
+
+    return frozenset(
+        (value.name, value.schema_version)
+        for module in (
+            artifact_types,
+            evidence_contract,
+            income_evidence_kernels,
+            takeup_kernels,
+        )
+        for value in vars(module).values()
+        if isinstance(value, ArtifactType)
+    )
+
+
+def _serialized_identifier(key: object, child: object) -> bool:
+    """A format ID, or a declared artifact type in the form compose reads.
+
+    ``compose._artifact_type`` reads a node's output type as a mapping of
+    exactly ``name`` and ``schema_version``. Its hyphenated name isn't a
+    Python symbol, so a declared type under ``type`` cites nothing.
+    """
+
+    if key == "format":
+        return child in {INPUT_CLOSURE_FORMAT, MAPPING_FORMAT}
+    return (
+        key == "type"
+        and isinstance(child, Mapping)
+        and set(child) == {"name", "schema_version"}
+        and isinstance(child["name"], str)
+        and type(child["schema_version"]) is int
+        and (child["name"], child["schema_version"]) in _transport_artifact_types()
+    )
+
+
 def dotted_symbol_citations(value: object) -> set[str]:
-    """Find Python symbols, distinguishing the existing serialized format ID."""
+    """Find Python symbols, distinguishing serialized format and type IDs."""
 
     if isinstance(value, Mapping):
         return {
             dotted
             for key, child in value.items()
             for nested in (
-                [str(key)]
-                if key == "format" and child in {INPUT_CLOSURE_FORMAT, MAPPING_FORMAT}
-                else [str(key), child]
+                [str(key)] if _serialized_identifier(key, child) else [str(key), child]
             )
             for dotted in dotted_symbol_citations(nested)
         }
@@ -1226,6 +1269,7 @@ class TestReferenceSets:
                 "rolled_forward_by_ratio",
                 "allocated_residual_by_ratio",
                 "linear_combination",
+                "sum",
             ]
             if reference_set == "calibration"
             else ["identity"]
@@ -1243,7 +1287,8 @@ class TestReferenceSets:
         # reads comes through its own selector or identifiers.
         for reference in _references(reference_set):
             assert reference.value_operation in expected_operations
-            if reference.value_operation == "identity":
+            # R2C-17: a summed count row sums its pinned members, no operands.
+            if reference.value_operation in {"identity", "sum"}:
                 assert reference.value_operands == ()
             else:
                 assert {operand["role"] for operand in reference.value_operands} == {
@@ -1269,7 +1314,8 @@ class TestReferenceSets:
                 compile_ledger_target_references([], [reference], country="nz")
         assert (
             sum(row.metadata["activation_status"] == "active" for row in references)
-            == {"calibration": 77, "precal": 80, "holdout": 2}[reference_set]
+            # G8-r2c E activates the 235 P1 wage rows and G8-x0 adds 133 rent rows.
+            == {"calibration": 77, "precal": 448, "holdout": 2}[reference_set]
         )
 
     def test_pre_calibration_rows_are_not_weight_calibration_targets(self) -> None:
@@ -1293,13 +1339,14 @@ class TestReferenceSets:
             "stats_nz_census_households_by_size_region",
             "stats_nz_census_families_by_type_region",
             "stats_nz_census_households_by_tenure_region",
-            "ird_taxable_income_people_by_band",
-            "ird_taxable_income_total_by_band",
+            "ird_taxable_income_standin_people_by_band",
+            "ird_taxable_income_standin_total_by_band",
             "msd_main_benefit_recipients_by_program_age",
             "msd_nz_super_recipients",
             "msd_veterans_pension_recipients",
         }
-        assert len(references) == 773
+        # R2C-4: 24 coarse stand-in rows replace the 474 native IRD rows.
+        assert len(references) == 323
         assert {reference.metadata["target_role"] for reference in references} == {
             "calibration"
         }
@@ -2348,6 +2395,10 @@ class TestScenarios:
             "V3",
             "V4",
             "VHF",
+            # G8-r2c G: the stand-in's stress, exposure and tail variants.
+            "VSI",
+            "VEX",
+            "VPT",
         ]
         branch_points = {
             tier: row["branch_point"] for tier, row in document["tiers"].items()
@@ -3227,24 +3278,30 @@ class TestSourceCitations:
                 (_BUILD.repository / file).read_text(encoding="utf-8")
             )
             array, field = "bindings", "canonical_input"
-            expected_key = "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income"
+            expected_keys = [
+                "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income"
+            ]
             evidence = reporting["disclosures"][1]["evidence"]
         else:
             file, array, field = "axiom_input_closure.json", "entries", "input"
             original = _load(file)
             if disclosure == "sharing_home":
-                expected_key = (
-                    "nz_super_shares_residence_with_person_at_least_adult_age"
-                )
+                expected_keys = [
+                    "nz_super_shares_residence_with_person_at_least_adult_age",
+                    "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors",
+                ]
                 evidence = reporting["disclosures"][0]["evidence"]
             else:
-                expected_key = "accommodation_supplement_non_beneficiary"
+                expected_keys = ["accommodation_supplement_non_beneficiary"]
                 evidence = reporting["as_non_beneficiary_audit"]["evidence"]
-        (expected,) = [row for row in original[array] if row[field] == expected_key]
+        expected = []
+        for key in expected_keys:
+            (row,) = [row for row in original[array] if row[field] == key]
+            expected.append(row)
         original[array].insert(0, {field: "dummy_record"})
         citation_checkout(file, original)
-        (citation,) = json_pointer_citations(evidence)
-        assert resolve_json_pointer(*citation) == expected
+        citations = json_pointer_citations(evidence)
+        assert [resolve_json_pointer(*citation) for citation in citations] == expected
 
     def test_local_file_pins_cannot_hide_absolute_or_parent_path_aliases(self) -> None:
         relative = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
@@ -3277,6 +3334,36 @@ class TestSourceCitations:
         assert dotted_symbol_citations({"note": INPUT_CLOSURE_FORMAT}) == {
             INPUT_CLOSURE_FORMAT
         }
+
+    def test_a_declared_artifact_type_is_not_a_python_symbol(self) -> None:
+        from microcosm.build.transport.income_evidence_kernels import (
+            OMISSION_REGISTER_TYPE,
+        )
+
+        declared = {
+            "name": OMISSION_REGISTER_TYPE.name,
+            "schema_version": OMISSION_REGISTER_TYPE.schema_version,
+        }
+        assert dotted_symbol_citations({"type": declared}) == set()
+        # Only that exact form, under "type", for a declared type: the regex
+        # reads the hyphenated name up to its first hyphen.
+        cited = {"microcosm.transport.omission"}
+        assert dotted_symbol_citations({"note": declared["name"]}) == cited
+        assert dotted_symbol_citations({"type": {**declared, "schema_version": 2}}) == (
+            cited
+        )
+        assert dotted_symbol_citations({"type": {**declared, "extra": 1}}) == cited
+        assert (
+            dotted_symbol_citations(
+                {
+                    "type": {
+                        "name": "microcosm.transport.omission-x",
+                        "schema_version": 1,
+                    }
+                }
+            )
+            == cited
+        )
 
     def test_nested_dotted_attributes_resolve_after_the_module_prefix(self) -> None:
         assert (
@@ -3405,18 +3492,32 @@ class TestSourceCitations:
         ]
         assert f"`{rule['donor_variable']}`" in row
 
-    def test_reporting_disclosure_cites_the_sharing_home_default_record(self) -> None:
+    def test_reporting_disclosure_cites_the_sharing_home_binding_record(self) -> None:
         disclosure = _load("reporting_classifiers.json")["disclosures"][0]
-        (citation,) = json_pointer_citations(disclosure["evidence"])
-        record = resolve_json_pointer(*citation)
+        record, exempt = (
+            resolve_json_pointer(*citation)
+            for citation in json_pointer_citations(disclosure["evidence"])
+        )
         assert (
             record["input"]
             == "nz_super_shares_residence_with_person_at_least_adult_age"
         )
-        assert record["class"] == "defaulted"
-        assert record["value"] is False
-        assert "overstates NZS for singles who share a home" in record["reason"]
-        assert "overstated for single people who share a home" in disclosure["note"]
+        # H2 (R2C-20): household composition now encodes the input.
+        assert record["class"] == "encoded"
+        assert record["encoded_by"] == "concept_binding"
+        assert "value" not in record
+        # The exempt-adults default the note names is the second citation.
+        assert (
+            exempt["input"]
+            == "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors"
+        )
+        assert exempt["class"] == "defaulted"
+        assert exempt["value"] is False
+        assert "default understates NZS for that group" in exempt["reason"]
+        assert (
+            "understates NZ Super for single people whose only co-resident adults"
+            in disclosure["note"]
+        )
 
     def test_reporting_non_beneficiary_audit_cites_its_exact_state_binding(
         self,
@@ -4365,7 +4466,20 @@ class TestReportingClassifiers:
                 "scenario": scenario,
                 "cell": "beneficiary_superannuitant_other/superannuitant",
             }
-            for scenario in ("S0", "S1", "S2", "S3", "V1", "V2", "V3", "V4", "VHF")
+            for scenario in (
+                "S0",
+                "S1",
+                "S2",
+                "S3",
+                "V1",
+                "V2",
+                "V3",
+                "V4",
+                "VHF",
+                "VSI",
+                "VEX",
+                "VPT",
+            )
         ]
         support = next(
             row

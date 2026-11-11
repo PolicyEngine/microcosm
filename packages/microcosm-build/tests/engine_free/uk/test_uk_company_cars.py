@@ -244,49 +244,6 @@ def test_unknown_fuels_meet_table_2c_together(spec, statistics) -> None:
     assert not (fuel[fueled] == stage.ELECTRIC).any()
 
 
-def test_the_lost_cars_draw_their_fuel_at_the_holders_share(spec, statistics) -> None:
-    """The tape rows that lose their car for want of EPB draw fuel as the holders
-    do, at the holders' electric share, not at one their own private fuel sets
-    (item 2 of the third review, on its probe)."""
-
-    holders = np.array([6] * 2_000)
-    fueled = np.zeros(len(holders), dtype=bool)
-    fueled[::4] = True
-    share = stage.unknown_fuel_electric_share(
-        holders,
-        private_fuel=fueled,
-        weights=np.ones(len(holders)),
-        statistics=statistics,
-    )
-    assert share == pytest.approx(0.5 / 0.75)
-    lost = np.array([6] * 40_000)
-    ids = np.arange(len(lost)) + 1
-    unfueled = np.zeros(len(lost), dtype=bool)
-    at_holders, _ = stage.assign_fuel_types(
-        lost,
-        ids,
-        private_fuel=unfueled,
-        weights=np.ones(len(lost)),
-        statistics=statistics,
-        spec=spec,
-        unfueled_electric=share,
-    )
-    alone, _ = stage.assign_fuel_types(
-        lost,
-        ids,
-        private_fuel=unfueled,
-        weights=np.ones(len(lost)),
-        statistics=statistics,
-        spec=spec,
-    )
-    assert (at_holders == stage.ELECTRIC).mean() == pytest.approx(share, abs=0.01)
-    assert (alone == stage.ELECTRIC).mean() == pytest.approx(0.5, abs=0.01)
-    # Petrol and diesel keep Table 2C's ratio between them either way.
-    for fuel in (at_holders, alone):
-        drawn = pd.Series(fuel[fuel != stage.ELECTRIC]).value_counts(normalize=True)
-        assert drawn[stage.PETROL] == pytest.approx(0.8, abs=0.02)
-
-
 def test_list_prices_stay_in_their_band(spec, donor) -> None:
     bands = np.repeat(np.arange(1, 11), 300)
     electric = np.tile([True, False], len(bands) // 2)
@@ -402,7 +359,8 @@ def test_the_carve_out_fits_each_benefit_inside_epb_and_pay(spec) -> None:
     car = 0.25 * (price - np.minimum([0.0, 6_000.0, 0.0, 0.0], CAP))
     carve = stage.carve_spi_benefits(
         epb=np.array([20_000.0, 3_000.0, 500.0, 9_000.0]),
-        pay=np.array([90_000.0, 60_000.0, 40_000.0, 50_000.0]),
+        spi_pay=np.array([70_000.0, 1_000.0, 0.0, 0.0]),
+        pay=np.array([90_000.0, 4_000.0, 500.0, 9_000.0]),
         employee_contributions=np.zeros(4),
         list_price=price,
         contributions=np.array([0.0, 6_000.0, 0.0, 0.0]),
@@ -414,19 +372,21 @@ def test_the_carve_out_fits_each_benefit_inside_epb_and_pay(spec) -> None:
     )
     # 1: car 10,000 plus fuel 7,000 fit inside 20,000.
     assert carve.keep[0] and carve.benefit[0] == pytest.approx(17_000.0)
-    # 2: car 8,750 above EPB 3,000: the price scales to 12,000 with no contribution.
-    assert carve.keep[1] and carve.benefit[1] == pytest.approx(3_000.0)
-    assert carve.list_price[1] == pytest.approx(12_000.0)
+    # 2: car 8,750 above EPB 3,000 and PAY 1,000: the price scales to 16,000 with
+    # no contribution.
+    assert carve.keep[1] and carve.benefit[1] == pytest.approx(4_000.0)
+    assert carve.list_price[1] == pytest.approx(16_000.0)
     assert carve.contributions[1] == 0.0
-    # 3: EPB 500 would need a GBP 2,000 car, below the minimum price: dropped.
+    # 3: EPB 500 and no PAY would need a GBP 2,000 car, below the minimum price:
+    # dropped.
     assert not carve.keep[2] and carve.benefit[2] == 0.0
-    # 4: car 7,500 and fuel 7,000 do not fit inside EPB 9,000 together, so the
-    # fuel goes first and the car fits whole.
+    # 4: car 7,500 and fuel 7,000 do not fit inside EPB 9,000 and no PAY together,
+    # so the fuel goes first and the car fits whole.
     assert carve.keep[3] and not carve.private_fuel[3]
     assert carve.benefit[3] == pytest.approx(7_500.0)
     assert carve.list_price[3] == pytest.approx(30_000.0)
     assert carve.scaled.tolist() == [False, True, False, False]
-    assert (carve.benefit <= np.array([20_000.0, 3_000.0, 500.0, 9_000.0])).all()
+    assert (carve.benefit <= np.array([90_000.0, 4_000.0, 500.0, 9_000.0])).all()
 
 
 def test_private_fuel_goes_first_when_car_and_fuel_do_not_fit_together(spec) -> None:
@@ -435,7 +395,8 @@ def test_private_fuel_goes_first_when_car_and_fuel_do_not_fit_together(spec) -> 
 
     carve = stage.carve_spi_benefits(
         epb=np.array([6_000.0, 9_000.0]),
-        pay=np.array([40_000.0, 40_000.0]),
+        spi_pay=np.zeros(2),
+        pay=np.array([6_000.0, 9_000.0]),
         employee_contributions=np.zeros(2),
         list_price=np.array([40_000.0, 35_000.0]),
         contributions=np.zeros(2),
@@ -448,14 +409,19 @@ def test_private_fuel_goes_first_when_car_and_fuel_do_not_fit_together(spec) -> 
     assert carve.keep.all() and not carve.private_fuel.any()
     assert carve.benefit[0] == pytest.approx(4_000.0)
     # The review's case: a 29% car on GBP 35,000 (10,150) with GBP 8,062 of fuel
-    # in EPB 9,000. The fuel goes, and the car scales to GBP 31,034.
+    # in EPB 9,000 with no PAY. The fuel goes, and the car scales to GBP 31,034.
     assert carve.list_price[1] == pytest.approx(9_000.0 / 0.29)
     assert carve.benefit[1] == pytest.approx(9_000.0)
 
 
-def test_the_cap_is_epb_within_the_pay(spec) -> None:
+def test_the_cap_is_epb_and_pay_within_the_pay(spec) -> None:
+    """EPB + PAY cap a car's benefits, EPB first: a car above EPB takes the rest
+    from PAY (María's rulings of 3 November 2026, the second on Vahid's review of
+    microcosm#1491); one above both scales."""
+
     carve = stage.carve_spi_benefits(
-        epb=np.array([9_000.0, 9_000.0]),
+        epb=np.array([9_000.0, 2_000.0]),
+        spi_pay=np.array([31_000.0, 2_000.0]),
         pay=np.array([40_000.0, 4_000.0]),
         employee_contributions=np.zeros(2),
         list_price=np.array([40_000.0, 40_000.0]),
@@ -466,9 +432,35 @@ def test_the_cap_is_epb_within_the_pay(spec) -> None:
         contribution_cap=CAP,
         spec=spec,
     )
-    assert carve.benefit.tolist() == pytest.approx([9_000.0, 4_000.0])
-    assert carve.scaled.all()
-    assert carve.list_price.tolist() == pytest.approx([36_000.0, 16_000.0])
+    assert carve.benefit.tolist() == pytest.approx([10_000.0, 4_000.0])
+    assert carve.scaled.tolist() == [False, True]
+    assert carve.list_price.tolist() == pytest.approx([40_000.0, 16_000.0])
+    assert carve.receipt["kept_with_epb_topped_up_from_pay"] == stage.rounded_count(2)
+
+
+def test_a_small_epb_caps_a_car_no_more_than_none(spec) -> None:
+    """The review's probe on three rows that differ only in their drawn EPB:
+    each keeps its GBP 40,000 car, where a cap of EPB alone dropped the car on
+    EPB of GBP 100 and scaled it to GBP 8,000 on GBP 2,000 (Vahid's review of
+    microcosm#1491, item 5)."""
+
+    epb = np.array([0.0, 100.0, 2_000.0])
+    carve = stage.carve_spi_benefits(
+        epb=epb,
+        spi_pay=50_000.0 - epb,
+        pay=np.full(3, 50_000.0),
+        employee_contributions=np.zeros(3),
+        list_price=np.full(3, 40_000.0),
+        contributions=np.zeros(3),
+        private_fuel=np.zeros(3, dtype=bool),
+        car_benefit=np.full(3, 10_000.0),
+        fuel_benefit=np.zeros(3),
+        contribution_cap=CAP,
+        spec=spec,
+    )
+    assert carve.keep.all() and not carve.scaled.any()
+    assert carve.benefit.tolist() == pytest.approx([10_000.0] * 3)
+    assert carve.list_price.tolist() == pytest.approx([40_000.0] * 3)
 
 
 def test_the_cap_leaves_the_pay_an_employee_contribution_needs(spec) -> None:
@@ -481,6 +473,7 @@ def test_the_cap_leaves_the_pay_an_employee_contribution_needs(spec) -> None:
     employee = np.array([150.0, 20_000.0, 2_000.0])
     carve = stage.carve_spi_benefits(
         epb=epb,
+        spi_pay=np.maximum(pay - epb, 0.0),
         pay=pay,
         employee_contributions=employee,
         list_price=np.array([40_000.0, 40_000.0, 40_000.0]),
@@ -496,21 +489,58 @@ def test_the_cap_leaves_the_pay_an_employee_contribution_needs(spec) -> None:
     assert carve.list_price[0] == pytest.approx(2_850.0 / 0.25)
     # The contribution takes all the pay: no room, so the car is dropped.
     assert not carve.keep[1] and carve.benefit[1] == 0.0
-    # Room to spare: EPB caps as before.
-    assert carve.benefit[2] == pytest.approx(9_000.0)
+    # Room to spare: EPB and PAY hold the whole car.
+    assert carve.benefit[2] == pytest.approx(10_000.0)
     assert (pay - carve.benefit >= employee - 1e-9).all()
-    assert carve.receipt["cap_below_epb_for_the_employee_contribution"] == (
-        stage.rounded_count(2)
+    assert carve.receipt["cap_below_epb_and_pay_for_the_employee_contribution"] == (
+        stage.rounded_count(3)
     )
-    # What the room costs beside a cap of EPB within pay alone (item 3 of the
-    # third review): the first car would scale to GBP 12,000, not 11,400; the
-    # second would keep a GBP 24,000 car; the third is untouched.
+    # What the room costs beside a cap of EPB + PAY within pay alone (item 3 of
+    # the third review): the first car would scale to GBP 12,000, not 11,400; the
+    # second would keep its GBP 40,000 car; the third is untouched.
     assert carve.receipt["cars_the_employee_contribution_scales_or_drops"] == (
         stage.rounded_count(2)
     )
     np.testing.assert_allclose(
-        carve.list_price_given_up_for_the_contribution, [600.0, 24_000.0, 0.0]
+        carve.list_price_given_up_for_the_contribution, [600.0, 40_000.0, 0.0]
     )
+
+
+def test_a_row_without_epb_is_capped_at_its_pay(spec) -> None:
+    """A tape row whose drawn EPB is zero keeps its twin's car, capped at its
+    PAY within the pay its employee contribution leaves, since the benefits move
+    from its PAY into its EPB (María's ruling of 3 November 2026)."""
+
+    spi_pay = np.array([40_000.0, 4_000.0, 0.0, 30_000.0])
+    carve = stage.carve_spi_benefits(
+        epb=np.zeros(4),
+        spi_pay=spi_pay,
+        pay=np.array([40_000.0, 4_500.0, 0.0, 30_000.0]),
+        employee_contributions=np.array([0.0, 0.0, 0.0, 28_000.0]),
+        list_price=np.full(4, 40_000.0),
+        contributions=np.zeros(4),
+        private_fuel=np.zeros(4, dtype=bool),
+        car_benefit=np.full(4, 10_000.0),
+        fuel_benefit=np.zeros(4),
+        contribution_cap=CAP,
+        spec=spec,
+    )
+    # PAY holds the whole car.
+    assert carve.keep[0] and carve.benefit[0] == pytest.approx(10_000.0)
+    assert not carve.scaled[0]
+    # PAY 4,000 caps the car though termination pay lifts the pay to 4,500.
+    assert carve.benefit[1] == pytest.approx(4_000.0)
+    assert carve.list_price[1] == pytest.approx(16_000.0)
+    # No pay, no car.
+    assert not carve.keep[2] and carve.benefit[2] == 0.0
+    # The contribution leaves GBP 2,000: a GBP 8,000 car.
+    assert carve.keep[3] and carve.benefit[3] == pytest.approx(2_000.0)
+    assert (carve.benefit <= spi_pay).all()
+    assert carve.receipt["holders_without_epb"] == stage.rounded_count(4)
+    assert carve.receipt["kept_without_epb"] == stage.rounded_count(3)
+    # The second row's car takes all of its PAY (the review of microcosm#1491,
+    # item 6): its cash pay is its termination pay alone.
+    assert carve.receipt["kept_leaving_no_pay"] == stage.rounded_count(1)
 
 
 class _UKEngine:
@@ -586,6 +616,12 @@ def _stage_frame(seed: int = 1, households: int = 600, order=None, sources=None)
     extra = np.random.default_rng(seed + 7)
     pay = person["employment_income"].to_numpy(float)
     tape_rows = person[SPI_INCOME_RECIPIENT_COLUMN].to_numpy(bool)
+    # The tape's PAY: the pay less EPB (the synthetic tape has no TAXTERM).
+    person["hmrc_spi_pay"] = np.where(
+        tape_rows,
+        np.maximum(pay - person["hmrc_spi_employment_benefits"].to_numpy(float), 0.0),
+        0.0,
+    )
     u = extra.random(len(person))
     person["employee_pension_contributions"] = np.where(
         tape_rows & (u < 0.1), pay, np.where(u < 0.5, 1_500.0, 0.0)
@@ -644,8 +680,10 @@ def test_the_whole_stage_writes_its_columns_and_carves_spi_pay(statistics) -> No
     pd.testing.assert_series_equal(
         after.loc[~tape, "employment_income"], before.loc[~tape, "employment_income"]
     )
-    # A tape row's holder needs EPB, and its pay plus its benefits is the tape's.
-    assert not (holder & tape & (before["hmrc_spi_employment_benefits"] <= 0)).any()
+    # A tape row keeps its car whether or not it drew EPB, and its pay plus its
+    # benefits is the tape's.
+    without_epb = tape & (before["hmrc_spi_employment_benefits"] <= 0)
+    assert (holder & without_epb).any()
     car, fuel = _benefits(result)
     benefit = pd.Series(car + fuel, index=after.index)
     gap = (
@@ -654,9 +692,23 @@ def test_the_whole_stage_writes_its_columns_and_carves_spi_pay(statistics) -> No
         - before.loc[tape, "employment_income"]
     )
     assert gap.abs().max() < 1e-6
-    assert (
-        benefit[tape] <= before.loc[tape, "hmrc_spi_employment_benefits"] + 1e-6
-    ).all()
+    # EPB holds a car's benefits first, the part above it moves from PAY into
+    # EPB, and every tape row keeps its PAY + EPB.
+    epb_before = before["hmrc_spi_employment_benefits"]
+    moved = (benefit - epb_before).clip(lower=0.0).where(tape, 0.0)
+    assert (moved[tape & ~without_epb] > 0).any()
+    epb_after = after["hmrc_spi_employment_benefits"]
+    pay_after = after["hmrc_spi_pay"]
+    np.testing.assert_allclose(epb_after[tape], (epb_before + moved)[tape], atol=1e-6)
+    np.testing.assert_allclose(
+        pay_after[tape], (before["hmrc_spi_pay"] - moved)[tape], atol=1e-6
+    )
+    assert (pay_after[tape] >= 0).all()
+    untouched = ~(moved > 1e-6)
+    for column in ("hmrc_spi_pay", "hmrc_spi_employment_benefits"):
+        pd.testing.assert_series_equal(
+            after.loc[untouched, column], before.loc[untouched, column]
+        )
     # The carved pay keeps every net-pay contribution, including the tape rows
     # that contribute all of it, and a carved row's UC gainful self-employment
     # follows its carved pay; every other row keeps its flag.
@@ -705,12 +757,13 @@ def test_the_whole_stage_writes_its_columns_and_carves_spi_pay(statistics) -> No
     )
 
 
-def test_the_receipt_measures_what_the_epb_draw_and_the_carve_out_remove(
+def test_the_receipt_measures_the_cars_kept_without_epb_and_the_carve_out(
     statistics,
 ) -> None:
-    """The holders the tape rows lose for want of EPB, the list price the
-    carve-out scales away, and the CO2 shares of the cars the output holds
-    (items 3 to 5 of the review)."""
+    """The holders the tape rows keep on a drawn EPB of zero, the benefits that
+    move from their PAY into their EPB, the list price the carve-out scales
+    away, and the CO2 shares of the cars the output holds (items 3 to 5 of the
+    review)."""
 
     frame = _stage_frame()
     before = frame.table("person").set_index("person_id")
@@ -719,16 +772,21 @@ def test_the_receipt_measures_what_the_epb_draw_and_the_carve_out_remove(
     after = result.table("person").set_index("person_id")
     receipt = transform.checkpoint_metadata()["evidence"]
     weights = _person_weights(result)
-    no_epb = (
+    kept_without_epb = (
         before[SPI_INCOME_RECIPIENT_COLUMN].astype(bool)
-        & (before["frs_company_car_price_band"] > 0)
+        & (after[stage.LIST_PRICE] > 0)
         & (before["hmrc_spi_employment_benefits"] <= 0)
     )
-    dropped = receipt["holders"]["spi_dropped_without_epb"]
-    assert dropped["weighted"] == pytest.approx(
-        float(weights.loc[no_epb[no_epb].index].sum())
+    kept = receipt["holders"]["spi_channel_tape_without_epb"]
+    assert kept["weighted"] == pytest.approx(
+        float(weights.loc[kept_without_epb[kept_without_epb].index].sum())
     )
-    assert dropped["weighted_list_price_gbp"] > 0
+    moved = (
+        after["hmrc_spi_employment_benefits"] - before["hmrc_spi_employment_benefits"]
+    )
+    assert receipt["spi_carve_out"]["weighted_pay_moved_into_epb_gbp"] == (
+        pytest.approx(float((moved * weights.loc[moved.index]).sum()))
+    )
     assert receipt["spi_carve_out"]["weighted_list_price_scaled_away_gbp"] >= 0
     held = after[stage.LIST_PRICE] > 0
     emits = held & (after[stage.FUEL_TYPE] != stage.ELECTRIC)
@@ -755,12 +813,13 @@ def test_an_engine_that_prices_a_car_otherwise_misses_the_identity(
 ) -> None:
     """The second pricing reads the engine, not the carve-out's own sum: an
     engine whose car benefit ignores the list price leaves a scaled car's
-    benefit above what came out of pay."""
+    benefit above what came out of pay. Its flat benefit is above any row's pay,
+    so every tape row's car is scaled."""
 
     def flat(frame):
         car, fuel = _benefits(frame)
         price = frame.table("person")[stage.LIST_PRICE].to_numpy(float)
-        return np.where(price > 0, 9_000.0, 0.0), fuel
+        return np.where(price > 0, 200_000.0, 0.0), fuel
 
     transform = dataclasses.replace(_transform(statistics), benefits=flat)
     transform(_stage_frame())
@@ -793,8 +852,8 @@ def test_receipt_figures_on_too_few_source_households_are_withheld(
         "weighted_list_price_dropped_gbp",
     ):
         assert carve[name] in withheld | {0.0}
-    dropped = receipt["holders"]["spi_dropped_without_epb"]
-    assert {dropped["weighted"], dropped["weighted_list_price_gbp"]} <= withheld
+    assert receipt["holders"]["spi_channel_tape_without_epb"]["weighted"] in withheld
+    assert carve["weighted_pay_moved_into_epb_gbp"] in withheld
     for name in ("hybrid_rate_into_1_50", "weighted_share_1_50"):
         assert receipt["co2"]["drawn"][name] in withheld
     assert set(receipt["co2"]["output"].values()) <= withheld
@@ -835,6 +894,8 @@ def test_each_invariant_counts_the_rows_that_break_it() -> None:
         carved=np.zeros(9),
         pay=np.full(9, 30e3),
         employee_contributions=np.zeros(9),
+        spi_pay=np.zeros(9),
+        spi_pay_and_epb_change=np.zeros(9),
     )
     assert violations == {
         "non_finite_values": 0,
@@ -849,6 +910,8 @@ def test_each_invariant_counts_the_rows_that_break_it() -> None:
         "electric_range_outside_1_to_50_g_km": 1,
         "spi_benefit_above_epb": 0,
         "employee_contribution_above_carved_pay": 0,
+        "spi_pay_below_zero": 0,
+        "spi_pay_and_epb_moved": 0,
     }
     # A tape row whose carved pay falls below its net-pay contribution, beside
     # one that keeps it exactly; off the tape the stage leaves pay alone.
@@ -861,8 +924,25 @@ def test_each_invariant_counts_the_rows_that_break_it() -> None:
         carved=np.where(tape, 3_000.0, 0.0),
         pay=np.array([0.0, 150.0, 0.0, 0, 0, 0, 0, 0, 0]),
         employee_contributions=np.array([150.0, 150.0, 900.0, 0, 0, 0, 0, 0, 0]),
+        spi_pay=np.zeros(9),
+        spi_pay_and_epb_change=np.zeros(9),
     )
     assert violations["employee_contribution_above_carved_pay"] == 1
+    # A tape row whose PAY fell below zero, and one whose PAY + EPB is not a
+    # number; off the tape neither counts.
+    violations = stage._violations(
+        columns,
+        holders=holders,
+        tape=tape,
+        epb=np.full(9, 3_000.0),
+        carved=np.zeros(9),
+        pay=np.full(9, 30e3),
+        employee_contributions=np.zeros(9),
+        spi_pay=np.array([-1.0, 0.0, -1.0, 0, 0, 0, 0, 0, 0]),
+        spi_pay_and_epb_change=np.array([0.0, np.nan, 5.0, 0, 0, 0, 0, 0, 0]),
+    )
+    assert violations["spi_pay_below_zero"] == 1
+    assert violations["spi_pay_and_epb_moved"] == 1
 
 
 def test_a_carved_row_s_uc_gainful_self_employment_follows_its_carved_pay() -> None:
@@ -972,12 +1052,15 @@ class _NoSacrifice:
             {salary_sacrifice.SALSAC_OUTPUT: 0.0}, index=predictors.index
         )
 
+    def gate_outcomes(self) -> dict[str, str]:
+        return {salary_sacrifice.SALSAC_OUTPUT: "cross_fitted"}
+
 
 class _NoSacrificeForest:
-    def __init__(self, *, n_estimators: int, seed: int) -> None:
+    def __init__(self, *, n_estimators: int, seed: int, gate_calibration: str) -> None:
         pass
 
-    def fit(self, frame, predictors, targets, *, weights):
+    def fit(self, frame, predictors, targets, *, weights, groups):
         return _NoSacrifice()
 
 
@@ -1022,6 +1105,10 @@ def test_salary_sacrifice_runs_on_the_stage_s_output(
             salary_sacrifice.SALSAC_OUTPUT: 0.0,
             salary_sacrifice.BONUS_SACRIFICE_SOURCE: 0.0,
         }
+    )
+    # The tape's PAY on the two tape rows (no TAXTERM); the FRS rows' own.
+    person["hmrc_spi_pay"] = np.where(
+        spi, pay - person["hmrc_spi_employment_benefits"].to_numpy(float), pay
     )
     household = pd.DataFrame(
         {
@@ -1085,7 +1172,7 @@ def test_the_receipt_carries_no_unrounded_counts(statistics) -> None:
         holders["frs_channel"],
         holders["spi_channel_tape"],
         holders["spi_channel_twin_pay"],
-        holders["spi_dropped_without_epb"]["count"],
+        holders["spi_channel_tape_without_epb"]["count"],
         receipt["fuel"]["drawn_with_private_fuel"],
     ):
         assert isinstance(value, str) or value == 0 or value % 10 == 0 or value < 0

@@ -111,6 +111,7 @@ _EXPECTED_OPERATION_KINDS = (
     "draw_spi_donor_ages_by_population",
     "fit_weighted_qrf_stage1",
     "resample_band_donor_leaves",
+    "floor_spi_employment_pay_at_minimum_wage",
     "fit_weighted_qrf_stage2",
     "zero_pension_age_reports_below_state_pension_age",
     "materialize_hmrc_income_bands_fail_closed",
@@ -924,18 +925,24 @@ def uk_hmrc_weighted_qrf_output_columns(
 #: tail-concentration surface, and the operations that replace them.
 _SPI_COHERENCE_STAGE = "spi_benefit_coherence"
 _SPI_COHERENCE_SUPERSEDING_KINDS = frozenset(
-    {"zero_spi_channel_reports", "restore_spi_channel_reports_from_source"}
+    {
+        "zero_spi_channel_reports",
+        "restore_spi_channel_reports_from_source",
+        "restore_spi_channel_reports_from_source_within_earnings_limit",
+    }
 )
 
 
 def uk_spi_coherence_superseded_columns(resource: Any | None = None) -> tuple[str, ...]:
     """Report columns ``spi_benefit_coherence`` replaces on every SPI-channel row.
 
-    The stage (microcosm#1100) zeroes the income-tested legacy reports and
-    restores IIDB, AFCS and bereavement support from the FRS twin, so after it
-    these columns hold only FRS respondents' own reports: no stage-2 forest
-    draw survives in them, and the donor-tail broadcast the tail-concentration
-    gate looks for (#462) cannot occur there. Read from the stage's declared
+    The stage (microcosm#1100) zeroes the income-tested legacy reports,
+    restores IIDB, AFCS and bereavement support from the FRS twin, and gives
+    contributory JSA and ESA the twin's award within the permitted-work limit
+    and none above it (microcosm#1095 B10), so after it these columns hold only
+    FRS respondents' own reports: no stage-2 forest draw survives in them, and
+    the donor-tail broadcast the tail-concentration gate looks for (#462)
+    cannot occur there. Read from the stage's declared
     operations in the committed source manifest, in declaration order.
     """
 
