@@ -330,6 +330,10 @@ def test_the_reviewers_probe_a_mid_run_edit_stores_no_verdict(tmp_path: Path) ->
         _run(edited, source, store, _move_before_gate(edited.gate, "edited"))
 
     assert isinstance(refused.value, NodeRejectedError)
+    assert any(
+        f"Raised by node {GATE.id!r}" in note
+        for note in getattr(refused.value, "__notes__", ())
+    )
     assert edited.calls() == {"source@1": 1, "gate@1": 1, "after@1": 0}
 
     correct = _toy(_Gate("pass"))

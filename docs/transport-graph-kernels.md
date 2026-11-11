@@ -156,9 +156,11 @@ error:
 
 - A change made before `run_graph` derives its node keys refuses the run
   before anything is written.
-- A change made after the keys are derived is refused at the gate node. That
-  covers an edit to a binding while the build runs, and a closure file
-  rewritten during a long build. The executor never files a kernel's
+- A change made after the keys are derived is refused when the gate node
+  runs. That covers an edit to a binding while the build runs, and a closure
+  file rewritten during a long build. A gate node served from the store does
+  not run, so nothing is refused there. The record it serves was filed under
+  that key by a run whose checks passed. The executor never files a kernel's
   `KernelIdentityChangedError` as a `fail` verdict (graph amendment 29), and
   nothing for the gate node is stored. Nodes the run completed earlier keep
   their stored results, so a later run with the unedited registry on the same
