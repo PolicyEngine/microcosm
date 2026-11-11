@@ -554,6 +554,44 @@ def test_student_loan_waterfall_exercises_equal_split_tiers() -> None:
     assert allocated.tolist() == [100.0, 0.0, 80.0, 0.0, 30.0, 30.0]
 
 
+def test_the_support_clip_receipt_gives_the_frames_clone_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every geographic clone's draws are clipped, so the clip receipt gives
+    the frame's clone count from two clones up, for the support-clip check to
+    multiply its row allowances by; a one-clone receipt keeps its form
+    (microcosm#931)."""
+
+    import microcosm.build.uk_runtime.was_wealth as module
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    donor = clean_was_household_table(_raw_was())
+
+    def fake_impute(*args, **kwargs):
+        rows = np.arange(len(kwargs["record_ids"])) % len(donor)
+        draws = donor.loc[:, _DRAW_COLUMNS].iloc[rows].reset_index(drop=True)
+        return module.UKWASWealthImputationResult(draws=draws, fit_weight_records=())
+
+    monkeypatch.setattr(module, "impute_was_wealth", fake_impute)
+
+    def clip(frame) -> dict:
+        transform = UKWASWealthStageTransform(
+            stage=_stage(), engine=_FakeEngine(), donor=_raw_was()
+        )
+        transform(frame)
+        return transform.checkpoint_metadata()["evidence"]["support_clip"]
+
+    one = clip(_frame())
+    assert set(one) == {"columns"}
+    cloned = clip(clone_first_frame(_frame(), 3))
+    assert cloned["clone_count"] == 3
+    assert set(cloned) == {"columns", "clone_count"}
+    assert all(
+        receipt["rows_considered"] == 3 * one["columns"][column]["rows_considered"]
+        for column, receipt in cloned["columns"].items()
+    )
+
+
 def test_support_clip_and_integer_vehicle_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

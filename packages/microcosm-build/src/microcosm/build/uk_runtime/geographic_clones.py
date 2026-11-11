@@ -8,20 +8,24 @@ lineage reads the household's index as its ``geographic_support`` branch
 (``household_lineage.UK_COPY_LINEAGE``), and :func:`geographic_clone_count`
 reads ``K`` from it. The spine's ``geographic_expand`` stage writes the
 indices and every household's source columns
-(:data:`UK_GEOGRAPHIC_SOURCE_COLUMNS`), and its ``geographic_identity``
-stage each clone's geography key (:data:`GEOGRAPHY_HOUSEHOLD_KEY_COLUMN`),
-which the dense line's ``atomic_area_support`` names ``IDENTITY_COLUMN``.
+(:data:`UK_GEOGRAPHIC_SOURCE_COLUMNS`) and mints the clones' ids in the
+copy-id table's field :data:`GEOGRAPHIC_COPY_ID_FIELD`, and its
+``geographic_identity`` stage each clone's geography key
+(:data:`GEOGRAPHY_HOUSEHOLD_KEY_COLUMN`), which the dense line's
+``atomic_area_support`` names ``IDENTITY_COLUMN``.
 
 The two index names lived in ``rowwise_dataset`` and the count in
 ``cgt_support``, which re-export them. This module holds the names and the
 count alone and imports nothing first-party, as ``annuity_trust_column``
 holds its column's name. The stages that count by lineage read the
 household's name through ``household_lineage``, and their nodes hash this
-module with the counting modules (``graph_kernels._COUNTING_MODULES``); the
-CGT support split, which reads ``K`` through the count, hashes it too. The
-full build's population and export kernels, which read the names, hash it as
-well. So an edit here re-keys all of them, without binding the dense line's
-``rowwise_dataset`` or ``atomic_area_support`` into the spine (microcosm#931).
+module with the counting modules (``graph_kernels._COUNTING_MODULES``). The
+CGT support split, the support-clip stages and property components read
+``K`` through the count, and the WAS stages, which count nothing by lineage,
+hash this module as a helper. The full build's population and export
+kernels, which read the names, hash it as well. So an edit here re-keys all
+of them, without binding the dense line's ``rowwise_dataset`` or
+``atomic_area_support`` into the spine (microcosm#931).
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ import pandas as pd
 
 __all__ = [
     "ARTIFACT_CLONE_INDEX_COLUMN",
+    "GEOGRAPHIC_COPY_ID_FIELD",
     "GEOGRAPHY_HOUSEHOLD_KEY_COLUMN",
     "SOURCE_HOUSEHOLD_KEY_COLUMN",
     "SOURCE_YEAR_COLUMN",
@@ -58,6 +63,11 @@ UK_GEOGRAPHIC_SOURCE_COLUMNS = (
     SOURCE_YEAR_COLUMN,
     SOURCE_HOUSEHOLD_KEY_COLUMN,
 )
+#: The copy-id table's field the clones' ids are minted in: clone ``k`` of a
+#: row takes the row's id at ordinal ``k`` there, and every later copy keeps
+#: its clone's ordinal (``copy_id_table``; spelled here so that this module
+#: imports nothing first-party).
+GEOGRAPHIC_COPY_ID_FIELD = "geographic_support"
 #: Each clone's geography key, which ``geographic_identity`` writes on every
 #: household of the spine and the dense line's ``uk.full.identity`` on every
 #: household of its pool (``atomic_area_support.IDENTITY_COLUMN`` is this
@@ -76,7 +86,7 @@ def ladder_clone_index_column(entity: str) -> str:
     return f"{entity}_{ARTIFACT_CLONE_INDEX_COLUMN}"
 
 
-def geographic_clone_count(household: pd.DataFrame) -> int:
+def geographic_clone_count(household: pd.DataFrame, *, stage: str | None = None) -> int:
     """The frame's geographic clone count ``K``: one more than its largest index.
 
     The clone-first spine's ``geographic_expand`` stage (microcosm#931) gives
@@ -84,39 +94,37 @@ def geographic_clone_count(household: pd.DataFrame) -> int:
     ``household_clone_index``, 0 to ``K - 1``; a household table without that
     column is one clone. Refuses a non-integer index column, a household
     without an index, a negative index and indices that are not exactly 0 to
-    ``K - 1`` (an index below the largest that no household carries). Each
-    refusal gives a count or the column's dtype, never an id or a value.
+    ``K - 1`` (an index below the largest that no household carries), since
+    a count above the clones the frame holds would widen whatever the caller
+    scales by it. Each refusal is a fixed sentence naming the column, the
+    calling ``stage`` where one is given and, for a column that is not
+    integer, its dtype: never a count, an id or a value.
     """
 
     column = ladder_clone_index_column("household")
     if column not in household.columns:
         return 1
     values = household[column]
+    rule = (
+        f"{stage or 'A spine'} counts K geographic clones as the {column!r} "
+        "values 0 to K - 1 (microcosm#931)."
+    )
     if pd.api.types.is_bool_dtype(values.dtype) or not (
         pd.api.types.is_integer_dtype(values.dtype)
     ):
         raise ValueError(
-            "The CGT support split counts geographic clones on an integer "
-            f"{column!r} column; it has dtype {values.dtype}."
+            f"{column!r} has dtype {values.dtype}, not an integer one. {rule}"
         )
-    rule = (
-        f"the CGT support split counts K geographic clones as the {column!r} "
-        "values 0 to K - 1 (microcosm#931)."
-    )
-    unindexed = int(values.isna().sum())
-    if unindexed:
-        raise ValueError(f"{unindexed} household(s) carry no {column!r}; {rule}")
+    if bool(values.isna().any()):
+        raise ValueError(f"A household carries no {column!r}. {rule}")
     indices = values.to_numpy(dtype=np.int64)
     if not indices.size:
         return 1
-    negative = int((indices < 0).sum())
-    if negative:
-        raise ValueError(f"{negative} household(s) carry a negative {column!r}; {rule}")
+    if bool((indices < 0).any()):
+        raise ValueError(f"A household carries a negative {column!r}. {rule}")
     clone_count = int(indices.max()) + 1
-    absent = clone_count - int(np.unique(indices).size)
-    if absent:
+    if int(np.unique(indices).size) != clone_count:
         raise ValueError(
-            f"{absent} of the {clone_count} indices from 0 to the largest are "
-            f"carried by no household; {rule}"
+            f"An index from 0 to the largest is carried by no household. {rule}"
         )
     return clone_count

@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime.national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
     uk_national_frame,
 )
+from microcosm.build.uk_runtime.receipt_counts import support_band
 from microcosm.frame import Frame, WeightKind
 from microcosm.graph import (
     ContentStore,
@@ -41,6 +42,7 @@ from test_support.microcosm_build.uk_atomic_support_fixtures import (
     write_toy_property_resources,
     write_toy_supports,
 )
+from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 from test_support.microcosm_build.uk_full_population_graph import (
     SOURCE_VINTAGE,
     Source,
@@ -348,6 +350,194 @@ def test_the_cap_cell_is_banded_on_its_source_households(monkeypatch) -> None:
     frame = _london_copies_at_the_cap(monkeypatch)
     assert rhv.assign_regional_home_values(frame).receipt["sources_at_cap"] == "3-9"
     assert _graph_evidence(frame)["sources_at_cap"] == "3-9"
+
+
+def _cloned_london_owners(monkeypatch, *, n: int = 20, quantile: float = 0.7):
+    """``n`` London owner households as three geographic clones whose values
+    differ by clone, as a per-clone draw upstream leaves them, under a cap
+    the test sets at the London knots' ``quantile``. Returns the frame and
+    the cap."""
+
+    parsed, knots = rhv.load_region_knots()
+    cap = float(np.interp(quantile, parsed.grid, knots["E12000007"]))
+    monkeypatch.setattr(
+        rhv,
+        "load_region_knots",
+        lambda payload=None: (dataclasses.replace(parsed, cap=cap), knots),
+    )
+    frame = _frame(n=n, seed=3)
+    household = frame.table("household")
+    household["region"] = pd.array(["LONDON"] * n, dtype="string")
+    household["tenure_type"] = pd.array(["OWNED_OUTRIGHT"] * n, dtype="string")
+    household["main_residence_value"] = np.linspace(300_000.0, 900_000.0, n)
+    household["property_wealth"] = household["main_residence_value"] + 10_000.0
+    household[HIGH_VALUE_SUPPORT_COPY_COLUMN] = False
+    # The node's shape anchor, the preceding support stage's copy index.
+    household["high_value_support_copy_index"] = np.zeros(n, dtype="int64")
+    cloned = clone_first_frame(frame, 3)
+    household = cloned.table("household")
+    clone = household["household_clone_index"].to_numpy()
+    values = household["main_residence_value"].to_numpy().copy()
+    draw = np.random.default_rng(11)
+    for k in (1, 2):
+        rows = np.flatnonzero(clone == k)
+        values[rows] = draw.permutation(values[rows])
+    household["main_residence_value"] = values
+    household["property_wealth"] = values + 10_000.0
+    return cloned, cap
+
+
+def test_the_cap_cell_counts_geographic_clone_zero(monkeypatch) -> None:
+    """Each geographic clone ranks on its own draw, so the source households
+    at the cap over every clone grow with the clone count; the receipt counts
+    clone 0's rows, so the check's one declared maximum holds at any count.
+    The production node is not given the clone index: the stage reads each
+    row's clone from its id (microcosm#931)."""
+
+    frame, cap = _cloned_london_owners(monkeypatch)
+    result = rhv.assign_regional_home_values(frame)
+    household = result.frame.table("household")
+    at_cap = household["main_residence_value"].to_numpy() >= cap
+    sources = household["source_household_id"].to_numpy()
+    clone_zero = household["household_clone_index"].to_numpy() == 0
+    in_clone_zero = support_band(len(set(sources[at_cap & clone_zero])))
+    over_clones = support_band(len(set(sources[at_cap])))
+    # The premise: the union over the clones prints another band.
+    assert in_clone_zero != over_clones
+    assert result.receipt["sources_at_cap"] == in_clone_zero
+    assert "household_clone_index" not in _graph_input_columns()
+    assert _graph_evidence(frame)["sources_at_cap"] == in_clone_zero
+    # Without the clone index the stage reads the same clones from the ids.
+    unindexed = frame.table("household").drop(columns="household_clone_index")
+    stripped = uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=unindexed,
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=frame.weights_for("household").values,
+    )
+    assert (
+        rhv.assign_regional_home_values(stripped).receipt["sources_at_cap"]
+        == in_clone_zero
+    )
+    # Clones whose ids were minted another way would all read as clone 0, so
+    # a frame whose clone index disagrees with its ids is refused.
+    moved = frame.table("household").copy()
+    moved["household_clone_index"] = np.roll(
+        moved["household_clone_index"].to_numpy(), 1
+    )
+    misread = uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=moved,
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=frame.weights_for("household").values,
+    )
+    with pytest.raises(ValueError, match="disagrees with the frame's") as refused:
+        rhv.assign_regional_home_values(misread)
+    assert not any(
+        character.isdigit() for character in str(refused.value).split("(")[0]
+    )
+
+
+def _owners_by_id(ids, sources, owner, copy) -> Frame:
+    """London households with the given ids, sources, owner flags and support
+    copy flags, one person and benefit unit each, in id order."""
+
+    order = np.argsort(np.asarray(ids, dtype="int64"), kind="stable")
+    ids = np.asarray(ids, dtype="int64")[order]
+    owner = np.asarray(owner, dtype=bool)[order]
+    value = np.where(owner, 500_000.0, 0.0)
+    household = pd.DataFrame(
+        {
+            "household_id": ids,
+            "region": pd.array(["LONDON"] * len(ids), dtype="string"),
+            "tenure_type": pd.array(
+                np.where(owner, "OWNED_OUTRIGHT", "RENT_PRIVATELY"), dtype="string"
+            ),
+            "main_residence_value": value,
+            "property_wealth": value,
+            HIGH_VALUE_SUPPORT_COPY_COLUMN: np.asarray(copy, dtype=bool)[order],
+            "source_household_id": np.asarray(sources, dtype="int64")[order],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": ids, "frs_benunit_capital": 0.0})
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_benunit_id": ids,
+            "age": np.full(len(ids), 50, dtype="int64"),
+        }
+    )
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.DESIGN,
+        household_weights=np.full(len(ids), 1_000.0),
+    )
+
+
+def test_the_cap_count_keeps_each_copy_in_its_clone(monkeypatch) -> None:
+    """A later copy keeps its clone's ordinal in the ids' geographic_support
+    field, so at one clone every row counts, copies included, as before, and
+    at two clones a copy counts only where it copies a clone-0 row. Exact
+    counts on synthetic rows: the band is read through as the count."""
+
+    parsed, knots = rhv.load_region_knots()
+    monkeypatch.setattr(
+        rhv,
+        "load_region_knots",
+        lambda payload=None: (dataclasses.replace(parsed, cap=1.0), knots),
+    )
+    monkeypatch.setattr(rhv, "support_band", lambda count: count)
+    support, high_value, clone = 10**11, 10**12, 10**9
+    # One clone: sources 2 and 3 own, and 1 through its high-value copy; the
+    # SPI copy of 2 rents.
+    one = _owners_by_id(
+        [1, 2, 3, 1 + high_value, 2 + support],
+        [1, 2, 3, 1, 2],
+        owner=[False, True, True, True, False],
+        copy=[False, False, False, True, False],
+    )
+    assert rhv.assign_regional_home_values(one).receipt["sources_at_cap"] == 3
+    # Two clones: clone 0 owns at source 3 only, and source 1 owns through its
+    # clone-0 row's copy; clone 1 and its copies own throughout.
+    two = _owners_by_id(
+        [
+            1,
+            2,
+            3,
+            clone + 1,
+            clone + 2,
+            clone + 3,
+            1 + high_value,
+            clone + 2 + high_value,
+            clone + 3 + support,
+        ],
+        [1, 2, 3, 1, 2, 3, 1, 2, 3],
+        owner=[False, False, True, True, True, True, True, True, True],
+        copy=[False] * 6 + [True, True, False],
+    )
+    assert rhv.assign_regional_home_values(two).receipt["sources_at_cap"] == 2
+
+
+def _graph_input_columns() -> set[str]:
+    """The household columns the production node is given."""
+
+    from microcosm.build.uk_runtime.graph import uk_spine_graph
+
+    node = uk_spine_graph(source_mode="split").node(rhv.REGIONAL_HOME_VALUES_STAGE_NAME)
+    return {
+        column
+        for slice_ in node.inputs
+        if slice_.entity == "household"
+        for column in slice_.columns
+    }
 
 
 def test_the_stage_refuses_a_frame_without_lineage() -> None:

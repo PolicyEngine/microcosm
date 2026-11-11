@@ -825,3 +825,66 @@ class TestStageTransform:
             "Landlords' receipts and finance costs on the source spine: household "
             "weights pass through unchanged and total household mass is conserved."
         )
+
+    def test_the_receipt_gives_the_clone_count_beyond_one_clone(self, tmp_path) -> None:
+        """The row counts the stage's check holds grow with the geographic
+        clone count, so the receipt gives the frame's count from two clones
+        up, for the check to multiply its maxima by (microcosm#931); a
+        one-clone receipt keeps its form."""
+
+        from microcosm.build.uk_runtime.property_components import (
+            UKPropertyComponentsStageTransform,
+        )
+        from microcosm.build.uk_runtime.spi_income import SPIDonorAgeModel
+        from test_support.microcosm_build.uk_clone_first_frames import (
+            clone_first_frame,
+        )
+        from test_support.microcosm_build.uk_spi_income import _write_donor
+
+        _write_donor(tmp_path / "donor.tab")
+        frame = self._frame()
+        person = frame.table("person")
+        weights = (
+            person["person_household_id"]
+            .map(
+                pd.Series(
+                    frame.weights_for("household").values,
+                    index=frame.table("household")["household_id"].to_numpy(),
+                )
+            )
+            .to_numpy()
+        )
+
+        def evidence(frame) -> dict:
+            transform = UKPropertyComponentsStageTransform(
+                stage=_stage(),
+                donor_table=pd.read_csv(tmp_path / "donor.tab", sep="\t"),
+                age_model=SPIDonorAgeModel(
+                    populations={
+                        (sex, age): 1.0
+                        for sex in ("MALE", "FEMALE")
+                        for age in range(91)
+                    },
+                    state_pension_age=66,
+                    source="flat test populations",
+                ),
+                uprating_factors={
+                    "property_income": 1.0,
+                    "property_finance_costs": 1.0,
+                },
+                facts=_facts(
+                    landlords=float(weights[person["property_income"] > 0].sum()),
+                    receipts=1.65 * float((person["property_income"] * weights).sum()),
+                ),
+            )
+            transform(frame)
+            return transform.checkpoint_metadata()["evidence"]
+
+        one = evidence(frame)
+        assert "clone_count" not in one
+        indexed = clone_first_frame(frame, 1)
+        assert "household_clone_index" in indexed.table("household")
+        assert "clone_count" not in evidence(indexed)
+        cloned = evidence(clone_first_frame(frame, 3))
+        assert cloned["clone_count"] == 3
+        assert set(cloned) == {*one, "clone_count"}

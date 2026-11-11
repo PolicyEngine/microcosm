@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime import salary_sacrifice
 from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
 from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
 from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+from microcosm.build.uk_runtime.household_lineage import GEOGRAPHIC_FOLD_EVIDENCE
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.salary_sacrifice import (
     BONUS_SACRIFICE_OUTPUT,
@@ -1159,3 +1160,29 @@ def test_the_stage_draws_each_clones_spi_bonuses_from_that_clone(
     for row in takers:
         donor = donor_rows[np.argmin(np.abs(shares - sacrificed[row] / pay[row]))]
         assert clone[donor] == clone[row]
+
+
+def test_the_forests_fold_receipt_is_absent_at_one_clone_and_rounded_at_three(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stage records how its forest's geographic fold met the asked
+    respondents only on more than one clone, so a one-clone frame's evidence
+    keeps its bytes; the counts are true source households, rounded
+    (microcosm#931)."""
+
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    anchor = _toy_bonus_anchor(obr_base_above_threshold=1e12)
+    frame = _bonus_clone_frame()
+    for one in (frame, clone_first_frame(frame, 1)):
+        evidence = impute_salary_sacrifice(one, bonus_anchor=anchor).evidence()
+        assert GEOGRAPHIC_FOLD_EVIDENCE not in evidence
+    three = impute_salary_sacrifice(clone_first_frame(frame, 3), bonus_anchor=anchor)
+    # The 48 paid FRS respondents read 50; their clones agree on the forest's
+    # inputs.
+    assert three.evidence()[GEOGRAPHIC_FOLD_EVIDENCE] == {
+        "clone_count": 3,
+        "records": 50,
+        "varied_records": 0,
+        "varied_share": 0,
+    }

@@ -19,6 +19,7 @@ from microcosm.build.stochastic_assignment import (
 )
 from microcosm.build.uk_runtime.frs_brma import _benunit_household_map
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.household_income import (
     UK_HBAI_NET_INCOME_PREDICTOR,
     UK_HBAI_NET_INCOME_VARIABLE,
@@ -477,7 +478,13 @@ class UKWASWealthStageTransform:
         )
         self.last_fit_weight_records = imputation.fit_weight_records
         capped, capped_rows = cap_derived_totals_to_donor_range(imputation.draws, donor)
-        clip_result = support_clip_to_donor(capped, donor)
+        clip_result = support_clip_to_donor(
+            capped,
+            donor,
+            clone_count=geographic_clone_count(
+                frame.table("household"), stage=UK_WAS_WEALTH_STAGE_NAME
+            ),
+        )
         household_draws, appended_rows = write_share_split_and_secured_debt(
             clip_result.clipped
         )
@@ -1615,15 +1622,20 @@ def tenure_coherence_receipt(
 
 
 def support_clip_to_donor(
-    draws: pd.DataFrame, donor: pd.DataFrame
+    draws: pd.DataFrame, donor: pd.DataFrame, *, clone_count: int = 1
 ) -> UKSupportClipResult:
-    """Clip output draws to donor-realized support."""
+    """Clip output draws to donor-realized support.
+
+    ``clone_count`` is the frame's geographic clone count, which the receipt
+    carries for the support-clip check (microcosm#931).
+    """
 
     return support_clip_to_donor_with_receipt(
         draws,
         donor,
         columns=UK_WAS_WEALTH_OUTPUT_COLUMNS,
         stage=UK_WAS_WEALTH_STAGE_NAME,
+        clone_count=clone_count,
     )
 
 

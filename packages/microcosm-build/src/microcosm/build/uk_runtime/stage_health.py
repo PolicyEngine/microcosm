@@ -9,6 +9,7 @@ import numpy as np
 
 from microcosm.build.gates import GateResult
 from microcosm.build.stochastic_assignment import binomial_share_tolerance
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.receipt_counts import (
     UK_BELOW_TEN_BAND,
     UK_DISCLOSURE_FLOOR,
@@ -25,8 +26,13 @@ def uk_stage_health_gate(
     stage: str,
     check: str,
     parameters: Mapping[str, object],
+    frame: object | None = None,
 ) -> GateResult:
-    """Evaluate one spine-stage receipt against spec-declared thresholds."""
+    """Evaluate one spine-stage receipt against spec-declared thresholds.
+
+    ``frame`` is the gate phase's frame, which only the band donor check
+    reads: it recomputes a capped seating's seats there (microcosm#931).
+    """
 
     if evidence.get("stage") not in {stage, _legacy_receipt_stage(stage)}:
         return GateResult(
@@ -72,7 +78,9 @@ def uk_stage_health_gate(
     if check == "high_value_home_support":
         return _high_value_home_support_gate(stage, evidence, parameters)
     if check == "spi_income_band_donor_support":
-        return _spi_income_band_donor_support_gate(stage, evidence, parameters)
+        return _spi_income_band_donor_support_gate(
+            stage, evidence, parameters, frame=frame
+        )
     if check == "cgt_imputation_summary":
         return _cgt_imputation_summary_gate(stage, evidence, parameters)
     if check == "cgt_asset_type_summary":
@@ -177,14 +185,54 @@ def _mapping(value: object, *, label: str) -> Mapping[str, object]:
     return value
 
 
+def _receipt_clone_count(receipt: Mapping[str, object], *, label: str) -> int:
+    """The geographic clone count ``K`` a receipt gives, or 1 where it gives none.
+
+    A stage whose checked row counts grow with the clone count records
+    ``clone_count`` only when ``K`` is more than one (microcosm#931), so a
+    one-clone receipt keeps its form and its check reads the declared
+    allowances as they stand.
+    """
+
+    clone_count = receipt.get("clone_count", 1)
+    if (
+        not isinstance(clone_count, int)
+        or isinstance(clone_count, bool)
+        or clone_count < 1
+    ):
+        raise ValueError(f"{label}.clone_count must be a positive integer.")
+    return clone_count
+
+
+def _rows_allowed(allowance: object, clone_count: int) -> str:
+    """A row allowance as a failure prints it: as declared at one clone, and
+    at ``K`` clones as the total, then the declared figure for each clone."""
+
+    if clone_count == 1:
+        return f"{allowance}"
+    return (
+        f"{int(allowance) * clone_count}, {allowance} for each of the "
+        f"{clone_count} geographic clones"
+    )
+
+
 def _support_clip_gate(
     stage: str,
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
+    """Every declared column's clip within its row allowances.
+
+    The allowances are declared for one geographic clone. On ``K`` clones
+    the stage clips every clone's rows, so each allowance is multiplied by
+    the receipt's ``clone_count`` (microcosm#931); a receipt without one is
+    one clone.
+    """
+
     check = "support_clip"
     clip = _mapping(evidence.get("support_clip"), label=f"{stage}.support_clip")
     columns = _mapping(clip.get("columns"), label=f"{stage}.support_clip.columns")
+    clone_count = _receipt_clone_count(clip, label=f"{stage}.support_clip")
     expected_columns = tuple(str(column) for column in parameters["columns"])
     exempt_columns = {str(column) for column in parameters.get("exempt_columns", ())}
     max_low = _mapping(
@@ -221,28 +269,32 @@ def _support_clip_gate(
                 f"{stage}: {column!r} declares no clipped_low_rows allowance; "
                 "pin one at the receipted baseline or exempt the column."
             )
-        elif low_rows > int(allowed_low):
+        elif low_rows > int(allowed_low) * clone_count:
             failures.append(
-                f"{stage}: {column!r} clipped_low_rows {low_rows} exceeds {allowed_low}."
+                f"{stage}: {column!r} clipped_low_rows {low_rows} exceeds "
+                f"{_rows_allowed(allowed_low, clone_count)}."
             )
         if allowed_high is None:
             failures.append(
                 f"{stage}: {column!r} declares no clipped_high_rows allowance; "
                 "pin one at the receipted baseline or exempt the column."
             )
-        elif high_rows > int(allowed_high):
+        elif high_rows > int(allowed_high) * clone_count:
             failures.append(
-                f"{stage}: {column!r} clipped_high_rows {high_rows} exceeds {allowed_high}."
+                f"{stage}: {column!r} clipped_high_rows {high_rows} exceeds "
+                f"{_rows_allowed(allowed_high, clone_count)}."
             )
         if "donor_min" in receipt and "donor_max" in receipt:
             lower = _finite_number(receipt["donor_min"], label=f"{column}.donor_min")
             upper = _finite_number(receipt["donor_max"], label=f"{column}.donor_max")
             if lower > upper:
                 failures.append(f"{stage}: {column!r} donor_min exceeds donor_max.")
-    details = {
+    details: dict[str, object] = {
         "columns_checked": len(expected_columns) - len(exempt_columns),
         "exempt_columns": sorted(exempt_columns),
     }
+    if clone_count > 1:
+        details["clone_count"] = clone_count
     # The donor floor (microcosm#1063 c9): negative diary consumption is raised
     # to the declared floor before the clip ranges are read, so no clip range
     # may start below it and no negative donor row may remain.
@@ -2024,12 +2076,44 @@ def _cgt_support_split_gate(
 #: The two forms the band donor receipt records its seating scale in:
 #: ``spi_band_donors.SPI_INCOME_BAND_FULL_SEATING`` and ``..._CAPPED_SEATING``.
 _BAND_DONOR_SEATINGS = ("full", "capped")
+#: The band donor stage's columns, spelled here so the gate imports no stage
+#: module (``spi_band_donors``' names; a test holds the spellings equal): its
+#: donor flag and band on the household, its carrier flag on the person, and
+#: the geographic clone index every household of a clone-first spine carries.
+_BAND_DONOR_FLAG_COLUMN = "household_is_spi_income_band_donor"
+_BAND_DONOR_BAND_COLUMN = "spi_income_band_donor_lower_bound"
+_BAND_CARRIER_FLAG_COLUMN = "person_is_spi_income_band_carrier"
+_BAND_DONOR_CLONE_INDEX_COLUMN = "household_clone_index"
+#: The copy-id field the band donors take (``spi_support.
+#: SPI_SUPPORT_COPY_ID_FIELD``), and the fields minted after it. Every later
+#: layer keeps each row it copies at its own id and mints the copies at
+#: ordinals from one, so a band donor's seat is its row whose id holds no
+#: ordinal in any later field (microcosm#931).
+_BAND_DONOR_COPY_ID_FIELD = "spi_support_channel"
+_COPY_ID_FIELDS_AFTER_BAND_DONORS = tuple(
+    field.name
+    for field in copy_id_table.UK_COPY_ID_FIELDS
+    if field.radix > copy_id_table.radix(_BAND_DONOR_COPY_ID_FIELD)
+)
+#: The funding the receipt states in two booleans, each with what it says.
+_BAND_DONOR_FUNDING_BOOLEANS = (
+    (
+        "funding_within_share",
+        "every funding stratum keeps at least one less the declared reallocation share",
+    ),
+    (
+        "funding_matches_bands",
+        "the bands and the funding strata each carry the reallocated mass",
+    ),
+)
 
 
 def _spi_income_band_donor_support_gate(
     stage: str,
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
+    *,
+    frame: object | None = None,
 ) -> GateResult:
     """Every reserved band carries its donors, and their mass was reallocated.
 
@@ -2046,6 +2130,21 @@ def _spi_income_band_donor_support_gate(
     band's donors split evenly across the clones, and at full seating the
     plan and the minimum are ``K`` times one clone's. The band's published
     mass is checked as on one clone.
+
+    The receipt states the funding in two booleans at every seating
+    (microcosm#931): ``funding_within_share``, every funding stratum keeping
+    at least one less the stage's declared reallocation share, and
+    ``funding_matches_bands``, the bands and the funding strata each carrying
+    the reallocated mass. Both must be true, and one less that share must
+    reach the gate's minimum funding factor. A full seating seats each band's
+    plan, and the gate reads its counts from the receipt. A capped seating's
+    receipt gives no exact count, so the gate recomputes its seats from
+    ``frame``, the transferred phase's frame
+    (:func:`_band_donor_seat_failures`), and its details carry only ``K``,
+    the seating, the mass scale, the booleans and the count of bands. On a
+    capped seating the bands' mass is the stage's ``funding_matches_bands``:
+    later copy layers reweight the seats, so the frame cannot restate it. No
+    failure text gives a count.
     """
 
     check = "spi_income_band_donor_support"
@@ -2074,7 +2173,7 @@ def _spi_income_band_donor_support_gate(
         value = _finite_number(evidence.get(key), label=f"{stage}.{key}")
         if value != expected:
             failures.append(
-                f"{stage}: receipt {key} {value} differs from the gate's {expected}."
+                f"{stage}: receipt {key} differs from the gate's declared value."
             )
     clone_count = evidence.get("clone_count")
     if (
@@ -2083,17 +2182,8 @@ def _spi_income_band_donor_support_gate(
         or clone_count < 1
     ):
         raise ValueError(f"{stage}.clone_count must be a positive integer.")
-    over_clones = (
-        ""
-        if clone_count == 1
-        else f" divided by the geographic clone count {clone_count}"
-    )
-    minimum_seated = minimum_donors * clone_count
-    per_clone_minimum = (
-        ""
-        if clone_count == 1
-        else f" ({minimum_donors} in each of the {clone_count} geographic clones)"
-    )
+    over_clones = "" if clone_count == 1 else " divided by the geographic clone count"
+    per_clone_minimum = "" if clone_count == 1 else " in each geographic clone"
     # The receipt records the seating scale as full or capped: an exact scale
     # below one gives back the eligible household count, so the gate names
     # any other value by its type alone.
@@ -2105,7 +2195,9 @@ def _spi_income_band_donor_support_gate(
         )
     mass_scale = _finite_number(evidence.get("mass_scale"), label=f"{stage}.mass_scale")
     if not 0.0 < mass_scale <= 1.0:
-        failures.append(f"{stage}: mass_scale {mass_scale} is outside (0, 1].")
+        failures.append(
+            f"{stage}: mass_scale is not a share above zero and at most one."
+        )
     full_seating = seating == "full"
     full_scale = full_seating and mass_scale == 1.0
     sample_fraction = _finite_number(
@@ -2114,7 +2206,8 @@ def _spi_income_band_donor_support_gate(
     if sample_fraction == 1.0 and not full_scale:
         failures.append(
             f"{stage}: a full-sample build must seat and fund the donors at full "
-            f"scale, got seating_scale {seating} and mass_scale {mass_scale}."
+            f"scale, got seating_scale {seating} and a mass_scale "
+            f"{'of one' if mass_scale == 1.0 else 'other than one'}."
         )
 
     mass = _mapping(evidence.get("mass"), label=f"{stage}.mass")
@@ -2126,9 +2219,8 @@ def _spi_income_band_donor_support_gate(
     effective_tolerance = max(tolerance, _FLOAT_RELATIVE_TOLERANCE)
     if deviation > effective_tolerance:
         failures.append(
-            f"{stage}: household mass deviation {deviation} exceeds the effective "
-            f"tolerance {effective_tolerance}; the donors must be funded from the "
-            "incumbent households, not added."
+            f"{stage}: household mass moved by more than the declared deviation; "
+            "the donors must be funded from the incumbent households, not added."
         )
 
     bands = evidence.get("bands")
@@ -2146,120 +2238,239 @@ def _spi_income_band_donor_support_gate(
             _finite_number(row.get("lower_bound"), label=f"{stage}.lower_bound")
         )
         seen.append(lower)
-        donors = int(
-            _finite_number(
-                row.get("donor_households"), label=f"{stage}.donor_households"
-            )
-        )
-        expected_donors = int(
-            _finite_number(
-                row.get("expected_donor_households"),
-                label=f"{stage}.expected_donor_households",
-            )
-        )
-        carriers = int(_finite_number(row.get("carriers"), label=f"{stage}.carriers"))
         weight = _finite_number(row.get("donor_weight"), label=f"{stage}.donor_weight")
-        published = _finite_number(
-            row.get("published_taxpayers"), label=f"{stage}.published_taxpayers"
-        )
-        donor_total += donors
-        donor_mass += weight * donors
         heaviest_donor = max(heaviest_donor, weight)
-        if donors <= 0:
-            failures.append(f"{stage}: band from {lower} seats no donor.")
-        if donors != carriers:
-            failures.append(
-                f"{stage}: band from {lower} has {donors} donors but {carriers} carriers."
+        # A full seating's counts are the plan's, read from the receipt; a
+        # capped seating's are recomputed from the frame below.
+        donors = carriers = expected_donors = 0
+        published = 0.0
+        if full_seating:
+            donors = int(
+                _finite_number(
+                    row.get("donor_households"), label=f"{stage}.donor_households"
+                )
             )
+            expected_donors = int(
+                _finite_number(
+                    row.get("expected_donor_households"),
+                    label=f"{stage}.expected_donor_households",
+                )
+            )
+            carriers = int(
+                _finite_number(row.get("carriers"), label=f"{stage}.carriers")
+            )
+            published = _finite_number(
+                row.get("published_taxpayers"), label=f"{stage}.published_taxpayers"
+            )
+            donor_total += donors
+            donor_mass += weight * donors
+            if donors <= 0:
+                failures.append(f"{stage}: band from {lower} seats no donor.")
+            if donors != carriers:
+                failures.append(
+                    f"{stage}: band from {lower}'s seats do not each hold one carrier."
+                )
         if weight <= 0.0:
-            failures.append(
-                f"{stage}: band from {lower} donor weight {weight} is not positive."
-            )
+            failures.append(f"{stage}: band from {lower} donor weight is not positive.")
         if clone_count * weight > maximum_donor_weight * (
             1.0 + _FLOAT_RELATIVE_TOLERANCE
         ):
             failures.append(
-                f"{stage}: band from {lower} donor weight {weight} exceeds the "
-                f"maximum {maximum_donor_weight}{over_clones}."
+                f"{stage}: band from {lower} donor weight exceeds the maximum"
+                f"{over_clones}."
             )
+        if not full_seating:
+            continue
         if donors % clone_count:
             failures.append(
-                f"{stage}: band from {lower} seats {donors} donors, which do not "
-                f"split evenly across the {clone_count} geographic clones."
+                f"{stage}: band from {lower}'s donors do not split evenly across "
+                "the geographic clones."
             )
-        if full_seating and (donors != expected_donors or donors < minimum_seated):
+        if donors != expected_donors or donors < minimum_donors * clone_count:
             failures.append(
-                f"{stage}: band from {lower} seats {donors} donors at full scale; "
-                f"the plan seats {expected_donors} and the minimum is "
-                f"{minimum_seated}{per_clone_minimum}."
+                f"{stage}: band from {lower} seats other than its plan at full "
+                f"scale, or fewer than the minimum{per_clone_minimum}."
             )
         # A scaled frame seats fewer donors or lighter ones, so its bands fall
         # short of the published mass by construction; the receipt shows it.
         if full_scale and abs(weight * donors - published) > taxpayer_tolerance:
             failures.append(
-                f"{stage}: band from {lower} weighted taxpayers "
-                f"{weight * donors} differ from the published {published}."
+                f"{stage}: band from {lower} weighted taxpayers differ from the "
+                "published count."
             )
     if sorted(seen) != sorted(expected_bands):
         failures.append(
             f"{stage}: bands {sorted(seen)} differ from the declared {sorted(expected_bands)}."
         )
-    donor_count = int(
-        _finite_number(evidence.get("donor_count"), label=f"{stage}.donor_count")
-    )
-    if donor_count != donor_total:
-        failures.append(
-            f"{stage}: receipt donor_count {donor_count} differs from the bands' "
-            f"{donor_total}."
+    full_details: dict[str, object] = {}
+    if full_seating:
+        donor_count = int(
+            _finite_number(evidence.get("donor_count"), label=f"{stage}.donor_count")
+        )
+        if donor_count != donor_total:
+            failures.append(f"{stage}: receipt donor_count differs from the bands'.")
+        reallocated = _finite_number(
+            evidence.get("reallocated_mass"), label=f"{stage}.reallocated_mass"
+        )
+        if abs(donor_mass - reallocated) > effective_tolerance * max(
+            abs(reallocated), 1.0
+        ):
+            failures.append(
+                f"{stage}: the bands carry other donor mass than the receipt "
+                "reallocated."
+            )
+        full_details = {
+            "donor_count": donor_count,
+            "reallocated_mass": reallocated,
+            "relative_mass_deviation": deviation,
+            "heaviest_donor_weight": heaviest_donor,
+        }
+    else:
+        failures.extend(
+            _band_donor_seat_failures(
+                stage, frame, bands=expected_bands, clone_count=clone_count
+            )
         )
 
+    # The funding rows carry each stratum and its rounded donors; the receipt
+    # states the funding in its two booleans, and the gate holds the stage's
+    # declared share to its minimum funding factor (microcosm#931).
     funding = evidence.get("funding")
     if not isinstance(funding, list | tuple) or not funding:
         raise ValueError(f"{stage}.funding must be a non-empty list.")
-    funded_mass = 0.0
-    smallest_factor = 1.0
-    for row in funding:
-        if not isinstance(row, Mapping):
-            failures.append(f"{stage}: funding row is not an object.")
-            continue
-        factor = _finite_number(row.get("factor"), label=f"{stage}.funding.factor")
-        funded_mass += _finite_number(
-            row.get("donor_mass"), label=f"{stage}.funding.donor_mass"
-        )
-        smallest_factor = min(smallest_factor, factor)
-        if not (
-            minimum_funding_factor * (1.0 - _FLOAT_RELATIVE_TOLERANCE) <= factor <= 1.0
-        ):
-            failures.append(
-                f"{stage}: funding stratum {row.get('stratum')!r} factor {factor} "
-                f"is outside [{minimum_funding_factor}, 1]."
-            )
-    reallocated = _finite_number(
-        evidence.get("reallocated_mass"), label=f"{stage}.reallocated_mass"
+    if any(not isinstance(row, Mapping) for row in funding):
+        failures.append(f"{stage}: funding row is not an object.")
+    booleans: dict[str, object] = {}
+    for key, meaning in _BAND_DONOR_FUNDING_BOOLEANS:
+        value = evidence.get(key)
+        booleans[key] = value if isinstance(value, bool) else None
+        if value is None:
+            failures.append(f"{stage}: the receipt carries no {key}: {meaning}.")
+        elif value is not True:
+            failures.append(f"{stage}: the receipt's {key} is not true: {meaning}.")
+    share = _finite_number(
+        evidence.get("maximum_reallocation_share"),
+        label=f"{stage}.maximum_reallocation_share",
     )
-    for label, value in (("bands", donor_mass), ("funding strata", funded_mass)):
-        if abs(value - reallocated) > effective_tolerance * max(abs(reallocated), 1.0):
-            failures.append(
-                f"{stage}: the {label} carry donor mass {value}, the receipt "
-                f"reallocated {reallocated}."
-            )
+    if not 0.0 < share < 1.0:
+        failures.append(
+            f"{stage}: the receipt's maximum_reallocation_share is not a share "
+            "strictly between zero and one."
+        )
+    elif 1.0 - share < minimum_funding_factor * (1.0 - _FLOAT_RELATIVE_TOLERANCE):
+        failures.append(
+            f"{stage}: the receipt's maximum_reallocation_share lets a funding "
+            "stratum keep less than the gate's minimum funding factor."
+        )
     details = {
         "bands_checked": len(bands),
-        "donor_count": donor_count,
         "clone_count": clone_count,
         "seating_scale": seating,
         "mass_scale": mass_scale,
-        "reallocated_mass": reallocated,
-        "relative_mass_deviation": deviation,
-        "heaviest_donor_weight": heaviest_donor,
-        "smallest_funding_factor": smallest_factor,
-        "funding_strata": len(funding),
+        **booleans,
+        **full_details,
     }
+    if full_seating:
+        details["funding_strata"] = len(funding)
     return (
         _fail(stage, check, failures, details)
         if failures
         else _pass(stage, check, details)
     )
+
+
+def _band_donor_seat_failures(
+    stage: str,
+    frame: object | None,
+    *,
+    bands: list[int],
+    clone_count: int,
+) -> list[str]:
+    """What a capped seating's seats, recomputed from ``frame``, fail.
+
+    The seats are the band donor rows that are originals in every copy-id
+    field minted after the band donors (:data:`_COPY_ID_FIELDS_AFTER_BAND_DONORS`),
+    so a later layer's copy of a donor is not read as a seat. Every declared
+    band must seat a donor, every seat must sit in a declared band and hold
+    exactly one carrier (``person_is_spi_income_band_carrier`` on the seat's
+    own people), and each band's seats must split evenly across the
+    receipt's ``clone_count`` geographic clones, read from
+    ``household_clone_index`` (a frame without it is one clone). Each failure
+    names a band or a column, never a count (microcosm#931).
+    """
+
+    if frame is None:
+        return [
+            f"{stage}: a capped seating's seats are recomputed from the phase's "
+            "frame, and the gate was given none."
+        ]
+    household = frame.table("household")
+    person = frame.table("person")
+    missing = [
+        f"{entity}.{column}"
+        for entity, table, column in (
+            ("household", household, "household_id"),
+            ("household", household, _BAND_DONOR_FLAG_COLUMN),
+            ("household", household, _BAND_DONOR_BAND_COLUMN),
+            ("person", person, "person_household_id"),
+            ("person", person, _BAND_CARRIER_FLAG_COLUMN),
+        )
+        if column not in table.columns
+    ]
+    if missing:
+        return [
+            f"{stage}: the frame carries no {', '.join(missing)}, so the capped "
+            "seating's seats cannot be recomputed."
+        ]
+    ids = np.asarray(household["household_id"])
+    clones = (
+        np.asarray(household[_BAND_DONOR_CLONE_INDEX_COLUMN])
+        if _BAND_DONOR_CLONE_INDEX_COLUMN in household.columns
+        else np.zeros(len(household), dtype=np.int64)
+    )
+    for label, values in (("household ids", ids), ("geographic clone indices", clones)):
+        if values.dtype.kind not in "iu" or bool((values < 0).any()):
+            return [
+                f"{stage}: the frame's {label} are not non-negative integers, so "
+                "the capped seating's seats cannot be recomputed."
+            ]
+    clones = clones.astype(np.int64, copy=False)
+    seat = np.array(household[_BAND_DONOR_FLAG_COLUMN], dtype=bool)
+    for field in _COPY_ID_FIELDS_AFTER_BAND_DONORS:
+        seat &= copy_id_table.ordinal(ids, field) == 0
+    seat_ids = ids[seat]
+    seat_bands = np.array(household[_BAND_DONOR_BAND_COLUMN], dtype=float)[seat]
+    seat_clones = clones[seat]
+    # Each seat's carriers: the flagged people whose household is the seat.
+    carried = np.array(person[_BAND_CARRIER_FLAG_COLUMN], dtype=bool)
+    carrier_households = np.asarray(person["person_household_id"])[carried]
+    order = np.argsort(seat_ids, kind="stable")
+    sorted_ids = seat_ids[order]
+    position = np.searchsorted(sorted_ids, carrier_households)
+    on_seat = position < sorted_ids.size
+    on_seat[on_seat] = sorted_ids[position[on_seat]] == carrier_households[on_seat]
+    carriers_per_seat = np.empty(sorted_ids.size, dtype=np.int64)
+    carriers_per_seat[order] = np.bincount(position[on_seat], minlength=sorted_ids.size)
+
+    failures: list[str] = []
+    if not bool(np.isin(seat_bands, np.asarray(bands, dtype=float)).all()):
+        failures.append(f"{stage}: a seat holds a band the gate does not declare.")
+    for band in bands:
+        in_band = seat_bands == float(band)
+        if not in_band.any():
+            failures.append(f"{stage}: band from {band} seats no donor.")
+            continue
+        if bool((carriers_per_seat[in_band] != 1).any()):
+            failures.append(
+                f"{stage}: band from {band}'s seats do not each hold one carrier."
+            )
+        per_clone = np.bincount(seat_clones[in_band], minlength=clone_count)
+        if per_clone.size != clone_count or bool((per_clone != per_clone[0]).any()):
+            failures.append(
+                f"{stage}: band from {band}'s donors do not split evenly across "
+                "the geographic clones."
+            )
+    return failures
 
 
 def _cgt_imputation_summary_gate(
@@ -4513,10 +4724,13 @@ def _property_components_gate(
     of its two boundaries (one straddler for an empty band), capped at twice
     the largest landlord weight. The open top band's profit multiplier stays below
     its declared cap; a multiplier at its floor of 1 is reported, not failed.
+    The two row maxima are declared for one geographic clone; on ``K`` clones
+    they are multiplied by the receipt's ``clone_count`` (microcosm#931).
     """
 
     check = "property_components"
     receipts = _mapping(evidence.get("receipts"), label=f"{stage}.receipts")
+    clone_count = _receipt_clone_count(evidence, label=stage)
     failures: list[str] = []
     maximum_below = int(parameters["maximum_rows_receipts_below_profit"])
     below = int(
@@ -4525,10 +4739,10 @@ def _property_components_gate(
             label=f"{stage}.receipts.rows_receipts_below_profit",
         )
     )
-    if below > maximum_below:
+    if below > maximum_below * clone_count:
         failures.append(
             f"{stage}: {below} rows carry receipts below profit "
-            f"(allowed {maximum_below})."
+            f"(allowed {_rows_allowed(maximum_below, clone_count)})."
         )
     maximum_above = int(parameters["maximum_rows_with_profit_above_band"])
     above = int(
@@ -4537,10 +4751,10 @@ def _property_components_gate(
             label=f"{stage}.receipts.rows_with_profit_above_their_band",
         )
     )
-    if above > maximum_above:
+    if above > maximum_above * clone_count:
         failures.append(
             f"{stage}: {above} landlords sit in a receipts band below their "
-            f"profit (allowed {maximum_above})."
+            f"profit (allowed {_rows_allowed(maximum_above, clone_count)})."
         )
     factor = _finite_number(
         parameters["maximum_band_error_in_boundary_weights"],
@@ -4598,7 +4812,7 @@ def _property_components_gate(
             f"{stage}: the top band's profit multiplier {multiplier} reached its "
             f"cap {cap}; the receipts total is out of reach."
         )
-    details = {
+    details: dict[str, object] = {
         "rows_receipts_below_profit": below,
         "rows_with_profit_above_their_band": above,
         "largest_landlord_weight": largest,
@@ -4607,6 +4821,8 @@ def _property_components_gate(
         "top_band_multiplier_cap": cap,
         "top_band_multiplier_at_floor": bool(top.get("multiplier_at_floor", False)),
     }
+    if clone_count > 1:
+        details["clone_count"] = clone_count
     if failures:
         return _fail(stage, check, failures, details)
     return _pass(stage, check, details)
@@ -4819,6 +5035,8 @@ def _regional_home_values_gate(
     weighted value stays positive on both sides of the stage. A count the
     receipt bands for resting on fewer than three records is flagged rather
     than failed where the band cannot tell (María's ruling of 2026-10-26).
+    The stage counts the sources at the cap in geographic clone 0's rows, so
+    the declared count holds at any clone count (microcosm#931).
     """
 
     check = "regional_home_values"
