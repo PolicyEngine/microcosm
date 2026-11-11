@@ -46,6 +46,7 @@ from microcosm.build.stochastic_assignment import (
 )
 from microcosm.build.uk_runtime.frs_employment import FRS_EMPSTATI_EMPLOYMENT_STATUS
 from microcosm.build.uk_runtime.frs_take_up import (
+    geographic_clone_zero_rows,
     take_up_signal_outputs,
     uk_take_up_signal_receipt,
 )
@@ -179,6 +180,7 @@ def add_frs_person_draws_with_receipt(
         person_sources=record_source_households(
             frame, "person", stage="frs_person_draws", before_copies=True
         ),
+        person_clone_zero=geographic_clone_zero_rows(frame, "person"),
     )
     for column in FRS_PERSON_DRAW_OUTPUT_COLUMNS:
         person[column] = derived[column].to_numpy()
@@ -202,12 +204,14 @@ def derive_frs_person_draws(
     person_weights: np.ndarray,
     relief_schedule: Mapping[str, float] | None = None,
     person_sources: np.ndarray,
+    person_clone_zero: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """Return the stage's person draws.
 
     ``person_weights`` are each person's household weight, which set
     ``is_apprentice``'s target; ``person_sources`` are each person's true
-    source household, which its receipt counts support by.
+    source household, which its receipt counts support by, among geographic
+    clone 0's people (``person_clone_zero``; everyone when not given).
     """
 
     return derive_frs_person_draws_with_receipt(
@@ -216,6 +220,7 @@ def derive_frs_person_draws(
         person_weights=person_weights,
         relief_schedule=relief_schedule,
         person_sources=person_sources,
+        person_clone_zero=person_clone_zero,
     )[0]
 
 
@@ -226,6 +231,7 @@ def derive_frs_person_draws_with_receipt(
     person_weights: np.ndarray,
     relief_schedule: Mapping[str, float] | None = None,
     person_sources: np.ndarray,
+    person_clone_zero: np.ndarray | None = None,
 ) -> tuple[pd.DataFrame, Mapping[str, object]]:
     """The stage's person draws and the receipt of its ``is_apprentice`` draw."""
 
@@ -259,6 +265,7 @@ def derive_frs_person_draws_with_receipt(
         person_weights=person_weights,
         relief_schedule=relief_schedule,
         person_sources=person_sources,
+        person_clone_zero=person_clone_zero,
     )
     values[APPRENTICE_OUTPUT] = apprentices.flags
     return values, {"build_year": contract.build_year, **apprentices.receipt}
@@ -279,6 +286,7 @@ def derive_is_apprentice(
     person_weights: np.ndarray | None = None,
     relief_schedule: Mapping[str, float] | None = None,
     person_sources: np.ndarray,
+    person_clone_zero: np.ndarray | None = None,
 ) -> UKApprenticeDraw:
     """Draw ``is_apprentice`` for employees aged 21 to 24.
 
@@ -299,7 +307,14 @@ def derive_is_apprentice(
     The receipt counts support in ``person_sources``, each person's true
     source household (``receipt_counts.record_source_households``). A caller
     without the frame's lineage passes ``own_source_households`` itself, so
-    no table is counted by its rows unawares (microcosm#931).
+    no table is counted by its rows unawares (microcosm#931). The supports
+    it prints are counted among geographic clone 0's people,
+    ``person_clone_zero`` (everyone when not given): each clone flags its own
+    employees, so the flagged sources over every clone would grow with the
+    clone count. The masses are taken over every clone, so each is withheld
+    where one or two source households carry it in clone 0's people or over
+    every clone: clone 0 can flag none of the employees one or two
+    households hold in the other clones.
     """
 
     if "employment_status" not in person.columns:
@@ -337,9 +352,27 @@ def derive_is_apprentice(
     sources = np.asarray(person_sources)
     if sources.shape != (len(person),):
         raise ValueError("person_sources must hold one source per person.")
-    population_support = distinct_count(sources, in_ages, weights)
-    eligible_support = distinct_count(sources, eligible, weights)
-    flagged_support = distinct_count(sources, flags, weights)
+    clone_zero = (
+        np.ones(len(person), dtype=bool)
+        if person_clone_zero is None
+        else np.asarray(person_clone_zero, dtype=bool)
+    )
+    if clone_zero.shape != (len(person),):
+        raise ValueError("person_clone_zero must hold one flag per person.")
+    population_support = distinct_count(sources, in_ages & clone_zero, weights)
+    eligible_support = distinct_count(sources, eligible & clone_zero, weights)
+    flagged_support = distinct_count(sources, flags & clone_zero, weights)
+    # The masses are taken over every clone, so a mass is withheld where one
+    # or two source households carry it in clone 0 or over every clone.
+    population_withheld = _thin(population_support) or _thin(
+        distinct_count(sources, in_ages, weights)
+    )
+    eligible_withheld = _thin(eligible_support) or _thin(
+        distinct_count(sources, eligible, weights)
+    )
+    flagged_withheld = _thin(flagged_support) or _thin(
+        distinct_count(sources, flags, weights)
+    )
     receipt: dict[str, object] = {
         "output": APPRENTICE_OUTPUT,
         "rate_key": APPRENTICE_RATE_KEY,
@@ -359,13 +392,13 @@ def derive_is_apprentice(
     # A weighted total carried by one or two households is withheld, with the
     # figures that would give it back: the target is the rate times the
     # population, and the deviation is the flagged weight less the target.
-    if 0 < population_support < UK_DISCLOSURE_FLOOR:
+    if population_withheld:
         receipt.update(
             population_mass=UK_WITHHELD,
             target=UK_WITHHELD,
             realization_deviation=UK_WITHHELD,
         )
-    if 0 < eligible_support < UK_DISCLOSURE_FLOOR:
+    if eligible_withheld:
         receipt["eligible_mass"] = UK_WITHHELD
     if relief_schedule is not None and "employment_income" in person.columns:
         pay = pd.to_numeric(person["employment_income"], errors="coerce")
@@ -382,11 +415,17 @@ def derive_is_apprentice(
         receipt["implied_relief"] = float(
             relief_schedule["rate"] * (weights[flags] * relieved[flags]).sum()
         )
-    if 0 < flagged_support < UK_DISCLOSURE_FLOOR:
+    if flagged_withheld:
         receipt.update(realized_mass=UK_WITHHELD, realization_deviation=UK_WITHHELD)
         if "implied_relief" in receipt:
             receipt["implied_relief"] = UK_WITHHELD
     return UKApprenticeDraw(flags=flags, receipt=receipt)
+
+
+def _thin(support: int) -> bool:
+    """Whether one or two source households carry a figure: it is withheld."""
+
+    return 0 < support < UK_DISCLOSURE_FLOOR
 
 
 def _nearest_target_threshold(

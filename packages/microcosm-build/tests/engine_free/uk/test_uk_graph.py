@@ -339,12 +339,14 @@ def test_counting_module_changes_invalidate_every_stage_that_counts(monkeypatch)
 #: channel's clone helper (``spi_support``), which reads the copy-id table;
 #: every other minting stage's module reads the table itself (microcosm#931).
 _SPI_COPY_ID_STAGES = frozenset({"spi_support_channel", "spi_income_band_donors"})
-#: Stages that bind ``spi_support`` or ``frs_spine``, which read the copy-id
-#: table, for names that never mint, decode or bound a copy id: constants,
-#: the support channel's column names and source fill, and frs_spine's tab
-#: reader, id normaliser, interview dates and self-employment rule. They need
-#: not bind the table; the helper rule below holds that none of them reaches
-#: the table's code another way.
+#: Stages that bind ``spi_support``, ``frs_spine`` or ``stage_health``, which
+#: read the copy-id table, for names that never mint, decode or bound a copy
+#: id: constants, the support channel's column names and source fill,
+#: frs_spine's tab reader, id normaliser, interview dates and self-employment
+#: rule, and stage_health's latent-attribute tolerance (the band donor check
+#: reads the table since microcosm#931). They need not bind the table; the
+#: helper rule below holds that none of them reaches the table's code another
+#: way.
 _COPY_ID_TABLE_NAME_ONLY_STAGES = frozenset(
     {
         "company_cars",
@@ -363,15 +365,20 @@ _COPY_ID_TABLE_NAME_ONLY_STAGES = frozenset(
         "property_components",
         "spi_benefit_coherence",
         "uc_capital_coherence",
+        "uc_deduction_attributes",
+        "uc_take_up",
         "was_lisa",
         "was_wealth",
     }
 )
-#: The functions those stages may import from the two helpers.
+#: The helpers those stages bind for table-free names, and the functions
+#: they may import from them.
+_COPY_ID_TABLE_READING_HELPERS = frozenset({"spi_support", "frs_spine", "stage_health"})
 _COPY_ID_TABLE_FREE_HELPER_FUNCTIONS = frozenset(
     {
         "fill_support_channel_from_source",
         "frs_interview_dates",
+        "latent_attribute_tolerance",
         "normalize_ids",
         "read_pinned_tab",
         "support_channel_column",
@@ -428,7 +435,7 @@ def test_every_stage_that_mints_or_bounds_copy_ids_binds_the_copy_id_table() -> 
         assert "copy_id_table" not in _imported_module_names(module), stage
         functions = {
             name
-            for name in _names_imported_from(module, {"spi_support", "frs_spine"})
+            for name in _names_imported_from(module, _COPY_ID_TABLE_READING_HELPERS)
             if not name.isupper()
         }
         assert functions <= _COPY_ID_TABLE_FREE_HELPER_FUNCTIONS, stage
@@ -464,10 +471,11 @@ def test_copy_id_table_changes_invalidate_every_stage_that_reads_it(monkeypatch)
         return content
 
     monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
-    # Eleven since the geographic clones mint their ids in the table's
-    # geographic_support field (microcosm#931).
-    assert "geographic_expand" in stages
-    assert len(affected) == 11
+    # Twelve since the geographic clones mint their ids in the table's
+    # geographic_support field and regional_home_values reads clone 0 from
+    # it (microcosm#931).
+    assert {"geographic_expand", "regional_home_values"} <= set(stages)
+    assert len(affected) == 12
     for ref in affected:
         assert registry.implementation_hash(ref) != before[ref], ref
     for ref in controls:

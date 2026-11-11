@@ -360,6 +360,22 @@ def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions(
         "spine.gates.assembled",
         "was_wealth",
     }
+    # The band donor check recomputes a capped seating's seats from the
+    # transferred phase's frame, so the gate reads the cells it decodes; the
+    # executor adds the ids and memberships itself (microcosm#931).
+    from microcosm.build.uk_runtime import stage_health
+
+    read = {
+        (cells.entity, column)
+        for cells in transferred.inputs
+        for column in cells.columns
+    }
+    assert {
+        ("household", stage_health._BAND_DONOR_FLAG_COLUMN),
+        ("household", stage_health._BAND_DONOR_BAND_COLUMN),
+        ("household", stage_health._BAND_DONOR_CLONE_INDEX_COLUMN),
+        ("person", stage_health._BAND_CARRIER_FLAG_COLUMN),
+    } <= read
     # The gate admits whichever stage follows the BRMA checkpoint in the roster
     # (the SPI block since #1012 moved it ahead of was_wealth), as main's tool
     # does with UK_SPINE_ASSEMBLED_FINAL_STAGE. Since the HMRC leaves and the

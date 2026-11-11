@@ -75,6 +75,7 @@ from microcosm.build.stochastic_assignment import (
     keyed_tie_order,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.hmrc_property_rental import (
     HMRC_PROPERTY_RENTAL_RECEIPTS_BAND_LOWER_BOUNDS,
     HMRC_PROPERTY_RENTAL_RECORD_SETS,
@@ -915,9 +916,13 @@ class UKPropertyComponentsResult:
     channels: Mapping[str, Any]
     residuals: Mapping[str, Any]
     coherence: Mapping[str, Any]
+    #: The frame's geographic clone count ``K`` (microcosm#931). The receipt
+    #: gives it only when it is more than one, and the stage's check then
+    #: allows ``K`` times its declared row maxima.
+    clone_count: int = 1
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_PROPERTY_COMPONENTS_STAGE_NAME,
             "facts": dict(self.facts),
             "donor": dict(self.donor),
@@ -927,6 +932,9 @@ class UKPropertyComponentsResult:
             "residuals": dict(self.residuals),
             "coherence": dict(self.coherence),
         }
+        if self.clone_count > 1:
+            evidence["clone_count"] = self.clone_count
+        return evidence
 
 
 @dataclass
@@ -994,6 +1002,9 @@ class UKPropertyComponentsStageTransform:
 
         person = frame.table("person").copy()
         household = frame.table("household")
+        clone_count = geographic_clone_count(
+            household, stage=UK_PROPERTY_COMPONENTS_STAGE_NAME
+        )
         missing = sorted(PROPERTY_COMPONENTS_PERSON_INPUTS - set(person.columns))
         if missing:
             raise PropertyComponentsError(f"the spine's person table lacks {missing}.")
@@ -1167,6 +1178,7 @@ class UKPropertyComponentsStageTransform:
             channels=channels,
             residuals=residuals,
             coherence=coherence,
+            clone_count=clone_count,
         )
         return result
 

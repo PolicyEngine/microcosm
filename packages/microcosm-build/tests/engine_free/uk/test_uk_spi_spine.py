@@ -20,6 +20,7 @@ from microcosm.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.receipt_counts import rounded_count
 from microcosm.build.uk_runtime.spi_income import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     SPI_DONOR_REQUIRED_COLUMNS,
@@ -1204,6 +1205,74 @@ def test_clone_zero_of_a_cloned_spine_is_the_one_clone_share(clone_count: int) -
     )
 
 
+@pytest.mark.parametrize("clone_count", [3, 7])
+def test_stage_16_counts_its_pension_age_households_in_sources_at_any_clone_count(
+    clone_count: int,
+) -> None:
+    """The receipt's two pension-age counts are of survey households, rounded
+    (microcosm#931): the pension-age base households' distinct sources, which
+    every clone shares, and clone 0's pension-age SPI copies' distinct
+    sources, which a one-clone spine copies alike. So both are the same at
+    every clone count where the share is below one, and the receipt gives the
+    clone count beside them; the masses are as they were."""
+
+    transforms = {}
+    evidence = {}
+    frames = {}
+    for clones in (1, clone_count):
+        transform = UKSPISupportChannelStageTransform(
+            stage=_committed_stage("spi_support_channel"),
+            sample_fraction=0.01,
+            state_pension_age=66,
+        )
+        frames[clones] = transform(
+            expand_uk_geographic_clones(_share_frame(), clones=clones).frame
+        )
+        transforms[clones] = transform
+        evidence[clones] = transform.checkpoint_metadata()["evidence"]
+    one = transforms[1].last_result.pension_age_allocation
+    many = transforms[clone_count].last_result.pension_age_allocation
+    counts = ("pension_age_households", "pension_age_spi_households")
+
+    # 10,000 x 0.01 expected copies over 400 sources: a share of 1/4.
+    assert evidence[clone_count]["inclusion_probability"] == 0.25
+    assert evidence[1]["clone_count"] == 1
+    assert evidence[clone_count]["clone_count"] == clone_count
+    for key in counts:
+        assert many[key] == one[key] > 0
+        assert evidence[clone_count]["pension_age_allocation"][key] == rounded_count(
+            one[key]
+        )
+        assert evidence[1]["pension_age_allocation"][key] == rounded_count(one[key])
+    for key in set(one) - set(counts):
+        assert many[key] == pytest.approx(one[key], rel=1e-12)
+        assert evidence[clone_count]["pension_age_allocation"][key] == many[key]
+
+    # Counted in rows, the base households would grow with the clone count,
+    # and the SPI copies of every clone together count more sources than
+    # clone 0's: each clone draws its copies on its own ids.
+    household = frames[clone_count].table("household")
+    person = frames[clone_count].table("person")
+    pension_age = household["household_id"].isin(
+        person.loc[person["age"].ge(66), "person_household_id"]
+    )
+    channel = household["household_support_channel"]
+    base = channel.ne(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+    copies = channel.eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+    assert int((pension_age & base).sum()) == clone_count * one[counts[0]]
+    assert (
+        household.loc[pension_age & copies, "source_household_id"].nunique()
+        > one[counts[1]]
+    )
+    assert (
+        household.loc[
+            pension_age & copies & household["household_clone_index"].eq(0),
+            "source_household_id",
+        ].nunique()
+        == one[counts[1]]
+    )
+
+
 def test_the_support_channel_writes_no_source_column_of_its_own() -> None:
     """The households' source columns are geographic_expand's (microcosm#931).
 
@@ -1246,3 +1315,103 @@ def test_the_support_channel_writes_no_source_column_of_its_own() -> None:
         household.loc[spi, source].reset_index(drop=True),
         roots.loc[household.loc[spi, "household_source_id"]].reset_index(drop=True),
     )
+
+
+def _income_stage_evidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, frame
+) -> dict[str, object]:
+    """Stage 18's checkpoint evidence on ``frame``, after the support channel.
+
+    The forests, the uprating and the engine reads are the engine-free
+    fixtures of test_spi_spine_parsed_inputs_match_the_path_resolution, and
+    the donor and the targets are handed to the stage parsed.
+    """
+
+    _FakeQRF.events = []
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    monkeypatch.setattr(
+        spi_income,
+        "_refresh_disability_derived_inputs",
+        lambda person, *, spi_people, category_rates=None, flag_rates=None: person,
+    )
+    monkeypatch.setattr(
+        spi_income,
+        "_spi_income_uprating_factors",
+        lambda year, *, rebased_columns=None: (
+            {column: 1.25 for column in SPI_INCOME_QRF_OUTPUT_COLUMNS},
+            {"from_period": 2022, "to_period": year, "basis": "synthetic_test"},
+        ),
+    )
+    monkeypatch.setattr(
+        spi_spine,
+        "load_spi_donor_age_model",
+        lambda _build_period: SPIDonorAgeModel(
+            populations={
+                (sex, age): 1.0 for sex in ("MALE", "FEMALE") for age in range(0, 91)
+            },
+            state_pension_age=66,
+            source="engine-free fixture",
+        ),
+    )
+    monkeypatch.setattr(
+        spi_spine,
+        "load_spi_employment_pay_floor",
+        lambda _build_period: SPIEmploymentPayFloor(
+            age_thresholds=(0.0, 18.0, 21.0),
+            hourly_rates=(6.40, 8.60, 11.44),
+            weeks_in_year=52.0,
+            instant="2024-04-30",
+            source="engine-free fixture",
+        ),
+    )
+    support_frame = UKSPISupportChannelStageTransform(
+        stage=_committed_stage("spi_support_channel"),
+        sample_fraction=0.0002,
+        state_pension_age=66,
+    )(frame)
+    donor_path = _donor_file(tmp_path)
+    ods_path = tmp_path / "synthetic-hmrc.ods"
+    ods_path.write_bytes(b"synthetic hmrc source")
+    transform = UKSPIIncomeSpineStageTransform(
+        donor_path,
+        ods_path,
+        stage=_with_mutated_operation(
+            _committed_stage("hmrc_spi_income_spine"),
+            "fit_weighted_qrf_stage1",
+            sample_size=1,
+        ),
+        donor_sample_size=1,
+        sampled_rung=True,
+        donor_table=pd.read_csv(donor_path, delimiter="\t"),
+        source_targets=_synthetic_hmrc_targets(ods_path),
+    )
+    transform(support_frame)
+    return transform.checkpoint_metadata()["evidence"]
+
+
+@pytest.mark.parametrize("clones", [None, 1, 3])
+def test_stage_18_records_its_forests_fold_only_on_more_than_one_clone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, clones: int | None
+) -> None:
+    """The income stage's evidence gives how its forests' geographic fold met
+    their survey records only on a frame of more than one clone, counted in
+    rounded distinct source households; one clone's evidence is as it was,
+    with or without the clone index (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.household_lineage import GEOGRAPHIC_FOLD_EVIDENCE
+
+    frame = _base_frame(time_period=HMRC_SPI_BUILD_PERIOD)
+    if clones is not None:
+        frame = expand_uk_geographic_clones(frame, clones=clones).frame
+    evidence = _income_stage_evidence(monkeypatch, tmp_path, frame)
+
+    if clones in (None, 1):
+        assert GEOGRAPHIC_FOLD_EVIDENCE not in evidence
+        return
+    # Two FRS households train the forests, and no clone differs from another.
+    assert evidence[GEOGRAPHIC_FOLD_EVIDENCE] == {
+        "clone_count": 3,
+        "records": "<3",
+        "varied_records": 0,
+        "varied_share": 0,
+    }

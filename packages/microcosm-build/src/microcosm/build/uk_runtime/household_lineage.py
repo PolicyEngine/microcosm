@@ -8,7 +8,9 @@ path through this module, which validates the lineage columns once and never
 infers a branch from ids, weights or values. The UK's copy lineage is declared
 here (:data:`UK_COPY_LINEAGE`) for the shared readers in
 ``microcosm.build.source_lineage``: the receipts' true sources and the
-FRS-trained fits' collapse of geographic clones read it too.
+FRS-trained fits' collapse of geographic clones read it too, and
+:func:`geographic_fold_receipt` records how a fit's fold met its survey
+records.
 """
 
 from __future__ import annotations
@@ -26,10 +28,14 @@ from microcosm.build.source_lineage import (
     fold_replicas,
     replica_keys,
 )
-from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+from microcosm.build.uk_runtime.geographic_clones import (
+    geographic_clone_count,
+    ladder_clone_index_column,
+)
 from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
 
 __all__ = [
+    "GEOGRAPHIC_FOLD_EVIDENCE",
     "GEOGRAPHIC_SUPPORT_BRANCH",
     "HIGH_VALUE_SUPPORT_COPY_COLUMN",
     "HIGH_VALUE_SUPPORT_INDEX_COLUMN",
@@ -37,6 +43,7 @@ __all__ = [
     "UK_HOUSEHOLD_LINEAGE_COLUMNS",
     "collapse_geographic_clones",
     "fold_geographic_clones",
+    "geographic_fold_receipt",
     "uk_household_clone_paths",
 ]
 
@@ -67,6 +74,10 @@ UK_OPTIONAL_LINEAGE_COLUMNS: tuple[str, ...] = (
     HIGH_VALUE_SUPPORT_INDEX_COLUMN,
 )
 GEOGRAPHIC_SUPPORT_BRANCH = "geographic_support"
+#: The evidence key under which a stage whose fit folds geographic clones
+#: records the fold (:func:`geographic_fold_receipt`), on a frame of more
+#: than one clone only.
+GEOGRAPHIC_FOLD_EVIDENCE = "geographic_fold"
 _BASE_SUPPORT_CHANNEL = "frs"
 _SPI_SUPPORT_CHANNEL = "spi"
 #: The UK's copy lineage for the shared readers in
@@ -220,6 +231,71 @@ def collapse_geographic_clones(
 
     fold = fold_geographic_clones(tables, entity, rows, weights, inputs=inputs)
     return fold.kept, fold.weights
+
+
+def geographic_fold_receipt(
+    tables: Mapping[str, pd.DataFrame],
+    entity: str,
+    fold: ReplicaFold,
+    *,
+    stage: str,
+) -> dict[str, object] | None:
+    """How a fit's geographic fold met its survey records, or None at one clone.
+
+    ``fold`` is :func:`fold_geographic_clones`' fold of ``entity``'s rows
+    over ``tables``. On a frame of more than one geographic clone
+    (:func:`~microcosm.build.uk_runtime.geographic_clones.geographic_clone_count`)
+    the receipt holds:
+
+    - ``clone_count``: the frame's clone count ``K``;
+    - ``records``: the true source households of the records the fit
+      selected;
+    - ``varied_records``: the source households of the selected records
+      whose clones did not all fold into one row, since they differ on what
+      the fit reads;
+    - ``varied_share``: the share of the selected source households that
+      vary, floored to the hundredth, where both the households that vary
+      and those that do not read as rounded numbers rather than bands;
+      otherwise it repeats ``varied_records``. A share to the hundredth of a
+      few dozen sources would give back where in its band either count
+      lies.
+
+    Both counts are of distinct true sources on rows of positive weight,
+    rounded as every receipt count is (``receipt_counts.rounded_count``), so
+    a household's clones and copies count once. A frame of one clone returns
+    None and its evidence is left as it was. Variety is recorded, never
+    refused: clones that differ stay rows of their own in the fit.
+    """
+
+    clone_count = geographic_clone_count(tables["household"], stage=stage)
+    if clone_count == 1:
+        return None
+    # receipt_counts reads this module's lineage, so it is imported here.
+    from microcosm.build.uk_runtime import receipt_counts
+
+    sources = receipt_counts.record_source_households(tables, entity, stage=stage)
+    selected = fold.representative >= 0
+    records = receipt_counts.distinct_count(sources, selected, fold.weights)
+    varied = receipt_counts.distinct_count(sources, fold.varied, fold.weights)
+    varied_band = receipt_counts.rounded_count(varied)
+    # A varied record is a selected one, so the rest are the selected sources
+    # none of whose records varied.
+    steady_band = receipt_counts.rounded_count(records - varied)
+    share_given = (
+        varied > 0
+        and not isinstance(varied_band, str)
+        and not isinstance(steady_band, str)
+    )
+    return {
+        "clone_count": clone_count,
+        "records": receipt_counts.rounded_count(records),
+        "varied_records": varied_band,
+        "varied_share": (
+            receipt_counts.floored_share(varied / records)
+            if share_given
+            else varied_band
+        ),
+    }
 
 
 def without_geographic_branch(

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import re
 from types import SimpleNamespace
 
 import numpy as np
@@ -463,17 +465,25 @@ def test_stack_reserves_band_rows_and_conserves_every_region_mass() -> None:
     assert evidence["mass"]["old_total"] == evidence["mass"]["new_total"]
 
     # Every incumbent of a region is scaled by that region's one factor, and
-    # the zero-weight support copies stay at zero.
+    # the zero-weight support copies stay at zero. The result keeps each
+    # stratum's factor; the receipt gives the funding in two booleans and
+    # withholds every funding row's masses and factor (microcosm#931).
     incumbents = len(frame.table("household"))
     ratio = pd.Series(weights.to_numpy()[:incumbents] / np.asarray(incoming.values))
     regions = pd.Series(frame.table("household")["region"].to_numpy())
     positive = np.asarray(incoming.values) > 0.0
-    factors = {row["stratum"]: row["factor"] for row in evidence["funding"]}
+    factors = {row["stratum"]: row["factor"] for row in result.funding_rows}
     for region, factor in factors.items():
         assert 0.5 <= factor < 1.0
         rows = (regions == region).to_numpy() & positive
         assert ratio[rows].to_numpy() == pytest.approx(factor, rel=1e-9)
     assert (weights.to_numpy()[:incumbents][~positive] == 0.0).all()
+    assert evidence["funding_within_share"] is True
+    assert evidence["funding_matches_bands"] is True
+    for row in evidence["funding"]:
+        assert row["stratum"] in factors
+        for key in ("incumbent_mass", "donor_mass", "factor"):
+            assert row[key] == UK_WITHHELD
 
 
 def test_spi_copies_and_donors_take_their_base_roots_ids_plus_the_radix() -> None:
@@ -524,7 +534,9 @@ def test_stack_scales_seats_then_mass_on_a_frame_too_small_for_the_plan() -> Non
     )
     evidence = result.evidence()
     assert evidence["expected_donor_count"] == 1_920
-    assert evidence["donor_count"] == 9
+    # The capped receipt counts the donors in rounded source households.
+    assert result.donor_count == result.donor_source_households == 9
+    assert evidence["donor_count"] == rounded_count(9)
     assert result.seating_scale == pytest.approx(0.15 * 60 / 1_920)
     # The receipt says only that the cap bound: the exact scale gives back
     # the eligible household count.
@@ -542,7 +554,8 @@ def test_stack_scales_seats_then_mass_on_a_frame_too_small_for_the_plan() -> Non
     )
     evidence = heavy.evidence()
     assert 0.0 < evidence["mass_scale"] < 1.0
-    assert min(row["factor"] for row in evidence["funding"]) == pytest.approx(0.5)
+    assert min(row["factor"] for row in heavy.funding_rows) == pytest.approx(0.5)
+    assert evidence["funding_within_share"] is True
     for row in evidence["bands"]:
         assert row["donor_weight"] == pytest.approx(
             row["planned_donor_weight"] * evidence["mass_scale"]
@@ -1061,7 +1074,8 @@ def test_stage_transform_runs_on_a_synthetic_tape_and_receipts() -> None:
     # The survey-side sample fraction is provenance only: the seats follow
     # the frame, not the fraction.
     assert evidence["sample_fraction"] == 0.01
-    assert evidence["donor_count"] == 9 and evidence["seating_scale"] == "capped"
+    assert evidence["seating_scale"] == "capped"
+    assert evidence["donor_count"] == rounded_count(9)
     assert [row["lower_bound"] for row in evidence["bands"]] == list(BANDS)
     # The carriers' regions, each count rounded on distinct source households.
     household = result.table("household")
@@ -1528,7 +1542,7 @@ def test_one_mass_scale_serves_every_clone_when_one_clone_region_binds() -> None
 
     # then the binding stratum gives up exactly the declared share, and its
     # scale serves every band in every clone, so each band keeps one weight.
-    factors = {row["stratum"]: row["factor"] for row in evidence["funding"]}
+    factors = {row["stratum"]: row["factor"] for row in result.funding_rows}
     binding = min(factors, key=factors.get)
     assert 0.0 < evidence["mass_scale"] < 1.0
     assert binding.endswith("|1")
@@ -1552,25 +1566,31 @@ def test_one_mass_scale_serves_every_clone_when_one_clone_region_binds() -> None
     assert _mass_by_clone_and_region(result.frame) == pytest.approx(
         _mass_by_clone_and_region(light), rel=1e-12
     )
-    # The stage gate reconciles the scaled receipt band by band.
+    # The stage gate reconciles the scaled receipt band by band, and reads the
+    # binding stratum's funding, at the declared share to the gate's relative
+    # tolerance, from the receipt's booleans; its details give no factor.
+    assert evidence["funding_within_share"] is True
+    assert evidence["funding_matches_bands"] is True
     gate = _small_gate(evidence)
     assert gate.passed, gate.failures
-    assert gate.details["smallest_funding_factor"] == pytest.approx(0.5, rel=1e-12)
+    assert "smallest_funding_factor" not in gate.details
+    assert gate.details["funding_within_share"] is True
 
 
-def test_a_clone_without_candidates_is_refused_by_count() -> None:
+def test_a_clone_without_candidates_is_refused_without_a_count() -> None:
     frame = _clone_first_support_frame(200, 2)
     person = frame.table("person").copy()
     clone_of = frame.table("household").set_index("household_id")[_CLONE]
     in_clone_one = person["person_household_id"].map(clone_of).eq(1).to_numpy()
     person.loc[in_clone_one, "is_uc_claimant"] = False
 
+    # The refusal names the band and the clone's shortfall, never a count.
     with pytest.raises(ValueError) as caught:
         _stack_small(_with_tables(frame, person=person))
     assert str(caught.value) == (
-        "SPI income band donors need 3 candidate households with positive weight "
-        "and propensity for the band from 2000000 in each of the 2 geographic "
-        "clones; 1 clone(s) found fewer, the fewest 0."
+        "SPI income band donors found fewer candidate households with positive "
+        "weight and propensity for the band from 2000000 than the band seats in a "
+        "geographic clone."
     )
 
 
@@ -1690,6 +1710,8 @@ def test_the_receipt_counts_source_households_at_the_disclosure_floor() -> None:
         "expected_donor_count",
         "donor_count",
         "reallocated_mass",
+        "funding_within_share",
+        "funding_matches_bands",
         "mass",
         "draw",
         "taxpayer_count_resource",
@@ -1713,6 +1735,8 @@ def test_the_receipt_counts_source_households_at_the_disclosure_floor() -> None:
         "carrier_mean_age",
         "carrier_regions",
     }
+    # At every seating a funding row keeps its stratum and rounded donors and
+    # withholds its masses and factor (microcosm#931).
     assert {key for row in evidence["funding"] for key in row} == {
         "stratum",
         "donor_households",
@@ -1720,19 +1744,61 @@ def test_the_receipt_counts_source_households_at_the_disclosure_floor() -> None:
         "donor_mass",
         "factor",
     }
+    assert all(
+        row[key] == UK_WITHHELD
+        for row in evidence["funding"]
+        for key in ("incumbent_mass", "donor_mass", "factor")
+    )
 
     # A band whose carriers come from fewer than three households withholds
     # their mean age: the published plan on 60 households seats one in three
-    # of the bands.
-    capped = stack_spi_income_band_donors(
+    # of the bands. The result's exact rows keep that rule.
+    capped_result = stack_spi_income_band_donors(
         _support_frame(), propensity=propensity, **_PUBLISHED
-    ).evidence()
-    for row in capped["bands"]:
+    )
+    for row in capped_result.band_rows:
         if row["carriers"] < 3:
             assert row["carrier_mean_age"] == UK_WITHHELD
         else:
             assert isinstance(row["carrier_mean_age"], float)
-    assert sum(row["carriers"] < 3 for row in capped["bands"]) == 3
+    assert sum(row["carriers"] < 3 for row in capped_result.band_rows) == 3
+
+    # The capped receipt gives each band's donors and carriers in rounded
+    # source households, withholds its weighted taxpayers and mean age, and
+    # leaves its carrier regions out; its donor count is rounded too, and its
+    # reallocated mass withheld (microcosm#931).
+    capped = capped_result.evidence()
+    assert capped["seating_scale"] == "capped"
+    assert capped["donor_count"] == rounded_count(capped_result.donor_source_households)
+    assert capped["reallocated_mass"] == UK_WITHHELD
+    assert capped["funding_within_share"] is capped["funding_matches_bands"] is True
+    for row, exact in zip(capped["bands"], capped_result.band_rows, strict=True):
+        assert set(row) == {
+            "lower_bound",
+            "expected_donor_households",
+            "donor_households",
+            "carriers",
+            "eligible_households",
+            "planned_donor_weight",
+            "donor_weight",
+            "weighted_taxpayers",
+            "published_taxpayers",
+            "carrier_mean_age",
+        }
+        assert row["donor_households"] == rounded_count(
+            exact["donor_source_households"]
+        )
+        assert row["carriers"] == rounded_count(exact["carrier_source_households"])
+        assert row["weighted_taxpayers"] == row["carrier_mean_age"] == UK_WITHHELD
+        for key in (
+            "lower_bound",
+            "expected_donor_households",
+            "eligible_households",
+            "planned_donor_weight",
+            "donor_weight",
+            "published_taxpayers",
+        ):
+            assert row[key] == exact[key]
 
 
 def _one_top_band_candidate(person, household) -> pd.DataFrame:
@@ -1770,19 +1836,20 @@ def _one_top_band_candidate(person, household) -> pd.DataFrame:
     )
 
 
-def test_a_band_short_of_candidates_on_one_clone_is_refused_by_count() -> None:
+def test_a_band_short_of_candidates_on_one_clone_is_refused_without_a_count() -> None:
     # Given one claimant alone the tape lets carry the top band, on a spine
     # without the clone index, and three seats for the band,
     person, benunit, household = _raw_support_tables(200)
     propensity = _one_top_band_candidate(person, household)
     frame = _spi_support_frame(person, benunit, household, expected_spi_households=10)
 
-    # then the stage refuses with one clone's message: the seats and the count.
+    # then the stage refuses with one clone's message, which names the band
+    # and gives no count.
     with pytest.raises(ValueError) as caught:
         _stack_small(frame, propensity=propensity)
     assert str(caught.value) == (
-        "SPI income band donors need 3 candidate households with positive weight "
-        "and propensity for the band from 2000000; found 1."
+        "SPI income band donors found fewer candidate households with positive "
+        "weight and propensity for the band from 2000000 than the band seats."
     )
 
 
@@ -1934,9 +2001,9 @@ def test_the_stage_gate_reads_a_receipt_by_its_clone_count() -> None:
         )
     # Misread, three clones' donors split unevenly or outweigh the maximum.
     failures = " ".join(_small_gate({**evidence, "clone_count": 2}).failures)
-    assert "do not split evenly across the 2 geographic clones" in failures
+    assert "do not split evenly across the geographic clones" in failures
     failures = " ".join(_small_gate({**evidence, "clone_count": 4}).failures)
-    assert "divided by the geographic clone count 4" in failures
+    assert "exceeds the maximum divided by the geographic clone count" in failures
     # The gate spells the receipt's two seating forms itself.
     from microcosm.build.uk_runtime import stage_health
 
@@ -1944,6 +2011,45 @@ def test_the_stage_gate_reads_a_receipt_by_its_clone_count() -> None:
         SPI_INCOME_BAND_FULL_SEATING,
         SPI_INCOME_BAND_CAPPED_SEATING,
     )
+
+
+def test_the_gate_spells_the_stages_columns_and_tolerances_as_the_stage_does() -> None:
+    # The stage-health gate imports no stage module, so it spells the band
+    # donor stage's columns, its copy-id field and the fields minted after it
+    # itself; and the stage's funding booleans compare at the gate's own
+    # tolerances (microcosm#931).
+    from microcosm.build.uk_runtime import spi_support, stage_health
+
+    assert (
+        stage_health._BAND_DONOR_FLAG_COLUMN,
+        stage_health._BAND_DONOR_BAND_COLUMN,
+        stage_health._BAND_CARRIER_FLAG_COLUMN,
+        stage_health._BAND_DONOR_CLONE_INDEX_COLUMN,
+        stage_health._BAND_DONOR_COPY_ID_FIELD,
+    ) == (
+        HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
+        SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN,
+        PERSON_IS_SPI_INCOME_BAND_CARRIER,
+        spi_support.SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN,
+        spi_support.SPI_SUPPORT_COPY_ID_FIELD,
+    )
+    assert stage_health._COPY_ID_FIELDS_AFTER_BAND_DONORS == _LATER_FIELDS
+    assert (
+        spi_band_donors.SPI_INCOME_BAND_FUNDING_RELATIVE_TOLERANCE
+        == stage_health._FLOAT_RELATIVE_TOLERANCE
+    )
+    (entry,) = [
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.gate == "stage_health"
+        and entry.parameters["check"] == "spi_income_band_donor_support"
+    ]
+    assert spi_band_donors.SPI_INCOME_BAND_FUNDING_MASS_TOLERANCE == max(
+        entry.parameters["maximum_relative_mass_deviation"],
+        stage_health._FLOAT_RELATIVE_TOLERANCE,
+    )
+    share = spi_band_donors.SPI_INCOME_BAND_MAXIMUM_REALLOCATION_SHARE
+    assert 1.0 - share >= entry.parameters["minimum_funding_factor"]
 
 
 def test_e8_receipt_replays_the_seating_of_every_clone() -> None:
@@ -2326,3 +2432,209 @@ def test_the_e8_entry_hands_the_band_donor_check_the_artifact(monkeypatch) -> No
     assert receipt["stored_column_mismatches"] == {}
     assert receipt["band_donors"]["seating_recomputed"] is True
     assert receipt["band_donors"]["donor_households"] == stage_17.donor_count
+
+
+# The stage gate on a capped seating (microcosm#931). A capped receipt gives
+# each band's donors and carriers only in rounded source households, so the
+# gate recomputes the seats from the transferred phase's frame: the band
+# donor rows that are originals in every copy-id field minted after the band
+# donors. Every frame below is synthetic.
+
+#: The stage gate's declaration at the published plan's constants.
+_PUBLISHED_GATE_PARAMETERS = {
+    **_SMALL_GATE_PARAMETERS,
+    "minimum_donors_per_band": SPI_INCOME_BAND_MINIMUM_DONORS,
+    "maximum_donor_weight": SPI_INCOME_BAND_MAXIMUM_DONOR_WEIGHT,
+}
+
+
+def _capped_gate(evidence, frame):
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="spi_income_band_donors",
+        check="spi_income_band_donor_support",
+        parameters=_PUBLISHED_GATE_PARAMETERS,
+        frame=frame,
+    )
+
+
+def _no_data_digit(message: str) -> bool:
+    """Whether ``message`` holds no digit beyond the declared band bounds."""
+
+    bounds = "|".join(str(band) for band in sorted(BANDS, reverse=True))
+    return re.search(r"\d", re.sub(rf"\b(?:{bounds})\b", "", message)) is None
+
+
+def _capped_pair_frame(*, last_adult_claims: bool):
+    """81 households, whose last adult is a claimant or not.
+
+    The published plan's capped seating cuts its seats from the eligible
+    households, so the frame whose last adult claims seats one more donor
+    in its first band: 81 and 80 eligible households sit either side of a
+    whole seat.
+    """
+
+    person, benunit, household = _raw_support_tables(81)
+    if not last_adult_claims:
+        last = person["person_household_id"].eq(81) & person["is_uc_claimant"]
+        person.loc[last, "is_uc_claimant"] = False
+    return _spi_support_frame(person, benunit, household, expected_spi_households=10)
+
+
+def test_two_capped_frames_whose_seats_differ_by_one_give_one_receipt_and_verdict() -> (
+    None
+):
+    # Given two frames of the same households and weights, one with one more
+    # eligible claimant, whose capped seatings differ by one donor at a mass
+    # scale of one,
+    propensity = _propensity()
+    fewer, more = (
+        stack_spi_income_band_donors(
+            _capped_pair_frame(last_adult_claims=claims),
+            propensity=propensity,
+            sample_fraction=0.01,
+            **_PUBLISHED,
+        )
+        for claims in (False, True)
+    )
+    assert more.donor_count == fewer.donor_count + 1
+    assert fewer.seating_scale < 1.0 and more.seating_scale < 1.0
+    assert fewer.mass_scale == more.mass_scale == 1.0
+
+    # then their receipts are byte-identical, and so are the gate's verdicts
+    # on the frames each stage wrote, whose details carry no count.
+    receipts = [
+        json.dumps(result.evidence(), sort_keys=True) for result in (fewer, more)
+    ]
+    assert receipts[0] == receipts[1]
+    # So are the results' reprs, which leave out the exact figures and the
+    # frame.
+    assert repr(fewer) == repr(more)
+    for name in (
+        "frame",
+        "band_rows",
+        "funding_rows",
+        "seating_scale",
+        "donor_count",
+        "donor_source_households",
+        "reallocated_mass",
+    ):
+        assert f"{name}=" not in repr(fewer).replace("expected_donor_count=", ""), name
+    gates = [_capped_gate(result.evidence(), result.frame) for result in (fewer, more)]
+    assert gates[0].passed, gates[0].failures
+    assert gates[0] == gates[1]
+    serialized = [
+        json.dumps(
+            [gate.name, gate.passed, list(gate.failures), dict(gate.details)],
+            sort_keys=True,
+        )
+        for gate in gates
+    ]
+    assert serialized[0] == serialized[1]
+    assert set(gates[0].details) == {
+        "stage",
+        "check",
+        "bands_checked",
+        "clone_count",
+        "seating_scale",
+        "mass_scale",
+        "funding_within_share",
+        "funding_matches_bands",
+    }
+
+
+def test_the_capped_gate_reads_each_seat_once_through_every_later_copy() -> None:
+    # Given stage 17's capped seating on three clones, carried through every
+    # layer stacked after it, which copies donors in copy-id fields above the
+    # band donors' own,
+    propensity = _propensity()
+    stage_17, built = _stage_17_and_artifact(3, propensity)
+    evidence = {**stage_17.evidence(), "sample_fraction": 0.01}
+    assert evidence["seating_scale"] == "capped"
+    household = built.artifact.table("household")
+    donors = household[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR].to_numpy()
+    copied_later = _stage_17_ids(household) != household["household_id"].to_numpy()
+    assert (donors & copied_later).any()
+
+    # whose donor rows, counted with their later copies, split unevenly
+    # across the clones,
+    naive = (
+        household.loc[donors]
+        .groupby([SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN, _CLONE])
+        .size()
+        .unstack(fill_value=0)
+    )
+    assert (naive.nunique(axis=1) > 1).any()
+
+    # then the gate reads each band's seats as the stage wrote them, evenly
+    # split and each holding its one carrier, on the artifact as on the
+    # frame stage 17 wrote.
+    for frame in (stage_17.frame, built.artifact):
+        gate = _capped_gate(evidence, frame)
+        assert gate.passed, gate.failures
+        assert gate.details["clone_count"] == 3
+        assert gate.details["seating_scale"] == "capped"
+
+
+def test_the_capped_gate_fails_a_dropped_carrier_and_an_uneven_split() -> None:
+    propensity = _propensity()
+    stage_17, _ = _stage_17_and_artifact(3, propensity)
+    evidence = {**stage_17.evidence(), "sample_fraction": 0.01}
+    frame = stage_17.frame
+    household = frame.table("household")
+    person = frame.table("person")
+    band_of = household.set_index("household_id")[
+        SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN
+    ]
+    messages: list[str] = []
+
+    # A seat whose carrier lost its flag holds no carrier.
+    carriers = np.flatnonzero(person[PERSON_IS_SPI_INCOME_BAND_CARRIER].to_numpy())
+    dropped = person.copy()
+    dropped.loc[carriers[0], PERSON_IS_SPI_INCOME_BAND_CARRIER] = False
+    band = int(band_of[person.loc[carriers[0], "person_household_id"]])
+    gate = _capped_gate(evidence, _with_tables(frame, person=dropped))
+    assert not gate.passed
+    assert gate.failures == (
+        f"spi_income_band_donors: band from {band}'s seats do not each hold one "
+        "carrier.",
+    )
+    messages.extend(gate.failures)
+
+    # A seat of clone 1 that is no longer a donor leaves its band uneven
+    # across the clones.
+    seats = household.loc[household[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR]]
+    seat = seats.loc[seats[_CLONE].eq(1)].iloc[0]
+    unseated = household.copy()
+    unseated.loc[
+        unseated["household_id"].eq(seat["household_id"]),
+        HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
+    ] = False
+    band = int(seat[SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN])
+    gate = _capped_gate(evidence, _with_tables(frame, household=unseated))
+    assert not gate.passed
+    assert gate.failures == (
+        f"spi_income_band_donors: band from {band}'s donors do not split evenly "
+        "across the geographic clones.",
+    )
+    messages.extend(gate.failures)
+
+    # A receipt read against another clone count splits unevenly too, and a
+    # capped receipt without the frame is not passed.
+    gate = _capped_gate({**evidence, "clone_count": 2}, frame)
+    assert not gate.passed
+    messages.extend(gate.failures)
+    gate = _capped_gate(evidence, None)
+    assert gate.failures == (
+        "spi_income_band_donors: a capped seating's seats are recomputed from the "
+        "phase's frame, and the gate was given none.",
+    )
+    messages.extend(gate.failures)
+
+    # No message gives a count, a weight or a mass, and no capped verdict's
+    # details give the donors, their mass or their heaviest weight.
+    assert messages and all(_no_data_digit(message) for message in messages)
+    for verdict in (gate, _capped_gate(evidence, frame)):
+        assert not {"donor_count", "reallocated_mass", "heaviest_donor_weight"} & set(
+            verdict.details
+        )

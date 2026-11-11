@@ -318,6 +318,17 @@ def _evaluate_calibration_reference_coverage(
     )
 
 
+#: The stage-health checks that read the phase's frame beside their stage's
+#: receipt: the band donors' check recomputes a capped seating's seats from
+#: the transferred phase's frame (microcosm#931). Every other check reads its
+#: receipt alone and runs without a frame.
+_STAGE_HEALTH_FRAME_CHECKS = frozenset({"spi_income_band_donor_support"})
+
+
+def _stage_health_requires_frame(parameters: Mapping[str, Any]) -> bool:
+    return parameters.get("check") in _STAGE_HEALTH_FRAME_CHECKS
+
+
 def _evaluate_stage_health(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -333,6 +344,7 @@ def _evaluate_stage_health(
         stage=stage,
         check=str(parameters["check"]),
         parameters=parameters,
+        frame=context.frame if _stage_health_requires_frame(parameters) else None,
     )
 
 
@@ -2249,6 +2261,8 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         ),
         artifact_keys=frozenset({"stage_evidence"}),
         needs_frame=False,
+        # The band donors' check reads the phase's frame (microcosm#931).
+        frame_predicate=_stage_health_requires_frame,
         evidence=_stage_health_evidence,
     ),
     "nonnegative_columns": UKGateBinding(
@@ -2456,6 +2470,7 @@ UK_GATE_REGISTRY_MODULES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.bus_use_incidence",
     "microcosm.build.uk_runtime.cgt_projection",
     "microcosm.build.uk_runtime.chronicle_feed",
+    "microcosm.build.uk_runtime.copy_id_table",
     "microcosm.build.uk_runtime.council_tax_constants",
     "microcosm.build.uk_runtime.dfe_spring_term",
     "microcosm.build.uk_runtime.diagnostics",

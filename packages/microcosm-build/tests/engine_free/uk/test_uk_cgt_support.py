@@ -841,48 +841,52 @@ def test_geographic_clone_count_is_one_more_than_the_largest_index():
     assert geographic_clone_count(empty) == 1
 
 
+_CLONE_COUNT_RULE = (
+    "A spine counts K geographic clones as the 'household_clone_index' values "
+    "0 to K - 1 (microcosm#931)."
+)
+
+
 @pytest.mark.parametrize(
     "values,message",
     [
         (
             np.asarray([0, 2, 2, 0], dtype="int64"),
-            "1 of the 3 indices from 0 to the largest are carried by no household; "
-            "the CGT support split counts K geographic clones as the "
-            "'household_clone_index' values 0 to K - 1 (microcosm#931).",
+            "An index from 0 to the largest is carried by no household. "
+            + _CLONE_COUNT_RULE,
         ),
         (
             np.asarray([0, 3], dtype="int64"),
-            "2 of the 4 indices from 0 to the largest are carried by no household; "
-            "the CGT support split counts K geographic clones as the "
-            "'household_clone_index' values 0 to K - 1 (microcosm#931).",
+            "An index from 0 to the largest is carried by no household. "
+            + _CLONE_COUNT_RULE,
         ),
         (
             np.asarray([0, -1, 1, -2], dtype="int64"),
-            "2 household(s) carry a negative 'household_clone_index'; the CGT "
-            "support split counts K geographic clones as the "
-            "'household_clone_index' values 0 to K - 1 (microcosm#931).",
+            "A household carries a negative 'household_clone_index'. "
+            + _CLONE_COUNT_RULE,
         ),
         (
             pd.array([0, None, 1], dtype="Int64"),
-            "1 household(s) carry no 'household_clone_index'; the CGT support "
-            "split counts K geographic clones as the 'household_clone_index' "
-            "values 0 to K - 1 (microcosm#931).",
+            "A household carries no 'household_clone_index'. " + _CLONE_COUNT_RULE,
         ),
         (
             np.asarray([0.0, 1.0]),
-            "The CGT support split counts geographic clones on an integer "
-            "'household_clone_index' column; it has dtype float64.",
+            "'household_clone_index' has dtype float64, not an integer one. "
+            + _CLONE_COUNT_RULE,
         ),
         (
             np.asarray([False, True]),
-            "The CGT support split counts geographic clones on an integer "
-            "'household_clone_index' column; it has dtype bool.",
+            "'household_clone_index' has dtype bool, not an integer one. "
+            + _CLONE_COUNT_RULE,
         ),
     ],
 )
-def test_geographic_clone_count_refuses_indices_other_than_0_to_k_by_count(
+def test_geographic_clone_count_refuses_indices_other_than_0_to_k_without_counts(
     values, message: str
 ):
+    """Each refusal is a fixed sentence: no count of households, no id, and
+    the calling stage where one is named (microcosm#931)."""
+
     household = pd.DataFrame(
         {
             "household_id": 1_000_003 + np.arange(len(values)),
@@ -895,6 +899,9 @@ def test_geographic_clone_count_refuses_indices_other_than_0_to_k_by_count(
 
     assert str(caught.value) == message
     assert "1000003" not in str(caught.value)
+    with pytest.raises(ValueError) as named:
+        geographic_clone_count(household, stage="cgt_support_split")
+    assert str(named.value) == message.replace("A spine", "cgt_support_split")
 
 
 # --- the split ----------------------------------------------------------------
@@ -2062,7 +2069,7 @@ def test_the_walk_can_stop_partway_through_a_households_clones():
     assert three_selected == 4
 
 
-def test_the_transform_refuses_a_gap_in_the_clone_indices_by_count():
+def test_the_transform_refuses_a_gap_in_the_clone_indices_naming_its_stage():
     frame = clone_first_frame(_scenario_frame(), 2)
     household = frame.table("household").copy()
     household.loc[household["household_clone_index"] == 1, "household_clone_index"] = 2
@@ -2082,10 +2089,10 @@ def test_the_transform_refuses_a_gap_in_the_clone_indices_by_count():
     with pytest.raises(ValueError) as caught:
         transform(gapped)
 
-    # A count and the rule, never a household.
+    # A fixed sentence naming the stage and the rule: no count, no household.
     assert str(caught.value) == (
-        "1 of the 3 indices from 0 to the largest are carried by no household; "
-        "the CGT support split counts K geographic clones as the "
+        "An index from 0 to the largest is carried by no household. "
+        "cgt_support_split counts K geographic clones as the "
         "'household_clone_index' values 0 to K - 1 (microcosm#931)."
     )
     assert transform.last_result is None

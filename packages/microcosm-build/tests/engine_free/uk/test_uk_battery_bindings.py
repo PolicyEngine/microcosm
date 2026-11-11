@@ -2821,3 +2821,145 @@ class TestGateOnlyAreaSupport:
             "bound_despite_support_floor/census_households"
         ]
         assert result.details["out_of_line_exclusions"] == ["local_authority/LA_B"]
+
+
+# The band donor check reads the phase's frame (microcosm#931). A capped
+# seating's receipt gives no exact count, so the check recomputes the seats
+# from the transferred phase's frame, which the stage-health binding hands it
+# for that check alone. Every frame below is synthetic.
+
+_BAND_DONOR_CHECK = "spi_income_band_donor_support"
+_BAND_DONOR_BOUNDS = (200_000, 500_000, 1_000_000, 2_000_000)
+
+
+def _band_donor_entry(uk_gates):
+    (entry,) = [
+        entry
+        for entry in uk_gates.gates
+        if entry.gate == "stage_health"
+        and entry.parameters["check"] == _BAND_DONOR_CHECK
+    ]
+    return entry
+
+
+def _band_donor_frame(*, carrier_on_first_seat: bool = True):
+    """Two seats per declared band, each with one carrier and one other
+    member, beside two incumbent households; ids in the band donors'
+    copy-id ordinal, one clone."""
+
+    seats = [
+        (2 * 10**11 + 100 * position + seat + 21, float(band))
+        for position, band in enumerate(_BAND_DONOR_BOUNDS)
+        for seat in range(2)
+    ]
+    ids = [11, 12, *(seat for seat, _ in seats)]
+    bands = [0.0, 0.0, *(band for _, band in seats)]
+    donor = [False, False, *([True] * len(seats))]
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray(ids, dtype=np.int64),
+            "household_weight": np.full(len(ids), 10.0),
+            "household_is_spi_income_band_donor": donor,
+            "spi_income_band_donor_lower_bound": bands,
+            "household_clone_index": np.zeros(len(ids), dtype=np.int64),
+        }
+    )
+    carriers = [
+        flag and (carrier_on_first_seat or household_id != seats[0][0])
+        for household_id, flag in zip(ids, donor, strict=True)
+    ]
+    person = pd.DataFrame(
+        {
+            "person_id": np.r_[
+                np.asarray(ids, dtype=np.int64) * 10,
+                np.asarray(ids, dtype=np.int64) * 10 + 1,
+            ],
+            "person_household_id": np.r_[ids, ids].astype(np.int64),
+            "person_benunit_id": np.r_[ids, ids].astype(np.int64),
+            "person_is_spi_income_band_carrier": [*carriers, *([False] * len(ids))],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": np.asarray(ids, dtype=np.int64)})
+    return uk_national_frame(
+        person=person, benunit=benunit, household=household, time_period="2024"
+    )
+
+
+def _capped_band_donor_receipt() -> dict[str, object]:
+    return {
+        "stage": "spi_income_band_donors",
+        "minimum_donors_per_band": 120,
+        "maximum_donor_weight": 250.0,
+        "maximum_reallocation_share": 0.5,
+        "clone_count": 1,
+        "seating_scale": "capped",
+        "mass_scale": 1.0,
+        "sample_fraction": 0.01,
+        "donor_count": 10,
+        "reallocated_mass": "<3",
+        "funding_within_share": True,
+        "funding_matches_bands": True,
+        "mass": {"old_total": 1_000.0, "new_total": 1_000.0},
+        "bands": [
+            {"lower_bound": band, "donor_weight": 50.0, "donor_households": "<3"}
+            for band in _BAND_DONOR_BOUNDS
+        ],
+        "funding": [{"stratum": "LONDON", "donor_households": 10}],
+    }
+
+
+def test_the_stage_health_binding_reads_the_frame_for_the_band_donor_check_only(
+    uk_gates,
+) -> None:
+    binding = UK_GATE_REGISTRY["stage_health"]
+    entries = [entry for entry in uk_gates.gates if entry.gate == "stage_health"]
+    assert any(entry.parameters["check"] != _BAND_DONOR_CHECK for entry in entries)
+    for entry in entries:
+        assert binding.requires_frame(entry.parameters) is (
+            entry.parameters["check"] == _BAND_DONOR_CHECK
+        ), entry.id
+    # The check runs at the spine's transferred boundary, whose battery hands
+    # every gate the phase's frame.
+    assert _band_donor_entry(uk_gates).phase == "transferred"
+
+
+def test_the_band_donor_check_recomputes_a_capped_seating_from_the_phase_frame(
+    uk_gates,
+) -> None:
+    entry = _band_donor_entry(uk_gates)
+    gates = GatesManifest(
+        country=uk_gates.country,
+        version=uk_gates.version,
+        policy=f"{uk_gates.policy}; band donor binding test",
+        phases=uk_gates.phases,
+        gates=(entry,),
+    )
+    artifacts = {
+        "stage_evidence": {"spi_income_band_donors": _capped_band_donor_receipt()}
+    }
+
+    def outcome(frame):
+        report = evaluate_phase(
+            gates,
+            "transferred",
+            EvidenceContext(frame=frame, artifacts=artifacts),
+            registry=UK_GATE_REGISTRY,
+        )
+        (only,) = report.outcomes
+        return only
+
+    # Without the phase's frame the check is evidence_absent, never a verdict
+    # on the receipt alone.
+    absent = outcome(None)
+    assert absent.status is GateStatus.EVIDENCE_ABSENT
+    assert absent.reason == "missing evidence: frame"
+    # Handed the frame, it recomputes the seats there.
+    passed = outcome(_band_donor_frame())
+    assert passed.status is GateStatus.PASSED, passed.result.failures
+    assert passed.result.details["seating_scale"] == "capped"
+    failed = outcome(_band_donor_frame(carrier_on_first_seat=False))
+    assert failed.status is GateStatus.FAILED
+    assert failed.result.failures == (
+        "spi_income_band_donors: band from 200000's seats do not each hold one "
+        "carrier.",
+    )

@@ -31,7 +31,11 @@ from microcosm.build.uk_runtime.cgt_structure import (
 )
 from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
 from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
-from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
+from microcosm.build.uk_runtime.household_lineage import (
+    GEOGRAPHIC_FOLD_EVIDENCE,
+    fold_geographic_clones,
+    geographic_fold_receipt,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -498,6 +502,9 @@ class UKSalarySacrificeResult:
     bonus_receipt: Mapping[str, object] | None = None
     #: The fit's gate outcome, when the gate is not in-sample.
     gate_outcomes: Mapping[str, str] | None = None
+    #: How the forest's geographic fold met its survey records
+    #: (``household_lineage.geographic_fold_receipt``); None on one clone.
+    geographic_fold: Mapping[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -550,6 +557,11 @@ class UKSalarySacrificeResult:
                 {UK_GATE_OUTCOMES_EVIDENCE: dict(self.gate_outcomes)}
                 if self.gate_outcomes
                 else {}
+            ),
+            **(
+                {}
+                if self.geographic_fold is None
+                else {GEOGRAPHIC_FOLD_EVIDENCE: dict(self.geographic_fold)}
             ),
         }
 
@@ -665,17 +677,23 @@ def impute_salary_sacrifice(
     person_weights = person_households.map(household_weights).to_numpy(dtype=float)
     # The forest trains on each asked respondent once: their geographic
     # clones that agree on the predictors and the sacrifice fold into their
-    # first row with their weight, clones that differ stay rows of their own,
-    # and every other copy stays its own row; a frame without geographic
-    # clones keeps every row and weight
-    # (household_lineage.collapse_geographic_clones, microcosm#931).
-    kept, fit_weights = collapse_geographic_clones(
-        {"person": person, "household": household},
+    # lowest-id clone with their weight, clones that differ stay rows of
+    # their own, and every other copy stays its own row; a frame without
+    # geographic clones keeps every row and weight
+    # (household_lineage.fold_geographic_clones, microcosm#931). On more than
+    # one clone the evidence records the fold.
+    lineage_tables = {"person": person, "household": household}
+    fold = fold_geographic_clones(
+        lineage_tables,
         "person",
         training_mask.to_numpy(dtype=bool),
         person_weights,
         inputs=numeric[[*SALSAC_PREDICTORS, SALSAC_OUTPUT]].reset_index(drop=True),
     )
+    geographic_fold = geographic_fold_receipt(
+        lineage_tables, "person", fold, stage="The salary-sacrifice stage"
+    )
+    kept, fit_weights = fold.kept, fold.weights
     training_mask = pd.Series(kept, index=training_mask.index)
     training = numeric.loc[training_mask, [*SALSAC_PREDICTORS, SALSAC_OUTPUT]].copy()
     training["_fit_weight"] = fit_weights[kept]
@@ -938,6 +956,7 @@ def impute_salary_sacrifice(
             if SALSAC_QRF_GATE_CALIBRATION != UK_DEFAULT_GATE_CALIBRATION
             else None
         ),
+        geographic_fold=geographic_fold,
     )
 
 

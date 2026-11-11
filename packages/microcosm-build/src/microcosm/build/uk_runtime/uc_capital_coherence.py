@@ -24,7 +24,11 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_spine import UC_CAPITAL_UNAVAILABLE
-from microcosm.build.uk_runtime.household_lineage import fold_geographic_clones
+from microcosm.build.uk_runtime.household_lineage import (
+    GEOGRAPHIC_FOLD_EVIDENCE,
+    fold_geographic_clones,
+    geographic_fold_receipt,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -44,6 +48,7 @@ from microcosm.build.uk_runtime.uc_relationships import (
 )
 from microcosm.frame import Frame
 
+UC_CAPITAL_COHERENCE_STAGE_NAME = "uc_capital_coherence"
 UC_CAPITAL_REDRAW_OUTPUT = "frs_benunit_capital"
 UC_CAPITAL_REDRAW_SEED = 0
 UC_CAPITAL_REDRAW_SALT = UC_CAPITAL_REDRAW_OUTPUT
@@ -223,12 +228,15 @@ class UKUCCapitalCoherenceResult:
         default_factory=dict
     )
     property_shares: Mapping[str, object] = field(default_factory=dict)
+    #: How the capital redraw's donor fold met its survey records, on a frame
+    #: of more than one geographic clone only (microcosm#931).
+    geographic_fold: Mapping[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
         """Return JSON-safe stage evidence."""
 
-        return {
-            "stage": "uc_capital_coherence",
+        evidence: dict[str, object] = {
+            "stage": UC_CAPITAL_COHERENCE_STAGE_NAME,
             "post_fill_reporter_count": self.post_fill_reporter_count,
             "redrawn_spi_reporter_count": self.redrawn_spi_reporter_count,
             "redrawn_spi_benefit_units": self.redrawn_spi_benefit_units,
@@ -242,6 +250,9 @@ class UKUCCapitalCoherenceResult:
             ),
             "property_shares": dict(self.property_shares),
         }
+        if self.geographic_fold is not None:
+            evidence[GEOGRAPHIC_FOLD_EVIDENCE] = dict(self.geographic_fold)
+        return evidence
 
 
 @dataclass(frozen=True)
@@ -349,8 +360,9 @@ def cohere_uc_capital(
     )
     redraw = spi
     levels: dict[str, int] = dict.fromkeys(_UC_CAPITAL_LEVELS, 0)
+    geographic_fold: dict[str, object] | None = None
     if redraw.any():
-        levels = _redraw_spi_capital(
+        levels, geographic_fold = _redraw_spi_capital(
             benunit,
             person=person,
             household=household,
@@ -443,6 +455,7 @@ def cohere_uc_capital(
             "after": receipt_after,
         },
         property_shares=property_receipt,
+        geographic_fold=geographic_fold,
     )
 
 
@@ -645,7 +658,7 @@ def _redraw_spi_capital(
     capital: np.ndarray,
     investment: np.ndarray,
     minimum_cell_donors: int = UC_CAPITAL_MINIMUM_CELL_DONORS,
-) -> dict[str, int]:
+) -> tuple[dict[str, int], dict[str, object] | None]:
     """Redraw ``redraw`` units' capital from base donors in their cell.
 
     A cell is reporter status x investment-income band x couple x
@@ -659,7 +672,9 @@ def _redraw_spi_capital(
     microcosm#931). A cell's donors are counted in survey records, the
     distinct replica keys among its rows, so neither identical nor differing
     clones grow the count, while every other copy counts as a record of its
-    own. Returns the number of redrawn units drawn at each level.
+    own. Returns the number of redrawn units drawn at each level, and the
+    fold's receipt on a frame of more than one geographic clone
+    (``household_lineage.geographic_fold_receipt``; None on one clone).
     """
 
     if not isinstance(minimum_cell_donors, int) or minimum_cell_donors <= 0:
@@ -686,6 +701,12 @@ def _redraw_spi_capital(
                 "capital": np.asarray(capital),
             }
         ),
+    )
+    geographic_fold = geographic_fold_receipt(
+        {"person": person, "benunit": benunit, "household": household},
+        "benunit",
+        fold,
+        stage=UC_CAPITAL_COHERENCE_STAGE_NAME,
     )
     donor, donor_weight = fold.kept, fold.weights
     target_ids = benunit["benunit_id"].to_numpy()
@@ -764,7 +785,7 @@ def _redraw_spi_capital(
         selected = np.searchsorted(cdf, draws[target_cell], side="right")
         capital[target_cell] = donor_values[np.minimum(selected, len(cdf) - 1)]
         levels[level] += int(target_cell.sum())
-    return levels
+    return levels, geographic_fold
 
 
 def _survey_records(key_group: np.ndarray, pool: np.ndarray) -> int:

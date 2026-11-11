@@ -1743,6 +1743,31 @@ def _synthetic_lcfs_stage(household_columns=None, *, excise=True, gambling=True)
     )
 
 
+def test_the_support_clip_receipt_gives_the_frames_clone_count() -> None:
+    """Every geographic clone's draws are clipped, so the clip receipt gives
+    the frame's clone count from two clones up, for the support-clip check to
+    multiply its row allowances by; a one-clone receipt keeps its form
+    (microcosm#931)."""
+
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    def clip(clones: int) -> dict:
+        synthetic = _synthetic_lcfs_stage()
+        frame = synthetic.frame
+        synthetic.transform(frame if clones == 1 else clone_first_frame(frame, clones))
+        return synthetic.transform.checkpoint_metadata()["evidence"]["support_clip"]
+
+    one = clip(1)
+    assert set(one) == {"columns"}
+    cloned = clip(3)
+    assert cloned["clone_count"] == 3
+    assert set(cloned) == {"columns", "clone_count"}
+    assert all(
+        receipt["rows_considered"] == 3 * one["columns"][column]["rows_considered"]
+        for column, receipt in cloned["columns"].items()
+    )
+
+
 def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     """End to end on synthetic inputs: the committed declaration minus the engine.
 

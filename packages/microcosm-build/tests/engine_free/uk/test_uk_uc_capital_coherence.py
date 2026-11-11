@@ -770,3 +770,33 @@ def test_a_high_value_copy_counts_as_a_donor_of_its_own() -> None:
     )
     assert alone.coarsening_levels["exact_cell"] == 2
     assert copied.coarsening_levels["exact_cell"] == 3
+
+
+def test_the_capital_fold_receipt_is_absent_at_one_clone_and_rounded_at_three() -> None:
+    """The stage records how its donor fold met its survey records only on a
+    frame of more than one geographic clone: the clone count, the selected
+    donors' and the varied donors' distinct source households, rounded, and
+    the varied share only from ten varied households up (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.household_lineage import GEOGRAPHIC_FOLD_EVIDENCE
+
+    for frame in (_frame(), clone_first_frame(_frame(), 1)):
+        result = cohere_uc_capital(frame, minimum_cell_donors=2)
+        assert result.geographic_fold is None
+        assert GEOGRAPHIC_FOLD_EVIDENCE not in result.evidence()
+    # Five base units donate, and no unit's clones differ.
+    alike = cohere_uc_capital(clone_first_frame(_frame(), 3), minimum_cell_donors=2)
+    assert alike.evidence()[GEOGRAPHIC_FOLD_EVIDENCE] == {
+        "clone_count": 3,
+        "records": "3-9",
+        "varied_records": 0,
+        "varied_share": 0,
+    }
+    # Every base unit's clones differ on the capital it donates.
+    varied = cohere_uc_capital(_variant_clones(_frame(), 3), minimum_cell_donors=2)
+    assert varied.evidence()[GEOGRAPHIC_FOLD_EVIDENCE] == {
+        "clone_count": 3,
+        "records": "3-9",
+        "varied_records": "3-9",
+        "varied_share": "3-9",
+    }

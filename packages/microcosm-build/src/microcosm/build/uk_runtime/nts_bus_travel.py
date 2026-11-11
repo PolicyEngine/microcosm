@@ -47,6 +47,7 @@ from microcosm.build.uk_runtime.bus_use_incidence import (
     nts_band_shares,
 )
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.household_income import (
     UK_HBAI_GROSS_INCOME_VARIABLES,
     hbai_gross_income,
@@ -2016,6 +2017,9 @@ class UKNTSBusTravelStageTransform:
             donor_support,
             columns=UK_NTS_SUPPORT_CLIP_COLUMNS,
             stage=UK_NTS_BUS_TRAVEL_STAGE_NAME,
+            clone_count=geographic_clone_count(
+                frame.table("household"), stage=UK_NTS_BUS_TRAVEL_STAGE_NAME
+            ),
         )
         clipped = clip.clipped
         # Outputs.

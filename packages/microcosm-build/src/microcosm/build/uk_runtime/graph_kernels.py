@@ -517,13 +517,16 @@ _STAGE_HELPER_MODULES = {
     # households, count family roles, group tenure by the shared tenure map and
     # name the HBAI income predictor. The WAS stage, and the LISA, bus, LCFS,
     # ETB, landlord, reporter and housing stages below, fit through the QRF
-    # modules (microcosm#931).
+    # modules (microcosm#931). The two WAS stages count no support by lineage,
+    # so they bind the geographic clones' leaf for the clone count their
+    # support-clip receipts read (microcosm#931).
     "was_wealth": (
         *_ENGINE_STAGE_MODULES,
         *_PINNED_TAB_MODULES,
         *_QRF_MODULES,
         frs_brma,
         gates,
+        geographic_clones,
         household_income,
         qrf_gates,
         support_clip,
@@ -543,6 +546,7 @@ _STAGE_HELPER_MODULES = {
         *_QRF_MODULES,
         frs_brma,
         gates,
+        geographic_clones,
         household_income,
         support_clip,
         tenure_constants,
@@ -569,8 +573,10 @@ _STAGE_HELPER_MODULES = {
     # The regional values rank as the dense node does and read its knots
     # (microcosm#1112), over the tenure map's owners; their keyed uniforms are
     # microcosm.graph's, which encodes each draw's coordinates as canonical
-    # JSON (microcosm#931).
+    # JSON, and the cap count reads each row's geographic clone from its id
+    # through the copy-id table (microcosm#931).
     "regional_home_values": (
+        copy_id_table,
         property_localisation,
         rowwise_geography,
         tenure_constants,

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
@@ -898,6 +900,187 @@ def test_support_clip_gate_fails_closed_on_a_missing_allowance() -> None:
     assert not _passed(result)
     assert any("no clipped_low_rows allowance" in f for f in result.failures)
     assert any("no clipped_high_rows allowance" in f for f in result.failures)
+
+
+def _clip_evidence(low: int, high: int, **clip) -> dict:
+    """A was_wealth clip receipt of one column; ``clip`` adds to its block."""
+
+    return {
+        "stage": "was_wealth",
+        "support_clip": {
+            "columns": {
+                "cash_isa": {
+                    "donor_min": 0.0,
+                    "donor_max": 100.0,
+                    "clipped_low_rows": low,
+                    "clipped_high_rows": high,
+                    "rows_considered": 30,
+                }
+            },
+            **clip,
+        },
+    }
+
+
+def _clip_gate(evidence: dict, *, low: int = 1, high: int = 2):
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="was_wealth",
+        check="support_clip",
+        parameters={
+            "stage": "was_wealth",
+            "check": "support_clip",
+            "columns": ["cash_isa"],
+            "max_clipped_low_rows_by_column": {"cash_isa": low},
+            "max_clipped_high_rows_by_column": {"cash_isa": high},
+        },
+    )
+
+
+def test_support_clip_gate_reads_one_clone_allowances_as_declared() -> None:
+    """A receipt without ``clone_count`` is one geographic clone: its
+    allowances, messages and details are as before (microcosm#931)."""
+
+    passed = _clip_gate(_clip_evidence(1, 2))
+    assert _passed(passed)
+    assert passed.details == {
+        "stage": "was_wealth",
+        "check": "support_clip",
+        "columns_checked": 1,
+        "exempt_columns": [],
+    }
+    failed = _clip_gate(_clip_evidence(2, 3))
+    assert not _passed(failed)
+    assert list(failed.failures) == [
+        "was_wealth: 'cash_isa' clipped_low_rows 2 exceeds 1.",
+        "was_wealth: 'cash_isa' clipped_high_rows 3 exceeds 2.",
+    ]
+    assert "clone_count" not in failed.details
+    # A receipt that says one clone reads as one without it.
+    assert _clip_gate(_clip_evidence(2, 3, clone_count=1)) == failed
+
+
+def test_support_clip_gate_scales_its_allowances_by_the_clone_count() -> None:
+    """Every clone's rows are clipped, so ``K`` clones may clip ``K`` times the
+    declared rows, and no more (microcosm#931)."""
+
+    passed = _clip_gate(_clip_evidence(3, 6, clone_count=3))
+    assert _passed(passed)
+    assert passed.details["clone_count"] == 3
+    failed = _clip_gate(_clip_evidence(4, 7, clone_count=3))
+    assert not _passed(failed)
+    assert list(failed.failures) == [
+        "was_wealth: 'cash_isa' clipped_low_rows 4 exceeds 3, 1 for each of the "
+        "3 geographic clones.",
+        "was_wealth: 'cash_isa' clipped_high_rows 7 exceeds 6, 2 for each of the "
+        "3 geographic clones.",
+    ]
+    assert failed.details["clone_count"] == 3
+    # A zero allowance stays zero at any clone count.
+    assert not _passed(_clip_gate(_clip_evidence(1, 0, clone_count=3), low=0))
+    assert _passed(_clip_gate(_clip_evidence(0, 0, clone_count=3), low=0, high=0))
+
+
+@pytest.mark.parametrize("clone_count", [0, -1, True, 2.0, "3", None])
+def test_support_clip_gate_refuses_a_malformed_clone_count(clone_count) -> None:
+    with pytest.raises(ValueError, match="clone_count must be a positive integer"):
+        _clip_gate(_clip_evidence(0, 0, clone_count=clone_count))
+
+
+def test_support_clip_receipt_gives_the_clone_count_beyond_one_clone() -> None:
+    """The shared clip receipt keeps its one-clone form and gives
+    ``clone_count`` only from two clones up (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.support_clip import (
+        support_clip_to_donor_with_receipt,
+    )
+
+    draws = pd.DataFrame({"cash_isa": [-1.0, 50.0, 101.0]})
+    donor = pd.DataFrame({"cash_isa": [0.0, 100.0]})
+
+    def clip(**keywords):
+        return support_clip_to_donor_with_receipt(
+            draws, donor, columns=["cash_isa"], stage="was_wealth", **keywords
+        )
+
+    column = {
+        "donor_min": 0.0,
+        "donor_max": 100.0,
+        "clipped_low_rows": 1,
+        "clipped_high_rows": 1,
+        "rows_considered": 3,
+    }
+    assert clip().receipt.evidence() == {"columns": {"cash_isa": column}}
+    assert clip(clone_count=1).receipt.evidence() == {"columns": {"cash_isa": column}}
+    cloned = clip(clone_count=3)
+    assert cloned.receipt.evidence() == {
+        "columns": {"cash_isa": column},
+        "clone_count": 3,
+    }
+    pd.testing.assert_frame_equal(cloned.clipped, clip().clipped)
+    for malformed in (0, True, 2.5):
+        with pytest.raises(ValueError, match="clone_count must be a positive"):
+            clip(clone_count=malformed)
+
+
+def test_the_support_clip_stages_read_the_shared_clone_count() -> None:
+    """The six support-clip stages read ``K`` through the geographic clones'
+    leaf (``geographic_clone_count``), which names the calling stage in its
+    refusals, as fixed sentences: never a count or an id (microcosm#931)."""
+
+    from microcosm.build.uk_runtime import (
+        etb_services,
+        etb_vat,
+        lcfs_consumption,
+        nts_bus_travel,
+        support_clip,
+        was_lisa,
+        was_wealth,
+    )
+    from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
+
+    assert not hasattr(support_clip, "support_clip_clone_count")
+    for module in (
+        etb_services,
+        etb_vat,
+        lcfs_consumption,
+        nts_bus_travel,
+        was_lisa,
+        was_wealth,
+    ):
+        assert module.geographic_clone_count is geographic_clone_count
+    plain = pd.DataFrame({"household_id": [11, 12]})
+    assert geographic_clone_count(plain, stage="was_wealth") == 1
+    cloned = pd.DataFrame(
+        {
+            "household_id": [11, 12, 1_000_000_011, 1_000_000_012, 2_000_000_011],
+            "household_clone_index": np.array([0, 0, 1, 1, 2], dtype=np.int64),
+        }
+    )
+    assert geographic_clone_count(cloned, stage="was_wealth") == 3
+    rule = (
+        "was_wealth counts K geographic clones as the "
+        "'household_clone_index' values 0 to K - 1 (microcosm#931)."
+    )
+    for index, fault in (
+        (
+            np.array([0, 2, 2], dtype=np.int64),
+            "An index from 0 to the largest is carried by no household.",
+        ),
+        (
+            np.array([0, -1, -1], dtype=np.int64),
+            "A household carries a negative 'household_clone_index'.",
+        ),
+        (
+            pd.array([0, None, None], dtype="Int64"),
+            "A household carries no 'household_clone_index'.",
+        ),
+    ):
+        frame = pd.DataFrame({"household_id": np.arange(11, 11 + len(index))})
+        frame["household_clone_index"] = index
+        with pytest.raises(ValueError) as refused:
+            geographic_clone_count(frame, stage="was_wealth")
+        assert str(refused.value) == f"{fault} {rule}"
 
 
 def _wealth_coherence_evidence() -> dict:
@@ -2187,40 +2370,37 @@ def _spi_income_band_donor_evidence() -> dict[str, object]:
         }
         for lower, (count, taxpayers) in plan.items()
     ]
+    # Every funding row keeps its stratum and rounded donors; its masses and
+    # factor are withheld, and the two booleans state the funding
+    # (microcosm#931).
     return {
         "stage": "spi_income_band_donors",
         "minimum_donors_per_band": 120,
         "maximum_donor_weight": 250.0,
+        "maximum_reallocation_share": 0.5,
         "clone_count": 1,
         "seating_scale": "full",
         "mass_scale": 1.0,
         "sample_fraction": 1.0,
         "donor_count": 1_920,
         "reallocated_mass": 450_000.0,
+        "funding_within_share": True,
+        "funding_matches_bands": True,
         "mass": {"old_total": 28_600_000.0, "new_total": 28_600_000.0},
         "bands": rows,
         "funding": [
             {
-                "stratum": "LONDON",
-                "donor_households": 1_200,
-                "incumbent_mass": 3_700_000.0,
-                "donor_mass": 300_000.0,
-                "factor": 1.0 - 300_000.0 / 3_700_000.0,
-            },
-            {
-                "stratum": "SOUTH_EAST",
-                "donor_households": 720,
-                "incumbent_mass": 3_900_000.0,
-                "donor_mass": 150_000.0,
-                "factor": 1.0 - 150_000.0 / 3_900_000.0,
-            },
-            {
-                "stratum": "WALES",
-                "donor_households": 0,
-                "incumbent_mass": 1_400_000.0,
-                "donor_mass": 0.0,
-                "factor": 1.0,
-            },
+                "stratum": stratum,
+                "donor_households": donors,
+                "incumbent_mass": "<3",
+                "donor_mass": "<3",
+                "factor": "<3",
+            }
+            for stratum, donors in (
+                ("LONDON", 1_200),
+                ("SOUTH_EAST", 700),
+                ("WALES", 0),
+            )
         ],
     }
 
@@ -2235,15 +2415,24 @@ _SPI_INCOME_BAND_DONOR_GATE_PARAMETERS = {
     "maximum_relative_mass_deviation": 1e-9,
     "band_lower_bounds": [200_000, 500_000, 1_000_000, 2_000_000],
 }
+_BAND_DONOR_BOUNDS = (200_000, 500_000, 1_000_000, 2_000_000)
 
 
-def _spi_income_band_donor_gate(evidence: dict[str, object]):
+def _spi_income_band_donor_gate(evidence: dict[str, object], frame=None):
     return uk_stage_health_gate(
         evidence=evidence,
         stage="spi_income_band_donors",
         check="spi_income_band_donor_support",
         parameters=_SPI_INCOME_BAND_DONOR_GATE_PARAMETERS,
+        frame=frame,
     )
+
+
+def _no_data_digit(message: str) -> bool:
+    """Whether ``message`` holds no digit beyond the declared band bounds."""
+
+    bounds = "|".join(str(band) for band in sorted(_BAND_DONOR_BOUNDS, reverse=True))
+    return re.search(r"\d", re.sub(rf"\b(?:{bounds})\b", "", message)) is None
 
 
 def test_spi_income_band_donor_support_gate_checks_every_reserved_band() -> None:
@@ -2252,12 +2441,18 @@ def test_spi_income_band_donor_support_gate_checks_every_reserved_band() -> None
     assert _passed(result)
     assert result.details["donor_count"] == 1_920
     assert result.details["heaviest_donor_weight"] == 250.0
+    assert result.details["funding_within_share"] is True
+    assert "smallest_funding_factor" not in result.details
     rows = evidence["bands"]
     # A band whose copy lost its carrier fails.
     broken = [dict(row) for row in rows]
     broken[-1]["carriers"] = 119
     result = _spi_income_band_donor_gate({**evidence, "bands": broken})
-    assert not result.passed and "119 carriers" in " ".join(result.failures)
+    assert not result.passed
+    assert result.failures == (
+        "spi_income_band_donors: band from 2000000's seats do not each hold one "
+        "carrier.",
+    )
     # A missing band fails against the declared four.
     result = _spi_income_band_donor_gate({**evidence, "bands": rows[:-1]})
     assert not result.passed and "differ from the declared" in " ".join(result.failures)
@@ -2265,18 +2460,22 @@ def test_spi_income_band_donor_support_gate_checks_every_reserved_band() -> None
     off = [dict(row) for row in rows]
     off[0]["donor_weight"] = 1.0
     result = _spi_income_band_donor_gate({**evidence, "bands": off})
-    assert not result.passed and "differ from the published" in " ".join(
+    assert not result.passed and "differ from the published count" in " ".join(
         result.failures
     )
     # A donor above the maximum weight fails, as does a band seated below the
     # minimum at full scale.
     heavy = [dict(row) for row in rows]
     heavy[0].update(donor_households=718, carriers=718, donor_weight=500.0)
-    failures = " ".join(
-        _spi_income_band_donor_gate({**evidence, "bands": heavy}).failures
-    )
-    assert "exceeds the maximum 250.0" in failures
-    assert "the plan seats 1436" in failures
+    failures = _spi_income_band_donor_gate({**evidence, "bands": heavy}).failures
+    assert (
+        "spi_income_band_donors: band from 200000 donor weight exceeds the maximum."
+    ) in failures
+    assert (
+        "spi_income_band_donors: band from 200000 seats other than its plan at full "
+        "scale, or fewer than the minimum."
+    ) in failures
+    assert all(_no_data_digit(failure) for failure in failures)
 
 
 def test_spi_income_band_donor_support_gate_holds_the_mass_conserved() -> None:
@@ -2288,77 +2487,226 @@ def test_spi_income_band_donor_support_gate_holds_the_mass_conserved() -> None:
     assert not result.passed and "funded from the incumbent households" in " ".join(
         result.failures
     )
-    # A stratum scaled below the funding floor fails.
-    funding = [dict(row) for row in evidence["funding"]]
-    funding[0]["factor"] = 0.49
-    result = _spi_income_band_donor_gate({**evidence, "funding": funding})
-    assert not result.passed and "outside [0.5, 1]" in " ".join(result.failures)
-    # Funding rows that do not account for the reallocated mass fail.
-    funding = [dict(row) for row in evidence["funding"]]
-    funding[1]["donor_mass"] = 100_000.0
-    result = _spi_income_band_donor_gate({**evidence, "funding": funding})
-    assert not result.passed and "funding strata carry donor mass" in " ".join(
-        result.failures
+    # Bands that do not carry the reallocated mass fail.
+    result = _spi_income_band_donor_gate({**evidence, "reallocated_mass": 400_000.0})
+    assert result.failures == (
+        "spi_income_band_donors: the bands carry other donor mass than the receipt "
+        "reallocated.",
     )
     # The receipt must be the reviewed rule's.
     result = _spi_income_band_donor_gate({**evidence, "maximum_donor_weight": 500.0})
-    assert not result.passed and "differs from the gate's 250.0" in " ".join(
-        result.failures
+    assert result.failures == (
+        "spi_income_band_donors: receipt maximum_donor_weight differs from the "
+        "gate's declared value.",
     )
     with pytest.raises(ValueError, match="funding must be a non-empty list"):
         _spi_income_band_donor_gate({**evidence, "funding": []})
 
 
-def test_spi_income_band_donor_support_gate_scales_only_off_the_full_sample() -> None:
+def test_spi_income_band_donor_support_gate_reads_the_funding_from_its_booleans() -> (
+    None
+):
+    """The funding rows withhold their masses and factors at every seating, so
+    the gate reads the funding from the receipt's two booleans and holds the
+    stage's declared share to its minimum funding factor (microcosm#931)."""
+
     evidence = _spi_income_band_donor_evidence()
-    # Given a small frame: fewer, lighter donors. The bands fall short of the
-    # published mass by construction and the gate passes on the receipt.
+    messages: list[str] = []
+    # A stratum that gave up more than the declared share, or funding that
+    # does not carry the bands' mass, is a false boolean.
+    for key, meaning in (
+        (
+            "funding_within_share",
+            "every funding stratum keeps at least one less the declared "
+            "reallocation share",
+        ),
+        (
+            "funding_matches_bands",
+            "the bands and the funding strata each carry the reallocated mass",
+        ),
+    ):
+        result = _spi_income_band_donor_gate({**evidence, key: False})
+        assert not result.passed
+        assert result.failures == (
+            f"spi_income_band_donors: the receipt's {key} is not true: {meaning}.",
+        )
+        assert result.details[key] is False
+        messages.extend(result.failures)
+        # A receipt without the boolean, or with another value, fails alike.
+        missing = {name: value for name, value in evidence.items() if name != key}
+        result = _spi_income_band_donor_gate(missing)
+        assert result.failures == (
+            f"spi_income_band_donors: the receipt carries no {key}: {meaning}.",
+        )
+        assert result.details[key] is None
+        result = _spi_income_band_donor_gate({**evidence, key: 1})
+        assert not result.passed and result.details[key] is None
+        assert result.failures == (
+            f"spi_income_band_donors: the receipt's {key} is not true: {meaning}.",
+        )
+        messages.extend(result.failures)
+    # A stage share looser than the gate's minimum funding factor fails: one
+    # less it lets a stratum keep less than the minimum.
+    result = _spi_income_band_donor_gate(
+        {**evidence, "maximum_reallocation_share": 0.6}
+    )
+    assert result.failures == (
+        "spi_income_band_donors: the receipt's maximum_reallocation_share lets a "
+        "funding stratum keep less than the gate's minimum funding factor.",
+    )
+    messages.extend(result.failures)
+    # A stricter share passes, and a share of one fails.
+    stricter = {**evidence, "maximum_reallocation_share": 0.25}
+    assert _passed(_spi_income_band_donor_gate(stricter))
+    result = _spi_income_band_donor_gate(
+        {**evidence, "maximum_reallocation_share": 1.0}
+    )
+    assert result.failures == (
+        "spi_income_band_donors: the receipt's maximum_reallocation_share is not "
+        "a share strictly between zero and one.",
+    )
+    messages.extend(result.failures)
+    assert all(_no_data_digit(message) for message in messages)
+
+
+class _BandDonorFrame:
+    """A synthetic transferred-phase frame holding a band donor layer.
+
+    Each declared band seats ``seats`` households in each of ``clone_count``
+    clones, each id in the band donors' copy-id ordinal and the clone's, with
+    one carrier and one other member; two incumbent households hold no
+    seat, and a later layer's copy of the first seat (the CGT support
+    split's ordinal one) carries the donor flag and a carrier too. Only
+    ``table`` is read, as the gate reads a frame.
+    """
+
+    def __init__(self, *, seats: int = 2, clone_count: int = 1) -> None:
+        household_ids: list[int] = [11, 12]
+        bands: list[float] = [0.0, 0.0]
+        clones: list[int] = [0, 0]
+        donor: list[bool] = [False, False]
+        for clone in range(clone_count):
+            for position, band in enumerate(_BAND_DONOR_BOUNDS):
+                for seat in range(seats):
+                    household_ids.append(
+                        2 * 10**11 + clone * 10**9 + 100 * position + seat + 21
+                    )
+                    bands.append(float(band))
+                    clones.append(clone)
+                    donor.append(True)
+        later = household_ids[2] + 10**13
+        household_ids.append(later)
+        bands.append(bands[2])
+        clones.append(clones[2])
+        donor.append(True)
+        self.household = pd.DataFrame(
+            {
+                "household_id": np.asarray(household_ids, dtype=np.int64),
+                "household_is_spi_income_band_donor": donor,
+                "spi_income_band_donor_lower_bound": bands,
+                "household_clone_index": np.asarray(clones, dtype=np.int64),
+            }
+        )
+        people = [
+            (household_id, carrier)
+            for household_id, is_donor in zip(household_ids, donor, strict=True)
+            for carrier in (is_donor, False)
+        ]
+        self.person = pd.DataFrame(
+            {
+                "person_household_id": np.asarray(
+                    [household_id for household_id, _ in people], dtype=np.int64
+                ),
+                "person_is_spi_income_band_carrier": [carrier for _, carrier in people],
+            }
+        )
+
+    def table(self, entity: str) -> pd.DataFrame:
+        return {"household": self.household, "person": self.person}[entity]
+
+
+def _capped_band_donor_evidence(*, clone_count: int = 1) -> dict[str, object]:
+    """A capped receipt: rounded counts in source households, the masses
+    withheld, the band rows without their carriers' regions."""
+
+    evidence = _spi_income_band_donor_evidence()
     scale = 0.5
     rows = [
         {
-            **row,
-            "donor_households": 2,
-            "carriers": 2,
-            "donor_weight": row["planned_donor_weight"] * scale,
+            "lower_bound": row["lower_bound"],
+            "expected_donor_households": clone_count * row["expected_donor_households"],
+            "donor_households": "<3",
+            "carriers": "<3",
+            "eligible_households": 20,
+            "planned_donor_weight": row["planned_donor_weight"] / clone_count,
+            "donor_weight": row["planned_donor_weight"] * scale / clone_count,
+            "weighted_taxpayers": "<3",
+            "published_taxpayers": row["published_taxpayers"],
+            "carrier_mean_age": "<3",
         }
         for row in evidence["bands"]
     ]
-    donor_mass = sum(row["donor_weight"] * 2 for row in rows)
-    scaled = {
+    return {
         **evidence,
+        "clone_count": clone_count,
         "seating_scale": "capped",
         "mass_scale": scale,
         "sample_fraction": 0.01,
-        "donor_count": 8,
-        "reallocated_mass": donor_mass,
+        "donor_count": "3-9",
+        "reallocated_mass": "<3",
         "bands": rows,
         "funding": [
             {
                 "stratum": "LONDON",
-                "donor_households": 8,
-                "incumbent_mass": 2.0 * donor_mass,
-                "donor_mass": donor_mass,
-                "factor": 0.5,
+                "donor_households": "3-9",
+                "incumbent_mass": "<3",
+                "donor_mass": "<3",
+                "factor": "<3",
             }
         ],
     }
-    assert _passed(_spi_income_band_donor_gate(scaled))
+
+
+def test_spi_income_band_donor_support_gate_scales_only_off_the_full_sample() -> None:
+    # Given a small frame: fewer, lighter donors. The bands fall short of the
+    # published mass by construction; the gate recomputes the capped seats
+    # from the frame and passes.
+    scaled = _capped_band_donor_evidence()
+    frame = _BandDonorFrame()
+    result = _spi_income_band_donor_gate(scaled, frame)
+    assert _passed(result), result.failures
+    # Its details carry the clone count, the seating, the mass scale, the
+    # booleans and the count of bands, and nothing the frame counts.
+    assert result.details == {
+        "stage": "spi_income_band_donors",
+        "check": "spi_income_band_donor_support",
+        "bands_checked": 4,
+        "clone_count": 1,
+        "seating_scale": "capped",
+        "mass_scale": 0.5,
+        "funding_within_share": True,
+        "funding_matches_bands": True,
+    }
+    messages: list[str] = []
     # The same receipt on a full-sample build fails: a full build seats and
     # funds the donors at full scale.
-    result = _spi_income_band_donor_gate({**scaled, "sample_fraction": 1.0})
-    assert not result.passed and "at full scale" in " ".join(result.failures)
-    assert (
+    result = _spi_income_band_donor_gate({**scaled, "sample_fraction": 1.0}, frame)
+    assert result.failures == (
         "spi_income_band_donors: a full-sample build must seat and fund the donors "
-        "at full scale, got seating_scale capped and mass_scale 0.5."
-    ) in result.failures
-    result = _spi_income_band_donor_gate({**scaled, "mass_scale": 0.0})
-    assert not result.passed and "outside (0, 1]" in " ".join(result.failures)
+        "at full scale, got seating_scale capped and a mass_scale other than one.",
+    )
+    messages.extend(result.failures)
+    result = _spi_income_band_donor_gate({**scaled, "mass_scale": 0.0}, frame)
+    assert result.failures == (
+        "spi_income_band_donors: mass_scale is not a share above zero and at most one.",
+    )
+    messages.extend(result.failures)
     # The receipt records the seating scale as full or capped, never as the
     # exact scale, which gives back the eligible household count.
     # A value in neither form is named by its type alone, so a replayed old
     # receipt's exact scale does not reach the gate's verdict.
     result = _spi_income_band_donor_gate(
-        {**scaled, "seating_scale": 8 / 1_920, "sample_fraction": 1.0}
+        {**scaled, "seating_scale": 8 / 1_920, "sample_fraction": 1.0}, frame
     )
     assert not result.passed
     assert (
@@ -2366,16 +2714,126 @@ def test_spi_income_band_donor_support_gate_scales_only_off_the_full_sample() ->
     ) in result.failures
     assert (
         "spi_income_band_donors: a full-sample build must seat and fund the donors "
-        "at full scale, got seating_scale a float and mass_scale 0.5."
+        "at full scale, got seating_scale a float and a mass_scale other than one."
     ) in result.failures
     assert result.details["seating_scale"] == "a float"
     assert not any("0.0041" in failure for failure in result.failures)
+    messages.extend(result.failures)
     result = _spi_income_band_donor_gate(
-        {key: value for key, value in scaled.items() if key != "seating_scale"}
+        {key: value for key, value in scaled.items() if key != "seating_scale"}, frame
     )
     assert (
         "spi_income_band_donors: seating_scale is missing, neither 'full' nor 'capped'."
     ) in result.failures
+    messages.extend(result.failures)
+    # Without the frame, a capped receipt is not passed.
+    result = _spi_income_band_donor_gate(scaled)
+    assert result.failures == (
+        "spi_income_band_donors: a capped seating's seats are recomputed from the "
+        "phase's frame, and the gate was given none.",
+    )
+    messages.extend(result.failures)
+    assert all(_no_data_digit(message) for message in messages)
+
+
+def test_spi_income_band_donor_support_gate_recomputes_a_capped_seating() -> None:
+    """A capped seating's seats are the band donor rows that are originals in
+    every copy-id field minted after the band donors; each holds one carrier,
+    and each band's seats split evenly across the clones (microcosm#931)."""
+
+    evidence = _capped_band_donor_evidence(clone_count=3)
+    frame = _BandDonorFrame(clone_count=3)
+    assert _passed(_spi_income_band_donor_gate(evidence, frame))
+    household, person = frame.household, frame.person
+    later = household["household_id"].ge(10**13)
+    first_seat = int(household.loc[2, "household_id"])
+    messages: list[str] = []
+
+    def gate_on(*, household=household, person=person):
+        broken = _BandDonorFrame(clone_count=3)
+        broken.household, broken.person = household, person
+        return _spi_income_band_donor_gate(evidence, broken)
+
+    # Read as a seat, the later copy of the first seat would split its band
+    # unevenly; the gate reads it as the copy it is.
+    assert household.loc[later, "household_is_spi_income_band_donor"].all()
+    # A seat whose carrier lost its flag holds no carrier, and a seat with a
+    # second carrier holds two.
+    for flags in (
+        person["person_household_id"].eq(first_seat)
+        & person["person_is_spi_income_band_carrier"],
+        person["person_household_id"].eq(first_seat)
+        & ~person["person_is_spi_income_band_carrier"],
+    ):
+        flipped = person.copy()
+        flipped.loc[flags, "person_is_spi_income_band_carrier"] = ~flipped.loc[
+            flags, "person_is_spi_income_band_carrier"
+        ]
+        result = gate_on(person=flipped)
+        assert result.failures == (
+            "spi_income_band_donors: band from 200000's seats do not each hold "
+            "one carrier.",
+        )
+        messages.extend(result.failures)
+    # A seat of clone 1 that is no longer a donor leaves its band uneven.
+    seat = household["household_clone_index"].eq(1) & household[
+        "spi_income_band_donor_lower_bound"
+    ].eq(500_000.0)
+    unseated = household.copy()
+    unseated.loc[seat.idxmax(), "household_is_spi_income_band_donor"] = False
+    result = gate_on(household=unseated)
+    assert result.failures == (
+        "spi_income_band_donors: band from 500000's donors do not split evenly "
+        "across the geographic clones.",
+    )
+    messages.extend(result.failures)
+    # A band without a seat, or a seat in an undeclared band, fails.
+    empty = household.copy()
+    empty.loc[
+        empty["spi_income_band_donor_lower_bound"].eq(2_000_000.0),
+        "household_is_spi_income_band_donor",
+    ] = False
+    result = gate_on(household=empty)
+    assert result.failures == (
+        "spi_income_band_donors: band from 2000000 seats no donor.",
+    )
+    messages.extend(result.failures)
+    undeclared = household.copy()
+    undeclared.loc[2, "spi_income_band_donor_lower_bound"] = 150_000.0
+    result = gate_on(household=undeclared)
+    assert "spi_income_band_donors: a seat holds a band the gate does not declare." in (
+        result.failures
+    )
+    messages.extend(result.failures)
+    # A frame without the band donor columns, or with ids that are not
+    # non-negative integers, cannot be read.
+    result = gate_on(
+        household=household.drop(columns=["household_is_spi_income_band_donor"])
+    )
+    assert result.failures == (
+        "spi_income_band_donors: the frame carries no "
+        "household.household_is_spi_income_band_donor, so the capped seating's "
+        "seats cannot be recomputed.",
+    )
+    messages.extend(result.failures)
+    result = gate_on(
+        household=household.assign(household_id=household["household_id"] * 1.0)
+    )
+    assert result.failures == (
+        "spi_income_band_donors: the frame's household ids are not non-negative "
+        "integers, so the capped seating's seats cannot be recomputed.",
+    )
+    messages.extend(result.failures)
+    # Read against two clones, the three clones' seats do not split.
+    result = _spi_income_band_donor_gate({**evidence, "clone_count": 2}, frame)
+    assert not result.passed
+    assert set(result.failures) == {
+        f"spi_income_band_donors: band from {band}'s donors do not split evenly "
+        "across the geographic clones."
+        for band in _BAND_DONOR_BOUNDS
+    }
+    messages.extend(result.failures)
+    assert all(_no_data_digit(message) for message in messages)
 
 
 def _three_clone_band_donor_evidence() -> dict[str, object]:
@@ -2408,30 +2866,35 @@ def test_spi_income_band_donor_support_gate_scales_its_checks_by_the_clone_count
     assert _passed(result), result.failures
     assert result.details["clone_count"] == 3
     assert result.details["heaviest_donor_weight"] == pytest.approx(250.0 / 3)
+    messages: list[str] = []
 
     # A donor whose weight times the clone count exceeds the maximum fails.
     heavy = [dict(row) for row in evidence["bands"]]
     heavy[0]["donor_weight"] = 100.0
+    failures = _spi_income_band_donor_gate({**evidence, "bands": heavy}).failures
     assert (
-        "spi_income_band_donors: band from 200000 donor weight 100.0 exceeds the "
-        "maximum 250.0 divided by the geographic clone count 3."
-    ) in _spi_income_band_donor_gate({**evidence, "bands": heavy}).failures
+        "spi_income_band_donors: band from 200000 donor weight exceeds the "
+        "maximum divided by the geographic clone count."
+    ) in failures
+    messages.extend(failures)
     # A band whose donors do not split evenly across the clones fails, as does
     # one seated below three clones' minimum at full scale.
     uneven = [dict(row) for row in evidence["bands"]]
     uneven[1].update(donor_households=733, carriers=733)
     failures = _spi_income_band_donor_gate({**evidence, "bands": uneven}).failures
     assert (
-        "spi_income_band_donors: band from 500000 seats 733 donors, which do not "
-        "split evenly across the 3 geographic clones."
+        "spi_income_band_donors: band from 500000's donors do not split evenly "
+        "across the geographic clones."
     ) in failures
+    messages.extend(failures)
     short = [dict(row) for row in evidence["bands"]]
     short[3].update(expected_donor_households=357, donor_households=357, carriers=357)
+    failures = _spi_income_band_donor_gate({**evidence, "bands": short}).failures
     assert (
-        "spi_income_band_donors: band from 2000000 seats 357 donors at full scale; "
-        "the plan seats 357 and the minimum is 360 (120 in each of the 3 "
-        "geographic clones)."
-    ) in _spi_income_band_donor_gate({**evidence, "bands": short}).failures
+        "spi_income_band_donors: band from 2000000 seats other than its plan at "
+        "full scale, or fewer than the minimum in each geographic clone."
+    ) in failures
+    messages.extend(failures)
     # The same rows read as one clone's: no row is checked against three
     # clones, and the one-clone messages are as they were.
     one = _spi_income_band_donor_evidence()
@@ -2439,13 +2902,14 @@ def test_spi_income_band_donor_support_gate_scales_its_checks_by_the_clone_count
     heavy[0].update(donor_households=718, carriers=718, donor_weight=500.0)
     failures = _spi_income_band_donor_gate({**one, "bands": heavy}).failures
     assert (
-        "spi_income_band_donors: band from 200000 donor weight 500.0 exceeds the "
-        "maximum 250.0."
+        "spi_income_band_donors: band from 200000 donor weight exceeds the maximum."
     ) in failures
     assert (
-        "spi_income_band_donors: band from 200000 seats 718 donors at full scale; "
-        "the plan seats 1436 and the minimum is 120."
+        "spi_income_band_donors: band from 200000 seats other than its plan at full "
+        "scale, or fewer than the minimum."
     ) in failures
+    messages.extend(failures)
+    assert all(_no_data_digit(message) for message in messages)
 
     # The clone count must be a positive integer the receipt states.
     for value in (None, 0, -1, 1.0, True, "3"):
@@ -2987,6 +3451,58 @@ def test_property_components_gate_caps_a_reported_allowance_at_two_weights() -> 
     assert failed.details["band_errors"][2]["allowance_weight"] == 19_000.0
 
 
+def _property_rows_gate(below: int, above: int, *, clone_count=None, maximum=1):
+    evidence = _property_components_evidence()
+    evidence["receipts"].update(
+        rows_receipts_below_profit=below, rows_with_profit_above_their_band=above
+    )
+    if clone_count is not None:
+        evidence["clone_count"] = clone_count
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="property_components",
+        check="property_components",
+        parameters={
+            **_PROPERTY_COMPONENTS_PARAMETERS,
+            "maximum_rows_receipts_below_profit": maximum,
+            "maximum_rows_with_profit_above_band": maximum,
+        },
+    )
+
+
+def test_property_components_gate_scales_its_row_maxima_by_the_clone_count() -> None:
+    """The two row maxima are declared for one geographic clone: a receipt
+    without ``clone_count`` reads them as declared, and ``K`` clones may
+    carry ``K`` times the rows (microcosm#931)."""
+
+    one = _property_rows_gate(1, 1)
+    assert _passed(one)
+    assert "clone_count" not in one.details
+    over = _property_rows_gate(2, 2)
+    assert list(over.failures) == [
+        "property_components: 2 rows carry receipts below profit (allowed 1).",
+        "property_components: 2 landlords sit in a receipts band below their "
+        "profit (allowed 1).",
+    ]
+    assert _property_rows_gate(2, 2, clone_count=1) == over
+
+    cloned = _property_rows_gate(3, 3, clone_count=3)
+    assert _passed(cloned)
+    assert cloned.details["clone_count"] == 3
+    failed = _property_rows_gate(4, 4, clone_count=3)
+    assert list(failed.failures) == [
+        "property_components: 4 rows carry receipts below profit (allowed 3, 1 "
+        "for each of the 3 geographic clones).",
+        "property_components: 4 landlords sit in a receipts band below their "
+        "profit (allowed 3, 1 for each of the 3 geographic clones).",
+    ]
+    # The declared zeros stay zero at any clone count.
+    assert not _passed(_property_rows_gate(0, 1, clone_count=3, maximum=0))
+    assert _passed(_property_rows_gate(0, 0, clone_count=3, maximum=0))
+    with pytest.raises(ValueError, match="clone_count must be a positive integer"):
+        _property_rows_gate(0, 0, clone_count=0)
+
+
 def test_consumption_basis_gate_checks_the_recorded_bridge_factor() -> None:
     # The receipt records before, after, base and factor for each bridged
     # column; the gate holds factor to after / base (the #1167 re-review's nit).
@@ -3211,6 +3727,22 @@ def test_regional_home_values_gate_holds_the_ranking_contract(mutate, fragment) 
     result = _gate("uk_stage_regional_home_values_ranking", receipt)
     assert not result.passed
     assert any(fragment in failure for failure in result.failures), result.failures
+
+
+def test_regional_home_values_gate_holds_one_cap_limit_at_any_clone_count() -> None:
+    """The stage counts the sources at the value cap in geographic clone 0's
+    rows (test_uk_regional_home_values), so the check has no clone
+    allowance: a clone count in the receipt does not widen its limit
+    (microcosm#931)."""
+
+    gate_id = "uk_stage_regional_home_values_ranking"
+    for at_cap in (1, "<3", "3-9"):
+        receipt = _home_values_receipt()
+        receipt["sources_at_cap"] = at_cap
+        one = _gate(gate_id, receipt)
+        cloned = _gate(gate_id, {**receipt, "clone_count": 3})
+        assert not one.passed
+        assert cloned == one
 
 
 def test_regional_home_values_gate_flags_a_region_of_fewer_than_three_rows() -> None:

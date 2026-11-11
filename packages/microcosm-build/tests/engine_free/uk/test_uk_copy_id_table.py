@@ -725,7 +725,12 @@ _DENSE_RULE_MODULES = {
 #: donors, which mint through the support channel's clone helper. The
 #: geographic expansion is the one reader among the clone-first steps: it
 #: mints the clones and exports their limit, and the geography identity reads
-#: clone paths from the lineage columns, never from ids.
+#: clone paths from the lineage columns, never from ids. The stage-health
+#: gates decode them: the band donor check reads a capped seating's seats as
+#: the donor rows whose ids hold no ordinal in a field minted after the band
+#: donors, and the regional home values count the sources at the value cap in
+#: the rows whose ids hold no geographic_support ordinal, clone 0's
+#: (microcosm#931).
 _COPY_ID_MODULES = frozenset(
     {
         *(
@@ -738,8 +743,10 @@ _COPY_ID_MODULES = frozenset(
                 "geographic_expand",
                 "graph_kernels",
                 "high_value_home_support",
+                "regional_home_values",
                 "spi_band_donors",
                 "spi_support",
+                "stage_health",
             )
         ),
         "tools/verify_uk_identity_stability.py",
@@ -748,6 +755,14 @@ _COPY_ID_MODULES = frozenset(
 _MINTS_THROUGH_SPI_SUPPORT = frozenset(
     {"packages/microcosm-build/src/microcosm/build/uk_runtime/spi_band_donors.py"}
 )
+#: Modules that name the copy-id table only to hash it, each with why; they
+#: mint, bound and decode no id.
+_HASHES_THE_COPY_ID_TABLE = {
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/gate_phase_codes.py": (
+        "the transferred spine gate's own code hashes it, since only that "
+        "phase's band donor check decodes ids through it (microcosm#931)"
+    ),
+}
 
 
 def _uk_python_sources() -> dict[str, str]:
@@ -851,7 +866,8 @@ def test_only_the_declared_modules_compute_ten_to_an_ids_digit_count() -> None:
 def test_no_module_that_mints_or_decodes_copy_ids_names_the_retired_rule() -> None:
     """Each module that mints, bounds or decodes spine copy ids reads the
     copy-id table, the identity tool among them, and none names the rule the
-    table replaced; the readers of the table are exactly these modules."""
+    table replaced; the readers of the table are exactly these modules and
+    the ones that name it only to hash it."""
 
     names = {
         path: _source_names(source) for path, source in _uk_python_sources().items()
@@ -860,7 +876,10 @@ def test_no_module_that_mints_or_decodes_copy_ids_names_the_retired_rule() -> No
     readers.discard(
         "packages/microcosm-build/src/microcosm/build/uk_runtime/copy_id_table.py"
     )
-    assert readers == _COPY_ID_MODULES - _MINTS_THROUGH_SPI_SUPPORT
+    assert readers == (_COPY_ID_MODULES - _MINTS_THROUGH_SPI_SUPPORT) | set(
+        _HASHES_THE_COPY_ID_TABLE
+    )
+    assert not _COPY_ID_MODULES & set(_HASHES_THE_COPY_ID_TABLE)
     for path in sorted(_COPY_ID_MODULES):
         assert _RETIRED_RULE not in names[path], path
     assert not _COPY_ID_MODULES & set(_DENSE_RULE_MODULES)

@@ -22,6 +22,15 @@ and the council-tax band is untouched (the national band is the FRS's).
 The value it replaces is kept in ``main_residence_value_rank_basis``, which the
 dense node ranks on, so the dense line's values, wealth and bands do not
 change; the release boundary drops the column on both lines.
+
+The receipt's ``sources_at_cap`` counts the source households at the value cap
+in geographic clone 0's rows (microcosm#931). Each clone ranks on its own
+draw, so a union over the clones would grow with the clone count, and the
+stage's check holds the count to one declared maximum. A row's clone is its
+id's ordinal in the copy-id table's ``geographic_support`` field, which the
+clones' ids are minted in and every later copy keeps (clone 0's ordinal is 0),
+so the stage reads it without the clone index. A frame that carries the index
+as well is refused where the two disagree, as on clones minted another way.
 """
 
 from __future__ import annotations
@@ -33,7 +42,12 @@ from importlib.resources import files
 import numpy as np
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
+from microcosm.build.uk_runtime.geographic_clones import (
+    GEOGRAPHIC_COPY_ID_FIELD,
+    ladder_clone_index_column,
+)
 from microcosm.build.uk_runtime.household_lineage import HIGH_VALUE_SUPPORT_COPY_COLUMN
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -221,7 +235,24 @@ def assign_regional_home_values(
         mass_log=(*frame.mass_log, mass),
     )
     validate_uk_national_frame(result)
-    at_cap = distinct_count(source_ids, target & (new_value >= parsed.cap), weights)
+    # Counted in geographic clone 0's rows, so the count does not grow with
+    # the clone count (microcosm#931); at one clone every row is clone 0's.
+    clone = copy_id_table.ordinal(
+        household["household_id"].to_numpy(), GEOGRAPHIC_COPY_ID_FIELD
+    )
+    index_column = ladder_clone_index_column("household")
+    if index_column in household.columns and not np.array_equal(
+        household[index_column].to_numpy(), clone
+    ):
+        raise ValueError(
+            "The regional home values stage reads each household's geographic "
+            "clone from its id, which disagrees with the frame's "
+            f"{index_column!r} (microcosm#931)."
+        )
+    clone_zero = clone == 0
+    at_cap = distinct_count(
+        source_ids, target & (new_value >= parsed.cap) & clone_zero, weights
+    )
     receipt = {
         "knots_basis_year": parsed.basis_year,
         "knots_inputs_sha256": parsed.inputs_sha256,

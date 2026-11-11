@@ -920,6 +920,8 @@ def test_build_spi_support_channel_gives_pension_age_households_their_own_share(
     assert spi_support.SPI_PENSION_AGE_STRATUM_COLUMN not in result.household
     assert result.pension_age_spi_prior_mass_share == 0.2
     assert result.state_pension_age == 66
+    # The two counts are distinct source households: the pension-age base
+    # households', and clone 0's pension-age SPI copies' (microcosm#931).
     assert result.pension_age_allocation == {
         "pension_age_households": 2,
         "pension_age_spi_households": 2,
@@ -928,7 +930,118 @@ def test_build_spi_support_channel_gives_pension_age_households_their_own_share(
         "other_prior_mass": 70.0,
         "other_spi_mass": pytest.approx(35.0),
     }
+    assert result.clone_count == 1
     assert "0.2 in households with" in result.mass_log[-1].reason
+
+    # As two geographic clones, every household copied in each: the rows
+    # double, the source households and clone 0's copies do not, and the
+    # masses are the one clone's.
+    cloned = household.copy()
+    cloned["source_household_id"] = cloned["household_id"]
+    cloned["source_year"] = 2023
+    cloned["source_household_key"] = [
+        f"2023:{value}" for value in cloned["household_id"]
+    ]
+    cloned["household_clone_index"] = 0
+    second = cloned.assign(
+        household_id=cloned["household_id"] + 10**9,
+        household_weight=cloned["household_weight"],
+        household_clone_index=1,
+    )
+    two_clones = build_uk_spi_support_channel(
+        person=pd.concat(
+            [
+                person,
+                person.assign(
+                    person_id=person["person_id"] + 10**9,
+                    person_household_id=person["person_household_id"] + 10**9,
+                    person_benunit_id=person["person_benunit_id"] + 10**9,
+                ),
+            ],
+            ignore_index=True,
+        ),
+        benunit=pd.concat(
+            [benunit, benunit.assign(benunit_id=benunit["benunit_id"] + 10**9)],
+            ignore_index=True,
+        ),
+        household=pd.concat([cloned, second], ignore_index=True).assign(
+            household_weight=lambda table: table["household_weight"] / 2.0
+        ),
+        expected_spi_households=4,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        pension_age_share=0.2,
+        state_pension_age=66,
+    )
+    assert two_clones.clone_count == 2
+    stacked = two_clones.household
+    copies = stacked[support_channel_column("household")].eq(
+        SPI_SYNTHETIC_SUPPORT_CHANNEL
+    )
+    assert int(copies.sum()) == 8
+    assert two_clones.pension_age_allocation == {
+        **result.pension_age_allocation,
+        "pension_age_spi_mass": pytest.approx(6.0),
+        "other_spi_mass": pytest.approx(35.0),
+    }
+
+
+def test_the_pension_age_counts_take_the_carriers_of_their_masses() -> None:
+    """Each pension-age count is of the source households carrying the mass
+    printed beside it, as every receipt counts them: a base household of zero
+    prior weight carries none of the prior mass, while its SPI copy, which
+    the allocation weights, carries copy mass (microcosm#931)."""
+
+    person, benunit, household = _pension_age_frames()
+    household = pd.concat(
+        [
+            household,
+            pd.DataFrame(
+                {"household_id": [5], "household_weight": [0.0], "region": ["LONDON"]}
+            ),
+        ],
+        ignore_index=True,
+    )
+    person = pd.concat(
+        [
+            person,
+            pd.DataFrame(
+                {
+                    "person_id": [5001],
+                    "person_household_id": [5],
+                    "person_benunit_id": [501],
+                    "age": [80],
+                    "employment_income": [0.0],
+                }
+            ),
+        ],
+        ignore_index=True,
+    )
+    benunit = pd.concat(
+        [benunit, pd.DataFrame({"benunit_id": [501]})], ignore_index=True
+    )
+
+    result = build_uk_spi_support_channel(
+        person=person,
+        benunit=benunit,
+        household=household,
+        expected_spi_households=4,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        pension_age_share=0.2,
+        state_pension_age=66,
+    )
+
+    stacked = result.household.set_index(
+        ["source_household_id", support_channel_column("household")]
+    )["household_weight"]
+    # The premise: household 5's base row carries no weight, its copy some.
+    assert stacked[(5, BASE_FRS_SUPPORT_CHANNEL)] == 0.0
+    assert stacked[(5, SPI_SYNTHETIC_SUPPORT_CHANNEL)] > 0.0
+    assert result.pension_age_allocation["pension_age_households"] == 2
+    assert result.pension_age_allocation["pension_age_spi_households"] == 3
 
 
 def test_build_spi_support_channel_without_a_pension_age_share_is_unchanged() -> None:

@@ -326,6 +326,78 @@ def _stage_gate(stage: str, receipt: dict[str, object]):
     )
 
 
+def test_stage_receipt_counts_support_and_values_in_clone_zero() -> None:
+    """Each geographic clone draws its own flags, so the receipt counts a
+    flag's population support and its distinct values in clone 0's rows, as
+    one clone counts them, while the shares are measured over every clone
+    (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.frs_take_up import (
+        UK_EXTENDED_CHILDCARE_OUTPUT,
+        geographic_clone_zero_rows,
+    )
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    one = {row["output"]: row for row in _receipt(_frame(), "frs_take_up")["flags"]}
+    frame = clone_first_frame(_frame(), 3)
+    benunit = frame.table("benunit")
+    clone = benunit["benunit_id"].to_numpy() // 10**9
+    # Clones 1 and 2 claim the working-parent hours in every unit, so their
+    # under-2s join the usage population in households clone 0 leaves out.
+    benunit.loc[clone > 0, UK_EXTENDED_CHILDCARE_OUTPUT] = True
+    # Clone 0 claims Tax-Free Childcare in every unit; the others alternate.
+    benunit.loc[clone == 0, "would_claim_tfc"] = True
+    rows = {row["output"]: row for row in _receipt(frame, "frs_take_up")["flags"]}
+
+    usage = rows["person.max_free_entitlement_hours_used"]
+    assert (
+        usage["population_support"]
+        == one["person.max_free_entitlement_hours_used"]["population_support"]
+    )
+    assert usage["weighted_share"] == "<3"
+    assert rows["benunit.would_claim_tfc"]["distinct_values"] == 1
+    assert (
+        rows["benunit.would_claim_tfc"]["population_support"]
+        == one["benunit.would_claim_tfc"]["population_support"]
+    )
+    failures = _stage_gate("frs_take_up", _receipt(frame, "frs_take_up")).failures
+    assert any("would_claim_tfc is constant" in failure for failure in failures)
+    # Each row reads its household's clone: people, units and households.
+    for entity, ids in (
+        ("household", "household_id"),
+        ("benunit", "benunit_id"),
+        ("person", "person_id"),
+    ):
+        zero = geographic_clone_zero_rows(frame, entity)
+        assert (zero == (frame.table(entity)[ids].to_numpy() // 10**9 == 0)).all()
+        assert geographic_clone_zero_rows(_frame(), entity).all()
+
+
+def test_stage_receipt_withholds_a_share_other_clones_carry_on_one_household() -> None:
+    """The share and the target are measured over every clone, so they are
+    withheld where one or two source households carry the population over
+    every clone, though clone 0 carries none of it and its printed support
+    is 0 (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.frs_take_up import UK_EXTENDED_CHILDCARE_OUTPUT
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    frame = clone_first_frame(_frame(), 3)
+    benunit = frame.table("benunit")
+    # Only clone 1's copy of unit 201 claims the working-parent hours, so the
+    # under-2 usage population is one child of one source household, none of
+    # them in clone 0.
+    benunit[UK_EXTENDED_CHILDCARE_OUTPUT] = benunit["benunit_id"].eq(201 + 10**9)
+    usage = {row["output"]: row for row in _receipt(frame, "frs_take_up")["flags"]}[
+        "person.max_free_entitlement_hours_used"
+    ]
+
+    assert "unmeasured" not in usage
+    assert usage["population_support"] == 0
+    assert usage["weighted_share"] == "<3"
+    assert usage["target"] == "<3"
+
+
 def test_stage_receipt_measures_drawn_flags_and_withholds_thin_populations() -> None:
     receipt = _receipt(_frame(), "frs_take_up")
     rows = {row["output"]: row for row in receipt["flags"]}

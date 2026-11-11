@@ -67,20 +67,23 @@ def uk_spine_transferred_only_code_hash() -> str:
     calendar-year weights, and the vendored-fact reader with the chronicle
     feed and its schema epochs); the annual income spells check
     (``frs_annual_income``); the apprentice draw's take-up contract
-    (``take_up_contract``); and the latent-attribute checks' binomial band
-    (``stochastic_assignment``). Its
+    (``take_up_contract``); the latent-attribute checks' binomial band
+    (``stochastic_assignment``); and the band donor check's copy-id fields,
+    through which it reads a capped seating's seats from the frame
+    (``copy_id_table``; microcosm#931). Its
     enum gate also checks the CGT asset type domain (``cgt_asset_type``).
 
     The assembled gate's own key, on which every later spine stage's chains,
     therefore carries none of them (the re-review of microcosm#1420, E;
     microcosm#931 ruling 6). An edit to one still re-keys the assembled gate
     wherever a stage before it hashes the module. Stages at or before
-    ``frs_brma``, the assembled phase's last, hash six of them:
-    ``stochastic_assignment`` and ``take_up_contract``; ``frs_annual_income``,
-    the module of ``frs_annual_income_spells``; and the vendored-fact reader,
-    the chronicle feed and its schema epochs, which ``frs_hmrc_spine_leaves``
-    binds. Those two stages run before ``frs_brma`` on the clone-first spine
-    (microcosm#931). So an edit to any of the six re-keys every spine node
+    ``frs_brma``, the assembled phase's last, hash seven of them:
+    ``copy_id_table``, which the root stage binds; ``stochastic_assignment``
+    and ``take_up_contract``; ``frs_annual_income``, the module of
+    ``frs_annual_income_spells``; and the vendored-fact reader, the chronicle
+    feed and its schema epochs, which ``frs_hmrc_spine_leaves`` binds. Those
+    two stages run before ``frs_brma`` on the clone-first spine
+    (microcosm#931). So an edit to any of the seven re-keys every spine node
     from the first stage that hashes it onwards, the assembled gate
     included. No stage before that gate hashes the other eleven, so an edit
     to one of those re-keys the stages that hash it, those after them and
@@ -95,6 +98,7 @@ def uk_spine_transferred_only_code_hash() -> str:
         bus_use_incidence,
         cgt_asset_type,
         chronicle_feed,
+        copy_id_table,
         donor_uprating,
         energy_pricing,
         etb_services,
@@ -124,6 +128,7 @@ def uk_spine_transferred_only_code_hash() -> str:
         chronicle_epoch,
         ledger_fact_vendoring,
         shared_ledger_targets,
+        copy_id_table,
     )
 
 

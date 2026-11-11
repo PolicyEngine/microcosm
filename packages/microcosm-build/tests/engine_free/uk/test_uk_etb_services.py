@@ -368,6 +368,83 @@ def _receipt_stage(name: str, fit_kind: str):
     )
 
 
+def test_the_support_clip_receipt_gives_the_frames_clone_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every geographic clone's draws are clipped, so the clip receipt gives
+    the frame's clone count from two clones up, for the support-clip check to
+    multiply its row allowances by; a one-clone receipt keeps its form
+    (microcosm#931)."""
+
+    import numpy as np
+
+    from microcosm.build.uk_runtime import etb_services as module
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    household_columns = list(module.UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS)
+    clipped = household_columns[:3]
+    donor = pd.DataFrame({column: [1.0, 2.0] for column in clipped})
+    monkeypatch.setattr(module, "assert_rules_engine_country", lambda *_: None)
+    monkeypatch.setattr(
+        module,
+        "etb_services_configuration",
+        lambda _stage: {
+            "year": 2024,
+            "weeks_in_year": 52,
+            "rail_fare_index": 1.0,
+            "nhs_budget": 1.0,
+        },
+    )
+    monkeypatch.setattr(module, "etb_donor_uprating", lambda _stage: ({}, {}))
+    monkeypatch.setattr(module, "clean_etb_services_table", lambda raw, **_: raw)
+    monkeypatch.setattr(module, "recipient_predictors", lambda *_: pd.DataFrame())
+    monkeypatch.setattr(module, "_qrf_seed", lambda _stage: 0)
+
+    def impute(*_args, record_ids, **_kwargs):
+        # Every household draws above the donor's range.
+        columns = [*household_columns, "rail_subsidy_spending"]
+        return (
+            pd.DataFrame({column: np.full(len(record_ids), 3.0) for column in columns}),
+            (module.FitWeightRecord("etb_services:test", "explicit"),),
+        )
+
+    monkeypatch.setattr(module, "impute_etb_services", impute)
+    monkeypatch.setattr(module, "support_clip_exempt", lambda _stage: ())
+    monkeypatch.setattr(module, "etb_bus_support_pricing", lambda _s, d, **_: (d, {}))
+    monkeypatch.setattr(
+        module,
+        "allocate_nhs_by_age_gender",
+        lambda person, **_: (
+            pd.DataFrame(
+                {
+                    column: np.zeros(len(person))
+                    for column in module.UK_NHS_OUTPUT_COLUMNS
+                }
+            ),
+            {},
+        ),
+    )
+
+    def clip(frame) -> dict:
+        transform = module.UKETBServicesStageTransform(
+            stage=_receipt_stage("etb_services", "fit_weighted_qrf_chain"),
+            engine=object(),
+            donor=donor,
+        )
+        transform(frame)
+        return transform.checkpoint_metadata()["evidence"]["support_clip"]
+
+    one = clip(_receipt_frame())
+    assert set(one) == {"columns"}
+    assert {receipt["clipped_high_rows"] for receipt in one["columns"].values()} == {2}
+    cloned = clip(clone_first_frame(_receipt_frame(), 3))
+    assert cloned["clone_count"] == 3
+    assert set(cloned["columns"]) == set(clipped)
+    assert {receipt["clipped_high_rows"] for receipt in cloned["columns"].values()} == {
+        6
+    }
+
+
 def test_stage_transform_records_its_mass_conservation_receipt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime.donor_uprating import (
 )
 from microcosm.build.uk_runtime.etb_vat import UK_ETB_FAMILY_ROLE_COUNTS
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.household_income import (
     UK_HBAI_NET_INCOME_PREDICTOR,
     UK_HBAI_NET_INCOME_VARIABLE,
@@ -211,7 +212,12 @@ class UKETBServicesStageTransform:
             outcomes=outcomes,
         )
         clip_result = support_clip_to_donor(
-            draws, donor, exempt=support_clip_exempt(self.stage)
+            draws,
+            donor,
+            exempt=support_clip_exempt(self.stage),
+            clone_count=geographic_clone_count(
+                frame.table("household"), stage=UK_ETB_SERVICES_STAGE_NAME
+            ),
         )
         draws = clip_result.clipped
         household = frame.table("household").copy()
@@ -519,7 +525,11 @@ def impute_etb_services(
 
 
 def support_clip_to_donor(
-    draws: pd.DataFrame, donor: pd.DataFrame, *, exempt: set[str] | None = None
+    draws: pd.DataFrame,
+    donor: pd.DataFrame,
+    *,
+    exempt: set[str] | None = None,
+    clone_count: int = 1,
 ) -> UKSupportClipResult:
     return support_clip_to_donor_with_receipt(
         draws,
@@ -527,6 +537,7 @@ def support_clip_to_donor(
         columns=UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3],
         stage=UK_ETB_SERVICES_STAGE_NAME,
         exempt=exempt,
+        clone_count=clone_count,
     )
 
 

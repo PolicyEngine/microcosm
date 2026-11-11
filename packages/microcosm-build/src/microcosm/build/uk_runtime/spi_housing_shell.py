@@ -38,7 +38,11 @@ from microcosm.build.uk_runtime.council_tax_constants import (
     UK_COUNCIL_TAX_BANDS_BY_REGION,
     UK_NATION_BY_REGION,
 )
-from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
+from microcosm.build.uk_runtime.household_lineage import (
+    GEOGRAPHIC_FOLD_EVIDENCE,
+    fold_geographic_clones,
+    geographic_fold_receipt,
+)
 from microcosm.build.uk_runtime.qrf_gates import (
     UK_DEFAULT_GATE_CALIBRATION,
     UK_GATE_OUTCOMES_EVIDENCE,
@@ -543,12 +547,12 @@ def impute_spi_housing_shell(
     predictors = household_housing_predictors(person, household)
     targets = household_housing_targets(person, household)
     # The model trains on each survey household once: its geographic clones
-    # that agree on the predictors and targets fold into its first row with
-    # their weight, clones that differ stay rows of their own, and every
+    # that agree on the predictors and targets fold into its lowest-id clone
+    # with their weight, clones that differ stay rows of their own, and every
     # other copy stays its own row; a frame without geographic clones keeps
-    # every row and weight (household_lineage.collapse_geographic_clones,
-    # microcosm#931).
-    training, fit_weights = collapse_geographic_clones(
+    # every row and weight (household_lineage.fold_geographic_clones,
+    # microcosm#931). On more than one clone the receipt records the fold.
+    fold = fold_geographic_clones(
         {"household": household},
         "household",
         (channel == FRS_CHANNEL) & (weights.to_numpy() > 0.0),
@@ -560,7 +564,14 @@ def impute_spi_housing_shell(
         .reindex(household["household_id"].to_numpy())
         .reset_index(drop=True),
     )
-    fit_weights = pd.Series(fit_weights, index=household["household_id"])
+    geographic_fold = geographic_fold_receipt(
+        {"household": household},
+        "household",
+        fold,
+        stage=UK_SPI_HOUSING_SHELL_STAGE_NAME,
+    )
+    training = fold.kept
+    fit_weights = pd.Series(fold.weights, index=household["household_id"])
     training_ids = household.loc[training, "household_id"]
     recipient_ids = household.loc[channel == SPI_CHANNEL, "household_id"]
     if training_ids.empty or recipient_ids.empty:
@@ -628,6 +639,8 @@ def impute_spi_housing_shell(
         receipt[UK_GATE_OUTCOMES_EVIDENCE] = gate_outcomes(
             UK_SPI_HOUSING_SHELL_STAGE_NAME, model.amount_model
         )
+    if geographic_fold is not None:
+        receipt[GEOGRAPHIC_FOLD_EVIDENCE] = geographic_fold
     return person_out, household_out, receipt
 
 

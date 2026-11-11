@@ -291,7 +291,9 @@ class UKCGTSupportSplitStageTransform:
             frame,
             distribution=distribution,
             parameters=parameters,
-            clone_count=geographic_clone_count(frame.table("household")),
+            clone_count=geographic_clone_count(
+                frame.table("household"), stage=CGT_SUPPORT_SPLIT_STAGE_NAME
+            ),
         )
         object.__setattr__(self, "last_result", result)
         return result.frame

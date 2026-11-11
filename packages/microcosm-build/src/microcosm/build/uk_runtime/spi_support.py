@@ -288,6 +288,10 @@ class UKSPISupportResult:
     expected_spi_households: float | None = None
     spi_source_households: int | None = None
     spi_inclusion_probability: float | None = None
+    #: The frame's geographic clone count ``K``, which the prior allocation
+    #: reads from ``household_clone_index``: one more than the largest index,
+    #: one on a household table without the column (microcosm#931).
+    clone_count: int = 1
 
     @property
     def n_spi_households(self) -> int:
@@ -563,6 +567,7 @@ def replace_uk_spi_support_tables(
         mass_log=allocated.mass_log,
         replaced_spi_households=int(synthetic.sum()),
         spi_prior_mass_share=share,
+        clone_count=allocated.clone_count,
     )
 
 
@@ -1236,9 +1241,27 @@ def _allocate_spi_prior_mass(
     pension_age_allocation = None
     if pension_age_share is not None:
         final = allocated_weights.values
+        # The two counts are of survey households: the base households' true
+        # sources, which every geographic clone shares, and those of clone 0's
+        # SPI copies, which a one-clone spine copies alike (the share draws
+        # each clone on its own ids, so the copies of every clone together
+        # grow with the clone count). Both are the same at every clone count;
+        # the stage's receipt rounds them (microcosm#931). Each counts the
+        # carriers of the mass printed beside it, as every receipt counts
+        # them: a source on a row of positive weight.
+        sources = household["source_household_id"].to_numpy()
+        clone_zero = (
+            np.ones(len(household), dtype=bool)
+            if clone_strata is None
+            else clone_strata == 0
+        )
         pension_age_allocation = {
-            "pension_age_households": int((pension_age & base_mask).sum()),
-            "pension_age_spi_households": int((pension_age & spi_mask).sum()),
+            "pension_age_households": _distinct_sources(
+                sources, pension_age & base_mask, pre_weights
+            ),
+            "pension_age_spi_households": _distinct_sources(
+                sources, pension_age & spi_mask & clone_zero, final
+            ),
             "pension_age_prior_mass": float(pre_weights[pension_age].sum()),
             "pension_age_spi_mass": float(final[pension_age & spi_mask].sum()),
             "other_prior_mass": float(pre_weights[~pension_age].sum()),
@@ -1258,7 +1281,26 @@ def _allocate_spi_prior_mass(
         expected_spi_households=result.expected_spi_households,
         spi_source_households=result.spi_source_households,
         spi_inclusion_probability=result.spi_inclusion_probability,
+        clone_count=(
+            1
+            if clone_strata is None or not clone_strata.size
+            else int(clone_strata.max()) + 1
+        ),
     )
+
+
+def _distinct_sources(
+    sources: np.ndarray, mask: np.ndarray, weights: np.ndarray
+) -> int:
+    """The distinct source households carrying the rows ``mask`` selects.
+
+    A carrier is the receipts' (``receipt_counts.distinct_carriers``): a
+    source household that is not missing, on a row of positive weight, so a
+    row of zero weight adds nothing to the count.
+    """
+
+    selected = np.asarray(mask, dtype=bool) & (np.asarray(weights, dtype=float) > 0.0)
+    return int(pd.Series(sources[selected]).dropna().nunique())
 
 
 def _geographic_clone_strata(household: pd.DataFrame) -> np.ndarray | None:

@@ -193,6 +193,101 @@ def test_receipt_withholds_a_population_on_fewer_than_three_households() -> None
         assert receipt[key] == "<3", key
 
 
+def test_receipt_counts_its_support_in_geographic_clone_zero() -> None:
+    """Each geographic clone flags its own employees, so the receipt counts
+    its support in clone 0's people, as one clone counts it, and withholds
+    the figures clone 0 carries on fewer than three households; without the
+    clone flags every person counts, as before (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.receipt_counts import support_band
+
+    base = _small([22] * 20, ["FT_EMPLOYED"] * 20)
+    clones = []
+    for k in range(3):
+        clone = base.copy()
+        clone["person_id"] = base["person_id"] + k * 10**9
+        clone["person_household_id"] = base["person_household_id"] + k * 10**9
+        clones.append(clone)
+    person = pd.concat(clones, ignore_index=True)
+    sources = np.tile(base["person_household_id"].to_numpy(), 3)
+    clone_zero = np.repeat([True, False, False], len(base))
+    weights = np.full(len(person), 1 / 3)
+
+    draw = derive_is_apprentice(
+        person,
+        rate=0.05,
+        person_weights=weights,
+        person_sources=sources,
+        person_clone_zero=clone_zero,
+    )
+    in_clone_zero = len(set(sources[draw.flags & clone_zero]))
+    over_clones = len(set(sources[draw.flags]))
+    # The premise: clone 0 flags fewer than three households, every clone
+    # together three or more.
+    assert support_band(in_clone_zero) == "<3"
+    assert support_band(over_clones) != "<3"
+    assert draw.receipt["flagged_support"] == "<3"
+    assert draw.receipt["realized_mass"] == "<3"
+    assert draw.receipt["population_support"] == support_band(20)
+    every = derive_is_apprentice(
+        person, rate=0.05, person_weights=weights, person_sources=sources
+    )
+    assert every.receipt["flagged_support"] == support_band(over_clones)
+    assert every.receipt["realized_mass"] != "<3"
+    np.testing.assert_array_equal(every.flags, draw.flags)
+    with pytest.raises(ValueError, match="one flag per person"):
+        derive_is_apprentice(
+            person,
+            rate=0.05,
+            person_sources=sources,
+            person_clone_zero=clone_zero[:-1],
+        )
+
+
+def test_receipt_withholds_what_other_clones_flag_on_one_or_two_households() -> None:
+    """The masses are taken over every clone, so a mass one or two source
+    households carry in the other clones is withheld though clone 0 flags no
+    one, and the printed support stays clone 0's (microcosm#931)."""
+
+    base = _small([22] * 20, ["FT_EMPLOYED"] * 20).assign(employment_income=20_000.0)
+    clones = []
+    for k in range(3):
+        clone = base.copy()
+        clone["person_id"] = base["person_id"] + k * 10**9
+        clone["person_household_id"] = base["person_household_id"] + k * 10**9
+        if k == 0:
+            # Clone 0 has no employee, so it flags no one.
+            clone["employment_status"] = "STUDENT"
+        clones.append(clone)
+    person = pd.concat(clones, ignore_index=True)
+    sources = np.tile(base["person_household_id"].to_numpy(), 3)
+    clone_zero = np.repeat([True, False, False], len(base))
+    weights = np.ones(len(person))
+
+    draw = derive_is_apprentice(
+        person,
+        rate=1 / len(person),
+        person_weights=weights,
+        relief_schedule={
+            "rate": 0.15,
+            "secondary_threshold": 5_000.0,
+            "apprentice_upper_secondary_threshold": 50_270.0,
+        },
+        person_sources=sources,
+        person_clone_zero=clone_zero,
+    )
+    # The premise: clone 0 flags no one, the other clones one household.
+    assert not draw.flags[clone_zero].any()
+    assert len(set(sources[draw.flags])) == 1
+    assert draw.receipt["flagged_support"] == 0
+    assert draw.receipt["eligible_support"] == 0
+    for key in ("realized_mass", "realization_deviation", "implied_relief"):
+        assert draw.receipt[key] == "<3", key
+    # Clone 0's population and the population over every clone are the same
+    # twenty households, so the population's figures are given.
+    assert draw.receipt["population_mass"] == float(len(person))
+
+
 def test_refuses_a_frame_without_employment_status() -> None:
     person = pd.DataFrame({"person_id": [1], "person_household_id": [1], "age": [22]})
 

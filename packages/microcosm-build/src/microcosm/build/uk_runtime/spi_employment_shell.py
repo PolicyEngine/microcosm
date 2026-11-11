@@ -38,7 +38,11 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
 )
-from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
+from microcosm.build.uk_runtime.household_lineage import (
+    GEOGRAPHIC_FOLD_EVIDENCE,
+    fold_geographic_clones,
+    geographic_fold_receipt,
+)
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_OCCUPATION_STATUS_GROUP,
     UK_SOC2020_NO_OCCUPATION,
@@ -555,12 +559,14 @@ def impute_spi_employment_shell(
         raise ValueError(f"{stage} needs FRS adults with an occupation to train on.")
     # The fit and the donors see each survey record once: its geographic
     # clones that agree on the predictors, the occupation and the industry it
-    # donates fold into its first row with their weight, clones that differ
-    # stay rows of their own, and every other copy stays its own row; a frame
-    # without geographic clones keeps every row and weight
-    # (household_lineage.collapse_geographic_clones, microcosm#931).
-    training, fit_weights = collapse_geographic_clones(
-        {"person": person, "household": household},
+    # donates fold into its lowest-id clone with their weight, clones that
+    # differ stay rows of their own, and every other copy stays its own row;
+    # a frame without geographic clones keeps every row and weight
+    # (household_lineage.fold_geographic_clones, microcosm#931). On more than
+    # one clone the receipt records the fold.
+    lineage_tables = {"person": person, "household": household}
+    fold = fold_geographic_clones(
+        lineage_tables,
         "person",
         training,
         weights,
@@ -574,6 +580,10 @@ def impute_spi_employment_shell(
             axis=1,
         ),
     )
+    geographic_fold = geographic_fold_receipt(
+        lineage_tables, "person", fold, stage=stage
+    )
+    training, fit_weights = fold.kept, fold.weights
 
     # The training rows in person_id order, so neither the fit (the early
     # stopping split, the folds) nor the donor ties depend on how the frame
@@ -692,6 +702,8 @@ def impute_spi_employment_shell(
             "held_out": industry_held_out,
         },
     }
+    if geographic_fold is not None:
+        receipt[GEOGRAPHIC_FOLD_EVIDENCE] = geographic_fold
     return person_out, receipt
 
 

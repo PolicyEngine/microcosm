@@ -10,7 +10,7 @@ The UK fits trained on the frame's FRS rows now fold geographic clones into each
   - `copy_paths`: every household's ordered copy path from a declared lineage, never inferred from ids, weights or values;
   - `replica_keys`: a key per record of any entity, shared only by its replicas in the named branches, with a member's rank in its household telling members apart;
   - `collapse_replicas`: the fold's training rows and weights (`fold_replicas` returns the whole fold), folding only replicas that agree on the fit's `inputs`.
-- **The UK entry.** `household_lineage.collapse_geographic_clones` is the UK's entry and requires those inputs. `uk_household_clone_paths` now reads the clone path through `copy_paths` on `UK_COPY_LINEAGE`, with identical paths and draw keys; three identity-test messages name the shared reader's branches.
+- **The UK entry.** `household_lineage.fold_geographic_clones` is the UK's entry and requires those inputs; `collapse_geographic_clones` returns its rows and weights. `uk_household_clone_paths` now reads the clone path through `copy_paths` on `UK_COPY_LINEAGE`, with identical paths and draw keys; three identity-test messages name the shared reader's branches.
 - **Declarations and tests.**
   - The collapsing stages declare the lineage live where they run, and a test refuses one whose surface would hide it.
   - Replicated-fixture tests hold each fit to the rows and weights it fits without clones.

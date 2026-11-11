@@ -45,6 +45,7 @@ from microcosm.build.uk_runtime.hmrc_replay import (
 from microcosm.build.uk_runtime.hmrc_source_contract import (
     HMRC_DISTRIBUTIONAL_INPUTS,
 )
+from microcosm.build.uk_runtime.household_lineage import GEOGRAPHIC_FOLD_EVIDENCE
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -505,6 +506,10 @@ class UKSPIIncomeSpineResult:
         }
         if self.imputation.gate_outcomes:
             evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.imputation.gate_outcomes)
+        # How the two forests' fold met their survey records, on a frame of
+        # more than one geographic clone only (microcosm#931).
+        if self.imputation.geographic_fold is not None:
+            evidence[GEOGRAPHIC_FOLD_EVIDENCE] = dict(self.imputation.geographic_fold)
         return evidence
 
 
@@ -736,6 +741,8 @@ class UKSPISupportChannelStageTransform:
         return {
             "evidence": {
                 "stage": "spi_support_channel",
+                # The frame's geographic clone count (microcosm#931).
+                "clone_count": result.clone_count,
                 # The copy count is exact: the stage gate reads it, and it
                 # counts a draw over every household, not an attribute cell.
                 "spi_households": result.n_spi_households,
@@ -759,10 +766,8 @@ class UKSPISupportChannelStageTransform:
                     result.pension_age_spi_prior_mass_share
                 ),
                 "state_pension_age": result.state_pension_age,
-                "pension_age_allocation": (
-                    None
-                    if result.pension_age_allocation is None
-                    else dict(result.pension_age_allocation)
+                "pension_age_allocation": _pension_age_allocation_receipt(
+                    result.pension_age_allocation
                 ),
                 "household_weight_kind": (
                     result.household_weight_kind.value
@@ -771,6 +776,36 @@ class UKSPISupportChannelStageTransform:
                 ),
             }
         }
+
+
+#: The pension-age allocation's counts of survey households, which the stage's
+#: receipt rounds: the pension-age base households' distinct sources and clone
+#: 0's pension-age SPI copies' (microcosm#931).
+_PENSION_AGE_ALLOCATION_COUNTS = (
+    "pension_age_households",
+    "pension_age_spi_households",
+)
+
+
+def _pension_age_allocation_receipt(
+    allocation: Mapping[str, object] | None,
+) -> dict[str, object] | None:
+    """The pension-age allocation as the receipt gives it.
+
+    Its two counts of distinct source households rounded by the receipts'
+    rule (``receipt_counts.rounded_count``), its masses as they are.
+    """
+
+    if allocation is None:
+        return None
+    return {
+        key: (
+            rounded_count(int(value))
+            if key in _PENSION_AGE_ALLOCATION_COUNTS
+            else value
+        )
+        for key, value in allocation.items()
+    }
 
 
 @dataclass(frozen=True)

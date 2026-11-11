@@ -21,7 +21,11 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
 )
-from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
+from microcosm.build.uk_runtime.household_lineage import (
+    GEOGRAPHIC_FOLD_EVIDENCE,
+    fold_geographic_clones,
+    geographic_fold_receipt,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -149,6 +153,9 @@ class UKUCReporterRedrawResult:
     reporter_transitions: Mapping[str, Mapping[str, Mapping[str, int]]]
     #: The redraw's gate outcome, when the gate is not in-sample.
     gate_outcomes: Mapping[str, str] | None = None
+    #: How the forest's geographic fold met its survey records
+    #: (``household_lineage.geographic_fold_receipt``); None on one clone.
+    geographic_fold: Mapping[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
         """Return JSON-safe stage evidence."""
@@ -169,6 +176,8 @@ class UKUCReporterRedrawResult:
         }
         if self.gate_outcomes:
             evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.gate_outcomes)
+        if self.geographic_fold is not None:
+            evidence[GEOGRAPHIC_FOLD_EVIDENCE] = dict(self.geographic_fold)
         return evidence
 
 
@@ -321,14 +330,15 @@ def redraw_spi_reported_uc(
         )
     # The forest trains on each screened benefit unit once: its geographic
     # clones that agree on the predictors and the reported amount fold into
-    # its first row with their weight, clones that differ (a member's
+    # its lowest-id clone with their weight, clones that differ (a member's
     # property income drawn on its own id, say) stay rows of their own, and
     # every other copy stays its own row; a frame without geographic clones
-    # keeps every row and weight (household_lineage.collapse_geographic_clones,
+    # keeps every row and weight (household_lineage.fold_geographic_clones,
     # microcosm#931). The screen is each row's own engine output, so the fold
-    # follows it.
-    training, fit_weights = collapse_geographic_clones(
-        {"person": person, "benunit": benunit, "household": household},
+    # follows it. On more than one clone the evidence records the fold.
+    lineage_tables = {"person": person, "benunit": benunit, "household": household}
+    fold = fold_geographic_clones(
+        lineage_tables,
         "benunit",
         training,
         weights,
@@ -336,6 +346,10 @@ def redraw_spi_reported_uc(
             **{UC_REPORTER_TARGET: np.asarray(reported_before)}
         ),
     )
+    geographic_fold = geographic_fold_receipt(
+        lineage_tables, "benunit", fold, stage=UC_REPORTER_REDRAW_STAGE_NAME
+    )
+    training, fit_weights = fold.kept, fold.weights
     if float(fit_weights[training].sum()) <= 0.0:
         raise ValueError("UC reporter redraw training weights must have positive mass.")
     if not target.any():
@@ -453,6 +467,7 @@ def redraw_spi_reported_uc(
             if UC_REPORTER_GATE_CALIBRATION != UK_DEFAULT_GATE_CALIBRATION
             else None
         ),
+        geographic_fold=geographic_fold,
     )
 
 

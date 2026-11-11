@@ -73,6 +73,7 @@ from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime import copy_id_table
 from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
 from microcosm.build.uk_runtime.geographic_clones import (
+    GEOGRAPHIC_COPY_ID_FIELD,
     SOURCE_HOUSEHOLD_KEY_COLUMN,
     SOURCE_YEAR_COLUMN,
     UK_GEOGRAPHIC_SOURCE_COLUMNS,
@@ -116,8 +117,9 @@ __all__ = [
 ]
 
 GEOGRAPHIC_EXPAND_STAGE_NAME = "geographic_expand"
-#: The copy-id table's field the clones' ids are minted in.
-GEOGRAPHIC_COPY_ID_FIELD = "geographic_support"
+# The copy-id table's field the clones' ids are minted in
+# (GEOGRAPHIC_COPY_ID_FIELD) is named in the geographic_clones leaf, which
+# regional_home_values reads it from, and re-exported here.
 #: The most clones the field numbers: clone ordinals run below it. Exported
 #: so the spine and its graph can read the limit from here.
 GEOGRAPHIC_CLONE_LIMIT = copy_id_table.ordinal_bound(GEOGRAPHIC_COPY_ID_FIELD)

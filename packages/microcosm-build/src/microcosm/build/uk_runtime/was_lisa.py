@@ -70,6 +70,7 @@ from microcosm.build.gates import EXPLICIT_KIND, FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.hmrc_isa_statistics import (
     HMRC_ISA_BUILD_TAX_YEAR,
     HMRCISAStatistics,
@@ -1639,6 +1640,9 @@ class UKWASLISAStageTransform:
             donor.person[[BALANCE_COLUMN]],
             columns=UK_WAS_LISA_SUPPORT_CLIP_COLUMNS,
             stage=UK_WAS_LISA_STAGE_NAME,
+            clone_count=geographic_clone_count(
+                household_table, stage=UK_WAS_LISA_STAGE_NAME
+            ),
         )
         capped, coherence = cap_lifetime_isa_to_financial_wealth(
             person_household_ids=person_household_ids,
