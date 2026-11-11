@@ -467,10 +467,12 @@ def test_uniform_growth_keeps_each_split_s_bins_summing_to_its_total_row(
 
     The compile scales each total row by the filing-season bins' sum over the
     four total rows' sum, here the factor times all Table 2.5 bins over all
-    total rows. Each split's compiled gap then equals the factor times its
-    source gap (bins less total row), less its total row's share of the gap
-    summed over the four splits. On this fixture every gap stays within one
-    allowance.
+    total rows. A split's compiled gap (bins less total row) then equals
+    ``factor * (g - t / T * G)``, where ``g`` is its source gap, ``t`` its
+    source total row, ``T`` the four source total rows' sum and ``G`` the four
+    source gaps' sum. On this fixture ``g - t / T * G`` stays within one
+    allowance, so each compiled gap stays within one allowance times the
+    factor.
     """
 
     factor = growth / 100
