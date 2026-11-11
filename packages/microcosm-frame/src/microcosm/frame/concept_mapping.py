@@ -13,7 +13,10 @@ columns, and :meth:`ConceptMapping.decode` recovers every concept whose
 bindings are invertible. Bindings on engine group entities (tax units,
 benefit units, SPM units, families) need unit membership that a concept frame
 does not carry; they declare a :class:`GroupRule`, and :meth:`encode`
-reports them as deferred. :meth:`ConceptMapping.encode_groups` executes them
+reports them as deferred. The exception is ``person_role``: each row of such
+an entity (Axiom's ``Child``) is one person, so :meth:`encode` writes the
+binding on the person table, one value per person.
+:meth:`ConceptMapping.encode_groups` executes the other rules
 once a unit-construction step has built the units from the relationship
 pointers (:mod:`microcosm.frame.unit_construction` builds benefit units) and
 hands their :class:`GroupMembership` over. It also executes declared state
@@ -68,6 +71,7 @@ __all__ = [
     "Allocation",
     "ConceptMappedEngine",
     "ConceptMapping",
+    "CoresidentAdult",
     "CoresidentChildCount",
     "CoverageReport",
     "EncodedGroupInputs",
@@ -90,6 +94,7 @@ __all__ = [
     "Role",
     "ScaledSum",
     "Share",
+    "SignedPart",
     "StateBinding",
     "StateTest",
     "Sum",
@@ -128,7 +133,9 @@ class GroupRule(StrEnum):
     """How a binding on an engine group entity collapses member values.
 
     :meth:`ConceptMapping.encode_groups` applies every rule except
-    :attr:`PERSON_ROLE`, given the units' :class:`GroupMembership`.
+    :attr:`PERSON_ROLE`, given the units' :class:`GroupMembership`;
+    :meth:`ConceptMapping.encode` applies :attr:`PERSON_ROLE`, which needs no
+    units.
     """
 
     #: Sum the members' values.
@@ -238,6 +245,30 @@ class ScaledSum:
         if not math.isfinite(factor) or factor <= 0:
             raise ValueError(f"A scale factor must be finite and positive: {factor}.")
         object.__setattr__(self, "factor", factor)
+
+
+_SIGNED_PART_SIGNS = ("positive", "negative")
+
+
+@dataclass(frozen=True)
+class SignedPart:
+    """One sign of the sum of annual-flow amount concepts, never negative.
+
+    A rule can split a signed amount between two inputs that are never
+    negative: policyengine-uk takes a trade's profit in
+    ``self_employment_income`` and its loss in ``trading_loss``. ``sign``
+    ``"positive"`` gives ``max(sum, 0)`` and ``"negative"`` gives
+    ``max(-sum, 0)``, so two bindings of the same concepts never both hold an
+    amount. Not invertible.
+    """
+
+    sign: str
+
+    def __post_init__(self) -> None:
+        if self.sign not in _SIGNED_PART_SIGNS:
+            raise ValueError(
+                f"A signed part is 'positive' or 'negative', not {self.sign!r}."
+            )
 
 
 @dataclass(frozen=True)
@@ -351,6 +382,38 @@ class CoresidentChildCount:
 
 
 @dataclass(frozen=True)
+class CoresidentAdult:
+    """A boolean input: another person in this person's household is old enough.
+
+    A person's value is true when at least one other person row with the same
+    household id has an age of at least :attr:`min_age`. The person's own age
+    never counts, and a null age never qualifies.
+
+    Attributes:
+        min_age: The age, in whole years, a co-resident must have reached.
+            The law sets it, so every binding declares it; it has no default.
+    """
+
+    min_age: int
+
+    def __post_init__(self) -> None:
+        if isinstance(self.min_age, bool) or not isinstance(self.min_age, int):
+            raise ValueError(
+                f"A co-resident adult's min_age must be an integer, not "
+                f"{self.min_age!r}."
+            )
+        if self.min_age < 0:
+            raise ValueError(
+                f"A co-resident adult's min_age must not be negative: {self.min_age}."
+            )
+
+    @property
+    def concepts(self) -> tuple[str, ...]:
+        """The concepts the test reads."""
+        return ("fact:person.age",)
+
+
+@dataclass(frozen=True)
 class TakeUpThreshold:
     """A take-up flag: the program's draw falls below its rate.
 
@@ -420,10 +483,12 @@ Transform = (
     | Sum
     | Product
     | ScaledSum
+    | SignedPart
     | AllocateToReferencePerson
     | Predicate
     | RelationshipRole
     | CoresidentChildCount
+    | CoresidentAdult
     | TakeUpThreshold
     | UnitComposition
 )
@@ -439,11 +504,13 @@ _TRANSFORM_KINDS: dict[str, type] = {
     "predicate": Predicate,
     "relationship_role": RelationshipRole,
     "coresident_child_count": CoresidentChildCount,
+    "coresident_adult": CoresidentAdult,
     "take_up_threshold": TakeUpThreshold,
     "fraction": Fraction,
     "positive": Positive,
     "scale": Scale,
     "scaled_sum": ScaledSum,
+    "signed_part": SignedPart,
     "unit_composition": UnitComposition,
 }
 _KIND_BY_TRANSFORM: dict[type, str] = {
@@ -475,10 +542,14 @@ def transform_to_dict(transform: Transform) -> dict[str, object]:
         out["parameter"] = transform.parameter
     elif isinstance(transform, Scale | ScaledSum):
         out["factor"] = transform.factor
+    elif isinstance(transform, SignedPart):
+        out["sign"] = transform.sign
     elif isinstance(transform, UnitComposition):
         out["feature"] = transform.feature.value
     elif isinstance(transform, CoresidentChildCount) and transform.max_age is not None:
         out["max_age"] = transform.max_age
+    elif isinstance(transform, CoresidentAdult):
+        out["min_age"] = transform.min_age
     elif isinstance(transform, TakeUpThreshold):
         out["program"] = transform.program
     return out
@@ -492,8 +563,10 @@ _TRANSFORM_FIELDS: dict[str, frozenset[str]] = {
     "fraction": frozenset({"parameter"}),
     "scale": frozenset({"factor"}),
     "scaled_sum": frozenset({"factor"}),
+    "signed_part": frozenset({"sign"}),
     "unit_composition": frozenset({"feature"}),
     "coresident_child_count": frozenset({"max_age"}),
+    "coresident_adult": frozenset({"min_age"}),
     "take_up_threshold": frozenset({"program"}),
 }
 
@@ -579,10 +652,14 @@ def _read_transform(data: object) -> Transform:
         if isinstance(factor, bool) or not isinstance(factor, int | float):
             raise ValueError("A scale factor must be a number.")
         return _TRANSFORM_KINDS[kind](factor=factor)
+    if kind == "signed_part":
+        return SignedPart(sign=text("sign"))
     if kind == "unit_composition":
         return UnitComposition(feature=UnitFeature(text("feature")))
     if kind == "coresident_child_count":
         return CoresidentChildCount(max_age=optional_age("max_age"))
+    if kind == "coresident_adult":
+        return CoresidentAdult(min_age=required("min_age"))
     if kind == "take_up_threshold":
         return TakeUpThreshold(program=text("program"))
     return _TRANSFORM_KINDS[kind]()
@@ -812,7 +889,8 @@ class InputBinding:
         if isinstance(self.transform, AllocateToReferencePerson):
             return "person"
         if isinstance(
-            self.transform, RelationshipRole | CoresidentChildCount | UnitComposition
+            self.transform,
+            RelationshipRole | CoresidentChildCount | CoresidentAdult | UnitComposition,
         ):
             return "person"
         entities = {concept(concept_id).entity for concept_id in self.concepts}
@@ -855,7 +933,7 @@ def bind(
 #: binding allocated to the reference unit also reads to place its value. A
 #: product is outside the rule: it multiplies a usual rate (weekly hours) by
 #: weeks.
-_FLOW_TRANSFORMS = (Scale, Sum, ScaledSum, Share, Fraction)
+_FLOW_TRANSFORMS = (Scale, Sum, ScaledSum, SignedPart, Share, Fraction)
 
 
 def _check_transform_arity(binding: InputBinding) -> None:
@@ -891,7 +969,8 @@ def _check_transform_arity(binding: InputBinding) -> None:
                 f"concept's domain {list(domain)}."
             )
     if isinstance(
-        transform, Share | Fraction | Sum | ScaledSum | AllocateToReferencePerson
+        transform,
+        Share | Fraction | Sum | ScaledSum | SignedPart | AllocateToReferencePerson,
     ):
         for item in items:
             if item.monetary is None:
@@ -907,7 +986,10 @@ def _check_transform_arity(binding: InputBinding) -> None:
         )
     if isinstance(transform, Sum | ScaledSum) and len(items) < 2:
         raise ValueError(f"Binding for {name!r}: a sum reads two or more amounts.")
-    if isinstance(transform, ScaledSum) and len({item.entity for item in items}) != 1:
+    if (
+        isinstance(transform, ScaledSum | SignedPart)
+        and len({item.entity for item in items}) != 1
+    ):
         raise ValueError(f"Binding for {name!r}: a sum adds amounts on one entity.")
     if isinstance(transform, _FLOW_TRANSFORMS):
         for item in items:
@@ -960,6 +1042,13 @@ def _check_transform_arity(binding: InputBinding) -> None:
         raise ValueError(
             f"Binding for {name!r}: a child count reads both parents "
             f"(and age when limited): {transform.concepts}."
+        )
+    if isinstance(transform, CoresidentAdult) and (
+        binding.concepts != transform.concepts
+    ):
+        raise ValueError(
+            f"Binding for {name!r}: a co-resident adult test reads age only: "
+            f"{transform.concepts}."
         )
     if isinstance(transform, TakeUpThreshold):
         if binding.concepts != ("fact:person.take_up_seed",):
@@ -1031,7 +1120,8 @@ class EncodedInputs:
         deferred: Bindings on engine group entities, which need engine unit
             membership and were not executed here; group encoding
             (:meth:`ConceptMapping.encode_groups`) executes them on built
-            units.
+            units. ``person_role`` bindings need no units: encoding executes
+            them and never defers them.
     """
 
     tables: Mapping[str, pd.DataFrame]
@@ -1331,7 +1421,8 @@ class EncodedGroupInputs:
             aligned to that membership's unit table, with the unit id column
             plus the engine inputs.
         deferred: Group bindings not executed: their engine entity has no
-            membership here, or they take the per-person ``person_role`` rule.
+            membership here. Never a ``person_role`` binding, which
+            :meth:`ConceptMapping.encode` executes.
     """
 
     tables: Mapping[str, pd.DataFrame]
@@ -1415,6 +1506,7 @@ class ConceptMapping:
             )
         self._check_shares()
         self._check_shared_names()
+        self._check_person_role_entities()
         object.__setattr__(
             self,
             "_by_concept",
@@ -1466,26 +1558,66 @@ class ConceptMapping:
             _check_group_rule(self.engine, binding)
 
     def _check_shared_names(self) -> None:
-        """One encoded column per input name: every module computes it alike.
+        """One encoded column per input name: every binding computes it alike.
 
         Module-scoped engines can read the same input name in several
-        modules. An encoded frame holds one column per name and entity, so
-        every binding of that name must compute it the same way.
+        modules. An encoded frame holds one column per name and table, so
+        every binding that writes the column must compute it the same way.
+        An executable binding writes its concept entity's table, one value
+        per row, so a ``person_role`` binding shares the person table with
+        the engine's person entity and with every other ``person_role``
+        entity. A group binding writes its engine entity's units.
         """
-        seen: dict[tuple[str, str], InputBinding] = {}
+        seen: dict[tuple[str, bool, str], InputBinding] = {}
         for binding in self.bindings:
-            key = (binding.engine_input, binding.engine_entity)
+            executable = self.is_executable(binding)
+            key = (
+                binding.engine_input,
+                executable,
+                binding.concept_entity if executable else binding.engine_entity,
+            )
             first = seen.setdefault(key, binding)
-            if (first.concepts, first.transform, first.group_rule) != (
+            # Executable bindings all give each row its own value, so the
+            # rule is part of the computation only for group bindings.
+            if (
+                first.concepts,
+                first.transform,
+                None if executable else first.group_rule,
+            ) != (
                 binding.concepts,
                 binding.transform,
-                binding.group_rule,
+                None if executable else binding.group_rule,
             ):
-                raise ValueError(
-                    f"{self.engine}: {binding.engine_input!r} on "
-                    f"{binding.engine_entity!r} is computed differently in "
-                    f"{first.module} and {binding.module}."
+                entities = " and ".join(
+                    repr(entity)
+                    for entity in sorted({first.engine_entity, binding.engine_entity})
                 )
+                raise ValueError(
+                    f"{self.engine}: {binding.engine_input!r} on {entities} is "
+                    f"computed differently in {first.module} and {binding.module}."
+                )
+
+    def _check_person_role_entities(self) -> None:
+        """An engine entity's rows are persons in a role or built units.
+
+        :meth:`encode` writes a ``person_role`` binding on the person table,
+        and :meth:`encode_groups` writes other group bindings on built units,
+        so one entity can't take both.
+        """
+        rules: dict[str, set[GroupRule]] = defaultdict(set)
+        for binding in self.bindings:
+            if binding.group_rule is not None:
+                rules[binding.engine_entity].add(binding.group_rule)
+        mixed = sorted(
+            entity
+            for entity, found in rules.items()
+            if GroupRule.PERSON_ROLE in found and len(found) > 1
+        )
+        if mixed:
+            raise ValueError(
+                f"{self.engine}: {mixed} mix person_role with other group "
+                "rules; an entity's rows are persons in a role or built units."
+            )
 
     def _check_shares(self) -> None:
         groups: dict[tuple[str, str | None], list[InputBinding]] = defaultdict(list)
@@ -1654,8 +1786,28 @@ class ConceptMapping:
         return tuple(out.values())
 
     def is_executable(self, binding: InputBinding) -> bool:
-        """Whether :meth:`encode` computes the binding (it is not deferred)."""
-        return binding.group_rule is None
+        """Whether :meth:`encode` computes the binding (it is not deferred).
+
+        A ``person_role`` binding takes each person's own value, so it
+        executes on the person table like a binding without a group rule.
+        """
+        return binding.group_rule in (None, GroupRule.PERSON_ROLE)
+
+    def person_role_entities(self) -> tuple[str, ...]:
+        """The engine entities whose bindings use ``person_role``, sorted.
+
+        Such an entity (Axiom's ``Child``) has one row per person in the
+        role, so :meth:`encode` writes its inputs on the person table.
+        """
+        return tuple(
+            sorted(
+                {
+                    binding.engine_entity
+                    for binding in self.bindings
+                    if binding.group_rule is GroupRule.PERSON_ROLE
+                }
+            )
+        )
 
     def invertible_concepts(self) -> tuple[str, ...]:
         """Concepts :meth:`decode` recovers exactly from the engine inputs.
@@ -1715,9 +1867,11 @@ class ConceptMapping:
     ) -> EncodedInputs:
         """Compute the engine inputs a concept frame supplies.
 
-        Every executable binding whose concepts are all present in ``tables``
-        is computed. Bindings on engine group entities are returned as
-        deferred (:meth:`encode_groups` executes them on built units). Share
+        It computes every executable binding whose concepts are all present
+        in ``tables``, ``person_role`` bindings included: each writes one
+        value per person on the person table. It returns other bindings on
+        engine group entities as deferred (:meth:`encode_groups` executes
+        them on built units). Share
         parameters and take-up rates are needed only for the
         bindings that use them. A take-up rate of ``None`` marks a program
         the caller leaves unseeded: its flag is not written, so the engine
@@ -1786,8 +1940,9 @@ class ConceptMapping:
           other units, or shared per adult when ``knobs`` says so; either
           way each household's units sum back to its amount.
 
-        ``person_role`` bindings, and bindings on an engine entity with no
-        membership, are returned as deferred. Each state binding is executed
+        It skips ``person_role`` bindings, which :meth:`encode` executes,
+        and returns bindings on an engine entity with no membership as
+        deferred. Each state binding is executed
         the same way from its model-state columns. ``knobs`` then zero or
         scale named inputs.
 
@@ -1859,10 +2014,10 @@ class ConceptMapping:
             produced[name].add(frame_entity)
 
         for binding in self.bindings:
-            if binding.group_rule is None or not keep(binding.module):
+            if self.is_executable(binding) or not keep(binding.module):
                 continue
             group = units.get(binding.engine_entity)
-            if group is None or binding.group_rule is GroupRule.PERSON_ROLE:
+            if group is None:
                 deferred.append(binding)
                 continue
             if not all(context.has(concept_id) for concept_id in binding.concepts):
@@ -2009,6 +2164,9 @@ class _Context:
         self._household_rows = pd.Index(
             _matched_ids(household[_HOUSEHOLD_ID])
         ).get_indexer(_matched_ids(person[_PERSON_HOUSEHOLD_ID]))
+        # A null household id names no household, even where the household
+        # table holds a null id of its own, which get_indexer would match.
+        self._household_rows[person[_PERSON_HOUSEHOLD_ID].isna().to_numpy()] = -1
 
     def has(self, concept_id: str) -> bool:
         item = CONCEPT_BY_ID[concept_id]
@@ -2032,28 +2190,38 @@ class _Context:
         return rows
 
     def household_amount_for_persons(self, concept_id: str) -> np.ndarray:
-        """A household amount on each person's row."""
+        """A household amount on each person's row; NaN with no household."""
         amounts = self.values(concept_id).to_numpy(dtype=np.float64)
-        return amounts[self._household_rows]
+        # Row -1 reads the appended NaN, never the last household's amount.
+        return np.append(amounts, np.nan)[self._household_rows]
 
     def reference_rows(self) -> np.ndarray:
-        """For each person, the row of their household's reference person."""
+        """For each person, the row of their household's reference person.
+
+        -1 for a person with no household, as for a household whose
+        reference person is null or unknown.
+        """
         _require(self, _REFERENCE_PERSON, "Placing values on the reference person")
         by_household = self.person_rows(self.household["reference_person_id"])
-        return by_household[self._household_rows]
+        # Row -1 reads the appended -1, never the last household's reference.
+        return np.append(by_household, -1)[self._household_rows]
 
 
 def _matched_ids(values: pd.Series) -> np.ndarray:
-    """Ids ready for exact matching: null-free integers as int64, else as is.
+    """Ids ready for exact matching, never as floats that could round.
 
     pandas matches against a narrower unsigned index by casting the targets
     down to it (261 onto 5 for uint8), so null-free integer ids are widened
     first; :func:`_require_int64_ids` has already refused any int64 cannot
-    hold.
+    hold. A nullable integer column holding a null converts to float64,
+    where ids beyond 2**53 round together, so this returns its ids as Python
+    ints beside ``pd.NA`` instead.
     """
 
-    if values.dtype.kind in "iu" and not values.hasnans:
-        return values.to_numpy(dtype=np.int64)
+    if values.dtype.kind in "iu":
+        if not values.hasnans:
+            return values.to_numpy(dtype=np.int64)
+        return values.to_numpy(dtype=object, na_value=pd.NA)
     return values.to_numpy()
 
 
@@ -2100,6 +2268,15 @@ def _apply(
             axis=0,
         )
         return total * transform.factor
+    if isinstance(transform, SignedPart):
+        total = np.sum(
+            [
+                context.values(concept_id).to_numpy(dtype=np.float64)
+                for concept_id in concepts
+            ],
+            axis=0,
+        )
+        return np.maximum(total if transform.sign == "positive" else -total, 0.0)
     if isinstance(transform, UnitComposition):
         raise ValueError(
             f"{binding.engine_input!r} tests unit composition; it needs unit "
@@ -2131,6 +2308,8 @@ def _apply(
         return context.values(concepts[0]).to_numpy(dtype=np.float64) * fraction
     if isinstance(transform, CoresidentChildCount):
         return _child_counts(context, transform.max_age)
+    if isinstance(transform, CoresidentAdult):
+        return _coresident_adult_flags(context, transform.min_age)
     if isinstance(transform, TakeUpThreshold):
         rate = _unit_interval(rates, transform.program, "take-up rate")
         seeds = context.values(concepts[0]).to_numpy(dtype=np.float64)
@@ -2189,6 +2368,34 @@ def _child_counts(context: _Context, max_age: int | None) -> np.ndarray:
         named = parents[counted & (parents >= 0)]
         counts += np.bincount(named, minlength=len(person))
     return counts
+
+
+def _coresident_adult_flags(context: _Context, min_age: int) -> np.ndarray:
+    """Whether another person with the same household id has ``min_age``.
+
+    Persons are grouped on the person table's own household id column,
+    factorized as exact integers (never through a float array), so household
+    ids beyond 2**53 stay distinct. A person whose household id names no
+    household row is grouped with the other persons carrying that id; a
+    person with a null household id shares a household with nobody.
+    """
+
+    _require(context, "fact:person.age", "A co-resident adult test")
+    households, _ = pd.factorize(
+        _matched_ids(context.person[_PERSON_HOUSEHOLD_ID]), use_na_sentinel=True
+    )
+    ages = context.values("fact:person.age").to_numpy(dtype=np.float64, na_value=np.nan)
+    # NaN compares false, so a null age never qualifies.
+    qualifies = ages >= min_age
+    placed = households >= 0
+    per_household = np.bincount(
+        households[placed],
+        weights=qualifies[placed],
+        minlength=int(households.max(initial=-1)) + 1,
+    )
+    others = np.zeros(len(households), dtype=np.float64)
+    others[placed] = per_household[households[placed]] - qualifies[placed]
+    return others > 0
 
 
 def _state_column(column: str) -> tuple[str, str]:

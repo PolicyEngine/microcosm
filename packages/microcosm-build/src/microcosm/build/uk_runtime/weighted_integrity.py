@@ -1,7 +1,7 @@
-"""UK weighted-integrity gates: input-mass parity and QRF tail concentration.
+"""UK weighted-integrity gates: input-mass parity, and the QRF tail surface.
 
 Increment 4 of the UK parity plan (#609, under the #578 acceptance rule)
-ports the two US integrity gates that were each purchased with a named
+ported the two US integrity gates that were each purchased with a named
 incident:
 
 - **Input-mass parity** (#278): a rebuilt or selected artifact can zero an
@@ -14,15 +14,24 @@ incident:
   tell is weighted-mass concentration, which neither support clipping nor
   count targets can see.
 
-Both gates reuse the shared implementations in :mod:`microcosm.build.gates`
-verbatim — the UK wrappers only add the evidence plumbing for the national
-table layout, the reference identity record, and the universal
-reviewed-exclusion discipline (mandatory reason, dormant entries reported,
-stale entries fail).
+The QRF tail-concentration *gate* was removed in microcosm#1276. On the UK
+surface its top-100 share could only bite on a column with fewer than 100
+independent draws whose CGT-clone copies took it past the carrier floor, so
+its verdict measured how little mass those copies carry; and at the armed
+0.99947 threshold the #462 incident itself (89%) would have passed.
+:func:`uk_qrf_tail_concentration_columns` stays: it is the measurement
+surface of ``tools/measure_uk_weighted_integrity_baselines.py`` and of the
+source-fidelity check #1276 asks for in the gate's place.
+
+The input-mass gate reuses the shared implementation in
+:mod:`microcosm.build.gates` verbatim — the UK wrapper only adds the evidence
+plumbing for the national table layout, the reference identity record, and
+the universal reviewed-exclusion discipline (mandatory reason, dormant
+entries reported, stale entries fail).
 
 Thresholds carry **no committed defaults**: the US numbers are calibrated to
 US incidents and the #609 measurement pass has not yet adjudicated UK
-boundaries. Arming either gate requires explicit policy values; once the
+boundaries. Arming the gate requires explicit policy values; once the
 measurement numbers are adjudicated, the schema-4 manifest parameters should
 carry the same derivation-comment discipline as the weight-ratio threshold.
 
@@ -120,7 +129,6 @@ import pandas as pd
 from microcosm.build.gates import (
     GateResult,
     input_mass_parity_gate,
-    tail_concentration_gate,
 )
 from microcosm.build.input_mass import input_mass_totals
 from microcosm.build.uk_runtime.national_frame import UK_EXPORTED_WEIGHT_COLUMNS
@@ -131,15 +139,14 @@ __all__ = [
     "UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE",
     "UK_INPUT_MASS_PARITY_GATE_NAME",
     "UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256",
-    "UK_QRF_TAIL_CONCENTRATION_GATE_NAME",
-    "UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE",
+    "UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE",
     "UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE",
     "UKInputMassParityPolicy",
     "UKInputMassReference",
     "UKInputMassReferenceDescriptor",
-    "UKQRFTailConcentrationPolicy",
     "UKReviewedExclusion",
     "UK_INPUT_MASS_REFERENCE_REGISTRY",
+    "UK_RELEASE_LINES",
     "coerce_input_mass_reference_registry",
     "coerce_reviewed_exclusions",
     "exclusion_evaluation_date",
@@ -148,19 +155,20 @@ __all__ = [
     "load_uk_reference_scoped_exclusion_register",
     "load_uk_reviewed_exclusion_register",
     "uk_default_input_mass_reviewed_exclusions",
-    "uk_default_qrf_tail_reviewed_exclusions",
     "uk_input_mass_parity_gate",
     "uk_input_mass_totals",
     "uk_qrf_tail_concentration_columns",
-    "uk_qrf_tail_concentration_gate",
 ]
 
 UK_INPUT_MASS_PARITY_GATE_NAME = "input_mass_parity"
-UK_QRF_TAIL_CONCENTRATION_GATE_NAME = "qrf_tail_concentration"
 UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE = "input_mass_reviewed_exclusions.json"
-UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE = "qrf_tail_reviewed_exclusions.json"
 UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE = "degenerate_reviewed_exclusions.json"
 UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE = "target_fit_reviewed_exclusions.json"
+# The local-area battery's own target-fit register (microcosm#1301): keyed by
+# the local gate's family/area_code/metric cell names, read by that gate only.
+UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE = (
+    "local_target_fit_reviewed_exclusions.json"
+)
 
 # Canonical sha256 of {"reference": {"identity": ..., "totals": ...}} for
 # the weighted input surface emitted from the pinned enhanced-FRS artifact by
@@ -262,6 +270,11 @@ UK_INPUT_MASS_REFERENCE_REGISTRY = MappingProxyType(
 _REVIEWED_EXCLUSION_FIELDS = frozenset(
     {"reason", "approved_by", "adjudication", "approved_on", "expires_on"}
 )
+#: An entry may name the release lines whose evidence earned it.
+_REVIEWED_EXCLUSION_OPTIONAL_FIELDS = frozenset({"release_lines"})
+#: The UK release lines a gate context can declare (``release_line``): the
+#: national seam and the geographic K-clone pool of the local line.
+UK_RELEASE_LINES = frozenset({"national", "local"})
 
 
 @dataclass(frozen=True)
@@ -285,8 +298,24 @@ class UKReviewedExclusion:
     adjudication: str
     approved_on: str
     expires_on: str
+    release_lines: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
+        if self.release_lines is not None:
+            lines = self.release_lines
+            if (
+                isinstance(lines, str)
+                or not isinstance(lines, tuple | list)
+                or not lines
+                or any(line not in UK_RELEASE_LINES for line in lines)
+                or len(set(lines)) != len(lines)
+            ):
+                raise ValueError(
+                    "UK reviewed exclusion release_lines must be a non-empty "
+                    f"list of distinct lines from {sorted(UK_RELEASE_LINES)}; "
+                    f"got {lines!r}."
+                )
+            object.__setattr__(self, "release_lines", tuple(sorted(lines)))
         for name in ("reason", "approved_by", "adjudication"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
@@ -335,16 +364,38 @@ class UKReviewedExclusion:
 
         return now < date.fromisoformat(self.approved_on)
 
-    def policy_payload(self) -> dict[str, str]:
+    def applies_on(self, line: str | None) -> bool:
+        """Whether the entry is in scope on a release line.
+
+        An entry without ``release_lines`` applies on every line. A scoped
+        entry applies only where the context declares one of its lines, and
+        stands aside elsewhere, including where no line is declared: it then
+        neither suppresses a failure nor reads as stale, because that context's
+        evidence never earned it (a register is shared by the national seam and
+        the K-clone local pool, whose record counts differ by a factor of K).
+        Failing closed keeps a scoped entry from applying in a context that
+        forgot to declare its line.
+        """
+
+        if self.release_lines is None:
+            return True
+        return line is not None and line in self.release_lines
+
+    def policy_payload(self) -> dict[str, object]:
         """The complete record, sealed into the policy digest."""
 
-        return {
+        payload: dict[str, object] = {
             "reason": self.reason,
             "approved_by": self.approved_by,
             "adjudication": self.adjudication,
             "approved_on": self.approved_on,
             "expires_on": self.expires_on,
         }
+        # Unscoped records keep their pre-scope payload, and with it every
+        # policy digest already pinned.
+        if self.release_lines is not None:
+            payload["release_lines"] = list(self.release_lines)
+        return payload
 
 
 def coerce_reviewed_exclusions(
@@ -384,16 +435,28 @@ def coerce_reviewed_exclusions(
                 f"fields {sorted(_REVIEWED_EXCLUSION_FIELDS)} (schema 2); "
                 f"got {type(entry).__name__}."
             )
-        if set(entry) != _REVIEWED_EXCLUSION_FIELDS:
+        if not _REVIEWED_EXCLUSION_FIELDS <= set(entry) or (
+            set(entry)
+            - _REVIEWED_EXCLUSION_FIELDS
+            - _REVIEWED_EXCLUSION_OPTIONAL_FIELDS
+        ):
             raise ValueError(
                 f"{label} reviewed exclusion {name!r} fields must be exactly "
-                f"{sorted(_REVIEWED_EXCLUSION_FIELDS)}, got {sorted(entry)}."
+                f"{sorted(_REVIEWED_EXCLUSION_FIELDS)}, optionally with "
+                f"{sorted(_REVIEWED_EXCLUSION_OPTIONAL_FIELDS)}; got "
+                f"{sorted(entry)}."
             )
         try:
             records[name] = UKReviewedExclusion(
                 **{
                     field_name: entry[field_name]
-                    for field_name in sorted(_REVIEWED_EXCLUSION_FIELDS)
+                    for field_name in sorted(
+                        set(entry)
+                        & (
+                            _REVIEWED_EXCLUSION_FIELDS
+                            | _REVIEWED_EXCLUSION_OPTIONAL_FIELDS
+                        )
+                    )
                 }
             )
         except ValueError as exc:
@@ -730,17 +793,6 @@ def uk_default_input_mass_reviewed_exclusions() -> Mapping[
     )
 
 
-@functools.cache
-def uk_default_qrf_tail_reviewed_exclusions() -> Mapping[str, UKReviewedExclusion]:
-    """Committed schema-2 QRF tail exclusions."""
-
-    return MappingProxyType(
-        load_uk_reviewed_exclusion_register(
-            None, resource=UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE
-        )
-    )
-
-
 def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
     """Load frozen reference totals emitted by the #609 measurement tooling.
 
@@ -946,74 +998,6 @@ class UKInputMassParityPolicy:
         }
 
 
-@dataclass(frozen=True)
-class UKQRFTailConcentrationPolicy:
-    """Reviewed thresholds and exclusion register for QRF tail concentration.
-
-    No committed defaults, for the same reason as
-    :class:`UKInputMassParityPolicy`: the US ``top_k=100`` /
-    ``max_top_share=0.75`` / ``min_nonzero_records=500`` numbers are
-    calibrated to the #462 incident on the CPS spine. The UK boundaries must
-    be measured on the staging pool before they are written down.
-    """
-
-    top_k: int
-    max_top_share: float
-    min_nonzero_records: int
-    reviewed_exclusions: Mapping[str, UKReviewedExclusion] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        if isinstance(self.top_k, bool) or not isinstance(self.top_k, int):
-            raise ValueError(
-                f"UK QRF tail top_k must be an integer, got {self.top_k!r}."
-            )
-        if self.top_k < 1:
-            raise ValueError(
-                f"UK QRF tail top_k must be at least 1, got {self.top_k!r}."
-            )
-        share = float(self.max_top_share)
-        if not math.isfinite(share) or not 0.0 < share < 1.0:
-            raise ValueError(
-                f"UK QRF tail max_top_share must be in (0, 1), got "
-                f"{self.max_top_share!r}."
-            )
-        if isinstance(self.min_nonzero_records, bool) or not isinstance(
-            self.min_nonzero_records, int
-        ):
-            raise ValueError(
-                "UK QRF tail min_nonzero_records must be an integer, got "
-                f"{self.min_nonzero_records!r}."
-            )
-        if self.min_nonzero_records <= self.top_k:
-            raise ValueError(
-                "UK QRF tail min_nonzero_records must exceed top_k so the tail "
-                f"is a strict subset of the carriers, got "
-                f"min_nonzero_records={self.min_nonzero_records!r} with "
-                f"top_k={self.top_k!r}."
-            )
-        object.__setattr__(self, "max_top_share", share)
-        object.__setattr__(
-            self,
-            "reviewed_exclusions",
-            MappingProxyType(
-                coerce_reviewed_exclusions(
-                    self.reviewed_exclusions, label="UK QRF tail"
-                )
-            ),
-        )
-
-    def policy_payload(self) -> dict[str, object]:
-        return {
-            "top_k": self.top_k,
-            "max_top_share": self.max_top_share,
-            "min_nonzero_records": self.min_nonzero_records,
-            "reviewed_exclusions": {
-                name: record.policy_payload()
-                for name, record in sorted(self.reviewed_exclusions.items())
-            },
-        }
-
-
 def uk_input_mass_totals(
     frame: Frame,
     *,
@@ -1138,15 +1122,21 @@ def uk_qrf_tail_concentration_columns(
     *,
     output_columns: Iterable[str] | None = None,
 ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], dict[str, object]]:
-    """Assemble the tail-concentration evidence for the declared QRF surface.
+    """Assemble per-column weighted evidence for the declared QRF surface.
 
+    No release gate reads it since microcosm#1276 removed the tail gate; the
+    weighted-integrity baselines tool and the #1276 redesign measure on it.
     The surface defaults to every output declared by a
-    ``fit_weighted_qrf_stage*`` operation in the HMRC source manifest.
+    ``fit_weighted_qrf_stage*`` operation in the HMRC source manifest, less the
+    report columns ``spi_benefit_coherence`` replaces on every SPI-channel row
+    (microcosm#1100, read from that stage's declaration): after it those
+    columns hold only FRS respondents' own reports, no forest draw, so the
+    #462 broadcast cannot occur in them. They are listed in the surface as
+    ``superseded_by_spi_benefit_coherence``.
     Unlike the US wrapper, there is **no sparsity filter**: on the UK staging
     pool the SPI channel is a large fraction of all persons, so a
-    nonzero-share cutoff would silently skip the gate exactly where the risk
-    lives (#609). Every declared, present, numeric output is checked;
-    ``min_nonzero_records`` in the policy remains the sole thinness guard.
+    nonzero-share cutoff would silently skip exactly the columns where the
+    risk lives (#609). Every declared, present, numeric output is returned.
     """
 
     if output_columns is None:
@@ -1155,11 +1145,16 @@ def uk_qrf_tail_concentration_columns(
         # at import time.
         from microcosm.build.uk_runtime.hmrc_source_contract import (
             uk_hmrc_weighted_qrf_output_columns,
+            uk_spi_coherence_superseded_columns,
         )
 
-        declared = uk_hmrc_weighted_qrf_output_columns()
+        superseded_columns = set(uk_spi_coherence_superseded_columns())
+        all_declared = uk_hmrc_weighted_qrf_output_columns()
+        declared = tuple(c for c in all_declared if c not in superseded_columns)
+        superseded = [c for c in all_declared if c in superseded_columns]
     else:
         declared = tuple(str(name) for name in output_columns)
+        superseded = []
     if not declared:
         raise ValueError("UK QRF tail-concentration surface must be non-empty.")
 
@@ -1196,116 +1191,6 @@ def uk_qrf_tail_concentration_columns(
         "absent_columns": absent,
         "non_numeric_columns": non_numeric,
         "density_filter": "none: every declared output is checked (#609)",
+        "superseded_by_spi_benefit_coherence": superseded,
     }
     return values, weights, surface
-
-
-def uk_qrf_tail_concentration_gate(
-    column_values: Mapping[str, Iterable[float]],
-    column_weights: Mapping[str, Iterable[float]],
-    *,
-    policy: UKQRFTailConcentrationPolicy,
-    surface: Mapping[str, object] | None = None,
-    now: date | None = None,
-) -> GateResult:
-    """No declared UK QRF output hides its mass in a handful of records.
-
-    Wraps :func:`microcosm.build.gates.tail_concentration_gate` — which
-    already enforces the universal exclusion discipline (stale entries fail,
-    dormant entries are reported) — under the UK gate name, and records the
-    manifest-derived surface metadata alongside the shared details.
-    """
-
-    if not isinstance(policy, UKQRFTailConcentrationPolicy):
-        raise TypeError("policy must be UKQRFTailConcentrationPolicy.")
-    evaluated_on = exclusion_evaluation_date(now)
-    records = dict(policy.reviewed_exclusions)
-    projected, expired, premature = _reviewed_exclusion_reasons(
-        records, now=evaluated_on
-    )
-    base = tail_concentration_gate(
-        column_values,
-        column_weights,
-        top_k=policy.top_k,
-        max_top_share=policy.max_top_share,
-        min_nonzero_records=policy.min_nonzero_records,
-        reviewed_exclusions=projected,
-    )
-    details = dict(base.details)
-    details["expired_exclusions"] = expired
-    details["premature_exclusions"] = premature
-    details["exclusions_evaluated_on"] = evaluated_on.isoformat()
-    failures = list(base.failures)
-    if expired:
-        failures.append(_expired_exclusion_failure(records, expired, family="QRF-tail"))
-    if premature:
-        failures.append(
-            _premature_exclusion_failure(records, premature, family="QRF-tail")
-        )
-    if surface is not None:
-        details["surface"] = dict(surface)
-        failures.extend(
-            f"{column}: declared QRF output is absent from the person table."
-            for column in surface.get("absent_columns", ())
-        )
-        failures.extend(
-            f"{column}: declared QRF output is not numeric in the person table."
-            for column in surface.get("non_numeric_columns", ())
-        )
-        declared_count = surface.get("declared_qrf_outputs")
-        classified = {
-            field: surface.get(field)
-            for field in (
-                "checked_columns",
-                "absent_columns",
-                "non_numeric_columns",
-            )
-        }
-        if (
-            isinstance(declared_count, bool)
-            or not isinstance(declared_count, int)
-            or declared_count <= 0
-            or any(
-                not isinstance(names, list)
-                or any(not isinstance(name, str) or not name for name in names)
-                for names in classified.values()
-            )
-        ):
-            failures.append(
-                "QRF surface must declare a positive output count and three "
-                "lists of non-empty column names."
-            )
-        else:
-            checked = set(classified["checked_columns"])
-            absent = set(classified["absent_columns"])
-            non_numeric = set(classified["non_numeric_columns"])
-            all_lists = [
-                *classified["checked_columns"],
-                *classified["absent_columns"],
-                *classified["non_numeric_columns"],
-            ]
-            accounted = checked | absent | non_numeric
-            gate_accounted = set(details["top_share"]) | set(details["thin_columns"])
-            if (
-                len(all_lists) != len(accounted)
-                or declared_count != len(accounted)
-                or set(details["top_share"]) & set(details["thin_columns"])
-                or accounted != gate_accounted
-                or checked != gate_accounted - absent - non_numeric
-            ):
-                failures.append(
-                    "QRF surface declarations must reconcile exactly across "
-                    "declared, checked, absent, nonnumeric, checked-tail, and "
-                    "thin outputs."
-                )
-    if details["columns_checked"] == 0:
-        failures.append(
-            "No declared QRF output had enough weighted carriers for the "
-            "tail-concentration check."
-        )
-    return GateResult(
-        name=UK_QRF_TAIL_CONCENTRATION_GATE_NAME,
-        passed=not failures,
-        failures=tuple(failures),
-        details=details,
-    )

@@ -29,6 +29,11 @@ from microcosm.build.ledger_targets import (
 from microcosm.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
 )
+from microcosm.build.us_runtime.fsa_student_loan_targets import (
+    FSA_SOURCE_NAME,
+    apply_fsa_student_loan_plan,
+    plan_fsa_student_loan_targets,
+)
 from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
     enforce_period_contract,
@@ -153,14 +158,36 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     # floating export-input columns. Income legs sum the positive part of the
     # signed model variable, loss legs the negative-part magnitude
     # (see _signed_component), matching SOI's returns-with-net-income vs
-    # returns-with-net-loss split. estate_income/miscellaneous_income do not
-    # currently add to AGI (loss-cap / catch-all only), but they are the export
-    # columns the export-mass gate tracks, so pinning them identifies those
-    # dimensions.
+    # returns-with-net-loss split. estate_income and miscellaneous_income are
+    # export columns with reviewed exclusions in
+    # US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+    # (tools/build_us_fiscal_refresh_release.py), so the export-mass gate does
+    # not check their drift. The estate rows pin estate_income to SOI. The
+    # other-income rows compile to no target at any vintage
+    # (US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS, microcosm#393), so no
+    # SOI line pins miscellaneous_income today. Both move federal income tax.
+    # In policyengine-us 2.2.1 and 2.23.2 a non-dependent's positive
+    # miscellaneous_income is gross income; loss_ald deducts estate_income
+    # losses above the line, subject to the section 461(l) limit; and
+    # estate_income counts toward qualified business income while
+    # estate_income_would_be_qualified is true (the default). From 2.23.2
+    # (PolicyEngine/policyengine-us#9633) a non-dependent's positive
+    # estate_income is also gross income, and so AGI, and a non-dependent's
+    # signed estate_income plus the Schedule K-1 (Form 1041) box 14 code H
+    # adjustment enters net investment income.
     "estate_trust_net_income_amount": "estate_income",
     "estate_trust_net_loss_amount": "estate_losses",
     "other_income_net_income_amount": "miscellaneous_income",
     "other_income_net_loss_amount": "miscellaneous_losses",
+    # SOI Table 1.4 publishes partnership and S corporation net income and net
+    # loss separately from TY2021 (Chronicle's table_1_4 measure ids; losses
+    # are positive magnitudes). Each entity leg binds that entity's own Schedule
+    # E line-32 leaf, summed to the return, positive part for net income and
+    # negative-part magnitude for net loss (microcosm#1258).
+    "partnership_net_income_amount": "partnership_income",
+    "partnership_net_loss_amount": "partnership_losses",
+    "s_corporation_net_income_amount": "s_corp_income",
+    "s_corporation_net_loss_amount": "s_corp_losses",
     # SOI Table 1.4 "capital gain distributions reported on Form 1040" ==
     # PUF E01100 == PolicyEngine-US non_sch_d_capital_gains (Form 1040 line 7
     # when Schedule D is not required); concept-confirmed against pe-us source.
@@ -239,6 +266,12 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "estate_trust_net_loss_returns": "estate_losses",
     "other_income_net_income_returns": "miscellaneous_income",
     "other_income_net_loss_returns": "miscellaneous_losses",
+    # microcosm#1258: return counts paired with the Table 1.4 partnership and
+    # S corporation legs above.
+    "partnership_net_income_returns": "partnership_income",
+    "partnership_net_loss_returns": "partnership_losses",
+    "s_corporation_net_income_returns": "s_corp_income",
+    "s_corporation_net_loss_returns": "s_corp_losses",
     "capital_gain_distributions_returns": "non_sch_d_capital_gains",
     # Build H (microcosm#299): return count paired with the Table 2.1 home
     # mortgage interest amount above (indicator sum over itemizers claiming a
@@ -290,6 +323,12 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "ordinary_dividends": "ordinary_dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
+    # microcosm#1258: Table 1.4's entity legs read each entity's own person
+    # leaf; the materializer sums it to the tax unit before taking the part.
+    "partnership_income": "partnership_income",
+    "partnership_losses": "partnership_income",
+    "s_corp_income": "s_corp_income",
+    "s_corp_losses": "s_corp_income",
     "assigned_aca_ptc": "assigned_aca_ptc",
     "qualified_business_income_deduction": "qualified_business_income_deduction",
     "qualified_dividends": "qualified_dividend_income",
@@ -452,8 +491,18 @@ DIRECT_LEDGER_TARGETS: dict[
             ),
         },
     ),
+    # 2025 Trustees Report Table III.C3 Part B premiums from enrollees.
+    # gross_medicare_part_b_premium is defined for is_medicare_eligible, so
+    # it also charges eligible people who never enrolled. PolicyEngine-US
+    # documents the enrollment-gated gross_medicare_part_b_premium_if_enrolled
+    # for CMS premiums-from-enrollees targets (microcosm#1206).
+    # The target includes income-related premiums (IRMAA). On the locked
+    # policyengine-us 2.2.1 a 2024 release has none, because IRMAA rests on
+    # income two years earlier and the H5 carries 2024 inputs only, so this
+    # row reads the standard premium alone until Microcosm's engine includes
+    # PolicyEngine/policyengine-us#10106 (see microcosm#1206 for the sums).
     ("cms_medicare", "actual_amount", "premiums_from_enrollees"): (
-        "gross_medicare_part_b_premium",
+        "gross_medicare_part_b_premium_if_enrolled",
         "cms_medicare",
         {"target_role": "medicare_part_b_premium_total"},
     ),
@@ -1001,6 +1050,7 @@ def compile_us_fiscal_target_registry(
     congressional_district_vintage_crosswalk: object | None = None,
     age_targets: bool = False,
     allow_unaged_dollar_targets: bool = False,
+    student_loan_targets: bool = False,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed.
 
@@ -1022,6 +1072,13 @@ def compile_us_fiscal_target_registry(
             unless aging transformed it. Set this to record an explicit,
             auditable waiver instead of raising; every waived target carries
             ``period_contract_waiver`` metadata in diagnostics.
+        student_loan_targets: Bind Federal Student Aid's portfolio facts
+            (``ed_fsa``) to the SCF education-debt stage's person balances
+            (microcosm#1074; see
+            :mod:`microcosm.build.us_runtime.fsa_student_loan_targets`). Only
+            a build that carries those columns can materialize the targets,
+            so the release tool sets this with ``--scf-education-debt``;
+            otherwise the facts are inert.
     """
     materialized_facts = tuple(facts)
     if congressional_district_vintage_crosswalk is not None:
@@ -1029,6 +1086,11 @@ def compile_us_fiscal_target_registry(
             materialized_facts,
             congressional_district_vintage_crosswalk,
         )
+    student_loan_plan = (
+        plan_fsa_student_loan_targets(materialized_facts, target_period=target_period)
+        if student_loan_targets
+        else None
+    )
     references = (
         *_dynamic_us_fiscal_target_references(
             materialized_facts,
@@ -1038,12 +1100,20 @@ def compile_us_fiscal_target_registry(
             US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
             target_period=target_period,
         ),
+        *(student_loan_plan.references if student_loan_plan is not None else ()),
     )
     registry = compile_ledger_target_references(
         materialized_facts,
         references,
         country="us",
     )
+    if student_loan_plan is not None:
+        # FSA references resolve at their own reference quarter; the plan
+        # moves them to the build period at their reconciled values
+        # (microcosm#1074), before any pass that reads periods or ages.
+        registry = apply_fsa_student_loan_plan(
+            registry, student_loan_plan, target_period=target_period
+        )
     registry = _uprate_cross_period_eitc_decompositions(registry)
     registry = _with_derived_chip_enrollment_targets(registry)
     registry = _without_m_chip_state_chip_enrollment_targets(registry)
@@ -2456,8 +2526,14 @@ def _eitc_source_decomposition_total_for_bounds(
     lower: float,
     upper: float,
 ) -> float | None:
-    total = 0.0
-    matched = False
+    """Source-period Table 2.5 EITC inside ``[lower, upper)``, all child splits.
+
+    Each child split's record set nests its AGI bins under its all-AGI total
+    row, so summing every contained row would count a split twice once the
+    interval holds both. Count only each split's outermost contained rows.
+    """
+
+    rows_by_split: dict[str, list[tuple[float, float, float]]] = {}
     for spec in registry.specs:
         if not _is_eitc_decomposition_spec(spec):
             continue
@@ -2467,9 +2543,40 @@ def _eitc_source_decomposition_total_for_bounds(
             continue
         spec_lower, spec_upper = _bounds_from_metadata(spec)
         if _contains_bounds(lower, upper, spec_lower, spec_upper):
-            total += spec.value
-            matched = True
-    return total if matched else None
+            rows_by_split.setdefault(
+                spec.metadata.get("ledger_layout_record_set_id", ""), []
+            ).append((spec_lower, spec_upper, spec.value))
+    if not rows_by_split:
+        return None
+    return sum(
+        _outermost_rows_total(record_set_id, rows)
+        for record_set_id, rows in rows_by_split.items()
+    )
+
+
+def _outermost_rows_total(
+    record_set_id: str,
+    rows: list[tuple[float, float, float]],
+) -> float:
+    outermost = sorted(
+        row
+        for index, row in enumerate(rows)
+        if not any(
+            other_index != index
+            and (other[0], other[1]) != (row[0], row[1])
+            and _contains_bounds(other[0], other[1], row[0], row[1])
+            for other_index, other in enumerate(rows)
+        )
+    )
+    for previous, current in zip(outermost, outermost[1:], strict=False):
+        if current[0] < previous[1]:
+            raise ValueError(
+                f"EITC decomposition {record_set_id!r} has overlapping AGI rows "
+                f"[{_format_bound(previous[0])}, {_format_bound(previous[1])}) and "
+                f"[{_format_bound(current[0])}, {_format_bound(current[1])}); "
+                "its rows must nest or be disjoint."
+            )
+    return sum(value for _, _, value in outermost)
 
 
 def _eitc_agi_uprating_group(
@@ -2935,9 +3042,38 @@ def _soi_return_universe_from_record_set_id(record_set_id: str) -> str:
     return "all_returns"
 
 
+def _soi_record_set_family(record_set_id: str) -> str:
+    """An SOI record set's table family, without period or data vintage.
+
+    ``irs_soi.ty2023.table_1_4`` is ``table_1_4``,
+    ``irs_soi.ty2022.historic_table_2.state_broad`` is ``historic_table_2`` and
+    ``irs_soi.ty2023.congressional_district_2022.all_returns`` is
+    ``congressional_district``.
+    """
+    parts = record_set_id.split(".")
+    if parts[0] != "irs_soi":
+        return ""
+    rest = parts[2:] if len(parts) > 1 and _is_period_token(parts[1]) else parts[1:]
+    if not rest:
+        return ""
+    family = rest[0]
+    if family.startswith("congressional_district"):
+        return "congressional_district"
+    return family
+
+
 def _is_soi_congressional_district_record_set(fact: object) -> bool:
-    record_set_id = _str_at(fact, "layout", "record_set_id")
-    return ".congressional_district_2022." in record_set_id
+    """Whether a fact comes from an IRS SOI congressional-district file.
+
+    Matched by family, at any data vintage: the next IRS release
+    (``congressional_district_2024``) must meet the same guards as the pinned
+    ``congressional_district_2022`` package — never an interest control
+    (microcosm#489) and no PTC amount target.
+    """
+    return (
+        _soi_record_set_family(_str_at(fact, "layout", "record_set_id"))
+        == "congressional_district"
+    )
 
 
 def _is_soi_cd_premium_tax_credit_amount_conflict(
@@ -3042,6 +3178,11 @@ def _reference_from_ledger_fact(
         return _ssa_ssi_reference_from_fact(fact, target_period=target_period)
     if source_name == "bea":
         return _bea_reference_from_fact(fact, target_period=target_period)
+    if source_name == FSA_SOURCE_NAME:
+        # Federal Student Aid portfolio facts bind only through
+        # plan_fsa_student_loan_targets, which reconciles the tables to one
+        # in-scope control at one reference quarter (microcosm#1074).
+        return None
     if source_name == "jct":
         # JCT facts never bind through dynamic dispatch: tax-expenditure rows
         # compile only as declared SimpleTaxExpenditureReform references

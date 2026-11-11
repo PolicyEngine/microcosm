@@ -2,11 +2,18 @@
 
 Public API. ``decl`` and ``kernel`` are the frozen interfaces; the runtime
 modules implement execution, storage, provenance, and inspection against them.
+
+Declarations, the compiler schema and the Orrery projection need only the
+standard library, so they import eagerly. Exports from the runtime modules,
+which need numpy, pandas and microcosm-frame, load on first access: a process
+that only projects saved schemas and execution overlays imports
+``microcosm.graph.orrery`` without those dependencies.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from importlib import import_module
 from importlib import metadata as _metadata
 
 from .decl import (
@@ -42,25 +49,8 @@ from .errors import (
     StoreMissError,
     StoreUnavailableError,
 )
-from .kernel import (
-    ArtifactValue,
-    Capabilities,
-    Determinism,
-    Kernel,
-    KernelBase,
-    KernelContext,
-    KernelRegistry,
-    KernelResult,
-    KernelRole,
-    Numeric,
-    NumericScope,
-    SeedSource,
-    Tolerance,
-    source_hash,
-)
-from .keys import platform_fingerprint
-from .randomness import keyed_uniform
 from .schema import graph_schema
+from .serialize import graph_from_json, graph_to_json
 from .weight_update import WEIGHT_UPDATE_AXIS_SCHEMA, weight_update_receipt
 
 __all__ = [
@@ -139,7 +129,75 @@ __all__ = [
     "weight_update_receipt",
     "orrery_document",
     "orrery_json",
+    "ArtifactSummaryContext",
+    "RecordedRun",
+    "checkpoint_references",
+    "collect_execution_evidence",
+    "load_run_evidence",
+    "publish_run_evidence",
+    "record_run_binding",
+    "save_graph_schema",
+    "save_run_evidence",
 ]
+
+#: The runtime modules and the exports each one supplies on first access.
+_RUNTIME_MODULE_EXPORTS: dict[str, tuple[str, ...]] = {
+    "codecs": (
+        "SOURCE_CODECS",
+        "SourceBytesCodec",
+        "SourceCodec",
+        "SourceCodecRegistry",
+        "load_source",
+        "load_source_bytes",
+    ),
+    "evidence": (
+        "ArtifactSummaryContext",
+        "RecordedRun",
+        "checkpoint_references",
+        "collect_execution_evidence",
+        "load_run_evidence",
+        "publish_run_evidence",
+        "record_run_binding",
+        "save_graph_schema",
+        "save_run_evidence",
+    ),
+    "executor": ("NodeRejected", "run_graph"),
+    "explain": ("explain_html",),
+    "kernel": (
+        "ArtifactValue",
+        "Capabilities",
+        "Determinism",
+        "Kernel",
+        "KernelBase",
+        "KernelContext",
+        "KernelRegistry",
+        "KernelResult",
+        "KernelRole",
+        "Numeric",
+        "NumericScope",
+        "SeedSource",
+        "Tolerance",
+        "source_hash",
+    ),
+    "keys": ("platform_fingerprint",),
+    "manifest": ("Decision", "NodeReceipt", "PopulationView", "RunManifest"),
+    "population": ("MassRecord", "Population", "PopulationError"),
+    "randomness": ("keyed_uniform",),
+    "store": (
+        "ContentStore",
+        "ResumePolicy",
+        "StoreCorrupt",
+        "StoreError",
+        "StoreMiss",
+        "StoreUnavailable",
+    ),
+    "view": ("describe",),
+}
+_RUNTIME_EXPORTS = {
+    export: module_name
+    for module_name, exports in _RUNTIME_MODULE_EXPORTS.items()
+    for export in exports
+}
 
 _FRAME_SERIES = "0.1"
 
@@ -156,7 +214,23 @@ def _check_frame_version() -> None:
         )
 
 
+# The installed series is checked before any runtime module can be imported.
 _check_frame_version()
+
+
+def __getattr__(name: str) -> object:
+    """Import a runtime export's defining module the first time it is used."""
+
+    module_name = _RUNTIME_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(f"{__name__}.{module_name}"), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), *_RUNTIME_EXPORTS})
 
 
 def orrery_document(
@@ -185,50 +259,3 @@ def orrery_json(
     from .orrery import orrery_json as export
 
     return export(graph, title=title, extensions=extensions, execution=execution)
-
-
-from .codecs import (  # noqa: E402 - check dependency series before runtime import
-    SOURCE_CODECS,
-    SourceBytesCodec,
-    SourceCodec,
-    SourceCodecRegistry,
-    load_source,
-    load_source_bytes,
-)
-from .evidence import (  # noqa: E402
-    ArtifactSummaryContext,
-    RecordedRun,
-    checkpoint_references,
-    collect_execution_evidence,
-    load_run_evidence,
-    publish_run_evidence,
-    record_run_binding,
-    save_graph_schema,
-    save_run_evidence,
-)
-from .executor import NodeRejected, run_graph  # noqa: E402
-from .explain import explain_html  # noqa: E402
-from .manifest import Decision, NodeReceipt, PopulationView, RunManifest  # noqa: E402
-from .population import MassRecord, Population, PopulationError  # noqa: E402
-from .serialize import graph_from_json, graph_to_json  # noqa: E402
-from .store import (  # noqa: E402
-    ContentStore,
-    ResumePolicy,
-    StoreCorrupt,
-    StoreError,
-    StoreMiss,
-    StoreUnavailable,
-)
-from .view import describe  # noqa: E402
-
-__all__ += [
-    "ArtifactSummaryContext",
-    "RecordedRun",
-    "checkpoint_references",
-    "collect_execution_evidence",
-    "load_run_evidence",
-    "publish_run_evidence",
-    "record_run_binding",
-    "save_graph_schema",
-    "save_run_evidence",
-]

@@ -53,7 +53,13 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from microcosm_emitter_interface.telemetry import OuterProgress
 
+from microcosm.build.calibration_epoch_telemetry import (
+    CALIBRATION_EPOCH_EVERY,
+    calibration_epoch_stride,
+    forwards_calibration_epoch,
+)
 from microcosm.build.gates import (
     GateResult,
     TargetFitRequirement,
@@ -79,6 +85,8 @@ from microcosm.build.us_runtime import (
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     ORG_2024_DONOR_CONTENT_SHA256,
+    SCF_2025_FULL_EXTRACT,
+    SCF_2025_SUMMARY_EXTRACT,
     SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
     SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
     SIPP_2023_HEAD_START_DONOR_SHA256,
@@ -109,6 +117,7 @@ from microcosm.build.us_runtime import (
     fetch_org_2024_donor,
     fetch_scf_2022_full_extract,
     fetch_scf_2022_summary_extract,
+    fetch_scf_public_file,
     fetch_sipp_2023_financial_asset_donor,
     fetch_sipp_2023_tip_donor,
     hard_target_package_aliases,
@@ -117,6 +126,7 @@ from microcosm.build.us_runtime import (
     load_org_2024_donor,
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
+    load_scf_2025_education_debt_donor,
     load_sipp_2023_financial_asset_donor,
     load_sipp_2023_head_start_donor,
     load_sipp_2023_ssi_disability_donor,
@@ -136,6 +146,9 @@ from microcosm.build.us_runtime import (
     us_educator_expense_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_energy_subsidy_signal_gate,
+    us_esi_premiums_anchor_feed_mismatches,
+    us_esi_premiums_anchor_gate,
+    us_esi_premiums_signal_gate,
     us_farm_business_income_signal_gate,
     us_fiscal_target_exclusion_receipt,
     us_form_4952_election_signal_gate,
@@ -162,6 +175,8 @@ from microcosm.build.us_runtime import (
     us_retirement_distributions_signal_gate,
     us_salt_refund_income_signal_gate,
     us_scf_auto_loans_signal_gate,
+    us_scf_education_debt_fit_table,
+    us_scf_education_debt_signal_gate,
     us_scf_wealth_signal_gate,
     us_sipp_head_start_signal_gate,
     us_sipp_tips_signal_gate,
@@ -200,6 +215,7 @@ from microcosm.build.us_runtime import (
     with_us_retirement_contribution_inputs,
     with_us_retirement_distribution_inputs,
     with_us_scf_auto_loan_inputs,
+    with_us_scf_education_debt_inputs,
     with_us_scf_wealth_inputs,
     with_us_sipp_head_start_input,
     with_us_sipp_tip_inputs,
@@ -226,6 +242,7 @@ from microcosm.build.us_runtime.acs_release_predictors import (
 from microcosm.build.us_runtime.chronicle_feed import (
     USChronicleFeed,
     load_us_chronicle_feed,
+    require_us_chronicle_feed_row_contracts,
 )
 from microcosm.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
@@ -246,6 +263,18 @@ from microcosm.build.us_runtime.fiscal_targets import (
     AGE_BOUND_STAMP_SOURCE_KEY,
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
 )
+from microcosm.build.us_runtime.fsa_student_loan_targets import (
+    FSA_BALANCE_LOWER_BOUND_KEY,
+    FSA_BALANCE_UPPER_BOUND_KEY,
+    FSA_BOUND_TABLES,
+    FSA_MATERIALIZER,
+    FSA_SOURCE_NAME,
+    FSA_TARGET_FAMILY,
+    FsaTargetPlan,
+    fsa_student_loan_household_values,
+    fsa_student_loan_target_receipt,
+    plan_fsa_student_loan_targets,
+)
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
     assert_h5_unchanged,
@@ -262,6 +291,11 @@ from microcosm.build.us_runtime.input_mass import us_input_mass_totals
 from microcosm.build.us_runtime.l0_refit_export import (
     attach_l0_refit_entity_weights,
     load_us_frame,
+)
+from microcosm.build.us_runtime.medicare_irmaa_holdout import (
+    medicare_irmaa_holdout_from_sim,
+    medicare_irmaa_holdout_unavailable,
+    write_medicare_irmaa_holdout,
 )
 from microcosm.build.us_runtime.nonzero_shares import us_nonzero_shares
 from microcosm.build.us_runtime.parity_reference import (
@@ -362,6 +396,10 @@ from microcosm.calibrate.diagnostics import (
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+    US_FISCAL_STORED_INPUTS_STAGE,
+    US_STORED_INPUTS_EVIDENCE_KEY,
+    US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
+    stored_input_evidence_manifest_block,
 )
 from microcosm.data.stored_inputs import (
     US_STORED_NON_VARIABLE_COLUMNS,
@@ -773,6 +811,7 @@ RESTATED_LEDGER_FILTER_CONCEPTS = {
     "us:statutes/26/62#adjusted_gross_income": "agi_band",
     "us.tax.earned_income_credit_qualifying_children": "eitc_child_count",
     "age": "age_band",
+    "federal_student_loan_balance": "student_loan_balance_band",
 }
 
 #: Bound-side suffixes a restated constraint key may carry. A key with no
@@ -855,7 +894,20 @@ RESTATED_AGE_BAND_COMPILED_KEYS = {
 #: household-variable measures) never reads an age bound, so a restated age
 #: bound there would be silently ignored however well it agreed with metadata
 #: the materializer also ignores; it is refused instead.
-RESTATED_AGE_BAND_MATERIALIZERS = frozenset({"population_age", "policyengine_variable"})
+RESTATED_AGE_BAND_MATERIALIZERS = frozenset(
+    {"population_age", "policyengine_variable", FSA_MATERIALIZER}
+)
+
+#: Compiled edges of a Federal Student Aid debt-size band, by bound side, and
+#: the one materializer that slices on them
+#: (:func:`microcosm.build.us_runtime.fsa_student_loan_targets.fsa_student_loan_household_values`,
+#: ``lower <= balance < upper`` on the person's own plus Parent PLUS balance,
+#: microcosm#1074). A restated ``federal_student_loan_balance`` bound on any
+#: other materializer would be ignored, so it refuses.
+RESTATED_STUDENT_LOAN_BALANCE_BAND_COMPILED_KEYS = {
+    "lower": FSA_BALANCE_LOWER_BOUND_KEY,
+    "upper": FSA_BALANCE_UPPER_BOUND_KEY,
+}
 
 #: The exact-value age key the dimension stamp writes when ``age`` is itself
 #: a dimension of the fact.
@@ -878,6 +930,7 @@ FISCAL_TARGET_SOURCE_KEYS = {
     "cms_aca": "CMS ACA marketplace enrollment public use files",
     "cms_medicaid": "CMS Medicaid enrollment and expenditure sources",
     "cms_medicare": "CMS Medicare Trustees Report Part B premium income",
+    "ed_fsa": "Federal Student Aid federal student loan portfolio",
     "hhs_acf_tanf": "HHS ACF TANF administrative data",
     "irs_soi": "IRS Statistics of Income public tables",
     "jct": "Joint Committee on Taxation tax expenditure estimates",
@@ -920,10 +973,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
         "Person-level nutritional-risk assessments are absent from all locked "
         "sources; see the archived-derivation evidence in the parity gap "
         "register (PolicyEngine/microcosm#312)."
-    ),
-    "s_corp_income": (
-        "Combined partnership/S-corp income is carried in partnership_income "
-        "in pre-PUF-support bases; the S-corp leaf is constant zero there."
     ),
     "strike_benefits": (
         "No respondent in the pinned public ASEC files reports strike benefits: "
@@ -1001,6 +1050,14 @@ US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
     "reported_has_subsidized_marketplace_health_coverage_at_interview"
 )
 US_ACA_REPORTED_MARKETPLACE_COVERAGE = "has_marketplace_health_coverage_at_interview"
+#: The SCF education-debt fit table (microcosm#1073), in the artifacts
+#: directory of a ``--scf-education-debt`` build: at the staged frame's
+#: pre-calibration weights, and at the release's calibrated weights before any
+#: post-export scoring (microcosm#1074).
+US_SCF_EDUCATION_DEBT_FIT_FILENAME = "us_scf_education_debt_fit.json"
+US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME = (
+    "us_scf_education_debt_calibrated_fit.json"
+)
 US_ACA_APTC_TARGET_TABLE = "cms_aca_aptc_recipients_by_state"
 US_ACA_TARGET_ROLE_TABLES = {
     "aca_ptc_recipients": US_ACA_APTC_TARGET_TABLE,
@@ -1163,8 +1220,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Build from a Chronicle feed whose facts (and, for an artifact "
             "pin, manifest) digest differs from the committed US pin in "
-            "us/chronicle_feed.json. Only for an explicitly reviewed "
-            "diagnostic run; a release build must use the pinned feed."
+            "us/chronicle_feed.json. Also lets through a feed whose BEA "
+            "B4923C facts differ from the ESI premium anchor (microcosm#454); "
+            "the difference is recorded in esi_premiums.json, or in the "
+            "dry-run report. Only for an explicitly reviewed diagnostic run; "
+            "a release build must use the pinned feed."
         ),
     )
     parser.add_argument(
@@ -1305,6 +1365,20 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "the export drops or leaves degenerate — without failing the "
             "build. Release builds must leave this unset; the gate is a hard "
             "certification blocker."
+        ),
+    )
+    parser.add_argument(
+        "--allow-esi-premium-gaps",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (microcosm#454): record the ESI premium "
+            "gates — employer_sponsored_insurance_premiums absent, zero-mass, "
+            "missing its raw ASEC coverage columns, or off the BEA NIPA 7.8 "
+            "line 17 (B4923C) anchor, or a feed whose B4923C facts differ "
+            "from that anchor — without failing the build (for example on a "
+            "base built before the meps_esi_premiums stage). The failures are "
+            "still written to esi_premiums.json. Release builds must leave "
+            "this unset."
         ),
     )
     parser.add_argument(
@@ -1586,6 +1660,35 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Optional path to the Federal Reserve SCF 2022 full public Stata "
             "extract (p22i6.dta) used for household auto-loan balance and "
             "interest. When omitted, scf2022s.zip is fetched and cached."
+        ),
+    )
+    parser.add_argument(
+        "--scf-education-debt",
+        action="store_true",
+        help=(
+            "Impute the four federal student loan person inputs "
+            "(federal_student_loan_balance, federal_parent_plus_loan_balance, "
+            "is_income_based_repayment_new_borrower, "
+            "federal_student_loan_graduate_share) from the 2025 SCF "
+            "(microcosm#1073). Off by default until the pinned policyengine-us "
+            "defines them (policyengine-us#9721, #9724); the certified engine "
+            "ignores them until then."
+        ),
+    )
+    parser.add_argument(
+        "--scf-2025-summary-extract",
+        type=Path,
+        help=(
+            "Optional local rscfp2025.dta for --scf-education-debt. When "
+            "omitted, the sha-pinned scfp2025s.zip is fetched and cached."
+        ),
+    )
+    parser.add_argument(
+        "--scf-2025-full-extract",
+        type=Path,
+        help=(
+            "Optional local p25i6.dta for --scf-education-debt. When omitted, "
+            "the sha-pinned scf2025s.zip is fetched and cached."
         ),
     )
     parser.add_argument(
@@ -2038,6 +2141,87 @@ def _finite_or_none(value: float) -> float | None:
 
     value = float(value)
     return value if math.isfinite(value) else None
+
+
+def _scf_wealth_gate_record(
+    gate: GateResult, household_ids: Iterable[object]
+) -> dict[str, object]:
+    """The SCF-wealth gate's verdict and summary, as release evidence.
+
+    The summary carries the SIPP/SCF blend audit (``financial_asset_blend``:
+    seed, period, per-source household counts, bank-asset medians and
+    low-tail shares). The stage keeps that audit in ``DataFrame.attrs``,
+    which the H5 writer drops, so without this record no release artifact
+    says whether the SIPP half ran (microcosm#1216).
+
+    Every count and share describes the frame at the blend stage, before
+    calibration and before any subset export. ``financial_asset_source_is_scf``
+    draws one uniform per household in sorted order of the blend-stage
+    household ids, so a household's draw depends on that whole id set. The
+    record pins the set: its count and the SHA-256 of the sorted unique
+    household ids, as little-endian int64 when every id is integral (every
+    release so far) and as float64 otherwise. ``encoding`` names which, and
+    the two encodings share one digest space, so a verifier compares
+    ``encoding`` as well as ``sha256``. Every household has one head, so this
+    is the set the draw sorts: when a published H5's household ids give the
+    same encoding and digest, the seed and period reproduce each household's
+    source. A subset release (L0, exact-k) exports part of the set and cannot
+    be audited that way from the file alone. Ids that are neither integers
+    nor floats, and unsigned ids beyond int64, are refused.
+
+    Unlike the sibling gate records, this one is scrubbed: its details carry
+    floats that are NaN on a degenerate frame, and both artifacts serialize
+    strict JSON, so NumPy scalars become Python values and non-finite floats
+    become null.
+    """
+
+    def finite(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {str(key): finite(nested) for key, nested in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [finite(nested) for nested in value]
+        if isinstance(value, (bool, np.bool_)):
+            return bool(value)
+        if isinstance(value, (int, np.integer)):
+            return int(value)
+        if isinstance(value, (float, np.floating)):
+            return _finite_or_none(value)
+        return value
+
+    values = pd.to_numeric(pd.Series(list(household_ids)), errors="raise").to_numpy()
+    if values.size == 0:
+        values = values.astype(np.int64)
+    # Neither encoding holds booleans, complex values or unsigned ids beyond
+    # int64 without collisions, so those are refused rather than recorded.
+    if values.dtype.kind not in "iuf":
+        raise TypeError(
+            f"blend-stage household ids must be integers or floats, not {values.dtype}"
+        )
+    ids = np.unique(values)
+    if ids.dtype.kind == "u" and ids.size and int(ids.max()) > np.iinfo(np.int64).max:
+        raise ValueError("a blend-stage household id exceeds the int64 range")
+    # Integral ids (every release so far) hash as int64; anything else keeps
+    # its float64 value, so distinct ids never collapse into one digest.
+    integral = ids.dtype.kind in "iu" or bool(
+        np.isfinite(ids).all()
+        and (ids == np.round(ids)).all()
+        and ((ids >= -(2**63)) & (ids < 2**63)).all()
+    )
+    id_bytes = (ids.astype("<i8") if integral else ids.astype("<f8")).tobytes()
+    return {
+        "passed": bool(gate.passed),
+        "failures": list(gate.failures),
+        "scope": "blend_stage_frame",
+        "blend_household_ids": {
+            "count": int(ids.size),
+            "sha256": hashlib.sha256(id_bytes).hexdigest(),
+            "encoding": (
+                "sorted unique household_id, little-endian "
+                + ("int64" if integral else "float64")
+            ),
+        },
+        "details": finite(dict(gate.details)),
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -4629,25 +4813,41 @@ class _RecordingPostExportSimulation:
         return _PostExportValues(np.zeros(0), np.zeros(0))
 
 
+def _record_post_export_requests(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[tuple[PostExportKey, ...], int]:
+    """Learn a consumer's baseline keys and reform pass count from recorders.
+
+    No engine is constructed: ``simulate(None)`` returns a recorder that
+    logs every baseline request, and each ``simulate(reform)`` a recorder of
+    its own. The consumers ask for the same keys whatever values they get
+    back, and the served baseline refuses any key this dry run did not see,
+    so a value-dependent request cannot slip past the plan.
+
+    When the consumer runs for real, each key a reformed simulation is first
+    asked for is one batched pass (``_BatchedPostExportReform``), so the pass
+    count is the distinct keys asked of each reformed simulation, summed.
+    Progress reporting alone uses it: a consumer that runs more passes than
+    counted reports no outer counter on the extra ones.
+    """
+    keys: dict[PostExportKey, None] = {}
+    reform_keys: list[dict[PostExportKey, None]] = []
+
+    def simulate(reform):
+        if reform is None:
+            return _RecordingPostExportSimulation(keys)
+        reform_keys.append({})
+        return _RecordingPostExportSimulation(reform_keys[-1])
+
+    consumer(simulate)
+    return _ascending_period_plan(keys), sum(len(asked) for asked in reform_keys)
+
+
 def _record_post_export_baseline_plan(
     consumer: Callable[[Callable[[Any], Any]], object],
 ) -> tuple[PostExportKey, ...]:
-    """Learn a consumer's baseline keys by running it against recorders.
-
-    No engine is constructed: ``simulate(None)`` returns a recorder that
-    logs every request, ``simulate(reform)`` a recorder that logs nothing
-    (reforms are scored key by key when the consumer runs for real). The
-    consumers ask for the same keys whatever values they get back, and the
-    served baseline refuses any key this dry run did not see, so a
-    value-dependent request cannot slip past the plan.
-    """
-    keys: dict[PostExportKey, None] = {}
-
-    def simulate(reform):
-        return _RecordingPostExportSimulation(keys if reform is None else None)
-
-    consumer(simulate)
-    return _ascending_period_plan(keys)
+    """Learn a consumer's baseline keys (``_record_post_export_requests``)."""
+    return _record_post_export_requests(consumer)[0]
 
 
 class _AscendingPeriodEngine:
@@ -4813,6 +5013,7 @@ class _PostExportScoringPlan:
         n_households: int,
         maximum_batch_size: int | None,
         baseline_plans: Mapping[str, tuple[PostExportKey, ...]],
+        reform_passes: Mapping[str, int] | None = None,
         error: str | None = None,
     ) -> None:
         self.n_households = int(n_households)
@@ -4820,6 +5021,7 @@ class _PostExportScoringPlan:
         self.baseline_plans = {
             consumer: tuple(plan) for consumer, plan in baseline_plans.items()
         }
+        self.reform_passes = dict(reform_passes or {})
         self.error = error
 
     @property
@@ -4838,6 +5040,16 @@ class _PostExportScoringPlan:
                 f"{self.error}"
             )
         return self.baseline_plans[consumer]
+
+    def planned_reform_passes(self, consumer: str) -> int | None:
+        """The reform passes the dry run counted for ``consumer``, if any.
+
+        Progress reporting reads it as each pass's outer counter; the record
+        of the plan leaves it out, so the diagnostics keep their shape.
+        """
+        if self.error is not None:
+            return None
+        return self.reform_passes.get(consumer)
 
     def terminal_failures(self) -> list[str]:
         """The plan's own failure, as a line of the batched terminal raise."""
@@ -4871,13 +5083,15 @@ def _post_export_scoring_plan(
     maximum_microsim_batch_size: int | None,
     consumers: Mapping[str, Callable[[Callable[[Any], Any]], object]],
 ) -> _PostExportScoringPlan:
+    requests = {
+        name: _record_post_export_requests(consumer)
+        for name, consumer in consumers.items()
+    }
     return _PostExportScoringPlan(
         n_households=int(n_households),
         maximum_batch_size=maximum_microsim_batch_size,
-        baseline_plans={
-            name: _record_post_export_baseline_plan(consumer)
-            for name, consumer in consumers.items()
-        },
+        baseline_plans={name: plan for name, (plan, _) in requests.items()},
+        reform_passes={name: passes for name, (_, passes) in requests.items()},
     )
 
 
@@ -4927,6 +5141,15 @@ def _ssi_social_security_holdout_consumer(simulate) -> dict[str, Any]:
         return ssi_social_security_holdout_unavailable(error, period=PERIOD)
 
 
+def _medicare_irmaa_holdout_consumer(simulate) -> dict[str, Any]:
+    try:
+        return medicare_irmaa_holdout_from_sim(simulate(None), period=PERIOD)
+    except Exception as error:
+        # As for the SSI holdout: an optional diagnostic adds no failure to
+        # plan discovery when its inputs are unavailable (microcosm#1206).
+        return medicare_irmaa_holdout_unavailable(error, period=PERIOD)
+
+
 def _reform_validation_consumer(
     *, result, release_id: str
 ) -> Callable[[Callable[[Any], Any] | None], dict[str, Any]]:
@@ -4964,6 +5187,7 @@ def _post_export_consumers(
     if not args.skip_demographics:
         consumers["demographics"] = _demographics_consumer
     consumers["ssi_social_security_holdout"] = _ssi_social_security_holdout_consumer
+    consumers["medicare_irmaa_holdout"] = _medicare_irmaa_holdout_consumer
     return consumers
 
 
@@ -5033,10 +5257,22 @@ class _HouseholdBatchedPostExportScorer:
         self.consumer_records: dict[str, dict[str, object]] = {}
 
     def open_consumer(
-        self, name: str, baseline_plan: Sequence[PostExportKey]
+        self,
+        name: str,
+        baseline_plan: Sequence[PostExportKey],
+        planned_reform_passes: int | None = None,
     ) -> _PostExportConsumer:
-        """Score ``baseline_plan`` now; return the consumer's simulate seam."""
-        return _PostExportConsumer(self, name, tuple(baseline_plan))
+        """Score ``baseline_plan`` now; return the consumer's simulate seam.
+
+        With ``planned_reform_passes``, each reform pass reports its number of
+        that count as its progress's outer counter.
+        """
+        return _PostExportConsumer(
+            self,
+            name,
+            tuple(baseline_plan),
+            planned_reform_passes=planned_reform_passes,
+        )
 
     def finish_consumer(self, scoring: _PostExportConsumer) -> dict[str, object]:
         """Record a consumer that has finished scoring and return its record."""
@@ -5141,8 +5377,13 @@ class _HouseholdBatchedPostExportScorer:
         *,
         label: str,
         reform_system=None,
+        outer: OuterProgress | None = None,
     ) -> dict[PostExportKey, _PostExportValues]:
-        """One batch-outer pass: one engine per batch scores every key."""
+        """One batch-outer pass: one engine per batch scores every key.
+
+        ``outer`` is the pass's place among its consumer's passes, sent with
+        each batch's progress.
+        """
         batches = self._batches()
         batched = len(batches) > 1
         watched = _post_export_watched_variables(
@@ -5162,6 +5403,7 @@ class _HouseholdBatchedPostExportScorer:
             stage_id="post_export_scoring",
             unit="scoring_batch",
             total=len(batches),
+            outer=outer,
         )
         for batch, batch_frame in enumerate(batches, start=1):
             with _automatic_gc_suspended():
@@ -5241,6 +5483,8 @@ class _PostExportConsumer:
         scorer: _HouseholdBatchedPostExportScorer,
         name: str,
         baseline_plan: tuple[PostExportKey, ...],
+        *,
+        planned_reform_passes: int | None = None,
     ) -> None:
         ordered = _ascending_period_plan(baseline_plan)
         if ordered != baseline_plan:
@@ -5253,6 +5497,7 @@ class _PostExportConsumer:
         self.baseline_plan = baseline_plan
         self.baseline_passes = 1 if baseline_plan else 0
         self.reform_passes = 0
+        self.planned_reform_passes = planned_reform_passes
         self.reform_systems = 0
         self._baseline = (
             scorer._score(baseline_plan, label=f"{name} baseline plan")
@@ -5297,7 +5542,15 @@ class _PostExportConsumer:
             reform_system, key, label=label
         )
         self.reform_passes += 1
-        scored = self._scorer._score((key,), label=label, reform_system=reform_system)
+        planned = self.planned_reform_passes
+        outer = (
+            OuterProgress(self.reform_passes, planned, "reform_pass")
+            if planned is not None and self.reform_passes <= planned
+            else None
+        )
+        scored = self._scorer._score(
+            (key,), label=label, reform_system=reform_system, outer=outer
+        )
         return scored[key]
 
 
@@ -5845,6 +6098,32 @@ def _restated_age_band_refusal(
     )
 
 
+def _restated_student_loan_balance_band_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side is None:
+        return (
+            f"{key}={value} restates an exact federal student loan balance, but "
+            "the materializer slices a half-open balance band"
+        )
+    materializer = metadata.get("materializer")
+    if materializer != FSA_MATERIALIZER:
+        return (
+            f"{key}={value} restates a federal student loan balance bound on a "
+            f"spec whose materializer ({materializer!r}) applies no balance band"
+        )
+    return _restated_band_edge_refusal(
+        key,
+        value,
+        metadata,
+        compiled_key=RESTATED_STUDENT_LOAN_BALANCE_BAND_COMPILED_KEYS[side],
+    )
+
+
 def _restated_eitc_child_count_refusal(
     key: str,
     value: str,
@@ -5946,6 +6225,10 @@ def _restated_ledger_filter_refusal(
         return _restated_eitc_child_count_refusal(key, value, metadata, side=side)
     if rule == "age_band":
         return _restated_age_band_refusal(key, value, metadata, side=side)
+    if rule == "student_loan_balance_band":
+        return _restated_student_loan_balance_band_refusal(
+            key, value, metadata, side=side
+        )
     raise ValueError(
         f"RESTATED_LEDGER_FILTER_CONCEPTS maps {concept!r} to rule {rule!r}, "
         "which has no comparison implemented."
@@ -6234,6 +6517,17 @@ def _base_simulation_household_columns(
         variable="state_income_tax",
         tax_unit_positions=tax_unit_positions,
     )
+    # Federal Student Aid portfolio targets (microcosm#1074) read the SCF
+    # education-debt stage's stored person balances, not an engine variable:
+    # the pinned engine does not define them yet, and a stored input is what
+    # the engine would read anyway. A frame without the columns materializes
+    # nothing, so the targets report as dropped.
+    for spec in target_specs:
+        if spec.metadata.get("materializer") != FSA_MATERIALIZER:
+            continue
+        fsa_values = fsa_student_loan_household_values(frame, spec.metadata)
+        if fsa_values is not None:
+            columns[spec.measure] = fsa_values
     population_age_target_specs = [
         spec
         for spec in target_specs
@@ -7166,7 +7460,7 @@ def _stored_input_gate_failures(
                 "stored tables cannot be listed, so its columns cannot be "
                 f"checked against the engine: {error}"
             ],
-            {"evaluated": False, "error": str(error)},
+            {"evaluated": False, "error": f"{type(error).__name__}: {error}"},
         )
     try:
         engine = installed_us_engine()
@@ -7178,7 +7472,7 @@ def _stored_input_gate_failures(
                 "checked against the engine it is certified against: "
                 f"{error}"
             ],
-            {"evaluated": False, "error": str(error)},
+            {"evaluated": False, "error": f"{type(error).__name__}: {error}"},
         )
     columns = {column for names in stored.values() for column in names}
     details: dict[str, object] = {
@@ -7267,6 +7561,50 @@ def _written_stored_input_verdict_mismatch(
         "release_engine.write_dataset stores; fix the model before this H5 "
         "is certified."
     )
+
+
+def _record_stored_inputs_gate_evidence(
+    release_dir: Path,
+    *,
+    failures: Sequence[str],
+    details: Mapping[str, object],
+    telemetry: _TerminalBatchProgress,
+) -> dict[str, object]:
+    """Write the stored-input gate's verdict as release evidence (microcosm#1034).
+
+    :func:`_stored_input_gate_failures` once recorded its verdict only in run
+    telemetry, so a published release could not show from its own files that
+    the check ran, against which engine, or with which register. This writes
+    ``stored_inputs.json`` in the shape of the other gate-evidence files: the
+    failure lines exactly as they joined the batched raise, ``passed`` exactly
+    when there are none, and the gate's details (the engine label, the register
+    digest, the registered non-variables and refused columns, or why the gate
+    could not evaluate). :func:`_build_manifests` binds the file as a
+    ``release_manifest.json`` artifact, records it as ``bound`` in both
+    manifests' ``gate_evidence`` block, and projects it into both manifests'
+    ``stored_inputs`` block (:func:`microcosm.data.contract.
+    stored_input_evidence_manifest_block`) for the H5 they pin. The publisher
+    requires all three of every US national calibration release.
+
+    The stored-input gate has no waiver, so ``enforced`` is always true; an
+    evidence release carries its refusal lines verbatim in ``known_failures``
+    as well, which the publisher checks.
+    """
+
+    payload: dict[str, object] = {
+        "schema_version": US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
+        "enforced": True,
+        "checked_at_stage": US_FISCAL_STORED_INPUTS_STAGE,
+        US_STORED_INPUTS_EVIDENCE_KEY: {
+            "passed": not failures,
+            "failures": list(failures),
+            "details": dict(details),
+        },
+    }
+    path = release_dir / "stored_inputs.json"
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    telemetry.attach_artifact(US_STORED_INPUTS_EVIDENCE_KEY, path)
+    return payload
 
 
 def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
@@ -7444,6 +7782,39 @@ def _write_reported_coverage_vintage_gate_receipt(
 def _engine_input_variables() -> tuple[str, ...]:
     """Persistable PolicyEngine input variables (formula-owned excluded)."""
     return tuple(PolicyEngineUSEngine().variables())
+
+
+def _esi_premiums_signal_evidence(gate: GateResult | None) -> dict[str, object]:
+    """One ESI premium signal verdict for the release evidence file.
+
+    Failures are kept verbatim so a build that waived them
+    (``--allow-esi-premium-gaps``) still records what was red.
+    """
+
+    if gate is None:
+        return {"evaluated": False}
+    return {
+        "evaluated": True,
+        "passed": gate.passed,
+        "failures": list(gate.failures),
+    }
+
+
+def _esi_anchor_feed_evidence(
+    mismatches: Sequence[str], *, enforced: bool
+) -> dict[str, object]:
+    """The anchor-versus-feed verdict for the release evidence file.
+
+    ``mismatches`` is non-empty only when a diagnostic flag waived a feed
+    whose B4923C facts differ from the stage's anchor; they are kept verbatim
+    so the waived difference stays on the record.
+    """
+
+    return {
+        "enforced": enforced,
+        "matches": not mismatches,
+        "mismatches": list(mismatches),
+    }
 
 
 def _input_mass_reference_gate(
@@ -7789,9 +8160,22 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "ABOVE the true SOI level: a correctly calibrated column cannot pass "
         "this parity check. The reference value is an incidental artifact of "
         "the incumbent weight solve (nothing pinned this column before Build "
-        "H). estate_income does not feed AGI in PolicyEngine-US (loss-cap "
-        "input only), so pinning it identifies the export dimension without "
-        "moving revenue (PolicyEngine/microcosm#299 Build H)."
+        "H). Pinning it can move revenue, because estate_income feeds "
+        "federal income tax. In policyengine-us 2.2.1 it "
+        "is not a gross-income source, but loss_ald deducts its negative "
+        "part above the line under the section 461(l) limit, whose ceiling "
+        "its positive part raises, and it counts toward qualified business "
+        "income while estate_income_would_be_qualified is true. From "
+        "policyengine-us 2.23.2 (PolicyEngine/policyengine-us#9633) a "
+        "non-dependent's positive estate_income is also gross income and "
+        "AGI, and a non-dependent's signed estate_income plus the Schedule "
+        "K-1 (Form 1041) box 14 code H adjustment input is net investment "
+        "income for the NIIT (estate_net_investment_income). The exclusion "
+        "rests on the band math above, not on revenue neutrality "
+        "(PolicyEngine/microcosm#299 Build H). That math holds only for the "
+        "$98.434B reference. The build applies this entry for any reference, "
+        "so re-adjudicate it if --export-input-mass-reference-h5 names a file "
+        "with a different level."
     ),
     "non_sch_d_capital_gains": (
         "Identified by SOI Table 1.4 capital gain distributions reported on "
@@ -9652,6 +10036,7 @@ def _write_release_calibration_diagnostics(
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
@@ -9817,6 +10202,9 @@ def _write_release_calibration_diagnostics(
                 if validation_input_coverage_gate is not None
                 else None
             ),
+            "scf_wealth_signal": (
+                dict(scf_wealth_signal) if scf_wealth_signal is not None else None
+            ),
             "support_value_repairs": support_value_repairs,
             "warm_start_calibration": (
                 dict(warm_start_calibration)
@@ -9961,10 +10349,15 @@ def _artifact_entry(path: str, sha: str, *, kind: str, revision: str) -> dict[st
 #: before the terminal gates run, so any present at manifest time are this
 #: run's own.
 US_RELEASE_GATE_EVIDENCE_FILES: dict[str, str] = {
+    "esi_premiums": "esi_premiums.json",
     "input_coverage": "input_coverage.json",
     "input_mass_parity": "input_mass_parity.json",
     "qrf_tail_concentration": "qrf_tail_concentration.json",
     "reform_coverage_smoke": "reform_coverage_smoke.json",
+    # microcosm#1034: the key and file are the contract's
+    # US_STORED_INPUTS_EVIDENCE_KEY / US_STORED_INPUTS_EVIDENCE_FILE, which
+    # the publisher requires bound; a test pins the two together.
+    "stored_inputs": "stored_inputs.json",
 }
 
 #: Key under which ``us_source_coverage.json`` carries the fiscal-target
@@ -9973,6 +10366,9 @@ US_RELEASE_GATE_EVIDENCE_FILES: dict[str, str] = {
 #: reference it by file sha and key; ``present`` stays false until the
 #: compiler writes the receipt.
 US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY = "fiscal_target_exclusion_receipt"
+#: us_source_coverage.json key of the FSA portfolio receipt, written only by a
+#: build that compiles those targets (``--scf-education-debt``, microcosm#1074).
+US_FSA_STUDENT_LOAN_TARGET_RECEIPT_KEY = "fsa_student_loan_target_receipt"
 
 
 def _gate_evidence_artifacts(release_dir: Path, *, revision: str) -> dict[str, dict]:
@@ -10051,6 +10447,26 @@ def _qrf_tail_register_manifest_block(release_dir: Path) -> dict[str, object] | 
         },
         "enforced": payload["enforced"],
     }
+
+
+def _stored_inputs_manifest_block(
+    release_dir: Path, *, dataset_sha256: str
+) -> dict[str, object] | None:
+    """The stored-input verdict, as the gate recorded it, for the pinned H5.
+
+    Read back from ``stored_inputs.json`` rather than rebuilt, so the manifests
+    carry the verdict the gate actually reached. ``_main`` writes the
+    manifests only after the post-write check found the written H5 earns that
+    verdict, so binding it to ``dataset_sha256`` (the bytes the manifests pin)
+    states what was checked. ``None`` when the gate never wrote its evidence.
+    """
+
+    path = release_dir / US_RELEASE_GATE_EVIDENCE_FILES["stored_inputs"]
+    if not path.is_file():
+        return None
+    return stored_input_evidence_manifest_block(
+        json.loads(path.read_text()), dataset_sha256=dataset_sha256
+    )
 
 
 def _fiscal_target_exclusion_receipt_reference(
@@ -10136,13 +10552,15 @@ def _score_post_export_consumer(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None,
     baseline_plan: Sequence[PostExportKey] | None,
     maximum_microsim_batch_size: int | None,
+    planned_reform_passes: int | None = None,
 ):
     """Run one post-export consumer through the household-batched scorer.
 
     ``_main`` passes the scorer it opened on the written H5 and the plan it
-    recorded in the calibration diagnostics. A direct caller may pass neither:
-    the scorer is then opened (and closed) here, and the plan is recorded by
-    the same engine-free dry run.
+    recorded in the calibration diagnostics, with the plan's reform pass
+    count for progress reporting. A direct caller may pass neither: the
+    scorer is then opened (and closed) here, and the plan and the count are
+    recorded by the same engine-free dry run.
     """
     scorer = post_export_scorer
     if scorer is None:
@@ -10151,12 +10569,13 @@ def _score_post_export_consumer(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
     try:
-        plan = (
-            _record_post_export_baseline_plan(consumer)
-            if baseline_plan is None
-            else tuple(baseline_plan)
+        if baseline_plan is None:
+            plan, planned_reform_passes = _record_post_export_requests(consumer)
+        else:
+            plan = tuple(baseline_plan)
+        scoring = scorer.open_consumer(
+            name, plan, planned_reform_passes=planned_reform_passes
         )
-        scoring = scorer.open_consumer(name, plan)
         output = consumer(scoring.simulate)
         record = scorer.finish_consumer(scoring)
         print(
@@ -10184,6 +10603,7 @@ def _write_reform_validation(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
     baseline_plan: Sequence[PostExportKey] | None = None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    planned_reform_passes: int | None = None,
 ) -> None:
     """Emit reform_validation.json: microcosm budget effects vs JCT scores.
 
@@ -10220,6 +10640,7 @@ def _write_reform_validation(
             post_export_scorer=post_export_scorer,
             baseline_plan=baseline_plan,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            planned_reform_passes=planned_reform_passes,
         )
     write_reform_validation(payload, release_dir / "reform_validation.json")
 
@@ -10285,6 +10706,37 @@ def _write_ssi_social_security_holdout(
     )
 
 
+def _write_medicare_irmaa_holdout(
+    *,
+    release_dir: Path,
+    dataset_path: Path,
+    release_id: str,
+    post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
+    baseline_plan: Sequence[PostExportKey] | None = None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+) -> None:
+    """Report held-out IRMAA payers and premiums; misses never refuse a release."""
+    try:
+        payload = _score_post_export_consumer(
+            "medicare_irmaa_holdout",
+            _medicare_irmaa_holdout_consumer,
+            dataset_path=dataset_path,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=baseline_plan,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+        payload["release_id"] = release_id
+    except Exception as error:
+        # Reporting is observational, including an unavailable measurement.
+        # It must not introduce a new release refusal or calibration target.
+        payload = medicare_irmaa_holdout_unavailable(
+            error, period=PERIOD, release_id=release_id
+        )
+    write_medicare_irmaa_holdout(
+        payload, release_dir / "us_medicare_irmaa_holdout.json"
+    )
+
+
 def _build_manifests(
     *,
     release_id: str,
@@ -10331,6 +10783,7 @@ def _build_manifests(
     scored_dataset_sha256: str | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -10372,6 +10825,9 @@ def _build_manifests(
     # ride build_manifest.json and release_manifest.json's build section.
     gate_evidence_artifacts = _gate_evidence_artifacts(release_dir, revision=release_id)
     qrf_tail_register = _qrf_tail_register_manifest_block(release_dir)
+    stored_inputs = _stored_inputs_manifest_block(
+        release_dir, dataset_sha256=dataset_sha
+    )
     evidence_bindings: dict[str, object] = {
         "gate_evidence": _gate_evidence_status(
             gate_evidence_artifacts, skipped_gates=skipped_gates
@@ -10381,6 +10837,7 @@ def _build_manifests(
             if qrf_tail_register is not None
             else {}
         ),
+        **({"stored_inputs": stored_inputs} if stored_inputs is not None else {}),
         **(
             {"export_input_mass_reference": dict(export_input_mass_reference)}
             if export_input_mass_reference is not None
@@ -10517,6 +10974,13 @@ def _build_manifests(
                 else {}
             ),
             "target_compilation": dropped,
+            # The SIPP/SCF blend audit (microcosm#1216): written with the
+            # manifest a release cannot ship without, beside the diagnostics.
+            **(
+                {"scf_wealth_signal": dict(scf_wealth_signal)}
+                if scf_wealth_signal is not None
+                else {}
+            ),
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
                 "failures": list(target_profile_gate.failures),
@@ -10877,6 +11341,18 @@ def _build_manifests(
                     )
                 }
                 if (release_dir / "us_ssi_social_security_holdout.json").exists()
+                else {}
+            ),
+            **(
+                {
+                    "us_medicare_irmaa_holdout": _artifact_entry(
+                        "us_medicare_irmaa_holdout.json",
+                        _sha256(release_dir / "us_medicare_irmaa_holdout.json"),
+                        kind="diagnostics",
+                        revision=release_id,
+                    )
+                }
+                if (release_dir / "us_medicare_irmaa_holdout.json").exists()
                 else {}
             ),
             **(
@@ -11370,8 +11846,25 @@ def _assert_exact_k_original_pool_alignment(
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 
 
+def _calibration_epoch_every(args: argparse.Namespace) -> int:
+    """The shared calibration epoch stride over this build's solves.
+
+    ``--dense-default-dataset`` solves once; the L0 and exact-k paths solve a
+    selection and then its refit, each for ``--epochs`` (an exact-k ladder
+    whose ``k`` is the whole pool solves once, so two is the most it solves).
+    """
+
+    solves = 1 if args.dense_default_dataset else 2
+    return calibration_epoch_stride(int(args.epochs) * solves)
+
+
 class _BuildProgress:
-    """Report progress to an emitter and, independently, a staging bundle."""
+    """Report progress to an emitter and, independently, a staging bundle.
+
+    Both receive the same calibration epochs: each solve's first and last and
+    every ``epoch_every``-th epoch, the rule the UK build follows too
+    (microcosm#1292).
+    """
 
     def __init__(
         self,
@@ -11380,11 +11873,13 @@ class _BuildProgress:
         emitter: LocalTelemetryEmitter,
         staging_bundle: StagingRunBundleWriter | None,
         staging_opt_out_reason: str | None = None,
+        epoch_every: int = CALIBRATION_EPOCH_EVERY,
     ) -> None:
         self.run_id = run_id
         self.emitter = emitter
         self.staging_bundle = staging_bundle
         self.staging_opt_out_reason = staging_opt_out_reason
+        self.epoch_every = epoch_every
 
     @property
     def repo_id(self) -> str | None:
@@ -11423,6 +11918,8 @@ class _BuildProgress:
             )
 
     def calibration_progress(self, event: dict[str, object]) -> None:
+        if not forwards_calibration_epoch(event, every=self.epoch_every):
+            return
         self.emitter.transition_calibration_progress(event)
         if self.staging_bundle is not None:
             self.staging_bundle.calibration_progress(event)
@@ -11437,9 +11934,13 @@ class _BuildProgress:
             self.staging_bundle.attach_artifact(name, path, **details)
 
     def fail(self, error: BaseException) -> None:
-        self.emitter.fail(error)
-        if self.staging_bundle is not None:
-            self.staging_bundle.fail(error)
+        # The staging run's failed state is handed to the emitter before the
+        # telemetry outcome shuts the emitter down.
+        try:
+            if self.staging_bundle is not None:
+                self.staging_bundle.fail(error)
+        finally:
+            self.emitter.fail(error)
 
     def complete(self) -> None:
         if self.staging_bundle is not None:
@@ -11455,17 +11956,29 @@ _ACTIVE_PROGRESS: _BuildProgress | None = None
 class _WorkCounter:
     """Report completed independent work units through the emitter service."""
 
-    def __init__(self, *, stage_id: str, unit: str, total: int) -> None:
+    def __init__(
+        self,
+        *,
+        stage_id: str,
+        unit: str,
+        total: int,
+        outer: OuterProgress | None = None,
+    ) -> None:
         self.stage_id = stage_id
         self.unit = unit
         self.total = max(0, int(total))
         self.done = 0
         self.started = time.monotonic()
+        # The counter one level above, such as the reform pass these batches
+        # belong to; sent with every report when set.
+        self.outer = outer
 
     def advance(self, units: int = 1, **details: object) -> None:
         self.done = min(self.total, self.done + max(0, int(units)))
         if _ACTIVE_EMITTER is None:
             return
+        if self.outer is not None:
+            details["outer"] = self.outer
         _ACTIVE_EMITTER.progress(
             self.stage_id,
             done=self.done,
@@ -11526,6 +12039,10 @@ class _ReleaseDryRun:
         # run's own crash, never a refusal the release would share.
         self.stopped = False
         self.seconds_to_stop_point: float | None = None
+        # Set by _main after the feed checks; a waived B4923C difference
+        # (microcosm#454) is reported here, since a dry run stops before
+        # esi_premiums.json is written.
+        self.esi_anchor_feed_mismatches: list[str] = []
 
     @classmethod
     def start(
@@ -11558,7 +12075,13 @@ class _ReleaseDryRun:
                 "allow_input_mass_drift": bool(args.allow_input_mass_drift),
                 "allow_ecps_parity_gaps": bool(args.allow_ecps_parity_gaps),
                 "allow_input_coverage_gaps": bool(args.allow_input_coverage_gaps),
+                "allow_esi_premium_gaps": bool(args.allow_esi_premium_gaps),
+                "allow_unpinned_feed": bool(args.allow_unpinned_feed),
             },
+            "esi_anchor_feed": _esi_anchor_feed_evidence(
+                self.esi_anchor_feed_mismatches,
+                enforced=not (args.allow_unpinned_feed or args.allow_esi_premium_gaps),
+            ),
             "margins": self.margins.to_dict(),
             # Taken when _main reached the stop point, before any grading;
             # None when the release refused earlier.
@@ -12115,12 +12638,14 @@ def _build_progress(
     # can never be marked failed in place of this build's.
     _ACTIVE_PROGRESS = None
     run_id = run_id or args.staging_run_id or release_id
+    epoch_every = _calibration_epoch_every(args)
     if args.no_staging:
         _ACTIVE_PROGRESS = _BuildProgress(
             run_id=run_id,
             emitter=emitter,
             staging_bundle=None,
             staging_opt_out_reason="--no-staging",
+            epoch_every=epoch_every,
         )
         return _ACTIVE_PROGRESS
     if not args.staging_dir and not args.staging_repo_id:
@@ -12139,12 +12664,15 @@ def _build_progress(
         run_dir=run_dir,
         repo_id=args.staging_repo_id,
         path_prefix=args.staging_prefix,
+        # The build's emitter commits the run files with its own credential.
+        emitter_client=emitter.client,
         upload_interval_seconds=args.staging_upload_interval_seconds,
     )
     _ACTIVE_PROGRESS = _BuildProgress(
         run_id=run_id,
         emitter=emitter,
         staging_bundle=staging_bundle,
+        epoch_every=epoch_every,
     )
     return _ACTIVE_PROGRESS
 
@@ -12284,6 +12812,22 @@ def main(argv: Sequence[str] | None = None) -> None:
         _ACTIVE_EMITTER.complete()
 
 
+def _without_opt_in_student_loan_targets(registry: TargetRegistry) -> TargetRegistry:
+    """The registry the target-parity contract reads: no FSA portfolio rows.
+
+    The parity manifest describes one target surface for every build, but the
+    FSA family compiles only with ``--scf-education-debt`` (microcosm#1074):
+    the rows bind columns a default build does not carry. Until that stage is
+    default the family is outside the contract, and the manifest may declare
+    it a reviewed exclusion without either build failing the other.
+    """
+
+    return TargetRegistry(
+        tuple(spec for spec in registry.specs if spec.family != FSA_TARGET_FAMILY),
+        country=registry.country,
+    )
+
+
 def _check_committed_us_ledger_feed_pin(
     facts_sha256: str,
     *,
@@ -12320,6 +12864,176 @@ def _check_committed_us_ledger_feed_pin(
             + "; pass --allow-unpinned-feed only for an explicitly reviewed "
             "diagnostic run"
         )
+
+
+def _with_scf_education_debt_stage(
+    base_frame: Frame,
+    *,
+    args: argparse.Namespace,
+    telemetry: Any,
+    fit_path: Path | None,
+) -> Frame:
+    """Run the opt-in SCF 2025 education-debt stage and its signal gate."""
+
+    if telemetry is not None:
+        telemetry.stage(
+            "scf_education_debt_inputs",
+            message=(
+                "Imputing federal student loan balances, Parent PLUS balances, "
+                "IBR new-borrower status and graduate shares from the 2025 SCF."
+            ),
+        )
+    summary_path = (
+        Path(args.scf_2025_summary_extract)
+        if args.scf_2025_summary_extract is not None
+        else fetch_scf_public_file(SCF_2025_SUMMARY_EXTRACT)
+    )
+    full_path = (
+        Path(args.scf_2025_full_extract)
+        if args.scf_2025_full_extract is not None
+        else fetch_scf_public_file(SCF_2025_FULL_EXTRACT)
+    )
+    donor = load_scf_2025_education_debt_donor(summary_path, full_path)
+    base_frame = with_us_scf_education_debt_inputs(
+        base_frame,
+        seed=args.seed,
+        time_period=PERIOD,
+        scf_education_debt_donor=donor,
+    )
+    gate = us_scf_education_debt_signal_gate(base_frame)
+    if not gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "scf_education_debt_gate",
+                status="failed",
+                message="SCF education-debt signal gate failed.",
+                failures=list(gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SCF education-debt signal failed: {failure}"
+                for failure in gate.failures
+            )
+        )
+    if fit_path is not None:
+        # Design-weight fit of the staged frame against the SCF; the release
+        # writes the same table at its calibrated weights after the solve
+        # (US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME, microcosm#1074).
+        _write_us_scf_education_debt_fit(
+            fit_path, base_frame, weights="pre_calibration_household_weights"
+        )
+    return base_frame
+
+
+def _write_us_scf_education_debt_fit(path: Path, frame: Frame, *, weights: str) -> None:
+    """Write the microcosm#1073 fit table of ``frame`` at its household weights.
+
+    ``weights`` names those weights in the payload: the staged frame's
+    pre-calibration weights, or the release's calibrated weights.
+    """
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "weights": weights,
+                "fit": us_scf_education_debt_fit_table(frame),
+            },
+            indent=2,
+            sort_keys=True,
+            default=float,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _check_us_ledger_feed_row_contracts(
+    fact_schema_versions: Sequence[str],
+    *,
+    facts_sha256: str,
+    pin: USChronicleFeed | None = None,
+) -> None:
+    """Hold the row contracts the loaded feed's rows carry to the US pin.
+
+    :func:`_check_committed_us_ledger_feed_pin` compares digests; the US pin
+    describes a bare feed, so the full feed-pin check cannot run. Rows of the
+    committed feed (``facts_sha256`` is the pin's) must carry exactly the pin's
+    ``consumer_fact_schema_versions``, which a re-pin types by hand. Rows of a
+    feed admitted by ``--allow-unpinned-feed`` must carry declared row
+    contracts only. Either way a row contract
+    ``microcosm.build.chronicle_epoch`` does not declare is refused.
+    """
+
+    require_us_chronicle_feed_row_contracts(
+        fact_schema_versions,
+        facts_sha256=facts_sha256,
+        pin=pin or load_us_chronicle_feed(),
+    )
+
+
+def _check_us_esi_anchor_against_feed(
+    facts: Sequence[Mapping[str, Any]],
+    *,
+    allow_unpinned_feed: bool,
+    allow_esi_premium_gaps: bool,
+) -> list[str]:
+    """Hold the ESI stage's pinned anchor to the feed's banked B4923C facts.
+
+    microcosm#454 / d1317: the ``meps_esi_premiums`` stage scales to BEA
+    B4923C values it pins itself, and the pinned feed banks the same series.
+    On the committed pin a difference means the stage drifted from the feed,
+    so the build stops. A reviewed diagnostic run on another feed
+    (``--allow-unpinned-feed``) or with the ESI gates waived
+    (``--allow-esi-premium-gaps``) continues; the differences are returned
+    either way and written to ``esi_premiums.json``.
+    """
+
+    mismatches = us_esi_premiums_anchor_feed_mismatches(facts)
+    if mismatches and not (allow_unpinned_feed or allow_esi_premium_gaps):
+        raise SystemExit(
+            "error: the meps_esi_premiums anchor differs from the Chronicle "
+            "feed: "
+            + "; ".join(mismatches)
+            + "; pass --allow-unpinned-feed or --allow-esi-premium-gaps only "
+            "for an explicitly reviewed diagnostic run"
+        )
+    return mismatches
+
+
+def _check_us_feed_carries_fsa_facts(
+    facts: Sequence[Mapping[str, Any]],
+    *,
+    scf_education_debt: bool,
+) -> FsaTargetPlan | None:
+    """Refuse a ``--scf-education-debt`` build on a feed with no FSA facts.
+
+    microcosm#1074: the flag's stage imputes the federal student loan balances
+    and Federal Student Aid's portfolio calibrates them. On a feed with no
+    ``ed_fsa`` facts the plan is empty, so the compile would bind no FSA
+    target and the build would ship the balances uncalibrated, raising
+    nothing. The build stops here instead, before any stage runs. Without the
+    flag the facts are inert and nothing is planned. Returns the plan, which
+    the ``us_source_coverage.json`` receipt reuses.
+    """
+
+    if not scf_education_debt:
+        return None
+    plan = plan_fsa_student_loan_targets(facts, target_period=PERIOD)
+    if plan.status == "no_fsa_facts":
+        raise SystemExit(
+            "error: --scf-education-debt calibrates the stage's federal student "
+            "loan balances to Federal Student Aid's portfolio, but the "
+            f"Chronicle feed carries no {FSA_SOURCE_NAME} facts (the "
+            f"{', '.join(FSA_BOUND_TABLES)} tables), so no FSA target would "
+            "compile (microcosm#1074). Build on a feed with the six "
+            "packages/ed_fsa packages of PolicyEngine/chronicle#347, as the "
+            "US pin carries from microcosm#1506, or drop the flag."
+        )
+    return plan
 
 
 def _main(argv: Sequence[str] | None = None) -> int | None:
@@ -12543,6 +13257,22 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         manifest_sha256=ledger_artifact.manifest_sha256,
         allow_unpinned_feed=args.allow_unpinned_feed,
     )
+    _check_us_ledger_feed_row_contracts(
+        ledger_artifact.fact_schema_versions,
+        facts_sha256=ledger_artifact.facts_sha256,
+    )
+    esi_anchor_feed_mismatches = _check_us_esi_anchor_against_feed(
+        ledger_artifact.facts,
+        allow_unpinned_feed=args.allow_unpinned_feed,
+        allow_esi_premium_gaps=args.allow_esi_premium_gaps,
+    )
+    if dry_run is not None:
+        dry_run.esi_anchor_feed_mismatches = list(esi_anchor_feed_mismatches)
+    # A --scf-education-debt build on a feed with no FSA facts would compile
+    # no FSA target; refuse it before the compile (microcosm#1074).
+    fsa_target_plan = _check_us_feed_carries_fsa_facts(
+        ledger_artifact.facts, scf_education_debt=args.scf_education_debt
+    )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -12551,6 +13281,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         ),
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
+        # FSA's portfolio binds the stage's balances, so only a build that
+        # imputes them compiles the targets (microcosm#1074).
+        student_loan_targets=args.scf_education_debt,
+    )
+    # Every FSA fact's disposition (bound, allocated, out of scope,
+    # diagnostic) and the in-scope controls, for us_source_coverage.json.
+    fsa_target_receipt = (
+        fsa_student_loan_target_receipt(
+            ledger_artifact.facts, target_period=PERIOD, plan=fsa_target_plan
+        )
+        if fsa_target_plan is not None
+        else None
     )
     # The exclusion register's keys do not say which feed facts a compile
     # dropped or let through by vintage (microcosm#956), so record the concrete
@@ -12582,8 +13324,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # diagnostic JCT skip — so the gate sees the true family surface, and
     # hard-fails the build on a silently dropped family or a rotted manifest,
     # exactly like the release input-coverage gate on the export frame.
-    assert_target_parity_manifest_current(registry=target_registry)
-    target_parity_gate = us_release_target_parity_gate(target_registry)
+    # The FSA portfolio family is opt-in (it binds only the
+    # --scf-education-debt stage's balances, microcosm#1074), so it stays off
+    # the one-surface parity contract until that stage is default.
+    parity_registry = _without_opt_in_student_loan_targets(target_registry)
+    assert_target_parity_manifest_current(registry=parity_registry)
+    target_parity_gate = us_release_target_parity_gate(parity_registry)
     if not target_parity_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
@@ -12656,6 +13402,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             emitter=_ACTIVE_EMITTER,
             staging_bundle=None,
             staging_opt_out_reason="dry run",
+            epoch_every=_calibration_epoch_every(args),
         )
         _ACTIVE_PROGRESS = telemetry
     if telemetry is not None:
@@ -13715,6 +14462,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in scf_wealth_gate.failures
             )
         )
+    scf_wealth_signal = _scf_wealth_gate_record(
+        scf_wealth_gate, base_frame.table("household")["household_id"]
+    )
     sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
@@ -13902,6 +14652,21 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 f"SCF auto-loan signal failed: {failure}"
                 for failure in scf_auto_loan_gate.failures
             )
+        )
+    if args.scf_education_debt:
+        # microcosm#1073: federal student loan balances from the 2025 SCF. The
+        # pinned engine does not define these inputs yet, so the stage is
+        # opt-in and its columns ride in the stored-input register until it
+        # does (microcosm.data.stored_inputs).
+        base_frame = _with_scf_education_debt_stage(
+            base_frame,
+            args=args,
+            telemetry=telemetry,
+            fit_path=(
+                artifact_root / US_SCF_EDUCATION_DEBT_FIT_FILENAME
+                if dry_run is None
+                else None
+            ),
         )
     if telemetry is not None:
         telemetry.stage(
@@ -14174,6 +14939,25 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             + "; ".join(
                 "Other-health-insurance premium signal failed: " + failure
                 for failure in other_health_insurance_gate.failures
+            )
+        )
+    # microcosm#454: the meps_esi_premiums base stage owns the ESI employer
+    # premium input; refuse a base that lacks or flattens it before the solve.
+    esi_premiums_base_gate = us_esi_premiums_signal_gate(base_frame)
+    if not esi_premiums_base_gate.passed and not args.allow_esi_premium_gaps:
+        if telemetry is not None:
+            telemetry.stage(
+                "esi_premiums_input_gate",
+                status="failed",
+                message="ESI premium signal gate failed on the base.",
+                failures=list(esi_premiums_base_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                "ESI premium signal failed: " + failure
+                for failure in esi_premiums_base_gate.failures
             )
         )
     if telemetry is not None and args.input_mass_reference_h5 is not None:
@@ -14795,6 +15579,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if isinstance(ladder_outcome, ExactKLadderCalibration):
         ladder_outcome = dataclasses.replace(ladder_outcome, result=result)
+    if args.scf_education_debt:
+        # microcosm#1074: the stage's fit table at the weights the release
+        # ships, before any scoring or terminal gate, so a build that binds
+        # the FSA family reports the borrower-household share at those weights. It
+        # follows the export and cleanup statements, which
+        # test_us_post_export_scoring runs on their own.
+        _write_us_scf_education_debt_fit(
+            artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
+            export_frame,
+            weights="calibrated_household_weights",
+        )
     compilation = dict(compilation)
     final_uncapped_ssi = _ssi_person_uncapped_amount(
         export_frame,
@@ -14937,6 +15732,25 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         early_terminal_gate_failures.extend(
             f"Other health insurance signal failed on the export frame: {failure}"
             for failure in other_health_insurance_gate.failures
+        )
+    try:
+        esi_premiums_export_gate = us_esi_premiums_signal_gate(export_frame)
+    except Exception as error:
+        if not early_terminal_gate_failures:
+            raise
+        esi_premiums_export_gate = None
+        early_terminal_gate_failures.append(
+            "ESI premium signal evaluation crashed in degraded mode; recorded "
+            f"instead of masking earlier failures: {error}"
+        )
+    if (
+        esi_premiums_export_gate is not None
+        and not esi_premiums_export_gate.passed
+        and not args.allow_esi_premium_gaps
+    ):
+        early_terminal_gate_failures.extend(
+            f"ESI premium signal failed on the export frame: {failure}"
+            for failure in esi_premiums_export_gate.failures
         )
     if congressional_district_vintage_crosswalk_metadata is not None:
         compilation = {
@@ -15163,6 +15977,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
+        scf_wealth_signal=scf_wealth_signal,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,
@@ -15258,7 +16073,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # the verdict joins the one batched pre-export raise below, so a refusal
     # names every other failing gate too and mints no H5.
     stored_input_failures_, export_frame_stored_inputs = _stored_input_gate_failures(
-        export_frame, stage="export frame"
+        export_frame, stage=US_FISCAL_STORED_INPUTS_STAGE
     )
     terminal_gate_failures.extend(stored_input_failures_)
     terminal_batch_telemetry.stage(
@@ -15289,6 +16104,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # this run skips) would otherwise be certified as this run's own.
     for stale_gate_evidence in US_RELEASE_GATE_EVIDENCE_FILES.values():
         (release_dir / stale_gate_evidence).unlink(missing_ok=True)
+    # microcosm#1034: the stored-input verdict above is release evidence, not
+    # only telemetry. Written once the clear loop has run (so it is this run's
+    # own) and before the batched raise (so a refused run keeps it locally,
+    # like its siblings); _build_manifests binds it and the publisher requires
+    # it of every US national calibration release.
+    _record_stored_inputs_gate_evidence(
+        release_dir,
+        failures=stored_input_failures_,
+        details=export_frame_stored_inputs,
+        telemetry=terminal_batch_telemetry,
+    )
     # microcosm#368: full eCPS input-column coverage as a HARD release gate.
     # Every input column the reference eCPS exports must be persisted by the
     # export as a key with non-default signal, or carry a reviewed exclusion.
@@ -15353,6 +16179,74 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Release input-column coverage gate failed.",
                 failures=list(input_coverage_gate.failures),
+                force_upload=True,
+            )
+    # microcosm#454: the calibrated ESI premium total over the anchor's
+    # universe (every policyholder) against BEA NIPA 7.8 line 17 within tolerance,
+    # red when the column is absent or zero-mass or the raw ASEC coverage
+    # columns are gone. Runs on the calibrated export for BOTH the dense and
+    # sparse default paths; the verdict ships as the esi_premiums gate
+    # evidence, with the base and export signal verdicts beside it so a waived
+    # assignment failure stays on the record.
+    try:
+        esi_premiums_anchor_gate = us_esi_premiums_anchor_gate(
+            export_frame, time_period=PERIOD
+        )
+    except Exception as exc:
+        if not terminal_gate_failures:
+            raise
+        terminal_gate_failures.append(
+            "ESI premiums failed: evaluation error under earlier gate "
+            f"failures: {type(exc).__name__}: {exc}"
+        )
+        esi_premiums_anchor_gate = None
+    if esi_premiums_anchor_gate is not None:
+        esi_premiums_failed = (
+            not esi_premiums_anchor_gate.passed and not args.allow_esi_premium_gaps
+        )
+        if esi_premiums_failed:
+            terminal_gate_failures.extend(
+                f"ESI premiums failed: {failure}"
+                for failure in esi_premiums_anchor_gate.failures
+            )
+        esi_premiums_path = release_dir / "esi_premiums.json"
+        esi_premiums_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 3,
+                    "enforced": not args.allow_esi_premium_gaps,
+                    "esi_premiums": {
+                        "passed": esi_premiums_anchor_gate.passed,
+                        "failures": list(esi_premiums_anchor_gate.failures),
+                        "details": dict(esi_premiums_anchor_gate.details),
+                    },
+                    "anchor_feed": _esi_anchor_feed_evidence(
+                        esi_anchor_feed_mismatches,
+                        enforced=not (
+                            args.allow_unpinned_feed or args.allow_esi_premium_gaps
+                        ),
+                    ),
+                    "signal": {
+                        "base_frame": _esi_premiums_signal_evidence(
+                            esi_premiums_base_gate
+                        ),
+                        "export_frame": _esi_premiums_signal_evidence(
+                            esi_premiums_export_gate
+                        ),
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        terminal_batch_telemetry.attach_artifact("esi_premiums", esi_premiums_path)
+        if esi_premiums_failed:
+            terminal_batch_telemetry.stage(
+                "export_dataset",
+                status="failed",
+                message="ESI premium anchor gate failed.",
+                failures=list(esi_premiums_anchor_gate.failures),
                 force_upload=True,
             )
     # #327: the export gate compares the calibrated export against a reference.
@@ -15610,6 +16504,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         smoke_scoring = post_export_scorer.open_consumer(
             "reform_coverage_smoke",
             post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_coverage_smoke"
+            ),
         )
         reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
             simulate=smoke_scoring.simulate,
@@ -15703,6 +16600,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 if args.skip_out_of_sample_reforms
                 else post_export_scoring_plan.baseline_plan("reform_validation")
             ),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_validation"
+            ),
         )
         if telemetry is not None:
             telemetry.attach_artifact(
@@ -15741,6 +16641,22 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "us_ssi_social_security_holdout",
             release_dir / "us_ssi_social_security_holdout.json",
         )
+        telemetry.stage(
+            "medicare_irmaa_holdout",
+            message="Writing held-out Medicare IRMAA payers and premiums.",
+        )
+    _write_medicare_irmaa_holdout(
+        release_dir=release_dir,
+        dataset_path=dataset_path,
+        release_id=release_id,
+        post_export_scorer=post_export_scorer,
+        baseline_plan=post_export_scoring_plan.baseline_plan("medicare_irmaa_holdout"),
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_medicare_irmaa_holdout",
+            release_dir / "us_medicare_irmaa_holdout.json",
+        )
     # Every post-export engine stage has run; free the scorer's batch frames.
     # The manifest must pin the bytes those stages scored, and both manifests
     # carry how they were scored (Route A remediation PR-3).
@@ -15774,6 +16690,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     ]
     coverage[US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY] = fiscal_target_exclusion_receipt
+    if fsa_target_receipt is not None:
+        coverage[US_FSA_STUDENT_LOAN_TARGET_RECEIPT_KEY] = fsa_target_receipt
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
@@ -15923,6 +16841,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scored_dataset_sha256=scored_dataset_sha256,
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
+        scf_wealth_signal=scf_wealth_signal,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")

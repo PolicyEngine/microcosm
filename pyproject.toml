@@ -63,4 +63,5 @@ markers = [
     "requires_us: needs policyengine-us (the us extra); auto-skipped when absent",
     "requires_uk: needs policyengine-uk (the uk extra); auto-skipped when absent",
     "integration: requires explicit --run-integration collection",
+    "committed_gate_key_registry: run against the committed UK gate signing key registry, not the test-key admission",
 ]

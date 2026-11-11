@@ -17,6 +17,12 @@ from typing import Any
 import numpy as np
 
 from microcosm.build.target_materialization import (
+    drop_injected_measure_inputs as shared_drop_injected_measure_inputs,
+)
+from microcosm.build.target_materialization import (
+    inject_measure_inputs as shared_inject_measure_inputs,
+)
+from microcosm.build.target_materialization import (
     resolve_target_measures,
 )
 from microcosm.build.uk_runtime.ledger_targets import (
@@ -53,8 +59,10 @@ def inject_measure_inputs(
     adapter: UKFrameTargetAdapter,
     measure_inputs: Mapping[tuple[str, str], np.ndarray],
 ) -> None:
-    for (entity, variable), values in measure_inputs.items():
-        adapter.tables[entity][variable] = values
+    """Inject resolved inputs; a stored variable's value goes under its
+    reserved engine-period name (microcosm#1324), as the resolver's probes do."""
+
+    shared_inject_measure_inputs(adapter, measure_inputs)
 
 
 def drop_injected_measure_inputs(
@@ -62,9 +70,7 @@ def drop_injected_measure_inputs(
     measure_inputs: Mapping[tuple[str, str], np.ndarray],
     original_columns: Mapping[str, set[str]],
 ) -> None:
-    for entity, variable in measure_inputs:
-        if variable not in original_columns[entity]:
-            adapter.tables[entity].drop(columns=[variable], inplace=True)
+    shared_drop_injected_measure_inputs(adapter, measure_inputs, original_columns)
 
 
 class CalibrationFrameAdapter(UKFrameTargetAdapter):

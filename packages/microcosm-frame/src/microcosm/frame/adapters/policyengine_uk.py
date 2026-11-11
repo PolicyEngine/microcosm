@@ -7,10 +7,12 @@ without the UK extra.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from importlib import metadata
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -20,17 +22,155 @@ from microcosm.frame.adapters.policyengine_uk_concepts import (
 from microcosm.frame.bundle import Frame
 from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.materialize import engine_tables
-from microcosm.frame.rules import ExportContract
+from microcosm.frame.rules import ExportContract, RulesEngine
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 
 __all__ = [
     "POLICYENGINE_UK_CONCEPT_MAPPING",
     "PolicyEngineUKEngine",
+    "ProjectingRulesEngine",
+    "SUPPLIED_ROLE_INPUTS",
+    "UK_DEFAULT_SAVINGS_INCOME_PROJECTION",
+    "UK_ISA_INCOME_CONTRACT",
+    "UK_ISA_INCOME_CONTRACT_ATTR",
+    "UK_LEGACY_ISA_INCOME_CONTRACT",
+    "UK_SAVINGS_INCOME_PROJECTION",
+    "UK_SAVINGS_INCOME_PROJECTION_ATTR",
     "UK_SCHEMA",
+    "frame_isa_income_contract",
+    "frame_savings_income_projection",
+    "uk_isa_income_contract_from",
+    "uk_savings_income_projection_from",
     "validate_uc_claimant_input",
 ]
 
 UK_SCHEMA = EntitySchema(group_entities=("benunit", "household"))
+#: How the producer's savings interest holds ISA interest, declared to
+#: policyengine-uk (its ``isa_income_contract``, from 2.162.2): non-ISA interest
+#: in ``savings_interest_income`` and ISA interest in
+#: ``individual_savings_account_interest_income``, each projected by its own
+#: index (microcosm#1360). ``tax_free_savings_income`` is the engine's sum of
+#: the ISA parts; a stored copy would override it and never be uprated, so the
+#: producer never stores it.
+UK_ISA_INCOME_CONTRACT: Mapping[str, object] = MappingProxyType(
+    {"version": 1, "representation": "additive", "projection": "additive"}
+)
+#: How policyengine-uk reads a dataset that declares no contract: gross
+#: ``savings_interest_income`` with the ISA part in ``tax_free_savings_income``,
+#: the enhanced FRS's layout and Microcosm's before microcosm#1360.
+UK_LEGACY_ISA_INCOME_CONTRACT: Mapping[str, object] = MappingProxyType(
+    {"version": 1, "representation": "legacy_gross", "projection": "legacy_gross"}
+)
+#: The H5 root attribute policyengine-uk reads the contract from, and the frame
+#: metadata key that carries it.
+UK_ISA_INCOME_CONTRACT_ATTR = "policyengine_uk.isa_income_contract"
+#: The (representation, projection) pairs policyengine-uk accepts at version 1.
+_ISA_INCOME_CONTRACT_PAIRS = frozenset(
+    {
+        ("legacy_gross", "legacy_gross"),
+        ("additive", "legacy_gross"),
+        ("additive", "additive"),
+    }
+)
+
+
+def uk_isa_income_contract_from(value: object) -> dict[str, object]:
+    """Read a declared ISA income contract, a mapping or its JSON.
+
+    Anything but one of policyengine-uk's version-1 pairs fails, so a frame's
+    reading of its savings columns is never inferred from their amounts.
+    """
+
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"ISA income contract {value!r} is not valid JSON."
+            ) from exc
+    if not isinstance(value, Mapping):
+        raise ValueError(
+            f"ISA income contract must be a mapping, got {type(value).__name__}."
+        )
+    contract = dict(value)
+    version = contract.get("version")
+    pair = (contract.get("representation"), contract.get("projection"))
+    if (
+        set(contract) != {"version", "representation", "projection"}
+        or type(version) is not int
+        or version != 1
+        or pair not in _ISA_INCOME_CONTRACT_PAIRS
+    ):
+        raise ValueError(f"Unsupported ISA income contract {contract!r}.")
+    return {"version": 1, "representation": pair[0], "projection": pair[1]}
+
+
+def frame_isa_income_contract(bundle: Frame) -> dict[str, object]:
+    """The contract a frame's savings columns follow.
+
+    A frame loaded from an H5 carries the file's declaration (one declaring
+    nothing reads as legacy gross); a frame assembled in process holds the
+    producer's columns and declares the producer's contract.
+    """
+
+    metadata = getattr(bundle, "metadata", None) or {}
+    declared = metadata.get(UK_ISA_INCOME_CONTRACT_ATTR)
+    if declared is None:
+        return dict(UK_ISA_INCOME_CONTRACT)
+    return uk_isa_income_contract_from(declared)
+
+
+#: The path the producer's savings income was calibrated to grow by, declared
+#: to policyengine-uk (its ``savings_income_projection``, from 2.165.2): the
+#: OBR's savings income per person (October 2026 EFO Table 4.5) in the fiscal
+#: years 2022 to 2025, and GDP per head in other years. The SPI income stage
+#: carries the donors' interest to the frame's year, and the SPI Table 3.7
+#: interest targets reach the calibration year, on the OBR series (María's
+#: ruling of 2026-10-29, microcosm#1418), so the engine's projection follows it
+#: (declared on her ruling of 2026-11-04, microcosm#1095).
+UK_SAVINGS_INCOME_PROJECTION = "obr_savings_income_2022_2025"
+#: How policyengine-uk projects a dataset that declares no rule: GDP per head
+#: in every year.
+UK_DEFAULT_SAVINGS_INCOME_PROJECTION = "gdp_per_head"
+#: The H5 root attribute policyengine-uk reads the rule from, and the frame
+#: metadata key that carries a rule other than the producer's.
+UK_SAVINGS_INCOME_PROJECTION_ATTR = "policyengine_uk.savings_income_projection"
+_SAVINGS_INCOME_PROJECTIONS = frozenset(
+    {UK_SAVINGS_INCOME_PROJECTION, UK_DEFAULT_SAVINGS_INCOME_PROJECTION}
+)
+
+
+def uk_savings_income_projection_from(value: object) -> str:
+    """Read a declared savings income projection rule, a name or its bytes.
+
+    A rule policyengine-uk does not name fails, so a frame's savings growth is
+    never guessed.
+    """
+
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if not isinstance(value, str) or value not in _SAVINGS_INCOME_PROJECTIONS:
+        raise ValueError(f"Unsupported savings income projection {value!r}.")
+    return value
+
+
+def frame_savings_income_projection(bundle: Frame) -> str:
+    """The rule a frame's savings income was calibrated to grow by.
+
+    A frame loaded from an H5 that declares another rule, or none (GDP per
+    head), carries it; a frame assembled in process holds the producer's
+    savings income and declares the producer's rule.
+    """
+
+    metadata = getattr(bundle, "metadata", None) or {}
+    declared = metadata.get(UK_SAVINGS_INCOME_PROJECTION_ATTR)
+    if declared is None:
+        return UK_SAVINGS_INCOME_PROJECTION
+    return uk_savings_income_projection_from(declared)
+
+
 _PERSON_TABLE = "person"
 _GROUP_TABLES = ("benunit", "household")
 _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
@@ -40,6 +180,31 @@ _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
     str: "str",
 }
 _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
+
+
+class ProjectingRulesEngine(RulesEngine, Protocol):
+    """A rules engine that can read a bundle from an earlier year.
+
+    ``RulesEngine.materialize`` reads the bundle's values as ``period``
+    inputs. An engine that projects a dataset forward itself accepts
+    ``dataset_period``: the year the bundle's values belong to. It stamps the
+    dataset with that year and computes ``variables`` at ``period`` on its own
+    projection, as it does for a released file. A stage that needs this names
+    the protocol. It is declared beside the adapter that implements it:
+    ``microcosm.frame.rules`` is inside pinned kernel hashes, and a
+    typing-only addition there would move them.
+    """
+
+    def materialize(
+        self,
+        bundle: Frame,
+        variables: Sequence[str],
+        period: int | str,
+        *,
+        dataset_period: int | str | None = None,
+    ) -> Mapping[str, np.ndarray]:
+        """Compute ``variables`` for ``period`` on a ``dataset_period`` bundle."""
+        ...
 
 
 class PolicyEngineUKEngine:
@@ -87,11 +252,26 @@ class PolicyEngineUKEngine:
         bundle: Frame,
         variables: Sequence[str],
         period: int | str,
+        *,
+        dataset_period: int | str | None = None,
     ) -> dict[str, np.ndarray]:
-        """Compute ``variables`` for ``period`` with a UK Microsimulation."""
+        """Compute ``variables`` for ``period`` with a UK Microsimulation.
+
+        The bundle's values are read as ``period`` inputs. Pass
+        ``dataset_period`` where they belong to an earlier year: the dataset is
+        then stamped with that year and policyengine-uk projects it forward to
+        ``period`` as it does a released file (``extend_single_year_dataset``).
+        """
 
         microsimulation_class = self._import_policyengine_uk().Microsimulation
-        dataset = self._build_dataset(bundle, period)
+        if dataset_period is not None and int(dataset_period) > int(period):
+            raise ValueError(
+                f"dataset_period {dataset_period} is after period {period}; "
+                "policyengine-uk projects a dataset forward only."
+            )
+        dataset = self._build_dataset(
+            bundle, period if dataset_period is None else dataset_period
+        )
         simulation = microsimulation_class(dataset=dataset)
         validate_uc_claimant_input(simulation, bundle.table("person"), period)
         results: dict[str, np.ndarray] = {}
@@ -170,6 +350,8 @@ class PolicyEngineUKEngine:
             benunit=tables["benunit"].copy(),
             household=tables["household"].copy(),
             fiscal_year=int(period),
+            isa_income_contract=frame_isa_income_contract(bundle),
+            savings_income_projection=frame_savings_income_projection(bundle),
         )
 
 
@@ -181,23 +363,41 @@ def _is_engine_computed(variable: Any) -> bool:
     return bool(getattr(variable, "formulas", None))
 
 
+#: Supplied benefit-unit roles and the first policyengine-uk release that
+#: reads each. ``is_claimant_or_partner`` (2.107.0) is read across the
+#: model's programmes, and ``is_uc_claimant`` derives from it from that
+#: release. ``is_hbai_dependent_child`` (2.107.0) sets the HBAI person
+#: types, which the BHC and AHC equivalisation reads.
+SUPPLIED_ROLE_INPUTS: tuple[tuple[str, str], ...] = (
+    ("is_uc_claimant", "2.98.0"),
+    ("is_claimant_or_partner", "2.107.0"),
+    ("is_hbai_dependent_child", "2.107.0"),
+)
+
+
 def validate_uc_claimant_input(simulation: Any, person: Any, period: int | str) -> None:
-    """Require supplied UC roles to survive the model's dataset loader.
+    """Require supplied benefit-unit roles to survive the model's dataset loader.
 
     The UK loader ignores unknown columns. FRS roles must therefore remain
     explicit inputs; recalculating the model's relationship fallback can give
     a different answer for young partners or older nonqualifying dependants.
-    Frames without recorded claimant roles retain ordinary calculator behavior.
+    Frames without recorded roles retain ordinary calculator behavior. Every
+    role in ``SUPPLIED_ROLE_INPUTS`` that the frame carries is checked.
     """
-    name = "is_uc_claimant"
-    if name not in person:
-        return
+    for name, floor in SUPPLIED_ROLE_INPUTS:
+        if name in person:
+            _validate_supplied_role(simulation, person, period, name, floor)
+
+
+def _validate_supplied_role(
+    simulation: Any, person: Any, period: int | str, name: str, floor: str
+) -> None:
     try:
         installed = metadata.version("policyengine-uk")
     except metadata.PackageNotFoundError:
         installed = "unavailable"
     guidance = (
-        f"Supplied {name} requires policyengine-uk>=2.98.0 with explicit "
+        f"Supplied {name} requires policyengine-uk>={floor} with explicit "
         f"person/Boolean/year input support (installed {installed})."
     )
     definition = simulation.tax_benefit_system.variables.get(name)

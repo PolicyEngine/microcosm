@@ -1,0 +1,239 @@
+# Frozen differential oracle from 4f333f2c2ee70b6b758586f402d966df7297a2f0.
+# Only these pure functions are retained; imports come from the current modules.
+
+def _reference_activation_gaps(document: Mapping, resource: str) -> Iterator[str]:
+    for row in _sequence(
+        document.get("target_references"), f"{resource}.target_references"
+    ):
+        reference = _mapping(row, f"{resource} reference")
+        metadata = _mapping(reference.get("metadata", {}), f"{resource}.metadata")
+        if metadata.get("activation_status", "active") != "active":
+            yield f"placeholder reference {resource}.{reference.get('name', '?')}"
+
+
+def _node(
+    spec: Mapping[str, object],
+    row: Mapping,
+    config: TransportGraphConfig,
+    types: Mapping[tuple[str, str], ArtifactType],
+    *,
+    allowed_kernels: frozenset[str] = SKELETON_KERNELS,
+    resolved_params: Mapping[str, object] | None = None,
+    profile_selection: Mapping | None = None,
+) -> Node:
+    _safe_node_id(row.get("id"))
+    unknown = set(row) - _NODE_FIELDS
+    if unknown:
+        raise ValueError(
+            f"Transport node {row.get('id')!r} has unknown fields {sorted(unknown)}."
+        )
+    kernel = row.get("kernel")
+    if kernel not in allowed_kernels:
+        raise ValueError(
+            f"Kernel {kernel!r} is not a skeleton kernel; add it through an extension."
+        )
+    params = (
+        dict(resolved_params)
+        if resolved_params is not None
+        else {
+            name: _param(spec, value, config.engine_refs)
+            for name, value in _mapping(row.get("params", {}), "node params").items()
+        }
+    )
+    params = _target_feed_params(spec, kernel, params)
+    if (
+        kernel in TARGET_COMPILATION_KERNELS | {"calibration.prepare@1"}
+        and "references" in params
+    ):
+        view = reference_profile_view(spec, profile_selection)
+        if view is not None:
+            references, intervals, receipt = view
+            if canonical_json(references).decode("utf-8") == params["references"]:
+                params["reference_resolution"] = canonical_json(receipt).decode("utf-8")
+                # Preparation receives the exact effective interval companion.
+                if kernel == "calibration.prepare@1" and intervals is not None:
+                    companion = canonical_json(intervals).decode("utf-8")
+                    if params.setdefault("intervals", companion) != companion:
+                        raise ValueError(
+                            f"Node {row.get('id')!r} supplies an interval document "
+                            "that differs from its effective interval companion."
+                        )
+    if "rules_binding" in row:
+        params = _rules_params(spec, row, params, config)
+    elif kernel == RULES_ROUTER:
+        raise ValueError("Every skeleton rules node must name its rules_binding.")
+    structural = StructuralDelta(row.get("structural", "none"))
+    if structural is StructuralDelta.CREATE:
+        if row.get("outputs"):
+            raise ValueError("CREATE's outputs come from preparation, not the spec.")
+        outputs = config.create_outputs
+    else:
+        outputs = tuple(
+            Owned(
+                **{
+                    **value,
+                    "ownership": Ownership(value.get("ownership", "produced")),
+                }
+            )
+            for value in _sequence(row.get("outputs", ()), "owned outputs")
+        )
+    inputs = tuple(
+        Slice(**{**value, "columns": tuple(value["columns"])})
+        for value in _sequence(row.get("inputs", ()), "input slices")
+    )
+    artifacts = []
+    for value in _sequence(row.get("artifact_inputs", ()), "artifact inputs"):
+        edge = _mapping(value, "artifact input")
+        if set(edge) - {"name", "producer", "artifact"}:
+            raise ValueError(
+                f"Node {row['id']!r}: an artifact input declares name, producer "
+                "and optionally artifact; its type is the producer's."
+            )
+        producer, artifact = edge["producer"], edge.get("artifact", edge["name"])
+        if (producer, artifact) not in types:
+            raise ValueError(
+                f"Node {row['id']!r} reads undeclared artifact {producer}.{artifact}."
+            )
+        artifacts.append(
+            ArtifactInput(edge["name"], producer, artifact, types[producer, artifact])
+        )
+    weights = row.get("weights")
+    return Node(
+        id=row["id"],
+        kernel=kernel,
+        inputs=inputs,
+        outputs=outputs,
+        params=params,
+        population=row.get("population"),
+        structural=structural,
+        base=row.get("base"),
+        sources=tuple(_sequence(row.get("sources", ()), "node sources")),
+        weights=None if weights is None else WeightTransition(**weights),
+        mass=row.get("mass", "conserve"),
+        description=row.get("description", ""),
+        citation=row.get("citation", ""),
+        artifact_inputs=tuple(artifacts),
+        artifact_outputs=_artifact_outputs(row),
+    )
+
+
+def encode_target_surface(
+    registry: TargetRegistry,
+    references: Sequence[LedgerTargetReference],
+    *,
+    references_sha256: str,
+    facts: Mapping[str, object],
+    reference_resolution: Mapping[str, object] | None = None,
+) -> bytes:
+    """Encode a compiled registry with its one-to-one reference trace."""
+
+    specs = registry.specs
+    if len(specs) != len(references) or any(
+        spec.name != reference.name
+        for spec, reference in zip(specs, references, strict=True)
+    ):
+        raise ValueError(
+            "A target surface needs exactly one compiled target per reference, "
+            "in reference order."
+        )
+    document = {
+        "schema_version": 1,
+        "kind": _SURFACE_KIND,
+        "country": registry.country,
+        "registry": {
+            "country": registry.country,
+            "version": registry.version,
+            "specs": [spec.to_dict() for spec in specs],
+        },
+        "trace": [
+            _trace_row(spec, reference)
+            for spec, reference in zip(specs, references, strict=True)
+        ],
+        "references_sha256": references_sha256,
+        "facts": dict(facts),
+    }
+    if reference_resolution is not None:
+        document["reference_resolution"] = dict(reference_resolution)
+    payload = canonical_json(document)
+    decode_target_surface(payload)
+    return payload
+
+
+def compile_target_surface(
+    facts_path: Path,
+    document: Mapping[str, object],
+    *,
+    country: str,
+    references_sha256: str,
+    expected_facts_sha256: str | None = None,
+    feed_pin: Mapping[str, object] | None = None,
+    reference_resolution: Mapping[str, object] | None = None,
+) -> tuple[bytes, TargetRegistry]:
+    """Compile a reference document against one consumer artifact.
+
+    Returns the surface bytes and the registry they encode. The artifact
+    payload records content identities only, never the source path, so moving
+    a source file changes neither a node key nor an artifact byte. A declared
+    country feed supplies ``feed_pin`` for all six artifact identities; the
+    optional facts hash remains available for feeds without a full pin.
+    """
+
+    references = parse_reference_document(document, country=country)
+    resolved = any(
+        ref.metadata.get("reference_profiles_resolved") for ref in references
+    )
+    if resolved and reference_resolution is None:
+        raise ValueError(
+            "Profile-resolved references require a reference resolution receipt."
+        )
+    if reference_resolution is not None:
+        reference_resolution = validate_reference_resolution(
+            document, reference_resolution, references_sha256=references_sha256
+        )
+    artifact = load_ledger_consumer_artifact(
+        facts_path,
+        expected_facts_sha256=expected_facts_sha256,
+        feed_pin=feed_pin,
+        lexical_floats=bool(
+            reference_resolution and reference_resolution.get("selected_factors")
+        ),
+    )
+    if reference_resolution is not None:
+        for entry in reference_resolution.get("selected_factors", {}).values():
+            factor_feed_identity = ledger_artifact_module.chronicle_feed_identity(
+                feed_pin
+                if feed_pin is not None
+                else entry["declaration"]["feed_identity"]
+            )
+            if feed_pin is None:
+                ledger_artifact_module.validate_chronicle_feed_pin(
+                    artifact, factor_feed_identity
+                )
+                if (artifact.manifest or {}).get(
+                    "source_commit"
+                ) != factor_feed_identity["source_commit"]:
+                    raise ValueError(
+                        "Factor source commit cannot be authenticated without a feed pin."
+                    )
+            reference_factors_module.replay_reference_factor(
+                entry["declaration"],
+                artifact.facts,
+                factor_feed_identity,
+                entry["operational_factor"],
+                entry["receipt"],
+            )
+    registry = compile_ledger_target_references(
+        artifact.facts, references, country=country
+    )
+    payload = encode_target_surface(
+        registry,
+        references,
+        references_sha256=references_sha256,
+        facts={
+            "facts_sha256": artifact.facts_sha256,
+            "manifest_sha256": artifact.manifest_sha256,
+            "n_facts": len(artifact.facts),
+        },
+        reference_resolution=reference_resolution,
+    )
+    return payload, registry

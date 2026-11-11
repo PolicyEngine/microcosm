@@ -1,8 +1,9 @@
 #!/bin/bash
 # M4 runner: wait for a quieter machine, then two solves (base, drop4) and the report, all at low priority.
 set -uo pipefail
-D=/Users/mariajuaristi/Desktop/PolicyEngine/data/ukds/acceptance/vat-fuel-energy-measure-2026-10-08
-TREE=/Users/mariajuaristi/Desktop/PolicyEngine/repos/populace-national-main
+PE="${PE:-$HOME/Desktop/PolicyEngine}"
+D=$PE/data/ukds/acceptance/vat-fuel-energy-measure-2026-10-08
+TREE=$PE/repos/populace-national-main
 LOG=$D/run_m4.log
 echo "== M4 start $(date -u +%FT%TZ)" > "$LOG"
 deadline=$(( $(date +%s) + 3600 ))

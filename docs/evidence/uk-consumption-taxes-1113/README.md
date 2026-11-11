@@ -12,7 +12,7 @@ Evidence for [PolicyEngine/microcosm#1167](https://github.com/PolicyEngine/micro
   - `stage_dev_run.base-7f235941c.json`: the base tree's stage on the same spine;
   - `stage_dev_run.review-r2.json`: the head after the second review round.
 
-The base run is what isolates this PR's effect. The spine already holds the stages after `lcfs_consumption`, so a re-run redraws most households, and a comparison with the spine's stored columns mixes that drift with the change. Compare a run with the base run, not with `before_head_r3`.
+The base run is what isolates this PR's effect. The spine already holds the stages after `lcfs_consumption`, so a re-run redraws most households, and a comparison with the spine's stored columns mixes that drift with the change. Compare a run with the base run, not with `before_head_r3`. The same holds for `division_capture`: the calendar bridge moves every division by the same −0.62%, and the per-division movement between runs (−1.4% to +2.2%) is that redraw noise around it, not a division-specific effect.
 
 ## What is not here
 

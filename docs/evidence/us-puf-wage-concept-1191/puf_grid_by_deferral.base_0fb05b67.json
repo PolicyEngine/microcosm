@@ -1,0 +1,11 @@
+{
+ "h5": "base_populace_us_2024_puf_support.h5",
+ "h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+ "scalar": 1.187079295246555,
+ "units_with_wages_count": 153465,
+ "units_with_a_deferral_count": 56629,
+ "on_grid_share_units_with_a_deferral": 0.8746402020166346,
+ "on_grid_share_units_without_a_deferral": 0.9271448634805237,
+ "on_grid_share_of_wage_plus_deferral_units_with_a_deferral": 0.0,
+ "on_grid_share_of_wage_minus_deferral_units_with_a_deferral": 0.0
+}

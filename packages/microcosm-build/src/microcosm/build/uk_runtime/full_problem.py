@@ -13,9 +13,18 @@ from microcosm.build.uk_runtime import (
     uk_area_region_codes,
     uk_local_target_surface,
 )
+from microcosm.build.uk_runtime.ledger_targets import (
+    load_uk_local_target_reference_membership,
+    uk_off_surface_cells,
+    uk_small_cell_deferred_cells,
+)
 from microcosm.build.uk_runtime.local_rowwise import (
     build_uk_rowwise_local_surface_matrix,
     empty_uk_local_problem,
+)
+from microcosm.build.uk_runtime.local_targets import (
+    uk_brma_area_codes,
+    uk_brma_area_roster,
 )
 from microcosm.calibrate import TargetRegistry
 
@@ -76,19 +85,21 @@ def build_uk_full_local_problem(
         grain: frame.set_axis(household_index, axis="index")
         for grain, frame in local_metrics.items()
     }
-    assigned = {
-        "constituency": pd.Series(
-            household["constituency_code"].astype(str).to_numpy(),
-            index=household_index,
-        ),
-        "la": pd.Series(
-            household["local_authority_code"].astype(str).to_numpy(),
-            index=household_index,
-        ),
-    }
-    assigned = {grain: assigned[grain] for grain in metrics}
+
+    def assigned_codes(grain: str) -> pd.Series:
+        if grain == "brma":
+            # Scotland's BRMAs: a household's area is its BRMA's code, blank
+            # outside Scotland (a partial grain, microcosm#1262).
+            codes = uk_brma_area_codes(household["brma"].astype(str).to_numpy())
+        else:
+            column = {"constituency": "constituency_code", "la": "local_authority_code"}
+            codes = household[column[grain]].astype(str).to_numpy()
+        return pd.Series(codes, index=household_index)
+
+    assigned = {grain: assigned_codes(grain) for grain in metrics}
     national_ids = _national_contract_target_ids(national_registry)
     if selected_surface is None:
+        membership = load_uk_local_target_reference_membership()
         surface, cross_grain = uk_local_target_surface(
             _joint_surface_registry(local_registry, national_registry),
             bound_national_target_ids=national_ids,
@@ -98,6 +109,10 @@ def build_uk_full_local_problem(
             # #906: the run's ladder membership resolves English areas to their
             # region-tier leg, as the rowwise driver does.
             area_region_codes=uk_area_region_codes(assignment.ladder),
+            # The membership's signed cells that are not bound still count in
+            # their leg, as on the graph's surface (microcosm#1123).
+            deferred_cells=uk_small_cell_deferred_cells(membership),
+            off_surface_cells=uk_off_surface_cells(membership),
         )
     else:
         surface = selected_surface.copy()
@@ -176,6 +191,7 @@ def build_uk_full_local_problem(
     rosters = {
         "constituency": tuple(map(str, np.unique(assignment.ladder.constituency_code))),
         "la": tuple(map(str, np.unique(assignment.ladder.local_authority_code))),
+        "brma": uk_brma_area_roster(),
     }
     if surface.empty:
         problem = empty_uk_local_problem(household_index)

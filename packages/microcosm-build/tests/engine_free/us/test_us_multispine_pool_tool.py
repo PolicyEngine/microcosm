@@ -1044,7 +1044,10 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # Legacy materializer version 4 similarly changes only checkpoint
         # identity metadata here, invalidating pre-fix finalized checkpoints
         # that skipped the CPS-reported Social Security restoration on resume.
-        "manifest": "7037ca123fc822856db26bfaf13a44e5e2abee127d4c096aae70b69d31c99bdb",
+        # microcosm#1258 moves the identity again (the late schedule and the
+        # remaining-stage manifest gain the S-corp transfer target); pool_h5
+        # and agreement stay unchanged.
+        "manifest": "bfaa7ffc709b68dbb7d05ee8f4c7e0600612f22ef21f3329784b782a9f59e812",
     }
 
 

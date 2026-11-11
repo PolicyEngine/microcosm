@@ -19,13 +19,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-PE = Path("/Users/mariajuaristi/Desktop/PolicyEngine")
+PE = Path(os.environ.get("PE", Path.home() / "Desktop" / "PolicyEngine"))
 RUN = PE / "runs/uk-national-main-c5a1cba8"
 SPINE = (
     PE

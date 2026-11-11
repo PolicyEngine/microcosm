@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "identity": [
+    "household_id"
+  ],
+  "stream": [
+    "sha256-u53-v1",
+    "nz-joint-geography",
+    0,
+    21
+  ],
+  "outputs": {
+    "area": "nz_atomic_area",
+    "system": "nz_area_system",
+    "basis": "nz_area_basis"
+  },
+  "systems": [
+    {
+      "id": "nz-joint",
+      "level": "ta_region_as_area",
+      "code_system": "stats_nz_joint_ta_regc_as",
+      "vintage": "ta2026_regc2025_au2017",
+      "source": "nz_chronicle_facts",
+      "selector": {},
+      "constraints": [],
+      "observed_area": null,
+      "stages": [
+        {
+          "level": "area",
+          "weight": "population"
+        }
+      ],
+      "layers": [
+        {
+          "input": "ta_code",
+          "output": "ta_code",
+          "vintage": "ta2026_regc2025_au2017",
+          "relation": "exact",
+          "source": "atomic_geography_support.json"
+        },
+        {
+          "input": "region_code",
+          "output": "household_region_code",
+          "vintage": "ta2026_regc2025_au2017",
+          "relation": "exact",
+          "source": "atomic_geography_support.json"
+        },
+        {
+          "input": "as_area",
+          "output": "as_area",
+          "vintage": "ta2026_regc2025_au2017",
+          "relation": "exact",
+          "source": "atomic_geography_support.json"
+        },
+        {
+          "input": "as_area_alt",
+          "output": "as_area_alt",
+          "vintage": "ta2026_regc2025_au2017",
+          "relation": "exact",
+          "source": "atomic_geography_support.json"
+        }
+      ]
+    }
+  ]
+}
