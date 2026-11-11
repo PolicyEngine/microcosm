@@ -141,9 +141,11 @@ What it can't see:
   (``del module.name``) or that the module removes without ``del``
   (``delattr``, ``globals()``); for a name that a star import leaves out
   through an ``__all__`` the walk can't see (one that another module sets,
-  one set through ``globals()``, or one a star import brings in); and for
-  ``__path__``, which a ``from`` import asks a module that isn't a package
-  for;
+  one set through ``globals()``, or one a star import brings in); for
+  ``__all__``, which a star import asks a module that doesn't define it
+  for; for each name that a star import's ``__all__`` lists and the module
+  doesn't bind; and for ``__path__``, which a ``from`` import asks a module
+  that isn't a package for;
 - the import-time code of a module that holds no item the walk reaches, such
   as the ``__init__`` of a package above a reached module, or a module
   imported only for its effects, unless a statement there changes a reached

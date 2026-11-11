@@ -141,6 +141,8 @@ TARGETS = (
     "getattr_import_cycle_from",
     "getattr_importer",
     "getattr_init_cycle",
+    "getattr_maybe_annotated",
+    "getattr_maybe_augmented",
     "getattr_maybe_branch",
     "getattr_maybe_deleted",
     "getattr_maybe_except",
@@ -148,15 +150,19 @@ TARGETS = (
     "getattr_maybe_optional",
     "getattr_maybe_star_all",
     "getattr_maybe_star_del",
+    "getattr_maybe_star_private",
     "getattr_maybe_target",
     "getattr_maybe_typing",
     "getattr_maybe_walrus",
+    "getattr_maybe_with",
     "getattr_named",
     "getattr_outside_del",
     "getattr_path",
     "getattr_renamed",
     "getattr_self",
     "getattr_settled",
+    "getattr_star_lazy",
+    "getattr_star_noall",
     "getattr_sub_attribute",
     "getattr_submodule",
     "global",
@@ -3518,13 +3524,58 @@ SOURCES["r_getattr_path"] = """
     def run():
         return x
     """
+# A star import asks a module that doesn't define __all__ for it. The run
+# reads a name that the star import binds, so the walk has a lookup.
+SOURCES["gsnoall.__init__"] = """
+    from microcosm.walkcases import t_getattr_star_noall
+
+
+    def __getattr__(attr):
+        t_getattr_star_noall.X
+        raise AttributeError(attr)
+
+
+    y = 1
+    """
+SOURCES["r_getattr_star_noall"] = """
+    from microcosm.walkcases.gsnoall import *  # noqa: F403
+
+
+    def run():
+        return y  # noqa: F405
+    """
+# A star import asks for each name that __all__ lists and the module doesn't
+# bind. The run reads one that the module binds.
+SOURCES["gslazy.__init__"] = """
+    __all__ = ["lazy", "y"]
+
+
+    def __getattr__(attr):
+        if attr == "lazy":
+            from microcosm.walkcases import t_getattr_star_lazy
+
+            return t_getattr_star_lazy.X
+        raise AttributeError(attr)
+
+
+    y = 1
+    """
+SOURCES["r_getattr_star_lazy"] = """
+    from microcosm.walkcases.gslazy import *  # noqa: F403
+
+
+    def run():
+        return y  # noqa: F405
+    """
 # A module's __getattr__ answers for a name that the module binds only
 # maybe: in a branch that never runs, in an import for type checkers, in a try
 # whose import fails, before a del (at module level, or in a function that
 # declares the name global), before an except clause that names it, or through
-# a star import that a del or an __all__ can undo. A walrus inside a
-# subscript of an assignment's target can be skipped, and a comprehension's
-# name there binds in the comprehension, not the module. A package's
+# a star import that a del or an __all__ can undo. A star import brings in
+# no name that starts with an underscore from a module without __all__. A
+# walrus inside a subscript of a target can be skipped, in a plain, annotated
+# or augmented assignment or a with statement, and a comprehension's name
+# there binds in the comprehension, not the module. A package's
 # __getattr__ answers for a sub module that nothing has imported, read as an
 # attribute.
 SOURCES["gmb_branch"] = """
@@ -3682,6 +3733,65 @@ SOURCES["gmb_walrus"] = """
             return t_getattr_maybe_walrus.X
         raise AttributeError(attr)
     """
+SOURCES["gmb_star_private_src"] = """
+    _name = 1
+    """
+SOURCES["gmb_star_private"] = """
+    from microcosm.walkcases import t_getattr_maybe_star_private
+    from microcosm.walkcases.gmb_star_private_src import *
+
+
+    def __getattr__(attr):
+        if attr == "_name":
+            return t_getattr_maybe_star_private.X
+        raise AttributeError(attr)
+    """
+SOURCES["r_getattr_maybe_star_private"] = """
+    from microcosm.walkcases.gmb_star_private import _name
+
+
+    def run():
+        return _name
+    """
+SOURCES["gmb_with"] = """
+    from contextlib import nullcontext
+
+    from microcosm.walkcases import t_getattr_maybe_with
+
+    rows = {}
+    with nullcontext(1) as rows[(name := 1) if False else 0]:
+        pass
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_with.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_annotated"] = """
+    from microcosm.walkcases import t_getattr_maybe_annotated
+
+    rows = {}
+    rows[(name := 1) if False else 0]: int = 1
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_annotated.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_augmented"] = """
+    from microcosm.walkcases import t_getattr_maybe_augmented
+
+    rows = {0: 0}
+    rows[(name := 1) if False else 0] += 1
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_augmented.X
+        raise AttributeError(attr)
+    """
 SOURCES.update(
     {
         f"r_getattr_maybe_{form}": f"""
@@ -3702,6 +3812,9 @@ SOURCES.update(
             "star_all",
             "target",
             "walrus",
+            "with",
+            "annotated",
+            "augmented",
         )
     }
 )
@@ -4033,6 +4146,10 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_getattr_maybe_star_all", "run"): {"getattr_maybe_star_all"},
     ("r_getattr_maybe_target", "run"): {"getattr_maybe_target"},
     ("r_getattr_maybe_walrus", "run"): {"getattr_maybe_walrus"},
+    ("r_getattr_maybe_with", "run"): {"getattr_maybe_with"},
+    ("r_getattr_maybe_annotated", "run"): {"getattr_maybe_annotated"},
+    ("r_getattr_maybe_augmented", "run"): {"getattr_maybe_augmented"},
+    ("r_getattr_maybe_star_private", "run"): {"getattr_maybe_star_private"},
     ("r_getattr_sub_attribute", "run"): {"getattr_sub_attribute"},
     ("r_getattr_submodule", "run"): {"getattr_submodule"},
     ("r_class_global", "Kernel.run"): {
@@ -4234,6 +4351,8 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_getattr_outside_del", "run"): set(),
     ("r_getattr_hidden_all", "run"): set(),
     ("r_getattr_path", "run"): set(),
+    ("r_getattr_star_noall", "run"): set(),
+    ("r_getattr_star_lazy", "run"): set(),
 }
 
 #: Targets a root's walk reaches that its run doesn't read. The walk reaches
@@ -4294,8 +4413,11 @@ BLIND: dict[tuple[str, str], set[str]] = {
     # a name the module's top level binds for sure, when Python reads the
     # module part-built (through an import cycle, or a function the module
     # calls while it runs); for a name another module deletes; for a name a
-    # star import leaves out through an __all__ that another module sets; and
-    # for __path__, which a from-import asks a module that isn't a package for.
+    # star import leaves out through an __all__ that another module sets; for
+    # __all__, which a star import asks a module that doesn't define it for;
+    # for each name that a star import's __all__ lists and the module doesn't
+    # bind; and for __path__, which a from-import asks a module that isn't a
+    # package for.
     ("r_getattr_import_cycle", "run"): {"getattr_import_cycle"},
     ("r_getattr_import_cycle_from", "run"): {"getattr_import_cycle_from"},
     ("r_getattr_init_cycle", "run"): {"getattr_init_cycle"},
@@ -4303,6 +4425,8 @@ BLIND: dict[tuple[str, str], set[str]] = {
     ("r_getattr_outside_del", "run"): {"getattr_outside_del"},
     ("r_getattr_hidden_all", "run"): {"getattr_hidden_all"},
     ("r_getattr_path", "run"): {"getattr_path"},
+    ("r_getattr_star_noall", "run"): {"getattr_star_noall"},
+    ("r_getattr_star_lazy", "run"): {"getattr_star_lazy"},
 }
 
 
@@ -4443,7 +4567,7 @@ def _random_module(rng: random.Random, own: str) -> str:
     imported: dict[str, None] = {}
     lines = []
     for _ in range(rng.randint(2, 6)):
-        form = rng.randrange(10)
+        form = rng.randrange(11)
         name, other = rng.choice(_RANDOM_NAMES), rng.choice(_RANDOM_NAMES)
         if form == 0:
             lines.append(f"from {RANDOM_PACKAGE}.{rng.choice(sources)} import {name}")
@@ -4466,6 +4590,14 @@ def _random_module(rng: random.Random, own: str) -> str:
             target = rng.choice(_RANDOM_TARGETS)
             imported[target] = None
             lines.append(f"def __getattr__(attr):\n    return {target}.X")
+        elif form == 10:
+            base = rng.choice((other, f"{other}.{rng.choice(_RANDOM_NAMES)}"))
+            body = (
+                f"    __match_args__ = ({rng.choice(_RANDOM_NAMES)!r},)"
+                if rng.randrange(2)
+                else "    pass"
+            )
+            lines.append(f"class Base({base}.Base):\n{body}")
         else:
             attribute = rng.choice(_RANDOM_NAMES)
             lines.append(f"if False:\n    {name} = {other}.{attribute}")
@@ -4477,17 +4609,20 @@ def random_tree(rng: random.Random) -> dict[str, str]:
     """A random tree of modules, each name's source, as :func:`write_tree` takes it.
 
     ``m0`` to ``m3``, and ``s0`` and ``s1`` in the package ``pk``, each run
-    two to six statements, each in one of ten forms: a from-import of a name,
-    or a star import, from one of the other five; a name bound to one of
-    ``m0`` to ``m3``, to a target ``t_*``, to an attribute of ``pk`` (``s0``
-    and ``s1`` among them), to another name or to another name's attribute;
-    the last two again in a branch that never runs; and a module
-    ``__getattr__`` that reads a target. ``pk`` defines a ``__getattr__``
-    too. ``r``'s ``run()`` reads ``X`` through two to four of the six
-    modules' names, each through up to two attributes, and ``run2()`` makes
-    the same reads in the opposite order; both then match a class pattern
-    through the first name. So the names can wait on each other in cycles of
-    any shape these forms make.
+    two to six statements, each in one of eleven forms: a from-import of a
+    name, or a star import, from one of the other five; a name bound to one
+    of ``m0`` to ``m3``, to a target ``t_*``, to an attribute of ``pk``
+    (``s0`` and ``s1`` among them), to another name or to another name's
+    attribute; the last two again in a branch that never runs; a module
+    ``__getattr__`` that reads a target; and a class ``Base`` whose base is
+    the ``Base`` of another name or of another name's attribute, with a
+    ``__match_args__`` that names one of ``a``, ``b`` and ``c`` or with none,
+    so that it takes its base's. ``pk`` defines a ``__getattr__`` too.
+    ``r``'s ``run()`` reads ``X`` through two to four of the six modules'
+    names, each through up to two attributes, and ``run2()`` makes the same
+    reads in the opposite order; both then match a class pattern through the
+    first name's ``Base``. So the names and the classes' ``__match_args__``
+    can wait on each other in cycles of any shape these forms make.
     """
 
     sources = {"__init__": "", **{target: "X = 1\n" for target in _RANDOM_TARGETS}}

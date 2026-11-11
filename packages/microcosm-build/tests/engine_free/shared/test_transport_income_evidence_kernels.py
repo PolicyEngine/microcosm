@@ -2060,13 +2060,23 @@ def test_property_composing_roots_loses_no_target(walk_case_tree, picked) -> Non
     )
 
 
-def _counted(monkeypatch) -> Counter[tuple[object, ...]]:
-    # Counts each lookup's runs, its first and each pass's, in the Counter it
-    # returns, and checks that each lookup hands back each item once.
+_Lookup = tuple[object, ...]
+
+
+def _counted(monkeypatch) -> tuple[Counter[_Lookup], set[_Lookup]]:
+    # Counts each lookup's runs, its first and each pass's, and records each
+    # lookup that a lookup met before it settled: one that had begun to run
+    # and that the memo didn't hold yet. Both come from the calls, not from
+    # the walk's own pass log, and each walk starts with both cleared. It
+    # also checks that each lookup hands back each item once.
     settled = static_reach._Walk._settled
-    runs: Counter[tuple[object, ...]] = Counter()
+    runs: Counter[_Lookup] = Counter()
+    met: set[_Lookup] = set()
 
     def counted(self, key, compute, cut=()):
+        if runs[key] and key not in self._done:
+            met.add(key)
+
         def counting():
             runs[key] += 1
             return compute()
@@ -2076,18 +2086,31 @@ def _counted(monkeypatch) -> Counter[tuple[object, ...]]:
         return found
 
     monkeypatch.setattr(static_reach._Walk, "_settled", counted)
-    return runs
+    return runs, met
 
 
-def _check_runs(walk, runs, label) -> None:
-    # Every lookup the walk began settled. Each pass over a cycle added items
-    # or lookups but the last, which added nothing. And each lookup ran once,
-    # and once more for each pass that ran it.
+def _check_runs(walk, counted, label) -> None:
+    # Every lookup the walk began settled. Each pass over a cycle ran each of
+    # its lookups once and added items or lookups but the last, which added
+    # nothing. Each logged cycle's lookups met each other before they
+    # settled: there were more than one, or the one met itself. No two logged
+    # cycles ran the same lookups, since a cycle runs its passes once and
+    # then settles or joins a larger one. And each lookup ran once, and once
+    # more for each pass that ran it, so the log accounts for every rerun and
+    # logs only what a cycle needs.
+    runs, met = counted
     assert runs, label
     assert not walk._began and not walk._open, label
+    logged = set()
     for passes in walk.cycles:
         assert all(added for _, added in passes[:-1]), (label, passes)
         assert passes[-1][1] == 0, (label, passes)
+        assert all(len(set(ran)) == len(ran) for ran, _ in passes), (label, passes)
+        first = passes[0][0]
+        assert len(first) > 1 or first[0] in met, (label, first)
+        lookups = frozenset(key for ran, _ in passes for key in ran)
+        assert lookups not in logged, (label, passes)
+        logged.add(lookups)
     reruns = walk.reruns
     assert set(reruns) <= set(runs), label
     for key, count in runs.items():
@@ -2102,16 +2125,19 @@ def test_the_walk_runs_each_lookup_once_outside_a_cycle(
     # or lookups but the last, which adds nothing, so the passes stop at the
     # fixpoint. Each lookup hands back each item once, and every lookup a walk
     # begins settles, a lookup that joins a cycle during a pass too
-    # (r_alias_cycle_join and r_join_no_growth). A walk that ran a lookup
-    # afresh wherever it met it would take time exponential in a diamond's
-    # depth, or factorial in a clique's size, on the Cost roots.
+    # (r_alias_cycle_join and r_join_no_growth). The test counts the runs and
+    # the lookups met under way itself, so a walk that runs a lookup again
+    # outside a cycle fails here even when it logs the run as a pass. A walk
+    # that ran a lookup afresh wherever it met it would take time exponential
+    # in a diamond's depth, or factorial in a clique's size, on the Cost roots.
     _, paths = walk_case_tree
-    runs = _counted(monkeypatch)
+    counted = _counted(monkeypatch)
     for module, qualname in _WALK_CASE_ROOTS:
-        runs.clear()
+        for record in counted:
+            record.clear()
         walk = static_reach._Walk(paths, ())
         walk.run(f"{static_reach_cases.PACKAGE}.{module}", qualname)
-        _check_runs(walk, runs, (module, qualname))
+        _check_runs(walk, counted, (module, qualname))
 
 
 def _fresh_lookup(walk, key):
@@ -2160,26 +2186,35 @@ def test_each_lookup_in_a_random_tree_settles_on_what_a_fresh_walk_finds(
 ) -> None:
     # Random trees of modules that import each other's names, star-import,
     # bind names to modules, names and attributes, in branches that run and
-    # in ones that never do, and define __getattr__, so their lookups wait on
-    # each other in cycles of many shapes. In each tree, run() and run2()
-    # make the same reads in opposite orders. Each walk runs its lookups as
-    # the once test checks and settles each lookup on what the same lookup
-    # finds first in a fresh walk, and both walks reach the same items.
+    # in ones that never do, define __getattr__, and define classes whose
+    # __match_args__ a class pattern reads, their own or a base's, so their
+    # lookups wait on each other in cycles of many shapes. In each tree,
+    # run() and run2() make the same reads in opposite orders. Each walk runs
+    # its lookups as the once test checks and settles each lookup on what the
+    # same lookup finds first in a fresh walk, and both walks reach the same
+    # items.
     root = tmp_path_factory.mktemp("walk-random")
-    runs = _counted(monkeypatch)
+    counted = _counted(monkeypatch)
     package = static_reach_cases.RANDOM_PACKAGE
     own = {(f"{package}.r", "function", name) for name in ("run", "run2")}
-    cyclic = 0
+    cyclic = matched = 0
     for seed in _RANDOM_TREE_SEEDS:
         sources = static_reach_cases.random_tree(random.Random(seed))
         paths = static_reach_cases.write_tree(root / str(seed), sources)
         reached = []
         for qualname in ("run", "run2"):
-            runs.clear()
+            for record in counted:
+                record.clear()
             walk = static_reach._Walk(paths, ())
             walk.run(f"{package}.r", qualname)
-            _check_runs(walk, runs, (seed, qualname))
-            cyclic += bool(walk.cycles)
+            _check_runs(walk, counted, (seed, qualname))
+            cyclic += any(len(passes) > 1 for passes in walk.cycles)
+            matched += any(
+                key[0] == "match"
+                for passes in walk.cycles
+                for ran, _ in passes
+                for key in ran
+            )
             for key, items in walk._done.items():
                 fresh = static_reach._Walk(paths, ())
                 fresh.modules = walk.modules
@@ -2187,8 +2222,11 @@ def test_each_lookup_in_a_random_tree_settles_on_what_a_fresh_walk_finds(
                 assert found == set(items), (seed, qualname, key)
             reached.append(set(walk.reached) - own)
         assert reached[0] == reached[1], seed
-    # More than half the walks run a cycle again, so the trees test the passes.
+    # More than half the walks run a cycle through two passes or more, and
+    # some run a class's __match_args__ lookup in a cycle, so the trees test
+    # the passes and those lookups.
     assert cyclic > len(_RANDOM_TREE_SEEDS)
+    assert matched
 
 
 #: Cost roots on which a walk that ran each lookup afresh wherever it met it
@@ -2196,7 +2234,10 @@ def test_each_lookup_in_a_random_tree_settles_on_what_a_fresh_walk_finds(
 #: each of its 22 levels, and the clique's grow factorially with its size.
 #: The budget holds for these roots, not for every cycle: a cycle that
 #: gathers one module a pass, X = Y.sub and Y = X over N modules that each
-#: bind sub to the next, takes N + 3 passes, and 18,023 lookups at N = 100.
+#: bind sub to the next, takes N + 3 passes, and 18,125 lookups at N = 100.
+#: Nested cycles cost more where a pass of each meets the one around it:
+#: each then stays open and runs again in every pass of each cycle around
+#: it, and K such cycles make 9,916 lookups at K = 10 and 43,026 at K = 20.
 _COST_ROOTS = [
     ("r_alias_diamond", "run"),
     ("r_alias_modules", "run"),
