@@ -1055,10 +1055,12 @@ def _contract():
 
 
 #: The keys of a ``policyengine`` binding that change no count. ``notes``
-#: documents the row. ``metric_name`` names it for three readers: the UK
-#: local metric map keys the row's target by it, reference authoring copies
-#: it into a reference's measure, and a counterfactual binding names its
-#: delta column with it. None of those reads changes whom these rows count.
+#: documents the row. ``metric_name`` names it, and the UK local metric map
+#: keys the row's target by it. Reference authoring falls back to it for an
+#: unnamed reference's measure, and a counterfactual binding names its delta
+#: column with it, but neither reaches these rows: their references take
+#: fan-out names, and their bindings are plain. None of those reads changes
+#: whom these rows count.
 _INERT_KEYS = frozenset({"metric_name", "notes"})
 
 
@@ -1070,13 +1072,16 @@ def test_the_check_reads_what_the_contract_binds() -> None:
     ``total_income`` filter dimension and declare no band semantics, upper
     bound or period factor, so the build reads each band as ``[lower,
     upper)`` between the vendored lower edges. The age families add
-    ``IS_SP_AGE`` true or ``AGE`` at least 65, and band nothing. Every key
-    but ``notes`` and ``metric_name`` is held, so a binding that gains or
-    changes any other key fails here. That covers the keys whose effect the
-    differential below cannot see on these rows: ``band_filter_dimension``
-    beside a single band-like filter, ``measurement_period`` on a frame
-    without period metadata, and ``require_matching_fact_period``, since
-    each spec's fact period, 2025, matches the year the build reads it at."""
+    ``IS_SP_AGE`` true or ``AGE`` at least 65, and band nothing. The test
+    holds every key but ``notes`` and ``metric_name``, so a binding that
+    gains or changes any other key fails here, unless the change only
+    respells a value as Python compares it (65 as 65.0, 0 as false, true as
+    1). The build compares those spellings the same way, so they move no
+    count. The test also holds the keys whose effect the differential below
+    cannot see on these rows: ``band_filter_dimension`` beside a single
+    band-like filter, ``measurement_period`` on a frame without period
+    metadata, and ``require_matching_fact_period``, since each spec's fact
+    period, 2025, matches the year the build reads it at."""
 
     taxpayer = {"variable": TAX, "operator": ">", "value": 0}
     counted = {
