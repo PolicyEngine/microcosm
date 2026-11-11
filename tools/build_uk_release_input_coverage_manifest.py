@@ -867,6 +867,16 @@ def build_manifest(
         },
         "effective_mass_coverage": EFFECTIVE_MASS_COVERAGE,
         "family_coverage": {
+            # The geographic expansion gives every household K clones that
+            # split its design weight equally (microcosm#931). Its one mass
+            # record keeps the household total to the split's rounding at any
+            # K, one clone included. The record's reason names no K, and the
+            # stage's transform refuses a declared reason other than it, so
+            # the terminal gate demands that receipt like any other stage's.
+            "geographic_expand": _source_stage_family_coverage_contract(
+                stage_name="geographic_expand",
+                candidate_source=candidate_source,
+            ),
             "cgt_incidence_clone": _source_stage_family_coverage_contract(
                 stage_name="cgt_incidence_clone",
                 candidate_source=candidate_source,

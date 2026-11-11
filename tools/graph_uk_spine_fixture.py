@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Regenerate the hermetic charter-H2 UK spine parity fixture.
 
-The oracle is the legacy :class:`microcosm.build.plan.StagePlan`: all 31
-stages are the current production transform classes.  Private source files
-are replaced only through their supported parsed-input seams.  The bundle's
-``fixture.json`` is deliberately data-only so the graph's unbound UK registry
-can reconstruct the same transforms; no recorded stage deltas are written or
-replayed.
+The oracle is the legacy :class:`microcosm.build.plan.StagePlan` over every
+stage of the packaged UK spine (``UK_FIXTURE_STAGE_COUNT``), each the current
+production transform class. The stages up to ``frs_annual_income_spells`` run
+on the survey households; ``geographic_expand`` then gives every household K
+geographic clones (K is ``geographic_clones`` in the fixture's config, one
+here), ``geographic_identity`` keys each clone, and every later stage runs on
+the clones (microcosm#931). Private source files are replaced only through
+their supported parsed-input seams.  The bundle's ``fixture.json`` is
+deliberately data-only so the graph's unbound UK registry can reconstruct the
+same transforms; no recorded stage deltas are written or replayed.
 
 The oracle's identity is machine-specific, so it is never pinned:
 ``legacy_oracle_identity`` recomputes it in the acceptance test's own process.
@@ -95,6 +99,12 @@ from microcosm.build.uk_runtime.frs_spine import (
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+from microcosm.build.uk_runtime.geographic_expand import (
+    UKGeographicExpandStageTransform,
+)
+from microcosm.build.uk_runtime.geographic_identity import (
+    UKGeographicIdentityStageTransform,
+)
 from microcosm.build.uk_runtime.graph import uk_spine_graph
 from microcosm.build.uk_runtime.high_value_home_support import (
     UKHighValueHomeSupportStageTransform,
@@ -219,11 +229,16 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 54
+UK_FIXTURE_STAGE_COUNT = 56
 _QRF_ESTIMATORS = 4
+#: The fixture spine's geographic clone count K (microcosm#931). The config
+#: records it, the oracle builds geographic_expand and its engine with it, as
+#: the graph registry's fixture transforms do from the config, and the
+#: committed graph carries it on geographic_expand's node.
+_GEOGRAPHIC_CLONES = 1
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 40-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -398,11 +413,26 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
         # region-stratified SPI prior allocation changes weighted person mass.
         has_child = household_id % 5 == 0
         region = (8, 11, 12, 1)[household_id % 4]
+        # GVTREGNO 8 (London) and 1 (North East) are in England, 11 is Wales
+        # and 12 Scotland; no fixture household is in Northern Ireland (IMDN).
+        imd_variable = ("IMDE", "IMDW", "IMDS", "IMDE")[household_id % 4]
         households.append(
             {
                 "SERNUM": household_id,
                 "GROSS4": 1.0 + household_id / 100.0,
                 "GVTREGNO": region,
+                # The address's IMD decile on its own nation's index
+                # (microcosm#931): deciles 1-10 in turn among each region's
+                # households, and blank, no decile, on every seventeenth
+                # household; the other nations' variables are blank.
+                **{
+                    variable: (
+                        1 + (household_id // 4) % 10
+                        if variable == imd_variable and household_id % 17
+                        else ""
+                    )
+                    for variable in ("IMDE", "IMDW", "IMDS", "IMDN")
+                },
                 "PTENTYP2": 5 + household_id % 2,
                 "TYPEACC": 1 + household_id % 4,
                 "BEDROOM6": 1 + household_id % 4,
@@ -2259,11 +2289,14 @@ def _build_implementations(
     cgt_distribution: HMRCCapitalGainsJointDistribution,
     cgt_parameters: UKCGTPolicyParameters,
     cgt_badr_parameters: UKCGTBADRParameters,
+    geographic_clones: int,
     cgt_asset_type_facts: HMRCCGTAssetTypeFacts | None = None,
     property_rental_facts: HMRCPropertyRentalFacts | None = None,
     property_purchase_targets: UKPropertyPurchaseTargets | None = None,
 ) -> tuple[dict[str, object], dict[str, Frame]]:
-    engine = PolicyEngineUKEngine()
+    # The engine refuses a frame carrying another clone count than the
+    # spine's, as the graph registry's fixture engine does (microcosm#931).
+    engine = PolicyEngineUKEngine(clones=geographic_clones)
     contract = load_uk_take_up_contract()
     root_capture: dict[str, Frame] = {}
     root_transform = UKFRSSpineStageTransform(raw_dir, stage=stages["frs_spine"])
@@ -2386,6 +2419,15 @@ def _build_implementations(
         "frs_annual_income_spells": UKFRSAnnualIncomeStageTransform(
             raw_dir, stage=stages["frs_annual_income_spells"]
         ),
+        # Every stage that reads the raw FRS tabs runs before the clones
+        # exist: geographic_expand gives every household geographic_clones
+        # clones, and geographic_identity keys each one (microcosm#931).
+        "geographic_expand": UKGeographicExpandStageTransform(
+            stage=stages["geographic_expand"], clones=geographic_clones
+        ),
+        "geographic_identity": UKGeographicIdentityStageTransform(
+            stage=stages["geographic_identity"]
+        ),
         "spi_support_channel": UKSPISupportChannelStageTransform(
             stage=stages["spi_support_channel"],
             sample_fraction=_SPI_SAMPLE_FRACTION,
@@ -2499,7 +2541,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 40-stage StagePlan oracle and return its final frame."""
+    """Run the legacy StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -2532,7 +2574,7 @@ def _run_legacy_plan(
 def legacy_oracle_frame(fixture: Path) -> Frame:
     """The legacy oracle's final frame on the fixture, computed live.
 
-    Rebuilds the same 31 transforms the graph's UK registry reconstructs from
+    Rebuilds the same transforms the graph's UK registry reconstructs from
     ``fixture/sources``, runs them through the legacy StagePlan in this
     process, root included, and applies the one string normalization the
     fixture documents. The content identity is a byte-exact fingerprint of
@@ -2622,6 +2664,7 @@ def generate(output: Path) -> None:
         cgt_distribution=cgt_distribution,
         cgt_parameters=cgt_parameters,
         cgt_badr_parameters=cgt_badr_parameters,
+        geographic_clones=_GEOGRAPHIC_CLONES,
     )
     # The PRIS facts are sized to the frame property_components reads and the
     # asset-type facts to the frame the amounts redraw and the anchor leave,
@@ -2682,8 +2725,8 @@ def generate(output: Path) -> None:
     descriptor = {
         "schema_version": "uk-spine-parity-fixture.v1",
         "description": (
-            "Data-only inputs for reconstructing the same 31 current UK stage "
-            "transform classes used by the legacy StagePlan oracle."
+            "Data-only inputs for reconstructing the current UK stage "
+            "transforms used by the legacy StagePlan oracle."
         ),
         "stages": {stage.stage: _stage_payload(stage) for stage in stages},
         "config": {
@@ -2691,6 +2734,7 @@ def generate(output: Path) -> None:
             "spi_donor_sample_size": _SPI_DONOR_SAMPLE_SIZE,
             "qrf_estimators": _QRF_ESTIMATORS,
             "student_loans_calibration_year": 2025,
+            "geographic_clones": _GEOGRAPHIC_CLONES,
         },
         "inputs": {
             "frs_raw": "frs_raw",
@@ -2718,7 +2762,7 @@ def generate(output: Path) -> None:
     }
     _write_json(sources / "fixture.json", descriptor)
 
-    graph = uk_spine_graph()
+    graph = uk_spine_graph(geographic_clones=_GEOGRAPHIC_CLONES)
     (output / "uk_spine.json").write_text(graph_to_json(graph) + "\n", encoding="utf-8")
     # Reported, never pinned: the identity is machine-specific (see
     # ``legacy_oracle_identity``), so the acceptance test computes it live.
@@ -2730,8 +2774,8 @@ def generate(output: Path) -> None:
         _normalization_markdown(), encoding="utf-8"
     )
     (output / "PRODUCED_BY.txt").write_text(
-        "tools/graph_uk_spine_fixture.py; current 31-transform legacy "
-        "StagePlan oracle with parsed private-source seams. The acceptance "
+        "tools/graph_uk_spine_fixture.py; current legacy StagePlan oracle "
+        "with parsed private-source seams. The acceptance "
         "test runs both sides from frs_raw in-process (root weights differ "
         "by one ulp between machines); the captured root tables serve the "
         "unbound registry's data-only CREATE path.\n",

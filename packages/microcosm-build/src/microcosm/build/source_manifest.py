@@ -77,6 +77,10 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "classify_cgt_band_facts_with_reviewed_fence",
         "classify_hmrc_income_facts_with_reviewed_fences",
         "clone_records",
+        # microcosm#931: a frame's geographic clones, and each household's
+        # geography key from its source and clone path.
+        "expand_geographic_clones",
+        "key_households_by_clone_path",
         "clean_nts_travel_tables",
         "clean_was_lisa_donor",
         "clean_aps_occupation_table",

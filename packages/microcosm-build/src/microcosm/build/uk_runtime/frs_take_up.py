@@ -830,8 +830,11 @@ def uk_take_up_signal_receipt(
             flags.append(row)
             continue
         if entity not in sources:
-            # Before the SPI support channel each household is its own source,
-            # so its id serves until ``source_household_id`` exists.
+            # On the clone-first spine geographic_expand writes
+            # source_household_id before this stage runs, so the shared reader
+            # counts a household's geographic clones once; a frame without the
+            # column or copy lineage (unit fixtures) counts each household as
+            # its own source (microcosm#931).
             sources[entity] = record_source_households(
                 frame, entity, stage="The take-up signal receipt", before_copies=True
             )

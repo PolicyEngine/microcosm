@@ -355,11 +355,13 @@
     "liable_for_share_of_household_rent",
     "household_id",
     "region",
+    "imd_decile",
     "tenure_type",
     "accommodation_type",
     "num_bedrooms",
     "council_tax_reported",
     "council_tax_band",
+    "council_tax_band_observed",
     "council_tax_rebate",
     "council_tax_single_adult_raw",
     "water_and_sewerage_charges",
@@ -413,7 +415,7 @@
     "frs_company_car_fuel_code",
     "frs_company_car_contribution"
    ],
-   "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults. frs_company_car_price_band, frs_company_car_fuel_code, frs_company_car_private_fuel and frs_company_car_contribution carry each person's company car from the FRS job tab (CARVAL, FUELTYP, EXPBEN03, and CARAMT where CARCON is 1, on their EXPBEN01 job with the lowest JOBTYPE), stage-internal carriers the company_cars stage reads and the release drops (PolicyEngine/uk-autumn-budget-dashboard-2026#316)."
+   "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults. frs_company_car_price_band, frs_company_car_fuel_code, frs_company_car_private_fuel and frs_company_car_contribution carry each person's company car from the FRS job tab (CARVAL, FUELTYP, EXPBEN03, and CARAMT where CARCON is 1, on their EXPBEN01 job with the lowest JOBTYPE), stage-internal carriers the company_cars stage reads and the release drops (PolicyEngine/uk-autumn-budget-dashboard-2026#316). imd_decile, each household's decile on its own nation's index of multiple deprivation (IMDE, IMDW, IMDS or IMDN), 1 to 10, and 0 where none is observed or the region is unknown, and council_tax_band_observed, False in Northern Ireland, for a CTBAND code outside 1 to 9, for a band the household's region does not use and for an unknown region (council_tax_band itself is unchanged), are stage-internal carriers the clone-first spine's area assignment conditions on and the release drops; they stay out of every receipt and of the spine sidecar's nonzero shares, and a household tab without one of the four IMD variables is refused (microcosm#931)."
   },
   {
    "stage": "age_tail",
@@ -1006,6 +1008,377 @@
    "notes": "Runs before BRMA and always runs; the DSA seed evaluates at the release calibration year (uk-data#478) and the modelling-start gate compares against that year, not the frame period. EDUCQUAL grant-split compatibility is re-cited to the FRS 2024-25 SN 9563 dictionary; codes 1-87 are empirically present and code 87 remains undocumented/defaulted."
   },
   {
+   "stage": "frs_hmrc_spine_leaves",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input",
+   "grain": "person",
+   "artifacts": [
+    {
+     "role": "frs_table",
+     "table": "adult",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "adult.tab",
+     "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
+     "size_bytes": 34885825,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "benefits",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "benefits.tab",
+     "sha256": "f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3",
+     "size_bytes": 2362329,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "job",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "job.tab",
+     "sha256": "eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2",
+     "size_bytes": 10518760,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "penprov",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "penprov.tab",
+     "sha256": "9e53de0dc969baec000b3cd68387f0f2dfb3f678732e408de175e0a1d6e3fdc1",
+     "size_bytes": 513614,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "employer_rate_bands",
+     "kind": "public_aggregate_reference",
+     "resource": "ashe_employer_pension_contribution_rates.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    }
+   ],
+   "operations": [
+    {
+     "kind": "retain_adjudicated_frs_hmrc_leaves",
+     "population": "uk_frs_raw_spine",
+     "source_vintage": "2024-25",
+     "mapped_build_period": 2024,
+     "annualization": "weekly raw FRS amounts * 52",
+     "status": "adjudicated_partial_replay",
+     "retained_full_constituents": {
+      "hmrc_spi_pay": {
+       "spi_concept": "PAY",
+       "scope": "full",
+       "raw_sources": [
+        "ADULT.INEARNS"
+       ],
+       "formula": "max(0, ADULT.INEARNS) * 52"
+      },
+      "hmrc_spi_unemployment_benefit_income": {
+       "spi_concept": "UBISJA",
+       "scope": "full",
+       "raw_sources": [
+        "BENEFITS.BENEFIT=14:BENAMT",
+        "BENEFITS.BENEFIT=19:BENAMT"
+       ],
+       "formula": "sum(BENAMT where BENEFIT in {14, 19}) * 52"
+      },
+      "hmrc_spi_incapacity_benefit_income": {
+       "spi_concept": "INCPBEN",
+       "scope": "full",
+       "raw_sources": [
+        "BENEFITS.BENEFIT=17:BENAMT"
+       ],
+       "formula": "sum(BENAMT where BENEFIT == 17) * 52",
+       "observed_support": "structural zero in the FRS 2023-24 and 2024-25; retained so future vintages flow"
+      }
+     },
+     "retained_named_subsets": {
+      "ossben_identifiable_subset": {
+       "spi_concept": "OSSBEN",
+       "raw_sources": [
+        "BENEFITS.BENEFIT=13:BENAMT",
+        "BENEFITS.BENEFIT=16,VAR2 in {1,3}:BENAMT"
+       ],
+       "formula": "sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * 52",
+       "scope": "identifiable_subset"
+      },
+      "srp_regular_code5": {
+       "spi_concept": "SRP",
+       "raw_sources": [
+        "BENEFITS.BENEFIT=5:BENAMT"
+       ],
+       "formula": "sum(BENAMT where BENEFIT == 5) * 52",
+       "scope": "regular_code5_subset"
+      }
+     },
+     "source_absent_full_constituents": [
+      "EPB",
+      "EXPS",
+      "TAXTERM",
+      "MOTHINC",
+      "OTHERINC"
+     ],
+     "full_concepts_forbidden_on_frs": [
+      "hmrc_spi_employment_benefits",
+      "hmrc_spi_employment_expenses",
+      "hmrc_spi_taxable_termination_pay",
+      "hmrc_spi_miscellaneous_employment_income",
+      "hmrc_spi_other_income",
+      "hmrc_spi_other_social_security_income",
+      "hmrc_spi_state_pension_income"
+     ],
+     "forbid_proxy_substitution": [
+      "employment_income",
+      "miscellaneous_income"
+     ],
+     "fail_on_missing_retained_constituent": true,
+     "fail_on_full_concept_alias": true
+    },
+    {
+     "kind": "draw_employer_pension_contributions_from_rate_bands",
+     "output": "employer_pension_contributions",
+     "artifact_role": "employer_rate_bands",
+     "resource": "ashe_employer_pension_contribution_rates.json",
+     "scheme_source": "PENPROV.STEMPPEN 1 to 4 (employer schemes; occupational before group personal, group stakeholder, other)",
+     "sector_source": "JOB.JOBSECT (first job with a stated sector)",
+     "occupational_split": "defined benefit or defined contribution by ASHE Table P2 job counts in the sector",
+     "rate_basis": "full pay (employment_income)",
+     "top_band_ceiling": 0.3,
+     "seed": 0,
+     "salts": [
+      "employer_pension_occupational_type",
+      "employer_pension_contribution_rate"
+     ]
+    }
+   ],
+   "outputs": [
+    "hmrc_spi_pay",
+    "hmrc_spi_unemployment_benefit_income",
+    "hmrc_spi_incapacity_benefit_income",
+    "ossben_identifiable_subset",
+    "srp_regular_code5",
+    "employer_pension_contributions"
+   ],
+   "nonnegative_outputs": [
+    "hmrc_spi_pay",
+    "hmrc_spi_unemployment_benefit_income",
+    "hmrc_spi_incapacity_benefit_income",
+    "ossben_identifiable_subset",
+    "srp_regular_code5",
+    "employer_pension_contributions"
+   ],
+   "notes": "Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then draws employer pension contributions: each member of an employer scheme (PENPROV.STEMPPEN 1 to 4) with earnings takes an ASHE 2024 employer contribution rate for their scheme type and sector (Table P10 band shares, full pay, all industries; occupational schemes split into defined benefit and defined contribution by the sector's Table P2 job counts), uniform within the band (top band 20% to 30%), times pay. It replaces the incumbent's three times the employee contribution (microcosm#1069 c9, R6)."
+  },
+  {
+   "stage": "frs_annual_income_spells",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 adult, job and household tabs; the OBR average earnings index pinned in hmrc_uprating_engine_pins.json.",
+   "grain": "person",
+   "artifacts": [
+    {
+     "role": "frs_table",
+     "table": "adult",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "adult.tab",
+     "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
+     "size_bytes": 34885825,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "job",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "job.tab",
+     "sha256": "eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2",
+     "size_bytes": 10518760,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "househol",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "househol.tab",
+     "sha256": "2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5",
+     "size_bytes": 12108606,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "earnings_index",
+     "kind": "public_aggregate_reference",
+     "resource": "hmrc_uprating_engine_pins.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    }
+   ],
+   "operations": [
+    {
+     "kind": "read_tables",
+     "format": "tab",
+     "delimiter": "\t",
+     "lowercase_columns": true,
+     "numeric_errors": "coerce",
+     "runtime_sha256_required": true
+    },
+    {
+     "kind": "derive_annual_income_spells",
+     "outputs": [
+      "employment_income_annual_share",
+      "employment_income_other_spells",
+      "self_employment_income_annual_share",
+      "self_employment_income_other_spells",
+      "private_pension_income_annual_share",
+      "contributory_benefits_annual_share"
+     ],
+     "window_months": 12,
+     "leaving_date_share": 0.75,
+     "unknown_leaving_months": 6.0,
+     "donor_recent_start_months": 24,
+     "minimum_donors": 30,
+     "donor_age_edges": [
+      25,
+      35,
+      50,
+      65
+     ],
+     "seed": 0,
+     "salt": "employment_income_other_spells",
+     "earnings_index": "gov.economic_assumptions.indices.obr.average_earnings",
+     "earnings_index_from": "2023-01-01",
+     "earnings_index_to": "2024-01-01",
+     "maximum_uprating_months": 24
+    }
+   ],
+   "outputs": [
+    "employment_income_annual_share",
+    "employment_income_other_spells",
+    "self_employment_income_annual_share",
+    "self_employment_income_other_spells",
+    "private_pension_income_annual_share",
+    "contributory_benefits_annual_share"
+   ],
+   "nonnegative_outputs": [
+    "employment_income_annual_share",
+    "employment_income_other_spells",
+    "self_employment_income_annual_share",
+    "self_employment_income_other_spells",
+    "private_pension_income_annual_share",
+    "contributory_benefits_annual_share"
+   ],
+   "rewrites": [],
+   "notes": "Describes each FRS adult's 12 months before the interview beside the current income columns, which it never changes, so the HMRC income-band measures can read annual income while poverty, benefits and the published engine tax keep current income. HMRC counts income received over a tax year: a person who started, left or changed a job, or had a gap, sits in another HMRC band than current pay puts them in, or in none. Outputs: the share of the year paid at today's employee pay and annual pay from other spells (chiefly a recent leaver's last job), the same pair for self-employment, and the shares of the year a private pension started on retiring and contributory JSA, ESA and Incapacity Benefit started on leaving work were in payment; an annual amount is the current amount times its share plus the other spells. The State Pension needs none: policyengine-uk's months_since_state_pension_age gives its share. Months come from CURRJOBM and JOB.WRKPREV for people in work (a person in work is never a leaver), the SAMESIT/SDEMP calendar only where it records a change, and LSTYR, LSTWRK1/2 or RETIRE1 for people out of work who worked in the last 12 months (NUMJOB2 and their last-job JOB rows); a leaving date 12 months or more before the interview gives none. A leaver's pay is the last job's usual gross pay (JOB.UGROSS, asked of people out of work who last worked in the previous 12 months, in respect of that job), scaled to the DV concept by the weighted job-level UGRSPAY/UGROSS ratio on current employees who report both and uprated by the pinned OBR average earnings index for the months since leaving; otherwise a donor's weekly pay, drawn by GROSS4 weight from current employees in their first 24 months in the job within age band x sex x full- or part-time cells (sex dropped below 30 donors), on an identity-keyed uniform (seed 0, salt employment_income_other_spells). Self-employment keeps the whole year where SEJBLONG is one or more, (SEJBMTHS + 1)/12 under a year and at most the calendar's self-employed months where self-employment is the activity today (the calendar records the main activity only, so a side business beside a job keeps its whole year); a ceased self-employed last job pays SEINCAMT (else PROFIT1, a loss as zero) for its SELWKS weeks; SEINCAM2 is already uprated to the interview by the FRS, so it is not uprated again. The receipt gives each source's support as a band of distinct households, ratios only where three or more households carry them, and the exact zeros its stage gate reads."
+  },
+  {
+   "artifacts": [],
+   "grain": "household",
+   "nonnegative_outputs": [
+    "person_clone_index",
+    "benunit_clone_index",
+    "household_clone_index",
+    "source_household_id",
+    "source_year"
+   ],
+   "notes": "Gives every FRS household K geographic clones before any other copy step (microcosm#931), so that each clone can later take an area of its own while together they stand for the survey household once. Clone 0 is the frame's own rows and ids; clone k repeats every person, benefit unit and household with each id minted in the copy-id table's geographic_support field at ordinal k (id_remapping), and every table carries its rows' clone, 0 to K - 1, in its clone index column. Each clone carries an equal share of its household's design weight, the same float in every clone, and the frame's mass log gains one record whose reason names no clone count. Every household carries its source_household_id (its clone-0 id), source_year (the frame's year) and source_household_key, so the stages after it count true sources in survey households. K is a parameter of the stage's graph node, never of this declaration, so the declaration and its contract are the same at every K. The stage runs after frs_hmrc_spine_leaves and frs_annual_income_spells, which join the raw FRS tabs on raw person ids, and before frs_take_up, frs_person_draws, frs_household_draws and frs_brma, which run on every clone. Its evidence gives K, the copy-id field and its radix, the distinct source households rounded by the shared disclosure rules, and the weight split and kind; no row count, id or weight.",
+   "operations": [
+    {
+     "clone_index_columns": {
+      "benunit": "benunit_clone_index",
+      "household": "household_clone_index",
+      "person": "person_clone_index"
+     },
+     "conservation": "household_total_to_rounding",
+     "declared_factor": 1,
+     "entity": "household",
+     "id_remapping": "copy-id table field geographic_support; clone k takes every entity id + k x the field's radix (10**9)",
+     "kind": "expand_geographic_clones",
+     "order": "clone_major",
+     "ordinal_bound": 100,
+     "reason": "Geographic clones split each household's design weight equally among its clones, so household mass is conserved.",
+     "source_columns": [
+      "source_household_id",
+      "source_year",
+      "source_household_key"
+     ],
+     "weight_kind_out": "design",
+     "weight_split": "equal"
+    }
+   ],
+   "outputs": [
+    "person_clone_index",
+    "benunit_clone_index",
+    "household_clone_index",
+    "source_household_id",
+    "source_year",
+    "source_household_key"
+   ],
+   "rewrites": [],
+   "source": "Microcosm structural operator (microcosm#931); the FRS spine's own households, no publisher input",
+   "stage": "geographic_expand",
+   "survey": "Family Resources Survey 2024-25"
+  },
+  {
+   "artifacts": [
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "frs_release.json",
+     "role": "frs_release",
+     "runtime_sha256_required": true
+    }
+   ],
+   "grain": "household",
+   "notes": "Keys every household for the area assignment (microcosm#931): geography_household_key, as the dense line's uk.full.identity writes it, from the identity source (source), the FRS vintage frs_release.json pins for the household's source_year, its source_household_id and its clone path, read from the lineage columns geographic_expand writes, never from ids, weights or values: no branch for clone 0 and the geographic_support branch at ordinal k for clone k. So clone 0 keys as the dense line keys the same base household, and growing K never changes an existing household's key. A source year the release pins no vintage for, and keys that repeat, are refused by count. The copy steps after it copy a household's key with the household. Its evidence gives the distinct source households rounded by the shared disclosure rules, that the keys are unique, the source, the vintages and the columns it reads; no key is printed.",
+   "operations": [
+    {
+     "kind": "key_households_by_clone_path",
+     "source": "frs",
+     "vintage_resource": "frs_release.json"
+    }
+   ],
+   "outputs": [
+    "geography_household_key"
+   ],
+   "rewrites": [],
+   "source": "Microcosm structural operator (microcosm#931); the FRS vintage frs_release.json pins, no publisher input",
+   "stage": "geographic_identity",
+   "survey": "Family Resources Survey 2024-25"
+  },
+  {
    "stage": "frs_take_up",
    "survey": "Family Resources Survey 2024-25",
    "source": "Family Resources Survey 2024-25 reported receipt anchors plus sourced UK take-up contract rates.",
@@ -1314,305 +1687,9 @@
    "notes": "Identity-keyed seed 0 streams replace the incumbent BRMA seed 0 sequential generator. Household collapse uses salt brma:household_pick."
   },
   {
-   "stage": "frs_hmrc_spine_leaves",
-   "survey": "Family Resources Survey 2024-25",
-   "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input",
-   "grain": "person",
-   "artifacts": [
-    {
-     "role": "frs_table",
-     "table": "adult",
-     "kind": "licensed_microdata",
-     "format": "tab",
-     "vintage": "2024_25",
-     "locator": "adult.tab",
-     "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
-     "size_bytes": 34885825,
-     "runtime_sha256_required": true,
-     "tax_year_start": 2024,
-     "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
-    },
-    {
-     "role": "frs_table",
-     "table": "benefits",
-     "kind": "licensed_microdata",
-     "format": "tab",
-     "vintage": "2024_25",
-     "locator": "benefits.tab",
-     "sha256": "f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3",
-     "size_bytes": 2362329,
-     "runtime_sha256_required": true,
-     "tax_year_start": 2024,
-     "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
-    },
-    {
-     "role": "frs_table",
-     "table": "job",
-     "kind": "licensed_microdata",
-     "format": "tab",
-     "vintage": "2024_25",
-     "locator": "job.tab",
-     "sha256": "eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2",
-     "size_bytes": 10518760,
-     "runtime_sha256_required": true,
-     "tax_year_start": 2024,
-     "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
-    },
-    {
-     "role": "frs_table",
-     "table": "penprov",
-     "kind": "licensed_microdata",
-     "format": "tab",
-     "vintage": "2024_25",
-     "locator": "penprov.tab",
-     "sha256": "9e53de0dc969baec000b3cd68387f0f2dfb3f678732e408de175e0a1d6e3fdc1",
-     "size_bytes": 513614,
-     "runtime_sha256_required": true,
-     "tax_year_start": 2024,
-     "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
-    },
-    {
-     "role": "employer_rate_bands",
-     "kind": "public_aggregate_reference",
-     "resource": "ashe_employer_pension_contribution_rates.json",
-     "format": "json",
-     "runtime_sha256_required": true
-    }
-   ],
-   "operations": [
-    {
-     "kind": "retain_adjudicated_frs_hmrc_leaves",
-     "population": "uk_frs_raw_spine",
-     "source_vintage": "2024-25",
-     "mapped_build_period": 2024,
-     "annualization": "weekly raw FRS amounts * 52",
-     "status": "adjudicated_partial_replay",
-     "retained_full_constituents": {
-      "hmrc_spi_pay": {
-       "spi_concept": "PAY",
-       "scope": "full",
-       "raw_sources": [
-        "ADULT.INEARNS"
-       ],
-       "formula": "max(0, ADULT.INEARNS) * 52"
-      },
-      "hmrc_spi_unemployment_benefit_income": {
-       "spi_concept": "UBISJA",
-       "scope": "full",
-       "raw_sources": [
-        "BENEFITS.BENEFIT=14:BENAMT",
-        "BENEFITS.BENEFIT=19:BENAMT"
-       ],
-       "formula": "sum(BENAMT where BENEFIT in {14, 19}) * 52"
-      },
-      "hmrc_spi_incapacity_benefit_income": {
-       "spi_concept": "INCPBEN",
-       "scope": "full",
-       "raw_sources": [
-        "BENEFITS.BENEFIT=17:BENAMT"
-       ],
-       "formula": "sum(BENAMT where BENEFIT == 17) * 52",
-       "observed_support": "structural zero in the FRS 2023-24 and 2024-25; retained so future vintages flow"
-      }
-     },
-     "retained_named_subsets": {
-      "ossben_identifiable_subset": {
-       "spi_concept": "OSSBEN",
-       "raw_sources": [
-        "BENEFITS.BENEFIT=13:BENAMT",
-        "BENEFITS.BENEFIT=16,VAR2 in {1,3}:BENAMT"
-       ],
-       "formula": "sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * 52",
-       "scope": "identifiable_subset"
-      },
-      "srp_regular_code5": {
-       "spi_concept": "SRP",
-       "raw_sources": [
-        "BENEFITS.BENEFIT=5:BENAMT"
-       ],
-       "formula": "sum(BENAMT where BENEFIT == 5) * 52",
-       "scope": "regular_code5_subset"
-      }
-     },
-     "source_absent_full_constituents": [
-      "EPB",
-      "EXPS",
-      "TAXTERM",
-      "MOTHINC",
-      "OTHERINC"
-     ],
-     "full_concepts_forbidden_on_frs": [
-      "hmrc_spi_employment_benefits",
-      "hmrc_spi_employment_expenses",
-      "hmrc_spi_taxable_termination_pay",
-      "hmrc_spi_miscellaneous_employment_income",
-      "hmrc_spi_other_income",
-      "hmrc_spi_other_social_security_income",
-      "hmrc_spi_state_pension_income"
-     ],
-     "forbid_proxy_substitution": [
-      "employment_income",
-      "miscellaneous_income"
-     ],
-     "fail_on_missing_retained_constituent": true,
-     "fail_on_full_concept_alias": true
-    },
-    {
-     "kind": "draw_employer_pension_contributions_from_rate_bands",
-     "output": "employer_pension_contributions",
-     "artifact_role": "employer_rate_bands",
-     "resource": "ashe_employer_pension_contribution_rates.json",
-     "scheme_source": "PENPROV.STEMPPEN 1 to 4 (employer schemes; occupational before group personal, group stakeholder, other)",
-     "sector_source": "JOB.JOBSECT (first job with a stated sector)",
-     "occupational_split": "defined benefit or defined contribution by ASHE Table P2 job counts in the sector",
-     "rate_basis": "full pay (employment_income)",
-     "top_band_ceiling": 0.3,
-     "seed": 0,
-     "salts": [
-      "employer_pension_occupational_type",
-      "employer_pension_contribution_rate"
-     ]
-    }
-   ],
-   "outputs": [
-    "hmrc_spi_pay",
-    "hmrc_spi_unemployment_benefit_income",
-    "hmrc_spi_incapacity_benefit_income",
-    "ossben_identifiable_subset",
-    "srp_regular_code5",
-    "employer_pension_contributions"
-   ],
-   "nonnegative_outputs": [
-    "hmrc_spi_pay",
-    "hmrc_spi_unemployment_benefit_income",
-    "hmrc_spi_incapacity_benefit_income",
-    "ossben_identifiable_subset",
-    "srp_regular_code5",
-    "employer_pension_contributions"
-   ],
-   "notes": "Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then draws employer pension contributions: each member of an employer scheme (PENPROV.STEMPPEN 1 to 4) with earnings takes an ASHE 2024 employer contribution rate for their scheme type and sector (Table P10 band shares, full pay, all industries; occupational schemes split into defined benefit and defined contribution by the sector's Table P2 job counts), uniform within the band (top band 20% to 30%), times pay. It replaces the incumbent's three times the employee contribution (microcosm#1069 c9, R6)."
-  },
-  {
-   "stage": "frs_annual_income_spells",
-   "survey": "Family Resources Survey 2024-25",
-   "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 adult, job and household tabs; the OBR average earnings index pinned in hmrc_uprating_engine_pins.json.",
-   "grain": "person",
-   "artifacts": [
-    {
-     "role": "frs_table",
-     "table": "adult",
-     "kind": "licensed_microdata",
-     "format": "tab",
-     "vintage": "2024_25",
-     "locator": "adult.tab",
-     "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
-     "size_bytes": 34885825,
-     "runtime_sha256_required": true,
-     "tax_year_start": 2024,
-     "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
-    },
-    {
-     "role": "frs_table",
-     "table": "job",
-     "kind": "licensed_microdata",
-     "format": "tab",
-     "vintage": "2024_25",
-     "locator": "job.tab",
-     "sha256": "eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2",
-     "size_bytes": 10518760,
-     "runtime_sha256_required": true,
-     "tax_year_start": 2024,
-     "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
-    },
-    {
-     "role": "frs_table",
-     "table": "househol",
-     "kind": "licensed_microdata",
-     "format": "tab",
-     "vintage": "2024_25",
-     "locator": "househol.tab",
-     "sha256": "2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5",
-     "size_bytes": 12108606,
-     "runtime_sha256_required": true,
-     "tax_year_start": 2024,
-     "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
-    },
-    {
-     "role": "earnings_index",
-     "kind": "public_aggregate_reference",
-     "resource": "hmrc_uprating_engine_pins.json",
-     "format": "json",
-     "runtime_sha256_required": true
-    }
-   ],
-   "operations": [
-    {
-     "kind": "read_tables",
-     "format": "tab",
-     "delimiter": "\t",
-     "lowercase_columns": true,
-     "numeric_errors": "coerce",
-     "runtime_sha256_required": true
-    },
-    {
-     "kind": "derive_annual_income_spells",
-     "outputs": [
-      "employment_income_annual_share",
-      "employment_income_other_spells",
-      "self_employment_income_annual_share",
-      "self_employment_income_other_spells",
-      "private_pension_income_annual_share",
-      "contributory_benefits_annual_share"
-     ],
-     "window_months": 12,
-     "leaving_date_share": 0.75,
-     "unknown_leaving_months": 6.0,
-     "donor_recent_start_months": 24,
-     "minimum_donors": 30,
-     "donor_age_edges": [
-      25,
-      35,
-      50,
-      65
-     ],
-     "seed": 0,
-     "salt": "employment_income_other_spells",
-     "earnings_index": "gov.economic_assumptions.indices.obr.average_earnings",
-     "earnings_index_from": "2023-01-01",
-     "earnings_index_to": "2024-01-01",
-     "maximum_uprating_months": 24
-    }
-   ],
-   "outputs": [
-    "employment_income_annual_share",
-    "employment_income_other_spells",
-    "self_employment_income_annual_share",
-    "self_employment_income_other_spells",
-    "private_pension_income_annual_share",
-    "contributory_benefits_annual_share"
-   ],
-   "nonnegative_outputs": [
-    "employment_income_annual_share",
-    "employment_income_other_spells",
-    "self_employment_income_annual_share",
-    "self_employment_income_other_spells",
-    "private_pension_income_annual_share",
-    "contributory_benefits_annual_share"
-   ],
-   "rewrites": [],
-   "notes": "Describes each FRS adult's 12 months before the interview beside the current income columns, which it never changes, so the HMRC income-band measures can read annual income while poverty, benefits and the published engine tax keep current income. HMRC counts income received over a tax year: a person who started, left or changed a job, or had a gap, sits in another HMRC band than current pay puts them in, or in none. Outputs: the share of the year paid at today's employee pay and annual pay from other spells (chiefly a recent leaver's last job), the same pair for self-employment, and the shares of the year a private pension started on retiring and contributory JSA, ESA and Incapacity Benefit started on leaving work were in payment; an annual amount is the current amount times its share plus the other spells. The State Pension needs none: policyengine-uk's months_since_state_pension_age gives its share. Months come from CURRJOBM and JOB.WRKPREV for people in work (a person in work is never a leaver), the SAMESIT/SDEMP calendar only where it records a change, and LSTYR, LSTWRK1/2 or RETIRE1 for people out of work who worked in the last 12 months (NUMJOB2 and their last-job JOB rows); a leaving date 12 months or more before the interview gives none. A leaver's pay is the last job's usual gross pay (JOB.UGROSS, asked of people out of work who last worked in the previous 12 months, in respect of that job), scaled to the DV concept by the weighted job-level UGRSPAY/UGROSS ratio on current employees who report both and uprated by the pinned OBR average earnings index for the months since leaving; otherwise a donor's weekly pay, drawn by GROSS4 weight from current employees in their first 24 months in the job within age band x sex x full- or part-time cells (sex dropped below 30 donors), on an identity-keyed uniform (seed 0, salt employment_income_other_spells). Self-employment keeps the whole year where SEJBLONG is one or more, (SEJBMTHS + 1)/12 under a year and at most the calendar's self-employed months where self-employment is the activity today (the calendar records the main activity only, so a side business beside a job keeps its whole year); a ceased self-employed last job pays SEINCAMT (else PROFIT1, a loss as zero) for its SELWKS weeks; SEINCAM2 is already uprated to the interview by the FRS, so it is not uprated again. The receipt gives each source's support as a band of distinct households, ratios only where three or more households carry them, and the exact zeros its stage gate reads."
-  },
-  {
    "stage": "spi_support_channel",
    "survey": "Family Resources Survey 2024-25",
-   "source": "Synthetic SPI support channel drawn from the raw FRS spine as a keyed Bernoulli share, each household on its own identity-keyed uniform.",
+   "source": "Synthetic SPI support channel drawn from every geographic clone of the raw FRS spine's households as a keyed Bernoulli share, each household on its own identity-keyed uniform.",
    "grain": "household",
    "artifacts": [],
    "operations": [
@@ -1669,10 +1746,7 @@
     "benunit_source_id",
     "household_support_channel",
     "household_support_clone_index",
-    "household_source_id",
-    "source_household_id",
-    "source_year",
-    "source_household_key"
+    "household_source_id"
    ],
    "nonnegative_outputs": [
     "person_support_clone_index",
@@ -1680,11 +1754,9 @@
     "benunit_support_clone_index",
     "benunit_source_id",
     "household_support_clone_index",
-    "household_source_id",
-    "source_household_id",
-    "source_year"
+    "household_source_id"
    ],
-   "notes": "Stacks the SPI support channel as a keyed Bernoulli share (microcosm#931): a household is copied when its uniform, keyed on its own household id under the stage's seed and salt, falls below min(1, 10,000 times the sample fraction over the distinct source households entering the stage). Each household's draw depends on its own id alone. The denominator counts a source once however many geographic clones carry it, so every clone draws at the same probability on its own ids, and each clone's copy count is binomial with mean min(10,000 times the sample fraction, its source households). A stage-local declaration gates the zero-weight synthetic households at the share of the household rows entering the stage plus the repo's four-sigma binomial band. The stage then allocates prior mass with exact national conservation within each region, and within each geographic clone where the frame carries household_clone_index, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069)."
+   "notes": "Stacks the SPI support channel as a keyed Bernoulli share (microcosm#931): a household is copied when its uniform, keyed on its own household id under the stage's seed and salt, falls below min(1, 10,000 times the sample fraction over the distinct source households entering the stage). Each household's uniform depends on its own id and the stage's seed and salt alone, and whether it is copied also on that probability. The denominator counts a source once however many geographic clones carry it, so every clone draws at the same probability on its own ids, and each clone's copy count is binomial with mean min(10,000 times the sample fraction, its source households). A stage-local declaration gates the zero-weight synthetic households at the share of the household rows entering the stage plus the repo's four-sigma binomial band. The stage then allocates prior mass with exact national conservation within each region, and within each geographic clone where the frame carries household_clone_index, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069)."
   },
   {
    "stage": "spi_income_band_donors",
@@ -1732,11 +1804,11 @@
      "minimum_donors_per_band": 120,
      "maximum_donor_weight": 250.0,
      "count_rule": "max(minimum_donors_per_band, ceil(published band taxpayers / maximum_donor_weight))",
-     "weight_rule": "published band taxpayers / (geographic clone count x band donor count), equal within a band",
+     "weight_rule": "published band taxpayers / (geographic clone count x one clone's band donor count), equal within a band",
      "expected_band_count": 4,
      "candidate_population": "raw FRS base channel claimants and partners (is_uc_claimant) aged 16 and over",
      "candidate_order": "person_id ascending breaks equal draw keys",
-     "draw": "weighted_without_replacement_identity_keyed within each geographic clone (one before uk.full.expand): Efraimidis-Spirakis keys log(u) / (household weight x propensity) on stable_identity_uniforms(person_id, seed, salt:band); the largest keys are seated, one carrier per household, the highest band first",
+     "draw": "weighted_without_replacement_identity_keyed within each geographic clone (a spine without household_clone_index is one clone): Efraimidis-Spirakis keys log(u) / (household weight x propensity) on stable_identity_uniforms(person_id, seed, salt:band); the largest keys are seated, one carrier per household, the highest band first",
      "propensity": "SPI 2022-23 FACT-weighted band share by region, sex and age band",
      "tape_preparation": "as hmrc_spi_income_spine prepares the tape: its stage-1 seed and draw_spi_donor_ages_by_population",
      "tape_preparation_seed": 42,
@@ -1782,7 +1854,7 @@
    "nonnegative_outputs": [
     "spi_income_band_donor_lower_bound"
    ],
-   "notes": "Reserves SPI-channel households for every Table 2.5 band from GBP 200,000 so the top of the income distribution has support before calibration. A band seats enough donors that none starts above the maximum weight and never fewer than the minimum, at equal weights of the build tax year's published taxpayers over the band's count. Carriers are FRS adults seated by identity-keyed draws on household weight times the tape's own band propensity given region, sex and age band; their households are copied whole at clone index 2 with the synthetic flag. The mass the donors carry is taken in proportion from the households of each donor's region, so the national total and every region's mass are unchanged (microcosm#1063). On a clone-first spine each geographic clone seats its own donors by the same walk, with the seats counted in distinct source households, each donor weighs its band's weight over the clone count, and each clone's regions fund their own donors at one mass scale for every clone; a spine without household_clone_index is one clone (microcosm#931). The income stage gives every carrier a band-conditional draw from the tape (resample_band_donor_leaves)."
+   "notes": "Reserves SPI-channel households for every Table 2.5 band from GBP 200,000 so the top of the income distribution has support before calibration. A band seats enough donors that none starts above the maximum weight and never fewer than the minimum, at equal weights of the build tax year's published taxpayers over the band's count. Carriers are FRS adults seated by identity-keyed draws on household weight times the tape's own band propensity given region, sex and age band; their households are copied whole at clone index 2 with the synthetic flag. The mass the donors carry is taken in proportion from the households of each donor's region, so the national total and every region's mass are unchanged (microcosm#1063). On a clone-first spine each geographic clone seats its own donors by the same walk, and every clone takes the same seats, sized against the eligible households counted in distinct source households. Each donor weighs its band's weight over the clone count, and each clone's regions fund their own donors at one mass scale for every clone; a spine without household_clone_index is one clone (microcosm#931). The income stage gives every carrier a band-conditional draw from the tape (resample_band_donor_leaves)."
   },
   {
    "stage": "hmrc_spi_income_spine",
@@ -3842,7 +3914,7 @@
      "stratum_lower": 0.95,
      "copies": 6,
      "stratum_rule": "within each FRS region, owner households (tenure owned outright or with a mortgage, main_residence_value > 0, positive weight) ordered by main_residence_value ascending, households tied on it in ascending order of a uniform keyed on their own household_id under seed and salt, then household_id ascending; a household whose weighted mid-rank (cumulative weight before it plus half its own, over the region's owner weight) is at or above stratum_lower is selected",
-     "copy_rule": "every selected household becomes copies rows at weight / copies, except where none of the 64 heaviest households left whole can carry the exact-total correction, when the shared fallback can put it on a root or copy, off weight / copies by about one ulp of the total weight",
+     "copy_rule": "every selected household becomes copies rows at weight / copies, except where none of the 64 heaviest households left whole, tried heaviest first, tied weights in row order, can carry the exact-total correction, when the shared fallback can put it on a root or copy, off weight / copies by about one ulp of the total weight",
      "id_remapping": "copy-id table field high_value_support; copy k takes every entity id + k x the field's radix (10**12)",
      "flag_column": "household_is_high_value_support_copy",
      "copies_column": "high_value_support_copies",
@@ -6789,7 +6861,7 @@
     "frs_benunit_capital",
     "would_claim_uc"
    ],
-   "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donors widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.174.1 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. From policyengine-uk 2.173.3 Council Tax Reduction counts the same three at the same value, from the household's own sources, except that a working-age applicant with Universal Credit takes the Universal Credit assessment. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base."
+   "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donor survey records (a unit's geographic clones count once, every other copy as a record of its own) widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.174.1 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. From policyengine-uk 2.173.3 Council Tax Reduction counts the same three at the same value, from the household's own sources, except that a working-age applicant with Universal Credit takes the Universal Credit assessment. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base."
   },
   {
    "stage": "uc_take_up",
@@ -7221,7 +7293,7 @@
      ],
      "selection": "within each income band walk households in investable wealth descending, households tied on it in ascending order of a uniform keyed on their own household_id under seed and salt, then household_id ascending, accumulating positive household weight until the cumulative weight reaches the band's support mass; whole households; an exhausted pool is recorded, not refused",
      "maximum_copy_weight": 60.0,
-     "copy_rule": "copies = ceil(geographic clone count x household weight / maximum_copy_weight), the quotient snapped to the nearest integer within clone-count ulps when the clone count exceeds one; every copy carries weight / copies, except where none of the 64 heaviest households left whole can carry the exact-total correction, when the shared fallback can put it on a root or copy, off weight / copies by about one ulp of the total weight; of those 64, a selected household left at one copy can carry the correction only where its corrected weight keeps its one copy and the walk's selection, a check the fallback does not make",
+     "copy_rule": "copies = ceil(geographic clone count x household weight / maximum_copy_weight), the quotient snapped to the nearest integer within clone-count ulps when the clone count exceeds one; every copy carries weight / copies, except where none of the 64 heaviest households left whole, tried heaviest first, tied weights in row order, can carry the exact-total correction, when the shared fallback can put it on a root or copy, off weight / copies by about one ulp of the total weight; of those 64, a selected household left at one copy can carry the correction only where its corrected weight keeps its one copy and the walk's selection, a check the fallback does not make",
      "id_remapping": "copy-id table field cgt_support_split; copy k takes every entity id + k x the field's radix (10**13), k up to 9,999, and a household needing more copies is refused",
      "flag_column": "household_is_cgt_support_copy",
      "copies_column": "cgt_support_copies",
@@ -7241,7 +7313,7 @@
     "cgt_support_copy_index"
    ],
    "rewrites": [],
-   "notes": "Spine-only, deterministic, mass-conserving support split before the incidence clone (microcosm#1045). The Table 3 redraw owns every gain amount and places rows by wealth rank, so the top gain bands need light rows where the walk already places heavy ones: within each Table 3 income column the wealthiest households, up to twice the headroom times the published count of gainers at or above GBP 250,000 in that column, are split into copies of at most 60 divided by the geographic clone count before the incidence clone (half that after), each copy the same household at an equal share of its weight and carrying its index in cgt_support_copy_index (0 on roots), the explicit lineage the geography identity keys on. The exact-total correction lands on one of the 64 heaviest households the split leaves whole, and on a root or copy only where none of them can carry it (copy_rule). The shared fallback does not make the one-copy check copy_rule names, so where none of the 64 can carry the correction, the fallback can put it on a one-copy household the check passed over, and the identity tool's selection recompute can then find a family the stage never made, or miss one it made, as under the rule before. No value is assigned, and the one draw is the walk's tie-break, a uniform keyed on each household's own household_id (seed, salt) that orders households tied on wealth, so no copy or clone ordinal is taken first on every tie; the incidence clone stage (cgt_incidence_clone) gives every copy its own prior. This replaces the HMRC Table 2.1a band-donor stack, whose 30 heavy rows per band the redraw demoted below the exempt amount (the projection-entrants fence artefact)."
+   "notes": "Spine-only, deterministic, mass-conserving support split before the incidence clone (microcosm#1045). The Table 3 redraw owns every gain amount and places rows by wealth rank, so the top gain bands need light rows where the walk already places heavy ones: within each Table 3 income column the wealthiest households, up to twice the headroom times the published count of gainers at or above GBP 250,000 in that column, are split into copies of at most 60 divided by the geographic clone count before the incidence clone (half that after), each copy the same household at an equal share of its weight and carrying its index in cgt_support_copy_index (0 on roots), the explicit lineage the geography identity keys on. The exact-total correction lands on one of the 64 heaviest households the split leaves whole, and on a root or copy only where none of them can carry it (copy_rule). The shared fallback does not make the one-copy check copy_rule names, so where none of the 64 can carry the correction, the fallback can put it on a one-copy household the check passed over, and the identity tool's selection recompute can then count that household as a family the stage never made, which the bracketed family test does not report, or miss one it made, as under the rule before. No value is assigned, and the one draw is the walk's tie-break, a uniform keyed on each household's own household_id (seed, salt) that orders households tied on wealth, so no copy or clone ordinal is taken first on every tie; the incidence clone stage (cgt_incidence_clone) gives every copy its own prior. This replaces the HMRC Table 2.1a band-donor stack, whose 30 heavy rows per band the redraw demoted below the exempt amount (the projection-entrants fence artefact)."
   },
   {
    "stage": "cgt_incidence_clone",
@@ -7922,7 +7994,7 @@
      "candidates": "a bonus (frs_bonus_amount, or an SPI-channel adult's drawn bonus) > 0 and employment_income at least the anchor's annual upper earnings limit, after the salary conversion",
      "move": "the bonus, at most move_pay_share_cap of employment_income, to pension_contributions_via_bonus_sacrifice; employment_income unchanged, since a sacrificed bonus is never received",
      "move_pay_share_cap": 0.5,
-     "spi_bonus_draw": "an SPI-channel adult with pay draws the bonus share of pay (frs_bonus_amount over employment_income) of a base-FRS adult with pay in the same pay cell, by person weight, keyed on person_id; the cells are the base-FRS paid adults' weighted pay quantiles at spi_cell_quantiles, and a cell with fewer than spi_min_donor_sources donor source households joins the one below",
+     "spi_bonus_draw": "an SPI-channel adult with pay draws the bonus share of pay (frs_bonus_amount over employment_income) of a base-FRS adult with pay in the same pay cell and the same geographic clone (household_clone_index; a spine without it is one clone), by person weight, keyed on person_id; the cells are the base-FRS paid adults' weighted pay quantiles over every clone at spi_cell_quantiles, and a cell with fewer than spi_min_donor_sources donor source households joins the one below, and the lowest the one above",
      "spi_cell_quantiles": [
       0.1,
       0.2,
@@ -7964,7 +8036,7 @@
     "employee_pension_contributions",
     "employment_income"
    ],
-   "notes": "The QRF trains only on the 2024-25 FRS asked subset with pay. Its sign gate is cross-fitted (gate_calibration: cross_fitted; microcosm#1359), as lcfs_consumption's are: it is calibrated on the donors its fold gates left out, so a sign is drawn at its donor rate on people the gate was not fitted to, with each household's members in one fold. Salary sacrifice is pay given up, so every amount, reported or predicted, is limited to the pay the person still receives, and a person without pay has none (uk-data#518, microcosm#1095); the limit bites above all on SPI-channel rows, which keep their FRS twin's answer beside pay redrawn from the SPI. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' pension amounts, up to half their pay, into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; what does not move stays an employee contribution, so the sacrifice never exceeds the pay that remains. Before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief. The third arm adds bonus sacrifice beside pay toward the OBR's 2027-28 base above GBP 2,000 (microcosm#1340). A sacrificed bonus is never received, so the FRS records it in neither pay nor its bonus amounts, and pay stays as it is (María's ruling of 2026-10-24 on Vahid's review of microcosm#1383); a received FRS bonus marks a bonus-paying job and its size. An SPI-channel adult's FRS bonus is its twin's, beside the tape's pay, so it draws a bonus share of pay from a base-FRS adult in its pay cell instead."
+   "notes": "The QRF trains only on the 2024-25 FRS asked subset with pay. Its sign gate is cross-fitted (gate_calibration: cross_fitted; microcosm#1359), as lcfs_consumption's are: it is calibrated on the donors its fold gates left out, so a sign is drawn at its donor rate on people the gate was not fitted to, with each household's members in one fold. Salary sacrifice is pay given up, so every amount, reported or predicted, is limited to the pay the person still receives, and a person without pay has none (uk-data#518, microcosm#1095); the limit bites above all on SPI-channel rows, which keep their FRS twin's answer beside pay redrawn from the SPI. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' pension amounts, up to half their pay, into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; what does not move stays an employee contribution, so the sacrifice never exceeds the pay that remains. Before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief. The third arm adds bonus sacrifice beside pay toward the OBR's 2027-28 base above GBP 2,000 (microcosm#1340). A sacrificed bonus is never received, so the FRS records it in neither pay nor its bonus amounts, and pay stays as it is (María's ruling of 2026-10-24 on Vahid's review of microcosm#1383); a received FRS bonus marks a bonus-paying job and its size. An SPI-channel adult's FRS bonus is its twin's, beside the tape's pay, so it draws a bonus share of pay from a base-FRS adult in its pay cell, in its own geographic clone, instead."
   },
   {
    "stage": "carers_allowance_take_up",
@@ -8190,12 +8262,12 @@
     "maximum_extended_childcare_hours_usage",
     "max_free_entitlement_hours_used"
    ],
-   "notes": "Runs after the last copy stage and before private_school_attendance, whose net-income ranking counts the childcare entitlements and Tax-Free Childcare. frs_take_up draws the childcare flags and the extended-hours usage on FRS benefit units before any copy exists, so every SPI support copy, income-band donor, high-value home support copy, CGT support copy, CGT incidence clone and residential arm inherited its host's draws, and a cell with few hosts fixed the take-up of all their copies. This stage re-draws would_claim_tfc, would_claim_extended_childcare, would_claim_universal_childcare (nested under the extended flag) and would_claim_targeted_childcare at the contract rates, and maximum_extended_childcare_hours_usage from the contract's clipped normal, for the copies only, with frs_take_up's own helper, seed 0 and output-name salts, keyed on the copy's own benunit_id. A copy's structural id is its source id plus a multiple of an offset above every id in the frame, so it is unique, differs from every native id and gives the copy streams independent of its host's; a rebuild of the same frame draws the same values. Native benefit units keep their frs_take_up draws. The anchored Child Benefit, Pension Credit and Universal Credit flags and would_claim_uc_childcare are left as they are. It also re-draws the copies' children's max_free_entitlement_hours_used, the under-2 usage, against their own unit's re-drawn working-parent flag, keyed on their own person_id."
+   "notes": "Runs after the last copy stage and before private_school_attendance, whose net-income ranking counts the childcare entitlements and Tax-Free Childcare. frs_take_up draws the childcare flags and the extended-hours usage on FRS benefit units, each geographic clone's on its own ids (microcosm#931), before any other copy exists, so every SPI support copy, income-band donor, high-value home support copy, CGT support copy, CGT incidence clone and residential arm inherited its host's draws, and a cell with few hosts fixed the take-up of all their copies. This stage re-draws would_claim_tfc, would_claim_extended_childcare, would_claim_universal_childcare (nested under the extended flag) and would_claim_targeted_childcare at the contract rates, and maximum_extended_childcare_hours_usage from the contract's clipped normal, for the copies only, with frs_take_up's own helper, seed 0 and output-name salts, keyed on the copy's own benunit_id. A copy's structural id is its source id plus a multiple of an offset above every id in the frame, so it is unique, differs from every native id and gives the copy streams independent of its host's; a rebuild of the same frame draws the same values. Native benefit units, every geographic clone's included, keep their frs_take_up draws. The anchored Child Benefit, Pension Credit and Universal Credit flags and would_claim_uc_childcare are left as they are. It also re-draws the copies' children's max_free_entitlement_hours_used, the under-2 usage, against their own unit's re-drawn working-parent flag, keyed on their own person_id."
   },
   {
    "stage": "private_school_attendance",
    "survey": "policyengine-uk private-school attendance imputation, stored at the spine's weights",
-   "source": "policyengine-uk attends_private_school (the gov.simulation.private_school_vat attendance rates and factor), evaluated by the pinned engine",
+   "source": "policyengine-uk attends_private_school (the gov.simulation.private_school_vat attendance rates and factor) over every person in the frame, from the pinned engine's values and parameters",
    "grain": "person",
    "artifacts": [
     {
@@ -8225,7 +8297,7 @@
    "outputs": [
     "attends_private_school"
    ],
-   "notes": "The last spine stage before the ISA subscriptions (uk-data#568, microcosm#1095). policyengine-uk imputes attends_private_school with a formula that ranks households by net income at their weights and compares a percentile rate, scaled to the national pupil count, with the stored attends_private_school_random_draw. Left to the formula, attendance is re-imputed in every simulation, so a reform to income tax, National Insurance or benefits switches pupils in or out, a population under one million people of weight imputes none (pe-uk#1905), and the calibration and the release read different flags once the weights change. This stage materializes the engine's attendance once, at the calibration year and the spine's design weights, and stores it, as the root stage stores months_since_last_birthday, so the solve and the release read the same flags; no stage after it copies or re-keys a person. The formula ranks the people a simulation holds, so a simulation over part of the frame would rank that part alone (microcosm#931). The stage therefore also restates the formula's last step over every person in the frame, from the engine's own values at the calibration year, each decided by a household's own records, and its own parameters: household market income plus benefits less the members' income tax and National Insurance, each household's weight once per member, microdf's weighted percentile rank (the rank the formula calls) over the people of positive weight, the attendance rates and population factor, nobody while those weights sum below one million, and the stored draw for each under-18. Where the engine computes the frame in one simulation (the national line, and a spine before its geographic clones exist), the stage stores the engine's flags once the restatement equals them bit for bit, so every such build re-checks it; where the households carry more than one clone, the engine computes the frame clone by clone and the stage stores the restatement over the whole pool. The receipt names the route and whether the engine's flags were checked. Stored attendance no longer responds to income changes or to reforms of the attendance parameters, and a reform to the fee VAT does not move pupils either way in the pinned engine."
+   "notes": "The last spine stage before the ISA subscriptions (uk-data#568, microcosm#1095). policyengine-uk imputes attends_private_school with a formula that ranks households by net income at their weights and compares a percentile rate, scaled to the national pupil count, with the stored attends_private_school_random_draw. Left to the formula, attendance is re-imputed in every simulation, so a reform to income tax, National Insurance or benefits switches pupils in or out, a population under one million people of weight imputes none (pe-uk#1905), and the calibration and the release read different flags once the weights change. This stage computes the formula's attendance once, over the whole frame at the calibration year and the spine's design weights, and stores it, as the root stage stores months_since_last_birthday, so the solve and the release read the same flags; no stage after it copies or re-keys a person. The formula ranks the people a simulation holds, so a simulation over part of the frame would rank that part alone (microcosm#931). The stage therefore also restates the formula's last step over every person in the frame, from the engine's own values at the calibration year, each decided by a household's own records, and its own parameters: household market income plus benefits less the members' income tax and National Insurance, each household's weight once per member, microdf's weighted percentile rank (the rank the formula calls) over the people of positive weight, the attendance rates and population factor, nobody while those weights sum below one million, and the stored draw for each under-18. Where the engine computes the frame in one simulation (the national line, and a spine of one geographic clone), the stage stores the engine's flags once the restatement equals them bit for bit, so every such build re-checks it; where the households carry more than one clone, the engine computes the frame clone by clone and the stage stores the restatement over the whole pool. The receipt names the route and whether the engine's flags were checked. Stored attendance no longer responds to income changes or to reforms of the attendance parameters, and a reform to the fee VAT does not move pupils either way in the pinned engine."
   },
   {
    "artifacts": [
@@ -8271,7 +8343,7 @@
     "stocks_and_shares_isa_subscriptions",
     "lifetime_isa_payments"
    ],
-   "notes": "Imputes ISA subscriptions per adult by type, and the per-person ISA balances, on the final spine (microcosm#1415). Each household's was_wealth cash and stocks-and-shares ISA totals are split across its adults by the holding pattern of a WAS round-8 donor household with the same number of adults, so person balances sum exactly to the household totals, which are unchanged. Subscribers in 2023-24 are adults aged 18 or over in households holding the type, raked by class (cash only, stocks and shares only, both) to Table 9.7's income bands, Table 9.8's age and sex and Table 9.9's regions and selected by keyed walks, the both class first. Amounts follow Table 9.7's subscription bands within each income band and class, uniform inside a band and exactly GBP 20,000 at the top; the both class splits each person's amount by their balance shares, shifted so the class's stocks-and-shares total is Table 9.4's 2023-24 stocks-and-shares amount less the stocks-and-shares-only payments. People grow to 2024-25 by Table 9.4's account growth (an upper bound on people, as from 6 April 2024 a person may pay into several ISAs of one type), and amounts scale to Table 9.4's 2024-25 amounts per type, holding subscribers already at the GBP 20,000 overall limit and moving combined amounts between GBP 18,000 (Table 9.7's last band floor below the limit) and the limit on a line up to it, so a factor below one leaves no empty range under the limit (María's rulings of 29 October 2026): Table 9.7's cash bands sit above Table 9.4, and growing that excess by Table 9.4's ratio against the limit pushed the subscribers below it far up. Every Lifetime ISA holder aged 18 to 47 (the ages that can hold one in 2024-25) with room under the overall limit pays in, amounts in (0, GBP 4,000] drawn to Table 9.4's 2024-25 Lifetime ISA amount. No ISA fact is a calibration target: binding the cells the stage draws to would be circular, so the reviewed fence keeps them measured only.",
+   "notes": "Imputes ISA subscriptions per adult by type, and the per-person ISA balances, on the final spine (microcosm#1415). Each household's was_wealth cash and stocks-and-shares ISA totals are split across its adults by the holding pattern of a WAS round-8 donor household with the same number of adults, so person balances sum exactly to the household totals, which are unchanged. Subscribers in 2023-24 are adults aged 18 or over in households holding the type, raked by class (cash only, stocks and shares only, both) to Table 9.7's income bands, Table 9.8's age and sex and Table 9.9's regions and selected by keyed walks, the both class first. Amounts follow Table 9.7's subscription bands within each income band and class, uniform inside a band and exactly GBP 20,000 at the top; the both class splits each person's amount by their balance shares, shifted so the class's stocks-and-shares total is Table 9.4's 2023-24 stocks-and-shares amount less the stocks-and-shares-only payments. Amounts go in the order of a key that blends each subscriber's weighted rank on the class's balance (cash, stocks and shares, or the two together) with a keyed uniform at balance_rank_weight; tied balances share one weighted mid-rank, so the keyed uniform alone orders them. People grow to 2024-25 by Table 9.4's account growth (an upper bound on people, as from 6 April 2024 a person may pay into several ISAs of one type), and amounts scale to Table 9.4's 2024-25 amounts per type, holding subscribers already at the GBP 20,000 overall limit and moving combined amounts between GBP 18,000 (Table 9.7's last band floor below the limit) and the limit on a line up to it, so a factor below one leaves no empty range under the limit (María's rulings of 29 October 2026): Table 9.7's cash bands sit above Table 9.4, and growing that excess by Table 9.4's ratio against the limit pushed the subscribers below it far up. Every Lifetime ISA holder aged 18 to 47 (the ages that can hold one in 2024-25) with room under the overall limit pays in, amounts in (0, GBP 4,000] drawn to Table 9.4's 2024-25 Lifetime ISA amount and ordered by the same blend, on the Lifetime ISA balance over every holder aged 18 to 47, with tied balances again sharing one mid-rank; the Lifetime ISA operation declares no rank weight and reuses the amounts operation's balance_rank_weight. No ISA fact is a calibration target: binding the cells the stage draws to would be circular, so the reviewed fence keeps them measured only.",
    "operations": [
     {
      "artifact_role": "isa_statistics_facts",

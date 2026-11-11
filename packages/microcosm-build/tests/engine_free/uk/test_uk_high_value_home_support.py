@@ -574,9 +574,10 @@ def test_the_copy_rule_names_the_one_exception() -> None:
     ((_, payload),) = hv.high_value_support_operation_parameters()
     expected = (
         "every selected household becomes copies rows at weight / copies, "
-        "except where none of the 64 heaviest households left whole can carry "
-        "the exact-total correction, when the shared fallback can put it on a "
-        "root or copy, off weight / copies by about one ulp of the total weight"
+        "except where none of the 64 heaviest households left whole, tried "
+        "heaviest first, tied weights in row order, can carry the exact-total "
+        "correction, when the shared fallback can put it on a root or copy, off "
+        "weight / copies by about one ulp of the total weight"
     )
     assert CGT_SUPPORT_CORRECTION_CANDIDATES == 64
     assert payload["copy_rule"] == expected

@@ -2,7 +2,8 @@
 
 microcosm#771: the previous acceptance evidence quietly described a 24-stage
 build after the plan had grown to 25. This binder makes that class of drift a
-CI failure. The #828/#832/#685 insertions and the #785 and SPI-first reorders are
+CI failure. The #828/#832/#685 insertions and the #785, SPI-first and #931
+clone-first reorders are
 deliberately pending their licensed re-mints, so the historical receipt stays truthful while the
 test composes only those reviewed transformations. Each transformation pins
 the receipt state it expects and must be deleted when that re-mint lands.
@@ -192,6 +193,22 @@ def _apply_pending_roster_transformations(
     # last.
     assert "trading_allowance_receipts" not in roster
     roster.append("trading_allowance_receipts")
+    # microcosm#931 re-mint pending: the HMRC leaves and the annual income
+    # spells, which read the raw FRS tabs by raw person id, move ahead of the
+    # draws, and the geographic clones and their keys follow them, so the
+    # draws run on every clone.
+    assert "geographic_expand" not in roster
+    assert "geographic_identity" not in roster
+    raw_tab_readers = ["frs_hmrc_spine_leaves", "frs_annual_income_spells"]
+    start = roster.index("frs_hmrc_spine_leaves")
+    assert roster[start : start + len(raw_tab_readers)] == raw_tab_readers
+    del roster[start : start + len(raw_tab_readers)]
+    take_up = roster.index("frs_take_up")
+    roster[take_up:take_up] = [
+        *raw_tab_readers,
+        "geographic_expand",
+        "geographic_identity",
+    ]
     return tuple(roster)
 
 

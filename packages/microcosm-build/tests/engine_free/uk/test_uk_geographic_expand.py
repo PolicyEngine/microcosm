@@ -2,25 +2,49 @@
 
 G1 clones every FRS household K times through the shared clone expansion core
 under the UK's declaration, writing each household's source columns first.
-These tests hold it to the clone-first stand-in (``clone_first_frame`` in
+The spine's ``geographic_expand`` stage runs it, under its packaged
+declaration, which every transform here is built from. These tests hold it
+to the clone-first stand-in (``clone_first_frame`` in
 test_support/microcosm_build/uk_clone_first_frames.py, written without the
 core) at K = 1, 2, 3, 7 and 15, and check the one-clone frame, the clone-major
 ids, indices, sources and weights at K = 3, the dtypes, the mass record, the
-evidence and every refusal. Invented frames only; every refusal prints counts,
-names and declared constants, never an id or a weight.
+evidence and every refusal. On the spine's graph they check that the stage is
+an EXPAND that conserves mass at design weights, that K is a parameter of its
+node and never of its stage contract, that one clone is an EXPAND of no row
+through the executor, that the node lists each table's new cells in the
+order G1 writes them, and that the release's input coverage requires its
+mass record. They also check that the source columns are named once, in the
+geographic_clones leaf, and that the H2 registry builds G1 and its engine at
+its fixture's clone count. Invented frames and the synthetic H2 fixture only;
+every refusal prints counts, names and declared constants, never an id or a
+weight.
 """
 
 from __future__ import annotations
 
+import functools
+import json
 import re
+import shutil
+from dataclasses import replace
+from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from microcosm.build.clone_expansion import CloneDeclaration, CloneIdRule
-from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.uk_runtime import copy_id_table, geographic_expand
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
+from microcosm.build.uk_runtime import (
+    copy_id_table,
+    geographic_clones,
+    geographic_expand,
+    graph_kernels,
+    rowwise_dataset,
+    spi_support,
+)
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.geographic_clones import (
     geographic_clone_count,
@@ -30,6 +54,7 @@ from microcosm.build.uk_runtime.geographic_expand import (
     GEOGRAPHIC_CLONE_LIMIT,
     GEOGRAPHIC_COPY_ID_FIELD,
     GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON,
+    GEOGRAPHIC_EXPAND_OPERATION_KIND,
     GEOGRAPHIC_EXPAND_STAGE_NAME,
     SOURCE_HOUSEHOLD_KEY_COLUMN,
     SOURCE_YEAR_COLUMN,
@@ -37,9 +62,12 @@ from microcosm.build.uk_runtime.geographic_expand import (
     UK_GEOGRAPHIC_EXPAND_OUTPUT_COLUMNS,
     UKGeographicExpandStageTransform,
     expand_uk_geographic_clones,
+    geographic_expand_operation_parameters,
     mint_geographic_clone_ids,
     require_room_for_geographic_clones,
 )
+from microcosm.build.uk_runtime.graph import uk_spine_graph
+from microcosm.build.uk_runtime.graph_kernels import UKExpandStageKernel
 from microcosm.build.uk_runtime.household_lineage import (
     GEOGRAPHIC_SUPPORT_BRANCH,
     UK_COPY_LINEAGE,
@@ -51,13 +79,20 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import rounded_count
+from microcosm.build.uk_runtime.release_input_coverage import (
+    _family_build_state_diagnostics,
+    load_uk_release_input_coverage_manifest,
+)
 from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
 from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
+from microcosm.graph import KernelContext, StructuralDelta
+from microcosm.graph.population import Population, patch
 from test_support.microcosm_build.uk_clone_first_frames import (
     base_id_tables,
     clone_first_frame,
     with_last_household_moved,
 )
+from test_support.paths import paths_for
 
 _CLONE_COUNTS = (1, 2, 3, 7, 15)
 #: The five id columns, by table.
@@ -95,19 +130,11 @@ def _base_frame(households: int = 12, *, time_period: str = _PERIOD) -> Frame:
 
 
 def _stage(**overrides: object) -> SourceStageSpec:
-    """A stand-in stage for G1: no stage declares it until the spine wires it."""
+    """G1's packaged stage declaration, with ``overrides`` replacing fields."""
 
-    fields: dict[str, object] = {
-        "stage": GEOGRAPHIC_EXPAND_STAGE_NAME,
-        "survey": "Invented test stage",
-        "source": "Invented test stage",
-        "grain": "household",
-        "artifacts": (),
-        "operations": (),
-        "outputs": UK_GEOGRAPHIC_EXPAND_OUTPUT_COLUMNS,
-    }
-    fields.update(overrides)
-    return SourceStageSpec(**fields)
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    return replace(spec.sources.stage_map()[GEOGRAPHIC_EXPAND_STAGE_NAME], **overrides)
 
 
 def _with_column(frame: Frame, entity: str, column: str) -> Frame:
@@ -364,6 +391,312 @@ def test_the_declaration_is_the_copy_id_tables_field_through_named_functions() -
     )
 
 
+# --- the spine's stage --------------------------------------------------------------
+
+
+@functools.cache
+def _spine(clones: int = 1):
+    return uk_spine_graph(geographic_clones=clones)
+
+
+def _context(node, frame: Frame) -> KernelContext:
+    """What the executor hands G1's node on ``frame``: its tables, household
+    weights and strata, and the node's own parameters."""
+
+    return KernelContext(
+        node=node,
+        tables=MappingProxyType(
+            {entity: frame.table(entity) for entity in frame.entities}
+        ),
+        weights=MappingProxyType({"household": frame.weights_for("household")}),
+        strata=frame.strata,
+        params=node.params,
+        rng=np.random.default_rng(0),
+        sources=MappingProxyType({}),
+        artifacts={},
+        tolerances={},
+        numerics={},
+    )
+
+
+def test_the_stage_is_an_expand_that_conserves_mass_at_design_weights() -> None:
+    graph = _spine()
+    node = graph.node(GEOGRAPHIC_EXPAND_STAGE_NAME)
+    assert node.structural is StructuralDelta.EXPAND
+    assert node.kernel == f"uk.stage.expand.{GEOGRAPHIC_EXPAND_STAGE_NAME}@1"
+    # Person mass is conserved, to the 1/K split's rounding, and the clones
+    # keep the root's design weights.
+    assert node.mass == "conserve"
+    assert node.params["expand_weight_entity"] == "household"
+    assert node.params["expand_weight_kind"] == WeightKind.DESIGN.value
+    cells = {
+        column: (entity, dtype) for entity, column, dtype in node.params["expand_cells"]
+    }
+    assert cells == {
+        **{
+            ladder_clone_index_column(entity): (entity, "int64")
+            for entity in UK_NATIONAL_SCHEMA.entities
+        },
+        SOURCE_HOUSEHOLD_ID_COLUMN: ("household", "int64"),
+        SOURCE_YEAR_COLUMN: ("household", "int64"),
+        SOURCE_HOUSEHOLD_KEY_COLUMN: ("household", "string"),
+    }
+    assert set(cells) == set(UK_GEOGRAPHIC_EXPAND_OUTPUT_COLUMNS)
+    # Its claim node owns exactly the cells it materializes.
+    owned = graph.node(f"{GEOGRAPHIC_EXPAND_STAGE_NAME}.owned")
+    assert {(cell.entity, cell.column) for cell in owned.outputs} == {
+        (entity, column) for column, (entity, _) in cells.items()
+    }
+
+
+def test_k_is_a_parameter_of_the_stage_s_node_never_of_its_contract() -> None:
+    """K enters G1's node key, and through the chain every later node's, but
+    no declaration: the stage's contract and every other node are the same
+    at every K."""
+
+    one = _spine(1)
+    for clones in (1, 3, GEOGRAPHIC_CLONE_LIMIT):
+        graph = _spine(clones)
+        node = graph.node(GEOGRAPHIC_EXPAND_STAGE_NAME)
+        assert node.params["geographic_clones"] == clones
+        assert {**node.params, "geographic_clones": 1} == dict(
+            one.node(GEOGRAPHIC_EXPAND_STAGE_NAME).params
+        )
+        assert [
+            item.id for item in graph.nodes if "geographic_clones" in item.params
+        ] == [GEOGRAPHIC_EXPAND_STAGE_NAME]
+        changed = {item.id for item in graph.nodes if item != one.node(item.id)}
+        assert changed == ({GEOGRAPHIC_EXPAND_STAGE_NAME} if clones != 1 else set())
+    # The declared operation is the reviewed one, which names no clone count.
+    stage = _stage()
+    declared = tuple(
+        (operation.kind, dict(operation.parameters)) for operation in stage.operations
+    )
+    assert declared == geographic_expand_operation_parameters()
+    ((_, parameters),) = declared
+    assert not {"clones", "clone_count", "geographic_clones"} & set(parameters)
+    assert not re.search(r"\d", GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON)
+
+
+@pytest.mark.parametrize("clones", [0, GEOGRAPHIC_CLONE_LIMIT + 1, True, 1.0, "2"])
+def test_the_spine_graph_refuses_a_clone_count_outside_the_field_s_bound(
+    clones: object,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="geographic_clones must be a whole number from 1 to 100, the "
+        "geographic_support copy-id field's bound",
+    ):
+        uk_spine_graph(geographic_clones=clones)
+
+
+def test_the_spine_graph_refuses_clones_without_the_stage_that_makes_them() -> None:
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    root_only = replace(
+        spec, sources=replace(spec.sources, stages=spec.sources.stages[:1])
+    )
+    # One clone needs no stage.
+    assert GEOGRAPHIC_EXPAND_STAGE_NAME not in {
+        node.id for node in uk_spine_graph(root_only).nodes
+    }
+    with pytest.raises(ValueError, match="needs the 'geographic_expand' stage"):
+        uk_spine_graph(root_only, geographic_clones=2)
+
+
+def test_the_kernel_refuses_a_transform_making_another_clone_count() -> None:
+    node = _spine(3).node(GEOGRAPHIC_EXPAND_STAGE_NAME)
+    kernel = UKExpandStageKernel(
+        GEOGRAPHIC_EXPAND_STAGE_NAME,
+        UKGeographicExpandStageTransform(_stage(), clones=2),
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"declares 3 geographic clone\(s\) on its node, but its transform "
+        r"makes 2\.$",
+    ):
+        kernel.run(_context(node, _base_frame()))
+
+
+@pytest.mark.parametrize("clones", [1, 3])
+def test_one_clone_is_an_expand_of_no_row_through_the_executor(clones: int) -> None:
+    """The stage's kernel and the executor's patch at K: one clone adds no
+    row and keeps every incumbent cell and weight, and three clones triple
+    every table, each conserving the household mass of the frame."""
+
+    frame = _base_frame()
+    node = _spine(clones).node(GEOGRAPHIC_EXPAND_STAGE_NAME)
+    transform = UKGeographicExpandStageTransform(_stage(), clones=clones)
+    result = UKExpandStageKernel(GEOGRAPHIC_EXPAND_STAGE_NAME, transform).run(
+        _context(node, frame)
+    )
+    rows = {entity: len(frame.table(entity)) for entity in frame.entities}
+    assert {entity: len(lineage) for entity, lineage in result.expand.items()} == {
+        entity: (clones - 1) * count for entity, count in rows.items()
+    }
+    assert result.weights.kind is WeightKind.DESIGN
+    expanded = patch(
+        Population.from_frame(frame, "base"), replace(node, base="base"), result
+    )
+    assert {entity: len(expanded.frame.table(entity)) for entity in frame.entities} == {
+        entity: clones * count for entity, count in rows.items()
+    }
+    record = expanded.mass_ledger[-1]
+    assert (record.operation, record.policy) == ("expand", "conserve")
+    assert np.isclose(record.after_total, record.before_total, rtol=1e-9, atol=0.0)
+    assert expanded.frame.mass_log[-1].reason == GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON
+    weights = expanded.frame.weights_for("household")
+    assert weights.kind is WeightKind.DESIGN
+    household = expanded.frame.table("household")
+    assert sorted(set(household[ladder_clone_index_column("household")])) == list(
+        range(clones)
+    )
+    if clones == 1:
+        assert (
+            weights.values.tobytes() == frame.weights_for("household").values.tobytes()
+        )
+        for entity in frame.entities:
+            before = frame.table(entity)
+            pd.testing.assert_frame_equal(
+                expanded.frame.table(entity)[list(before.columns)],
+                before,
+                check_exact=True,
+            )
+        assert household[SOURCE_HOUSEHOLD_ID_COLUMN].tolist() == (
+            household["household_id"].tolist()
+        )
+
+
+def test_the_release_coverage_family_requires_the_stage_s_mass_record() -> None:
+    """The release's input coverage has a geographic_expand family
+    (microcosm#931): it requires the record G1's mass log gains, under the
+    reason the stage declares, and the record meets the family's check at
+    every K, one clone included. The family's weight kind is the final spine
+    frame's, which later stages set, so the check here runs without it."""
+
+    manifest = load_uk_release_input_coverage_manifest()
+    family = manifest.family_coverage[GEOGRAPHIC_EXPAND_STAGE_NAME]
+    assert family["status"] == "required_at_build"
+    assert family["stage"] == GEOGRAPHIC_EXPAND_STAGE_NAME
+    assert family["required_mass_change_reason"] == GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON
+    ((_, parameters),) = geographic_expand_operation_parameters()
+    assert parameters["reason"] == GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON
+    alone = replace(
+        manifest,
+        family_coverage={
+            GEOGRAPHIC_EXPAND_STAGE_NAME: {**family, "output_weight_kind": ""}
+        },
+    )
+    for clones in _CLONE_COUNTS:
+        frame = expand_uk_geographic_clones(
+            _with_earlier_mass_record(_base_frame()), clones=clones
+        ).frame
+        diagnostics, failures = _family_build_state_diagnostics(frame, alone)
+        assert failures == [], clones
+        details = diagnostics[GEOGRAPHIC_EXPAND_STAGE_NAME]
+        assert details["matching_mass_change_records"] == 1, clones
+        assert details["valid_mass_change_records"] == 1, clones
+
+
+@pytest.mark.parametrize("clones", [1, 3])
+def test_the_node_lists_each_table_s_new_cells_in_the_order_g1_writes_them(
+    clones: int,
+) -> None:
+    """The graph appends an EXPAND's new cells in its node's ``expand_cells``
+    order, and the H2 parity test compares column order, so the node lists
+    each table's cells in the order the transform appends them: the
+    household's ``source_year`` and ``source_household_key``, which G1
+    writes before the core runs, then the core's source id and each table's
+    clone index (microcosm#931)."""
+
+    frame = _base_frame()
+    expanded = expand_uk_geographic_clones(frame, clones=clones).frame
+    cells = _spine(clones).node(GEOGRAPHIC_EXPAND_STAGE_NAME).params["expand_cells"]
+    for entity in frame.entities:
+        before = list(frame.table(entity).columns)
+        appended = [
+            column for column in expanded.table(entity).columns if column not in before
+        ]
+        assert appended == [column for owner, column, _ in cells if owner == entity]
+
+
+def test_the_source_columns_are_named_once_in_the_geographic_clones_leaf() -> None:
+    """G1's source columns are named in the geographic_clones leaf, which
+    imports nothing first-party, so the leaf spells the source id itself: it
+    is the Frame's source column, which the shared core writes. G1, the SPI
+    support channel and the dense line's crosswalk read the leaf's own tuple
+    (microcosm#931)."""
+
+    assert geographic_clones.UK_GEOGRAPHIC_SOURCE_COLUMNS == (
+        SOURCE_HOUSEHOLD_ID_COLUMN,
+        SOURCE_YEAR_COLUMN,
+        SOURCE_HOUSEHOLD_KEY_COLUMN,
+    )
+    assert dict(UK_GEOGRAPHIC_CLONES.source_id_columns) == {
+        "household": SOURCE_HOUSEHOLD_ID_COLUMN
+    }
+    for module in (geographic_expand, spi_support, rowwise_dataset):
+        assert (
+            module.UK_GEOGRAPHIC_SOURCE_COLUMNS
+            is geographic_clones.UK_GEOGRAPHIC_SOURCE_COLUMNS
+        ), module.__name__
+    for name in ("SOURCE_YEAR_COLUMN", "SOURCE_HOUSEHOLD_KEY_COLUMN"):
+        assert getattr(geographic_expand, name) is getattr(geographic_clones, name)
+
+
+def _fixture_sources(tmp_path: Path, clones: object) -> Path:
+    """A copy of the H2 fixture's sources whose config gives ``clones`` as
+    ``geographic_clones``, or no such key where ``clones`` is None."""
+
+    committed = paths_for("microcosm-graph").tests / "fixtures/parity/uk_spine/sources"
+    sources = tmp_path / "sources"
+    shutil.copytree(committed, sources)
+    descriptor_path = sources / "fixture.json"
+    descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    config = descriptor["config"]
+    assert config["geographic_clones"] == 1
+    if clones is None:
+        del config["geographic_clones"]
+    else:
+        config["geographic_clones"] = clones
+    descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
+    return sources
+
+
+@pytest.mark.parametrize("clones", [1, 3])
+def test_the_fixture_registry_builds_g1_and_its_engine_at_the_config_s_count(
+    tmp_path: Path, clones: int
+) -> None:
+    """The H2 registry builds G1 at its fixture's config.geographic_clones,
+    and its engine with that clone count, so the engine refuses a frame of
+    any other (microcosm#931)."""
+
+    implementations = graph_kernels._fixture_implementations(
+        _fixture_sources(tmp_path, clones)
+    )
+    assert implementations[GEOGRAPHIC_EXPAND_STAGE_NAME].clones == clones
+    engines = {
+        id(transform.engine): transform.engine
+        for transform in implementations.values()
+        if hasattr(transform, "engine")
+    }
+    assert engines
+    for engine in engines.values():
+        assert type(engine).__name__ == "PolicyEngineUKEngine"
+        assert engine._clones == clones
+
+
+@pytest.mark.parametrize("clones", [None, True, "1", 1.0])
+def test_the_fixture_registry_refuses_a_clone_count_that_is_not_an_integer(
+    tmp_path: Path, clones: object
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"config\.geographic_clones must be an integer clone count\.$",
+    ):
+        graph_kernels._fixture_implementations(_fixture_sources(tmp_path, clones))
+
+
 # --- refusals ---------------------------------------------------------------------
 
 
@@ -404,7 +737,7 @@ def test_a_frame_with_a_clone_index_source_or_copy_column_is_refused(
     entity: str, column: str
 ) -> None:
     frame = _with_column(_base_frame(), entity, column)
-    with pytest.raises(ValueError, match="before any copy step") as error:
+    with pytest.raises(ValueError, match="before any other copy step") as error:
         expand_uk_geographic_clones(frame, clones=2)
     assert repr(column) in str(error.value)
 
@@ -550,3 +883,54 @@ def test_a_stage_that_is_not_g1_s_is_refused(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         UKGeographicExpandStageTransform(_stage(**overrides), clones=2)
+
+
+def _reviewed_operation(**changes: object) -> SourceOperationSpec:
+    """The reviewed operation, with ``changes`` to its parameters."""
+
+    ((kind, parameters),) = geographic_expand_operation_parameters()
+    return SourceOperationSpec(kind, {**parameters, **changes})
+
+
+@pytest.mark.parametrize(
+    ("operations", "message"),
+    [
+        (
+            (_reviewed_operation(reason="An invented reason."),),
+            r"declaration drifted from the reviewed mapping on parameter\(s\) "
+            r"\['reason'\]",
+        ),
+        # A clone count is the node's, never the declaration's.
+        ((_reviewed_operation(clones=3),), r"on parameter\(s\) \['clones'\]"),
+        ((_reviewed_operation(ordinal_bound=10),), r"\['ordinal_bound'\]"),
+        (
+            (_reviewed_operation(weight_kind_out="importance"),),
+            r"\['weight_kind_out'\]",
+        ),
+        ((), "operation order drifted"),
+        ((_reviewed_operation(), _reviewed_operation()), "operation order drifted"),
+        (
+            (SourceOperationSpec("clone_records", {}),),
+            f"expected \\('{GEOGRAPHIC_EXPAND_OPERATION_KIND}',\\)",
+        ),
+    ],
+)
+def test_a_declaration_other_than_the_reviewed_operation_is_refused(
+    operations: tuple[SourceOperationSpec, ...], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        UKGeographicExpandStageTransform(_stage(operations=operations), clones=2)
+
+
+def test_a_stage_declaring_an_artifact_is_refused() -> None:
+    artifact = {
+        "role": "frs_release",
+        "kind": "public_aggregate_reference",
+        "resource": "frs_release.json",
+        "format": "json",
+        "runtime_sha256_required": True,
+    }
+    with pytest.raises(
+        ValueError, match="reads no artifact; the stage must declare none, got 1"
+    ):
+        UKGeographicExpandStageTransform(_stage(artifacts=(artifact,)), clones=2)

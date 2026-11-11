@@ -147,6 +147,9 @@ def test_graph_scoped_capital_redraw_receives_claimant_roles() -> None:
     person = frame.table("person")
     benunit = frame.table("benunit")
     frame.table("household")["region"] = "LONDON"
+    # The node reads the household's clone index, since the stage folds
+    # geographic clones (microcosm#931); this frame is one clone.
+    frame.table("household")[ladder_clone_index_column("household")] = 0
     person["age"] = np.where(person["is_benunit_head"] | person["is_parent"], 40, 5)
     person[support_channel_column("person")] = person["person_benunit_id"].map(
         benunit.set_index("benunit_id")[support_channel_column("benunit")]

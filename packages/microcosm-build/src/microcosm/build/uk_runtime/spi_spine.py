@@ -230,6 +230,11 @@ UK_FRS_HMRC_SPINE_LEAF_OUTPUT_COLUMNS = (
     *FRS_HMRC_RETAINED_LEAF_COLUMNS,
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
 )
+#: The support channel's own columns. The households' source columns
+#: (source_household_id, source_year, source_household_key) come from
+#: geographic_expand, which writes them on every household of the
+#: clone-first spine before this stage runs, so the stage reads them and its
+#: copies inherit them; it no longer declares them (microcosm#931).
 UK_SPI_SUPPORT_CHANNEL_OUTPUT_COLUMNS = (
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     support_channel_column("person"),
@@ -241,9 +246,6 @@ UK_SPI_SUPPORT_CHANNEL_OUTPUT_COLUMNS = (
     support_channel_column("household"),
     support_clone_index_column("household"),
     support_source_id_column("household"),
-    "source_household_id",
-    "source_year",
-    "source_household_key",
 )
 UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS = (
     "gift_aid",

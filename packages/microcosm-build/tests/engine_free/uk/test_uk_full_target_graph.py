@@ -28,6 +28,33 @@ def test_default_scope_contains_all_levels_and_never_depends_on_k_or_k_small():
         assert graph.node("uk.full.target_selection").params["geography_levels"] is None
 
 
+def test_the_identity_node_rewrites_the_key_the_clone_first_spine_carries():
+    """The spine's geographic_identity stage keys every household
+    (microcosm#931), so the dense line's uk.full.identity declares its key as
+    a rewrite of the spine's cell, not as a cell of its own."""
+    from microcosm.build.uk_runtime.geographic_clones import (
+        GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
+    )
+
+    config = UKFullBuildConfig(calibration_year=2026)
+    graph = uk_full_graph(
+        config,
+        atomic_geography_definition=uk_atomic_assignment_definition(
+            toy_support_payloads(), seed=config.seed
+        ),
+    ).graph
+    assert ("household", GEOGRAPHY_HOUSEHOLD_KEY_COLUMN) in {
+        (owned.entity, owned.column)
+        for owned in graph.node("geographic_identity").outputs
+    }
+    (identity,) = graph.node("uk.full.identity").outputs
+    assert (identity.entity, identity.column, identity.rewrite) == (
+        "household",
+        GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
+        True,
+    )
+
+
 def test_local_surface_selection_keeps_exact_target_periods():
     rows = pd.DataFrame(
         {

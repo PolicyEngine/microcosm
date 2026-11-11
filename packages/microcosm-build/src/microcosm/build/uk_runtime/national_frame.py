@@ -759,6 +759,14 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # and the split reads them); the engine sums the person balances.
         "cash_isa",
         "stocks_and_shares_isa",
+        # The root's two area-conditioning carriers
+        # (frs_spine.FRS_AREA_CONDITIONING_COLUMNS, microcosm#931): each
+        # household's IMD decile within its nation and whether its council
+        # tax band is a band the FRS gives it that its region uses. The
+        # clone-first spine's area assignment reads them; they are no engine
+        # inputs.
+        "imd_decile",
+        "council_tax_band_observed",
     ),
 }
 

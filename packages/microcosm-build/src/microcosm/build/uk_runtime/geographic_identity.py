@@ -16,7 +16,10 @@ copy path.
   vintage for is refused.
 - **Dtype.** The key is written in the graph's ``string`` dtype (pandas'
   ``StringDtype("python")``), as ``uk.full.identity`` writes it, so it is not
-  a legacy object-string column.
+  a legacy object-string column. The step names the dtype itself, as
+  ``atomic_household_lineage`` does, rather than through the graph's token
+  table: a stage's transform computes through the Frame's modules alone, never
+  the executor's.
 
 So clone 0's key is the key the dense identity gives the same base household,
 clone ``k``'s the key it gives that household's clone ``k``, and growing K
@@ -28,7 +31,11 @@ households rounded through ``receipt_counts`` (a household's clones counted
 once), that the keys are unique, the source and the vintages; no key is ever
 printed.
 
-No stage runs this step yet, so it moves no output and no node key.
+The spine's ``geographic_identity`` stage runs this step, right after
+``geographic_expand``. Its declared operation, ``key_households_by_clone_path``,
+must be the reviewed one (:func:`geographic_identity_operation_parameters`),
+and its one artifact the FRS release, with ``runtime_sha256_required``, whose
+bytes enter the stage's contract.
 """
 
 from __future__ import annotations
@@ -42,11 +49,14 @@ import pandas as pd
 
 from microcosm.build.source_lineage import copy_paths
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.uk_runtime.atomic_area_support import IDENTITY_COLUMN
 from microcosm.build.uk_runtime.atomic_household_identity import household_draw_key
+from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
 from microcosm.build.uk_runtime.frs_release import UKFRSRelease, load_uk_frs_release
-from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
-from microcosm.build.uk_runtime.geographic_expand import SOURCE_YEAR_COLUMN
+from microcosm.build.uk_runtime.geographic_clones import (
+    GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
+    SOURCE_YEAR_COLUMN,
+    ladder_clone_index_column,
+)
 from microcosm.build.uk_runtime.household_lineage import (
     GEOGRAPHIC_SUPPORT_BRANCH,
     UK_COPY_LINEAGE,
@@ -56,18 +66,21 @@ from microcosm.build.uk_runtime.receipt_counts import (
     distinct_carriers,
     rounded_count,
 )
-from microcosm.frame import Frame
+from microcosm.frame import Frame, Weights
 from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
-from microcosm.graph.population import dtype_for_token
 
 __all__ = [
+    "FRS_RELEASE_ARTIFACT_ROLE",
+    "FRS_RELEASE_RESOURCE",
     "GEOGRAPHIC_IDENTITY_INPUTS",
+    "GEOGRAPHIC_IDENTITY_OPERATION_KIND",
     "GEOGRAPHIC_IDENTITY_SOURCE",
     "GEOGRAPHIC_IDENTITY_STAGE_NAME",
     "UK_GEOGRAPHIC_IDENTITY_OUTPUT_COLUMNS",
     "UKGeographicIdentityResult",
     "UKGeographicIdentityStageTransform",
     "frs_vintages_by_source_year",
+    "geographic_identity_operation_parameters",
     "key_uk_households_by_clone_path",
 ]
 
@@ -82,7 +95,30 @@ GEOGRAPHIC_IDENTITY_INPUTS = (
     SOURCE_YEAR_COLUMN,
     ladder_clone_index_column("household"),
 )
-UK_GEOGRAPHIC_IDENTITY_OUTPUT_COLUMNS = (IDENTITY_COLUMN,)
+UK_GEOGRAPHIC_IDENTITY_OUTPUT_COLUMNS = (GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,)
+#: The operation the stage declares (microcosm#931).
+GEOGRAPHIC_IDENTITY_OPERATION_KIND = "key_households_by_clone_path"
+#: The stage's one artifact: the packaged FRS release, which pins the vintage
+#: each key names, so its bytes enter the stage's contract.
+FRS_RELEASE_ARTIFACT_ROLE = "frs_release"
+FRS_RELEASE_RESOURCE = "frs_release.json"
+
+
+def geographic_identity_operation_parameters() -> tuple[
+    tuple[str, dict[str, object]], ...
+]:
+    """The reviewed operation the stage must declare verbatim: the source the
+    keys name and the resource their vintage comes from."""
+
+    return (
+        (
+            GEOGRAPHIC_IDENTITY_OPERATION_KIND,
+            {
+                "source": GEOGRAPHIC_IDENTITY_SOURCE,
+                "vintage_resource": FRS_RELEASE_RESOURCE,
+            },
+        ),
+    )
 
 
 def frs_vintages_by_source_year(
@@ -93,9 +129,11 @@ def frs_vintages_by_source_year(
     The release pins one vintage, which the loader checks starts with its
     survey year. The geographic expansion writes each household's
     ``source_year`` from the frame's time period, the release's base year, as
-    the SPI support channel does. So both years map to the vintage (one year
-    when they are equal), as the dense identity keys every household with
-    it; any other year maps to none. ``release`` defaults to the packaged pin.
+    the SPI support channel did before that stage took the column over (and
+    still does on a household table without the clone index). So both years
+    map to the vintage (one year when they are equal), as the dense identity
+    keys every household with it; any other year maps to none. ``release``
+    defaults to the packaged pin.
     """
 
     release = load_uk_frs_release() if release is None else release
@@ -130,8 +168,10 @@ class UKGeographicIdentityResult:
 
 
 def _assert_geographic_identity_stage(stage: SourceStageSpec) -> None:
-    """The stage a transform runs as: the step's name, household grain, and
-    exactly the key as its output, with no rewrites."""
+    """The stage a transform runs as: the step's name, household grain,
+    exactly the key as its output with no rewrites, the reviewed operation
+    (:func:`geographic_identity_operation_parameters`), and the FRS release as
+    its one artifact, with ``runtime_sha256_required``."""
 
     if not isinstance(stage, SourceStageSpec):
         raise TypeError("The geography identity runs as a SourceStageSpec stage.")
@@ -151,6 +191,22 @@ def _assert_geographic_identity_stage(stage: SourceStageSpec) -> None:
             "The geography identity writes exactly its key; the stage must "
             f"declare outputs {UK_GEOGRAPHIC_IDENTITY_OUTPUT_COLUMNS} and no "
             f"rewrites, got {tuple(stage.outputs)} / {tuple(stage.rewrites)}."
+        )
+    _assert_closed_world_operations(stage, geographic_identity_operation_parameters())
+    releases = [
+        artifact
+        for artifact in stage.artifacts
+        if artifact.get("role") == FRS_RELEASE_ARTIFACT_ROLE
+        and artifact.get("resource") == FRS_RELEASE_RESOURCE
+        and artifact.get("runtime_sha256_required") is True
+    ]
+    if len(stage.artifacts) != 1 or len(releases) != 1:
+        raise ValueError(
+            "The geography identity reads its vintages from one artifact, role "
+            f"{FRS_RELEASE_ARTIFACT_ROLE!r} and resource {FRS_RELEASE_RESOURCE!r} "
+            "with runtime_sha256_required: true; the stage must declare it and no "
+            f"other, got {len(stage.artifacts)} artifact(s), {len(releases)} of "
+            "them that one."
         )
 
 
@@ -204,10 +260,10 @@ def key_uk_households_by_clone_path(
         raise TypeError("The geography identity keys a Frame.")
     validate_uk_national_frame(frame)
     household = frame.table("household")
-    if IDENTITY_COLUMN in household.columns:
+    if GEOGRAPHY_HOUSEHOLD_KEY_COLUMN in household.columns:
         raise ValueError(
-            f"The frame already carries {IDENTITY_COLUMN!r}; the geography identity "
-            "keys each household once."
+            f"The frame already carries {GEOGRAPHY_HOUSEHOLD_KEY_COLUMN!r}; the "
+            "geography identity keys each household once."
         )
     _require_int64(household, SOURCE_HOUSEHOLD_ID_COLUMN)
     years = _require_int64(household, SOURCE_YEAR_COLUMN)
@@ -231,15 +287,19 @@ def key_uk_households_by_clone_path(
             "every household needs its own source and clone path (microcosm#931)."
         )
     keyed = household.copy()
-    keyed[IDENTITY_COLUMN] = pd.Series(
-        keys, index=household.index, dtype=dtype_for_token("string")
+    keyed[GEOGRAPHY_HOUSEHOLD_KEY_COLUMN] = pd.Series(
+        keys, index=household.index, dtype=pd.StringDtype(storage="python")
     )
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["household"] = keyed
+    # The household weights pass through unchanged. Annotated so the stage's
+    # static walk meets microcosm.frame's Weights module, as
+    # test_the_core_modules_are_on_every_nodes_path requires.
+    weights: Weights = frame.weights_for("household")
     result = Frame(
         tables,
         frame.schema,
-        {"household": frame.weights_for("household")},
+        {"household": weights},
         frame.strata,
         mass_log=frame.mass_log,
         metadata=frame.metadata,

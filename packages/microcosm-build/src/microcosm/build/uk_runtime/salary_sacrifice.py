@@ -169,14 +169,17 @@ BONUS_SACRIFICE_MOVE = (
 #: An SPI-channel adult's pay is the tape's, and the FRS bonus it carries is
 #: its twin's, so the two do not belong together (Vahid's review of #1383,
 #: item 6). It draws a bonus share of pay from a base-FRS adult paid alike
-#: instead (María's ruling of 2026-10-24); FRS rows keep their own bonus.
+#: instead (María's ruling of 2026-10-24); FRS rows keep their own bonus. It
+#: draws within its own geographic clone, from cells pooled over every clone
+#: (microcosm#931; :func:`draw_spi_bonuses`).
 BONUS_SACRIFICE_SPI_DRAW = (
     "an SPI-channel adult with pay draws the bonus share of pay "
     "(frs_bonus_amount over employment_income) of a base-FRS adult with pay in "
-    "the same pay cell, by person weight, keyed on person_id; the cells are the "
-    "base-FRS paid adults' weighted pay quantiles at spi_cell_quantiles, and a "
-    "cell with fewer than spi_min_donor_sources donor source households joins "
-    "the one below"
+    "the same pay cell and the same geographic clone (household_clone_index; a "
+    "spine without it is one clone), by person weight, keyed on person_id; the "
+    "cells are the base-FRS paid adults' weighted pay quantiles over every clone "
+    "at spi_cell_quantiles, and a cell with fewer than spi_min_donor_sources "
+    "donor source households joins the one below, and the lowest the one above"
 )
 BONUS_SACRIFICE_SPI_CELL_QUANTILES = (
     0.1,
@@ -355,8 +358,9 @@ def draw_spi_bonuses(
     (``BONUS_SACRIFICE_SPI_DRAW``); an SPI adult without pay has no bonus.
     Every other row keeps its own.
 
-    ``clone_indices`` gives each row's geographic clone (microcosm#931); None,
-    as on every spine today, puts every row in clone 0. The pay cells and the
+    ``clone_indices`` gives each row's geographic clone (microcosm#931), 0
+    throughout a one-clone spine; None, for a frame without
+    ``household_clone_index``, puts every row in clone 0. The pay cells and the
     donor-source floor pool every clone's donors, the floor counted in
     distinct ``source_ids``. Each SPI adult draws from the donors of its own
     clone in its cell, in id order, on the same keyed uniform. So a frame of
@@ -453,7 +457,8 @@ def _geographic_clone_indices(
     """Each person's geographic clone: its household's ``household_clone_index``.
 
     ``households`` is indexed by ``household_id``. None without the column,
-    which is one clone, as every spine is today (microcosm#931). The stage's
+    which is one clone; the spine's ``geographic_expand`` stage writes it on
+    every household, 0 throughout a one-clone spine (microcosm#931). The stage's
     geographic fold reads the column first, as the ``geographic_support``
     branch's ordinals, and refuses one that is not a nonnegative integer.
     """

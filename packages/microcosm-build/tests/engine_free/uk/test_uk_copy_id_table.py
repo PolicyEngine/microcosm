@@ -24,6 +24,7 @@ from microcosm.build.uk_runtime import (
     cgt_structure,
     cgt_support,
     copy_id_table,
+    geographic_expand,
     graph_kernels,
     high_value_home_support,
 )
@@ -82,8 +83,10 @@ _FIELD_NAMES = (
     "cgt_residential_split",
 )
 #: The spine stage that mints each copy field (the band donors share the SPI
-#: copies' field at ordinal 2).
+#: copies' field at ordinal 2, and the geographic clones' field is minted by
+#: the clone-first spine's geographic expansion, microcosm#931).
 _MINTING_STAGES = {
+    "geographic_support": "geographic_expand",
     "spi_support_channel": "spi_support_channel",
     "high_value_support": "high_value_home_support",
     "cgt_support_split": "cgt_support_split",
@@ -139,6 +142,7 @@ def test_the_copy_fields_are_the_lineage_branches_in_stage_order() -> None:
         if name in _MINTING_STAGES
     ]
     assert order == sorted(order)
+    assert len(order) == len(_FIELD_NAMES) - 1
     assert position["spi_income_band_donors"] < position["high_value_home_support"]
 
 
@@ -183,6 +187,14 @@ def _declared_id_remapping(operations, kind: str) -> str:
 @pytest.mark.parametrize(
     ("field", "remapping", "ordinal_text"),
     [
+        (
+            geographic_expand.GEOGRAPHIC_COPY_ID_FIELD,
+            _declared_id_remapping(
+                geographic_expand.geographic_expand_operation_parameters(),
+                geographic_expand.GEOGRAPHIC_EXPAND_OPERATION_KIND,
+            ),
+            "k x the field's radix",
+        ),
         ("spi_support_channel", SPI_SUPPORT_ID_REMAPPING, "1 x the field's radix"),
         (
             "spi_support_channel",
@@ -390,7 +402,9 @@ def _spi_support_on_clone_first_tables(base: IdTables, n_clones: int):
     """The real SPI support stage on ``n_clones`` geographic clones of ``base``.
 
     Every clone of the same base households is selected, so only the stage's
-    id minting can tell K=1 from K=3 apart.
+    id minting can tell K=1 from K=3 apart. The households carry the source
+    columns the geographic expansion writes, which the stage refuses a
+    clone-indexed table without (microcosm#931).
     """
 
     tables = clone_first_tables(base, n_clones)
@@ -399,12 +413,18 @@ def _spi_support_on_clone_first_tables(base: IdTables, n_clones: int):
         for source in base.household["household_id"].tolist()
         if source % 3 != 0
     ]
+    household = tables.household[
+        ["household_id", "source_household_id", "household_clone_index"]
+    ].assign(household_weight=1.0, source_year=np.int64(2024))
+    household["source_household_key"] = pd.Series(
+        [f"2024:{source}" for source in household["source_household_id"].tolist()],
+        index=household.index,
+        dtype=object,
+    )
     return create_uk_spi_support_tables(
         person=tables.person,
         benunit=tables.benunit,
-        household=tables.household[
-            ["household_id", "source_household_id", "household_clone_index"]
-        ].assign(household_weight=1.0),
+        household=household,
         expected_spi_households=None,
         selected_household_ids=tuple(
             source + clone * GEOGRAPHIC_RADIX
@@ -515,8 +535,37 @@ def test_the_executor_takes_the_declared_radix_where_the_frame_maximum_differs(
         np.testing.assert_array_equal(lineage.to_numpy(), parent(targets, field))
 
 
+@pytest.mark.parametrize("clones", [1, 3])
+def test_the_executor_traces_each_geographic_clone_to_its_clone_zero_row(
+    clones: int,
+) -> None:
+    """The geographic expansion's clones, as the executor reads them: clone k
+    of a row is the row plus k x the geographic_support field's radix, so
+    every new row's parent is its clone-0 row, and one clone adds no row
+    (microcosm#931)."""
+
+    base = base_id_tables()
+    before = id_frame(base)
+    after = id_frame(clone_first_tables(base, clones))
+    offset = graph_kernels._declared_copy_radix("geographic_expand", before)
+    assert offset == radix("geographic_support")
+    for entity in before.entities:
+        lineage = graph_kernels._source_lineage(before, after, entity, id_offset=offset)
+        targets = lineage.index.to_numpy(dtype=np.int64)
+        assert len(targets) == (clones - 1) * len(before.table(entity))
+        assert lineage.dtype == np.dtype("int64")
+        np.testing.assert_array_equal(
+            lineage.to_numpy(), parent(targets, "geographic_support")
+        )
+        np.testing.assert_array_equal(
+            ordinal(targets, "geographic_support"),
+            np.repeat(np.arange(1, clones), len(before.table(entity))),
+        )
+
+
 def test_the_executor_names_each_stages_own_copy_id_field() -> None:
     assert dict(graph_kernels._COPY_ID_FIELDS) == {
+        "geographic_expand": geographic_expand.GEOGRAPHIC_COPY_ID_FIELD,
         "high_value_home_support": high_value_home_support.HIGH_VALUE_SUPPORT_COPY_ID_FIELD,
         "cgt_support_split": cgt_support.CGT_SUPPORT_COPY_ID_FIELD,
         "cgt_incidence_clone": cgt_structure.CGT_CLONE_COPY_ID_FIELD,

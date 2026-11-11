@@ -455,13 +455,15 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
     # in-household care hours carrier (microcosm#1418), the company car
     # carriers (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the value
-    # the regional home values replaced (microcosm#1112) and the household ISA
-    # totals policyengine-uk sums from the person balances (microcosm#1415),
-    # and nothing else.
+    # the regional home values replaced (microcosm#1112), the household ISA
+    # totals policyengine-uk sums from the person balances (microcosm#1415)
+    # and the root's area-conditioning carriers (microcosm#931), and nothing
+    # else.
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
     from microcosm.build.uk_runtime.frs_spine import (
+        FRS_AREA_CONDITIONING_COLUMNS,
         FRS_BONUS_CARRIER_COLUMN,
         FRS_COMPANY_CAR_CARRIER_COLUMNS,
         FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
@@ -491,9 +493,67 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{column}" for column in FRS_COMPANY_CAR_CARRIER_COLUMNS}
         | {f"household.{RANK_BASIS_COLUMN}"}
         | {"household.cash_isa", "household.stocks_and_shares_isa"}
+        | {f"household.{column}" for column in FRS_AREA_CONDITIONING_COLUMNS}
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
+
+
+def test_the_release_boundary_drops_the_root_area_conditioning_carriers() -> None:
+    """The root's IMD decile and band flag leave at the release boundary
+    (microcosm#931): they are no engine inputs, and the clone-first spine's
+    area assignment is their only reader. Every other column stays."""
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_AREA_CONDITIONING_COLUMNS,
+        FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+        FRS_IMD_DECILE_COLUMN,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS,
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
+
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(
+        UK_RELEASE_EXPORT_DROPPED_COLUMNS["household"]
+    )
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+                "age": [30, 40],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "WALES"],
+                "council_tax_band": ["D", "I"],
+                FRS_IMD_DECILE_COLUMN: np.asarray([0, 4], dtype="int64"),
+                FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN: [False, True],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+
+    exported = uk_release_export_frame(frame)
+
+    household = exported.table("household")
+    assert set(FRS_AREA_CONDITIONING_COLUMNS).isdisjoint(household.columns)
+    assert household["council_tax_band"].tolist() == ["D", "I"]
+    assert {
+        f"household.{column}" for column in FRS_AREA_CONDITIONING_COLUMNS
+    }.isdisjoint(uk_export_candidate_columns(exported))
+    # The spine keeps them: the boundary drops them from the export alone.
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(frame.table("household").columns)
 
 
 def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:

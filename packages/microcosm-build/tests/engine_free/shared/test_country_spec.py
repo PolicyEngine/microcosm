@@ -1200,8 +1200,10 @@ class TestUKCountryPackage:
         # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1428
         # trading_allowance_receipts last; company_cars right after
         # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316);
-        # microcosm#1490 spi_employment_shell after it and aps_occupation next.
-        assert len(spec.sources.stages) == 54
+        # microcosm#1490 spi_employment_shell after it and aps_occupation next;
+        # microcosm#931 geographic_expand and geographic_identity after
+        # frs_annual_income_spells, before frs_take_up.
+        assert len(spec.sources.stages) == 56
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )

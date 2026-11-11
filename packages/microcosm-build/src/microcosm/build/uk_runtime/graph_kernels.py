@@ -60,6 +60,7 @@ from microcosm.graph.population import dtype_for_token
 
 from .. import (
     chronicle_epoch,
+    clone_expansion,
     gates,
     ledger_targets,
     raking,
@@ -72,6 +73,7 @@ from .. import (
 from . import (
     advani_summers,
     annuity_trust_column,
+    atomic_household_identity,
     birth_month,
     bus_fare_pricing,
     bus_support_pricing,
@@ -134,6 +136,7 @@ from . import (
     uc_relationships,
     was_wealth,
 )
+from .graph import UK_SPINE_STRUCTURAL_STAGES
 from .graph_frames import cast_owned, normalize_create_frame
 from .national_frame import UK_NATIONAL_SCHEMA
 
@@ -175,6 +178,8 @@ _STAGE_MODULES = {
     "etb_services": "etb_services",
     "frs_hmrc_spine_leaves": "spi_spine",
     "frs_annual_income_spells": "frs_annual_income",
+    "geographic_expand": "geographic_expand",
+    "geographic_identity": "geographic_identity",
     "spi_support_channel": "spi_spine",
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
@@ -325,6 +330,13 @@ _STAGE_HELPER_MODULES = {
         *_PINNED_TAB_MODULES,
         stochastic_assignment,
     ),
+    # The geographic clones are the shared clone expansion core's, under the
+    # UK's declaration, whose ids are minted in the copy-id table's
+    # geographic_support field (microcosm#931).
+    "geographic_expand": (clone_expansion, copy_id_table),
+    # The geography key is household_draw_key, encoded canonically, over the
+    # FRS vintage the release pins for each source year (microcosm#931).
+    "geographic_identity": (atomic_household_identity, frs_release, graph_canonical),
     # The SPI income stage's imputation, band-donor resample and receipt live
     # in spi_income, so an edit there moves the stage's hash (microcosm#1278),
     # and its twin transport in spi_rank_transport (microcosm#840). The
@@ -375,13 +387,16 @@ _STAGE_HELPER_MODULES = {
     # trace's digest, ages people by birth month, caps pension contributions
     # with their receipt, and codes council tax bands in the shared band order
     # (microcosm#931). It writes the annuity and trust descriptor under the
-    # name annuity_trust_column holds (microcosm#931, ruled 9 Nov (late)).
+    # name annuity_trust_column holds (microcosm#931, ruled 9 Nov (late)). It
+    # reads each household's nation, for its IMD decile and its band flag,
+    # from the region tier through council_tax_constants (microcosm#931).
     "frs_spine": (
         uc_relationships,
         annuity_trust_column,
         copy_id_table,
         birth_month,
         council_tax_constants,
+        geography_constants,
         pension_coherence,
         receipt_counts,
         trace,
@@ -859,6 +874,11 @@ _COUNTING_STAGES = frozenset(
         # (microcosm#931).
         "frs_hmrc_spine_leaves",
         "frs_annual_income_spells",
+        # The geographic clones and their keys count their evidence in true
+        # source households, and the keys read each clone path through the
+        # shared lineage reader (microcosm#931).
+        "geographic_expand",
+        "geographic_identity",
         "hmrc_spi_income_spine",
         "spi_support_channel",
         "spi_income_band_donors",
@@ -1195,7 +1215,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 39-stage spine "
+            "UK parity fixture must describe every stage of the current spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -1234,6 +1254,8 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_person_draws import UKFRSPersonDrawsStageTransform
     from .frs_relationships import UKFRSRelationshipsStageTransform
     from .frs_take_up import UKFRSTakeUpStageTransform
+    from .geographic_expand import UKGeographicExpandStageTransform
+    from .geographic_identity import UKGeographicIdentityStageTransform
     from .high_value_home_support import UKHighValueHomeSupportStageTransform
     from .isa_subscriptions import UKISASubscriptionsStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
@@ -1339,7 +1361,14 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
         )
     )
 
-    engine = PolicyEngineUKEngine()
+    # The fixture's spine clones every household geographic_clones times, and
+    # its engine refuses a frame of any other clone count (microcosm#931).
+    geographic_clones = config.get("geographic_clones")
+    if isinstance(geographic_clones, bool) or not isinstance(geographic_clones, int):
+        raise ValueError(
+            "UK parity fixture config.geographic_clones must be an integer clone count."
+        )
+    engine = PolicyEngineUKEngine(clones=geographic_clones)
     contract = load_uk_take_up_contract()
     qrf_estimators = int(config["qrf_estimators"])
     donor_sample_size = int(config["spi_donor_sample_size"])
@@ -1435,6 +1464,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "frs_annual_income_spells": UKFRSAnnualIncomeStageTransform(
                 raw_dir, stage=stages["frs_annual_income_spells"]
+            ),
+            "geographic_expand": UKGeographicExpandStageTransform(
+                stage=stages["geographic_expand"], clones=geographic_clones
+            ),
+            "geographic_identity": UKGeographicIdentityStageTransform(
+                stage=stages["geographic_identity"]
             ),
             "spi_support_channel": UKSPISupportChannelStageTransform(
                 stage=stages["spi_support_channel"],
@@ -1862,6 +1897,7 @@ def _expand_cells(context: KernelContext) -> tuple[tuple[str, str, str], ...]:
 #: ``{entity}_source_id`` instead.
 _COPY_ID_FIELDS = MappingProxyType(
     {
+        "geographic_expand": "geographic_support",
         "high_value_home_support": "high_value_support",
         "cgt_support_split": "cgt_support_split",
         "cgt_incidence_clone": "cgt_incidence_clone",
@@ -2010,6 +2046,16 @@ class UKExpandStageKernel(KernelBase):
                 f"UK stage {self.stage!r} has no bound production transform; "
                 "recorded fixture deltas are not accepted as parity evidence."
             )
+        # The geographic clone count is a parameter of the node that makes the
+        # clones, so it is in that node's key, and the transform must make
+        # exactly that many (microcosm#931); no other stage has either.
+        declared_clones = context.params.get("geographic_clones")
+        transform_clones = getattr(transform, "clones", None)
+        if transform_clones != declared_clones:
+            raise ValueError(
+                f"UK stage {self.stage!r} declares {declared_clones!r} geographic "
+                f"clone(s) on its node, but its transform makes {transform_clones!r}."
+            )
         before = _minimal_frame(context)
         after = _invoke_transform(transform, before, context)
         if not isinstance(after, Frame):
@@ -2147,15 +2193,7 @@ def build_uk_registry(
     fixture_resolver = _FixtureTransformResolver()
     for stage in sorted(stage_names):
         transform = implementations.get(stage)
-        if stage in {
-            "spi_support_channel",
-            "spi_income_band_donors",
-            "high_value_home_support",
-            "cgt_support_split",
-            "cgt_incidence_clone",
-            "cgt_incidence_anchor",
-            "cgt_residential_split",
-        }:
+        if stage in UK_SPINE_STRUCTURAL_STAGES:
             registry.register(
                 UKExpandStageKernel(
                     stage,

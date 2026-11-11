@@ -119,10 +119,17 @@ from microcosm.build.uk_runtime.frs_relationships import (
 )
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.frs_spine import (
+    FRS_AREA_CONDITIONING_COLUMNS,
     UKFRSSpineStageTransform,
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+from microcosm.build.uk_runtime.geographic_expand import (
+    UKGeographicExpandStageTransform,
+)
+from microcosm.build.uk_runtime.geographic_identity import (
+    UKGeographicIdentityStageTransform,
+)
 from microcosm.build.uk_runtime.graph import (
     UK_SPINE_ASSEMBLED_FINAL_STAGE,
     uk_registry,
@@ -243,6 +250,21 @@ _REPOSITORY = next(
 )
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
+#: The spine's geographic clone count K (microcosm#931): one, until the spine
+#: build takes a count. The graph's geographic_expand node, the transform it
+#: runs and the engine all take it, and the node refuses a transform that
+#: makes another number of clones.
+_GEOGRAPHIC_CLONES = 1
+#: Declared outputs whose nonzero share no stage record reports: the root's
+#: area-conditioning carriers (frs_spine.FRS_AREA_CONDITIONING_COLUMNS,
+#: microcosm#931), which stay out of every receipt and of the sidecar's
+#: shares, whichever route built the records.
+_UNREPORTED_SHARE_COLUMNS = frozenset(FRS_AREA_CONDITIONING_COLUMNS)
+#: The library whose version the sidecar records beside ``engine_batches``:
+#: where the engine computes the frame clone by clone, private-school
+#: attendance stores its own restatement of the engine's percentile rank, by
+#: microdf's weighted percentile rank (microcosm#931).
+_BATCHED_RESTATEMENT_DEPENDENCY = "microdf-python"
 
 
 def _uk_spine_stage_names(spec) -> tuple[str, ...]:
@@ -734,7 +756,11 @@ def _entity_row_counts(frame) -> dict[str, int]:
     return {entity: int(len(frame.table(entity))) for entity in frame.entities}
 
 
-def _rules_engine() -> PolicyEngineUKEngine:
+def _rules_engine(*, clones: int | None = None) -> PolicyEngineUKEngine:
+    """The pinned engine; ``clones``, the spine's clone count where the caller
+    knows it, makes the engine refuse a frame of any other clone count, and
+    ``None`` refuses none (microcosm#931)."""
+
     try:
         import policyengine_uk  # noqa: F401
     except ImportError as exc:
@@ -748,25 +774,35 @@ def _rules_engine() -> PolicyEngineUKEngine:
 
     assert_installed_engine_is_pinned()
     # Whether a stage's call runs clone by clone is decided from its frame,
-    # never set here (microcosm#931), so nothing about batching enters the
-    # engine identity hashed from _rules_engine_provenance.
-    return PolicyEngineUKEngine()
+    # never set here, and the clone count only refuses (microcosm#931), so
+    # nothing about batching enters the engine identity hashed from
+    # _rules_engine_provenance.
+    return PolicyEngineUKEngine(clones=clones)
 
 
 def _rules_engine_record(engine: object, frame) -> dict[str, object]:
     """The sidecar's ``rules_engine``: the engine's provenance and, only when
     the spine's final frame carries more than one clone, how the adapter
     runs a call over it clone by clone (``engine_batches``, its
-    :meth:`batch_record`). Read from the final frame, never from the calls
-    this process ran: a resumed spine's stages that hit their checkpoints
-    run no call, and it records what a fresh run does. The engine identity is
-    hashed from the provenance alone, so it does not move with batching."""
+    :meth:`batch_record`) and, beside it, the version of microdf-python
+    (``microdf_python``), whose weighted percentile rank private-school
+    attendance then stores in place of the engine's ("not-installed" when
+    absent, as the graph binds it; microcosm#931). Read from the final frame,
+    never from the calls this process ran: a resumed spine's stages that hit
+    their checkpoints run no call, and it records what a fresh run does. The
+    engine identity is hashed from the provenance alone, so it does not move
+    with batching."""
 
     record = _rules_engine_provenance()
     batch_record = getattr(engine, "batch_record", None)
     batches = batch_record(frame) if callable(batch_record) else None
     if batches is not None:
         record["engine_batches"] = dict(batches)
+        try:
+            microdf = metadata.version(_BATCHED_RESTATEMENT_DEPENDENCY)
+        except metadata.PackageNotFoundError:
+            microdf = "not-installed"
+        record["microdf_python"] = microdf
     return record
 
 
@@ -965,7 +1001,7 @@ def _build_sidecar(
                 "stage": record.stage,
                 "produced": list(record.produced),
                 "rewrote": list(record.rewrote),
-                "nonzero_share": dict(record.nonzero_share),
+                "nonzero_share": _reported_shares(record.nonzero_share),
                 "seconds": record.seconds,
             }
             for record in records
@@ -1003,6 +1039,16 @@ def _mark_non_release_h5(path: Path, *, build_id: str) -> None:
         file.attrs["populace_smoke_build_id"] = build_id
 
 
+def _reported_shares(shares: Mapping[str, float]) -> dict[str, float]:
+    """A stage record's nonzero shares without the unreported columns."""
+
+    return {
+        column: share
+        for column, share in shares.items()
+        if column not in _UNREPORTED_SHARE_COLUMNS
+    }
+
+
 def _nonzero_shares(frame, columns: list[str]) -> dict[str, float]:
     shares: dict[str, float] = {}
     for column in columns:
@@ -1038,7 +1084,8 @@ def _graph_stage_records(
     so the root node exposes no artifact for them although ``frs_spine``
     declares them as outputs.  Their share is read from the final population
     instead, which is what the legacy plan recorded (identity columns are
-    never zero, so the value is 1.0 on every vintage).
+    never zero, so the value is 1.0 on every vintage). The root's
+    area-conditioning carriers get no share (``_UNREPORTED_SHARE_COLUMNS``).
     """
 
     structural = _structural_columns(frame)
@@ -1054,6 +1101,8 @@ def _graph_stage_records(
         # A declared rewrite is an owned cell of its node, as an output is, so
         # its share reads the node's artifact too (microcosm#721).
         for column in (*stage.outputs, *stage.rewrites):
+            if column in _UNREPORTED_SHARE_COLUMNS:
+                continue
             matches = [
                 (coordinate, key)
                 for coordinate, key in output_receipt.artifacts.items()
@@ -1523,6 +1572,7 @@ def prepare_uk_spine_execution(
         source_mode="split",
         sample_fraction=args.sample_fraction,
         sample_seed=args.sample_seed,
+        geographic_clones=_GEOGRAPHIC_CLONES,
     )
     stage_names = _uk_spine_stage_names(spec)
     if (
@@ -1601,7 +1651,7 @@ def prepare_uk_spine_execution(
         raise ValueError("--aps-tab is required when aps_occupation is scheduled.")
     stages = [stages_by_name[name] for name in stage_names]
     synthetic_fixture = _synthetic_fixture_evidence(args.synthetic_fixture_dir)
-    engine = _rules_engine()
+    engine = _rules_engine(clones=_GEOGRAPHIC_CLONES)
     stochastic_contract = load_uk_take_up_contract()
     frs_release = load_uk_frs_release()
     hmrc_spine_transform = _GraphSourceTransform(
@@ -1783,6 +1833,15 @@ def prepare_uk_spine_execution(
                 sources["frs"],
                 stage=stages_by_name["frs_annual_income_spells"],
             )
+        )
+    if "geographic_expand" in stage_names:
+        implementations["geographic_expand"] = UKGeographicExpandStageTransform(
+            stage=stages_by_name["geographic_expand"],
+            clones=_GEOGRAPHIC_CLONES,
+        )
+    if "geographic_identity" in stage_names:
+        implementations["geographic_identity"] = UKGeographicIdentityStageTransform(
+            stage=stages_by_name["geographic_identity"]
         )
     implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
         stage=stages_by_name["spi_support_channel"],
@@ -2387,13 +2446,15 @@ def _main(argv: list[str] | None = None) -> int:
                     column
                     for record in records
                     for column in (*record.produced, *record.rewrote)
+                    if column not in _UNREPORTED_SHARE_COLUMNS
                 )
             )
             atomic_write_json(
                 args.emit_nonzero_shares,
                 {
                     "stages": {
-                        record.stage: dict(record.nonzero_share) for record in records
+                        record.stage: _reported_shares(record.nonzero_share)
+                        for record in records
                     },
                     "final": _nonzero_shares(frame, final_columns),
                 },

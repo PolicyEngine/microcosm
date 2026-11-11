@@ -43,8 +43,10 @@ __all__ = [
 #: Lineage columns the post-clone household identity is keyed on. The support
 #: channel, the CGT support split's copy flag and index (microcosm#1045), the
 #: high-value home support copy flag and index (microcosm#1240) and the clone
-#: flags come from the spine stages; the geographic clone index from
-#: ``uk.full.expand``. Calibration K, weights and remapped ids are not inputs.
+#: flags come from the spine stages. So do the source id and the geographic
+#: clone index, which the spine's ``geographic_expand`` stage writes
+#: (microcosm#931); on a spine built before that stage, ``uk.full.expand``
+#: writes the index. Calibration K, weights and remapped ids are not inputs.
 HIGH_VALUE_SUPPORT_COPY_COLUMN = "household_is_high_value_support_copy"
 HIGH_VALUE_SUPPORT_INDEX_COLUMN = "high_value_support_copy_index"
 UK_HOUSEHOLD_LINEAGE_COLUMNS: tuple[str, ...] = (
@@ -106,8 +108,8 @@ UK_COPY_LINEAGE = CopyLineage(
 
 #: The branches every post-clone household carries: the SPI support channel
 #: and the CGT steps. High-value support (a spine built before that stage has
-#: neither of its columns) and the geographic clone index (a spine frame has
-#: none yet) are read where present.
+#: neither of its columns) and the geographic clone index (a spine built
+#: before ``geographic_expand`` has none) are read where present.
 _REQUIRED_BRANCHES = (
     "spi_support_channel",
     "cgt_support_split",
@@ -171,8 +173,8 @@ def fold_geographic_clones(
     other copy (SPI support, high-value support and the CGT steps) stays a
     row of its own (microcosm#931). The record's key is its true source and
     its clone path without the geographic branch, through the shared reader
-    (``microcosm.build.source_lineage``); a frame without geographic clones,
-    as every spine is today, keeps ``rows`` and ``weights`` value for value.
+    (``microcosm.build.source_lineage``); a frame of one clone, with or
+    without the clone index, keeps ``rows`` and ``weights`` value for value.
 
     The fold orders a key's clones by ``entity``'s id column. Their ids
     differ only by each clone's offset (the copy-id table's

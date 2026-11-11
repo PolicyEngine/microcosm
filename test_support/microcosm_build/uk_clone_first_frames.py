@@ -1,13 +1,13 @@
 """Synthetic UK id frames for the copy-id tests (microcosm#931).
 
-The clone-first spine (#931 group (b)) will mint geographic clone ``k`` of
-every FRS row at ``id + k x 10**9`` (the copy-id table's
-``geographic_support`` field) before any copy layer runs. This module builds
-such frames from synthetic sernums, with ids as ``frs_spine`` makes them
-(``benunit_id`` sernum x 100 + b, ``person_id`` sernum x 1000 + p), and copies
-households through the six copy layers in the spine's order: the SPI copy,
-the income band donor, the high-value copies, the CGT support copies, the
-incidence twin and the residential arms. Each layer picks its households by
+The clone-first spine's ``geographic_expand`` stage (#931) mints geographic
+clone ``k`` of every FRS row at ``id + k x 10**9`` (the copy-id table's
+``geographic_support`` field) before any other copy layer runs. This module
+builds such frames from synthetic sernums, with ids as ``frs_spine`` makes
+them (``benunit_id`` sernum x 100 + b, ``person_id`` sernum x 1000 + p), and
+copies households through the six copy layers in the spine's order: the SPI
+copy, the income band donor, the high-value copies, the CGT support copies,
+the incidence twin and the residential arms. Each layer picks its households by
 source id alone, so a K=1 frame's copies are exactly its clone 0's in a K=3
 frame. ``rule="table"`` mints every copy through the copy-id table, as the
 stages do; ``rule="retired"`` replays the rule the table replaced (ten to the
@@ -143,9 +143,15 @@ def clone_first_frame(frame: Frame, n_clones: int) -> Frame:
     field), ``household_clone_index`` ``k`` and ``source_household_id`` the
     clone-0 id (added when the frame has none), at the weight ``w /
     n_clones`` of its household (the same float in every clone), as the
-    clone-first spine will (#931 (b)). Every other column is copied
-    unchanged; the clones carry the frame's weight kind and time period, and
-    no mass record.
+    clone-first spine's ``geographic_expand`` stage does (#931). Every other
+    column is copied unchanged; the clones carry the frame's weight kind and
+    time period, and no mass record.
+
+    It writes only the household clone index and source id, not the person
+    and benefit-unit clone indices, ``source_year`` or
+    ``source_household_key``, so ``spi_support_channel`` refuses its frames;
+    tests that run that stage clone through
+    ``geographic_expand.expand_uk_geographic_clones``.
     """
 
     from microcosm.build.uk_runtime.national_frame import (

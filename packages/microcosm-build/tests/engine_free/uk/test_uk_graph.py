@@ -83,8 +83,10 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # uc_take_up and frs_annual_income_spells; microcosm#1428 the last stage,
     # trading_allowance_receipts; and company_cars after hmrc_spi_income_spine
     # (PolicyEngine/uk-autumn-budget-dashboard-2026#316); and microcosm#1490
-    # spi_employment_shell after company_cars, then aps_occupation.
-    assert len(expected) == 54
+    # spi_employment_shell after company_cars, then aps_occupation; and
+    # microcosm#931 geographic_expand and geographic_identity after
+    # frs_annual_income_spells, before frs_take_up.
+    assert len(expected) == 56
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -93,9 +95,15 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
         for owned in graph.node("create_uk_frs").outputs
     }
     assert root_dtypes[("person", "is_uc_claimant")] == "bool"
-    assert {
+    expanding = {
         node.id for node in graph.nodes if node.structural is StructuralDelta.EXPAND
-    } == UK_SPINE_STRUCTURAL_STAGES
+    }
+    assert expanding == UK_SPINE_STRUCTURAL_STAGES
+    # The geographic clones expand the frame; their keys are a column the
+    # clones carry (microcosm#931).
+    assert "geographic_expand" in expanding
+    assert "geographic_identity" not in expanding
+    assert graph.node("geographic_identity").structural is StructuralDelta.NONE
 
 
 def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
@@ -456,7 +464,10 @@ def test_copy_id_table_changes_invalidate_every_stage_that_reads_it(monkeypatch)
         return content
 
     monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
-    assert len(affected) == 10
+    # Eleven since the geographic clones mint their ids in the table's
+    # geographic_support field (microcosm#931).
+    assert "geographic_expand" in stages
+    assert len(affected) == 11
     for ref in affected:
         assert registry.implementation_hash(ref) != before[ref], ref
     for ref in controls:
@@ -1223,14 +1234,20 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
 #: they find, so a new one is bound or listed here with its reason.
 _STAGE_UNBOUND_NAMES: dict[tuple[str, str], str] = {
     ("microcosm.frame.concepts", "SOURCE_HOUSEHOLD_ID_COLUMN"): (
-        "names the source household column, CopyLineage's default source, "
-        "which the support channel writes by its literal name. A node is "
-        "given only its declared columns, so under a renamed constant the "
-        "lineage readers would find no source column, which they refuse "
-        "unless counting before the copies on a frame without a copy column. "
-        "A spine stage that reads it declares the column by that name, which "
-        "its key hashes, and counts before the copies only beside a copy "
-        "column, or declares neither, and counts as before (checked)"
+        "names the source household column, CopyLineage's default source. "
+        "geographic_expand writes it through the constant and declares it by "
+        "its literal name, in its outputs, which its contract hashes, and in "
+        "its graph cell, and its transform refuses a stage whose declared "
+        "outputs are not the columns it writes. So under a renamed constant "
+        "the spine build refuses it before any node runs, and the declaration "
+        "edit the rename needs re-keys geographic_expand and every node after "
+        "it. A node is given only its declared columns: every stage after "
+        "geographic_expand that reads the name is given the column, declared "
+        "by that name or as an open surface, and one that counts before the "
+        "copies is given the geographic clone index too; the one stage before "
+        "it that reads the name, frs_annual_income_spells, is given neither "
+        "the column nor any copy column, and counts each household as its own "
+        "source (checked; microcosm#931)"
     ),
 }
 #: The same for the UK graph kernels: names a kernel reads from a module its
@@ -1245,18 +1262,21 @@ _KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
         for name in ("LAD23_NAMES_SHA256", "LAD23_NAMES_URL")
     },
     ("microcosm.build.uk_runtime.geographic_clones", "ladder_clone_index_column"): (
-        "names the geographic clone index columns, which only the dense expand "
-        "writes, and uk.full.expand@1 hashes geographic_clones. The calibrated "
-        "gates' support-family fold reads the household's on the expanded "
-        "frame, so their key chains on the expand's; the national gates fold "
-        "the national frame, which no ladder expands, and the fold keys on the "
-        "column only where the table carries it "
-        "(diagnostics.uk_support_family_weights). The dense measures read it "
-        "only to split their frame into the engine blocks their engine_blocks "
-        "parameter asks for, and refuse a frame without it; their population "
-        "is the expand's, so their key chains on it too. The national problem "
-        "resolves its measures in one block, which never reads it "
-        "(full_measure._engine_block_frames; checked)"
+        "names the geographic clone index columns. geographic_expand writes "
+        "them on every spine from microcosm#931 group (b) on, and the dense "
+        "expand on a spine built before it, and both keys hash "
+        "geographic_clones: geographic_expand counts by lineage, and "
+        "uk.full.expand@1 hashes it beside rowwise_dataset. The national "
+        "gates, whose support-family fold reads them on the national frame, "
+        "hash it too. The calibrated gates' support-family fold reads the "
+        "household's on the dense frame, and the dense line expands only a "
+        "spine without them until group (c), so their key chains on the "
+        "expand's. The dense measures read it only to split their frame into "
+        "the engine blocks their engine_blocks parameter asks for, and refuse "
+        "a frame without it; their population is the expand's, so their key "
+        "chains on it too. The national problem resolves its measures in one "
+        "block, which never reads it (full_measure._engine_block_frames; "
+        "checked)"
     ),
 }
 #: Where the kernel rule stops, each with why a kernel that names the
@@ -1592,30 +1612,184 @@ def test_every_name_a_stage_reads_is_hashed_with_it_upstream_or_listed() -> None
     assert set(unlisted) == set(_STAGE_UNBOUND_NAMES), sorted(
         set(unlisted) ^ set(_STAGE_UNBOUND_NAMES)
     )
-    # The source household column's reason. The support channel writes it by
-    # its literal name; a stage that reads it declares it by that name and
-    # counts before the copies only beside a copy column, or declares neither
-    # it nor a copy column.
-    from microcosm.build.uk_runtime import spi_support
+    # The source household column's reason. geographic_expand declares it by
+    # its literal name, in its outputs and its graph cell, and its transform
+    # refuses other outputs (test_uk_geographic_expand). Every stage after it
+    # that reads the name is given the column, and the one before it neither
+    # the column nor a copy column, counting before the copies; a stage after
+    # it that counts before the copies is held to the clone index too
+    # (test_clone_lineage_reaches_every_stage_counting_before_the_copies).
+    from microcosm.build.uk_runtime.geographic_expand import (
+        GEOGRAPHIC_EXPAND_STAGE_NAME,
+        UK_GEOGRAPHIC_EXPAND_OUTPUT_COLUMNS,
+    )
     from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
     from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
 
-    assert f'"{SOURCE_HOUSEHOLD_ID_COLUMN}"' in Path(spi_support.__file__).read_text()
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    declared = spec.sources.stage_map()
+    roster = [stage.stage for stage in spec.sources.stages]
+    clones = roster.index(GEOGRAPHIC_EXPAND_STAGE_NAME)
+    assert declared[GEOGRAPHIC_EXPAND_STAGE_NAME].outputs == (
+        UK_GEOGRAPHIC_EXPAND_OUTPUT_COLUMNS
+    )
+    assert SOURCE_HOUSEHOLD_ID_COLUMN in UK_GEOGRAPHIC_EXPAND_OUTPUT_COLUMNS
+    assert ("household", SOURCE_HOUSEHOLD_ID_COLUMN) in {
+        (owned.entity, owned.column)
+        for owned in graph.node(f"{GEOGRAPHIC_EXPAND_STAGE_NAME}.owned").outputs
+    }
     copy_columns = set(UK_COPY_LINEAGE.copy_columns)
     readers = unlisted[("microcosm.frame.concepts", "SOURCE_HOUSEHOLD_ID_COLUMN")]
-    counting = {stage: _counts_before_copies(walks[stage][2]) for stage in readers}
-    assert any(counting.values())
+    before = [stage for stage in readers if roster.index(stage) < clones]
+    assert before == ["frs_annual_income_spells"]
     for stage in readers:
-        read = {
-            column
-            for slice_ in graph.node(walks[stage][0]).inputs
-            if slice_.entity == "household"
+        read = _household_inputs(graph.node(walks[stage][0]))
+        if roster.index(stage) > clones:
+            assert SOURCE_HOUSEHOLD_ID_COLUMN in read, stage
+        elif stage in before:
+            assert not read & ({SOURCE_HOUSEHOLD_ID_COLUMN} | copy_columns), stage
+            assert _counts_before_copies(walks[stage][2]), stage
+    # The geography key's name is the geographic_clones leaf's, which
+    # geographic_identity hashes as a counting stage, so the stage reads it
+    # bound; the dense line's atomic_area_support re-exports it, and the stage
+    # reaches nothing of that module.
+    from microcosm.build.uk_runtime import atomic_area_support, geographic_clones
+    from microcosm.build.uk_runtime.geographic_identity import (
+        GEOGRAPHIC_IDENTITY_STAGE_NAME,
+        UK_GEOGRAPHIC_IDENTITY_OUTPUT_COLUMNS,
+    )
+
+    key = geographic_clones.GEOGRAPHY_HOUSEHOLD_KEY_COLUMN
+    assert atomic_area_support.IDENTITY_COLUMN is key
+    assert UK_GEOGRAPHIC_IDENTITY_OUTPUT_COLUMNS == (key,)
+    assert declared[GEOGRAPHIC_IDENTITY_STAGE_NAME].outputs == (key,)
+    identity_node, identity_hashed, identity_walk = walks[
+        GEOGRAPHIC_IDENTITY_STAGE_NAME
+    ]
+    assert geographic_clones.__name__ in identity_hashed
+    assert (
+        geographic_clones.__name__,
+        "GEOGRAPHY_HOUSEHOLD_KEY_COLUMN",
+    ) in identity_walk.stops
+    assert atomic_area_support.__name__ not in identity_walk.reach
+    assert not any(
+        module == atomic_area_support.__name__ for module, _ in identity_walk.stops
+    )
+    assert [
+        (owned.entity, owned.column) for owned in graph.node(identity_node).outputs
+    ] == [("household", key)]
+
+
+def _household_inputs(node) -> set[str]:
+    """The household columns a node is given."""
+
+    return {
+        column
+        for slice_ in node.inputs
+        if slice_.entity == "household"
+        for column in slice_.columns
+    }
+
+
+def test_clone_lineage_reaches_every_stage_counting_before_the_copies() -> None:
+    """A stage after geographic_expand that counts its receipts' support
+    before the copies is given each household's true source and its
+    geographic clone index (microcosm#931). The shared reader counts by the
+    source column wherever the frame carries it and refuses the clone index
+    without it, but a node given neither counts every clone as a source of
+    its own, and the source column's check passes such a stage: this rule
+    catches it. frs_take_up, frs_person_draws and frs_household_draws are
+    among the stages it holds, so it is not vacuous."""
+
+    from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+    from microcosm.build.uk_runtime.geographic_expand import (
+        GEOGRAPHIC_EXPAND_STAGE_NAME,
+    )
+    from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
+
+    graph = uk_spine_graph()
+    walks = _stage_walks()
+    roster = [stage.stage for stage in load_country_spec("uk").sources.stages]
+    after = roster[roster.index(GEOGRAPHIC_EXPAND_STAGE_NAME) + 1 :]
+    counting = [stage for stage in after if _counts_before_copies(walks[stage][2])]
+    assert {"frs_take_up", "frs_person_draws", "frs_household_draws"} <= set(counting)
+    lineage = {SOURCE_HOUSEHOLD_ID_COLUMN, ladder_clone_index_column("household")}
+    unread = {
+        stage: sorted(lineage - _household_inputs(graph.node(walks[stage][0])))
+        for stage in counting
+    }
+    assert not any(unread.values()), unread
+
+
+def test_every_stage_that_folds_geographic_clones_reads_the_clone_index() -> None:
+    """A stage whose fits fold each survey record's geographic clones onto
+    its lowest-id clone (``household_lineage.fold_geographic_clones``) is
+    given the household clone index the fold's key reads: a node given none
+    folds nothing, so its fits would count each clone as a record of its own
+    (microcosm#931). property_components declares it too, so that a check of
+    the stage can read its frame's clone count."""
+
+    from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+
+    graph = uk_spine_graph()
+    walks = _stage_walks()
+    lineage = "microcosm.build.uk_runtime.household_lineage"
+    folds = {"fold_geographic_clones", "collapse_geographic_clones"}
+    folding = sorted(
+        stage
+        for stage, (_, _, walk) in walks.items()
+        if folds & set(walk.reach.get(lineage, ()))
+    )
+    assert {"spi_employment_shell", "spi_housing_shell", "uc_capital_coherence"} <= (
+        set(folding)
+    )
+    clone_index = ladder_clone_index_column("household")
+    unread = [
+        stage
+        for stage in (*folding, "property_components")
+        if clone_index not in _household_inputs(graph.node(walks[stage][0]))
+    ]
+    assert not unread, unread
+
+
+def test_the_raw_tab_readers_and_the_draws_read_nothing_the_other_writes() -> None:
+    """frs_hmrc_spine_leaves and frs_annual_income_spells moved ahead of
+    frs_take_up, frs_person_draws and frs_household_draws, with the
+    geographic clones between them (microcosm#931). The move changes no value:
+    neither group reads a column the other writes, they write no column in
+    common, and none of them sets weights."""
+
+    graph = uk_spine_graph()
+    moved = ("frs_hmrc_spine_leaves", "frs_annual_income_spells")
+    draws = ("frs_take_up", "frs_person_draws", "frs_household_draws")
+
+    def reads(stages: tuple[str, ...]) -> set[tuple[str, str]]:
+        return {
+            (slice_.entity, column)
+            for stage in stages
+            for slice_ in graph.node(stage).inputs
             for column in slice_.columns
         }
-        if SOURCE_HOUSEHOLD_ID_COLUMN not in read:
-            assert not read & copy_columns, stage
-        elif not read & copy_columns:
-            assert not counting[stage], (stage, sorted(counting[stage]))
+
+    def writes(stages: tuple[str, ...]) -> set[tuple[str, str]]:
+        return {
+            (owned.entity, owned.column)
+            for stage in stages
+            for owned in graph.node(stage).outputs
+        }
+
+    assert writes(moved) and writes(draws)
+    assert not reads(moved) & writes(draws)
+    assert not reads(draws) & writes(moved)
+    assert not writes(moved) & writes(draws)
+    for stage in (*moved, *draws):
+        node = graph.node(stage)
+        assert node.structural is StructuralDelta.NONE, stage
+        assert node.weights is None, stage
+    order = [node.id for node in graph.nodes]
+    assert max(map(order.index, moved)) < order.index("geographic_expand")
+    assert order.index("geographic_identity") < min(map(order.index, draws))
 
 
 def _counts_before_copies(walk: _Walk) -> set[tuple[str, str]]:
@@ -2159,6 +2333,7 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     from microcosm.build.uk_runtime import (
         geographic_clones,
         graph_build,
+        graph_kernels,
         graph_national,
         graph_population,
         graph_targets,
@@ -2179,18 +2354,30 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     # before they read the columns' name.
     population = inspect.signature(graph_targets.append_uk_target_nodes).parameters
     assert population["population"].default == "uk.full.expand"
-    # And the premise of their reason, that only the dense expand writes the
-    # clone index columns: no spine node writes them. Once the spine's
-    # geographic expansion does, the reason is rewritten with this check.
-    written = {
-        (owned.entity, owned.column)
-        for node in uk_spine_graph().nodes
-        for owned in node.outputs
-    }
+    # And the premises of their reason for the writers. On the spine, the
+    # geographic expansion alone writes the clone index columns, and its key
+    # hashes geographic_clones; the spine build installs it at one clone. The
+    # dense expand refuses a spine carrying them
+    # (test_dense_refuses_a_clone_first_spine_at_any_clone_count).
+    from microcosm.build.uk_runtime import spine_build
+    from microcosm.build.uk_runtime.graph import uk_registry
+
+    spine = uk_spine_graph()
+    writers: dict[tuple[str, str], set[str]] = {}
+    for node in spine.nodes:
+        for owned in node.outputs:
+            writers.setdefault((owned.entity, owned.column), set()).add(node.id)
     for entity in ("person", "benunit", "household"):
-        assert (entity, geographic_clones.ladder_clone_index_column(entity)) not in (
-            written
-        )
+        assert writers[
+            (entity, geographic_clones.ladder_clone_index_column(entity))
+        ] == {"geographic_expand.owned"}
+    expand = uk_registry(graph=spine).get(spine.node("geographic_expand").kernel)
+    assert geographic_clones.__name__ in hashed_module_names(expand, graph_kernels)
+    assert spine_build._GEOGRAPHIC_CLONES == 1
+    # The national gates fold the national frame, which carries the columns
+    # from a clone-first spine, so their key hashes the leaf.
+    national_gates = kernels["uk.full.national-gates@1"]
+    assert geographic_clones.__name__ in _hashed_modules(national_gates)
 
     def calls(module, name: str) -> list:
         tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
@@ -3532,3 +3719,61 @@ def test_spi_benefit_coherence_reads_cover_its_work_tests() -> None:
         )
     } | {("household", "source_household_id")}
     assert required <= declared, sorted(required - declared)
+
+
+def test_the_root_types_its_area_carriers_and_geographic_expand_owns_the_sources() -> (
+    None
+):
+    """microcosm#931: the root's IMD decile is an int64 cell and its band flag
+    a bool one; the households' source columns are geographic_expand's cells,
+    and spi_support_channel, whose copies inherit them, owns none of them."""
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+        FRS_IMD_DECILE_COLUMN,
+    )
+
+    graph = uk_spine_graph()
+    root = {
+        (owned.entity, owned.column): owned.dtype
+        for owned in graph.node("create_uk_frs").outputs
+    }
+    assert root[("household", FRS_IMD_DECILE_COLUMN)] == "int64"
+    assert root[("household", FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN)] == "bool"
+
+    sources = {
+        ("household", column)
+        for column in ("source_household_id", "source_year", "source_household_key")
+    }
+    expand = {
+        (owned.entity, owned.column)
+        for owned in graph.node("geographic_expand.owned").outputs
+    }
+    support = {
+        (owned.entity, owned.column)
+        for owned in graph.node("spi_support_channel.owned").outputs
+    }
+    assert sources <= expand
+    assert sources.isdisjoint(support)
+
+
+def test_microdf_version_joins_every_spine_nodes_numerical_dependencies() -> None:
+    """microcosm#931, O7: microdf-python's installed version ("not-installed"
+    without it) is a numerical dependency of the root and of every stage, so
+    a microdf change re-keys the spine; it is bound, not declared, until the
+    next lock bump."""
+    from importlib import metadata
+
+    from microcosm.build.uk_runtime.graph import _numerical_dependency_versions
+
+    try:
+        installed = metadata.version("microdf-python")
+    except metadata.PackageNotFoundError:
+        installed = "not-installed"
+    versions = dict(_numerical_dependency_versions())
+    assert versions["microdf-python"] == installed
+
+    graph = uk_spine_graph()
+    bound = [node for node in graph.nodes if "numerical_dependencies" in node.params]
+    assert {node.id for node in bound} >= {"create_uk_frs", "geographic_expand"}
+    for node in bound:
+        assert dict(node.params["numerical_dependencies"]) == versions, node.id

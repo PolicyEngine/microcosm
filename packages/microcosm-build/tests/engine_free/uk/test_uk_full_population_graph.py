@@ -164,6 +164,91 @@ def test_one_dense_clone_of_a_spine_at_the_top_copy_fields_expands_exactly(
     assert str(smallest) not in str(caught.value)
 
 
+def _clone_first_source_frame():
+    """The toy spine as a clone-first spine at one clone: the clone indices
+    and household source columns geographic_expand writes (microcosm#931)."""
+    frame = source_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for entity, table in tables.items():
+        table[ladder_clone_index_column(entity)] = np.zeros(len(table), dtype="int64")
+    household = tables["household"]
+    household["source_year"] = np.full(len(household), 2023, dtype="int64")
+    household["source_household_key"] = pd.array(
+        [f"2023:{source}" for source in household["source_household_id"]],
+        dtype="string",
+    )
+    return type(frame)(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+@pytest.mark.parametrize("k", [1, 2])
+def test_dense_refuses_a_clone_first_spine_at_any_clone_count(
+    k, monkeypatch, toy_ladder, tmp_path
+):
+    """uk.full.expand refuses a spine carrying geographic_expand's clone
+    index, at one dense clone as at more, naming the clone-first spine and
+    group (c), which builds the dense line on it; never the overflow refusal,
+    whose "n_clones=1 still expands" holds only without the index
+    (microcosm#931)."""
+    from microcosm.graph import NodeRejectedError
+    from test_support.microcosm_build import uk_full_population_graph
+
+    _, path = toy_ladder
+    monkeypatch.setattr(
+        uk_full_population_graph, "source_frame", _clone_first_source_frame
+    )
+
+    with pytest.raises(NodeRejectedError) as caught:
+        _run_legacy(k, path, ContentStore(tmp_path / "refused"))
+
+    message = str(caught.value)
+    assert (
+        "input person table already carries the reserved in-memory clone column "
+        "'person_clone_index'; the ladder clone owns that name. A clone-first "
+        "spine, whose geographic_expand stage writes it, carries its geographic "
+        "clones already, and the dense line builds on such a spine only from "
+        "microcosm#931 group (c), at any n_clones."
+    ) in message
+    assert "overflow" not in message
+
+
+def test_the_dense_lineage_defaults_only_without_the_clone_index() -> None:
+    """The dense expansion defaults a household's source columns from its own
+    ids only on a spine without the geographic clone index; on a clone-first
+    spine geographic_expand writes them, and a table carrying the index
+    without them is refused by column name (microcosm#931). The reserved
+    column refusal before it refuses such a table first."""
+    from microcosm.build.uk_runtime.rowwise_dataset import _attach_source_lineage
+
+    household = pd.DataFrame({"household_id": [1, 2]})
+    defaulted = _attach_source_lineage(household.copy(), source_year=2023)
+    assert defaulted["source_household_id"].tolist() == [1, 2]
+    assert defaulted["source_year"].tolist() == [2023, 2023]
+    assert defaulted["source_household_key"].tolist() == ["2023:1", "2023:2"]
+
+    cloned = household.assign(household_clone_index=[0, 1], source_household_id=[1, 1])
+    with pytest.raises(ValueError) as caught:
+        _attach_source_lineage(cloned.copy(), source_year=2023)
+    assert str(caught.value) == (
+        "The household table carries 'household_clone_index' but not "
+        "['source_year', 'source_household_key']: on the clone-first spine "
+        "geographic_expand writes every household's source columns, and the "
+        "dense line never takes a clone's own ids for its source (microcosm#931)."
+    )
+    complete = cloned.assign(
+        source_year=[2023, 2023], source_household_key=["2023:1", "2023:1"]
+    )
+    pd.testing.assert_frame_equal(
+        _attach_source_lineage(complete.copy(), source_year=2023), complete
+    )
+
+
 def test_k_changes_expansion_but_never_sampling():
     first, _ = graph_and_registry(1)
     second, _ = graph_and_registry(3)

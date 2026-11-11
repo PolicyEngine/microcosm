@@ -45,6 +45,7 @@ from microcosm.build.uk_runtime.frs_relationships import (
 from microcosm.build.uk_runtime.frs_spine import (
     BENEFIT_CODES,
     BSP_MONTHLY_RATES,
+    FRS_AREA_CONDITIONING_COLUMNS,
     FRS_COMPANY_CAR_CARRIER_COLUMNS,
     FRS_COMPANY_CAR_FUEL_CODES,
     FRS_COMPANY_CAR_FUEL_ELECTRIC,
@@ -52,7 +53,13 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_COMPANY_CAR_PRICE_BAND_BOUNDS,
     FRS_COMPANY_CAR_PRICE_BAND_OPEN,
     FRS_COMPANY_CAR_PRICE_BANDS,
+    FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    FRS_IMD_DECILE_COLUMN,
+    FRS_IMD_DECILE_COLUMN_BY_NATION,
+    FRS_IMD_DECILE_UNOBSERVED,
+    FRS_IMD_DECILES,
     FRS_SPINE_TABLES,
+    OUTPUT_COLUMNS,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
@@ -66,6 +73,8 @@ from microcosm.build.uk_runtime.frs_spine import (
     completed_months,
     frs_claimant_or_partner,
     frs_council_tax_band,
+    frs_council_tax_band_observed,
+    frs_imd_decile,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
     uc_gainful_self_employment,
@@ -238,6 +247,12 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "INTDATE": float(_FIXTURE_INTERVIEW_SAS_DATE),
         # A conventional household (HHSTAT 1), not a shared one.
         "HHSTAT": 1,
+        # Each nation's IMD decile variable; a household has its own nation's
+        # (England here) and the others blank (microcosm#931).
+        "IMDE": 3,
+        "IMDW": "",
+        "IMDS": "",
+        "IMDN": "",
     }
     household_1 = {
         **household_2,
@@ -248,6 +263,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "PTENTYP2": 6,
         "TYPEACC": 4,
         "BEDROOM6": 2,
+        "IMDE": "",
+        "IMDS": 7,
         "CTANNUAL": -1.0,
         "CTBAND": 2,
         "CTDISC": 1,
@@ -669,6 +686,10 @@ def _manifest_stage() -> SourceStageSpec:
 
 
 def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
+    packaged = load_country_spec("uk")
+    assert packaged.sources is not None
+    packaged_stages = packaged.sources.stage_map()
+
     def source_stage(
         name: str,
         *,
@@ -840,6 +861,31 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "disabled_students_allowance_eligible_expenses",
                     ),
                 ),
+                # microcosm#931: the HMRC leaves read the raw tabs, so they
+                # run before the geographic clones, which the draws follow, as
+                # in the packaged roster; the clones and their keys run under
+                # their packaged declarations.
+                source_stage(
+                    "frs_hmrc_spine_leaves",
+                    tables=("adult", "benefits"),
+                    operations=[
+                        {"kind": "retain_adjudicated_frs_hmrc_leaves"},
+                        {
+                            "kind": "derive",
+                            "output": "employer_pension_contributions",
+                        },
+                    ],
+                    outputs=(
+                        "hmrc_spi_pay",
+                        "hmrc_spi_unemployment_benefit_income",
+                        "hmrc_spi_incapacity_benefit_income",
+                        "ossben_identifiable_subset",
+                        "srp_regular_code5",
+                        "employer_pension_contributions",
+                    ),
+                ),
+                packaged_stages["geographic_expand"],
+                packaged_stages["geographic_identity"],
                 source_stage(
                     "frs_take_up",
                     grain="benunit",
@@ -1016,25 +1062,6 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                     ),
                 ),
                 source_stage(
-                    "frs_hmrc_spine_leaves",
-                    tables=("adult", "benefits"),
-                    operations=[
-                        {"kind": "retain_adjudicated_frs_hmrc_leaves"},
-                        {
-                            "kind": "derive",
-                            "output": "employer_pension_contributions",
-                        },
-                    ],
-                    outputs=(
-                        "hmrc_spi_pay",
-                        "hmrc_spi_unemployment_benefit_income",
-                        "hmrc_spi_incapacity_benefit_income",
-                        "ossben_identifiable_subset",
-                        "srp_regular_code5",
-                        "employer_pension_contributions",
-                    ),
-                ),
-                source_stage(
                     "spi_support_channel",
                     grain="household",
                     operations=[
@@ -1076,9 +1103,6 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "household_support_channel",
                         "household_support_clone_index",
                         "household_source_id",
-                        "source_household_id",
-                        "source_year",
-                        "source_household_key",
                     ),
                 ),
                 source_stage(
@@ -1117,7 +1141,11 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
             ),
         ),
         geography_spine=None,
-        resource_hashes={"brma_private_rented_households.json": "f" * 64},
+        resource_hashes={
+            "brma_private_rented_households.json": "f" * 64,
+            # The geography keys' FRS release, the packaged bytes'.
+            "frs_release.json": packaged.resource_hashes["frs_release.json"],
+        },
     )
 
 
@@ -1135,6 +1163,13 @@ class _FakeUKEngine:
             else:
                 values[variable] = np.zeros(person_count)
         return values
+
+
+def _fake_rules_engine(*, clones: int | None = None) -> _FakeUKEngine:
+    """The driver's engine, as the spine build asks for it: with the spine's
+    clone count, which the stand-in does not check (microcosm#931)."""
+
+    return _FakeUKEngine()
 
 
 def test_manifest_stage_and_runtime_agree_on_artifacts_and_operations() -> None:
@@ -2613,6 +2648,169 @@ def test_northern_ireland_households_take_the_placeholder_band() -> None:
     assert frs_council_tax_band(household).tolist() == ["D", "D", "E", "I", "D"]
 
 
+def test_the_root_writes_each_households_imd_decile_and_band_flag_typed(
+    tmp_path: Path,
+) -> None:
+    """The root's two area-conditioning carriers (microcosm#931): the decile
+    int64, the band flag bool, both declared outputs of the stage. The
+    Scottish fixture household reads IMDS and the English one IMDE."""
+
+    stage = _write_fixture(tmp_path)
+
+    household = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("household")
+        .set_index("household_id")
+    )
+
+    assert household[FRS_IMD_DECILE_COLUMN].dtype == np.dtype("int64")
+    assert household[FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN].dtype == np.dtype(bool)
+    assert household[FRS_IMD_DECILE_COLUMN].to_dict() == {1: 7, 2: 3}
+    assert household[FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN].to_dict() == {
+        1: True,
+        2: True,
+    }
+    assert FRS_AREA_CONDITIONING_COLUMNS == (
+        FRS_IMD_DECILE_COLUMN,
+        FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN,
+    )
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(OUTPUT_COLUMNS)
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(_manifest_stage().outputs)
+
+
+def test_the_root_names_the_conditioned_supports_decile_and_every_nation() -> None:
+    """The decile's name is spelled in frs_spine, so a change to the
+    conditioned supports' module never re-keys the root; the two spellings,
+    the decile codes and the nations stay equal (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        IMD_DECILE_COLUMN,
+        IMD_DECILES,
+    )
+    from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
+
+    assert FRS_IMD_DECILE_COLUMN == IMD_DECILE_COLUMN
+    assert tuple(str(decile) for decile in FRS_IMD_DECILES) == IMD_DECILES
+    assert FRS_IMD_DECILE_UNOBSERVED not in FRS_IMD_DECILES
+    assert set(FRS_IMD_DECILE_COLUMN_BY_NATION) == set(UK_NATION_BY_REGION.values())
+    assert sorted(FRS_IMD_DECILE_COLUMN_BY_NATION.values()) == [
+        "imde",
+        "imdn",
+        "imds",
+        "imdw",
+    ]
+
+
+def test_imd_decile_reads_the_households_own_nation_and_codes_one_to_ten() -> None:
+    # England, Wales, Scotland and Northern Ireland read their own variables.
+    # Then 0 for: a blank region code, codes 0 and 11, a non-integral code, a
+    # blank own variable beside another nation's code, and a negative code.
+    household = pd.DataFrame(
+        {
+            "gvtregno": [1, 11, 12, 13, np.nan, 8, 9, 10, 5, 4],
+            "imde": [1, 9, 9, 9, 5, 0, 11, 5.5, np.nan, -1],
+            "imdw": [9, 10, 9, 9, 5, 9, 9, 9, 9, 9],
+            "imds": [9, 9, 2, 9, 5, 9, 9, 9, 9, 9],
+            "imdn": [9, 9, 9, 3, 5, 9, 9, 9, 9, 9],
+        },
+        index=range(101, 111),
+    )
+
+    decile = frs_imd_decile(household)
+
+    assert decile.dtype == np.dtype("int64")
+    assert decile.index.equals(household.index)
+    assert decile.tolist() == [1, 10, 2, 3, 0, 0, 0, 0, 0, 0]
+
+
+def test_the_band_flag_is_false_unless_the_frs_gives_a_band_its_region_uses() -> None:
+    # Northern Ireland pays domestic rates; codes outside 1-9 and blanks take
+    # the placeholder; band I is Welsh only; a household of no known region
+    # holds no band of its region. council_tax_band itself is unchanged.
+    household = pd.DataFrame(
+        {
+            "gvtregno": [13, 13, 6, 11, 6, 12, 1, np.nan, 12, 8],
+            "ctband": [5, 0, 5, 9, 0, 9, 9, 4, 8, np.nan],
+        },
+        index=range(201, 211),
+    )
+
+    observed = frs_council_tax_band_observed(household)
+
+    assert frs_council_tax_band(household).tolist() == [
+        *("D", "D", "E", "I", "D"),
+        *("I", "I", "D", "H", "D"),
+    ]
+    assert observed.dtype == np.dtype(bool)
+    assert observed.index.equals(household.index)
+    assert observed.tolist() == [
+        *(False, False, True, True, False),
+        *(False, False, False, True, False),
+    ]
+
+
+@pytest.mark.parametrize("column", ["IMDE", "IMDW", "IMDS", "IMDN"])
+def test_frs_spine_refuses_a_household_tab_without_an_imd_variable(
+    tmp_path: Path, column: str
+) -> None:
+    """A vintage without one of the four IMD variables refuses, naming it and
+    no count; it never reads the absent variable as zeros (microcosm#931)."""
+
+    tables = _fixture_tables()
+    tables["househol"] = [
+        {key: value for key, value in row.items() if key != column}
+        for row in tables["househol"]
+    ]
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(KeyError) as caught:
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+    assert caught.value.args == (
+        f"The FRS household tab has no {[column]} column(s), so the IMD decile "
+        "cannot be set.",
+    )
+
+
+def test_the_imd_and_band_codes_move_only_the_two_carriers(tmp_path: Path) -> None:
+    """Every other column of the root is the same whatever the IMD codes say,
+    and a code outside 1-9 moves only the band flag beside the placeholder
+    band it already took (microcosm#931)."""
+
+    tables = _fixture_tables()
+    before = build_uk_frs_spine_frame(
+        tmp_path / "before", stage=_write_fixture(tmp_path / "before", tables)
+    )
+    for row in tables["househol"]:
+        row.update({"IMDE": 10, "IMDW": 10, "IMDS": 10, "IMDN": 10})
+        if row["SERNUM"] == 2:
+            # Band D either way: code 4 is band D, code 0 the placeholder.
+            row["CTBAND"] = 0
+    after = build_uk_frs_spine_frame(
+        tmp_path / "after", stage=_write_fixture(tmp_path / "after", tables)
+    )
+
+    moved = {
+        entity: [
+            column
+            for column in before.table(entity).columns
+            if not before.table(entity)[column].equals(after.table(entity)[column])
+        ]
+        for entity in before.entities
+    }
+    assert moved == {
+        "person": [],
+        "benunit": [],
+        "household": [FRS_IMD_DECILE_COLUMN, FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN],
+    }
+    household = after.table("household").set_index("household_id")
+    assert household[FRS_IMD_DECILE_COLUMN].to_dict() == {1: 10, 2: 10}
+    assert household[FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN].to_dict() == {
+        1: True,
+        2: False,
+    }
+    assert household["council_tax_band"].to_dict() == {1: "B", 2: "D"}
+
+
 def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None:
     stage = _write_fixture(tmp_path)
 
@@ -2884,7 +3082,14 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    # The engine the build asks for, by the clone count it asks with.
+    asked: list[int | None] = []
+
+    def recording_rules_engine(*, clones: int | None = None) -> _FakeUKEngine:
+        asked.append(clones)
+        return _fake_rules_engine(clones=clones)
+
+    monkeypatch.setattr(tool, "_rules_engine", recording_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
@@ -2946,6 +3151,18 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "property_purchased",
         "brma",
     } <= set(frame.table("household"))
+    # The spine build clones every household once (microcosm#931): it asks
+    # for its engine at that one clone, so the adapter refuses a frame of any
+    # other clone count; every clone index is zero, each household is its own
+    # source, and each has a geography key of its own.
+    assert asked == [1]
+    household = frame.table("household")
+    for entity in ("person", "benunit", "household"):
+        assert set(frame.table(entity)[f"{entity}_clone_index"].tolist()) == {0}
+    assert household["source_household_id"].tolist() == (
+        household["household_id"].tolist()
+    )
+    assert household["geography_household_key"].is_unique
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
     # The build record says which of its stages read the SPI Public Use Tape
@@ -3017,7 +3234,11 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "sha256": hashlib.sha256(replay_bytes).hexdigest(),
     }
     assert len(sidecar["stochastic_contract_sha256"]) == 64
-    assert sidecar["resource_pins"] == {"brma_private_rented_households.json": "f" * 64}
+    # The geography keys' stage declares the FRS release (microcosm#931).
+    assert sidecar["resource_pins"] == {
+        "brma_private_rented_households.json": "f" * 64,
+        "frs_release.json": load_country_spec("uk").resource_hashes["frs_release.json"],
+    }
     # Resolve the expected version the way the driver does, so the assertion
     # holds in the engine-hermetic lane too: the real version where
     # policyengine-uk is installed, the documented fallback where it is not.
@@ -3058,7 +3279,7 @@ def test_driver_kernels_free_each_stage_result_once_its_evidence_is_captured(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
 
@@ -3119,7 +3340,7 @@ def test_driver_writes_payload_identical_h5s(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
@@ -3184,7 +3405,7 @@ def test_driver_keeps_only_the_final_graph_version(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     runs = []
@@ -3590,7 +3811,7 @@ def test_driver_records_sampled_spine_sidecar(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     # The root's rung sampler lives in national_sampling (microcosm#931).
@@ -3657,7 +3878,7 @@ def test_driver_marks_full_fixture_smoke_outputs_non_release(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     assert (
@@ -3734,7 +3955,7 @@ def test_driver_records_sanitized_failed_staging_lifecycle(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     secret = "operator-secret-value"
@@ -3799,7 +4020,7 @@ def test_driver_records_an_operator_stop_as_a_discarded_attempt(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
 
@@ -3876,7 +4097,7 @@ def test_driver_materializes_a_blocked_assembled_gate_report_before_failing(
     # arms the spine battery and the graph gains its gate nodes.
     spec.gates = load_country_spec("uk").gates
     monkeypatch.setattr(tool, "load_country_spec", lambda country: spec)
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
 
@@ -3974,7 +4195,7 @@ def test_driver_sampled_named_edge_aborts_with_receipt(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
 
@@ -4332,6 +4553,82 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
     assert "frs_spine" not in evidence
 
 
+def test_the_sidecar_reports_no_share_of_the_root_area_carriers() -> None:
+    """The root's area-conditioning carriers stay out of every stage record's
+    nonzero shares in the sidecar, whichever route built the records, and the
+    graph route's projection asks no artifact for them (microcosm#931)."""
+
+    from microcosm.build.plan import StageRecord
+
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [1, 2],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "WALES"],
+                FRS_IMD_DECILE_COLUMN: [0, 4],
+                FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN: [False, True],
+            }
+        ),
+        time_period="2024",
+        household_weights=np.asarray([1.0, 2.0]),
+    )
+    produced = ("household_id", "region", *FRS_AREA_CONDITIONING_COLUMNS)
+    # A record whose shares name the carriers, as a plan-built one does.
+    record = StageRecord(
+        stage="frs_spine",
+        produced=produced,
+        donor_survey=None,
+        nonzero_share={
+            "household_id": 1.0,
+            "region": 1.0,
+            FRS_IMD_DECILE_COLUMN: 0.5,
+            FRS_COUNCIL_TAX_BAND_OBSERVED_COLUMN: 0.5,
+        },
+    )
+
+    sidecar = spine_build._build_sidecar(
+        frame=frame,
+        stages=[],
+        records=[record],
+        artifact_pins={},
+        resource_pins={},
+        input_artifact_pins={},
+        hmrc_replay={},
+        stochastic_contract_sha256="0" * 64,
+        frs_vintage="synthetic",
+        sampling=None,
+    )
+
+    (written,) = sidecar["stage_records"]
+    assert written["nonzero_share"] == {"household_id": 1.0, "region": 1.0}
+    assert written["produced"] == list(produced)
+
+    # The graph route: the root's node exposes the region's artifact alone.
+    manifest = SimpleNamespace(
+        nodes={
+            "frs_spine": SimpleNamespace(artifacts={("household", "region"): "k"}),
+            "create_uk_frs": SimpleNamespace(wall_time=1.5),
+        }
+    )
+    store = SimpleNamespace(load_column=lambda key: pd.Series(["LONDON", "WALES"]))
+    stage = SimpleNamespace(
+        stage="frs_spine", outputs=produced, rewrites=(), survey="Synthetic FRS"
+    )
+    (projected,) = spine_build._graph_stage_records(
+        manifest=manifest, store=store, stages=[stage], frame=frame
+    )
+    assert projected.nonzero_share == {"household_id": 1.0, "region": 1.0}
+    assert projected.produced == produced
+
+
 def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
     class _Record:
         def __init__(self, fit_name, weight_kind):
@@ -4378,7 +4675,7 @@ def test_spine_completion_waits_for_attempt_record(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
-    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    monkeypatch.setattr(tool, "_rules_engine", _fake_rules_engine)
     _stub_policy_readers(monkeypatch)
     spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     if late_error:

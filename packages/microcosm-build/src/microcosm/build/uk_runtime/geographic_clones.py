@@ -1,4 +1,4 @@
-"""The UK geographic clone index columns' names, and a frame's clone count.
+"""The UK geographic clones' column names, and a frame's clone count.
 
 Each geographic clone of a household carries its index, 0 to ``K - 1``, on
 the household, its benefit units and its people, under a per-entity name
@@ -6,18 +6,22 @@ the household, its benefit units and its people, under a per-entity name
 schema's one shared name (:data:`ARTIFACT_CLONE_INDEX_COLUMN`). The UK copy
 lineage reads the household's index as its ``geographic_support`` branch
 (``household_lineage.UK_COPY_LINEAGE``), and :func:`geographic_clone_count`
-reads ``K`` from it.
+reads ``K`` from it. The spine's ``geographic_expand`` stage writes the
+indices and every household's source columns
+(:data:`UK_GEOGRAPHIC_SOURCE_COLUMNS`), and its ``geographic_identity``
+stage each clone's geography key (:data:`GEOGRAPHY_HOUSEHOLD_KEY_COLUMN`),
+which the dense line's ``atomic_area_support`` names ``IDENTITY_COLUMN``.
 
-The two names lived in ``rowwise_dataset`` and the count in ``cgt_support``,
-which re-export them. This module holds the three alone and imports nothing
-first-party, as ``annuity_trust_column`` holds its column's name. The stages
-that count by lineage read the household's name through ``household_lineage``,
-and their nodes hash this module with the counting modules
-(``graph_kernels._COUNTING_MODULES``); the CGT support split, which reads
-``K`` through the count, hashes it too. The full build's population and export
-kernels, which read the names, hash it as well. So an edit here re-keys all
-of them, without binding the dense line's ``rowwise_dataset`` into the spine
-(microcosm#931).
+The two index names lived in ``rowwise_dataset`` and the count in
+``cgt_support``, which re-export them. This module holds the names and the
+count alone and imports nothing first-party, as ``annuity_trust_column``
+holds its column's name. The stages that count by lineage read the
+household's name through ``household_lineage``, and their nodes hash this
+module with the counting modules (``graph_kernels._COUNTING_MODULES``); the
+CGT support split, which reads ``K`` through the count, hashes it too. The
+full build's population and export kernels, which read the names, hash it as
+well. So an edit here re-keys all of them, without binding the dense line's
+``rowwise_dataset`` or ``atomic_area_support`` into the spine (microcosm#931).
 """
 
 from __future__ import annotations
@@ -27,6 +31,10 @@ import pandas as pd
 
 __all__ = [
     "ARTIFACT_CLONE_INDEX_COLUMN",
+    "GEOGRAPHY_HOUSEHOLD_KEY_COLUMN",
+    "SOURCE_HOUSEHOLD_KEY_COLUMN",
+    "SOURCE_YEAR_COLUMN",
+    "UK_GEOGRAPHIC_SOURCE_COLUMNS",
     "geographic_clone_count",
     "ladder_clone_index_column",
 ]
@@ -34,6 +42,27 @@ __all__ = [
 #: Clone-index column name in the written artifact (one name per table —
 #: the legacy single-year schema, unchanged by the Frame carrier).
 ARTIFACT_CLONE_INDEX_COLUMN = "clone_index"
+#: The household's survey year, which ``geographic_expand`` writes on every
+#: household.
+SOURCE_YEAR_COLUMN = "source_year"
+#: ``f"{source_year}:{source_household_id}"``, which ``geographic_expand``
+#: writes on every household.
+SOURCE_HOUSEHOLD_KEY_COLUMN = "source_household_key"
+#: The households' source columns ``geographic_expand`` writes on every
+#: household: the source id (each household's clone-0 id), its year and its
+#: key. The source id is ``microcosm.frame.concepts.SOURCE_HOUSEHOLD_ID_COLUMN``,
+#: spelled here so that this module imports nothing first-party; a test holds
+#: the two spellings equal.
+UK_GEOGRAPHIC_SOURCE_COLUMNS = (
+    "source_household_id",
+    SOURCE_YEAR_COLUMN,
+    SOURCE_HOUSEHOLD_KEY_COLUMN,
+)
+#: Each clone's geography key, which ``geographic_identity`` writes on every
+#: household of the spine and the dense line's ``uk.full.identity`` on every
+#: household of its pool (``atomic_area_support.IDENTITY_COLUMN`` is this
+#: name).
+GEOGRAPHY_HOUSEHOLD_KEY_COLUMN = "geography_household_key"
 
 
 def ladder_clone_index_column(entity: str) -> str:
@@ -50,13 +79,13 @@ def ladder_clone_index_column(entity: str) -> str:
 def geographic_clone_count(household: pd.DataFrame) -> int:
     """The frame's geographic clone count ``K``: one more than its largest index.
 
-    The clone-first spine (microcosm#931) gives every household the index of
-    its geographic clone in ``household_clone_index``, 0 to ``K - 1``; a
-    household table without that column, as on every national spine today,
-    is one clone. Refuses a non-integer index column, a household without an
-    index, a negative index and indices that are not exactly 0 to ``K - 1``
-    (an index below the largest that no household carries). Each refusal
-    gives a count or the column's dtype, never an id or a value.
+    The clone-first spine's ``geographic_expand`` stage (microcosm#931) gives
+    every household the index of its geographic clone in
+    ``household_clone_index``, 0 to ``K - 1``; a household table without that
+    column is one clone. Refuses a non-integer index column, a household
+    without an index, a negative index and indices that are not exactly 0 to
+    ``K - 1`` (an index below the largest that no household carries). Each
+    refusal gives a count or the column's dtype, never an id or a value.
     """
 
     column = ladder_clone_index_column("household")

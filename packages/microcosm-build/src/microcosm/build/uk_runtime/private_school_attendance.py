@@ -23,14 +23,14 @@ attendance parameters; a reform to the fee VAT does not move pupils either way
 in the pinned engine.
 
 The rank is over the people a simulation holds, so a simulation over part of
-the frame ranks that part alone. Once a dense spine's households carry more
-than one geographic clone, its engine calls run clone by clone
+the frame ranks that part alone. Once a spine's households carry more than
+one geographic clone, its engine calls run clone by clone
 (microcosm#931), so the stage restates the formula's last step itself, over
 every person in the frame (:func:`restate_private_school_attendance`): from
 engine values that each household's own records decide, the engine's own
 parameters, and microdf's weighted percentile rank, the rank the formula
 calls. Where the engine computes the frame in one simulation (the national
-line, and a spine before its clones exist) the stage stores the engine's
+line, and a spine of one geographic clone) the stage stores the engine's
 flags once the restatement equals them bit for bit, so every such build
 re-checks the restatement on its own data; where it computes the frame clone
 by clone the stage stores the restatement. The receipt names the route and

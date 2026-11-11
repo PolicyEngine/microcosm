@@ -152,13 +152,14 @@ CGT_SUPPORT_MASS_CHANGE_REASON = (
 CGT_SUPPORT_CORRECTION_CANDIDATES = 64
 #: The one exception to "every copy carries weight / copies" that the
 #: ``copy_rule`` of both support splits declares, built on the cap so the
-#: declarations restate it (microcosm#931). The CGT split's adds
+#: declarations restate it, with the order the candidates are tried in
+#: (:func:`_exact_support_weights`; microcosm#931). The CGT split's adds
 #: :data:`CGT_SUPPORT_ONE_COPY_CHECK` after it.
 CGT_SUPPORT_EXACT_TOTAL_EXCEPTION = (
     f"except where none of the {CGT_SUPPORT_CORRECTION_CANDIDATES} heaviest "
-    "households left whole can carry the exact-total correction, when the "
-    "shared fallback can put it on a root or copy, off weight / copies by "
-    "about one ulp of the total weight"
+    "households left whole, tried heaviest first, tied weights in row order, "
+    "can carry the exact-total correction, when the shared fallback can put it "
+    "on a root or copy, off weight / copies by about one ulp of the total weight"
 )
 #: The clause the CGT split's ``copy_rule`` adds after that exception, built
 #: on the cap too. Of those candidates, a selected household left at one copy

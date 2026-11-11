@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import operator
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from importlib import metadata
@@ -48,6 +49,7 @@ __all__ = [
 
 UK_SPINE_STRUCTURAL_STAGES = frozenset(
     {
+        "geographic_expand",
         "spi_support_channel",
         "spi_income_band_donors",
         "high_value_home_support",
@@ -59,7 +61,9 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
 )
 
 #: The last stage of the assembled checkpoint: everything through the base
-#: FRS mapping and the stochastic draws. A name, not an index — a position
+#: FRS mapping and the stochastic draws, with the HMRC leaves, the annual
+#: income spells and the geographic clones and their keys, which run before
+#: the draws (microcosm#931). A name, not an index — a position
 #: standing in for a key is correct only while two independently-maintained
 #: orderings happen to agree (the uk-data#468 class). The graph freezes the
 #: checkpoint after it, and the graph's spine gates and the plan path read it,
@@ -83,6 +87,9 @@ UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 # person-mass ledger the executor verifies and asserts the household-mass
 # invariant itself (``UKExpandStageKernel``).
 _STRUCTURAL_MASS = {
+    # The geographic clones copy every household K ways at an equal share of
+    # its weight (microcosm#931), so person mass is conserved, to rounding.
+    "geographic_expand": "conserve",
     "spi_support_channel": "declared",
     # The reserved income rows are funded from the incumbent households of
     # each donor's region (microcosm#1063): household mass is conserved
@@ -101,6 +108,9 @@ _STRUCTURAL_MASS = {
 }
 
 _STRUCTURAL_WEIGHT_KIND = {
+    # The clones keep the root's design weights: an EXPAND may carry its
+    # base's kind (microcosm#931).
+    "geographic_expand": "design",
     "spi_support_channel": "importance",
     "spi_income_band_donors": "importance",
     "high_value_home_support": "importance",
@@ -234,6 +244,15 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
     "hmrc_income": "Pinned local HMRC income facts workbook.",
 }
 
+#: The geographic clones' lineage: each household's true source and its clone.
+#: frs_take_up, frs_person_draws and frs_household_draws run on every clone,
+#: after geographic_expand, and count their receipts' support before the
+#: copies, which the shared reader does on the source column wherever the
+#: frame carries it, refusing the clone index without it (microcosm#931).
+_GEOGRAPHIC_CLONE_LINEAGE = frozenset(
+    {("household", "source_household_id"), ("household", "household_clone_index")}
+)
+
 # ``None`` means the implementation genuinely has an open formula/model
 # surface and therefore receives every live cell.  Finite sets are the direct
 # Frame reads inventoried from the existing transform.  Structural ids,
@@ -293,15 +312,17 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "months_since_last_birthday",
         )
     )
-    | frozenset({("benunit", "is_married")}),
+    | frozenset({("benunit", "is_married")})
+    | _GEOGRAPHIC_CLONE_LINEAGE,
     # is_apprentice draws employees aged 21 to 24 at a rate set by the
     # frame's weights (microcosm#1372), and its receipt reads their pay for
     # the relief the flags imply (microcosm#1373).
     "frs_person_draws": frozenset(
         ("person", column)
         for column in ("age", "employment_status", "employment_income")
-    ),
-    "frs_household_draws": frozenset(),
+    )
+    | _GEOGRAPHIC_CLONE_LINEAGE,
+    "frs_household_draws": _GEOGRAPHIC_CLONE_LINEAGE,
     "frs_brma": None,
     "was_wealth": None,
     # The LISA model reads the was_wealth household predictors through the
@@ -326,7 +347,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # channel and the household reference person's sub-letting rent), the
     # landlords' ages the FRS-concept finance-cost draw conditions on, and the
     # rental property values the coherence receipt reads (microcosm#1106,
-    # microcosm#840).
+    # microcosm#840). The geographic clone index is declared too, so that a
+    # check of the stage can read its frame's clone count (microcosm#931).
     "property_components": frozenset(
         {
             ("person", "age"),
@@ -338,6 +360,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "subrent"),
             ("household", "other_residential_property_value"),
             ("household", "non_residential_property_value"),
+            ("household", "household_clone_index"),
         }
     ),
     # Engine-free: the owners' region, tenure, value and wealth, the support
@@ -384,6 +407,18 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "gender",
         )
     ),
+    # The geographic clones copy whole households, so their surface is open
+    # (microcosm#931).
+    "geographic_expand": None,
+    # The geography key reads each household's true source, its source year
+    # and its clone, the lineage geographic_expand writes (microcosm#931).
+    "geographic_identity": frozenset(
+        {
+            ("household", "source_household_id"),
+            ("household", "source_year"),
+            ("household", "household_clone_index"),
+        }
+    ),
     "spi_support_channel": None,
     "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
@@ -408,6 +443,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "household_support_channel"),
             ("household", "household_support_clone_index"),
             ("household", "source_household_id"),
+            ("household", "household_clone_index"),
         }
     ),
     # Engine-free: the sub-major predictors, the major group it nests in, the
@@ -436,6 +472,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         {
             ("household", "source_household_id"),
             ("household", "household_support_clone_index"),
+            ("household", "household_clone_index"),
             ("person", "age"),
             ("person", "is_household_head"),
             ("person", "employment_income"),
@@ -531,6 +568,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "source_household_id"),
             ("household", "household_support_channel"),
             ("household", "household_support_clone_index"),
+            ("household", "household_clone_index"),
             ("household", "household_is_high_value_support_copy"),
             ("household", "high_value_support_copy_index"),
             ("person", "is_benunit_head"),
@@ -807,7 +845,12 @@ _ROOT_HOUSEHOLD_STRING = {
     "accommodation_type",
     "council_tax_band",
 }
-_ROOT_HOUSEHOLD_INT = {"num_bedrooms", "council_tax_single_adult_raw"}
+#: imd_decile and council_tax_band_observed are the root's two area-
+#: conditioning carriers (frs_spine.FRS_AREA_CONDITIONING_COLUMNS,
+#: microcosm#931): the decile int64, 0 where none is observed, and the flag
+#: bool.
+_ROOT_HOUSEHOLD_INT = {"num_bedrooms", "council_tax_single_adult_raw", "imd_decile"}
+_ROOT_HOUSEHOLD_BOOL = {"council_tax_band_observed"}
 _STRUCTURAL_COLUMNS = {
     "person_id",
     "person_benunit_id",
@@ -828,6 +871,8 @@ def _root_cells(stage_outputs: Iterable[str]) -> tuple[_Cell, ...]:
             cells.append(_Cell("household", column, "string"))
         elif column in _ROOT_HOUSEHOLD_INT:
             cells.append(_Cell("household", column, "int64"))
+        elif column in _ROOT_HOUSEHOLD_BOOL:
+            cells.append(_Cell("household", column, "bool"))
         elif column in _ROOT_PERSON_STRING:
             cells.append(_Cell("person", column, "string"))
         elif column in _ROOT_PERSON_BOOL:
@@ -1174,6 +1219,22 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "contributory_benefits_annual_share",
         ),
     ),
+    # Each table's geographic clone index and each household's source
+    # columns (microcosm#931), in the order the transform writes them: the
+    # source year and key on the base households, then the shared core's
+    # source id and clone index. The graph appends an EXPAND's new cells in
+    # this order, so it matches the legacy plan's column order.
+    "geographic_expand": (
+        _Cell("person", "person_clone_index", "int64"),
+        _Cell("benunit", "benunit_clone_index", "int64"),
+        _Cell("household", "source_year", "int64"),
+        _Cell("household", "source_household_key", "string"),
+        _Cell("household", "source_household_id", "int64"),
+        _Cell("household", "household_clone_index", "int64"),
+    ),
+    "geographic_identity": (_Cell("household", "geography_household_key", "string"),),
+    # The households' source columns are geographic_expand's cells; the
+    # channel's copies inherit them (microcosm#931).
     "spi_support_channel": (
         _Cell("person", "person_source_id", "int64"),
         _Cell("person", "person_support_channel", "string"),
@@ -1181,9 +1242,6 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "benunit_source_id", "int64"),
         _Cell("benunit", "benunit_support_channel", "string"),
         _Cell("benunit", "benunit_support_clone_index", "int64"),
-        _Cell("household", "source_household_id", "int64"),
-        _Cell("household", "source_year", "int64"),
-        _Cell("household", "source_household_key", "string"),
         _Cell("household", "household_source_id", "int64"),
         _Cell("household", "household_support_channel", "string"),
         _Cell("household", "household_support_clone_index", "int64"),
@@ -1657,6 +1715,11 @@ def _numerical_dependency_versions() -> tuple[tuple[str, str], ...]:
 
     The missing marker permits source-only declarations without engine extras;
     installing the engine then produces a different identity, never a false hit.
+    microcosm-build does not declare microdf-python, which policyengine-uk
+    installs, but private_school_attendance stores its own restatement of the
+    engine's percentile rank, by microdf's weighted percentile rank, wherever
+    the engine computes the frame clone by clone, so its version is bound too
+    (microcosm#931; it is declared at the next lock bump).
     """
     versions = []
     for name in (
@@ -1666,6 +1729,7 @@ def _numerical_dependency_versions() -> tuple[tuple[str, str], ...]:
         "pandas",
         "scikit-learn",
         "quantile-forest",
+        "microdf-python",
     ):
         try:
             version = metadata.version(name)
@@ -1681,10 +1745,21 @@ def uk_spine_graph(
     source_mode: str = "bundle",
     sample_fraction: float = 1.0,
     sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
+    geographic_clones: int = 1,
 ) -> Graph:
-    """Return the source-bound graph for the packaged UK FRS spine."""
+    """Return the source-bound graph for the packaged UK FRS spine.
+
+    ``geographic_clones`` is the spine's clone count ``K``, 1 to the
+    ``geographic_support`` copy-id field's bound. The geographic_expand node
+    carries it as a parameter, so it enters that node's key, and through the
+    chain every later node's, but never a stage contract (microcosm#931).
+    """
 
     from .frs_spine import UKFRSSpineStageTransform
+    from .geographic_expand import (
+        GEOGRAPHIC_CLONE_LIMIT,
+        GEOGRAPHIC_EXPAND_STAGE_NAME,
+    )
 
     if source_mode not in {"bundle", "split"}:
         raise ValueError("UK graph source_mode must be 'bundle' or 'split'.")
@@ -1692,8 +1767,29 @@ def uk_spine_graph(
         raise ValueError("UK graph sample_fraction must be in (0, 1].")
     if sample_seed < 0:
         raise ValueError("UK graph sample_seed must be non-negative.")
+    try:
+        clones = (
+            None
+            if isinstance(geographic_clones, bool)
+            else operator.index(geographic_clones)
+        )
+    except TypeError:
+        clones = None
+    if clones is None or not 1 <= clones <= GEOGRAPHIC_CLONE_LIMIT:
+        raise ValueError(
+            "UK graph geographic_clones must be a whole number from 1 to "
+            f"{GEOGRAPHIC_CLONE_LIMIT}, the geographic_support copy-id field's "
+            "bound."
+        )
     resolved = load_country_spec("uk") if spec is None else spec
     stages = _manifest_stages(resolved)
+    if clones != 1 and not any(
+        stage.stage == GEOGRAPHIC_EXPAND_STAGE_NAME for stage in stages
+    ):
+        raise ValueError(
+            "UK graph geographic_clones above 1 needs the "
+            f"{GEOGRAPHIC_EXPAND_STAGE_NAME!r} stage, which makes the clones."
+        )
     dependency_versions = _numerical_dependency_versions()
     # The root transform loads the complete national-frame seed schema even
     # when a reduced hermetic manifest names only the output under test.
@@ -1776,6 +1872,13 @@ def uk_spine_graph(
                         "expand_weight_kind": _STRUCTURAL_WEIGHT_KIND[stage_name],
                         "stage_contract_sha256": _stage_contract_sha256(
                             manifest_stage, resolved
+                        ),
+                        # The clone count K is the node's, never its stage
+                        # contract's (microcosm#931).
+                        **(
+                            {"geographic_clones": clones}
+                            if stage_name == GEOGRAPHIC_EXPAND_STAGE_NAME
+                            else {}
                         ),
                     },
                     structural=StructuralDelta.EXPAND,

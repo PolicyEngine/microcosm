@@ -23,6 +23,9 @@ from microcosm.build.stochastic_assignment import (
     stable_identity_uniforms,
 )
 from microcosm.build.uk_runtime import copy_id_table
+from microcosm.build.uk_runtime.geographic_clones import (
+    UK_GEOGRAPHIC_SOURCE_COLUMNS,
+)
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
 )
@@ -933,7 +936,33 @@ def _prepare_household_lineage(
     *,
     source_year: int | None,
 ) -> pd.DataFrame:
+    """The households with their source columns.
+
+    On the clone-first spine, geographic_expand writes every household's
+    source columns before this stage runs, and a clone's own ids are not its
+    source, so a household table carrying the geographic clone index must
+    carry all three and is refused, by column name alone, if it lacks any
+    (microcosm#931). A table without the clone index (the replacement path's
+    certified bases and unit fixtures) defaults the missing ones from its own
+    ids, as before: each household its own source.
+    """
+
     frame = household.copy()
+    if SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN in frame.columns:
+        missing = [
+            column
+            for column in UK_GEOGRAPHIC_SOURCE_COLUMNS
+            if column not in frame.columns
+        ]
+        if missing:
+            raise ValueError(
+                "The SPI support channel's households carry "
+                f"{SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN!r} but not {missing}: on the "
+                "clone-first spine geographic_expand writes every household's "
+                "source columns, and the stage never takes a clone's own ids "
+                "for its source (microcosm#931)."
+            )
+        return frame
     if "source_household_id" not in frame.columns:
         frame["source_household_id"] = frame["household_id"]
     if "source_year" not in frame.columns and source_year is not None:
@@ -1093,13 +1122,14 @@ def _allocate_spi_prior_mass(
     """Give the SPI channel its share of every stratum's base mass.
 
     Where the household table carries ``household_clone_index`` (the
-    clone-first spine's geographic clones, microcosm#931), each clone is its
-    own stratum within ``strata_columns``, so every clone keeps its own mass
-    and a clone's SPI weights depend on its own base households and copies
-    alone; the stratum is derived for the allocation only and never written
-    to the frame. A household table without the column, as on every national
-    spine today, allocates exactly as before. A positive-mass stratum with no
-    SPI copy is refused, by count.
+    clone-first spine's geographic clones, which its ``geographic_expand``
+    stage writes, microcosm#931), each clone is its own stratum within
+    ``strata_columns``, so every clone keeps its own mass and a clone's SPI
+    weights depend on its own base households and copies alone; the stratum
+    is derived for the allocation only and never written to the frame. A
+    household table without the column allocates exactly as before, and so
+    does a one-clone spine, whose clone stratum is the same for every
+    household. A positive-mass stratum with no SPI copy is refused, by count.
     """
 
     household = result.household.copy()

@@ -61,9 +61,21 @@ E6_STAGE_NAMES = [
     "etb_vat",
     "etb_services",
 ]
-E7_STAGE_NAMES = [
+#: E7's two stages that read the raw FRS tabs: the HMRC leaves and the annual
+#: income spells join them on raw person ids and fill the misses, so they run
+#: on the survey's own rows, before the geographic clones (microcosm#931).
+E7_SOURCE_ROW_STAGE_NAMES = [
     "frs_hmrc_spine_leaves",
     "frs_annual_income_spells",
+]
+#: microcosm#931: the geographic clones and their keys, after every stage that
+#: reads the raw tabs and before the E4 draws, which run on every clone.
+GEOGRAPHIC_CLONE_STAGE_NAMES = [
+    "geographic_expand",
+    "geographic_identity",
+]
+#: E7's SPI block, which copies the clones' households.
+E7_STAGE_NAMES = [
     "spi_support_channel",
     "spi_income_band_donors",
     "hmrc_spi_income_spine",
@@ -141,6 +153,8 @@ UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
     *POST_FRS_SPINE_STAGE_NAMES,
     *E3_STAGE_NAMES,
+    *E7_SOURCE_ROW_STAGE_NAMES,
+    *GEOGRAPHIC_CLONE_STAGE_NAMES,
     *E4_STAGE_NAMES,
     # The SPI block runs before the income-conditioned donor imputations, so
     # E5 and E6 impute onto the SPI rows from their SPI incomes.
@@ -207,6 +221,19 @@ class TestUKSourceStagesManifest:
             *E7_STAGE_NAMES,
             *HOUSING_SHELL_STAGE_NAMES,
         ]
+
+    def test_the_geographic_clones_follow_the_raw_tab_readers_and_precede_e4(
+        self,
+    ) -> None:
+        # The HMRC leaves and the annual income spells join the raw FRS tabs on
+        # raw person ids, so they run on the survey's own rows, and the E4
+        # draws then run on every geographic clone (microcosm#931).
+        canonical = _load_json(CANONICAL_SOURCE_STAGES)
+        names = [stage["stage"] for stage in canonical["stages"]]
+
+        assert names[
+            names.index(E3_STAGE_NAMES[-1]) + 1 : names.index(E4_STAGE_NAMES[0])
+        ] == [*E7_SOURCE_ROW_STAGE_NAMES, *GEOGRAPHIC_CLONE_STAGE_NAMES]
 
     def test_e5_and_e6_follow_e7_and_precede_the_uc_rewrites(self) -> None:
         # uc_reporter_redraw stays after the donor stages: its engine screen
@@ -310,6 +337,8 @@ class TestUKSourceStagesManifest:
                     "etb_services": _identity,
                     "frs_hmrc_spine_leaves": _identity,
                     "frs_annual_income_spells": _identity,
+                    "geographic_expand": _identity,
+                    "geographic_identity": _identity,
                     "spi_support_channel": _identity,
                     "spi_income_band_donors": _identity,
                     "hmrc_spi_income_spine": _identity,

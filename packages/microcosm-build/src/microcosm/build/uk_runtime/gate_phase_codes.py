@@ -74,13 +74,18 @@ def uk_spine_transferred_only_code_hash() -> str:
     The assembled gate's own key, on which every later spine stage's chains,
     therefore carries none of them (the re-review of microcosm#1420, E;
     microcosm#931 ruling 6). An edit to one still re-keys the assembled gate
-    wherever a stage before it hashes the module: stages at or before
-    ``frs_brma``, the assembled phase's last, hash ``stochastic_assignment``
-    and ``take_up_contract``, so an edit to either re-keys every spine node
-    after them, the assembled gate included. No stage before that gate hashes
-    the other fifteen, so an edit to one of those re-keys the stages that
-    hash it, those after them and the transferred gate, never the assembled
-    gate. Hashed once per process, as the assembled phase's own code is.
+    wherever a stage before it hashes the module. Stages at or before
+    ``frs_brma``, the assembled phase's last, hash six of them:
+    ``stochastic_assignment`` and ``take_up_contract``; ``frs_annual_income``,
+    the module of ``frs_annual_income_spells``; and the vendored-fact reader,
+    the chronicle feed and its schema epochs, which ``frs_hmrc_spine_leaves``
+    binds. Those two stages run before ``frs_brma`` on the clone-first spine
+    (microcosm#931). So an edit to any of the six re-keys every spine node
+    from the first stage that hashes it onwards, the assembled gate
+    included. No stage before that gate hashes the other eleven, so an edit
+    to one of those re-keys the stages that hash it, those after them and
+    the transferred gate, never the assembled gate. Hashed once per process,
+    as the assembled phase's own code is.
     """
     from .. import chronicle_epoch, stochastic_assignment
     from .. import ledger_targets as shared_ledger_targets

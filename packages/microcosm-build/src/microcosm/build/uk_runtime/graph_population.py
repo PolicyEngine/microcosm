@@ -92,8 +92,11 @@ GEOGRAPHY_GATE_TYPE = ArtifactType("microcosm.uk.geography-gate", 1)
 GEOGRAPHY_ASSIGNMENTS = ("atomic", "legacy")
 #: Lineage columns the post-clone household identity is keyed on. The support
 #: channel, the CGT support split's copy flag and index (microcosm#1045) and
-#: the clone flag come from the spine stages; the geographic clone index from
-#: ``uk.full.expand``. Calibration K, weights and remapped ids are not inputs.
+#: the clone flag come from the spine stages, as do the source id and the
+#: geographic clone index on a clone-first spine, whose ``geographic_expand``
+#: stage writes them (microcosm#931); on a spine built before that stage,
+#: ``uk.full.expand`` writes the index. Calibration K, weights and remapped ids
+#: are not inputs.
 UK_GEOGRAPHY_IDENTITY_INPUTS = UK_HOUSEHOLD_LINEAGE_COLUMNS
 PROPERTY_LOCALISATION_MODES = property_localisation.PROPERTY_LOCALISATION_MODES
 PROPERTY_QUANTILE_TYPE = ArtifactType("microcosm.uk.property-quantile-draw", 1)
@@ -1383,12 +1386,22 @@ def _atomic_geography_nodes(
             if ("household", column) in cells
         )
     )
+    # A clone-first spine already keys its households (geographic_identity),
+    # so there the node rewrites the key on the pool (microcosm#931).
+    identity_cell = ("household", atomic_area_support.IDENTITY_COLUMN)
     identity = Node(
         id="uk.full.identity",
         kernel=UKGeographyIdentityKernel.ref,
         population="uk.full.expand",
         inputs=(Slice("household", lineage_inputs),),
-        outputs=(Owned("household", atomic_area_support.IDENTITY_COLUMN, "string"),),
+        outputs=(
+            Owned(
+                "household",
+                atomic_area_support.IDENTITY_COLUMN,
+                "string",
+                rewrite=identity_cell in cells,
+            ),
+        ),
         params={
             **common,
             "source": identity_source,

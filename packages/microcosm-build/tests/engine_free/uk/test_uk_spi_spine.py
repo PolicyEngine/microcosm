@@ -10,6 +10,7 @@ import pytest
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime import spi_income, spi_spine
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.geographic_expand import expand_uk_geographic_clones
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRC_SPI_BUILD_PERIOD,
     HMRC_SPI_INCOME_BAND_LOWER_BOUNDS,
@@ -47,7 +48,6 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.build.uk_runtime.terminal_gates import UKZeroWeightStratumDeclaration
 from microcosm.frame import WeightKind
-from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 
 
 def _base_frame(*, time_period: str = "2023") -> object:
@@ -1147,8 +1147,14 @@ def test_an_expected_count_at_the_source_count_copies_every_household() -> None:
 def test_clone_zero_of_a_cloned_spine_is_the_one_clone_share(clone_count: int) -> None:
     from microcosm.build.stochastic_assignment import binomial_share_tolerance
 
-    one, one_evidence = _share_stage(clone_first_frame(_share_frame(), 1))
-    many, many_evidence = _share_stage(clone_first_frame(_share_frame(), clone_count))
+    # The clones as geographic_expand writes them, source columns included,
+    # which the stage reads and never defaults on a cloned frame (microcosm#931).
+    one, one_evidence = _share_stage(
+        expand_uk_geographic_clones(_share_frame(), clones=1).frame
+    )
+    many, many_evidence = _share_stage(
+        expand_uk_geographic_clones(_share_frame(), clones=clone_count).frame
+    )
     one_household = one.table("household")
     many_household = many.table("household")
 
@@ -1195,4 +1201,48 @@ def test_clone_zero_of_a_cloned_spine_is_the_one_clone_share(clone_count: int) -
         one_weights.loc[clone_zero].to_numpy(),
         rtol=1e-12,
         atol=0.0,
+    )
+
+
+def test_the_support_channel_writes_no_source_column_of_its_own() -> None:
+    """The households' source columns are geographic_expand's (microcosm#931).
+
+    spi_support_channel neither declares them nor writes them: it reads the
+    ones geographic_expand wrote, keeps them on every base household, and its
+    copies inherit their roots'. Its declared outputs, its runtime constant
+    and its graph cells all leave them out.
+    """
+
+    from microcosm.build.uk_runtime.geographic_expand import (
+        UK_GEOGRAPHIC_SOURCE_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.graph import _STAGE_CELLS
+
+    source = list(UK_GEOGRAPHIC_SOURCE_COLUMNS)
+    assert source == ["source_household_id", "source_year", "source_household_key"]
+    stage = _committed_stage("spi_support_channel")
+    for declared in (
+        stage.outputs,
+        stage.nonnegative_outputs,
+        UKSPISupportChannelStageTransform.output_columns(),
+        tuple(cell.column for cell in _STAGE_CELLS["spi_support_channel"]),
+    ):
+        assert set(source).isdisjoint(declared)
+    assert set(source) <= set(_committed_stage("geographic_expand").outputs)
+
+    # 10,000 x 0.01 expected copies over 40 sources: every household is copied.
+    cloned = expand_uk_geographic_clones(_share_frame(40), clones=2).frame
+    before = cloned.table("household")
+    out, _ = _share_stage(cloned)
+    household = out.table("household")
+    spi = household["household_support_channel"].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
+    assert spi.any()
+    pd.testing.assert_frame_equal(
+        household.loc[~spi, source].reset_index(drop=True),
+        before[source].reset_index(drop=True),
+    )
+    roots = before.set_index("household_id")[source]
+    pd.testing.assert_frame_equal(
+        household.loc[spi, source].reset_index(drop=True),
+        roots.loc[household.loc[spi, "household_source_id"]].reset_index(drop=True),
     )

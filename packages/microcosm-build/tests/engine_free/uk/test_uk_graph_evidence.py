@@ -362,10 +362,19 @@ def test_spine_inventory_is_roster_derived_and_gates_bind_checkpoint_versions(
     }
     # The gate admits whichever stage follows the BRMA checkpoint in the roster
     # (the SPI block since #1012 moved it ahead of was_wealth), as main's tool
-    # does with UK_SPINE_ASSEMBLED_FINAL_STAGE.
+    # does with UK_SPINE_ASSEMBLED_FINAL_STAGE. Since the HMRC leaves and the
+    # annual income spells moved ahead of the geographic clones, which the
+    # draws and the BRMA follow, that is the SPI support channel
+    # (microcosm#931).
     stages = endpoint.stage_names
     admitted = stages[stages.index("frs_brma") + 1]
-    assert admitted == "frs_hmrc_spine_leaves"
+    assert admitted == "spi_support_channel"
+    assert {
+        "frs_hmrc_spine_leaves",
+        "frs_annual_income_spells",
+        "geographic_expand",
+        "geographic_identity",
+    } <= set(stages[: stages.index("frs_brma")])
     assert "spine.gates.assembled" in compiled.predecessors["frs_brma.checkpoint"]
     assert "spine.gates.assembled" in compiled.predecessors[admitted]
     assert graph.node(admitted).params["spine_gate_phase"] == "assembled"
