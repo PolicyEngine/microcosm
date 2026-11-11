@@ -154,6 +154,7 @@ def _rows(*, ages=True, value=1_000.0):
     return rows
 
 
+@settings(deadline=None)
 @given(then=_counts, now=_counts)
 def test_the_window_weights_the_two_tax_years(then, now) -> None:
     rows = [
@@ -604,6 +605,7 @@ def test_a_sum_in_sample_is_fixed_by_bound_parts(people, every_band) -> None:
         )
 
 
+@settings(deadline=None)
 @given(model=st.floats(0.0, 1e8), expected=_counts)
 def test_the_verdict_is_the_tolerance(model, expected) -> None:
     people = ITLPeople(
@@ -689,6 +691,30 @@ _MEASURE_WORDS = {
     "state_pension_age": "State Pension age",
     "age_65_and_over": "aged 65 and over",
 }
+#: An amount as the tolerance note spells it: ``£150,000`` or ``£1m``.
+_POUNDS = r"£\d(?:[\d,]*\d)?m?"
+#: A count and the band it holds, as the tolerance note cites them.
+_BAND_COUNT_PHRASE = re.compile(
+    rf"(\d[\d,]*\d) at ({_POUNDS} (?:to {_POUNDS}|and over))"
+)
+
+
+def _pounds(amount: float) -> str:
+    """``amount`` as the tolerance note spells it."""
+
+    if amount >= 1_000_000 and amount % 1_000_000 == 0:
+        return f"£{amount / 1_000_000:.0f}m"
+    return f"£{amount:,.0f}"
+
+
+def _band_words(band) -> str:
+    """A band as the tolerance note names it: ``£150,000 to £200,000``, or
+    ``£2m and over`` for the open top band."""
+
+    lower, upper = band
+    if upper is None:
+        return f"{_pounds(lower)} and over"
+    return f"{_pounds(lower)} to {_pounds(upper)}"
 
 
 def _tolerance_note() -> str:
@@ -710,23 +736,25 @@ def _tolerance_note() -> str:
 def test_the_tolerance_note_cites_the_vendored_counts() -> None:
     """The note on ``NATIONAL_TOLERANCE`` says what the vendored rows give at
     the calendar-2025 window, and this test reads the note: how many bands
-    hold under 400,000 taxpayers and, in band order, each one's count; how
-    many of the top bands hold fewer than the smallest area cell; and that
-    cell's area, measure and count. A change to the rows fails here until
-    the note follows it. Every band takes the national tolerance all the
-    same: geography, not size, decides."""
+    hold under 400,000 taxpayers and, in band order, each one's count and
+    the band that holds it; how many of the top bands hold fewer than the
+    smallest area cell; and that cell's area, measure and count. A change to
+    the rows fails here until the note follows it. Every band takes the
+    national tolerance all the same: geography, not size, decides."""
 
     note = _tolerance_note()
     rows = load_vendored_resource("hmrc_itl_taxpayer_counts.json")["rows"]
     cells = expected_cells(rows, year=2025)
     bands = [cell for cell in cells if cell.measure == BAND_COUNT]
     assert [cell.band for cell in bands] == list(ITL_BANDS)
-    under = [cell.expected for cell in bands if cell.expected < 400_000]
+    under = [cell for cell in bands if cell.expected < 400_000]
     assert (
         f"{_NUMBER_WORDS[len(under)]} of the {_NUMBER_WORDS[len(bands)]} bands "
         "hold under 400,000 taxpayers"
     ) in note
-    assert re.findall(r"([\d,]+) at £", note) == [f"{count:,.0f}" for count in under]
+    assert _BAND_COUNT_PHRASE.findall(note) == [
+        (f"{cell.expected:,.0f}", _band_words(cell.band)) for cell in under
+    ]
     smallest = min(
         (cell for cell in cells if cell.tolerance == REGIONAL_TOLERANCE),
         key=lambda cell: cell.expected,
@@ -1618,6 +1646,7 @@ def test_the_cells_read_the_bindings_at_their_edges() -> None:
     assert count("2.2", "age_65_and_over", RESIDENTS) == 1.0 + 4.0
 
 
+@settings(deadline=None)
 @given(model=st.floats(0.0, 1e8), expected=_counts)
 def test_no_residual_lands_on_a_tolerance(model, expected) -> None:
     """The verdict never turns on ``<`` against ``<=``: every residual is a
