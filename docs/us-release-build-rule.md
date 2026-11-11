@@ -180,10 +180,14 @@ stable source IDs, and their outputs are compared with or merged into the
 original assembled table. This lets historical source kernels consume the
 projection without treating intentionally removed provenance as corruption.
 
-Until 23 September 2026, `--dense-default-dataset` was diagnostic only and a
-release build left it unset, so the default was the sparse dataset that runs on
-standard machines. Decided 23 September 2026 (microcosm#956): route A's first
-certified release, which is not the default, calibrates the whole base dense
+Every US national calibration PolicyEngine has tagged on Hugging Face since
+1 July 2026 came from `--dense-default-dataset`, and each build manifest records
+`dataset.default.method: dense_no_l0`. Through Build P (28 July 2026), those
+builds calibrated a 57,240-household support that an earlier run chose
+(microcosm#328) and two later swaps adjusted (microcosm#359, microcosm#434).
+The default therefore stayed the sparse dataset that runs on standard machines.
+Decided 23 September 2026 (microcosm#956): route A's first certified release,
+which is not the default, calibrates the whole base dense
 (`--dense-default-dataset`) on the national and state target surface
 (`--target-surface national_state`), and sparse L0 tuning is pursued after it.
 The standing principle for the graph era is the same target surface for every
