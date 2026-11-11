@@ -531,7 +531,7 @@ def prune_incumbent_unresolvable(
     *,
     band_edge_registry: TargetRegistry | None = None,
     contract_targets: Mapping[str, Any] | None = None,
-    max_rounds: int = 10,
+    max_rounds: int | None = None,
     reviewed_measures: Mapping[str, UKReviewedExclusion] | None = None,
     evaluated_on: date | None = None,
 ) -> tuple[TargetRegistry, dict[str, PrunedTarget]]:
@@ -547,6 +547,11 @@ def prune_incumbent_unresolvable(
     the failing measure and the entry's adjudication. An unlisted measure
     refuses; a failure that names no target refuses rather than pruning
     blindly. Raw-column scoring (no resolver) has nothing to probe.
+
+    Every failing probe prunes at least one target or refuses, so the loop
+    ends; ``max_rounds`` only bounds the probes. A signed measure's targets
+    can fail over more than one probe, so by default the bound grows with the
+    register: three probes per signed measure, and the clean probe.
     """
 
     if measure_resolver_factory is None:
@@ -562,7 +567,10 @@ def prune_incumbent_unresolvable(
     # The probes stand on the full register's band edges too (#803): a
     # pruned surface never redraws its own edges, not even to be probed.
     edges = registry if band_edge_registry is None else band_edge_registry
-    for _round in range(max_rounds):
+    # On 11 November 2026 two of the nine signed measures took two probes
+    # each: eleven failing probes, past the fixed bound of ten this replaced.
+    rounds = 3 * len(reviewed) + 1 if max_rounds is None else max_rounds
+    for _round in range(rounds):
         try:
             _scored_frame(
                 incumbent_h5,
@@ -632,8 +640,7 @@ def prune_incumbent_unresolvable(
             continue
         return surface, pruned
     raise RuntimeError(
-        f"the incumbent's measure resolution still fails after {max_rounds} "
-        "pruning rounds."
+        f"the incumbent's measure resolution still fails after {rounds} pruning rounds."
     )
 
 
