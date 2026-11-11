@@ -141,10 +141,13 @@ def test_manifest_declares_the_exclusions_and_leaves_the_rest_to_the_reference()
     # components the reference carries (microcosm#1106, microcosm#1360) and
     # the PIP categories the engine derives from the points (microcosm#1095),
     # and the gross receipts microcosm#1550 stops writing, which the current
-    # builds still carry (María's signature of 2026-11-10).
+    # builds still carry (María's signature of 2026-11-10), and the tax credit
+    # severe disability flag the engine derives from the disability
+    # categories (microcosm#1095, A4; María's signature of 2026-11-11).
     manifest = _resource("release_input_coverage_manifest.json")
-    assert manifest["counts"] == {"reviewed_exclusion": 5}
+    assert manifest["counts"] == {"reviewed_exclusion": 6}
     assert set(manifest["columns"]) == {
+        "is_severely_disabled_for_benefits",
         "pip_dl_category",
         "pip_m_category",
         "property_wealth",
