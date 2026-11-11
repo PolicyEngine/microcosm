@@ -7,10 +7,15 @@ Every reported result is rendered from the bundled JSONs by
 `compare_designs.py render-readme`.
 
 The household comparison is the centerpiece. Household rows are confined to
-[households.csv](households.csv) and [household_ids.json](household_ids.json),
-following the task's latest rule; this README reports their aggregate contrast.
-The CSV groups the sampled and national-target exact-k sets and sorts each by
-employment income. Both exports include only public-dataset household rows.
+[households.csv](households.csv) and [household_ids.json](household_ids.json);
+this README reports their aggregate contrast. The CSV groups the sampled and
+national-target exact-k sets and sorts each by employment income. Both exports
+include only public-dataset household rows. `design_weight` is the release's
+household weight. `calibrated_weight` is each design's own weight before any
+refit of the sample: the self-weight (eligible weight divided by 100) for
+sampled rows and the national-target refit weight for exact-k rows.
+`post_stratified_weight` is a sampled row's weight after design 2's national
+refit; exact-k rows leave it empty.
 
 ## Household comparison
 
@@ -44,6 +49,8 @@ employment income. Both exports include only public-dataset household rows.
 | weight / design weight, max | 34,033 | 8,038 | 11,465 |
 
 Sampled versus national-target exact-k: 58 versus 26 one-person households; 33 versus 23 retirement-age heads; 6 versus 16 households above the population's upper-decile employment-income threshold; 21 versus 44 receiving SNAP, Medicaid or SSI; 34 versus 40 states. The top-weight households carry 10.0% versus 73.1% of their sets' total weight.
+
+Most of this contrast compares two random draws, not L0's choices with a random draw. Of the 100 national-target exact-k households, 90 came from the Sampford boundary draw over households whose L0 gates were closed, at a median open probability of 0.0055; only 10 rank among the 100 most probable. The record ran one draw seed (0), so the counts above describe one boundary draw against one PPS draw.
 <!-- END generated:contrast -->
 
 <!-- BEGIN generated:households_sampled -->
@@ -81,7 +88,9 @@ Deduction: these diagnostics indicate how far a selected support behaves as inte
 - **Sampling distribution:** repeated PPS draws with self-weighting and
   post-stratification, using the frozen draw's eligibility and public split.
 
-The primary fit measure is uncapped MAPE with equal weight per target.
+The record's registered fit measure is uncapped MAPE with equal weight per
+target. On the national set one misplaced IRS cell dominates it (below), so
+the national reading leads with capped MAPE.
 The denominator is the target's absolute value with a unit floor, matching
 `default_target_loss_scales`
 (`packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:594`).
@@ -92,11 +101,24 @@ Kish effective sample size measures weight concentration, not model accuracy.
 The national set contains **26 feed-declared zero-valued targets**. For these
 rows the denominator is one unit, so the uncapped fixed-scale “MAPE” includes
 absolute dollar or count misses; it is not a conventional percentage error
-relative to a nonzero target. A zero EITC-dollar target dominates that mean.
-The feed metadata does not establish whether this zero is substantive or
-reflects an extraction/source-data issue, and the underlying workbook cells
-were not verified. The [zero-target audit](zero_target_audit.json) records the
-observations and provenance. All targets were held fixed across designs.
+relative to a nonzero target. Two of them dominate that mean: Table 2.5's EITC
+returns and amount for three or more qualifying children at $30,000 to $35,000
+of AGI.
+
+The feed reproduces IRS's published cell. The TY2023 workbook (`23in25ic.xls`,
+checked 2026-11-11) prints 0 there, yet the schedule's phase-out for three or
+more children runs past $56,000, and the workbook's own rows disagree with that
+0. For $25,000 to $30,000 the four child columns sum to 310,212 more returns
+than the all-returns column; for $30,000 to $35,000 they sum to 311,398 fewer,
+with $1.72 billion less EITC. Summed over $20,000 to $35,000, the
+three-or-more column reconciles with the all-returns rows to one return. The
+likeliest reading is that IRS placed that column's $30,000 to $35,000 returns
+in the rows below, so the true cell holds about 311,000 returns. Both sampled designs hold a
+household in it and take the capped maximum on both targets. Exact-k holds
+none. Every other zero-valued target's error stays at or below each sampled or
+exact-k design's fifth-largest error in [fit.json](fit.json). The
+[zero-target audit](zero_target_audit.json) records the two cells' observations
+and provenance. All targets were held fixed across designs.
 Capped error and within-tolerance shares provide additional context; improving
 the capped objective can coexist with increasing an error already above its
 cap (a deduction from the capped loss, documented in the audit).
@@ -104,11 +126,11 @@ cap (a deduction from the capped loss, documented in the audit).
 ## Reading the results
 
 <!-- BEGIN generated:reading -->
-On national_all, uncapped MAPE is 1863675480.0% for the frozen self-weighted sample and 2116681946.4% after post-stratification, versus 58.7% for exact-k.
+On national_all, capped MAPE is 82.2% for the frozen self-weighted sample and 65.0% after post-stratification, versus 58.7% for exact-k (55.0% for the full file's design weights). Two of the 26 zero-valued targets, Table 2.5's EITC returns and amount for three or more children at $30,000 to $35,000 of AGI, account for much of the sampled designs' gap: both sampled designs hold a household there and take the capped maximum on both, which adds 4.0 percentage points to capped MAPE. IRS's own workbook appears to misplace that cell (see the zero-target note above). Without those targets, capped MAPE is 78.5% self-weighted, 61.3% post-stratified and between 58.5% and 59.0% for exact-k (51.2% for the full file). Uncapped MAPE (1863675480.0% self-weighted, 2116681946.4% post-stratified, 58.7% exact-k) measures little beyond those two cells' absolute misses, so the national reading leads with capped MAPE. Against the 200 repeated post-stratified PPS draws (capped MAPE median 62.7%), exact-k's capped MAPE is lower than in 87% of them, and exact-k's share of targets within 10% (23.4%) is lower than every draw's (their lowest is 25.0%).
 
-On headline, uncapped MAPE is 38.6% for the frozen self-weighted sample and 4.1% after post-stratification, versus 17.9% for exact-k.
+On headline, uncapped MAPE is 38.6% for the frozen self-weighted sample and 4.1% after post-stratification, versus 17.9% for exact-k; no target's error reaches the cap, so capped MAPE is the same. Against the 200 repeated post-stratified PPS draws (capped MAPE median 4.9%), every draw's capped MAPE is at or below exact-k's, and exact-k's share of targets within 10% (71.9%) is lower than every draw's (their lowest is 81.2%).
 
-Deduction: self-weighting preserves an interpretable approximately equal-weight draw from PolicyBench's eligible population. Post-stratification can improve aggregate fit on those same households, but changes their influence. Exact-k spends the household budget on fitting the chosen aggregates across the full source population; its weight concentration, eligibility and receipt coverage determine the cost of that fit. The national and headline runs answer different target-set questions and should be compared separately.
+Deduction: self-weighting preserves an interpretable approximately equal-weight draw from PolicyBench's eligible population. Post-stratification can improve aggregate fit on those same households, but changes their influence. Exact-k sets inclusion probabilities by fitting the chosen aggregates across the full source population, then draws its households from them. At 100 households, 90 of the national and 97 of the headline exact-k households came from one Sampford boundary draw over closed gates, so each support's weight concentration, eligibility and receipt coverage reflect that draw as much as the fit. The national and headline runs answer different target-set questions and should be compared separately.
 <!-- END generated:reading -->
 
 ## Source and reproduction
@@ -125,7 +147,12 @@ Producer source receipt: `{"git_head": "2b85b7b220c33811336913ab29d97acbf1274455
 Smoke/pipeline-only output: False.
 <!-- END generated:source -->
 
-From the repository root, use the existing environment:
+The `packages/` line citations above refer to commit `2b85b7b22`, the
+producer's checkout. The run read the release H5, the Chronicle consumer feed
+and the PolicyBench snapshot named under "Source and reproduction"; pass local
+copies with `--h5`, `--feed-dir` and `--policybench-run`, whose defaults point
+at the original machine's paths. From the repository root, use the existing
+environment:
 
 ```bash
 OMP_NUM_THREADS=4 .venv/bin/python experiments/policybench-exact-k-100-vs-sampled-20260922/compare_designs.py run
@@ -155,7 +182,7 @@ must be recomputed after a restart.
 - Registry compiled from the labelled feed: 32,867 specs at all geographies; 505 national (metadata.ledger_geography_level == 'country' or metadata.geography_scope == 'national').
 - Labelled filter keys that the recorded checkout's guard refuses: 302 specs; 302 accepted as verified restatements, 0 excluded.
 - Materialized on the file: 505 national targets (0 not materialized); used after the poverty/SPM exclusion: 504. Families used: bea 2, cbo 5, census_population 18, cms_medicaid 3, cms_medicare 1, federal_reserve 1, hhs_acf_tanf 1, irs_soi 451, jct 11, ssa 9, usda_snap 2.
-- Headline subset: 32 targets (population by age band (Census PEP): 18; wages and salaries (BEA NIPA): 1; wages and salaries (CBO): 1; SNAP benefits (USDA): 1; SNAP average monthly households (USDA): 1; Medicaid enrollment (CMS, Dec 2024): 1; SSI payments (SSA): 1; SSI recipients by age (SSA): 3; EITC amount and returns (IRS SOI TY2024 filing season): 2; AGI and return count (IRS SOI Table 1.1): 2; AGI (CBO): 1). National AGI-by-band rows in the compiled set: 0.
+- Headline subset: 32 targets (population by age band (Census PEP): 18; wages and salaries (BEA NIPA): 1; wages and salaries (CBO): 1; SNAP benefits (USDA): 1; SNAP average monthly households (USDA): 1; Medicaid enrollment (CMS, Dec 2024): 1; SSI payments (SSA): 1; SSI recipients by age (SSA): 3; EITC amount and returns (IRS SOI TY2024 filing season): 2; AGI and return count (IRS SOI Table 1.1): 2; AGI (CBO): 1). National targets that measure AGI itself within a finite AGI band: 0; other national targets, such as the Table 2.5 EITC bins, still filter on AGI bands.
 - Excluded under the no-poverty/SPM rule: 1 (`hhs_acf_liheap.fy2024.national_profile.state_programs.households_served` (base_variable=spm_unit_energy_subsidy)). After exclusion, targets naming poverty or SPM: 0; measuring a poverty or SPM variable: 0.
 - Batch invariance: 400 households re-materialized across a batch boundary; 0 of their values differ (max absolute difference 0).
 <!-- END generated:targets -->

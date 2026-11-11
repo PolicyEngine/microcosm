@@ -55,6 +55,11 @@ import pandas as pd  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RECORD_DIR = Path(__file__).resolve().parent
+# IRS SOI Publication 1304 Table 2.5, TY2023: the three-or-more-children column
+# misplaces returns across the $20,000-$35,000 AGI rows (README zero-target note).
+MISALLOCATED_EITC_CELL = (
+    "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k."
+)
 SCRIPT_SHA256_AT_IMPORT = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 RELEASE_ID = "populace-us-2024-5da5a95-20260611"
@@ -2140,7 +2145,8 @@ def generated_blocks(out_dir: Path) -> dict[str, str]:
             f"{inputs['target_sets']['national_all']['targets_compiled_on_frame']}. Families used: {fam}.",
             f"- Headline subset: {len(inputs['headline_target_names'])} targets "
             f"({'; '.join(f'{k}: {v}' for k, v in inputs['headline_targets_per_rule'].items())}). "
-            f"National AGI-by-band rows in the compiled set: {len(inputs['national_agi_by_band_rows'])}.",
+            f"National targets that measure AGI itself within a finite AGI band: {len(inputs['national_agi_by_band_rows'])}; "
+            "other national targets, such as the Table 2.5 EITC bins, still filter on AGI bands.",
             f"- Excluded under the no-poverty/SPM rule: {len(inputs['poverty_spm_check']['excluded_targets'])} "
             f"({'; '.join(f'`{n}` ({', '.join(v)})' for n, v in inputs['poverty_spm_check']['excluded_targets'].items()) or 'none'}). "
             f"After exclusion, targets naming poverty or SPM: {len(inputs['poverty_spm_check']['target_names_matching_poverty_or_spm_after_exclusion'])}; "
@@ -2328,6 +2334,17 @@ def generated_blocks(out_dir: Path) -> dict[str, str]:
             f"The top-weight households carry {_pct(sampled['weights']['top10_share'])} versus "
             f"{_pct(selected['weights']['top10_share'])} of their sets' total weight."
         )
+        nat_draw = ek["runs"].get("national_all", {}).get("draw") or {}
+        if nat_draw:
+            blocks["contrast"] += (
+                f"\n\nMost of this contrast compares two random draws, not L0's choices with a random draw. "
+                f"Of the {nat_draw['receipt']['k']} national-target exact-k households, "
+                f"{nat_draw['boundary_draws_at_or_below_deterministic_threshold']} came from the Sampford boundary draw over "
+                "households whose L0 gates were closed, at a median open probability of "
+                f"{nat_draw['support_open_probability']['p50']:.4f}; only {nat_draw['support_in_top_100_open_probability']} "
+                "rank among the 100 most probable. The record ran one draw seed "
+                f"({nat_draw['receipt']['seed']}), so the counts above describe one boundary draw against one PPS draw."
+            )
 
     blocks["households_sampled"] = "Sampled household rows are in [households.csv](households.csv), under `design=sampled`, sorted by employment income."
     blocks["households_exact_k"] = (
@@ -2430,21 +2447,118 @@ def generated_blocks(out_dir: Path) -> dict[str, str]:
         ]
     )
     summaries = []
+    cap = st["capped_mape_cap"]
     for key in target_keys:
+        f0 = fit[key]["full_file"]
         f1 = fit[key]["design1_pps_self_weighted"]
         f2 = fit[key]["design2_pps_post_stratified"]
         f3 = fit[key].get("design3_exact_k_refit")
-        sentence = (
-            f"On {key}, uncapped MAPE is {_pct(f1['uncapped_mape'])} for the frozen self-weighted sample "
-            f"and {_pct(f2['uncapped_mape'])} after post-stratification"
-        )
-        sentence += f", versus {_pct(f3['uncapped_mape'])} for exact-k." if f3 else "; exact-k did not complete."
+        position = sd.get(key, {}).get("exact_k_position") if f3 else None
+        cell = [
+            name
+            for name in {w["target"] for f in (f0, f1, f2) for w in f["worst_five"]}
+            if name.startswith(MISALLOCATED_EITC_CELL)
+        ]
+        if not cell:
+            sentence = (
+                f"On {key}, uncapped MAPE is {_pct(f1['uncapped_mape'])} for the frozen self-weighted sample "
+                f"and {_pct(f2['uncapped_mape'])} after post-stratification"
+            )
+            sentence += f", versus {_pct(f3['uncapped_mape'])} for exact-k" if f3 else "; exact-k did not complete"
+            if any(f["capped_mape"] != f["uncapped_mape"] for f in (f1, f2, f3) if f):
+                sentence += (
+                    f"; capped MAPE is {_pct(f1['capped_mape'])}, {_pct(f2['capped_mape'])}"
+                    + (f" and {_pct(f3['capped_mape'])}." if f3 else ".")
+                )
+            else:
+                sentence += "; no target's error reaches the cap, so capped MAPE is the same."
+        else:
+            sentence = (
+                f"On {key}, capped MAPE is {_pct(f1['capped_mape'])} for the frozen self-weighted sample "
+                f"and {_pct(f2['capped_mape'])} after post-stratification"
+            )
+            sentence += f", versus {_pct(f3['capped_mape'])} for exact-k" if f3 else "; exact-k did not complete"
+            sentence += f" ({_pct(f0['capped_mape'])} for the full file's design weights)."
+            n = fit[key]["targets"]
+            parts = []
+            for label, f in (
+                ("self-weighted", f1), ("post-stratified", f2), ("for exact-k", f3), ("for the full file", f0),
+            ):
+                if not f:
+                    continue
+                listed = {w["target"]: abs(w["relative_error"]) for w in f["worst_five"]}
+                total = f["capped_mape"] * n
+                if all(name in listed for name in cell):
+                    share = sum(min(listed[name], cap) for name in cell)
+                    parts.append(f"{_pct((total - share) / (n - len(cell)))} {label}")
+                else:
+                    bound = min(abs(f["worst_five"][-1]["relative_error"]), cap) * len(cell)
+                    parts.append(
+                        f"between {_pct((total - min(bound, total)) / (n - len(cell)))} and "
+                        f"{_pct(total / (n - len(cell)))} {label}"
+                    )
+            listed_both = [
+                f for f in (f1, f2)
+                if all(name in {w["target"] for w in f["worst_five"]} for name in cell)
+            ]
+            sentence += (
+                f" {'Two' if len(cell) == 2 else len(cell)} of the {f1['n_zero_valued_targets']} zero-valued targets, "
+                "Table 2.5's EITC returns and amount "
+                "for three or more children at $30,000 to $35,000 of AGI, account for much of the sampled designs' gap: "
+                f"{'both sampled designs hold' if len(listed_both) == 2 else 'a sampled design holds'} a household there and "
+                f"take the capped maximum on both, which adds {100 * len(cell) * cap / n:.1f} percentage points to capped MAPE. "
+                "IRS's own workbook appears to misplace that cell (see the zero-target note above). Without those targets, capped MAPE is "
+                + ", ".join(parts[:-2]) + f" and {parts[-2]} ({parts[-1]})."
+            )
+            sentence += (
+                f" Uncapped MAPE ({_pct(f1['uncapped_mape'])} self-weighted, {_pct(f2['uncapped_mape'])} post-stratified"
+                + (f", {_pct(f3['uncapped_mape'])} exact-k" if f3 else "")
+                + ") measures little beyond those two cells' absolute misses, so the national reading leads with capped MAPE."
+            )
+        if position:
+            seeds = sd["run"]["seeds_completed"]
+            capped_seeds = sd[key]["design2_post_stratified"]["capped_mape"]
+            within_seeds = sd[key]["design2_post_stratified"]["within10"]
+            beats = 1 - position["share_of_design2_seeds_at_or_below"]
+            matches = position["share_of_design2_seeds_within10_at_or_below"]
+            if beats == 0:
+                capped_clause = "every draw's capped MAPE is at or below exact-k's"
+            elif beats == 1:
+                capped_clause = "exact-k's capped MAPE is lower than every draw's"
+            else:
+                capped_clause = f"exact-k's capped MAPE is lower than in {_pct(beats, 0)} of them"
+            if matches == 0:
+                within_clause = (
+                    f"exact-k's share of targets within 10% ({_pct(position['within10'])}) is lower than every draw's "
+                    f"(their lowest is {_pct(within_seeds['min'])})"
+                )
+            elif matches == 1:
+                within_clause = f"exact-k's share of targets within 10% ({_pct(position['within10'])}) is at least every draw's"
+            else:
+                within_clause = (
+                    f"exact-k's share of targets within 10% ({_pct(position['within10'])}) is at least the draw's in "
+                    f"{_pct(matches, 0)} of them"
+                )
+            sentence += (
+                f" Against the {seeds} repeated post-stratified PPS draws (capped MAPE median {_pct(capped_seeds['p50'])}), "
+                f"{capped_clause}, and {within_clause}."
+            )
         summaries.append(sentence)
+    nat_draw = ek["runs"].get("national_all", {}).get("draw") or {}
+    head_draw = ek["runs"].get("headline", {}).get("draw") or {}
+    draw_note = ""
+    if nat_draw and head_draw:
+        draw_note = (
+            f" At 100 households, {nat_draw['boundary_draws_at_or_below_deterministic_threshold']} of the national and "
+            f"{head_draw['boundary_draws_at_or_below_deterministic_threshold']} of the headline exact-k households came from "
+            "one Sampford boundary draw over closed gates, so each support's weight concentration, eligibility and receipt "
+            "coverage reflect that draw as much as the fit."
+        )
     blocks["reading"] = "\n\n".join(summaries + [
         "Deduction: self-weighting preserves an interpretable approximately equal-weight draw from PolicyBench's eligible population. "
-        "Post-stratification can improve aggregate fit on those same households, but changes their influence. Exact-k spends the household "
-        "budget on fitting the chosen aggregates across the full source population; its weight concentration, eligibility and receipt "
-        "coverage determine the cost of that fit. The national and headline runs answer different target-set questions and should be compared separately.",
+        "Post-stratification can improve aggregate fit on those same households, but changes their influence. Exact-k sets "
+        "inclusion probabilities by fitting the chosen aggregates across the full source population, then draws its households "
+        "from them." + draw_note + " The national and headline runs answer different target-set questions and should be compared separately.",
     ])
     return blocks
 
