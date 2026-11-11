@@ -28,7 +28,8 @@ reader scopes explicit raw household identifiers by source year and carries
 the same key across support clones and their benefit units. Rules mappings
 leave this provenance concept unmapped.
 **Amended 2026-11-11:** a product multiplies one usual rate by one annual flow
-counted in weeks, and every annual flow has period `year` (both invariant 11).
+counted in weeks, and every annual flow has period `year` (invariant 11 states
+both).
 
 ## Context
 

@@ -1384,7 +1384,8 @@ _F6_NOTE = "microcosm#1120 review F6 probe."
 def _passes_type_checks(kind: type, concept_id: str) -> bool:
     """Whether a ``kind`` binding accepts ``concept_id`` on all but its basis.
 
-    A scale needs a float; a sum, scaled sum, share or fraction needs an amount.
+    A scale needs a float; a sum, scaled sum, signed part, share or fraction
+    needs an amount.
     These are the binding checks that ran before the flow rule existed.
     """
     item = concept(concept_id)
@@ -1547,7 +1548,7 @@ def _uk_hours_reading(concepts: tuple[str, str]) -> dict:
 
 
 class TestArithmeticReadsAnnualFlows:
-    """A scale, sum, scaled sum, share or fraction reads annual flows only.
+    """A scale, sum, scaled sum, signed part, share or fraction reads annual flows only.
 
     microcosm#1120 added the first stock, ``liquid_financial_assets``. Its
     review (finding F6) bound the US donor's ``bank_account_assets`` to it,
@@ -1623,7 +1624,7 @@ class TestArithmeticReadsAnnualFlows:
         self, kind, concept_id
     ) -> None:
         # Today: a scale of the stock, usual weekly hours or the take-up seed,
-        # and a sum, scaled sum, share or fraction of the stock.
+        # and a sum, scaled sum, signed part, share or fraction of the stock.
         concepts = (concept_id,)
         if kind in (Sum, ScaledSum):
             concepts = ("fact:person.interest_income", concept_id)
@@ -1635,10 +1636,10 @@ class TestArithmeticReadsAnnualFlows:
     def test_redeclaring_any_operand_of_any_committed_arithmetic_binding_refuses_it(
         self,
     ) -> None:
-        # Exhaustive: every committed scale, sum, scaled sum, share and fraction,
-        # every concept it computes from, and every temporal basis that is not
-        # an annual flow. Changing only that concept's declared basis refuses
-        # the binding, so the rule reads the declaration. Redeclaring a
+        # Exhaustive: every committed scale, sum, scaled sum, signed part, share
+        # and fraction, every concept it computes from, and every temporal basis
+        # that is not an annual flow. Changing only that concept's declared basis
+        # refuses the binding, so the rule reads the declaration. Redeclaring a
         # placement pointer the binding also reads leaves it valid.
         arithmetic = [
             (name, binding)

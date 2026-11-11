@@ -931,9 +931,10 @@ def bind(
 
 #: Transforms that do arithmetic on a year's amount: a scale restates it per
 #: week or month, a sum adds amounts (a scaled sum scales the total, and a
-#: signed part keeps one sign of it), and a share or fraction splits one. Each reads annual flows only, so none of
-#: them takes a stock (a value at the reference date), a usual rate or a
-#: persistent draw by accident; a binding that needs one needs a new transform.
+#: signed part keeps one sign of it), and a share or fraction splits one. Each
+#: reads annual flows only, so none of them takes a stock (a value at the
+#: reference date), a usual rate or a persistent draw by accident; a binding
+#: that needs one needs a new transform.
 #: The rule checks the concepts a
 #: binding computes from (``concepts``), not the household reference person a
 #: binding allocated to the reference unit also reads to place its value. A
