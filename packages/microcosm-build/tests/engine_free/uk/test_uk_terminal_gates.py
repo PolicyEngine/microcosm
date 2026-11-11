@@ -953,6 +953,7 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
         "household.cider_draught_share",
         "household.source_year",
         "person.tax_free_childcare_spend_routed_share",
+        "person.trading_allowance_full_relief",
     }
     basis = register["household.atomic_area_basis"]
     assert basis.approved_by == "juaristi22"
@@ -982,6 +983,15 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
         assert draught.expires_on == "2027-04-27"
         assert not draught.release_lines
         assert draught.reason.strip()
+    # The trading allowance receipts stage places no one in the full-relief
+    # group by ruling (microcosm#1439), so its carrier is all zero on both lines.
+    full_relief = register["person.trading_allowance_full_relief"]
+    assert full_relief.adjudication == "microcosm#1439"
+    assert full_relief.approved_by == "juaristi22"
+    assert full_relief.approved_on == "2026-11-11"
+    assert full_relief.expires_on == "2027-05-11"
+    assert not full_relief.release_lines
+    assert full_relief.reason.strip()
 
 
 def test_policy_of_record_is_immutable_and_loaded_once() -> None:
