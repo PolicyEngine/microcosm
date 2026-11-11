@@ -379,7 +379,9 @@ EXPECTED_HASHES = {
     # gains the passive partnership/S-corp leaf, so the PUF QRF targets change.
     # microcosm#1259's recipient-share bound in puf_support moves both again.
     # microcosm#1261 moves both again: the PUF donor carries partnership and
-    # S-corp line-32 shares as separate leaves.
+    # S-corp line-32 shares as separate leaves. microcosm#1215 moves both again:
+    # scf_wealth and sipp_financial_assets carry the assets on the declared
+    # is_household_head carrier.
     "seed_map": "5f8b7c620abee639d31f3dd50ed61e9c9a0daad89b8b4886d485b71d5cb882bd",
     "seed_protocol": "3e432297573840bbae497370efe3e7cafed5c2c571db029208d10722035a7470",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
