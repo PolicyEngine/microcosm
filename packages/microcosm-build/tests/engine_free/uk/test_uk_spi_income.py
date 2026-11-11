@@ -162,6 +162,11 @@ def test_spi_carer_link_is_taken_again_from_the_channels_benefits() -> None:
     # The share rests on one survey household, so the receipt withholds it.
     assert receipt["share"] == "<3"
     assert receipt["changed_support"] == "3-9"
+    # The refresh rides the SPI stage's QRF evidence into the HMRC replay
+    # report, whose freeze refuses row-data keys such as "records".
+    from microcosm.build.uk_runtime.hmrc_replay import _freeze_evidence_mapping
+
+    _freeze_evidence_mapping({"carer_link_refresh": receipt}, label="qrf_evidence")
     # A frame without the link (an older synthetic manifest) passes through.
     bare = person.drop(columns=[column])
     passed, none = spi_income._refresh_carer_link(

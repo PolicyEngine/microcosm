@@ -543,8 +543,10 @@ def derive_carer_link(
         return rounded_count(int(selected.sum()))
 
     def route(selected: np.ndarray) -> dict[str, object]:
+        # "carers", never "records": the SPI channel's refresh carries this
+        # evidence into the HMRC replay report, which refuses row-data keys.
         return {
-            "records": counted(selected),
+            "carers": counted(selected),
             "support": support_band(len(set(keys[selected].tolist()))),
             "true": counted(selected & link),
         }

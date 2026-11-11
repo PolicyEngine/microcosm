@@ -232,7 +232,7 @@ def test_the_carer_link_follows_the_main_recipient_and_draws_outside_carers() ->
     # Recipients themselves aren't carers.
     assert not by_id[1002] and not by_id[2002]
     routes = evidence["routes_at_the_line"]
-    assert routes["outside_drawn"] == {"records": "3-9", "support": "3-9", "true": "<3"}
+    assert routes["outside_drawn"] == {"carers": "3-9", "support": "3-9", "true": "<3"}
     assert routes["no_link"]["true"] == "<3"
     assert evidence["rule"] == frs_disability.CARER_LINK_PARAMETERS
 
@@ -309,7 +309,7 @@ def test_the_carer_link_takes_a_share_from_other_households() -> None:
         support_keys=np.zeros(len(people), dtype=np.int64),
     )
     assert collapsed["routes_at_the_line"]["outside_drawn"] == {
-        "records": "<3",
+        "carers": "<3",
         "support": "<3",
         "true": "<3",
     }
