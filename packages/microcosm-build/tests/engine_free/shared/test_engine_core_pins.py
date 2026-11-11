@@ -195,4 +195,5 @@ def test_uv_refuses_every_us_and_uk_combination(args: tuple[str, ...]) -> None:
     result = _uv_export(*args)
 
     assert result.returncode != 0
-    assert "incompatible with the declared conflicts" in result.stderr
+    # uv wraps a long error at the terminal width, which differs between runners.
+    assert "incompatible with the declared conflicts" in " ".join(result.stderr.split())
