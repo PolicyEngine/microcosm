@@ -1,7 +1,7 @@
 """SOI Table 2.5 EITC child splits on the real TY2023 rows, in CI.
 
-``tests/fixtures/us_soi_eitc_table_2_5_feed_rows.jsonl`` holds, verbatim and
-sorted by source record id, the 274 rows of the pinned Chronicle feed
+``tests/fixtures/us_soi_eitc_table_2_5_feed_rows.jsonl`` holds, verbatim and in
+source-record-id order, the 274 rows of the pinned Chronicle feed
 (``consumer_facts_us_41b2fb2.jsonl``, sha256 1d45a89c...) that the EITC
 decomposition uprating reads:
 
@@ -14,28 +14,29 @@ decomposition uprating reads:
   bins and in total.
 
 The pinned-feed tests in ``test_us_fiscal_targets.py`` skip in CI, which has no
-feed. These run everywhere, so the halving fixed in microcosm#1227 cannot come
-back unnoticed: the compile summed each split's AGI bins and its total row
+feed. These run everywhere, so the halving that microcosm#1227 fixed cannot
+come back unnoticed: the compile summed each split's AGI bins and its total row
 into the all-AGI source total, uprated the four total rows by 0.4877 (returns)
 and 0.5209 (amount), and shipped them at 11.92 million returns and $34.52
 billion against the TY2024 filing season's 23.84 million and $69.04 billion.
 
 IRS-published EITC (EITC statistics pages, read 2026-10-14):
 
-* TY2023, returns processed by December 2024: "more than 23 million" workers
-  and families received "about $64 billion"; 27% had no qualifying child, 36%
-  one, 24% two and 13% three or more.
-* TY2024, processed by December 2025: about 24 million and $69.6 billion.
+* TY2023, returns IRS processed by December 2024: "more than 23 million"
+  workers and families received "about $64 billion"; 27% had no qualifying
+  child, 36% one, 24% two and 13% three or more.
+* TY2024, returns IRS processed by December 2025: about 24 million and $69.6
+  billion.
 
 IRS labels those "returns processed in" the filing year, "as of December".
-Publication 1304 Table 2.5 is the SOI sample estimate for "Tax Year 2023
+Publication 1304 Table 2.5 gives SOI's sample estimate for "Tax Year 2023
 (Filing Year 2024)"; its footnote 1 defines EIC earned income "for prior-year
-returns", which implies they are in it. Its TY2023 EITC (24,439,936 returns,
-$66.27 billion) sits 6.3% and 3.5% above the TY2023 December figures; the two
-products' bases differ, and this module does not attribute the gap. The
-reconciliation tolerance is 10%: wide enough for that observed gap, far too
-narrow for a halving. Child shares are compared within 1.5 percentage points
-because IRS rounds them to whole percents.
+returns", which implies that the table includes them. Its TY2023 EITC
+(24,439,936 returns, $66.27 billion) exceeds the TY2023 December figures by
+6.3% and 3.5%; the two products' bases differ, and this module does not
+attribute the gap. The reconciliation allows 10%: enough for that observed gap,
+and far too little for a halving. The tests compare child shares within 1.5
+percentage points because IRS rounds them to whole percents.
 """
 
 from __future__ import annotations
@@ -90,8 +91,8 @@ _IRS_TY2023_CHILD_SHARES = {
 _PUBLISHED_TOLERANCE = 0.10
 _SHARE_TOLERANCE = 0.015
 # SOI rounds each cell ("Detail may not add to totals because of rounding"):
-# counts to the return, amounts to $1,000. The widest gap between a split's
-# bins and its total row in the TY2023 workbook is 3 returns and $1,000.
+# counts to the return, amounts to $1,000. In the TY2023 workbook a split's
+# bins and its total row differ by at most 3 returns and $1,000.
 _ROUNDING = {"returns": 5, "amount": 5_000}
 
 _SETTINGS = settings(
@@ -190,11 +191,12 @@ def _compiled_split_rows(by_name, kind: str) -> dict[str, dict[str, object]]:
 
 
 def _uprating_groups(kind: str) -> dict[tuple[float, float], list[str]]:
-    """The AGI group each Table 2.5 bin is uprated in -> the bins in it.
+    """Map each AGI uprating group to the Table 2.5 bins the compile uprates in it.
 
-    A bin's group is the narrowest filing-season bin that contains it, or,
-    when filing-season bins are finer (Table 2.5's $50,000-and-over bin), the
-    bin's own interval covered by the filing-season bins inside it.
+    The compile puts a bin in the narrowest filing-season bin that contains it,
+    or, when the filing-season bins run finer (Table 2.5's $50,000-and-over
+    bin), in the bin's own interval, which the filing-season bins inside it
+    cover.
     """
 
     season = [_agi_bounds(fact) for fact in _filing_season_bins(kind).values()]
@@ -240,11 +242,11 @@ def test_fixture_holds_every_table_2_5_and_filing_season_row() -> None:
 def test_each_child_split_s_agi_bins_tile_agi_and_sum_to_its_total_row(
     kind: str,
 ) -> None:
-    """Source check: in each split the 28 Table 2.5 AGI bins tile AGI and add
-    to the split's total row within SOI rounding, so no bin is missing, read
-    twice or taken from the total row. A sum can't see two bins' values
-    swapped; the verbatim-feed check and the extraction's row guards cover
-    that."""
+    """In each split, the 28 Table 2.5 AGI bins tile AGI and add to the split's
+    total row within SOI rounding, so the extraction neither drops a bin, reads
+    one twice nor takes one from the total row. A sum can't see two bins'
+    values swapped; the verbatim-feed check and the extraction's row guards
+    catch that."""
 
     for split, rows in _split_rows(kind).items():
         bins = {row_id: fact for row_id, fact in rows.items() if row_id != "total"}
@@ -278,8 +280,8 @@ def test_filing_season_agi_bins_sum_to_the_filing_season_total(kind: str) -> Non
 @pytest.mark.parametrize("kind", sorted(_KINDS))
 def test_child_split_totals_add_to_the_all_returns_total(kind: str) -> None:
     """The four splits' total rows add to Table 2.5's all-returns total
-    (24,439,936 returns; $66,270,000,000), so no split is a subset such as one
-    filing status or one component of the credit."""
+    (24,439,936 returns; $66,270,000,000), so no split holds only a subset such
+    as one filing status or one component of the credit."""
 
     split_total = sum(rows["total"]["value"] for rows in _split_rows(kind).values())
     all_returns = _single(_ALL_RETURNS_RECORD_SET, _KINDS[kind][1])["value"]
@@ -355,9 +357,9 @@ def test_compiled_total_rows_sum_to_the_filing_season_and_irs_published(
 def _with_filing_season(
     values: dict[tuple[str, str], float],
 ) -> list[dict[str, object]]:
-    """The fixture rows with filing-season AGI bins replaced by ``values``
-    (keyed by kind and AGI row id) and each filing-season total set to their
-    sum."""
+    """Return the fixture rows with ``values`` (a map from kind and AGI row id)
+    in place of the filing-season AGI bins, and each filing-season total equal
+    to their sum."""
 
     measure_kind = {measures[1]: kind for kind, measures in _KINDS.items()}
     totals = {
@@ -497,14 +499,14 @@ def test_uniform_growth_keeps_each_split_s_bins_summing_to_its_total_row(
 
 
 def test_fixture_rows_are_verbatim_pinned_feed_rows() -> None:
-    """Where the pinned feed is present (not in CI), the fixture is exactly
-    the feed's rows for these record sets, byte for byte.
+    """On a machine that has the pinned feed (CI has none), the fixture matches
+    the feed's rows for these record sets byte for byte.
 
-    A re-pin that changes any of those rows fails here. Refresh the fixture
-    from the new feed: its lines for the same record sets, sorted by
-    ``lineage.source_record_id``, one per line. Compare the old and new rows
-    field by field first, and check any changed value against the workbooks
-    this module's docstring names.
+    This test fails after a re-pin that changes any of those rows. To refresh
+    the fixture, take the new feed's lines for the same record sets, sort them
+    by ``lineage.source_record_id`` and write one per line. Compare the old and
+    new rows field by field first, and check any changed value against the
+    workbooks this module's docstring names.
     """
 
     feed_path = _load_repo_tool("build_us_target_parity_manifest").DEFAULT_FEED_PATH
