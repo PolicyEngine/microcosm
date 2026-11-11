@@ -525,7 +525,7 @@
     },
     {
       "name": "hmrc.scottish_income_tax.nsnd_outturn",
-      "reason": "Diagnostic, not a weight question: the bound SPI rows hold Scotland's tax on all income, and the NSND revenue shows how the build splits it. Measured at 2024, the outturn's own tax year, the head of microcosm#1572 holds NSND within 0.2 percent of the outturn, while an earnings uprating to 2025 sat about 3 percent below NSND's growth with the thresholds frozen, so binding at 2025 would pull the split the wrong way (B4 of the November event-data plan's PR3, microcosm#1095; for María's signature). Bind only if a build's gap at 2024 exceeds about 3 percent and a calibrate-only solve with the row bound keeps uk_weight_ratio at or below 1,151.25 and the Scottish SPI rows within 10 percent; the row nests inside the SPI all-income tax rows, which would need a cross-grain declaration.",
+      "reason": "Diagnostic, not a weight question: the bound SPI rows hold Scotland's tax on all income, and the NSND revenue shows how the build splits it. Measured at 2024, the outturn's own tax year, the head of microcosm#1572 holds NSND within 0.2 percent of the outturn, while an earnings uprating to 2025 sat about 3 percent below NSND's growth with the thresholds frozen, so binding at 2025 would pull the split the wrong way (B4 of the November event-data plan's PR3, microcosm#1095; María's signature of 2026-11-11). Bind only if a build's gap at 2024 exceeds about 3 percent and a calibrate-only solve with the row bound keeps uk_weight_ratio at or below 1,151.25 and the Scottish SPI rows within 10 percent; the row nests inside the SPI all-income tax rows, which would need a cross-grain declaration.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
       "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes.",
@@ -534,7 +534,7 @@
     },
     {
       "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
-      "reason": "Diagnostic, not a weight question: the count of Scottish NSND taxpayers measured beside the revenue row at 2024, its own tax year (B4 of the November event-data plan's PR3, microcosm#1095; for María's signature), missing taxpayers with tax on property income alone. Bind only with the revenue row, after the same calibrate-only solve.",
+      "reason": "Diagnostic, not a weight question: the count of Scottish NSND taxpayers measured beside the revenue row at 2024, its own tax year (B4 of the November event-data plan's PR3, microcosm#1095; María's signature of 2026-11-11), missing taxpayers with tax on property income alone. Bind only with the revenue row, after the same calibrate-only solve.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
       "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes.",
@@ -1302,7 +1302,7 @@
       "reason": "Diagnostic, not a weight question: PAYE RTI's payrolled employees by age monitor the employee base of the employer NICs relief for employees under 21, whose 2024-25 outturn the build matches within 4 percent at 2024-25 rules (B1 of the November event-data plan's PR3, microcosm#1095). The model counts anyone with employment income in the year against a monthly average, so the rows read high by job turnover and are not bound as they stand.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (for María's signature).",
+      "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (María's signature of 2026-11-11).",
       "approved_on": "2026-11-11",
       "expires_on": "2027-02-11"
     },
@@ -1311,7 +1311,7 @@
       "reason": "Diagnostic, not a weight question: PAYE RTI's payrolled employees by age monitor the employee base of the employer NICs relief for employees under 21, whose 2024-25 outturn the build matches within 4 percent at 2024-25 rules (B1 of the November event-data plan's PR3, microcosm#1095). The model counts anyone with employment income in the year against a monthly average, so the rows read high by job turnover and are not bound as they stand.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (for María's signature).",
+      "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (María's signature of 2026-11-11).",
       "approved_on": "2026-11-11",
       "expires_on": "2027-02-11"
     }
