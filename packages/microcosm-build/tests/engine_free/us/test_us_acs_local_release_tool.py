@@ -6,6 +6,7 @@ import importlib.util
 import inspect
 import json
 import os
+import re
 import shlex
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,6 +26,7 @@ from microcosm.build.us_runtime.org_wages import (
     US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
 )
 from microcosm.data import stored_inputs
+from microcosm.data.build_folder_manifests import publication_commands
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -737,6 +739,46 @@ def test_a_donor_verified_free_of_the_social_security_erasure_drops_the_disclosu
     assert "social_security_cps_reporters_erased_inherited" not in ids()
 
 
+def test_a_build_folder_donor_is_named_by_its_build_in_the_limitations(
+    monkeypatch,
+) -> None:
+    """microcosm#1570: staging records a donor in a build folder by release
+    and build, with no release_id. The limitations name it by its build ID,
+    the ID the Social Security register is keyed by, as they name a tag
+    donor by its release_id."""
+
+    module = _load_tool_module()
+    build = "populace-us-2024-spm-receipts-20261201"
+    staging_summary = {
+        "base": {
+            "donor_release": {
+                "repo_id": "policyengine/populace-us",
+                "release": "microcosm-us-2024-receipt-donor",
+                "build": build,
+            }
+        },
+        "reviewed_limitations": [],
+    }
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+
+    def by_id():
+        return {
+            item["id"]: item
+            for item in module.finalize_reviewed_limitations(
+                staging_summary, diagnostics, {}
+            )
+        }
+
+    limitations = by_id()
+    social_security = limitations["social_security_cps_reporters_erased_inherited"]
+    assert social_security["donor_release"] == build
+    assert f"({build})" in limitations["donor_sparse_selection_training_set"]["reason"]
+    monkeypatch.setattr(
+        module, "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE", frozenset({build})
+    )
+    assert "social_security_cps_reporters_erased_inherited" not in by_id()
+
+
 def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> None:
     """microcosm#1263: the limitation follows the consumer export's receipt."""
 
@@ -864,10 +906,19 @@ def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:
 
 
 def test_release_id_prefix_and_manifest_constants() -> None:
+    """Build IDs keep their populace-us-2024-buildo-acs-local form; the
+    dataset is the local-area release's file (microcosm#1570)."""
+    from microcosm.data import contract
+
     module = _load_tool_module()
     assert module.RELEASE_ID_PREFIX == "populace-us-2024-buildo-acs-local"
     assert module.RELEASE_NAMESPACE == "buildo_acs_local"
-    assert module.ARTIFACT_FILENAME == "populace_us_2024_acs_local.h5"
+    assert module.ARTIFACT_NAME == "microcosm_us_2024_acs_local"
+    assert module.ARTIFACT_FILENAME == "microcosm_us_2024_acs_local.h5"
+    assert (
+        module.ARTIFACT_FILENAME
+        == (contract.US_RELEASE_DATASET_FILES[contract.US_LOCAL_RELEASE_ID])
+    )
     assert module.HF_REPO_ID == "policyengine/populace-us"
 
 
@@ -4455,6 +4506,224 @@ def test_finalize_refuses_artifact_changed_during_hours_validation(
     assert not args.out_summary.exists()
 
 
+# ---------------------------------------------------------------------------
+# District ESS gate: report-only by default, blocking on request
+# ---------------------------------------------------------------------------
+
+#: One district calibrated down to a fifth of its design ESS, one healthy.
+_COLLAPSED_DISTRICT_ESS = (
+    {"0601": 100.0, "0602": 80.0},
+    {"0601": 20.0, "0602": 60.0},
+)
+_HEALTHY_DISTRICT_ESS = (
+    {"0601": 100.0, "0602": 80.0},
+    {"0601": 90.0, "0602": 60.0},
+)
+
+
+def _ess_origin(district_ess) -> dict:
+    """A calibration summary's ``weight_origin`` carrying per-district ESS."""
+
+    design, calibrated = district_ess
+    return {
+        "design": {"effective_sample_size_by_district": design},
+        "calibrated": {"effective_sample_size_by_district": calibrated},
+    }
+
+
+def _with_district_ess(args, district_ess) -> None:
+    """Record per-district ESS in the finalize fixture's calibration summary."""
+
+    path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(path.read_text())
+    summary["weight_origin"] = _ess_origin(district_ess)
+    path.write_text(json.dumps(summary))
+
+
+def _district_ess_limitation(report: dict) -> dict:
+    [entry] = [
+        item
+        for item in report["reviewed_limitations"]
+        if item["id"] == "district_effective_sample_size_gate"
+    ]
+    return entry
+
+
+def test_finalize_records_a_collapsed_district_without_blocking_by_default(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _with_district_ess(args, _COLLAPSED_DISTRICT_ESS)
+    # The fixture has no QA evidence, so finalize stops on consumer_ready
+    # after writing its report.
+    message, report = _run_finalize(module, monkeypatch, args, _plausible_hours_frame())
+    assert module.DISTRICT_ESS_GATE not in message
+    gate = report["gates"][module.DISTRICT_ESS_GATE]
+    assert (gate["passed"], gate["report_only"], gate["criteria_met"]) == (
+        True,
+        True,
+        False,
+    )
+    assert [row["district"] for row in gate["collapsed"]] == ["0601"]
+    summary = json.loads(args.out_summary.read_text())
+    assert module.DISTRICT_ESS_GATE not in summary["simulation_readiness_blockers"]
+    entry = _district_ess_limitation(report)
+    assert entry["n_collapsed"] == 1
+    assert entry["calibration_blocker"] is False
+    assert "report-only" in entry["reason"]
+    assert summary["reviewed_limitations"] == report["reviewed_limitations"]
+
+
+def test_blocking_finalize_fails_on_a_collapsed_district(tmp_path, monkeypatch) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    args.district_ess_gate_blocking = True
+    _with_district_ess(args, _COLLAPSED_DISTRICT_ESS)
+    message, report = _run_finalize(module, monkeypatch, args, _plausible_hours_frame())
+    assert module.DISTRICT_ESS_GATE in message
+    gate = report["gates"][module.DISTRICT_ESS_GATE]
+    assert (gate["passed"], gate["blocking"]) == (False, True)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert module.DISTRICT_ESS_GATE in summary["simulation_readiness_blockers"]
+    assert _district_ess_limitation(report)["calibration_blocker"] is True
+
+
+def test_blocking_finalize_fails_closed_without_district_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    """A summary that records no per-district ESS cannot pass a blocking gate."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    args.district_ess_gate_blocking = True
+    message, report = _run_finalize(module, monkeypatch, args, _plausible_hours_frame())
+    assert module.DISTRICT_ESS_GATE in message
+    gate = report["gates"][module.DISTRICT_ESS_GATE]
+    assert (gate["passed"], gate["criteria_met"]) == (False, None)
+
+
+def _blocking_package_args(module, tmp_path: Path, gate: dict | None):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    args = _package_args_before_evidence(module, tmp_path, max_households=None)
+    args.district_ess_gate_blocking = True
+    gates = {} if gate is None else {module.DISTRICT_ESS_GATE: gate}
+    (args.checkpoint_dir / "gate_summary.json").write_text(json.dumps({"gates": gates}))
+    return args
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    ["absent", "report_only", "blocking_failed", "other_relative", "other_floor"],
+)
+def test_blocking_package_refuses_a_report_finalize_did_not_block_on(
+    tmp_path: Path, recorded: str
+) -> None:
+    module = _load_tool_module()
+    gate = module.district_ess_collapse_gate
+    healthy = _ess_origin(_HEALTHY_DISTRICT_ESS)
+    entry = {
+        "absent": None,
+        # A report-only gate passes whatever it measured.
+        "report_only": gate(_ess_origin(_COLLAPSED_DISTRICT_ESS)),
+        "blocking_failed": gate(_ess_origin(_COLLAPSED_DISTRICT_ESS), blocking=True),
+        "other_relative": gate(healthy, relative_floor=0.1, blocking=True),
+        "other_floor": gate(healthy, absolute_floor=5.0, blocking=True),
+    }[recorded]
+    args = _blocking_package_args(module, tmp_path, entry)
+    with pytest.raises(SystemExit, match="--district-ess-gate-blocking"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists(), "a refusal leaves no release"
+
+
+def test_package_accepts_a_passing_blocking_gate_and_ignores_it_otherwise(
+    tmp_path: Path,
+) -> None:
+    """Either way the run reaches the next check (missing QA evidence)."""
+
+    module = _load_tool_module()
+    passing = module.district_ess_collapse_gate(
+        _ess_origin(_HEALTHY_DISTRICT_ESS), blocking=True
+    )
+    args = _blocking_package_args(module, tmp_path / "blocking", passing)
+    with pytest.raises(SystemExit, match="spine_qa.json is missing"):
+        module.do_package(args)
+
+    report_only = module.district_ess_collapse_gate(
+        _ess_origin(_COLLAPSED_DISTRICT_ESS)
+    )
+    args = _blocking_package_args(module, tmp_path / "report-only", report_only)
+    args.district_ess_gate_blocking = False
+    with pytest.raises(SystemExit, match="spine_qa.json is missing"):
+        module.do_package(args)
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    ("blocking", "district_ess", "criteria_met"),
+    [
+        (False, _COLLAPSED_DISTRICT_ESS, False),
+        (True, _HEALTHY_DISTRICT_ESS, True),
+    ],
+    ids=["report-only-collapse", "blocking-pass"],
+)
+def test_the_district_ess_gate_ships_in_both_manifests(
+    tmp_path, monkeypatch, blocking, district_ess, criteria_met
+) -> None:
+    """finalize -> package records the gate in gate_summary.json and the build
+    manifest, its result in the release manifest's limitations, and the
+    release contract accepts the gate either way."""
+
+    from microcosm.data import contract
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    args.district_ess_gate_blocking = blocking
+    _with_district_ess(args, district_ess)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    evidence = {
+        "run_identity.json": {
+            "staging_sha256": module._sha256(args.staging_h5),
+            "ladder_sha256": module._sha256(args.ladder),
+            "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": artifact_sha},
+        "consumer_reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
+    }
+    for name, value in evidence.items():
+        (args.checkpoint_dir / name).write_text(json.dumps(value))
+    _patch_finalize_collaborators(module, monkeypatch, identity=False)
+    module.do_finalize(args)
+
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+    release_dir = Path(module.do_package(args)["release_dir"])
+    gate_summary = json.loads((release_dir / "gate_summary.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    shipped = gate_summary["gates"][module.DISTRICT_ESS_GATE]
+    assert build_manifest["gates"][module.DISTRICT_ESS_GATE] == shipped
+    assert (shipped["passed"], shipped["blocking"]) == (True, blocking)
+    assert shipped["criteria_met"] is criteria_met
+    entry = _district_ess_limitation(release_manifest)
+    assert entry["criteria_met"] is criteria_met
+    assert entry["calibration_blocker"] is False
+    for manifest in (build_manifest, release_manifest):
+        recipe = shlex.split(manifest["refresh_recipe"]["release"])
+        assert ("--district-ess-gate-blocking" in recipe) is blocking
+    failures: list[str] = []
+    contract._check_local_area_gates(gate_summary, failures)
+    assert not [f for f in failures if module.DISTRICT_ESS_GATE in f], failures
+
+
 @requires_pytables
 def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None:
     """A finalize-written report must satisfy the package stage's binding."""
@@ -4984,7 +5253,8 @@ def test_the_package_stage_output_meets_the_publisher_gate_requirement(
     gate_summary = load("gate_summary.json")
     release_manifest = load("release_manifest.json")
     build_manifest = load("build_manifest.json")
-    assert release_manifest["build"]["built_with_model_package"] == {
+    # In the build-folder layout the build's details are at the top level.
+    assert release_manifest["built_with_model_package"] == {
         "name": "policyengine-us",
         "version": "2.2.1",
     }
@@ -5007,6 +5277,224 @@ def test_the_package_stage_output_meets_the_publisher_gate_requirement(
     )
     assert len(failures) == 1
     assert "must carry the 'stored_inputs' gate" in failures[0]
+
+
+def _pin_built_with_versions(monkeypatch) -> None:
+    """The built-with record reads installed metadata; the engine-free lane
+    has neither engine package, so pin both."""
+
+    import importlib.metadata as metadata
+
+    real_version = metadata.version
+    pinned = {"policyengine-us": "2.2.1", "policyengine-core": "3.33.3"}
+    monkeypatch.setattr(
+        metadata, "version", lambda name: pinned.get(name) or real_version(name)
+    )
+
+
+@requires_pytables
+def test_the_package_stage_writes_a_build_of_the_local_area_release(
+    tmp_path, monkeypatch
+):
+    """microcosm#1570: the package stage writes its build into a directory
+    named after the US local-area release, in the build-folder layout. Both
+    manifests name the release and the build, whose ID keeps its
+    populace-us-2024-buildo-acs-local-<sha>-<timestamp> form; the dataset is
+    microcosm_us_2024_acs_local.h5; no artifact pins a revision; and the
+    checksum ledger matches the rewritten manifests."""
+
+    from microcosm.data import contract
+
+    _pin_built_with_versions(monkeypatch)
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+
+    result = module.do_package(args)
+
+    release_dir = args.out / "releases" / "microcosm-us-2024-local"
+    assert Path(result["release_dir"]) == release_dir
+    build = result["build"]
+    assert re.fullmatch(
+        r"populace-us-2024-buildo-acs-local-[0-9a-f]+-\d{8}T\d{6}Z", build
+    ), build
+    assert (result["release_id"], result["release"]) == (
+        "microcosm-us-2024-local",
+        "microcosm-us-2024-local",
+    )
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    for document in (release_manifest, build_manifest):
+        assert (document["release"], document["build"]) == (
+            "microcosm-us-2024-local",
+            build,
+        )
+        assert "build_id" not in document
+    assert release_manifest["artifacts"]["microcosm_us_2024_acs_local"] == {
+        "kind": "microdata",
+        "path": "microcosm_us_2024_acs_local.h5",
+        "repo_id": "policyengine/populace-us",
+        "sha256": result["root_artifact"]["sha256"],
+        "role": "dataset",
+    }
+    assert not any(
+        "revision" in entry for entry in release_manifest["artifacts"].values()
+    )
+    assert (release_manifest["dataset_role"], release_manifest["is_default"]) == (
+        "non_default_local_area",
+        False,
+    )
+    assert Path(result["root_artifact"]["local_path"]) == (
+        args.out / "microcosm_us_2024_acs_local.h5"
+    )
+
+    failures: list[str] = []
+    contract._check_local_area_release_manifest(
+        release_manifest, contract.US_LOCAL_RELEASE_ID, failures
+    )
+    contract._check_build_folder_identity(
+        build_manifest,
+        contract.US_LOCAL_RELEASE_ID,
+        filename="build_manifest.json",
+        failures=failures,
+    )
+    # This run's diagnostics generation is recorded as failed, so the
+    # directory carries no calibration_diagnostics.json.
+    contract._check_local_area_checksum_ledger(
+        release_dir,
+        release_manifest,
+        failures,
+        required_files=tuple(
+            name
+            for name in contract.LOCAL_AREA_REQUIRED_RELEASE_FILES
+            if name != "calibration_diagnostics.json"
+        ),
+    )
+    assert failures == []
+
+
+@requires_pytables
+def test_the_package_stage_prints_the_emitter_publication_commands(
+    tmp_path, monkeypatch
+):
+    """microcosm#1570: the package stage gives the commands that publish the
+    build through the emitter into policyengine/populace-us and then make it
+    the release's current build, in its result and in both manifests'
+    refresh recipe, in place of tools/publish_release.sh."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    commands = publication_commands(
+        release_dir, repo_id="policyengine/populace-us", artifact_root=args.out
+    )
+    assert result["publish_command"] == commands["publish_command"]
+    assert result["promote_command"] == commands["promote_command"]
+    assert json.loads((args.out / "package_result.json").read_text()) == result
+    recipe_commands = publication_commands(
+        "<run>/release/releases/microcosm-us-2024-local",
+        repo_id="policyengine/populace-us",
+        artifact_root="<run>/release",
+    )
+    for name in ("release_manifest.json", "build_manifest.json"):
+        manifest = json.loads((release_dir / name).read_text())
+        assert manifest["refresh_recipe"]["publish"] == recipe_commands
+    recorded = json.dumps(
+        [
+            result,
+            *(
+                json.loads((release_dir / name).read_text())
+                for name in ("release_manifest.json", "build_manifest.json")
+            ),
+        ]
+    )
+    assert "publish_release" not in recorded
+    assert "--no-latest" not in recorded
+
+
+@requires_pytables
+@requires_pytables
+def test_the_package_stage_declares_every_file_it_writes_as_an_artifact(
+    tmp_path, monkeypatch
+):
+    """The emitter publishes a build folder's manifests, checksum ledger and
+    declared artifacts only, so every file the package stage writes into the
+    release directory, the evidence JSON included, is a declared artifact; a
+    ledger line for an undeclared file would name a file the published
+    folder lacks (review of #1571)."""
+
+    _pin_built_with_versions(monkeypatch)
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    declared = {entry["path"] for entry in release_manifest["artifacts"].values()}
+    written = {path.name for path in release_dir.iterdir()}
+    publisher_files = {"release_manifest.json", "build_manifest.json", "sha256sums.txt"}
+    assert written - publisher_files <= declared
+    assert {"held_back_columns.json", "run_identity.json"} <= declared
+    ledger = {
+        line.split()[1]
+        for line in (release_dir / "sha256sums.txt").read_text().splitlines()
+    }
+    assert ledger - publisher_files <= declared
+
+
+def test_a_run_that_will_package_refuses_an_earlier_release_directory_first(
+    tmp_path: Path,
+) -> None:
+    """--stage all refuses an --out that already has the local-area release's
+    directory while parsing its arguments, before hours of materialize,
+    calibrate, qa and finalize (review of #1571)."""
+    module = _load_tool_module()
+    out = tmp_path / "release"
+    (out / "releases" / "microcosm-us-2024-local").mkdir(parents=True)
+
+    with pytest.raises(SystemExit):
+        module._parse_args(
+            [
+                "--stage",
+                "all",
+                "--staging-h5",
+                str(tmp_path / "staging.h5"),
+                "--checkpoint-dir",
+                str(tmp_path / "ckpt"),
+                "--feed",
+                str(tmp_path / "facts.jsonl"),
+                "--out-h5",
+                str(tmp_path / "out.h5"),
+                "--out",
+                str(out),
+            ]
+        )
+
+
+def test_package_refuses_a_release_directory_from_an_earlier_package(
+    tmp_path, monkeypatch
+):
+    """The directory is named after the release, not the build, so packaging
+    again into the same --out would mix two builds' files: the package stage
+    refuses before it reads the evidence and leaves the earlier directory as
+    it was."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    earlier = args.out / "releases" / "microcosm-us-2024-local"
+    earlier.mkdir(parents=True)
+    (earlier / "release_manifest.json").write_text("{}")
+
+    with pytest.raises(SystemExit, match="already exists"):
+        module.do_package(args)
+
+    assert [path.name for path in earlier.iterdir()] == ["release_manifest.json"]
+    assert (earlier / "release_manifest.json").read_text() == "{}"
+    assert not (args.out / "package_result.json").exists()
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
 def _write_measurable_lane_h5(

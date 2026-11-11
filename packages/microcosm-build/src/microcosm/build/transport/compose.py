@@ -136,6 +136,11 @@ from .evidence_contract import (
     binding_relation_inputs,
     binding_view_entities,
 )
+from .income_evidence_kernels import (
+    INCOME_IDENTITY_REF,
+    NATIVE_BAND_REPORT_REF,
+    OMISSION_REGISTER_REF,
+)
 from .money_kernels import (
     MONEY_ANNUAL_TRANSFERS_REF,
     MONEY_MINOR_UNITS_REF,
@@ -210,6 +215,9 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         WEIGHTS_AUDIT_REF,
         DONOR_RANGES_REF,
         SUPPORT_BOUNDS_REF,
+        INCOME_IDENTITY_REF,
+        OMISSION_REGISTER_REF,
+        NATIVE_BAND_REPORT_REF,
         "export.prepare@1",
         "export.readback@1",
         "transport.package@1",
@@ -2198,6 +2206,23 @@ def _check_structural_columns(spec: Mapping[str, object]) -> None:
         raise ValueError(
             "Support structural_columns may not excuse these columns: "
             + " ".join(problems)
+        )
+
+
+def _check_view_bindings_have_a_closure(spec: Mapping[str, object]) -> None:
+    """Every binding that declares views needs the spec's input closure."""
+
+    if _has_resource(spec, _CLOSURE_RESOURCE):
+        return
+    named = sorted(
+        binding
+        for binding, row in _binding_modules(spec).items()
+        if binding_view_entities(row)
+    )
+    if named:
+        raise ValueError(
+            f"Rules bindings {named} declare views, but the spec has no "
+            f"{_CLOSURE_RESOURCE!r} resource to close their inputs."
         )
 
 
@@ -4257,10 +4282,11 @@ def transport_rules_node(
 def _require_relation_inputs(spec, binding_id, inputs) -> None:
     """A rules node slices its binding's relation and view dependencies whole.
 
-    A view binding's node must also slice, on the person entity, every input
-    the reviewed closure encodes (other than through a graph node) or
-    defaults on the view's logical entity: the engine would otherwise run
-    the view without a column the closure says the frame carries.
+    A view binding needs the spec's input closure. Its node must also slice,
+    on the person entity, every input the reviewed closure encodes (other
+    than through a graph node) or defaults on the view's logical entity: the
+    engine would otherwise run the view without a column the closure says the
+    frame carries.
     """
     document = transport_resource(spec, "axiom_rules_bindings")
     bindings = [
@@ -4290,8 +4316,13 @@ def _require_relation_inputs(spec, binding_id, inputs) -> None:
             f"Rules binding {binding_id!r} needs whole-table relation inputs {missing}."
         )
     logical = binding_view_entities(bindings[0])
-    if not logical or not _has_resource(spec, _CLOSURE_RESOURCE):
+    if not logical:
         return
+    if not _has_resource(spec, _CLOSURE_RESOURCE):
+        raise ValueError(
+            f"Rules binding {binding_id!r} runs views on {sorted(logical)}, but "
+            f"the spec has no {_CLOSURE_RESOURCE!r} resource to close their inputs."
+        )
     path = bindings[0].get("rulespec_path")
     closed = sorted(
         {
@@ -4567,6 +4598,7 @@ def compose_transport_graph(
     validate_transport_activation(spec)
     _check_unreached_requests(spec, config.engine_refs)
     _check_structural_columns(spec)
+    _check_view_bindings_have_a_closure(spec)
     from .entitlement import transport_extensions
 
     config = replace(config, extensions=transport_extensions(spec, config.extensions))

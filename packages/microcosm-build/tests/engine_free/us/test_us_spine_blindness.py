@@ -327,6 +327,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "esi_premiums.py",
         "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",
+        # Federal Student Aid portfolio targets (microcosm#1074): compiles FSA
+        # facts into target specs and sums the stored person balances for
+        # them; no population treatment.
+        "fsa_student_loan_targets.py",
         "geography_ladder.py",
         "hours_worked.py",
         "h5_io.py",  # US artifact I/O; no population treatment.
@@ -342,6 +346,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "operator_boundary.py",  # Raw-stage validator; no population treatment.
         "org_wages.py",
         "parity_reference.py",
+        # Reviewed held-out population-structure diagnostic over the written
+        # H5; no population treatment.
+        "population_structure_holdout.py",
         "pregnancy.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
@@ -415,6 +422,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # column; the release tool passes the people who may lack a decision.
         "retired_stored_inputs.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
+        # Bake-off arm accounting, split mirror and ESS; evaluates support mixes,
+        # never transforms a population.
+        "support_mix.py",
         "support_provenance.py",
         "take_up.py",
         "take_up_contract.py",

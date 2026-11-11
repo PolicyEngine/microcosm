@@ -15,6 +15,9 @@ Invariants (each held by tests below):
   rule refuses.
 - Publication: a child whose parent the Hub does not serve, byte for byte,
   publishes nothing.
+- Layout: the child is a build of the national release in the build-folder
+  layout, its H5 the parent's bytes under the release's dataset file name,
+  whether the parent is in a build folder or keeps only its tag.
 """
 
 # ruff: noqa: F403, F405
@@ -31,7 +34,12 @@ from hypothesis import strategies as st
 
 from microcosm.data import compatibility_recertification as recert
 from microcosm.data import release as release_module
-from microcosm.data.contract import ReleaseContractError, validate_release_dir
+from microcosm.data.build_folder_manifests import referenced_build
+from microcosm.data.contract import (
+    US_NATIONAL_RELEASE_ID,
+    ReleaseContractError,
+    validate_release_dir,
+)
 from microcosm.data.stored_inputs import undefined_stored_inputs
 from test_support.microcosm_data.compatibility_recertification import *
 
@@ -41,6 +49,12 @@ def _rewrite_json(path, update):
     payload = json.loads(path.read_text())
     update(payload)
     path.write_text(json.dumps(payload))
+
+
+def _child_path(parent_path):
+    """Where the child keeps a parent root artifact: the H5 under its new name."""
+
+    return CHILD_DATASET_FILE if parent_path == "populace_us_2024.h5" else parent_path
 
 
 # ---------------------------------------------------------------------------
@@ -60,23 +74,53 @@ def test_candidate_republishes_every_parent_artifact_byte_for_byte(parent, candi
     for name in report["parent"]["release_files"]:
         assert (release_dir / name).read_bytes() == (parent_dir / name).read_bytes()
     for path in report["parent"]["root_artifacts"]:
-        assert (artifact_root / path).read_bytes() == (parent_root / path).read_bytes()
+        assert (artifact_root / _child_path(path)).read_bytes() == (
+            parent_root / path
+        ).read_bytes()
+    assert not (artifact_root / "populace_us_2024.h5").exists()
     assert (release_dir / recert.PARENT_RELEASE_MANIFEST_FILE).read_bytes() == (
         parent_dir / "release_manifest.json"
     ).read_bytes()
+    parent_dataset = report["parent"]["dataset"]
+    assert parent_dataset["filename"] == "populace_us_2024.h5"
+    assert report["dataset"] == {
+        "artifact": CHILD_DATASET_KEY,
+        "filename": CHILD_DATASET_FILE,
+        "sha256": parent_dataset["sha256"],
+    }
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build = json.loads((release_dir / "build_manifest.json").read_text())
     parent_manifest = json.loads((parent_dir / "release_manifest.json").read_text())
+    assert release_dir.name == US_NATIONAL_RELEASE_ID
+    assert (manifest["release"], manifest["build"]) == (
+        US_NATIONAL_RELEASE_ID,
+        CHILD_ID,
+    )
+    assert (build["release"], build["build"]) == (US_NATIONAL_RELEASE_ID, CHILD_ID)
+    assert "build_id" not in build and build["dataset"] == report["dataset"]
+    assert build["recertified_from"] == parent_dir.name
     assert (
         manifest["compatible_model_packages"]
         == parent_manifest["compatible_model_packages"]
     )
-    assert (
-        manifest["build"]["built_with_model_package"]
-        == parent_manifest["build"]["built_with_model_package"]
-    )
-    assert manifest["build"]["recertified_from"] == parent_dir.name
+    for field in ("built_at", "built_with_model_package", "built_with_core_package"):
+        assert manifest[field] == parent_manifest["build"][field]
+    assert manifest["recertified_from"] == parent_dir.name
+    assert manifest["default_datasets"] == {"national": CHILD_DATASET_KEY}
     for key, entry in parent_manifest["artifacts"].items():
-        assert manifest["artifacts"][key] == {**entry, "revision": CHILD_ID}
+        carried = {name: value for name, value in entry.items() if name != "revision"}
+        if key == "populace_us_2024":
+            key, carried["path"] = CHILD_DATASET_KEY, CHILD_DATASET_FILE
+        assert {
+            name: value
+            for name, value in manifest["artifacts"][key].items()
+            if name != "role"
+        } == carried
+    assert "populace_us_2024" not in manifest["artifacts"]
+    # The build-folder publisher uploads the build manifest itself.
+    assert "build_manifest" not in manifest["artifacts"]
+    assert all("revision" not in entry for entry in manifest["artifacts"].values())
+    assert manifest["artifacts"][CHILD_DATASET_KEY]["role"] == "dataset"
 
 
 def test_pending_candidate_cannot_pass_the_publication_contract(candidate):
@@ -91,8 +135,18 @@ def test_the_publication_contract_refuses_a_parent_h5(candidate):
         validate_release_dir(
             release_dir,
             artifact_root=artifact_root,
-            parent_h5=artifact_root / "populace_us_2024.h5",
+            parent_h5=artifact_root / CHILD_DATASET_FILE,
         )
+
+
+def test_a_candidate_whose_directory_names_its_build_is_refused(candidate, tmp_path):
+    """The directory is named after the release; the build is named inside."""
+
+    release_dir, artifact_root = candidate
+    renamed = tmp_path / "renamed" / CHILD_ID
+    shutil.copytree(release_dir, renamed)
+    with pytest.raises(ReleaseContractError, match="build of the national release"):
+        recert.validate_recertification_candidate(renamed, artifact_root=artifact_root)
 
 
 def _carried_files(candidate):
@@ -102,7 +156,10 @@ def _carried_files(candidate):
         *(release_dir / name for name in report["parent"]["release_files"]),
         release_dir / recert.PARENT_RELEASE_MANIFEST_FILE,
         release_dir / recert.PARENT_BUILD_MANIFEST_FILE,
-        *(artifact_root / path for path in report["parent"]["root_artifacts"]),
+        *(
+            artifact_root / _child_path(path)
+            for path in report["parent"]["root_artifacts"]
+        ),
     ]
 
 
@@ -116,7 +173,7 @@ def test_changing_any_byte_of_any_carried_file_refuses(
     candidate, tmp_path_factory, data
 ):
     root = tmp_path_factory.mktemp("byte")
-    release_dir = root / "releases" / CHILD_ID
+    release_dir = root / "releases" / US_NATIONAL_RELEASE_ID
     artifact_root = root / "artifacts"
     shutil.copytree(candidate[0], release_dir)
     shutil.copytree(candidate[1], artifact_root)
@@ -161,7 +218,7 @@ def test_changing_any_byte_of_any_carried_file_refuses(
         (
             lambda release_dir: _rewrite_json(
                 release_dir / "release_manifest.json",
-                lambda manifest: manifest["build"].update(
+                lambda manifest: manifest.update(
                     built_with_model_package={
                         "name": "policyengine-us",
                         "version": "2.60.4",
@@ -169,6 +226,30 @@ def test_changing_any_byte_of_any_carried_file_refuses(
                 ),
             ),
             "must stay the parent's",
+        ),
+        (
+            lambda release_dir: _rewrite_json(
+                release_dir / "release_manifest.json",
+                lambda manifest: manifest["artifacts"].update(
+                    build_manifest={
+                        "kind": "evidence",
+                        "path": "build_manifest.json",
+                        "repo_id": "policyengine/populace-us",
+                        "sha256": recert.sha256_file(
+                            release_dir / "build_manifest.json"
+                        ),
+                        "role": "build_manifest",
+                    }
+                ),
+            ),
+            "release manifest artifacts must be the parent's",
+        ),
+        (
+            lambda release_dir: _rewrite_json(
+                release_dir / recert.REPORT_FILE,
+                lambda report: report["dataset"].update(filename="populace_us_2024.h5"),
+            ),
+            "dataset must be the parent's microdata",
         ),
         (
             lambda release_dir: _rewrite_json(
@@ -214,12 +295,24 @@ def test_parent_reconstruction_never_writes_outside_staging(
 def test_the_h5_may_not_live_in_the_release_directory(candidate):
     release_dir, artifact_root = candidate
     shutil.copyfile(
-        artifact_root / "populace_us_2024.h5", release_dir / "populace_us_2024.h5"
+        artifact_root / CHILD_DATASET_FILE, release_dir / CHILD_DATASET_FILE
     )
     with pytest.raises(ReleaseContractError, match="only in artifact_root"):
         recert.validate_recertification_candidate(
             release_dir, artifact_root=artifact_root
         )
+
+
+def test_a_recertification_is_a_build_of_the_national_release_only(candidate):
+    """A recertification republishes a calibrated national build's data, so a
+    directory named after another US release, here the receipt-donor
+    release, whose role is also national, is refused (review of #1571)."""
+    release_dir, artifact_root = candidate
+    moved = release_dir.with_name("microcosm-us-2024-receipt-donor")
+    release_dir.rename(moved)
+
+    with pytest.raises(ReleaseContractError, match="build of the national release"):
+        recert.validate_recertification_candidate(moved, artifact_root=artifact_root)
 
 
 # ---------------------------------------------------------------------------
@@ -231,14 +324,133 @@ def test_build_refuses_reusing_the_parent_id(parent, tmp_path, monkeypatch):
     tool = load_tool()
     monkeypatch.setattr(tool, "_producer_identity", lambda: dict(FIXTURE_PRODUCER))
     release_dir, artifact_root = parent
-    with pytest.raises(ValueError, match="new bare US release id"):
+    with pytest.raises(ValueError, match="new bare US build ID"):
         tool.build_candidate(
             parent_release_dir=release_dir,
             parent_artifact_root=artifact_root,
             output_dir=tmp_path / "out",
-            release_id=release_dir.name,
+            build_id=release_dir.name,
         )
     assert not (tmp_path / "out").exists()
+
+
+def test_a_parent_that_keeps_only_its_tag_is_named_by_its_id_and_tag(parent):
+    parent_dir, parent_root = parent
+    described = recert.describe_parent(parent_dir, parent_root)
+    assert (described["build_id"], described["revision"]) == (parent_dir.name,) * 2
+    assert "release" not in described and "build" not in described
+    assert referenced_build(described).revision == parent_dir.name
+    assert referenced_build(described).folder == f"releases/{parent_dir.name}"
+
+
+def test_a_build_folder_parent_is_named_by_its_release_and_build(folder_parent):
+    parent_dir, parent_root = folder_parent
+    described = recert.describe_parent(parent_dir, parent_root)
+    assert (described["release"], described["build"]) == (
+        US_NATIONAL_RELEASE_ID,
+        FOLDER_PARENT_BUILD,
+    )
+    for field in ("revision", "build_id", "release_id"):
+        assert field not in described
+    location = referenced_build(described)
+    assert (location.revision, location.folder) == (
+        "main",
+        f"releases/{US_NATIONAL_RELEASE_ID}/{FOLDER_PARENT_BUILD}",
+    )
+    assert described["dataset"]["filename"] == CHILD_DATASET_FILE
+    assert set(described["root_artifacts"]) == {
+        CHILD_DATASET_FILE,
+        f"{CHILD_DATASET_KEY}_calibration.npz",
+    }
+
+
+def test_a_build_folder_parent_whose_artifact_pins_a_revision_is_refused(
+    folder_parent,
+):
+    parent_dir, parent_root = folder_parent
+    _rewrite_json(
+        parent_dir / "release_manifest.json",
+        lambda manifest: manifest["artifacts"]["calibration_diagnostics"].update(
+            revision=FOLDER_PARENT_BUILD
+        ),
+    )
+    with pytest.raises(ValueError, match="build folder"):
+        recert.describe_parent(parent_dir, parent_root)
+
+
+def test_a_child_of_a_build_folder_parent_is_a_build_of_the_national_release(
+    folder_parent, tmp_path, monkeypatch
+):
+    parent_dir, parent_root = folder_parent
+    release_dir, artifact_root = build_child(
+        folder_parent, tmp_path / "folder-candidate", monkeypatch
+    )
+    report = recert.validate_recertification_candidate(
+        release_dir, artifact_root=artifact_root
+    )
+    assert report["parent"] == recert.describe_parent(parent_dir, parent_root)
+    assert report["parent_contract"]["status"] == recert.PARENT_CONTRACT_PASSED
+    assert report["dataset"] == {
+        "artifact": CHILD_DATASET_KEY,
+        "filename": CHILD_DATASET_FILE,
+        "sha256": report["parent"]["dataset"]["sha256"],
+    }
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build = json.loads((release_dir / "build_manifest.json").read_text())
+    assert manifest["build"] == build["build"] == CHILD_ID
+    assert manifest["recertified_from"] == build["recertified_from"]
+    assert manifest["recertified_from"] == FOLDER_PARENT_BUILD
+    assert build["calibration"]["parent_build_id"] == FOLDER_PARENT_BUILD
+    assert (artifact_root / CHILD_DATASET_FILE).read_bytes() == (
+        parent_root / CHILD_DATASET_FILE
+    ).read_bytes()
+
+
+def test_describe_parent_accepts_a_parent_that_declares_its_own_build_manifest(
+    parent, tmp_path, monkeypatch
+):
+    """An existing build may list its build manifest; the child does not."""
+
+    parent_dir, parent_root = parent
+    _rewrite_json(
+        parent_dir / "release_manifest.json",
+        lambda manifest: manifest["artifacts"].update(
+            build_manifest={
+                "kind": "evidence",
+                "path": "build_manifest.json",
+                "repo_id": "policyengine/populace-us",
+                "revision": parent_dir.name,
+                "sha256": recert.sha256_file(parent_dir / "build_manifest.json"),
+            }
+        ),
+    )
+    validate_release_dir(parent_dir, artifact_root=parent_root)
+    described = recert.describe_parent(parent_dir, parent_root)
+    assert "build_manifest.json" not in described["release_files"]
+    release_dir, artifact_root = build_child(
+        parent, tmp_path / "declared-build-manifest", monkeypatch
+    )
+    recert.validate_recertification_candidate(release_dir, artifact_root=artifact_root)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert "build_manifest" not in manifest["artifacts"]
+
+
+def test_describe_parent_refuses_a_declared_build_manifest_of_other_bytes(parent):
+    parent_dir, parent_root = parent
+    _rewrite_json(
+        parent_dir / "release_manifest.json",
+        lambda manifest: manifest["artifacts"].update(
+            build_manifest={
+                "kind": "evidence",
+                "path": "build_manifest.json",
+                "repo_id": "policyengine/populace-us",
+                "revision": parent_dir.name,
+                "sha256": "0" * 64,
+            }
+        ),
+    )
+    with pytest.raises(ValueError, match="differs from its pin"):
+        recert.describe_parent(parent_dir, parent_root)
 
 
 @pytest.mark.parametrize(
@@ -326,7 +538,7 @@ def test_parent_failing_its_own_contract_cannot_be_recertified(
             parent_release_dir=release_dir,
             parent_artifact_root=artifact_root,
             output_dir=tmp_path / "out",
-            release_id=CHILD_ID,
+            build_id=CHILD_ID,
         )
 
 
@@ -383,7 +595,7 @@ def test_the_substitution_does_not_excuse_an_unrelated_gate_disagreement(
             parent_release_dir=release_dir,
             parent_artifact_root=artifact_root,
             output_dir=tmp_path / "out",
-            release_id=CHILD_ID,
+            build_id=CHILD_ID,
         )
 
 
@@ -409,7 +621,7 @@ def test_the_substitution_compares_gate_blocks_as_written(
             parent_release_dir=release_dir,
             parent_artifact_root=artifact_root,
             output_dir=tmp_path / "out",
-            release_id=CHILD_ID,
+            build_id=CHILD_ID,
         )
 
 
@@ -426,9 +638,9 @@ def test_a_parent_without_stored_input_evidence_is_replaced_not_waived(
         parent_release_dir=release_dir,
         parent_artifact_root=artifact_root,
         output_dir=tmp_path / "candidate",
-        release_id=CHILD_ID,
+        build_id=CHILD_ID,
     )
-    child = tmp_path / "candidate" / "releases" / CHILD_ID
+    child = tmp_path / "candidate" / "releases" / US_NATIONAL_RELEASE_ID
     report = json.loads((child / recert.REPORT_FILE).read_text())
     contract = report["parent_contract"]
     assert contract["status"] == recert.PARENT_CONTRACT_STORED_INPUT_EVIDENCE_REPLACED
@@ -445,7 +657,7 @@ def test_a_parent_without_stored_input_evidence_is_replaced_not_waived(
     with pytest.raises(ValueError, match="passing stored-input verdict"):
         recert.certify_recertification(
             candidate[0],
-            tmp_path / "certified" / CHILD_ID,
+            tmp_path / "certified" / US_NATIONAL_RELEASE_ID,
             artifact_root=candidate[1],
             compatibility_wheels=(),
             baseline_scores=scores["baseline"],
@@ -626,6 +838,28 @@ def test_certified_child_passes_the_publication_contract(
         read[0]["reason"]
         == recert.RECERTIFICATION_COLUMN_CHANGES["tax_unit_role_input"].reason
     )
+    manifest = json.loads((output / "release_manifest.json").read_text())
+    assert output.name == US_NATIONAL_RELEASE_ID and manifest["build"] == CHILD_ID
+    for key, path in recert.CERTIFIED_ARTIFACT_KEYS.items():
+        assert manifest["artifacts"][key] == {
+            "kind": "diagnostics",
+            "path": path,
+            "repo_id": "policyengine/populace-us",
+            "sha256": recert.sha256_file(output / path),
+            "role": key,
+        }
+    assert "build_manifest" not in manifest["artifacts"]
+
+
+def test_a_child_of_a_build_folder_parent_certifies(
+    folder_parent, tmp_path, monkeypatch
+):
+    child = build_child(folder_parent, tmp_path / "folder-candidate", monkeypatch)
+    output, artifact_root = certify(child, tmp_path / "folder", monkeypatch)
+    validate_release_dir(output, artifact_root=artifact_root)
+    report = json.loads((output / recert.REPORT_FILE).read_text())
+    assert report["compatibility"]["status"] == "passed"
+    assert report["parent"]["build"] == FOLDER_PARENT_BUILD
 
 
 @pytest.mark.parametrize(
@@ -803,18 +1037,22 @@ def test_signed_component_scores_soi_rows_as_the_release_tool_does():
 
 
 def _publish(hub, output, artifact_root, monkeypatch):
+    """Check the child as the build-folder publisher does, then its parent on
+    the Hub, which must serve what the child carries before anything is
+    handed over."""
+
     monkeypatch.setattr(recert, "run_recertification_loader_replay", fake_replay())
     monkeypatch.setattr(recert, "_check_producer", lambda code, failures, label: None)
-    return release_module.publish_release(
-        output,
-        "policyengine/populace-us",
-        api=hub,
-        artifact_root=artifact_root,
-        compatibility_wheels=(),
-        update_latest=False,
-        tag_only=True,
-        notify=False,
+    prepared = release_module.prepare_build_folder_release(
+        output, artifact_root=artifact_root, repository="policyengine/populace-us"
     )
+    recert.require_parent_publication(
+        hub,
+        prepared.release_dir,
+        repo_id=prepared.repository,
+        artifact_root=artifact_root,
+    )
+    return prepared
 
 
 def test_publication_refuses_a_parent_the_hub_does_not_serve(
@@ -908,52 +1146,79 @@ def test_publication_refuses_a_root_artifact_the_parent_tag_holds_other_bytes_of
     assert paths_hub.events == []
 
 
-def test_publication_of_a_published_parents_child_is_tag_only(
+def test_publication_of_a_published_parents_child_publishes_its_build_folder(
     paths_hub, parent, candidate, tmp_path, monkeypatch
 ):
     parent_dir, parent_root = parent
     output, artifact_root = certify(candidate, tmp_path, monkeypatch)
     seed_published_parent(paths_hub, parent_dir, parent_root)
-    _publish(paths_hub, output, artifact_root, monkeypatch)
-    uploads = dict(paths_hub.uploads)
+    prepared = _publish(paths_hub, output, artifact_root, monkeypatch)
+    assert (prepared.release, prepared.build) == (US_NATIONAL_RELEASE_ID, CHILD_ID)
+    files = {item.name: item for item in prepared.files}
+    assert len(files) == len(prepared.files)
+    dataset = files[CHILD_DATASET_FILE]
+    assert dataset.role == "dataset"
     assert (
-        uploads["populace_us_2024.h5"]
-        == (artifact_root / "populace_us_2024.h5").read_bytes()
+        dataset.path.read_bytes() == (parent_root / "populace_us_2024.h5").read_bytes()
     )
-    assert f"releases/{CHILD_ID}/{recert.DRIFT_FILE}" in uploads
-    assert "latest.json" not in uploads
-    assert [tag["tag"] for tag in paths_hub.tags] == [CHILD_ID]
+    assert "populace_us_2024.h5" not in files
+    assert files[recert.DRIFT_FILE].path == output / recert.DRIFT_FILE
+    assert files["build_manifest.json"].role == "build_manifest"
+    # Checking the parent reads the Hub and writes nothing.
+    assert paths_hub.events == [] and paths_hub.tags == []
 
 
-def test_prepare_release_takes_wheels_but_not_a_parent_h5(
+def test_publication_reads_a_build_folder_parent_at_main(
+    paths_hub, folder_parent, tmp_path, monkeypatch
+):
+    parent_dir, parent_root = folder_parent
+    child = build_child(folder_parent, tmp_path / "folder-candidate", monkeypatch)
+    output, artifact_root = certify(child, tmp_path / "folder", monkeypatch)
+    # A child is never published before its parent.
+    with pytest.raises(ValueError, match="is not published"):
+        _publish(paths_hub, output, artifact_root, monkeypatch)
+    seed_published_parent(paths_hub, parent_dir, parent_root)
+    prepared = _publish(paths_hub, output, artifact_root, monkeypatch)
+    assert prepared.build == CHILD_ID
+    folder = f"releases/{US_NATIONAL_RELEASE_ID}/{FOLDER_PARENT_BUILD}"
+    paths_hub.seed_main_file(f"{folder}/{CHILD_DATASET_FILE}", b"other bytes")
+    with pytest.raises(ValueError, match="is not the artifact the child carries"):
+        _publish(paths_hub, output, artifact_root, monkeypatch)
+    paths_hub.seed_main_file(f"{folder}/release_manifest.json", b"{}")
+    with pytest.raises(ValueError, match="differs from the carried"):
+        _publish(paths_hub, output, artifact_root, monkeypatch)
+    assert paths_hub.events == []
+
+
+def test_the_publication_contract_takes_wheels_but_not_a_parent_h5(
     candidate, tmp_path, monkeypatch
 ):
     output, artifact_root = certify(candidate, tmp_path, monkeypatch)
     monkeypatch.setattr(recert, "run_recertification_loader_replay", fake_replay())
     monkeypatch.setattr(recert, "_check_producer", lambda code, failures, label: None)
-    with pytest.raises(ValueError, match="compatibility_wheels alone"):
-        release_module.prepare_release(
-            output,
-            artifact_root=artifact_root,
-            parent_h5=artifact_root / "populace_us_2024.h5",
-            update_latest=False,
-            tag_only=True,
-        )
     wheel = tmp_path / "policyengine_us-2.60.4-py3-none-any.whl"
     wheel.write_bytes(b"")
-    prepared = release_module.prepare_release(
-        output,
-        artifact_root=artifact_root,
-        compatibility_wheels=(wheel,),
-        update_latest=False,
-        tag_only=True,
+    with pytest.raises(ReleaseContractError, match="takes no parent_h5"):
+        validate_release_dir(
+            output,
+            artifact_root=artifact_root,
+            parent_h5=artifact_root / CHILD_DATASET_FILE,
+            compatibility_wheels=(wheel,),
+        )
+    assert (
+        validate_release_dir(
+            output, artifact_root=artifact_root, compatibility_wheels=(wheel,)
+        )
+        == []
     )
-    assert "populace_us_2024.h5" in prepared.root_artifacts
 
 
 def test_a_recertification_never_moves_latest(
     paths_hub, parent, candidate, tmp_path, monkeypatch
 ):
+    """The tagged publisher, which writes latest.json, refuses the child: it
+    is a build of a release that publishes into build folders."""
+
     parent_dir, parent_root = parent
     output, artifact_root = certify(candidate, tmp_path, monkeypatch)
     seed_published_parent(paths_hub, parent_dir, parent_root)
@@ -961,12 +1226,12 @@ def test_a_recertification_never_moves_latest(
     monkeypatch.setattr(recert, "_check_producer", lambda code, failures, label: None)
     wheel = tmp_path / "policyengine_us-2.60.4-py3-none-any.whl"
     wheel.write_bytes(b"")
-    with pytest.raises(ValueError, match="never the national default pointer"):
+    with pytest.raises(ValueError, match="publishes each build into its own folder"):
         release_module.prepare_release(
             output, artifact_root=artifact_root, compatibility_wheels=(wheel,)
         )
     events = list(paths_hub.events)
-    with pytest.raises(ValueError, match="never the national default pointer"):
+    with pytest.raises(ValueError, match="publishes each build into its own folder"):
         release_module.publish_release(
             output,
             "policyengine/populace-us",
@@ -979,35 +1244,30 @@ def test_a_recertification_never_moves_latest(
     assert "latest.json" not in dict(paths_hub.uploads)
 
 
-def test_preflight_prints_the_recertification_measurement(
+def test_validation_prints_the_recertification_measurement(
     candidate, tmp_path, monkeypatch, capsys
 ):
-    from microcosm.data.publish_cli import main as publish_main
-
     output, artifact_root = certify(candidate, tmp_path, monkeypatch)
     monkeypatch.setattr(recert, "run_recertification_loader_replay", fake_replay())
     monkeypatch.setattr(recert, "_check_producer", lambda code, failures, label: None)
     wheel = tmp_path / "policyengine_us-2.60.4-py3-none-any.whl"
     wheel.write_bytes(b"")
-    status = publish_main(
+    status = recert.main(
         [
+            "--release-dir",
             str(output),
-            "--repo-id",
-            "policyengine/populace-us",
             "--artifact-root",
             str(artifact_root),
+            "--require-compatibility",
             "--compatibility-wheel",
             str(wheel),
-            "--no-latest",
-            "--tag-only",
-            "--preflight-only",
         ]
     )
     captured = capsys.readouterr()
     assert status == 0, captured.err
     verdict = json.loads(captured.out.strip().splitlines()[-1])
+    assert verdict["valid"] is True and verdict["compatibility"] == "passed"
     assert verdict["claim_measurement"]["model"]["measured_versions"] == ["2.60.4"]
-    assert "measured against only the versions recorded here" in captured.err
 
 
 # ---------------------------------------------------------------------------
@@ -1369,9 +1629,72 @@ def test_the_scorer_refuses_a_nonpositive_batch_size_before_any_work(
             )
 
 
-@pytest.mark.parametrize("release_id", ["/tmp/outside", "../outside", "not-us"])
-def test_fetch_parent_refuses_an_id_before_creating_anything(tmp_path, release_id):
+@pytest.mark.parametrize("build_id", ["/tmp/outside", "../outside", "not-us"])
+def test_fetch_parent_refuses_an_id_before_creating_anything(tmp_path, build_id):
     tool = load_tool()
-    with pytest.raises(ValueError, match="is not a US release id"):
-        tool.fetch_parent(release_id=release_id, output_dir=tmp_path / "parent")
+    with pytest.raises(ValueError, match="is not a US build ID"):
+        tool.fetch_parent(build_id=build_id, output_dir=tmp_path / "parent")
     assert not (tmp_path / "parent").exists()
+
+
+@pytest.mark.parametrize("release", ["../outside", "populace-us-2024-national"])
+def test_fetch_parent_refuses_a_release_before_creating_anything(tmp_path, release):
+    tool = load_tool()
+    with pytest.raises(ValueError, match="build folders"):
+        tool.fetch_parent(
+            build_id=FOLDER_PARENT_BUILD,
+            release=release,
+            output_dir=tmp_path / "parent",
+        )
+    assert not (tmp_path / "parent").exists()
+
+
+def test_fetch_parent_reads_a_tagged_parent_at_its_tag(paths_hub, parent, tmp_path):
+    parent_dir, parent_root = parent
+    seed_published_parent(paths_hub, parent_dir, parent_root)
+    tool = load_tool()
+    output = tmp_path / "fetched"
+    described = tool.fetch_parent(
+        build_id=parent_dir.name, output_dir=output, api=paths_hub
+    )
+    assert described == recert.describe_parent(parent_dir, parent_root)
+    fetched = output / "releases" / parent_dir.name
+    assert sorted(path.name for path in fetched.iterdir()) == sorted(
+        [
+            "release_manifest.json",
+            "build_manifest.json",
+            *described["release_files"],
+        ]
+    )
+    assert sorted(path.name for path in (output / "artifacts").iterdir()) == sorted(
+        described["root_artifacts"]
+    )
+
+
+def test_fetch_parent_reads_a_build_folder_parent_at_main(
+    paths_hub, folder_parent, tmp_path
+):
+    parent_dir, parent_root = folder_parent
+    seed_published_parent(paths_hub, parent_dir, parent_root)
+    tool = load_tool()
+    output = tmp_path / "fetched"
+    described = tool.fetch_parent(
+        build_id=FOLDER_PARENT_BUILD,
+        release=US_NATIONAL_RELEASE_ID,
+        output_dir=output,
+        api=paths_hub,
+    )
+    assert described == recert.describe_parent(parent_dir, parent_root)
+    # The parent's directory is named after its release, as its contract needs.
+    fetched = output / "releases" / US_NATIONAL_RELEASE_ID
+    assert sorted(path.name for path in fetched.iterdir()) == sorted(
+        [
+            "release_manifest.json",
+            "build_manifest.json",
+            *described["release_files"],
+        ]
+    )
+    assert sorted(path.name for path in (output / "artifacts").iterdir()) == sorted(
+        described["root_artifacts"]
+    )
+    validate_release_dir(fetched, artifact_root=output / "artifacts")

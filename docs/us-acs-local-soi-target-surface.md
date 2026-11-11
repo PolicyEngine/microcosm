@@ -553,9 +553,11 @@ record one of the four modes, before any release directory exists.
 - `materialize_rss.json`: the full SOI surface receipt (`soi_surface`: counts,
   every drop reason, rebase factors, crosswalk digest, sigma), the holdout
   receipt with every held unit, and the carrier check.
-- `gate_summary.json`: `cd_holdout` and `weight_origin` (report-only), and
-  the calibrated surface's trained and held-out counts.
-- The release refresh recipe, which names `--cd-holdout-fraction`.
+- `gate_summary.json`: `cd_holdout` and `weight_origin` (report-only),
+  `district_ess_collapse` (report-only unless `--district-ess-gate-blocking`),
+  and the calibrated surface's trained and held-out counts.
+- The release refresh recipe, which names `--cd-holdout-fraction`, and the
+  district ESS gate's flags when they differ from the defaults.
 
 ## Operating notes
 

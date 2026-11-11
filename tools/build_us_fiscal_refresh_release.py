@@ -3,8 +3,17 @@
 This is a narrow release builder for the Issue #40 fiscal target surface. It
 starts from an existing Microcosm US H5, materializes the current structured
 fiscal target rows, recalibrates only the household weights, writes a fresh
-PolicyEngine-US H5, and emits the release contract files required by
-``microcosm-publish-release``.
+PolicyEngine-US H5, and emits the release contract files.
+
+Each run is one build of a release in ``policyengine/populace-us``
+(microcosm#1570): a certified or exact-k build of the national release,
+``microcosm-us-2024-national``, or an evidence-tier build of the evidence
+release, ``microcosm-us-2024-evidence``. The release directory is
+``<out>/releases/<release>/``; both manifests name the release and the build
+(the ``populace-us-2024-…`` build ID) in the build-folder layout; the run
+checks the directory against its tier's release contract and prints the
+``microcosm-publish-release-build`` commands that publish the build into its
+own folder of the release and then make it the release's current build.
 """
 
 from __future__ import annotations
@@ -53,6 +62,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from microcosm_emitter_interface.telemetry import OuterProgress
 
 from microcosm.build.calibration_epoch_telemetry import (
     CALIBRATION_EPOCH_EVERY,
@@ -262,6 +272,18 @@ from microcosm.build.us_runtime.fiscal_targets import (
     AGE_BOUND_STAMP_SOURCE_KEY,
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
 )
+from microcosm.build.us_runtime.fsa_student_loan_targets import (
+    FSA_BALANCE_LOWER_BOUND_KEY,
+    FSA_BALANCE_UPPER_BOUND_KEY,
+    FSA_BOUND_TABLES,
+    FSA_MATERIALIZER,
+    FSA_SOURCE_NAME,
+    FSA_TARGET_FAMILY,
+    FsaTargetPlan,
+    fsa_student_loan_household_values,
+    fsa_student_loan_target_receipt,
+    plan_fsa_student_loan_targets,
+)
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
     assert_h5_unchanged,
@@ -290,6 +312,11 @@ from microcosm.build.us_runtime.parity_reference import (
     ParityKnownGap,
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
+)
+from microcosm.build.us_runtime.population_structure_holdout import (
+    population_structure_holdout_from_h5,
+    population_structure_holdout_unavailable,
+    write_population_structure_holdout,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
@@ -380,10 +407,17 @@ from microcosm.calibrate.diagnostics import (
     target_surface_payload,
     write_calibration_diagnostics,
 )
+from microcosm.data.build_folder_manifests import (
+    publication_commands,
+    rewrite_release_dir,
+)
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+    US_EVIDENCE_RELEASE_ID,
     US_FISCAL_STORED_INPUTS_STAGE,
+    US_NATIONAL_RELEASE_ID,
+    US_RELEASES,
     US_STORED_INPUTS_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
     stored_input_evidence_manifest_block,
@@ -473,8 +507,13 @@ _DRY_RUN_MARGIN_FIELDS = (
     "l0_tail_share_rise",
     "l0_tail_share_fall",
 )
-DATASET_FILENAME = "populace_us_2024.h5"
-CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
+#: The release-manifest keys and file names of the dataset and calibration
+#: weights a run writes: the names new builds of the national and evidence
+#: releases declare (microcosm#1570).
+DATASET_KEY = "microcosm_us_2024"
+DATASET_FILENAME = "microcosm_us_2024.h5"
+CALIBRATION_KEY = "microcosm_us_2024_calibration"
+CALIBRATION_FILENAME = "microcosm_us_2024_calibration.npz"
 FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
 FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME = "final_household_weights.json"
 FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
@@ -798,6 +837,7 @@ RESTATED_LEDGER_FILTER_CONCEPTS = {
     "us:statutes/26/62#adjusted_gross_income": "agi_band",
     "us.tax.earned_income_credit_qualifying_children": "eitc_child_count",
     "age": "age_band",
+    "federal_student_loan_balance": "student_loan_balance_band",
 }
 
 #: Bound-side suffixes a restated constraint key may carry. A key with no
@@ -880,7 +920,20 @@ RESTATED_AGE_BAND_COMPILED_KEYS = {
 #: household-variable measures) never reads an age bound, so a restated age
 #: bound there would be silently ignored however well it agreed with metadata
 #: the materializer also ignores; it is refused instead.
-RESTATED_AGE_BAND_MATERIALIZERS = frozenset({"population_age", "policyengine_variable"})
+RESTATED_AGE_BAND_MATERIALIZERS = frozenset(
+    {"population_age", "policyengine_variable", FSA_MATERIALIZER}
+)
+
+#: Compiled edges of a Federal Student Aid debt-size band, by bound side, and
+#: the one materializer that slices on them
+#: (:func:`microcosm.build.us_runtime.fsa_student_loan_targets.fsa_student_loan_household_values`,
+#: ``lower <= balance < upper`` on the person's own plus Parent PLUS balance,
+#: microcosm#1074). A restated ``federal_student_loan_balance`` bound on any
+#: other materializer would be ignored, so it refuses.
+RESTATED_STUDENT_LOAN_BALANCE_BAND_COMPILED_KEYS = {
+    "lower": FSA_BALANCE_LOWER_BOUND_KEY,
+    "upper": FSA_BALANCE_UPPER_BOUND_KEY,
+}
 
 #: The exact-value age key the dimension stamp writes when ``age`` is itself
 #: a dimension of the fact.
@@ -903,6 +956,7 @@ FISCAL_TARGET_SOURCE_KEYS = {
     "cms_aca": "CMS ACA marketplace enrollment public use files",
     "cms_medicaid": "CMS Medicaid enrollment and expenditure sources",
     "cms_medicare": "CMS Medicare Trustees Report Part B premium income",
+    "ed_fsa": "Federal Student Aid federal student loan portfolio",
     "hhs_acf_tanf": "HHS ACF TANF administrative data",
     "irs_soi": "IRS Statistics of Income public tables",
     "jct": "Joint Committee on Taxation tax expenditure estimates",
@@ -1022,6 +1076,14 @@ US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
     "reported_has_subsidized_marketplace_health_coverage_at_interview"
 )
 US_ACA_REPORTED_MARKETPLACE_COVERAGE = "has_marketplace_health_coverage_at_interview"
+#: The SCF education-debt fit table (microcosm#1073), in the artifacts
+#: directory of a ``--scf-education-debt`` build: at the staged frame's
+#: pre-calibration weights, and at the release's calibrated weights before any
+#: post-export scoring (microcosm#1074).
+US_SCF_EDUCATION_DEBT_FIT_FILENAME = "us_scf_education_debt_fit.json"
+US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME = (
+    "us_scf_education_debt_calibrated_fit.json"
+)
 US_ACA_APTC_TARGET_TABLE = "cms_aca_aptc_recipients_by_state"
 US_ACA_TARGET_ROLE_TABLES = {
     "aca_ptc_recipients": US_ACA_APTC_TARGET_TABLE,
@@ -1230,8 +1292,28 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "protection lifts when the concept gains a real Ledger fact."
         ),
     )
-    parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--release-id")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help=(
+            "Output root: the H5 and calibration weights go in <out>/artifacts "
+            "and the release directory in <out>/releases/<release>, named "
+            "after the release the build belongs to (microcosm#1570). A "
+            "finished build's directory is never reused, so each build needs "
+            "its own --out."
+        ),
+    )
+    parser.add_argument(
+        "--release-id",
+        help=(
+            "The build ID (populace-us-2024-...), the name of the build's own "
+            "folder in its release: microcosm-us-2024-national, or "
+            "microcosm-us-2024-evidence with --evidence-release. Defaults to "
+            "an ID made from the base dataset's digest, the commit and the "
+            "time."
+        ),
+    )
     parser.add_argument(
         "--incumbent-diagnostics",
         type=Path,
@@ -1385,16 +1467,19 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "failure, continue to write the H5 and full manifests with the "
             "recorded failures carried verbatim in the release manifest's "
             "known_failures block (each with an owner issue), instead of "
-            "refusing to export. NOT a gate bypass: the release id carries an "
-            "'-evidence-' segment, the release manifest declares the evidence "
+            "refusing to export. It does not bypass the release checks: the build "
+            "ID carries an "
+            "'-evidence-' segment, the build belongs to the evidence release "
+            "microcosm-us-2024-evidence (never the US default), the release "
+            "manifest declares the evidence "
             "schema marker the certified contract structurally rejects, and a "
             "run whose terminal gates all pass is refused under this flag "
             "(rerun without it). Preflight and mid-build source-stage gates, "
             "artifact-integrity assertions (e.g. --audit-export-targets), and "
             "the dirty-worktree refusal still abort: the evidence tier "
             "relaxes terminal gate verdicts, never artifact auditability. "
-            "Incompatible with --exact-k (the ladder candidate lane has its "
-            "own tag-only publication contract)."
+            "Incompatible with --exact-k (an exact-k build is a build of the "
+            "national release under the certified contract)."
         ),
     )
     parser.add_argument(
@@ -1479,7 +1564,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Diagnostic only: publish the dense no-L0 calibrated frame as the "
             "default national dataset. Release builds should leave this unset "
-            "so populace_us_2024.h5 is the sparse L0+refit dataset that runs "
+            "so microcosm_us_2024.h5 is the sparse L0+refit dataset that runs "
             "on standard machines."
         ),
     )
@@ -1487,8 +1572,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--warm-start-calibration-npz",
         type=Path,
         help=(
-            "Optional populace_us_2024_calibration.npz artifact from an earlier "
-            "run on the same base frame. The builder validates that the stored "
+            "Optional calibration weights artifact from an earlier run on the "
+            "same base frame (microcosm_us_2024_calibration.npz, or "
+            "populace_us_2024_calibration.npz from a build before "
+            "microcosm#1570). The builder validates that the stored "
             "initial_household_weight vector matches the current calibration "
             "frame before using household_weight as the optimizer start."
         ),
@@ -1995,9 +2082,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             parser.error(f"{flag} must be exactly 64 lowercase hexadecimal characters.")
     if args.evidence_release and args.exact_k is not None:
         parser.error(
-            "--evidence-release is incompatible with --exact-k: ladder "
-            "candidates publish tag-only under their own contract; the "
-            "evidence tier (microcosm#506) covers the national artifact."
+            "--evidence-release is incompatible with --exact-k: an exact-k "
+            "build is a build of the national release under the certified "
+            "contract; the evidence tier (microcosm#506) covers the national "
+            "artifact."
         )
     ladder_values = (
         args.exact_k,
@@ -2105,6 +2193,87 @@ def _finite_or_none(value: float) -> float | None:
 
     value = float(value)
     return value if math.isfinite(value) else None
+
+
+def _scf_wealth_gate_record(
+    gate: GateResult, household_ids: Iterable[object]
+) -> dict[str, object]:
+    """The SCF-wealth gate's verdict and summary, as release evidence.
+
+    The summary carries the SIPP/SCF blend audit (``financial_asset_blend``:
+    seed, period, per-source household counts, bank-asset medians and
+    low-tail shares). The stage keeps that audit in ``DataFrame.attrs``,
+    which the H5 writer drops, so without this record no release artifact
+    says whether the SIPP half ran (microcosm#1216).
+
+    Every count and share describes the frame at the blend stage, before
+    calibration and before any subset export. ``financial_asset_source_is_scf``
+    draws one uniform per household in sorted order of the blend-stage
+    household ids, so a household's draw depends on that whole id set. The
+    record pins the set: its count and the SHA-256 of the sorted unique
+    household ids, as little-endian int64 when every id is integral (every
+    release so far) and as float64 otherwise. ``encoding`` names which, and
+    the two encodings share one digest space, so a verifier compares
+    ``encoding`` as well as ``sha256``. Every household has one head, so this
+    is the set the draw sorts: when a published H5's household ids give the
+    same encoding and digest, the seed and period reproduce each household's
+    source. A subset release (L0, exact-k) exports part of the set and cannot
+    be audited that way from the file alone. Ids that are neither integers
+    nor floats, and unsigned ids beyond int64, are refused.
+
+    Unlike the sibling gate records, this one is scrubbed: its details carry
+    floats that are NaN on a degenerate frame, and both artifacts serialize
+    strict JSON, so NumPy scalars become Python values and non-finite floats
+    become null.
+    """
+
+    def finite(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {str(key): finite(nested) for key, nested in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [finite(nested) for nested in value]
+        if isinstance(value, (bool, np.bool_)):
+            return bool(value)
+        if isinstance(value, (int, np.integer)):
+            return int(value)
+        if isinstance(value, (float, np.floating)):
+            return _finite_or_none(value)
+        return value
+
+    values = pd.to_numeric(pd.Series(list(household_ids)), errors="raise").to_numpy()
+    if values.size == 0:
+        values = values.astype(np.int64)
+    # Neither encoding holds booleans, complex values or unsigned ids beyond
+    # int64 without collisions, so those are refused rather than recorded.
+    if values.dtype.kind not in "iuf":
+        raise TypeError(
+            f"blend-stage household ids must be integers or floats, not {values.dtype}"
+        )
+    ids = np.unique(values)
+    if ids.dtype.kind == "u" and ids.size and int(ids.max()) > np.iinfo(np.int64).max:
+        raise ValueError("a blend-stage household id exceeds the int64 range")
+    # Integral ids (every release so far) hash as int64; anything else keeps
+    # its float64 value, so distinct ids never collapse into one digest.
+    integral = ids.dtype.kind in "iu" or bool(
+        np.isfinite(ids).all()
+        and (ids == np.round(ids)).all()
+        and ((ids >= -(2**63)) & (ids < 2**63)).all()
+    )
+    id_bytes = (ids.astype("<i8") if integral else ids.astype("<f8")).tobytes()
+    return {
+        "passed": bool(gate.passed),
+        "failures": list(gate.failures),
+        "scope": "blend_stage_frame",
+        "blend_household_ids": {
+            "count": int(ids.size),
+            "sha256": hashlib.sha256(id_bytes).hexdigest(),
+            "encoding": (
+                "sorted unique household_id, little-endian "
+                + ("int64" if integral else "float64")
+            ),
+        },
+        "details": finite(dict(gate.details)),
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -2362,23 +2531,55 @@ def _write_reform_income_tax_cache(
 
 
 def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
-    """Fail loud when --out/--release-id points at a certified release.
+    """Fail loud when --out points at a finished build's release directory.
 
     microcosm#568 round 3: a failed retry into a directory that already
     carries a certified release would write failed-attempt weight evidence
     beside the prior run's manifest and H5 — mixing attempts the manifest
-    knows nothing about. Release ids are immutable once certified; reruns
-    pick a new id (every launcher stamps a fresh UTC timestamp) or remove
-    the directory deliberately.
+    knows nothing about. A finished build is never changed. The directory is
+    named after the build's release (microcosm#1570), so every build of a
+    release under one --out would share it: each build needs its own --out,
+    or the directory removed deliberately.
     """
 
     manifest_path = Path(release_dir) / "release_manifest.json"
     if manifest_path.exists():
         raise RuntimeError(
             f"Release directory {release_dir} already carries a certified "
-            "release (release_manifest.json present). Choose a new "
-            "--release-id or deliberately remove the stale directory before "
+            "release (release_manifest.json present). Choose a new --out for "
+            "this build or deliberately remove the stale directory before "
             "rerunning."
+        )
+
+
+#: Files the release manifest declares whenever they exist, written only by
+#: a run that does not skip their check, with the option that skips it.
+_SKIPPABLE_CHECK_FILES = (
+    ("reform_validation.json", "skip_reform_validation", "--skip-reform-validation"),
+    ("demographics.json", "skip_demographics", "--skip-demographics"),
+)
+
+
+def _refuse_skipped_checks_left_files(release_dir: Path, args) -> None:
+    """Refuse a skipped check's file left in the release directory.
+
+    The directory is named after the build's release (microcosm#1570), so a
+    rerun into the same --out finds an earlier attempt's files, and the
+    release manifest declares these whenever they exist. A run that skips
+    the check never rewrites its file, so the earlier attempt's would be
+    published as this build's.
+    """
+
+    left = [
+        f"{name} ({option})"
+        for name, flag, option in _SKIPPABLE_CHECK_FILES
+        if getattr(args, flag, False) and (Path(release_dir) / name).exists()
+    ]
+    if left:
+        raise RuntimeError(
+            f"Release directory {release_dir} holds {', '.join(left)} from an "
+            "earlier attempt, which this run skips and so would not rewrite. "
+            "Remove those files or choose a new --out before rerunning."
         )
 
 
@@ -3135,15 +3336,16 @@ def _git_dirty() -> bool:
 
 
 def _download_base_h5() -> Path:
-    from huggingface_hub import hf_hub_download
+    """The base a run without ``--base-h5`` starts from: the US national
+    release's current build, SHA-verified by the loader (microcosm#1570).
 
-    return Path(
-        hf_hub_download(
-            repo_id=REPO_ID,
-            filename=DATASET_FILENAME,
-            repo_type="dataset",
-        )
-    )
+    It is read from ``releases.json`` once the repository has one and from
+    ``latest.json`` until then. The repository's root file stops changing at
+    the switch, since builds published into folders write no root files.
+    """
+    from microcosm.data import download
+
+    return Path(download("us", 2024))
 
 
 def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
@@ -4696,25 +4898,41 @@ class _RecordingPostExportSimulation:
         return _PostExportValues(np.zeros(0), np.zeros(0))
 
 
+def _record_post_export_requests(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[tuple[PostExportKey, ...], int]:
+    """Learn a consumer's baseline keys and reform pass count from recorders.
+
+    No engine is constructed: ``simulate(None)`` returns a recorder that
+    logs every baseline request, and each ``simulate(reform)`` a recorder of
+    its own. The consumers ask for the same keys whatever values they get
+    back, and the served baseline refuses any key this dry run did not see,
+    so a value-dependent request cannot slip past the plan.
+
+    When the consumer runs for real, each key a reformed simulation is first
+    asked for is one batched pass (``_BatchedPostExportReform``), so the pass
+    count is the distinct keys asked of each reformed simulation, summed.
+    Progress reporting alone uses it: a consumer that runs more passes than
+    counted reports no outer counter on the extra ones.
+    """
+    keys: dict[PostExportKey, None] = {}
+    reform_keys: list[dict[PostExportKey, None]] = []
+
+    def simulate(reform):
+        if reform is None:
+            return _RecordingPostExportSimulation(keys)
+        reform_keys.append({})
+        return _RecordingPostExportSimulation(reform_keys[-1])
+
+    consumer(simulate)
+    return _ascending_period_plan(keys), sum(len(asked) for asked in reform_keys)
+
+
 def _record_post_export_baseline_plan(
     consumer: Callable[[Callable[[Any], Any]], object],
 ) -> tuple[PostExportKey, ...]:
-    """Learn a consumer's baseline keys by running it against recorders.
-
-    No engine is constructed: ``simulate(None)`` returns a recorder that
-    logs every request, ``simulate(reform)`` a recorder that logs nothing
-    (reforms are scored key by key when the consumer runs for real). The
-    consumers ask for the same keys whatever values they get back, and the
-    served baseline refuses any key this dry run did not see, so a
-    value-dependent request cannot slip past the plan.
-    """
-    keys: dict[PostExportKey, None] = {}
-
-    def simulate(reform):
-        return _RecordingPostExportSimulation(keys if reform is None else None)
-
-    consumer(simulate)
-    return _ascending_period_plan(keys)
+    """Learn a consumer's baseline keys (``_record_post_export_requests``)."""
+    return _record_post_export_requests(consumer)[0]
 
 
 class _AscendingPeriodEngine:
@@ -4880,6 +5098,7 @@ class _PostExportScoringPlan:
         n_households: int,
         maximum_batch_size: int | None,
         baseline_plans: Mapping[str, tuple[PostExportKey, ...]],
+        reform_passes: Mapping[str, int] | None = None,
         error: str | None = None,
     ) -> None:
         self.n_households = int(n_households)
@@ -4887,6 +5106,7 @@ class _PostExportScoringPlan:
         self.baseline_plans = {
             consumer: tuple(plan) for consumer, plan in baseline_plans.items()
         }
+        self.reform_passes = dict(reform_passes or {})
         self.error = error
 
     @property
@@ -4905,6 +5125,16 @@ class _PostExportScoringPlan:
                 f"{self.error}"
             )
         return self.baseline_plans[consumer]
+
+    def planned_reform_passes(self, consumer: str) -> int | None:
+        """The reform passes the dry run counted for ``consumer``, if any.
+
+        Progress reporting reads it as each pass's outer counter; the record
+        of the plan leaves it out, so the diagnostics keep their shape.
+        """
+        if self.error is not None:
+            return None
+        return self.reform_passes.get(consumer)
 
     def terminal_failures(self) -> list[str]:
         """The plan's own failure, as a line of the batched terminal raise."""
@@ -4938,13 +5168,15 @@ def _post_export_scoring_plan(
     maximum_microsim_batch_size: int | None,
     consumers: Mapping[str, Callable[[Callable[[Any], Any]], object]],
 ) -> _PostExportScoringPlan:
+    requests = {
+        name: _record_post_export_requests(consumer)
+        for name, consumer in consumers.items()
+    }
     return _PostExportScoringPlan(
         n_households=int(n_households),
         maximum_batch_size=maximum_microsim_batch_size,
-        baseline_plans={
-            name: _record_post_export_baseline_plan(consumer)
-            for name, consumer in consumers.items()
-        },
+        baseline_plans={name: plan for name, (plan, _) in requests.items()},
+        reform_passes={name: passes for name, (_, passes) in requests.items()},
     )
 
 
@@ -5110,10 +5342,22 @@ class _HouseholdBatchedPostExportScorer:
         self.consumer_records: dict[str, dict[str, object]] = {}
 
     def open_consumer(
-        self, name: str, baseline_plan: Sequence[PostExportKey]
+        self,
+        name: str,
+        baseline_plan: Sequence[PostExportKey],
+        planned_reform_passes: int | None = None,
     ) -> _PostExportConsumer:
-        """Score ``baseline_plan`` now; return the consumer's simulate seam."""
-        return _PostExportConsumer(self, name, tuple(baseline_plan))
+        """Score ``baseline_plan`` now; return the consumer's simulate seam.
+
+        With ``planned_reform_passes``, each reform pass reports its number of
+        that count as its progress's outer counter.
+        """
+        return _PostExportConsumer(
+            self,
+            name,
+            tuple(baseline_plan),
+            planned_reform_passes=planned_reform_passes,
+        )
 
     def finish_consumer(self, scoring: _PostExportConsumer) -> dict[str, object]:
         """Record a consumer that has finished scoring and return its record."""
@@ -5218,8 +5462,13 @@ class _HouseholdBatchedPostExportScorer:
         *,
         label: str,
         reform_system=None,
+        outer: OuterProgress | None = None,
     ) -> dict[PostExportKey, _PostExportValues]:
-        """One batch-outer pass: one engine per batch scores every key."""
+        """One batch-outer pass: one engine per batch scores every key.
+
+        ``outer`` is the pass's place among its consumer's passes, sent with
+        each batch's progress.
+        """
         batches = self._batches()
         batched = len(batches) > 1
         watched = _post_export_watched_variables(
@@ -5239,6 +5488,7 @@ class _HouseholdBatchedPostExportScorer:
             stage_id="post_export_scoring",
             unit="scoring_batch",
             total=len(batches),
+            outer=outer,
         )
         for batch, batch_frame in enumerate(batches, start=1):
             with _automatic_gc_suspended():
@@ -5318,6 +5568,8 @@ class _PostExportConsumer:
         scorer: _HouseholdBatchedPostExportScorer,
         name: str,
         baseline_plan: tuple[PostExportKey, ...],
+        *,
+        planned_reform_passes: int | None = None,
     ) -> None:
         ordered = _ascending_period_plan(baseline_plan)
         if ordered != baseline_plan:
@@ -5330,6 +5582,7 @@ class _PostExportConsumer:
         self.baseline_plan = baseline_plan
         self.baseline_passes = 1 if baseline_plan else 0
         self.reform_passes = 0
+        self.planned_reform_passes = planned_reform_passes
         self.reform_systems = 0
         self._baseline = (
             scorer._score(baseline_plan, label=f"{name} baseline plan")
@@ -5374,7 +5627,15 @@ class _PostExportConsumer:
             reform_system, key, label=label
         )
         self.reform_passes += 1
-        scored = self._scorer._score((key,), label=label, reform_system=reform_system)
+        planned = self.planned_reform_passes
+        outer = (
+            OuterProgress(self.reform_passes, planned, "reform_pass")
+            if planned is not None and self.reform_passes <= planned
+            else None
+        )
+        scored = self._scorer._score(
+            (key,), label=label, reform_system=reform_system, outer=outer
+        )
         return scored[key]
 
 
@@ -5922,6 +6183,32 @@ def _restated_age_band_refusal(
     )
 
 
+def _restated_student_loan_balance_band_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side is None:
+        return (
+            f"{key}={value} restates an exact federal student loan balance, but "
+            "the materializer slices a half-open balance band"
+        )
+    materializer = metadata.get("materializer")
+    if materializer != FSA_MATERIALIZER:
+        return (
+            f"{key}={value} restates a federal student loan balance bound on a "
+            f"spec whose materializer ({materializer!r}) applies no balance band"
+        )
+    return _restated_band_edge_refusal(
+        key,
+        value,
+        metadata,
+        compiled_key=RESTATED_STUDENT_LOAN_BALANCE_BAND_COMPILED_KEYS[side],
+    )
+
+
 def _restated_eitc_child_count_refusal(
     key: str,
     value: str,
@@ -6023,6 +6310,10 @@ def _restated_ledger_filter_refusal(
         return _restated_eitc_child_count_refusal(key, value, metadata, side=side)
     if rule == "age_band":
         return _restated_age_band_refusal(key, value, metadata, side=side)
+    if rule == "student_loan_balance_band":
+        return _restated_student_loan_balance_band_refusal(
+            key, value, metadata, side=side
+        )
     raise ValueError(
         f"RESTATED_LEDGER_FILTER_CONCEPTS maps {concept!r} to rule {rule!r}, "
         "which has no comparison implemented."
@@ -6311,6 +6602,17 @@ def _base_simulation_household_columns(
         variable="state_income_tax",
         tax_unit_positions=tax_unit_positions,
     )
+    # Federal Student Aid portfolio targets (microcosm#1074) read the SCF
+    # education-debt stage's stored person balances, not an engine variable:
+    # the pinned engine does not define them yet, and a stored input is what
+    # the engine would read anyway. A frame without the columns materializes
+    # nothing, so the targets report as dropped.
+    for spec in target_specs:
+        if spec.metadata.get("materializer") != FSA_MATERIALIZER:
+            continue
+        fsa_values = fsa_student_loan_household_values(frame, spec.metadata)
+        if fsa_values is not None:
+            columns[spec.measure] = fsa_values
     population_age_target_specs = [
         spec
         for spec in target_specs
@@ -7943,9 +8245,22 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "ABOVE the true SOI level: a correctly calibrated column cannot pass "
         "this parity check. The reference value is an incidental artifact of "
         "the incumbent weight solve (nothing pinned this column before Build "
-        "H). estate_income does not feed AGI in PolicyEngine-US (loss-cap "
-        "input only), so pinning it identifies the export dimension without "
-        "moving revenue (PolicyEngine/microcosm#299 Build H)."
+        "H). Pinning it can move revenue, because estate_income feeds "
+        "federal income tax. In policyengine-us 2.2.1 it "
+        "is not a gross-income source, but loss_ald deducts its negative "
+        "part above the line under the section 461(l) limit, whose ceiling "
+        "its positive part raises, and it counts toward qualified business "
+        "income while estate_income_would_be_qualified is true. From "
+        "policyengine-us 2.23.2 (PolicyEngine/policyengine-us#9633) a "
+        "non-dependent's positive estate_income is also gross income and "
+        "AGI, and a non-dependent's signed estate_income plus the Schedule "
+        "K-1 (Form 1041) box 14 code H adjustment input is net investment "
+        "income for the NIIT (estate_net_investment_income). The exclusion "
+        "rests on the band math above, not on revenue neutrality "
+        "(PolicyEngine/microcosm#299 Build H). That math holds only for the "
+        "$98.434B reference. The build applies this entry for any reference, "
+        "so re-adjudicate it if --export-input-mass-reference-h5 names a file "
+        "with a different level."
     ),
     "non_sch_d_capital_gains": (
         "Identified by SOI Table 1.4 capital gain distributions reported on "
@@ -9102,7 +9417,9 @@ def _source_coverage_aliases(
     release calibrates to them. A surface that dropped every CD-classified
     target (``target_surface_selection`` is recorded only for such surfaces)
     lists them as reviewed exclusions naming the drop, so the coverage artifact
-    agrees with ``build.target_surface_selection`` in the manifests.
+    agrees with ``target_surface_selection`` in the manifests: at the release
+    manifest's top level and in the build manifest's ``calibration`` block
+    (microcosm#1570).
     """
 
     if target_surface_selection is None:
@@ -9113,7 +9430,8 @@ def _source_coverage_aliases(
         f"{target_surface_selection['mode']} dropped all {dropped:,} "
         "congressional-district-classified targets after the target-parity and "
         "profile-coverage gates ran on the full compiled surface; see "
-        "build.target_surface_selection in the manifests."
+        "release_manifest.json target_surface_selection and "
+        "build_manifest.json calibration.target_surface_selection."
     )
     return DIRECT_ACTIVE_ALIASES, {
         alias: reason for alias in CONGRESSIONAL_DISTRICT_SOURCE_ALIASES
@@ -9806,6 +10124,7 @@ def _write_release_calibration_diagnostics(
     degenerate_input_gate: GateResult | None = None,
     ecps_parity_gate: GateResult | None = None,
     validation_input_coverage_gate: GateResult | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
@@ -9971,6 +10290,9 @@ def _write_release_calibration_diagnostics(
                 if validation_input_coverage_gate is not None
                 else None
             ),
+            "scf_wealth_signal": (
+                dict(scf_wealth_signal) if scf_wealth_signal is not None else None
+            ),
             "support_value_repairs": support_value_repairs,
             "warm_start_calibration": (
                 dict(warm_start_calibration)
@@ -10108,9 +10430,10 @@ def _artifact_entry(path: str, sha: str, *, kind: str, revision: str) -> dict[st
 
 
 #: Terminal gate verdicts written into the release directory, keyed by their
-#: release-manifest artifact key. ``prepare_release`` uploads only contract
-#: files, manifest artifacts and ``--extra-file`` entries, so a verdict that is
-#: not a manifest artifact never ships — including the QRF tail register a
+#: release-manifest artifact key. A build folder holds only the manifests,
+#: their checksum ledger and the manifest's artifacts
+#: (``prepare_build_folder_release``), so a verdict that is not a manifest
+#: artifact never ships — including the QRF tail register a
 #: certified waiver rests on (route A remediation PR-3). _main() clears these
 #: before the terminal gates run, so any present at manifest time are this
 #: run's own.
@@ -10132,6 +10455,9 @@ US_RELEASE_GATE_EVIDENCE_FILES: dict[str, str] = {
 #: reference it by file sha and key; ``present`` stays false until the
 #: compiler writes the receipt.
 US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY = "fiscal_target_exclusion_receipt"
+#: us_source_coverage.json key of the FSA portfolio receipt, written only by a
+#: build that compiles those targets (``--scf-education-debt``, microcosm#1074).
+US_FSA_STUDENT_LOAN_TARGET_RECEIPT_KEY = "fsa_student_loan_target_receipt"
 
 
 def _gate_evidence_artifacts(release_dir: Path, *, revision: str) -> dict[str, dict]:
@@ -10315,13 +10641,15 @@ def _score_post_export_consumer(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None,
     baseline_plan: Sequence[PostExportKey] | None,
     maximum_microsim_batch_size: int | None,
+    planned_reform_passes: int | None = None,
 ):
     """Run one post-export consumer through the household-batched scorer.
 
     ``_main`` passes the scorer it opened on the written H5 and the plan it
-    recorded in the calibration diagnostics. A direct caller may pass neither:
-    the scorer is then opened (and closed) here, and the plan is recorded by
-    the same engine-free dry run.
+    recorded in the calibration diagnostics, with the plan's reform pass
+    count for progress reporting. A direct caller may pass neither: the
+    scorer is then opened (and closed) here, and the plan and the count are
+    recorded by the same engine-free dry run.
     """
     scorer = post_export_scorer
     if scorer is None:
@@ -10330,12 +10658,13 @@ def _score_post_export_consumer(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
     try:
-        plan = (
-            _record_post_export_baseline_plan(consumer)
-            if baseline_plan is None
-            else tuple(baseline_plan)
+        if baseline_plan is None:
+            plan, planned_reform_passes = _record_post_export_requests(consumer)
+        else:
+            plan = tuple(baseline_plan)
+        scoring = scorer.open_consumer(
+            name, plan, planned_reform_passes=planned_reform_passes
         )
-        scoring = scorer.open_consumer(name, plan)
         output = consumer(scoring.simulate)
         record = scorer.finish_consumer(scoring)
         print(
@@ -10363,6 +10692,7 @@ def _write_reform_validation(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
     baseline_plan: Sequence[PostExportKey] | None = None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    planned_reform_passes: int | None = None,
 ) -> None:
     """Emit reform_validation.json: microcosm budget effects vs JCT scores.
 
@@ -10399,6 +10729,7 @@ def _write_reform_validation(
             post_export_scorer=post_export_scorer,
             baseline_plan=baseline_plan,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            planned_reform_passes=planned_reform_passes,
         )
     write_reform_validation(payload, release_dir / "reform_validation.json")
 
@@ -10495,6 +10826,37 @@ def _write_medicare_irmaa_holdout(
     )
 
 
+def _write_population_structure_holdout(
+    *, release_dir: Path, dataset_path: Path, release_id: str
+) -> None:
+    """Report held-out population structure without refusing the release.
+
+    It reads marital status and living arrangement of people 65+, and Social
+    Security beneficiary counts, from the written H5 without an engine. The
+    target surface holds none of these margins, so a release can meet every
+    target while missing them (microcosm#880).
+    """
+    path = release_dir / "us_population_structure_holdout.json"
+    try:
+        # Serializing inside the try keeps a measurement that strict JSON
+        # cannot hold observational as well.
+        write_population_structure_holdout(
+            population_structure_holdout_from_h5(
+                dataset_path, period=PERIOD, release_id=release_id
+            ),
+            path,
+        )
+    except Exception as error:
+        # Observational, like the SSI holdout: an unavailable measurement must
+        # not add a release refusal.
+        write_population_structure_holdout(
+            population_structure_holdout_unavailable(
+                error, period=PERIOD, release_id=release_id
+            ),
+            path,
+        )
+
+
 def _build_manifests(
     *,
     release_id: str,
@@ -10527,9 +10889,9 @@ def _build_manifests(
     medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
     staging: Mapping[str, object] | None = None,
     ledger_artifact: Mapping[str, object] | None = None,
-    dataset_key: str = "populace_us_2024",
+    dataset_key: str = DATASET_KEY,
     dataset_filename: str = DATASET_FILENAME,
-    calibration_key: str = "populace_us_2024_calibration",
+    calibration_key: str = CALIBRATION_KEY,
     calibration_filename: str = CALIBRATION_FILENAME,
     exact_k_ladder: Mapping[str, object] | None = None,
     base_pool: Mapping[str, object] | None = None,
@@ -10541,6 +10903,7 @@ def _build_manifests(
     scored_dataset_sha256: str | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
+    scf_wealth_signal: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -10731,6 +11094,13 @@ def _build_manifests(
                 else {}
             ),
             "target_compilation": dropped,
+            # The SIPP/SCF blend audit (microcosm#1216): written with the
+            # manifest a release cannot ship without, beside the diagnostics.
+            **(
+                {"scf_wealth_signal": dict(scf_wealth_signal)}
+                if scf_wealth_signal is not None
+                else {}
+            ),
             "target_profile_coverage": {
                 "passed": target_profile_gate.passed,
                 "failures": list(target_profile_gate.failures),
@@ -11107,6 +11477,18 @@ def _build_manifests(
             ),
             **(
                 {
+                    "us_population_structure_holdout": _artifact_entry(
+                        "us_population_structure_holdout.json",
+                        _sha256(release_dir / "us_population_structure_holdout.json"),
+                        kind="diagnostics",
+                        revision=release_id,
+                    )
+                }
+                if (release_dir / "us_population_structure_holdout.json").exists()
+                else {}
+            ),
+            **(
+                {
                     "reform_validation": _artifact_entry(
                         "reform_validation.json",
                         _sha256(release_dir / "reform_validation.json"),
@@ -11362,11 +11744,12 @@ def _default_release_id(
     commit: str,
     build_timestamp: datetime,
 ) -> str:
-    """The auto-generated release id for a run without --release-id.
+    """The auto-generated build ID for a run without --release-id.
 
-    Exact-k candidates carry the k segment; evidence-tier builds carry the
-    ``evidence`` segment (microcosm#506) so the tier is visible in every tag
-    and download path; certified national builds keep the historical shape.
+    Exact-k builds carry the k segment; evidence-tier builds carry the
+    ``evidence`` segment (microcosm#506) so the tier is visible in every
+    build folder's path; certified national builds keep the historical shape.
+    The release each one belongs to is :func:`_release_for_build`.
     """
     if args.exact_k is not None:
         return (
@@ -11400,7 +11783,74 @@ def _telemetry_run_id(args: argparse.Namespace, *, timestamp: datetime) -> str:
     )
 
 
+def _release_for_build(args: argparse.Namespace) -> str:
+    """The release a run's build belongs to (microcosm#1570).
+
+    Certified and exact-k builds are builds of the national release, the
+    repository's default; evidence-tier builds are builds of the evidence
+    release, which is never the default. The release directory is named
+    after it.
+    """
+    return US_EVIDENCE_RELEASE_ID if args.evidence_release else US_NATIONAL_RELEASE_ID
+
+
+def _promotion_note(release: str) -> str:
+    """What the promotion command does for a build of ``release``."""
+    if release == US_NATIONAL_RELEASE_ID:
+        return (
+            "Promoting makes this build the current build of "
+            f"{release}, the US default dataset."
+        )
+    return (
+        f"Promoting makes this build the current build of {release}, which is "
+        "never the US default; the release's current build takes the place of "
+        "the latest-evidence.json pointer file."
+    )
+
+
+def _finish_build_folder_release(
+    release_dir: Path,
+    *,
+    build: str,
+    artifact_root: Path,
+    evidence_release: bool,
+) -> dict[str, str]:
+    """Rewrite the release directory into the build-folder layout.
+
+    :func:`_build_manifests` writes both manifests in the tagged shape. This
+    names the release (the directory's name) and the build (``build``, the
+    build ID) in both, moves the build's details to the release manifest's
+    top level and drops each artifact's ``revision`` (microcosm#1570). The
+    release contract is left to ``microcosm-publish-release-build``, whose
+    preflight runs it (the evidence contract for an evidence-tier build), as
+    the tagged path left it to its publisher: a diagnostic run's output is
+    written, not refused at its end.
+
+    Returns:
+        The commands that publish the build into its own folder of the
+        release and then make it the release's current build.
+    """
+    del evidence_release  # The release is the directory's name.
+    rewrite_release_dir(release_dir, build=build)
+    return publication_commands(
+        release_dir, repo_id=REPO_ID, artifact_root=artifact_root
+    )
+
+
 def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) -> None:
+    """Check the build ID ``--release-id`` gives, or the default one.
+
+    The ID names the build, not its release, and keeps the rules it had
+    before microcosm#1570: the US prefix, and the ``-evidence-`` segment
+    exactly for evidence-tier builds.
+    """
+    if release_id in US_RELEASES:
+        raise ValueError(
+            f"{release_id!r} is a release, not a build: --release-id gives the "
+            "build ID (populace-us-2024-...), and the build is published into "
+            f"its release, {US_NATIONAL_RELEASE_ID!r} or, with "
+            f"--evidence-release, {US_EVIDENCE_RELEASE_ID!r}."
+        )
     if not release_id.startswith("populace-us-"):
         raise ValueError(
             "US fiscal refresh release ids must start with 'populace-us-' so "
@@ -11411,7 +11861,7 @@ def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) ->
             "--evidence-release ids must carry the "
             f"{EVIDENCE_RELEASE_ID_SEGMENT!r} segment (e.g. "
             "populace-us-2024-evidence-<sha>-<date>) so the tier is visible "
-            "in every tag and download path."
+            "in every build folder's path."
         )
     if not evidence_release and EVIDENCE_RELEASE_ID_SEGMENT in release_id:
         raise ValueError(
@@ -11706,17 +12156,29 @@ _ACTIVE_PROGRESS: _BuildProgress | None = None
 class _WorkCounter:
     """Report completed independent work units through the emitter service."""
 
-    def __init__(self, *, stage_id: str, unit: str, total: int) -> None:
+    def __init__(
+        self,
+        *,
+        stage_id: str,
+        unit: str,
+        total: int,
+        outer: OuterProgress | None = None,
+    ) -> None:
         self.stage_id = stage_id
         self.unit = unit
         self.total = max(0, int(total))
         self.done = 0
         self.started = time.monotonic()
+        # The counter one level above, such as the reform pass these batches
+        # belong to; sent with every report when set.
+        self.outer = outer
 
     def advance(self, units: int = 1, **details: object) -> None:
         self.done = min(self.total, self.done + max(0, int(units)))
         if _ACTIVE_EMITTER is None:
             return
+        if self.outer is not None:
+            details["outer"] = self.outer
         _ACTIVE_EMITTER.progress(
             self.stage_id,
             done=self.done,
@@ -12466,18 +12928,31 @@ class _TerminalBatchProgress:
 
 def _print_build_result(
     *,
-    release_id: str,
+    build: str,
     release_dir: Path,
     artifact_root: Path,
+    publication: Mapping[str, str],
 ) -> None:
-    """Print the legacy three-key builder result without widening its API."""
+    """Print the build, where it is, and the commands that publish it.
 
+    The release is the release directory's name. ``publication`` is
+    :func:`_finish_build_folder_release`'s result: ``publish_command`` lists
+    the build in its release without making it current, and
+    ``promote_command``, run after review, makes it the release's current
+    build, as ``promotion`` says.
+    """
+
+    release = release_dir.name
     print(
         json.dumps(
             {
-                "release_id": release_id,
+                "release": release,
+                "build": build,
                 "release_dir": str(release_dir),
                 "artifact_root": str(artifact_root),
+                "publish_command": publication["publish_command"],
+                "promote_command": publication["promote_command"],
+                "promotion": _promotion_note(release),
             },
             indent=2,
         )
@@ -12548,6 +13023,22 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise SystemExit(dry_run_exit)
     if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
         _ACTIVE_EMITTER.complete()
+
+
+def _without_opt_in_student_loan_targets(registry: TargetRegistry) -> TargetRegistry:
+    """The registry the target-parity contract reads: no FSA portfolio rows.
+
+    The parity manifest describes one target surface for every build, but the
+    FSA family compiles only with ``--scf-education-debt`` (microcosm#1074):
+    the rows bind columns a default build does not carry. Until that stage is
+    default the family is outside the contract, and the manifest may declare
+    it a reviewed exclusion without either build failing the other.
+    """
+
+    return TargetRegistry(
+        tuple(spec for spec in registry.specs if spec.family != FSA_TARGET_FAMILY),
+        country=registry.country,
+    )
 
 
 def _check_committed_us_ledger_feed_pin(
@@ -12640,24 +13131,37 @@ def _with_scf_education_debt_stage(
             )
         )
     if fit_path is not None:
-        # Design-weight fit of the staged frame against the SCF; the receipt
-        # tool tabulates the calibrated export the same way (microcosm#1073).
-        fit_path.parent.mkdir(parents=True, exist_ok=True)
-        fit_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "weights": "pre_calibration_household_weights",
-                    "fit": us_scf_education_debt_fit_table(base_frame),
-                },
-                indent=2,
-                sort_keys=True,
-                default=float,
-            )
-            + "\n",
-            encoding="utf-8",
+        # Design-weight fit of the staged frame against the SCF; the release
+        # writes the same table at its calibrated weights after the solve
+        # (US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME, microcosm#1074).
+        _write_us_scf_education_debt_fit(
+            fit_path, base_frame, weights="pre_calibration_household_weights"
         )
     return base_frame
+
+
+def _write_us_scf_education_debt_fit(path: Path, frame: Frame, *, weights: str) -> None:
+    """Write the microcosm#1073 fit table of ``frame`` at its household weights.
+
+    ``weights`` names those weights in the payload: the staged frame's
+    pre-calibration weights, or the release's calibrated weights.
+    """
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "weights": weights,
+                "fit": us_scf_education_debt_fit_table(frame),
+            },
+            indent=2,
+            sort_keys=True,
+            default=float,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def _check_us_ledger_feed_row_contracts(
@@ -12713,6 +13217,38 @@ def _check_us_esi_anchor_against_feed(
     return mismatches
 
 
+def _check_us_feed_carries_fsa_facts(
+    facts: Sequence[Mapping[str, Any]],
+    *,
+    scf_education_debt: bool,
+) -> FsaTargetPlan | None:
+    """Refuse a ``--scf-education-debt`` build on a feed with no FSA facts.
+
+    microcosm#1074: the flag's stage imputes the federal student loan balances
+    and Federal Student Aid's portfolio calibrates them. On a feed with no
+    ``ed_fsa`` facts the plan is empty, so the compile would bind no FSA
+    target and the build would ship the balances uncalibrated, raising
+    nothing. The build stops here instead, before any stage runs. Without the
+    flag the facts are inert and nothing is planned. Returns the plan, which
+    the ``us_source_coverage.json`` receipt reuses.
+    """
+
+    if not scf_education_debt:
+        return None
+    plan = plan_fsa_student_loan_targets(facts, target_period=PERIOD)
+    if plan.status == "no_fsa_facts":
+        raise SystemExit(
+            "error: --scf-education-debt calibrates the stage's federal student "
+            "loan balances to Federal Student Aid's portfolio, but the "
+            f"Chronicle feed carries no {FSA_SOURCE_NAME} facts (the "
+            f"{', '.join(FSA_BOUND_TABLES)} tables), so no FSA target would "
+            "compile (microcosm#1074). Build on a feed with the six "
+            "packages/ed_fsa packages of PolicyEngine/chronicle#347, as the "
+            "US pin carries from microcosm#1506, or drop the flag."
+        )
+    return plan
+
+
 def _main(argv: Sequence[str] | None = None) -> int | None:
     global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
     _ACTIVE_EMITTER = None
@@ -12750,16 +13286,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     timing: dict[str, float] = {}
 
-    if args.release_id:
-        # microcosm#568 round 4: when the id is known up front (every launcher
-        # passes one), refuse certified-dir reuse before ANY side effect —
-        # including the base download and cache writes below. The
-        # auto-generated-id path derives its id from the base digest, so its
-        # refusal necessarily runs later, but still before any output-dir
-        # creation.
-        _refuse_certified_release_dir_reuse(
-            args.out.resolve() / "releases" / args.release_id
-        )
+    # microcosm#568 round 4: refuse certified-dir reuse before ANY side
+    # effect, including the base download and cache writes below. The
+    # release directory is named after the build's release (microcosm#1570),
+    # so it is known here whether or not --release-id gives the build ID.
+    _refuse_certified_release_dir_reuse(
+        args.out.resolve() / "releases" / _release_for_build(args)
+    )
+    _refuse_skipped_checks_left_files(
+        args.out.resolve() / "releases" / _release_for_build(args), args
+    )
     pinned_incumbent_payload: dict[str, object] | None = None
     pinned_incumbent_sha256: str | None = None
     if args.exact_k is not None:
@@ -12838,18 +13374,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     _assert_us_release_id(release_id, evidence_release=args.evidence_release)
     if args.exact_k is not None:
         _assert_exact_k_release_id(release_id, args.exact_k)
-        # The immutable release id is the dataset's exact-count name. Keep the
-        # files at the registry's canonical paths so a later *manual* pointer
-        # flip remains loadable by microcosm-data.
-        dataset_key = "populace_us_2024"
-        dataset_filename = DATASET_FILENAME
-        calibration_key = "populace_us_2024_calibration"
-        calibration_filename = CALIBRATION_FILENAME
-    else:
-        dataset_key = "populace_us_2024"
-        dataset_filename = DATASET_FILENAME
-        calibration_key = "populace_us_2024_calibration"
-        calibration_filename = CALIBRATION_FILENAME
+    # Every build, exact-k builds included, writes its dataset and calibration
+    # weights under the names its release's new builds declare
+    # (microcosm#1570); the build ID carries the exact count.
+    dataset_key = DATASET_KEY
+    dataset_filename = DATASET_FILENAME
+    calibration_key = CALIBRATION_KEY
+    calibration_filename = CALIBRATION_FILENAME
     congressional_district_vintage_crosswalk = (
         load_congressional_district_vintage_crosswalk(
             args.congressional_district_vintage_crosswalk
@@ -12945,6 +13476,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if dry_run is not None:
         dry_run.esi_anchor_feed_mismatches = list(esi_anchor_feed_mismatches)
+    # A --scf-education-debt build on a feed with no FSA facts would compile
+    # no FSA target; refuse it before the compile (microcosm#1074).
+    fsa_target_plan = _check_us_feed_carries_fsa_facts(
+        ledger_artifact.facts, scf_education_debt=args.scf_education_debt
+    )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -12953,6 +13489,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         ),
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
+        # FSA's portfolio binds the stage's balances, so only a build that
+        # imputes them compiles the targets (microcosm#1074).
+        student_loan_targets=args.scf_education_debt,
+    )
+    # Every FSA fact's disposition (bound, allocated, out of scope,
+    # diagnostic) and the in-scope controls, for us_source_coverage.json.
+    fsa_target_receipt = (
+        fsa_student_loan_target_receipt(
+            ledger_artifact.facts, target_period=PERIOD, plan=fsa_target_plan
+        )
+        if fsa_target_plan is not None
+        else None
     )
     # The exclusion register's keys do not say which feed facts a compile
     # dropped or let through by vintage (microcosm#956), so record the concrete
@@ -12984,8 +13532,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # diagnostic JCT skip — so the gate sees the true family surface, and
     # hard-fails the build on a silently dropped family or a rotted manifest,
     # exactly like the release input-coverage gate on the export frame.
-    assert_target_parity_manifest_current(registry=target_registry)
-    target_parity_gate = us_release_target_parity_gate(target_registry)
+    # The FSA portfolio family is opt-in (it binds only the
+    # --scf-education-debt stage's balances, microcosm#1074), so it stays off
+    # the one-surface parity contract until that stage is default.
+    parity_registry = _without_opt_in_student_loan_targets(target_registry)
+    assert_target_parity_manifest_current(registry=parity_registry)
+    target_parity_gate = us_release_target_parity_gate(parity_registry)
     if not target_parity_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
@@ -13029,9 +13581,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     active_target_registry = TargetRegistry(target_specs, country="us")
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
-    release_dir = release_root / "releases" / release_id
+    release_dir = release_root / "releases" / _release_for_build(args)
     # Unconditional refusal BEFORE any output-directory creation: a hostile
-    # --checkpoint-root beneath releases/<id> must not mutate a certified
+    # --checkpoint-root beneath releases/<release> must not mutate a certified
     # directory before the raise (microcosm#568 round 4).
     _refuse_certified_release_dir_reuse(release_dir)
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
@@ -14118,6 +14670,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in scf_wealth_gate.failures
             )
         )
+    scf_wealth_signal = _scf_wealth_gate_record(
+        scf_wealth_gate, base_frame.table("household")["household_id"]
+    )
     sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
@@ -14316,7 +14871,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             args=args,
             telemetry=telemetry,
             fit_path=(
-                artifact_root / "us_scf_education_debt_fit.json"
+                artifact_root / US_SCF_EDUCATION_DEBT_FIT_FILENAME
                 if dry_run is None
                 else None
             ),
@@ -15232,6 +15787,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if isinstance(ladder_outcome, ExactKLadderCalibration):
         ladder_outcome = dataclasses.replace(ladder_outcome, result=result)
+    if args.scf_education_debt:
+        # microcosm#1074: the stage's fit table at the weights the release
+        # ships, before any scoring or terminal gate, so a build that binds
+        # the FSA family reports the borrower-household share at those weights. It
+        # follows the export and cleanup statements, which
+        # test_us_post_export_scoring runs on their own.
+        _write_us_scf_education_debt_fit(
+            artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME,
+            export_frame,
+            weights="calibrated_household_weights",
+        )
     compilation = dict(compilation)
     final_uncapped_ssi = _ssi_person_uncapped_amount(
         export_frame,
@@ -15619,6 +16185,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         degenerate_input_gate=degenerate_input_gate,
         ecps_parity_gate=ecps_parity_gate,
         validation_input_coverage_gate=validation_input_coverage_gate,
+        scf_wealth_signal=scf_wealth_signal,
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,
@@ -16145,6 +16712,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         smoke_scoring = post_export_scorer.open_consumer(
             "reform_coverage_smoke",
             post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_coverage_smoke"
+            ),
         )
         reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
             simulate=smoke_scoring.simulate,
@@ -16238,6 +16808,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 if args.skip_out_of_sample_reforms
                 else post_export_scoring_plan.baseline_plan("reform_validation")
             ),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_validation"
+            ),
         )
         if telemetry is not None:
             telemetry.attach_artifact(
@@ -16298,6 +16871,21 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
     scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
     post_export_scorer = None
+    # Reads the written H5 without an engine, after the scorer frees its
+    # batch frames, so it adds no memory on top of them.
+    if telemetry is not None:
+        telemetry.stage(
+            "population_structure_holdout",
+            message="Writing held-out population-structure checks.",
+        )
+    _write_population_structure_holdout(
+        release_dir=release_dir, dataset_path=dataset_path, release_id=release_id
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_population_structure_holdout",
+            release_dir / "us_population_structure_holdout.json",
+        )
 
     if telemetry is not None:
         telemetry.stage(
@@ -16325,6 +16913,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     ]
     coverage[US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY] = fiscal_target_exclusion_receipt
+    if fsa_target_receipt is not None:
+        coverage[US_FSA_STUDENT_LOAN_TARGET_RECEIPT_KEY] = fsa_target_receipt
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
@@ -16474,6 +17064,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scored_dataset_sha256=scored_dataset_sha256,
         post_export_scoring=post_export_scoring,
         diagnostics_outcome=diagnostics_outcome,
+        scf_wealth_signal=scf_wealth_signal,
+    )
+    # Both manifests name the release and this build, in the build-folder
+    # layout, before telemetry attaches them; the directory must then pass
+    # its tier's contract (microcosm#1570).
+    publication = _finish_build_folder_release(
+        release_dir,
+        build=release_id,
+        artifact_root=artifact_root,
+        evidence_release=args.evidence_release,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
@@ -16490,9 +17090,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         authenticated_pool_h5=authenticated_pool_h5,
     )
     _print_build_result(
-        release_id=release_id,
+        build=release_id,
         release_dir=release_dir,
         artifact_root=artifact_root,
+        publication=publication,
     )
 
 

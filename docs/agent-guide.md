@@ -42,7 +42,55 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, `wheels`, and `installed-emitter` jobs, plus the
-`select-countries` orchestration job.
+`select-countries` orchestration job and the `ci` job.
+
+`ci` gives the `main` ruleset one check that covers the country jobs. It fails
+unless every other job passed, or skipped because `select-countries` succeeded
+and reported `false` for its country. A skipped matrix job reports under its
+unexpanded name, so a ruleset cannot require `engine-us` or `engine-uk` by
+name. The ruleset also names each other check that runs on every pull
+request: `lint`, `wheels`, `select-countries`, `installed-emitter` and both
+`engine-free` legs. When `engine-free`'s matrix changes, change the ruleset
+too, because a leg's check name holds its Python version.
+
+The workflow runs on a pull request only when it targets `main`. Retargeting a
+pull request to `main` starts no run, because GitHub reports a base change as
+an `edited` event, which the workflow doesn't run on. After a stacked pull
+request retargets, push a commit or close and reopen it, then merge once its
+checks pass.
+
+The plan names the jobs the selection may leave out: each job whose test
+groups all need the same country's engine. The lint job runs
+`tools/ci_test_plan.py verify-workflow`, which parses the workflow with PyYAML
+and refuses:
+
+- two keys that PyYAML reads as one, a merge key (`<<`), and U+0085, U+2028
+  or U+2029, which YAML 1.1 reads as line breaks and YAML 1.2 doesn't;
+- a job outside the plan, a plan job the workflow lacks, and a job whose `if`
+  differs from the one the plan gives it;
+- a job the selection may leave out that doesn't need `select-countries`, and
+  a job that needs one the selection may leave out, unless both follow the
+  same country's selection;
+- a `ci` job that lacks `if: always()`, omits a job from `needs`, or does
+  anything but check out the repository and run `require-results` on its
+  `needs` context;
+- a `select-countries` job that doesn't publish the outputs its `plan` step
+  writes;
+- `continue-on-error` on any job or step, a step `if` other than `always()`,
+  `success()` or `!cancelled()`, and a job-level `name`;
+- a workflow `defaults` other than `run: shell: bash`, a job-level `defaults`
+  and a step `shell`. GitHub runs an explicit `shell: bash` as
+  `bash -eo pipefail`, so a pipe cannot hide a failed command.
+
+The plan's tests in `test_ci_test_plan.py` run the same checks and test the
+code `ci` runs. The ruleset reads `engine-free` without `ci`, so those tests
+stay in that job, and `tools/ci_test_plan.py verify` refuses a plan that moves
+them out. After editing the workflow, run
+`uv run python tools/ci_test_plan.py verify-workflow`. A pull request's run
+takes the workflow and the plan from the pull request's own merge with `main`,
+so a pull request that rewrites them can pass itself, and review has to catch
+that.
+
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
 changed-path country selection. Its `TEST_GROUPS` registry defines every valid
@@ -58,7 +106,12 @@ distributes files across two pytest workers with `--dist loadfile`.
 Changed-file selection only controls the more resource-intensive country jobs.
 A documentation-only pull request selects neither country; a US-only or UK-only
 pull request selects that country; shared, mixed, unknown, or empty changed-path
-sets select both. Main pushes select both without querying the pull-request API.
+sets select both. Below `tools/`, the rules for documentation, test groups and
+the country runtime packages run first. A file there that none of them claims
+belongs to a country when its file name holds that country as a whole word and
+the other country's letters appear nowhere in its lower-cased path, and takes
+the `shared` scope otherwise. Main pushes select both without querying the
+pull-request API.
 The UK integration job follows the same UK selection as the ordinary UK engine
 job.
 
@@ -82,9 +135,10 @@ its 25 slowest tests.
 Every behavioral or cross-language compatibility assertion must be a pytest
 test in a directory registered by `TEST_GROUPS` and must run through that
 category's existing workflow job. Supporting programs and data may live under
-`tools/`, but they do not receive separate workflow jobs. The test-plan verifier
-allows only registered test jobs and the explicitly declared orchestration,
-lint, and wheel-building jobs. Add a test category to `TEST_GROUPS` before its
+`tools/`, but they do not receive separate workflow jobs.
+`tools/ci_test_plan.py verify-workflow` allows only registered test jobs and
+the explicitly declared orchestration, lint, wheel-building, and
+aggregate-result jobs. Add a test category to `TEST_GROUPS` before its
 executor; do not create a separate selection system, test workflow, or
 single-purpose behavioral test job.
 
@@ -164,6 +218,9 @@ Every workflow job sets `timeout-minutes` (at least 1.5 times its slowest
 observed successful run) so a hung job releases its runner from the
 organization's shared pool; raise a job's cap when its suite legitimately
 grows past it.
+Every workflow job runs on `ubuntu-24.04`, and the workflow sets
+`UV_MANAGED_PYTHON=1`, so uv downloads its own Python and never takes the
+image's. Move every job to a newer image in one pull request.
 
 `load_country_spec("<code>")` loads each packaged country spec once per
 process and hands every caller the same immutable object; a `Path` argument is
@@ -171,6 +228,26 @@ re-read on every call. A test that patches something the loader itself runs and
 then loads a packaged spec by code must call
 `country_spec._load_packaged_country_spec.cache_clear()` before and after that
 load, or it silently receives the spec an earlier test cached.
+
+Git exports an absolute `GIT_DIR` to the hooks, `rebase --exec` commands and
+shell aliases it runs in a linked worktree, and `GIT_DIR` outranks `-C` and the
+working directory. The root `conftest.py` therefore removes, before any test
+runs, the variables `git rev-parse --local-env-vars` lists as local to one
+repository, less the two that carry `git -c` options, plus the
+`GIT_QUARANTINE_PATH` git gives a `pre-receive` hook
+(`test_support.git_isolation`), so a fixture's `git init` or `commit` in a
+temporary directory stays there. A test that needs one of those variables sets
+it itself. New code that runs git against a repository other than its own
+should not rely on that, because it also runs outside the suite: drop the
+variables from the child environment, as the Modal stage runner does
+(`modal_us_stage_plan.git_environment`). Two policies exist for the `git -c`
+carriers. The runner and the suite keep them, because git keeps them when it
+runs a command in another repository and
+`test_support.git_repositories.NO_BACKGROUND_MAINTENANCE_ENV` reaches git
+through them. The Axiom adapter's `_git_environment`
+(`microcosm.frame.adapters.axiom`) drops the carriers as well, as variables
+that carry configuration into the repository git reads. Several older call
+sites still run git with the inherited environment.
 
 **Adding or moving tests.** Every `test_*.py` module must live directly in one
 of these directories below its package's `tests/` directory:
@@ -271,17 +348,40 @@ no secret. Green PR checks mean the code contracts hold — they do **not**
 certify data artifacts.
 Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
-deliberate human step (`tools/publish_release.sh` →
-`microcosm-publish-release`), gated by `tools/preflight_us_release_gates.py`;
-reviewed line promotion is a separate deliberate call to the same CLI with
-`--promote-line`. See README "Releasing & alerts". Before launching a US
+deliberate human step. The UK national, dense and local-area releases and the
+US releases (`microcosm-us-2024-national`, the US default, `-local`,
+`-receipt-donor`, `-evidence` and `-annual`) publish each build into its own folder
+through the emitter (`microcosm-publish-release-build`, from
+`microcosm.build.release_publication`), which records it in the repository's
+`releases.json`; making a published build current is a separate deliberate
+call to the same command with `--promote`. Each US builder writes its build to
+`releases/<release>/`; the national builder and the ACS package stage also
+print both commands.
+`tools/preflight_us_release_gates.py` runs the US national release checks that
+need no calibration on the base before a build, and again with the finished
+build's `--release-manifest`. The emitter changes
+no current build while any `latest*.json` pointer file exists; the UK and US
+repositories' switches to `releases.json` deleted them. The tagged publisher
+(`tools/publish_release.sh` → `microcosm-publish-release`) refuses every one of
+these releases and any repository that has `releases.json`, so no UK or US
+release publishes with tags. The UK repository's switch moved the June 2023 UK
+build into release `populace-uk-2023`, which takes no new builds, and
+`populace-uk-<year>-<tier>-k<N>` releases have no publication path there. This
+holds for the US from its repository's switch commit; Microcosm's US change
+(microcosm#1570) merges straight after it. Tests hand release changes to the
+in-memory client (`client.release_requests`), which applies them to
+`hub_files` with the interface's shared `releases.json` checks. See README
+"Releasing & alerts". Before launching a US
 release, dry-run it with `tools/dry_run_us_release_gates.py` (or the release
 tool's `--dry-run-gates-report`). It replays the release's own input stages and
 grades every waiver register on the staged frame before the solve; see README
 "Dry-running the release's registers". Publication also refuses a
 release whose build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
-publishes without the flag. Never publish or promote artifacts as a side
+publishes without the flag. A UK national cut runs end to end with
+`tools/run_uk_cut.py` ([uk-cut-anyone.md](uk-cut-anyone.md)): inputs fetched
+by pin, a signing key registered in `microcosm.data.gate_signing_keys`, and
+an inspection-only `--publish`. Never publish or promote artifacts as a side
 effect of another task. A UK rowwise run's **staged** bundle
 (`staged/<run_id>/` in the private repository, written by the build itself)
 is inspection evidence, not a release: it never moves `releases/` or
@@ -296,8 +396,10 @@ The versioned Route A driver is `tools/route_a/route_a.sh`; see its
 [runbook](../tools/route_a/README.md) for configuration, preserved admission
 and release gates, and the Modal-base hand-off. Its release stage enables
 staging telemetry by default, obtains the HF credential only in a runtime
-wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It runs only the
-publisher's offline `--preflight-only` check and leaves publication to Max.
+wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It looks for the
+build in `releases/microcosm-us-2024-national/`, runs only
+`microcosm-publish-release-build --preflight-only`, which checks the build
+offline, and leaves publication to Max.
 
 The US fiscal-refresh builder scores its written H5 in household batches.
 Alongside its out-of-sample reports, it writes
@@ -324,6 +426,16 @@ single-year release H5 has none, so a 2024 release on that engine reports
 PolicyEngine/policyengine-us#10106. A Part with no weighted payer never reports
 a Trustees comparison. It is held out the same way: no calibration row, no
 release refusal.
+It also writes `us_population_structure_holdout.json` from the written H5
+alone (no engine): marital status of people 65+ by sex (ACS 2024 B12002),
+people 65+ living alone (ACS 2024 B09021), people receiving Social Security in
+total, 65+ and under 65 (SSA Monthly Statistical Snapshot, December 2024,
+Table 1), beneficiaries per component against Table 2's benefit types, and the
+number of people carrying more than one positive component. The release
+calibrates to none of these, and when the step cannot make a measurement it
+records the report as unavailable instead of refusing the release.
+`tools/report_us_population_structure.py <h5>` writes the same report for an
+already published release.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release
@@ -341,14 +453,17 @@ The US native-SPM-role source-enrichment lane is a separate release type:
 `tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact
 reviewed BuildP parent, preserving original variables and inherited schema-5
 calibration evidence. It does not run calibration or relax schema 6 for ordinary
-releases. `microcosm.data.source_enrichment` validates candidates and records
-actual native-loader compatibility in a separate bundle. The regular publisher
-requires `--parent-h5` and the four tested country/Core/wrapper/calculator wheels; `--preflight-only`
-runs the same contract and local publisher preparation (file paths, artifact
-hashes, revision/tag pins and latest-pointer eligibility), without constructing
-a Hub client or publishing. Supplying `--parent-h5` or `--compatibility-wheel`
-for a release that is not a source enrichment is an error, including preflight
-and evidence-tier requests. See
+releases. Each candidate is a build of `microcosm-us-2024-national`, written
+to `releases/microcosm-us-2024-national/` with its H5 as
+`microcosm_us_2024.h5`. `microcosm.data.source_enrichment` validates candidates
+and records actual native-loader compatibility in a separate bundle.
+`microcosm-publish-release-build` requires `--parent-h5` and the four tested
+country/Core/wrapper/calculator wheels; `--preflight-only` runs the same
+contract and lists the files it would publish, with their roles and digests,
+without starting an emitter or publishing. Supplying `--parent-h5` for a build
+that is not a source enrichment, or `--compatibility-wheel` for one that is
+neither a source enrichment nor a recertification, is an error, preflight
+included. See
 [the source-enrichment runbook](us-native-spm-role-source-enrichment.md).
 Root's canonical-model acceptance and publication authorization remain separate
 from this producer-native-input receipt. The same release type has a second
@@ -358,17 +473,22 @@ receipt qualification's child of the pinned national default
 evidence. `tools/build_us_receipt_enrichment_release.py` builds the local
 candidate, and `source_enrichment.json`'s `operation` selects the lineage. The
 contract replays the shared verifier in `microcosm.data.h5_boolean_append`
-against both H5 files. The publisher refuses to point `latest.json` at this
-child, so publish it with `--no-latest --tag-only`. See
+against both H5 files. The child is a build of its own release,
+`microcosm-us-2024-receipt-donor`, which is never the repository's default,
+with its H5 as `microcosm_us_2024_receipt_qualified.h5`; the contract refuses
+it as a build of the national release. See
 [the reported-receipt runbook](us-reported-receipt-source-enrichment.md).
 
 `compatibility_recertification` is a separate release type
 (`microcosm.data.compatibility_recertification`,
 `tools/build_us_compatibility_recertification.py`): a published US
-calibration release, republished byte for byte with a measured claim for a
-newer policyengine-us. Its parent identity is the parent's own published
-`release_manifest.json`, carried and hashed, never a code constant; the
-publisher checks the parent tag on the Hub before any upload. A change in
+calibration build, republished byte for byte as a new build of
+`microcosm-us-2024-national` with a measured claim for a newer
+policyengine-us. Its parent identity is the parent's own published
+`release_manifest.json`, carried and hashed, never a code constant;
+`microcosm-publish-release-build` checks on the Hub that the parent's build
+folder, or its tag for a parent that keeps only its tag, serves that manifest
+before it hands the child to the emitter. A change in
 what the tested engine reads or ignores must have an entry in
 `RECERTIFICATION_COLUMN_CHANGES`. It takes `--compatibility-wheel` and no
 `--parent-h5`. National parents only for now. See
@@ -384,7 +504,8 @@ stage (`tools/build_us_acs_local_release.py`). A new provenance column needs a
 register entry with its reason, bound to its producer in
 `test_us_stored_input_register.py`; a renamed engine input needs its live
 name. A new US lane that writes a release H5 must run the check where it records
-`build.built_with_model_package`, and bind the verdict into the release: the
+`built_with_model_package` (the release manifest's top level in a build
+folder), and bind the verdict into the release: the
 publisher runs no engine for a calibration release, so it requires the
 fiscal-refresh tool's `stored_inputs.json` and manifest `stored_inputs` block,
 and the ACS local-area `stored_inputs` gate, each naming the built-with engine
@@ -452,10 +573,12 @@ and writes local annual H5 files without running the base graph or publishing.
 See [the annual candidate guide](us-annual-static-aging.md). Its completion
 manifest is build evidence, not release certification.
 Optional annual release metadata invokes additional artifact, identity, and
-acceptance checks within the normal release gates. Annual cuts use one pinned
-`<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag and cannot update latest
-pointers. Qualify source-enrichment bases before adding annual metadata; use
-the candidate guide's qualification order and tag-only publication route.
+acceptance checks alongside the normal release checks. Annual builds pin every file
+to one `<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag, and a build folder
+pins no revision, so an annual build has no publication path in the US
+repository since its switch to `releases.json`: the tagged publisher refuses
+that repository. Qualify source-enrichment bases before adding annual metadata,
+in the candidate guide's qualification order.
 
 ## Concept schema and engine mappings
 

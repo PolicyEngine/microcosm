@@ -1,7 +1,7 @@
 """Publish a release build into its own folder through the emitter.
 
 A release whose builds can publish into their own folders (the UK
-national, dense and local-area releases, which
+national, dense and local-area releases and the US releases, which
 ``microcosm.data.contract.publishes_to_build_folder`` names) is handed to the
 separately installed emitter with the interface's ``publish_release`` call.
 Microcosm decides what the build contains and checks it with the release
@@ -11,11 +11,15 @@ contract; the emitter's release writer puts the files in
 rules in ``microcosm_emitter_interface.releases``. Nothing here commits,
 tags or writes a pointer file.
 
-Until a repository switches to ``releases.json``, its releases still publish
-and promote through their ``latest*.json`` pointer files with
-``tools/publish_release.sh``. So the command lists the repository's files
-first and refuses, before any emitter starts, while any pointer file is
-there; the tagged publisher refuses a repository that has ``releases.json``.
+A repository's switch to ``releases.json`` deletes its ``latest*.json``
+pointer files in the same commit, and the emitter changes no current build
+while one exists. So the command lists the repository's files first and
+refuses, before any emitter starts, while any pointer file is there: in a
+repository without ``releases.json`` it says the switch has not run, since
+the loader follows those files and the switch reads them, and in one with
+it, that the file appeared after the switch and should be removed. The
+tagged publisher refuses these releases, and any repository that has
+``releases.json``.
 
 A build is current only when the emitter's receipt says so: ``status`` is
 ``published`` and ``current`` is the build. A publication with
@@ -41,6 +45,7 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
@@ -58,10 +63,12 @@ from microcosm.build.telemetry_emitter import start_bundle_emitter
 from microcosm.data.contract import publishes_to_build_folder
 from microcosm.data.publish_cli import publication_refusal
 from microcosm.data.release import (
+    TAGGED_RELEASE_ADVICE,
     BuildFolderRelease,
     build_folder_identity,
     prepare_build_folder_release,
 )
+from microcosm.data.releases_record import RELEASES_RECORD_PATH
 
 if TYPE_CHECKING:
     from microcosm_emitter_interface import EmitterStartupError, RequestFailure
@@ -78,11 +85,13 @@ __all__ = [
 ]
 
 #: How long the command waits for a publication to land or be refused. The
-#: emitter uploads a build's files in its one commit, and the largest UK
-#: build recorded (about 2.4 GB) takes about 16 minutes at 20 Mbit/s; the
-#: emitter refuses a change still pending an hour after it was handed over
-#: (``REQUEST_EXPIRED``), so the wait covers that hour and one long upload.
-PUBLICATION_WAIT_SECONDS = 2 * 3600.0
+#: emitter uploads a build's files in its one commit: the largest UK build
+#: recorded (about 2.4 GB) takes about 16 minutes at 20 Mbit/s, and a US ACS
+#: local-area build (about 10 GB) about 67 minutes. The emitter refuses a
+#: change still pending an hour after it was handed over
+#: (``REQUEST_EXPIRED``), so the wait covers that hour and the longest
+#: upload.
+PUBLICATION_WAIT_SECONDS = 3 * 3600.0
 #: How long the command waits for a promotion, which changes only
 #: ``releases.json``.
 PROMOTION_WAIT_SECONDS = 300.0
@@ -90,9 +99,11 @@ PROMOTION_WAIT_SECONDS = 300.0
 #: message does not say what to do next.
 _REFUSAL_ADVICE = {
     "POINTER_FILES_PRESENT": (
-        "The repository has latest*.json pointer files again, so its releases "
-        "publish and promote through them with tools/publish_release.sh until "
-        "it switches to releases.json; nothing was changed."
+        "A latest*.json pointer file appeared in the repository after this "
+        "command checked it. Nothing writes those files once a repository "
+        "records its builds in releases.json, and the emitter changes no "
+        "current build while one exists, so find the commit that added it, "
+        "remove it, then run the command again; nothing was changed."
     ),
     "BUILD_FOLDER_EXISTS": (
         "Another build with this name was published already, with a different "
@@ -284,6 +295,15 @@ def _repository_files(repository: str) -> list[str]:
     return list(api.list_repo_files(repository, repo_type="dataset"))
 
 
+def _hub_api() -> Any:
+    """A Hub client with the credential :func:`_repository_files` uses (test
+    seam), for the recertification parent check and the annual base check."""
+    import huggingface_hub
+
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or None
+    return huggingface_hub.HfApi(token=token)
+
+
 def _listing_errors() -> tuple[type[BaseException], ...]:
     """The failures a listing raises: the Hub's, offline mode's and httpx's.
 
@@ -298,13 +318,16 @@ def _listing_errors() -> tuple[type[BaseException], ...]:
 
 
 def _refuse_pointer_files(repository: str) -> None:
-    """Refuse a repository whose releases still publish through pointer files.
+    """Refuse a repository that has any ``latest*.json`` pointer file.
 
-    While any ``latest*.json`` file is in the repository (the interface's
-    ``is_pointer_file`` rule, which the emitter applies too), its releases
-    publish and are made current with tools/publish_release.sh, and only its
-    switch to ``releases.json`` moves them here. A repository whose files
-    cannot be listed is refused too.
+    The interface's ``is_pointer_file`` rule says which files those are, and
+    the emitter applies it too. A repository's switch to ``releases.json``
+    deletes them, and nothing writes them after it. Without ``releases.json``
+    the repository has not switched: the loader follows its pointer files
+    and the switch reads them, so the refusal says to run the switch and
+    keeps them. With it, a pointer file appeared after the switch, and the
+    refusal says to remove it. A repository whose files cannot be listed is
+    refused too.
     """
     try:
         paths = _repository_files(repository)
@@ -316,12 +339,22 @@ def _refuse_pointer_files(repository: str) -> None:
             "and run the command again"
         ) from error
     pointer_files = sorted(path for path in paths if is_pointer_file(path))
+    if pointer_files and RELEASES_RECORD_PATH not in paths:
+        raise ValueError(
+            f"{repository} has not switched to releases.json: it has no "
+            f"releases.json and has the pointer file(s) {', '.join(pointer_files)}, "
+            "which the loader follows and the switch reads. Its builds publish "
+            "here only after the switch, which the `copy` and then `switch` "
+            "steps of `python -m microcosm.build.build_folder_switch` make with "
+            "--write; keep the files in place and run the command again once "
+            "the switch has run"
+        )
     if pointer_files:
         raise ValueError(
-            f"{repository} still has the pointer file(s) "
-            f"{', '.join(pointer_files)}, so its releases publish and are made "
-            "current through them with tools/publish_release.sh until it "
-            "switches to releases.json"
+            f"{repository} has the pointer file(s) {', '.join(pointer_files)}. "
+            "Its builds publish here only once its switch to releases.json has "
+            "deleted them, and nothing writes them after it, so remove the "
+            "file(s) that appeared, then run the command again"
         )
 
 
@@ -348,6 +381,24 @@ def publication_request(
     )
 
 
+def _refuse_recertification_as_current(release_dir: Path | str) -> None:
+    """Refuse to make a compatibility recertification its release's current build.
+
+    A recertification republishes its parent's data under a wider
+    compatibility claim. As with the tagged publisher, which never moved
+    ``latest.json`` to one, it is published without becoming current, and
+    consumers load it with ``build=``.
+    """
+    from microcosm.data import compatibility_recertification
+
+    if compatibility_recertification.is_recertification(release_dir):
+        raise ValueError(
+            f"{Path(release_dir)} holds a compatibility recertification, which "
+            "is published without becoming its release's current build; "
+            "publish it without --make-current, and load it with build=."
+        )
+
+
 def publish_release_build(
     release_dir: Path | str,
     *,
@@ -356,6 +407,8 @@ def publish_release_build(
     make_current: bool = False,
     client: ReleaseEmitter | None = None,
     wait_seconds: float = PUBLICATION_WAIT_SECONDS,
+    parent_h5: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
 ) -> ReleasePublication:
     """Check a build and hand it to the emitter to publish into its folder.
 
@@ -368,15 +421,41 @@ def publish_release_build(
     ``TRANSFORMERS_OFFLINE`` is set, then, before the build is checked or any
     emitter starts, when the repository still has ``latest*.json`` pointer
     files; it hands nothing over unless the emitter's write-access check
-    passes.
+    passes. A recertification is handed over only once the Hub shows its
+    parent published with the manifest it carries, as the tagged publisher
+    required, and never with ``make_current``.
     """
     if client is None:
         _refuse_offline()
+    if make_current:
+        _refuse_recertification_as_current(release_dir)
     named_repository, _, _ = build_folder_identity(release_dir)
     _refuse_pointer_files(named_repository)
     prepared = prepare_build_folder_release(
-        release_dir, artifact_root=artifact_root, repository=repository
+        release_dir,
+        artifact_root=artifact_root,
+        repository=repository,
+        parent_h5=parent_h5,
+        compatibility_wheels=tuple(compatibility_wheels),
     )
+    from microcosm.data import compatibility_recertification
+
+    if compatibility_recertification.is_recertification(prepared.release_dir):
+        compatibility_recertification.require_parent_publication(
+            _hub_api(),
+            prepared.release_dir,
+            repo_id=prepared.repository,
+            artifact_root=artifact_root,
+        )
+    from microcosm.data import annual_projections
+
+    if annual_projections.is_annual_build(prepared.release_dir):
+        # An annual build projects a published national build: the Hub must
+        # show that build with the same base-year H5 before anything is
+        # handed over.
+        annual_projections.require_base_publication(
+            _hub_api(), prepared.release_dir, repo_id=prepared.repository
+        )
     return _hand_over(
         publication_request(prepared, make_current=make_current),
         client=client,
@@ -394,10 +473,12 @@ def promote_release_build(
 ) -> ReleasePublication:
     """Make a published build, named by its local manifest, the current build.
 
-    It refuses and checks write access as :func:`publish_release_build` does.
+    It refuses and checks write access as :func:`publish_release_build` does,
+    and refuses a compatibility recertification, which is never current.
     """
     if client is None:
         _refuse_offline()
+    _refuse_recertification_as_current(release_dir)
     named_repository, release, build = build_folder_identity(release_dir)
     if repository is not None and repository != named_repository:
         raise ValueError(
@@ -418,11 +499,9 @@ def _parser() -> argparse.ArgumentParser:
         prog="microcosm-publish-release-build",
         description=(
             "Publish a build of a release whose builds publish into their own "
-            "folders (the UK national, dense and local-area releases) through "
-            "the emitter, or make a published build current. Releases that "
-            "publish with tags and latest.json (every US release, the June "
-            "2023 UK release and populace-uk-<year>-<tier>-k<N> releases) use "
-            "tools/publish_release.sh."
+            "folders (the UK national, dense and local-area releases and the US "
+            "releases) through the emitter, or make a published build current. "
+            + TAGGED_RELEASE_ADVICE
         ),
     )
     parser.add_argument("release_dir", type=Path, help="The local release directory.")
@@ -442,12 +521,18 @@ def _parser() -> argparse.ArgumentParser:
     action.add_argument(
         "--make-current",
         action="store_true",
-        help="Make the build the release's current build when it is published.",
+        help=(
+            "Make the build the release's current build when it is published "
+            "(refused for a compatibility recertification)."
+        ),
     )
     action.add_argument(
         "--promote",
         action="store_true",
-        help="Make this already published build the release's current build.",
+        help=(
+            "Make this already published build the release's current build "
+            "(refused for a compatibility recertification)."
+        ),
     )
     action.add_argument(
         "--preflight-only",
@@ -461,6 +546,29 @@ def _parser() -> argparse.ArgumentParser:
             "How long to wait for the change to land or be refused (default "
             f"{PUBLICATION_WAIT_SECONDS:.0f} for a publication, "
             f"{PROMOTION_WAIT_SECONDS:.0f} for a promotion)."
+        ),
+    )
+    parser.add_argument(
+        "--parent-h5",
+        type=Path,
+        help="A source enrichment's exact parent H5, which its contract replays.",
+    )
+    parser.add_argument(
+        "--compatibility-wheel",
+        action="append",
+        type=Path,
+        default=[],
+        help=(
+            "An exact tested wheel a source enrichment's or recertification's "
+            "contract replays its loader under; repeat for each package."
+        ),
+    )
+    parser.add_argument(
+        "--allow-incomplete-reform-validation",
+        action="store_true",
+        help=(
+            "Publish even if reform_validation.json records that out-of-sample "
+            "reforms were skipped (--skip-out-of-sample-reforms)."
         ),
     )
     parser.add_argument(
@@ -489,14 +597,57 @@ def main(argv: list[str] | None = None) -> int:
     release_dir: Path = args.release_dir
     if not publishes_to_build_folder(release_dir.name):
         parser.error(
-            f"release {release_dir.name!r} publishes with tags and latest.json; "
-            "publish it with tools/publish_release.sh."
+            f"release {release_dir.name!r} does not publish into build folders. "
+            + TAGGED_RELEASE_ADVICE
         )
     try:
         return _run(args)
     except (ValueError, FileNotFoundError) as error:
         print(f"refusing to publish: {error}", file=sys.stderr)
         return 1
+
+
+def _claim_records(release_dir: Path) -> dict[str, Any]:
+    """The compatibility records a build carries for whoever publishes it.
+
+    ``narrowed_claims`` is a compatibility range an earlier certification
+    narrowed back to an exact pin; ``claim_measurement`` is the model
+    versions a declared compatibility range was measured against (a source
+    enrichment's, or a recertification's with its baseline and drift
+    summary). Only records the build has are returned. Reading them refuses
+    nothing: the release contract has already accepted or refused them.
+    """
+    from microcosm.data import compatibility_recertification, source_enrichment
+
+    narrowed = source_enrichment.recorded_narrowed_claims(release_dir)
+    measurement = source_enrichment.recorded_claim_measurement(
+        release_dir
+    ) or compatibility_recertification.recorded_claim_measurement(release_dir)
+    records: dict[str, Any] = {}
+    if narrowed:
+        records["narrowed_claims"] = narrowed
+    if measurement:
+        records["claim_measurement"] = measurement
+    return records
+
+
+def _print_claim_records(records: Mapping[str, Any]) -> None:
+    """Say a build's compatibility records on stderr, as the tagged command
+    did, on the preflight and on publication, which needs no preflight
+    first; the preflight's verdict on stdout carries them too."""
+    if "narrowed_claims" in records:
+        print(
+            "note: this build records a compatibility narrowing from an "
+            f"earlier certification: {json.dumps(records['narrowed_claims'])}",
+            file=sys.stderr,
+        )
+    if "claim_measurement" in records:
+        print(
+            "note: this build declares a publisher compatibility range that "
+            "certification measured against only the versions recorded here: "
+            f"{json.dumps(records['claim_measurement'], sort_keys=True)}",
+            file=sys.stderr,
+        )
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -513,14 +664,22 @@ def _run(args: argparse.Namespace) -> int:
         )
     else:
         refusal = publication_refusal(
-            release_dir, allow_missing_staging=args.allow_missing_staging
+            release_dir,
+            allow_incomplete_reform_validation=args.allow_incomplete_reform_validation,
+            allow_missing_staging=args.allow_missing_staging,
         )
         if refusal is not None:
             print(refusal, file=sys.stderr)
             return 1
+        claim_records = _claim_records(release_dir)
+        _print_claim_records(claim_records)
         if args.preflight_only:
             prepared = prepare_build_folder_release(
-                release_dir, artifact_root=args.artifact_root, repository=args.repo_id
+                release_dir,
+                artifact_root=args.artifact_root,
+                repository=args.repo_id,
+                parent_h5=args.parent_h5,
+                compatibility_wheels=tuple(args.compatibility_wheel),
             )
             verdict: dict[str, Any] = {
                 "valid": True,
@@ -529,6 +688,7 @@ def _run(args: argparse.Namespace) -> int:
                 "build": prepared.build,
                 "repository": prepared.repository,
                 "release_role": prepared.release_role,
+                **claim_records,
             }
             if prepared.contract_warnings:
                 verdict["contract_warnings"] = list(prepared.contract_warnings)
@@ -539,6 +699,8 @@ def _run(args: argparse.Namespace) -> int:
             repository=args.repo_id,
             artifact_root=args.artifact_root,
             make_current=args.make_current,
+            parent_h5=args.parent_h5,
+            compatibility_wheels=tuple(args.compatibility_wheel),
             wait_seconds=(
                 PUBLICATION_WAIT_SECONDS
                 if args.wait_seconds is None
