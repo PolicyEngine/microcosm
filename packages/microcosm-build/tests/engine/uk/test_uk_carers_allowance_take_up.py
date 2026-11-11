@@ -276,7 +276,6 @@ def test_the_engine_pays_a_carer_only_where_the_carer_link_holds() -> None:
             "age": 40,
             "care_hours": 35.0,
             "would_claim_carers_allowance": True,
-            "would_claim_uc": True,
             "cares_for_severely_disabled_person": linked,
         }
         for name, linked in (("linked", True), ("unlinked", False))
