@@ -5,9 +5,9 @@ Invariants, each for every input Hypothesis draws:
 1. The collapsed districts are nested in the relative floor, and the districts
    below the floor in the absolute floor, so both counts are monotone in their
    threshold.
-2. A design-weight solve (calibrated weights equal to the design weights, or a
-   uniform rescaling of them) has no collapsed district at any relative floor
-   in [0, 1].
+2. A design-weight solve (calibrated weights equal to the design weights) has
+   no collapsed district at any relative floor in [0, 1], nor does a uniform
+   rescaling of the design weights at any relative floor up to 0.99.
 3. Both counts are at most the number of districts, which is the number of
    distinct district codes.
 4. ``blocking`` changes only ``passed``, ``blocking`` and ``report_only``: a
@@ -135,6 +135,19 @@ def test_districts_below_the_floor_are_listed_smallest_first() -> None:
         relative_floor=0.0,
     )
     assert _districts(gate["below_floor"]) == ["b", "a", "c"]
+
+
+def test_collapsed_sort_by_ratio_and_below_floor_by_calibrated_ess() -> None:
+    # Ratio order (a 0.12, c 0.225, b 0.5) differs from calibrated-ESS order
+    # (c 9, b 10, a 12), so swapping the two sort keys changes both lists.
+    gate = _GATE(
+        _origin(
+            {"a": 100.0, "b": 20.0, "c": 40.0},
+            {"a": 12.0, "b": 10.0, "c": 9.0},
+        )
+    )
+    assert _districts(gate["collapsed"]) == ["a", "c"]
+    assert _districts(gate["below_floor"]) == ["c", "b", "a"]
 
 
 def test_ties_for_the_smallest_ess_and_ratio_go_to_the_first_district() -> None:
@@ -399,7 +412,7 @@ def test_floors_out_of_range_are_refused_at_parse_time(
 ) -> None:
     with pytest.raises(SystemExit):
         _parse(tmp_path, flag, value)
-    assert flag in capsys.readouterr().err
+    assert f"{flag} must be" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
