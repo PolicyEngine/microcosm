@@ -405,7 +405,11 @@ def choose_fallback_levels(
     ``weight_by`` is true samples by the column ``map`` names for the
     household's ``input`` code. Every other level samples by
     ``default_weight``, the draw's ``weight_by`` default or its one
-    ``weight``. A present input must be a nonempty string without surrounding
+    ``weight``. The rule's input may not also be a key of
+    ``constraint_columns``: the draw samples by a present code's weight
+    whatever the level, so a level could not keep that input without
+    sampling by the code's weight, nor drop it and keep the household's own
+    weight. A present input must be a nonempty string without surrounding
     whitespace, as the draw requires. A draw that keeps a household's level's
     inputs, reads every other input as missing and samples each stage by this
     rule then meets no empty cell.
@@ -454,6 +458,10 @@ def choose_fallback_levels(
         "weight_by must map codes of one input to support weight columns",
     )
     _require(
+        weight_by is None or weight_by["input"] not in constraint_columns,
+        "the weight_by input must not also be a constraint input",
+    )
+    _require(
         isinstance(levels, Sequence)
         and bool(levels)
         and all(isinstance(level, FallbackLevel) for level in levels),
@@ -478,6 +486,12 @@ def choose_fallback_levels(
         inputs.add(weight_by["input"])
     missing = sorted(inputs - set(households.columns))
     _require(not missing, f"households lack input columns {missing}")
+    _require(
+        not households.columns[households.columns.isin(sorted(inputs))]
+        .duplicated()
+        .any(),
+        "households repeat an input column",
+    )
     observed = {column: _observed(households[column]) for column in sorted(inputs)}
 
     # Each household's own weight, as a position in the rule's weight columns
