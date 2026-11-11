@@ -573,6 +573,41 @@ def _transform() -> UKWASLISAStageTransform:
     )
 
 
+def test_the_support_clip_receipt_gives_the_frames_clone_count() -> None:
+    """Every geographic clone's balances are clipped, so the clip receipt
+    gives the frame's clone count from two clones up, and the support-clip
+    check allows that multiple of its row allowances (microcosm#931)."""
+
+    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
+
+    def clip(frame) -> dict:
+        transform = _transform()
+        transform(frame)
+        return transform.checkpoint_metadata()["evidence"]["support_clip"]
+
+    one = clip(_recipient_frame())
+    assert set(one) == {"columns"}
+    cloned = clip(clone_first_frame(_recipient_frame(), 3))
+    assert cloned["clone_count"] == 3
+    assert (
+        cloned["columns"][BALANCE_COLUMN]["rows_considered"]
+        == 3 * one["columns"][BALANCE_COLUMN]["rows_considered"]
+    )
+    allowances = {
+        "columns": [BALANCE_COLUMN],
+        "max_clipped_low_rows_by_column": {BALANCE_COLUMN: 0},
+        "max_clipped_high_rows_by_column": {BALANCE_COLUMN: 0},
+    }
+    gate = uk_stage_health_gate(
+        evidence={"stage": UK_WAS_LISA_STAGE_NAME, "support_clip": cloned},
+        stage=UK_WAS_LISA_STAGE_NAME,
+        check="support_clip",
+        parameters=allowances,
+    )
+    assert gate.passed, gate.failures
+    assert gate.details["clone_count"] == 3
+
+
 def test_stage_writes_the_declared_outputs_with_receipts() -> None:
     frame = _recipient_frame()
     transform = _transform()

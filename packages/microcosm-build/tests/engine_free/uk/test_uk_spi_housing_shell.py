@@ -12,6 +12,7 @@ from microcosm.build.uk_runtime.council_tax_constants import (
     UK_COUNCIL_TAX_BANDS,
     UK_COUNCIL_TAX_BANDS_BY_REGION,
 )
+from microcosm.build.uk_runtime.household_lineage import GEOGRAPHIC_FOLD_EVIDENCE
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_housing_shell import (
     HOUSING_AMOUNT_COLUMNS,
@@ -331,4 +332,41 @@ def test_geographic_clones_train_the_model_as_their_survey_household() -> None:
     } == {
         column: shares["training"]
         for column, shares in alone_receipt["category_shares"].items()
+    }
+
+
+def test_the_models_fold_receipt_is_absent_at_one_clone_and_rounded_at_three() -> None:
+    """The stage records how its model's geographic fold met the FRS
+    households only on more than one clone, so a one-clone frame's receipt
+    keeps its bytes; the counts are true source households, rounded
+    (microcosm#931)."""
+
+    person, benunit, household, weights = housing_shell_tables()
+    _, _, alone = impute_spi_housing_shell(
+        person, household, weights, seed=0, n_estimators=5
+    )
+    assert GEOGRAPHIC_FOLD_EVIDENCE not in alone
+    pool = with_geographic_clones(
+        uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            household_weights=weights,
+            time_period="2024",
+        ),
+        n_clones=3,
+    )
+    _, _, receipt = impute_spi_housing_shell(
+        pool.table("person"),
+        pool.table("household"),
+        pool.weights_for("household").values,
+        seed=0,
+        n_estimators=5,
+    )
+    # The 600 FRS households train the model; their clones agree.
+    assert receipt[GEOGRAPHIC_FOLD_EVIDENCE] == {
+        "clone_count": 3,
+        "records": 600,
+        "varied_records": 0,
+        "varied_share": 0,
     }
