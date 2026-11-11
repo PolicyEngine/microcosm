@@ -233,6 +233,14 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "a persisted copy overrides that sum and has no uprating index, so the "
         "candidate must drop it (microcosm#1106, the uk-data#543 defect)."
     ),
+    "person.is_severely_disabled_for_benefits": (
+        "policyengine-uk derives is_severely_disabled_for_benefits, the tax "
+        "credit severe disability condition, from the DLA care, PIP daily "
+        "living and Attendance Allowance categories and Armed Forces "
+        "Independence Payment; a persisted copy would override the formula "
+        "in every projected year, so the candidate leaves it to the formula "
+        "and drops it (microcosm#1095, A4; for María's signature)."
+    ),
     "person.pip_dl_category": (
         "policyengine-uk derives pip_dl_category from pip_dl_points (8 points "
         "for the standard rate, 12 for the enhanced) where no category is "

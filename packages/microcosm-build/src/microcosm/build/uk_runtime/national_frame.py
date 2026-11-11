@@ -758,7 +758,7 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # from pip_dl_points and pip_m_points, which the pip_points stage draws
         # within the stored awards; a persisted category would override the
         # points in every projected year. The spine keeps both, for the VED
-        # exemption and the severe disability flag.
+        # exemption and the carer link.
         "pip_dl_category",
         "pip_m_category",
         # policyengine-uk's sum of the ISA interest parts (microcosm#1360). The
@@ -766,6 +766,12 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # so no stage writes it; a persisted copy would override the sum and
         # never be uprated, so the boundary drops one should it appear.
         "tax_free_savings_income",
+        # The tax credit severe disability condition (microcosm#1095, A4):
+        # policyengine-uk's formula reads the disability categories and Armed
+        # Forces Independence Payment, so no stage writes it; a persisted copy
+        # would override the formula in every projected year, so the boundary
+        # drops one should it appear.
+        "is_severely_disabled_for_benefits",
     ),
     "household": (
         "property_wealth",

@@ -62,7 +62,6 @@ FRS_DISABILITY_OUTPUT_COLUMNS = (
     "pip_dl_category",
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
-    "is_severely_disabled_for_benefits",
 )
 YEAR_RULE = "survey_year"
 #: The carer link (A3 of the November event-data plan's PR3, microcosm#1095;
@@ -382,18 +381,16 @@ def derive_frs_disability(
         (aa >= aa_higher) | (dla_sc > dla_sc_higher) | (pip_dl >= pip_dl_enhanced)
     )
     # The tax credit severe disability condition (CTC Regs 2002 reg 8, WTC
-    # Regs 2002 reg 17) on the categories derived above, so the stored flag
-    # agrees with them by construction and with policyengine-uk's formula
-    # (pe-uk#1946, uk-data#494): the DLA care component at the highest rate,
-    # the PIP daily living component at the enhanced rate, or higher-rate
-    # Attendance Allowance. Lower-rate Attendance Allowance does not count,
-    # and FRS code 8 (the Armed Forces Compensation Scheme) cannot be told
-    # apart from Armed Forces Independence Payment, so it no longer counts.
-    values["is_severely_disabled_for_benefits"] = (
-        (values["aa_category"] == "HIGHER")
-        | (values["dla_sc_category"] == "HIGHER")
-        | (values["pip_dl_category"] == "ENHANCED")
-    ).to_numpy(dtype=bool)
+    # Regs 2002 reg 17), is_severely_disabled_for_benefits, is left to
+    # policyengine-uk's formula (A4 of the November event-data plan's PR3,
+    # microcosm#1095). The formula reads the categories derived above (DLA
+    # care at the highest rate, PIP daily living at the enhanced rate,
+    # higher-rate Attendance Allowance) and Armed Forces Independence Payment,
+    # which the build never writes, since FRS code 8 cannot be told apart from
+    # other Armed Forces Compensation Scheme payments. A stored copy would
+    # override the formula in every projected year, so a change to PIP's
+    # points thresholds would not reach the tax credit severe disability
+    # elements or the working-age council tax reduction's child amounts.
     return values
 
 

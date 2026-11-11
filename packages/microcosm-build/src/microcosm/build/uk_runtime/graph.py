@@ -512,7 +512,6 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "pip_dl_category",
                     "is_disabled_for_benefits",
                     "is_enhanced_disabled_for_benefits",
-                    "is_severely_disabled_for_benefits",
                     "receives_benefits_in_own_right",
                     # The UC draw's population (frs_take_up's rule).
                     "is_uc_claimant",
@@ -922,7 +921,6 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             (
                 "is_disabled_for_benefits",
                 "is_enhanced_disabled_for_benefits",
-                "is_severely_disabled_for_benefits",
                 "cares_for_severely_disabled_person",
             ),
             "bool",
@@ -1285,7 +1283,6 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             (
                 "is_disabled_for_benefits",
                 "is_enhanced_disabled_for_benefits",
-                "is_severely_disabled_for_benefits",
                 "receives_benefits_in_own_right",
             ),
             "bool",
@@ -1506,7 +1503,6 @@ _HMRC_SPI_HIDDEN_STRING = (
 _HMRC_SPI_HIDDEN_BOOL = (
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
-    "is_severely_disabled_for_benefits",
     # #882: the carer take-up flag follows the refilled Carer's Allowance
     # receipt on the SPI-redrawn rows; carers_allowance_take_up later opens it
     # to carers over the earnings limit (microcosm#1319).

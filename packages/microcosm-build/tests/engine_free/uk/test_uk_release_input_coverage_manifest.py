@@ -52,10 +52,12 @@ def test_known_gap_register_records_post_candidate_restoration_separately() -> N
     # the release leaves it for the engine to derive, and so is
     # tax_free_savings_income under the additive ISA income contract
     # (microcosm#1360), and so are the PIP categories, which policyengine-uk
-    # derives from the points the pip_points stage stores (microcosm#1095, P1).
-    # Each is a declared exclusion in its own section, never parity debt in
-    # known_gaps.
+    # derives from the points the pip_points stage stores (microcosm#1095, P1),
+    # and so is the tax credit severe disability flag, which the engine
+    # derives from the disability categories (microcosm#1095, A4). Each is a
+    # declared exclusion in its own section, never parity debt in known_gaps.
     assert set(gaps["engine_derived_exclusions"]) == {
+        "is_severely_disabled_for_benefits",
         "pip_dl_category",
         "pip_m_category",
         "property_wealth",
@@ -451,12 +453,14 @@ def test_engine_derived_exclusions_require_a_signature(tmp_path) -> None:
 
     committed = load_efrs_engine_derived_exclusions()
     assert [(gap.variable, gap.approved_by) for gap in committed] == [
+        ("is_severely_disabled_for_benefits", "juaristi22"),
         ("pip_dl_category", "juaristi22"),
         ("pip_m_category", "juaristi22"),
         ("property_wealth", "juaristi22"),
         ("tax_free_savings_income", "juaristi22"),
     ]
     assert [gap.approved_on for gap in committed] == [
+        "2026-11-11",
         "2026-11-09",
         "2026-11-09",
         "2026-10-11",

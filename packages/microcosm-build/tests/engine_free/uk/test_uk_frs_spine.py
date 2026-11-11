@@ -790,7 +790,6 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "pip_dl_category",
                         "is_disabled_for_benefits",
                         "is_enhanced_disabled_for_benefits",
-                        "is_severely_disabled_for_benefits",
                     ),
                 ),
                 source_stage(
