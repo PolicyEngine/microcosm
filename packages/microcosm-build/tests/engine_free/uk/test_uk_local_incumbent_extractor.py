@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+
+import h5py
+import numpy as np
+import pandas as pd
+import pytest
+
+from microcosm.build.uk_runtime import measure_simulation
+from microcosm.build.uk_runtime.candidate_score import (
+    UK_INCUMBENT_ANNUAL_INCOME_FALLBACK,
+)
+from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-build")
+
+
+def _tool_module():
+    path = _TEST_PATHS.repository / "tools/extract_uk_local_incumbent_surface.py"
+    spec = importlib.util.spec_from_file_location("extract_uk_local_incumbent", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_extract_incumbent_surface_from_tiny_h5_and_stub_simulation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pytest.importorskip("tables")
+    tool = _tool_module()
+    incumbent = tmp_path / "incumbent.h5"
+    with pd.HDFStore(incumbent, mode="w") as store:
+        store["household"] = pd.DataFrame({"household_id": [10, 20]})
+    constituency_h5 = tmp_path / "constituency.h5"
+    with h5py.File(constituency_h5, mode="w") as root:
+        root.create_dataset("2025", data=np.asarray([[1.0, 2.0]]))
+        root.attrs["area_codes"] = np.asarray(["C1"], dtype="S2")
+    la_h5 = tmp_path / "la.h5"
+    with h5py.File(la_h5, mode="w") as root:
+        root.create_dataset("2025", data=np.asarray([[3.0, 4.0]]))
+    la_roster = tmp_path / "la.csv"
+    pd.DataFrame({"code": ["L1"], "name": ["Local one"]}).to_csv(la_roster, index=False)
+
+    class StubSimulation:
+        pass
+
+    class StubResolver:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.fallback = None
+
+        def use_current_income_for_annual_measures(self, *, reason):
+            self.fallback = reason
+
+    resolvers = []
+
+    def make_resolver(**kwargs):
+        resolvers.append(StubResolver(**kwargs))
+        return resolvers[-1]
+
+    # The metrics are the declarations read through one resolver over the
+    # incumbent file, its annual measures its current values (rule 1's R1).
+    monkeypatch.setattr(measure_simulation, "UKMeasureResolver", make_resolver)
+
+    def fake_metrics(resolver, grain, *, period, household_ids):
+        assert resolver is resolvers[0]
+        assert period == 2025
+        assert list(household_ids) == [10, 20]
+        common = {"households": [1.0, 1.0]}
+        if grain == "constituency":
+            common["constituency_only"] = [5.0, 6.0]
+        else:
+            common["la_only"] = [7.0, 8.0]
+        return pd.DataFrame(common, index=household_ids)
+
+    monkeypatch.setattr(tool, "compute_household_metrics", fake_metrics)
+    out_dir = tmp_path / "out"
+
+    def factory(**_):
+        return StubSimulation()
+
+    manifest = tool.extract_incumbent_surface(
+        incumbent_h5=incumbent,
+        constituency_weights_h5=constituency_h5,
+        local_authority_weights_h5=la_h5,
+        constituency_codes_csv=None,
+        local_authority_codes_csv=la_roster,
+        period=2025,
+        out_dir=out_dir,
+        microsimulation_factory=factory,
+    )
+
+    (resolver,) = resolvers
+    assert resolver.kwargs["simulation_source"] == incumbent
+    assert resolver.kwargs["frame"] is None
+    assert resolver.kwargs["year"] == 2025
+    assert resolver.kwargs["microsimulation_factory"] is factory
+    assert resolver.fallback == UK_INCUMBENT_ANNUAL_INCOME_FALLBACK
+
+    weights = pd.read_csv(out_dir / tool.WEIGHTS_FILENAME)
+    metrics = pd.read_csv(out_dir / tool.METRICS_FILENAME)
+    assert weights.to_dict("list") == {
+        "household_id": [10, 20],
+        "C1": [1.0, 2.0],
+        "L1": [3.0, 4.0],
+    }
+    assert metrics.to_dict("list") == {
+        "household_id": [10, 20],
+        "households": [1.0, 1.0],
+        "constituency_only": [5.0, 6.0],
+        "la_only": [7.0, 8.0],
+    }
+    assert manifest["geography"] == {
+        "constituency_areas": 1,
+        "local_authority_areas": 1,
+    }
+    persisted = json.loads((out_dir / tool.MANIFEST_FILENAME).read_text())
+    assert (
+        persisted["outputs"]["weights"]["sha256"]
+        == manifest["outputs"]["weights"]["sha256"]
+    )
+
+
+def test_extract_incumbent_surface_names_the_register_when_uc_inputs_are_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    pytest.importorskip("tables")
+    tool = _tool_module()
+    incumbent = tmp_path / "incumbent.h5"
+    with pd.HDFStore(incumbent, mode="w") as store:
+        store["household"] = pd.DataFrame({"household_id": [10, 20]})
+    weights = {}
+    for name, code in (("constituency", "C1"), ("la", "L1")):
+        weights[name] = tmp_path / f"{name}.h5"
+        with h5py.File(weights[name], mode="w") as root:
+            root.create_dataset("2025", data=np.asarray([[1.0, 2.0]]))
+            root.attrs["area_codes"] = np.asarray([code], dtype="S2")
+
+    class StubResolver:
+        def __init__(self, **kwargs):
+            pass
+
+        def use_current_income_for_annual_measures(self, *, reason):
+            pass
+
+    monkeypatch.setattr(
+        measure_simulation, "UKMeasureResolver", lambda **kwargs: StubResolver()
+    )
+
+    # The enhanced FRS has no dependent_children, so the UC child bands'
+    # relationship check refuses; raise through it, so the text the extractor
+    # recognises cannot drift from it.
+    def missing_uc_inputs(resolver, grain, *, period, household_ids):
+        frs_uc_claimant_mask(
+            pd.DataFrame(
+                {
+                    "person_benunit_id": [1],
+                    "is_benunit_head": [True],
+                    "is_parent": [False],
+                }
+            ),
+            pd.DataFrame({"benunit_id": [1]}),
+        )
+
+    monkeypatch.setattr(tool, "compute_household_metrics", missing_uc_inputs)
+    with pytest.raises(
+        ValueError, match="incumbent_unresolvable_measures.json"
+    ) as raised:
+        tool.extract_incumbent_surface(
+            incumbent_h5=incumbent,
+            constituency_weights_h5=weights["constituency"],
+            local_authority_weights_h5=weights["la"],
+            constituency_codes_csv=None,
+            local_authority_codes_csv=None,
+            period=2025,
+            out_dir=tmp_path / "out",
+        )
+    assert "benunit.uc_calibration_child_count" in str(raised.value)

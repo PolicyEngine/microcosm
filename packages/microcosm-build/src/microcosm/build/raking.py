@@ -39,6 +39,13 @@ def iterative_proportional_fit(
     Populated zero-current-mean cells with positive targets are recorded in the
     returned frame's ``raking_zero_current_cells`` evidence attribute. Callers
     that require fail-closed behavior can set ``fail_on_unattainable``.
+
+    The fit runs a fixed number of sweeps with no convergence test; so that a
+    caller can show whether the terminal cross-margin residual is converged
+    or merely truncated, the maximum absolute relative deviation of any
+    populated cell mean from its positive target is recorded after every
+    sweep in the returned frame's ``raking_sweep_residuals`` attribute (one
+    value per sweep, the last being the residual of the returned frame).
     """
 
     if iterations < 1:
@@ -61,6 +68,29 @@ def iterative_proportional_fit(
             raise ValueError("raking weights must be nonnegative")
 
     zero_current_cells: list[dict[str, object]] = []
+    sweep_residuals: list[float] = []
+
+    def _max_abs_relative_residual() -> float:
+        worst = 0.0
+        for margin in margins:
+            for category, target_by_column in margin.targets.items():
+                mask = result[margin.column] == category
+                if not bool(mask.any()):
+                    continue
+                for column in columns:
+                    if column not in target_by_column:
+                        continue
+                    target = float(target_by_column[column])
+                    if not np.isfinite(target) or target <= 0:
+                        continue
+                    current = _cell_mean(
+                        result.loc[mask, column],
+                        None if weights is None else weights.loc[mask],
+                    )
+                    if current > 0 and np.isfinite(current):
+                        worst = max(worst, abs(current / target - 1.0))
+        return worst
+
     for _ in range(iterations):
         for margin in margins:
             if margin.column not in result:
@@ -99,7 +129,9 @@ def iterative_proportional_fit(
                                 )
                         continue
                     result.loc[mask, column] *= target / current
+        sweep_residuals.append(_max_abs_relative_residual())
     result.attrs["raking_zero_current_cells"] = tuple(zero_current_cells)
+    result.attrs["raking_sweep_residuals"] = tuple(sweep_residuals)
     return result
 
 

@@ -49,6 +49,7 @@ from microcosm.build.us_runtime.parity_reference import load_ecps_parity_known_g
 from microcosm.build.us_runtime.release_input_coverage import (
     ReleaseInputCoverageManifest,
     load_release_input_coverage_manifest,
+    project_ecps_parity_known_gap_names,
 )
 from microcosm.build.us_runtime.take_up_contract import (
     count_calibrated_take_up_programs,
@@ -121,9 +122,18 @@ def us_register_contradictions(
     in; the packaged registers (take-up contract, coverage manifest, parity
     known gaps) default to the shipped resources.
 
+    Parity known-gap names (the shipped register's or ``parity_known_gaps``)
+    resolve through ``REFERENCE_ECPS_LAYER_RENAMES`` onto the live layers the
+    parity gate exempts, so a gap filed under the pinned reference's
+    historical spelling still meets the live-name signal registers; its
+    contradiction line names that spelling.
+
     Returns:
         One line per (column, signal register, excused register) triple, in
         deterministic order. Empty means the registers are consistent.
+
+    Raises:
+        ValueError: If two parity known-gap names resolve onto one live layer.
     """
     if seeded_variables is None:
         seeded_variables = tuple(
@@ -135,7 +145,8 @@ def us_register_contradictions(
         )
     manifest = coverage_manifest or load_release_input_coverage_manifest()
     if parity_known_gaps is None:
-        parity_known_gaps = tuple(load_ecps_parity_known_gaps())
+        parity_known_gaps = tuple(gap.variable for gap in load_ecps_parity_known_gaps())
+    parity_gap_register_names = project_ecps_parity_known_gap_names(parity_known_gaps)
 
     signal_registers: tuple[tuple[str, frozenset[str]], ...] = (
         (_SEEDED_LABEL, frozenset(seeded_variables)),
@@ -146,7 +157,7 @@ def us_register_contradictions(
     excused_registers: tuple[tuple[str, frozenset[str]], ...] = (
         (_DEGENERATE_LABEL, frozenset(degenerate_reviewed_exclusions)),
         (_COVERAGE_EXCLUDED_LABEL, frozenset(manifest.reviewed_exclusions)),
-        (_PARITY_GAP_LABEL, frozenset(parity_known_gaps)),
+        (_PARITY_GAP_LABEL, frozenset(parity_gap_register_names)),
         (_DOCUMENTED_ABSENT_LABEL, frozenset(documented_absent_inputs)),
     )
 
@@ -160,9 +171,18 @@ def us_register_contradictions(
                 # Structurally exclusive: one manifest column has one status.
                 continue
             for column in sorted(signal_columns & excused_columns):
+                excused_by = excused_label
+                if (
+                    excused_label is _PARITY_GAP_LABEL
+                    and parity_gap_register_names[column] != column
+                ):
+                    excused_by = (
+                        f"{excused_label} under its historical name "
+                        f"{parity_gap_register_names[column]!r}"
+                    )
                 contradictions.append(
                     f"{column}: required to carry signal by {signal_label} but "
-                    f"excused as absent/degenerate by {excused_label}. No build "
+                    f"excused as absent/degenerate by {excused_by}. No build "
                     "can pass both gates; remove the column from one register."
                 )
     return tuple(contradictions)

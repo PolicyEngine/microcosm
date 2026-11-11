@@ -3,18 +3,26 @@
 This is a pre-calibration support construction step. It pools raw ASEC years
 before unit assignment and writes diagnostics proving source-year shares. It
 does not run donor imputations, fiscal calibration, or release certification.
+Like the base builder's source construction, it restores the reviewed Census
+person columns each ASEC H5 lacks from that year's pinned Census person file
+(microcosm #720).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from microcosm.build.us_runtime import AsecSource, build_pooled_asec_unit_frame
+from microcosm.build.us_runtime import (
+    AsecSource,
+    build_pooled_asec_unit_frame,
+    resolve_asec_spm_role_source_paths,
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -30,6 +38,18 @@ def _parse_args() -> argparse.Namespace:
         "--max-households",
         type=int,
         help="Optional smoke limit applied to every ASEC source.",
+    )
+    parser.add_argument(
+        "--asec-education-source",
+        action="append",
+        metavar="YEAR=PATH",
+        help=(
+            "Optional INCOME_YEAR=PATH mapping to the SHA-pinned official ASEC "
+            "survey archive (zip or extracted pppub member) the reviewed Census "
+            "person columns are restored from (microcosm #720). Years without "
+            "a mapping are fetched from the official Census archive and "
+            "verified against the same pins."
+        ),
     )
     parser.add_argument("--summary", type=Path, required=True)
     parser.add_argument(
@@ -48,6 +68,14 @@ def main() -> int:
     sources = tuple(
         _parse_source(value, max_households=args.max_households)
         for value in args.asec_h5
+    )
+    census_person_sources = resolve_asec_spm_role_source_paths(
+        _census_person_source_paths(args.asec_education_source),
+        income_years=tuple(sorted({source.year for source in sources})),
+    )
+    sources = tuple(
+        replace(source, census_person_source=census_person_sources[source.year])
+        for source in sources
     )
     frame, metadata = build_pooled_asec_unit_frame(
         sources,
@@ -74,6 +102,21 @@ def _parse_source(value: str, *, max_households: int | None) -> AsecSource:
     year = int(raw_year)
     path = Path(raw_path)
     return AsecSource(year=year, path=path, max_households=max_households)
+
+
+def _census_person_source_paths(values: list[str] | None) -> dict[int, Path]:
+    paths: dict[int, Path] = {}
+    for value in values or ():
+        raw_year, _, raw_path = value.partition("=")
+        if not raw_path:
+            raise ValueError(
+                f"--asec-education-source must be INCOME_YEAR=PATH, got {value!r}."
+            )
+        year = int(raw_year)
+        if year in paths:
+            raise ValueError(f"--asec-education-source repeats income year {year}.")
+        paths[year] = Path(raw_path)
+    return paths
 
 
 def _summary(frame, metadata: dict) -> dict[str, object]:

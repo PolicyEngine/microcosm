@@ -1,0 +1,1 @@
+Re-pin the UK Chronicle feed to 505e0e7 (PolicyEngine/chronicle#288: HMRC CGT statistics 2026 Table 4, Business Asset Disposal Relief and Investors' Relief by band of qualifying gain; 287,150 rows). The change is purely additive: no compiled target value moved on either surface, and the vendored resources and membership reports restate the feed identity (microcosm#1014).

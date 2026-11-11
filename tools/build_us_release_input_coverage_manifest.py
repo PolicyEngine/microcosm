@@ -17,7 +17,9 @@ Derivation (fully from checked-in, sha-pinned facts — no transient artifact):
     * ``reviewed_exclusion`` — the column is a documented incumbent-parity gap
       (an entry in ``ecps_parity_known_gaps.json``, carrying that register's
       reason and tracking issue), so the current candidate does not populate it
-      yet. EXCEPT the SSI countable-resource asset inputs (below).
+      yet. EXCEPT the SSI countable-resource asset inputs (below). Reference
+      layers and register names both resolve through the runtime
+      ``REFERENCE_ECPS_LAYER_RENAMES`` register the parity gate uses.
     * ``required`` — every other populated layer, PLUS the SSI countable-resource
       asset inputs. Per #368 ("it must be an actual gate"), the asset inputs get
       NO exclusion even though they are currently absent, so the gate ships red
@@ -39,6 +41,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
+from microcosm.build.us_runtime.release_input_coverage import (
+    REFERENCE_ECPS_LAYER_RENAMES,
+    project_ecps_parity_known_gap_names,
+)
 
 US_PACKAGE_DIR = (
     Path(__file__).resolve().parents[1]
@@ -81,11 +88,18 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "is_self_employed",
     "pre_subsidy_care_expenses",
     "is_incapable_of_self_care",
+    "is_spm_independent_minor_role",
     # PolicyEngine/microcosm#978 option 1: the ASEC reported-receipt inputs the
     # ACS local-area transfer requires in its donor.
     "receives_wic",
     "receives_snap",
     "receives_tanf",
+    # PolicyEngine/microcosm#719: the work-experience carries the county-file
+    # person schema commits to (industry and a working indicator, with
+    # occupation), written by the org_wages release stage.
+    "detailed_industry_recode",
+    "major_industry_recode",
+    "worked_last_year",
 )
 
 # Shared tail of the three #978 reported-receipt notes: why each is a hard
@@ -105,6 +119,20 @@ _RECEIPT_INPUT_NOTE_TAIL = (
 # from today's artifacts is the intended red gate (the #368 SSI-asset
 # pattern, extended by #462 to the capital-gain-distributions route).
 POST_REFERENCE_COLUMN_NOTES = {
+    "employer_sponsored_insurance_premiums": (
+        "Employer share of the premium for employed current ESI policyholders "
+        "(PolicyEngine/microcosm#454), written by the meps_esi_premiums "
+        "base-builder stage from Census ASEC NOW_OWNGRP / NOW_HIPAID / "
+        "NOW_GRPFTYP2 / PEMLR / NOEMP (restored from the pinned Census person "
+        "files) and MEPS-IC tier x firm-size x State cells, scaled over every "
+        "policyholder to BEA NIPA 7.8 line 17 (B4923C). A release must persist it: CBO "
+        "household market income (gov.household.cbo_market_income_additions) "
+        "and every ESI-to-wages reform bind through it. Required with NO "
+        "reviewed exclusion; absent on pre-#454 bases by construction — the "
+        "intended red gate until a base built with the stage ships. The "
+        "release also holds the anchor-universe total to the anchor "
+        "(us_esi_premiums_anchor_gate)."
+    ),
     "schedule_d_capital_gain_distributions": (
         "Schedule D line 13 route leg of the #282 capital-gain-distributions "
         "split (memo component of long_term_capital_gains, written by the "
@@ -142,6 +170,20 @@ POST_REFERENCE_COLUMN_NOTES = {
         "Currently absent — the intended red gate until the next base "
         "rebuild carries the stage through."
     ),
+    "is_spm_independent_minor_role": (
+        "The one dataset source input policyengine_us.spm.DATASET_SOURCE_INPUTS "
+        "declares: the measured Census SPM independence role, stored before "
+        "any age gate, that lets spm-calculator classify a 15-to-17-year-old "
+        "SPM unit head or spouse as an adult. Without it one such unit "
+        "refuses the whole population's SPM measurement "
+        "(SPM_COMPOSITION_REQUIRED) and the 104 state SPM poverty rows cannot "
+        "be validated. Written by the spm_independence_role base-builder "
+        "stage from the SHA-pinned complete Census ASEC person files through "
+        "the certified derive_spm_role_source; the certified default carries "
+        "it through the Build P source enrichment. Required with NO reviewed "
+        "exclusion: the anti-rot check would fail an exclusion whose column "
+        "carries signal, and the certified default's does."
+    ),
     "is_incapable_of_self_care": (
         "Section 21 qualifying-individual flag for the CDCC adult-care leg "
         "(PolicyEngine/microcosm#451 item 1), derived from the measured ASEC "
@@ -170,6 +212,40 @@ POST_REFERENCE_COLUMN_NOTES = {
         "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
         "boolean spm_unit input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
     ),
+    **{
+        column: (
+            f"{description}, carried from ASEC {source}"
+            + (
+                " (restored before pooling by asec_census_person_columns)"
+                if source in {"WEIND", "WEMIND"}
+                else ""
+            )
+            + " by the org_wages release stage "
+            "(org_wages.derive_us_org_occupation_inputs). ACS derives the "
+            "same input from native INDP/WKWN through the shared crosswalk "
+            "in the fiscal release predictor join and native ACS mapper; "
+            "a formula-less person input in "
+            "PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per "
+            "PolicyEngine/microcosm#719: the county-file person schema "
+            "carries a working indicator, industry and occupation on every "
+            "record. Currently absent from every published US default (all "
+            "predate #719) — this is the intended red gate until the next "
+            "release is built with the carry."
+        )
+        for column, description, source in (
+            (
+                "detailed_industry_recode",
+                "Industry of the longest job last year, 23 CPS detailed groups",
+                "WEIND",
+            ),
+            (
+                "major_industry_recode",
+                "Industry of the longest job last year, 15 CPS major groups",
+                "WEMIND",
+            ),
+            ("worked_last_year", "Worked at any time last year", "WKSWORK > 0"),
+        )
+    },
 }
 
 QBI_INPUTS = (
@@ -203,17 +279,11 @@ WEEKS_UNEMPLOYED_INPUTS = ("weeks_unemployed",)
 
 WIC_CLAIM_INPUTS = ("takes_up_wic_if_eligible",)
 
-# The SHA-pinned incumbent reference predates PolicyEngine-US 1.777.0 and
-# therefore truthfully records the retired WIC column name. Project that
-# historical evidence onto the verified 2.2.1 successor without rewriting
-# the reference artifact.
-REFERENCE_LAYER_RENAMES = {
-    "would_claim_wic": "takes_up_wic_if_eligible",
-}
-
 EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
 
 OTHER_HEALTH_INSURANCE_INPUTS = ("other_health_insurance_premiums",)
+
+ESI_PREMIUM_INPUTS = ("employer_sponsored_insurance_premiums",)
 
 PRIOR_YEAR_INCOME_INPUTS = (
     "self_employment_income_last_year",
@@ -286,6 +356,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *WIC_CLAIM_INPUTS,
     *EDUCATOR_EXPENSE_INPUTS,
     *OTHER_HEALTH_INSURANCE_INPUTS,
+    *ESI_PREMIUM_INPUTS,
     *FARM_BUSINESS_INCOME_INPUTS,
     *SCF_NET_WORTH_INPUTS,
     *SIPP_VEHICLE_INPUTS,
@@ -333,6 +404,32 @@ AOTC_EDUCATION_INPUTS = (
 #: a floor far below the plausible effect but far above simulation noise, so a
 #: structural $0 fails while a real (even conservative) score passes.
 REFORM_COVERAGE_PROBES = [
+    {
+        "id": "employer_sponsored_insurance_premium_neutralization",
+        "name": "Employer-sponsored insurance premium neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "employer_sponsored_insurance_premiums",
+        "budget_measure": "cbo_household_market_income",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["employer_sponsored_insurance_premiums"],
+        "min_abs_effect": 500_000_000_000.0,
+        "reason": (
+            "PolicyEngine-US 2.2.1 adds employer_sponsored_insurance_premiums "
+            "to CBO household market income through "
+            "gov.household.cbo_market_income_additions, its only consumer, so "
+            "neutralizing it lowers cbo_household_market_income by the "
+            "weighted employer-premium total: about $864 billion at 2024 (the "
+            "employed policyholders' part of BEA NIPA 7.8 line 17's $977.0 "
+            "billion, the meps_esi_premiums anchor; the stage measured $863.9 "
+            "billion over 74.0 million weighted employed policyholders on the "
+            "default 2023-2025 pool, before calibration). The floor sits at "
+            "about half of that. A structural zero means the column was "
+            "dropped or the stage never ran."
+        ),
+        "issue": "PolicyEngine/microcosm#454",
+    },
     {
         "id": "prior_year_self_employment_neutralization",
         "name": "Prior-year self-employment support neutralization",
@@ -849,6 +946,37 @@ REFORM_COVERAGE_PROBES = [
         "issue": "PolicyEngine/microcosm#298",
     },
     {
+        "id": "niit_passive_pass_through_exclusion",
+        "name": "Exclude passive partnership and S-corp income from the NIIT base",
+        "parameter_changes": {
+            "gov.irs.investment.income.sources": {
+                "2024-01-01.2024-12-31": [
+                    "taxable_interest_income",
+                    "dividend_income",
+                    "rental_income",
+                    "loss_limited_net_capital_gains",
+                    "non_sch_d_capital_gains",
+                ]
+            }
+        },
+        "budget_measure": "net_investment_income_tax",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["passive_partnership_s_corp_income"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Removing only passive_partnership_s_corp_income from the 2024 "
+            "net investment income sources isolates the section 1411(c)(1)(A)"
+            "(ii) pass-through leg, which the PUF channel carries from "
+            "Schedule E line 28 columns (g) minus (f) (microcosm#1239). The "
+            "donor's passive leg is net positive and concentrated at high "
+            "AGI, so baseline-minus-reform NIIT must be positive; without the "
+            "leaf the reform is a structural zero."
+        ),
+        "issue": "PolicyEngine/microcosm#1239",
+    },
+    {
         "id": "domestic_production_ald_reactivation",
         "name": "Former Section 199 domestic-production deduction reactivation",
         "parameter_changes": {
@@ -978,7 +1106,6 @@ REFORM_COVERAGE_PROBES = [
             "gov.usda.snap.income.sources.unearned": {
                 "2024-01-01.2024-12-31": [
                     "ssi",
-                    "tanf",
                     "general_assistance",
                     "pension_income",
                     "veterans_benefits",
@@ -1046,7 +1173,6 @@ REFORM_COVERAGE_PROBES = [
             "gov.usda.snap.income.sources.unearned": {
                 "2024-01-01.2024-12-31": [
                     "ssi",
-                    "tanf",
                     "general_assistance",
                     "pension_income",
                     "veterans_benefits",
@@ -1086,7 +1212,6 @@ REFORM_COVERAGE_PROBES = [
             "gov.usda.snap.income.sources.unearned": {
                 "2024-01-01.2024-12-31": [
                     "ssi",
-                    "tanf",
                     "general_assistance",
                     "pension_income",
                     "veterans_benefits",
@@ -1114,9 +1239,13 @@ REFORM_COVERAGE_PROBES = [
         "reason": (
             "Removing only workers_compensation from SNAP unearned-income "
             "sources lowers countable income and must increase SNAP for some "
-            "recipients. A production-ingredient 30,000-household smoke scored "
-            "+$28.26M reform-minus-baseline; without the measured WC_VAL carry "
-            "and PUF-half QRF, the source-list reform is a structural zero."
+            "recipients. On the 2026-09-27 Route A export (PolicyEngine-US "
+            "2.2.1) the corrected list scored +$277.9M reform-minus-baseline "
+            "over all 1,708 households carrying the leaf; without the measured "
+            "WC_VAL carry and PUF-half QRF, the source-list reform is a "
+            "structural zero. The list must equal the engine's person-level "
+            "unearned sources minus this leaf: TANF is counted once on "
+            "unearned_spm_unit and must not be re-added here."
         ),
         "issue": "PolicyEngine/microcosm#32",
     },
@@ -1180,8 +1309,22 @@ REFORM_COVERAGE_PROBES = [
         "id": "alimony_expense_ald_abolition",
         "name": "Alimony expense above-the-line deduction abolition",
         "parameter_changes": {
-            "gov.irs.ald.alimony_expense.divorce_year_threshold[0].amount": {
-                "2024-01-01.2100-12-31": False
+            "gov.irs.ald.deductions": {
+                "2024-01-01.2024-12-31": [
+                    "loss_ald",
+                    "self_employment_tax_ald",
+                    "student_loan_interest_ald",
+                    "early_withdrawal_penalty",
+                    "educator_expense",
+                    "health_savings_account_ald",
+                    "self_employed_health_insurance_ald",
+                    "self_employed_pension_contribution_ald",
+                    "traditional_ira_contributions",
+                    "qualified_adoption_assistance_expense",
+                    "us_bonds_for_higher_ed",
+                    "specified_possession_income",
+                    "puerto_rico_income",
+                ]
             }
         },
         "budget_measure": "income_tax",
@@ -1191,12 +1334,15 @@ REFORM_COVERAGE_PROBES = [
         "binding_inputs": ["alimony_expense"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
-            "The retired export has no nondefault divorce_year input, so "
-            "PolicyEngine-US applies its default year 0 through the first "
-            "eligibility bracket. Setting that bracket's amount to false "
-            "abolishes the alimony-expense above-the-line deduction on the "
-            "release, so baseline-minus-reform income tax must be negative. "
-            "With alimony_expense absent or degenerate, the abolition scores "
+            "Removing only alimony_expense_ald from the above-the-line "
+            "deduction list raises payers' taxable income, so "
+            "baseline-minus-reform income tax must be negative. The "
+            "divorce_year_threshold bracket is not used: since "
+            "PolicyEngine-US a8e8a2e2ab it also gates the recipient-side "
+            "taxable_alimony_income, so flipping it untaxes receipts too; on "
+            "the 2026-09-27 Route A export that scored +$1.89B, the wrong "
+            "sign. On the same export the corrected list scored -$2.52B. With "
+            "alimony_expense absent or degenerate, the abolition scores "
             "exactly $0."
         ),
         "issue": "PolicyEngine/microcosm#38",
@@ -1458,15 +1604,32 @@ def _load(name: str) -> dict:
     return json.loads((US_PACKAGE_DIR / name).read_text(encoding="utf-8"))
 
 
+def _registered_as(live: str, register_name: str) -> str:
+    """A live column name, suffixed with its register spelling when renamed."""
+    if register_name == live:
+        return live
+    return f"{live} (registered as {register_name!r})"
+
+
 def build_manifest() -> dict:
     parity = _load("ecps_parity_reference.json")
-    known_gaps = _load("ecps_parity_known_gaps.json")["known_gaps"]
+    register_gaps = _load("ecps_parity_known_gaps.json")["known_gaps"]
 
+    # The SHA-pinned reference predates PolicyEngine-US 1.777.0 and records the
+    # retired WIC name. Its layers and the known-gap register names both
+    # resolve through the runtime rename register the parity gate uses, so a
+    # gap filed under a historical spelling is excluded, and guarded, as the
+    # live column the gate exempts.
     populated_layers = {
-        REFERENCE_LAYER_RENAMES.get(name, name)
+        REFERENCE_ECPS_LAYER_RENAMES.get(name, name)
         for name, share in parity["nonzero_shares"].items()
         if float(share) > 0.0
     } | set(POST_REFERENCE_ECPS_REQUIRED_INPUTS)
+    gap_register_names = project_ecps_parity_known_gap_names(register_gaps)
+    known_gaps = {
+        live: register_gaps[register_name]
+        for live, register_name in gap_register_names.items()
+    }
     ssi_assets = set(SSI_COUNTABLE_RESOURCE_ASSETS)
 
     missing_assets = sorted(ssi_assets - populated_layers)
@@ -1482,7 +1645,10 @@ def build_manifest() -> dict:
             "Restored reference inputs are absent from the reference populated "
             f"surface: {missing_restored}."
         )
-    stale_restored_gaps = sorted(restored_inputs & set(known_gaps))
+    stale_restored_gaps = [
+        _registered_as(name, gap_register_names[name])
+        for name in sorted(restored_inputs & set(known_gaps))
+    ]
     if stale_restored_gaps:
         raise ValueError(
             "Restored reference inputs cannot remain in the parity-gap register: "
@@ -1498,6 +1664,11 @@ def build_manifest() -> dict:
                 "reason": str(entry["reason"]),
                 "issue": str(entry["issue"]),
             }
+            if gap_register_names[name] != name:
+                columns[name]["note"] = (
+                    "Filed in ecps_parity_known_gaps.json under the pinned "
+                    f"reference's historical name {gap_register_names[name]!r}."
+                )
         else:
             column = {"status": "required"}
             if name in ssi_assets:
@@ -1564,10 +1735,15 @@ def build_manifest() -> dict:
             "meets_ssi_disability_criteria required by shipped validation "
             "probes, the #282 Schedule-D capital-gain-distributions "
             "route leg schedule_d_capital_gain_distributions "
-            "(PolicyEngine/microcosm#462), and the three ASEC reported-receipt "
+            "(PolicyEngine/microcosm#462), the three ASEC reported-receipt "
             "inputs receives_wic, receives_snap, receives_tanf that the ACS "
             "local-area transfer requires in its donor "
-            "(PolicyEngine/microcosm#978 option 1). "
+            "(PolicyEngine/microcosm#978 option 1), the work-experience inputs "
+            "detailed_industry_recode, major_industry_recode, worked_last_year "
+            "(PolicyEngine/microcosm#719), and the engine's declared "
+            "dataset source input is_spm_independent_minor_role (the "
+            "spm_independence_role base-builder stage; "
+            "PolicyEngine/microcosm#893). "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT every primary-source "
             "restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS "

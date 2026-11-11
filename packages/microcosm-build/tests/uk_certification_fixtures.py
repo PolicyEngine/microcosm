@@ -31,6 +31,10 @@ from microcosm.build.uk_runtime.release_certification import (
 )
 
 TEST_KEY = base64.b64encode(bytes(range(32))).decode("ascii")
+#: The projection source the stub seam records on its fence: the certifier
+#: requires an installed engine there. The version matches the runtime the
+#: assembler fixture signs into its diagnostics.
+STUB_PROJECTION_ENGINE = "policyengine-uk==2.89.0"
 
 
 @pytest.fixture(name="uk_certification_signing_key", autouse=True)
@@ -46,9 +50,15 @@ def stub_registry():
     for entry in spec.gates:
         parameter_keys.setdefault(entry.gate, set()).update(entry.parameters)
 
+    details_by_gate = {
+        "cgt_projection_entrants": {"projection_engine": STUB_PROJECTION_ENGINE},
+    }
+
     def passing(name):
         def gate(**_kwargs):
-            return GateResult(name=name, passed=True)
+            return GateResult(
+                name=name, passed=True, details=details_by_gate.get(name, {})
+            )
 
         return gate
 
@@ -157,7 +167,7 @@ def green_score_receipt(candidate_sha: str) -> dict:
 def green_certification_inputs(tmp_path: Path):
     """Three green signed parts plus a closed identity join."""
 
-    candidate = tmp_path / "microcosm_uk_2024.h5"
+    candidate = tmp_path / "microcosm_uk_2024_25.h5"
     candidate.write_bytes(b"candidate-bytes")
     candidate_sha = sha256(candidate)
     diagnostics = tmp_path / "calibration_diagnostics.json"
@@ -238,7 +248,7 @@ def green_certification_inputs(tmp_path: Path):
     )
     return {
         "release_id": "uk-757-first-certified-cut",
-        "candidate_name": "microcosm_uk_2024",
+        "candidate_name": "microcosm_uk_2024_25",
         "candidate_path": candidate,
         "candidate_sha256": candidate_sha,
         "spine_sha256": GREEN_PARENT_SPINE_SHA256,

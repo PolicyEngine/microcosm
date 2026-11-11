@@ -1,0 +1,1465 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_local_authority_names",
+  "description": "Every UK local authority district on the April 2023 ONS frame, with its ONS display name and the policyengine-uk LocalAuthority member name the rowwise build writes as the household local_authority input. engine_key is the mechanical rule in microcosm.build.uk_runtime.local_authority_input (upper-case, non-alphanumeric runs to one underscore) with the module's declared aliases; regenerate with tools/generate_uk_local_authority_names.py (microcosm#953).",
+  "source": {
+    "name": "Local Authority Districts (April 2023) Names and Codes in the United Kingdom",
+    "publisher": "ONS Open Geography Portal",
+    "item_id": "e8b361ba9e98418ba8ff2f892d00c352",
+    "url": "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/e8b361ba9e98418ba8ff2f892d00c352/csv?layers=0",
+    "sha256": "6c2d811f50756c459c6a1c7c692ae9262fb4d70df3f535958ef7cdbbbd76cc44",
+    "columns": [
+      "LAD23CD",
+      "LAD23NM"
+    ],
+    "vintage": "2023_april_lad"
+  },
+  "area_count": 361,
+  "areas": {
+    "E06000001": {
+      "name": "Hartlepool",
+      "engine_key": "HARTLEPOOL"
+    },
+    "E06000002": {
+      "name": "Middlesbrough",
+      "engine_key": "MIDDLESBROUGH"
+    },
+    "E06000003": {
+      "name": "Redcar and Cleveland",
+      "engine_key": "REDCAR_AND_CLEVELAND"
+    },
+    "E06000004": {
+      "name": "Stockton-on-Tees",
+      "engine_key": "STOCKTON_ON_TEES"
+    },
+    "E06000005": {
+      "name": "Darlington",
+      "engine_key": "DARLINGTON"
+    },
+    "E06000006": {
+      "name": "Halton",
+      "engine_key": "HALTON"
+    },
+    "E06000007": {
+      "name": "Warrington",
+      "engine_key": "WARRINGTON"
+    },
+    "E06000008": {
+      "name": "Blackburn with Darwen",
+      "engine_key": "BLACKBURN_WITH_DARWEN"
+    },
+    "E06000009": {
+      "name": "Blackpool",
+      "engine_key": "BLACKPOOL"
+    },
+    "E06000010": {
+      "name": "Kingston upon Hull, City of",
+      "engine_key": "KINGSTON_UPON_HULL_CITY_OF"
+    },
+    "E06000011": {
+      "name": "East Riding of Yorkshire",
+      "engine_key": "EAST_RIDING_OF_YORKSHIRE"
+    },
+    "E06000012": {
+      "name": "North East Lincolnshire",
+      "engine_key": "NORTH_EAST_LINCOLNSHIRE"
+    },
+    "E06000013": {
+      "name": "North Lincolnshire",
+      "engine_key": "NORTH_LINCOLNSHIRE"
+    },
+    "E06000014": {
+      "name": "York",
+      "engine_key": "YORK"
+    },
+    "E06000015": {
+      "name": "Derby",
+      "engine_key": "DERBY"
+    },
+    "E06000016": {
+      "name": "Leicester",
+      "engine_key": "LEICESTER"
+    },
+    "E06000017": {
+      "name": "Rutland",
+      "engine_key": "RUTLAND"
+    },
+    "E06000018": {
+      "name": "Nottingham",
+      "engine_key": "NOTTINGHAM"
+    },
+    "E06000019": {
+      "name": "Herefordshire, County of",
+      "engine_key": "HEREFORDSHIRE_COUNTY_OF"
+    },
+    "E06000020": {
+      "name": "Telford and Wrekin",
+      "engine_key": "TELFORD_AND_WREKIN"
+    },
+    "E06000021": {
+      "name": "Stoke-on-Trent",
+      "engine_key": "STOKE_ON_TRENT"
+    },
+    "E06000022": {
+      "name": "Bath and North East Somerset",
+      "engine_key": "BATH_AND_NORTH_EAST_SOMERSET"
+    },
+    "E06000023": {
+      "name": "Bristol, City of",
+      "engine_key": "BRISTOL_CITY_OF"
+    },
+    "E06000024": {
+      "name": "North Somerset",
+      "engine_key": "NORTH_SOMERSET"
+    },
+    "E06000025": {
+      "name": "South Gloucestershire",
+      "engine_key": "SOUTH_GLOUCESTERSHIRE"
+    },
+    "E06000026": {
+      "name": "Plymouth",
+      "engine_key": "PLYMOUTH"
+    },
+    "E06000027": {
+      "name": "Torbay",
+      "engine_key": "TORBAY"
+    },
+    "E06000030": {
+      "name": "Swindon",
+      "engine_key": "SWINDON"
+    },
+    "E06000031": {
+      "name": "Peterborough",
+      "engine_key": "PETERBOROUGH"
+    },
+    "E06000032": {
+      "name": "Luton",
+      "engine_key": "LUTON"
+    },
+    "E06000033": {
+      "name": "Southend-on-Sea",
+      "engine_key": "SOUTHEND_ON_SEA"
+    },
+    "E06000034": {
+      "name": "Thurrock",
+      "engine_key": "THURROCK"
+    },
+    "E06000035": {
+      "name": "Medway",
+      "engine_key": "MEDWAY"
+    },
+    "E06000036": {
+      "name": "Bracknell Forest",
+      "engine_key": "BRACKNELL_FOREST"
+    },
+    "E06000037": {
+      "name": "West Berkshire",
+      "engine_key": "WEST_BERKSHIRE"
+    },
+    "E06000038": {
+      "name": "Reading",
+      "engine_key": "READING"
+    },
+    "E06000039": {
+      "name": "Slough",
+      "engine_key": "SLOUGH"
+    },
+    "E06000040": {
+      "name": "Windsor and Maidenhead",
+      "engine_key": "WINDSOR_AND_MAIDENHEAD"
+    },
+    "E06000041": {
+      "name": "Wokingham",
+      "engine_key": "WOKINGHAM"
+    },
+    "E06000042": {
+      "name": "Milton Keynes",
+      "engine_key": "MILTON_KEYNES"
+    },
+    "E06000043": {
+      "name": "Brighton and Hove",
+      "engine_key": "BRIGHTON_AND_HOVE"
+    },
+    "E06000044": {
+      "name": "Portsmouth",
+      "engine_key": "PORTSMOUTH"
+    },
+    "E06000045": {
+      "name": "Southampton",
+      "engine_key": "SOUTHAMPTON"
+    },
+    "E06000046": {
+      "name": "Isle of Wight",
+      "engine_key": "ISLE_OF_WIGHT"
+    },
+    "E06000047": {
+      "name": "County Durham",
+      "engine_key": "COUNTY_DURHAM"
+    },
+    "E06000049": {
+      "name": "Cheshire East",
+      "engine_key": "CHESHIRE_EAST"
+    },
+    "E06000050": {
+      "name": "Cheshire West and Chester",
+      "engine_key": "CHESHIRE_WEST_AND_CHESTER"
+    },
+    "E06000051": {
+      "name": "Shropshire",
+      "engine_key": "SHROPSHIRE"
+    },
+    "E06000052": {
+      "name": "Cornwall",
+      "engine_key": "CORNWALL"
+    },
+    "E06000053": {
+      "name": "Isles of Scilly",
+      "engine_key": "ISLES_OF_SCILLY"
+    },
+    "E06000054": {
+      "name": "Wiltshire",
+      "engine_key": "WILTSHIRE"
+    },
+    "E06000055": {
+      "name": "Bedford",
+      "engine_key": "BEDFORD"
+    },
+    "E06000056": {
+      "name": "Central Bedfordshire",
+      "engine_key": "CENTRAL_BEDFORDSHIRE"
+    },
+    "E06000057": {
+      "name": "Northumberland",
+      "engine_key": "NORTHUMBERLAND"
+    },
+    "E06000058": {
+      "name": "Bournemouth, Christchurch and Poole",
+      "engine_key": "BOURNEMOUTH_CHRISTCHURCH_AND_POOLE"
+    },
+    "E06000059": {
+      "name": "Dorset",
+      "engine_key": "DORSET"
+    },
+    "E06000060": {
+      "name": "Buckinghamshire",
+      "engine_key": "BUCKINGHAMSHIRE"
+    },
+    "E06000061": {
+      "name": "North Northamptonshire",
+      "engine_key": "NORTH_NORTHAMPTONSHIRE"
+    },
+    "E06000062": {
+      "name": "West Northamptonshire",
+      "engine_key": "WEST_NORTHAMPTONSHIRE"
+    },
+    "E06000063": {
+      "name": "Cumberland",
+      "engine_key": "CUMBERLAND"
+    },
+    "E06000064": {
+      "name": "Westmorland and Furness",
+      "engine_key": "WESTMORLAND_AND_FURNESS"
+    },
+    "E06000065": {
+      "name": "North Yorkshire",
+      "engine_key": "NORTH_YORKSHIRE"
+    },
+    "E06000066": {
+      "name": "Somerset",
+      "engine_key": "SOMERSET"
+    },
+    "E07000008": {
+      "name": "Cambridge",
+      "engine_key": "CAMBRIDGE"
+    },
+    "E07000009": {
+      "name": "East Cambridgeshire",
+      "engine_key": "EAST_CAMBRIDGESHIRE"
+    },
+    "E07000010": {
+      "name": "Fenland",
+      "engine_key": "FENLAND"
+    },
+    "E07000011": {
+      "name": "Huntingdonshire",
+      "engine_key": "HUNTINGDONSHIRE"
+    },
+    "E07000012": {
+      "name": "South Cambridgeshire",
+      "engine_key": "SOUTH_CAMBRIDGESHIRE"
+    },
+    "E07000032": {
+      "name": "Amber Valley",
+      "engine_key": "AMBER_VALLEY"
+    },
+    "E07000033": {
+      "name": "Bolsover",
+      "engine_key": "BOLSOVER"
+    },
+    "E07000034": {
+      "name": "Chesterfield",
+      "engine_key": "CHESTERFIELD"
+    },
+    "E07000035": {
+      "name": "Derbyshire Dales",
+      "engine_key": "DERBYSHIRE_DALES"
+    },
+    "E07000036": {
+      "name": "Erewash",
+      "engine_key": "EREWASH"
+    },
+    "E07000037": {
+      "name": "High Peak",
+      "engine_key": "HIGH_PEAK"
+    },
+    "E07000038": {
+      "name": "North East Derbyshire",
+      "engine_key": "NORTH_EAST_DERBYSHIRE"
+    },
+    "E07000039": {
+      "name": "South Derbyshire",
+      "engine_key": "SOUTH_DERBYSHIRE"
+    },
+    "E07000040": {
+      "name": "East Devon",
+      "engine_key": "EAST_DEVON"
+    },
+    "E07000041": {
+      "name": "Exeter",
+      "engine_key": "EXETER"
+    },
+    "E07000042": {
+      "name": "Mid Devon",
+      "engine_key": "MID_DEVON"
+    },
+    "E07000043": {
+      "name": "North Devon",
+      "engine_key": "NORTH_DEVON"
+    },
+    "E07000044": {
+      "name": "South Hams",
+      "engine_key": "SOUTH_HAMS"
+    },
+    "E07000045": {
+      "name": "Teignbridge",
+      "engine_key": "TEIGNBRIDGE"
+    },
+    "E07000046": {
+      "name": "Torridge",
+      "engine_key": "TORRIDGE"
+    },
+    "E07000047": {
+      "name": "West Devon",
+      "engine_key": "WEST_DEVON"
+    },
+    "E07000061": {
+      "name": "Eastbourne",
+      "engine_key": "EASTBOURNE"
+    },
+    "E07000062": {
+      "name": "Hastings",
+      "engine_key": "HASTINGS"
+    },
+    "E07000063": {
+      "name": "Lewes",
+      "engine_key": "LEWES"
+    },
+    "E07000064": {
+      "name": "Rother",
+      "engine_key": "ROTHER"
+    },
+    "E07000065": {
+      "name": "Wealden",
+      "engine_key": "WEALDEN"
+    },
+    "E07000066": {
+      "name": "Basildon",
+      "engine_key": "BASILDON"
+    },
+    "E07000067": {
+      "name": "Braintree",
+      "engine_key": "BRAINTREE"
+    },
+    "E07000068": {
+      "name": "Brentwood",
+      "engine_key": "BRENTWOOD"
+    },
+    "E07000069": {
+      "name": "Castle Point",
+      "engine_key": "CASTLE_POINT"
+    },
+    "E07000070": {
+      "name": "Chelmsford",
+      "engine_key": "CHELMSFORD"
+    },
+    "E07000071": {
+      "name": "Colchester",
+      "engine_key": "COLCHESTER"
+    },
+    "E07000072": {
+      "name": "Epping Forest",
+      "engine_key": "EPPING_FOREST"
+    },
+    "E07000073": {
+      "name": "Harlow",
+      "engine_key": "HARLOW"
+    },
+    "E07000074": {
+      "name": "Maldon",
+      "engine_key": "MALDON"
+    },
+    "E07000075": {
+      "name": "Rochford",
+      "engine_key": "ROCHFORD"
+    },
+    "E07000076": {
+      "name": "Tendring",
+      "engine_key": "TENDRING"
+    },
+    "E07000077": {
+      "name": "Uttlesford",
+      "engine_key": "UTTLESFORD"
+    },
+    "E07000078": {
+      "name": "Cheltenham",
+      "engine_key": "CHELTENHAM"
+    },
+    "E07000079": {
+      "name": "Cotswold",
+      "engine_key": "COTSWOLD"
+    },
+    "E07000080": {
+      "name": "Forest of Dean",
+      "engine_key": "FOREST_OF_DEAN"
+    },
+    "E07000081": {
+      "name": "Gloucester",
+      "engine_key": "GLOUCESTER"
+    },
+    "E07000082": {
+      "name": "Stroud",
+      "engine_key": "STROUD"
+    },
+    "E07000083": {
+      "name": "Tewkesbury",
+      "engine_key": "TEWKESBURY"
+    },
+    "E07000084": {
+      "name": "Basingstoke and Deane",
+      "engine_key": "BASINGSTOKE_AND_DEANE"
+    },
+    "E07000085": {
+      "name": "East Hampshire",
+      "engine_key": "EAST_HAMPSHIRE"
+    },
+    "E07000086": {
+      "name": "Eastleigh",
+      "engine_key": "EASTLEIGH"
+    },
+    "E07000087": {
+      "name": "Fareham",
+      "engine_key": "FAREHAM"
+    },
+    "E07000088": {
+      "name": "Gosport",
+      "engine_key": "GOSPORT"
+    },
+    "E07000089": {
+      "name": "Hart",
+      "engine_key": "HART"
+    },
+    "E07000090": {
+      "name": "Havant",
+      "engine_key": "HAVANT"
+    },
+    "E07000091": {
+      "name": "New Forest",
+      "engine_key": "NEW_FOREST"
+    },
+    "E07000092": {
+      "name": "Rushmoor",
+      "engine_key": "RUSHMOOR"
+    },
+    "E07000093": {
+      "name": "Test Valley",
+      "engine_key": "TEST_VALLEY"
+    },
+    "E07000094": {
+      "name": "Winchester",
+      "engine_key": "WINCHESTER"
+    },
+    "E07000095": {
+      "name": "Broxbourne",
+      "engine_key": "BROXBOURNE"
+    },
+    "E07000096": {
+      "name": "Dacorum",
+      "engine_key": "DACORUM"
+    },
+    "E07000098": {
+      "name": "Hertsmere",
+      "engine_key": "HERTSMERE"
+    },
+    "E07000099": {
+      "name": "North Hertfordshire",
+      "engine_key": "NORTH_HERTFORDSHIRE"
+    },
+    "E07000102": {
+      "name": "Three Rivers",
+      "engine_key": "THREE_RIVERS"
+    },
+    "E07000103": {
+      "name": "Watford",
+      "engine_key": "WATFORD"
+    },
+    "E07000105": {
+      "name": "Ashford",
+      "engine_key": "ASHFORD"
+    },
+    "E07000106": {
+      "name": "Canterbury",
+      "engine_key": "CANTERBURY"
+    },
+    "E07000107": {
+      "name": "Dartford",
+      "engine_key": "DARTFORD"
+    },
+    "E07000108": {
+      "name": "Dover",
+      "engine_key": "DOVER"
+    },
+    "E07000109": {
+      "name": "Gravesham",
+      "engine_key": "GRAVESHAM"
+    },
+    "E07000110": {
+      "name": "Maidstone",
+      "engine_key": "MAIDSTONE"
+    },
+    "E07000111": {
+      "name": "Sevenoaks",
+      "engine_key": "SEVENOAKS"
+    },
+    "E07000112": {
+      "name": "Folkestone and Hythe",
+      "engine_key": "FOLKESTONE_AND_HYTHE"
+    },
+    "E07000113": {
+      "name": "Swale",
+      "engine_key": "SWALE"
+    },
+    "E07000114": {
+      "name": "Thanet",
+      "engine_key": "THANET"
+    },
+    "E07000115": {
+      "name": "Tonbridge and Malling",
+      "engine_key": "TONBRIDGE_AND_MALLING"
+    },
+    "E07000116": {
+      "name": "Tunbridge Wells",
+      "engine_key": "TUNBRIDGE_WELLS"
+    },
+    "E07000117": {
+      "name": "Burnley",
+      "engine_key": "BURNLEY"
+    },
+    "E07000118": {
+      "name": "Chorley",
+      "engine_key": "CHORLEY"
+    },
+    "E07000119": {
+      "name": "Fylde",
+      "engine_key": "FYLDE"
+    },
+    "E07000120": {
+      "name": "Hyndburn",
+      "engine_key": "HYNDBURN"
+    },
+    "E07000121": {
+      "name": "Lancaster",
+      "engine_key": "LANCASTER"
+    },
+    "E07000122": {
+      "name": "Pendle",
+      "engine_key": "PENDLE"
+    },
+    "E07000123": {
+      "name": "Preston",
+      "engine_key": "PRESTON"
+    },
+    "E07000124": {
+      "name": "Ribble Valley",
+      "engine_key": "RIBBLE_VALLEY"
+    },
+    "E07000125": {
+      "name": "Rossendale",
+      "engine_key": "ROSSENDALE"
+    },
+    "E07000126": {
+      "name": "South Ribble",
+      "engine_key": "SOUTH_RIBBLE"
+    },
+    "E07000127": {
+      "name": "West Lancashire",
+      "engine_key": "WEST_LANCASHIRE"
+    },
+    "E07000128": {
+      "name": "Wyre",
+      "engine_key": "WYRE"
+    },
+    "E07000129": {
+      "name": "Blaby",
+      "engine_key": "BLABY"
+    },
+    "E07000130": {
+      "name": "Charnwood",
+      "engine_key": "CHARNWOOD"
+    },
+    "E07000131": {
+      "name": "Harborough",
+      "engine_key": "HARBOROUGH"
+    },
+    "E07000132": {
+      "name": "Hinckley and Bosworth",
+      "engine_key": "HINCKLEY_AND_BOSWORTH"
+    },
+    "E07000133": {
+      "name": "Melton",
+      "engine_key": "MELTON"
+    },
+    "E07000134": {
+      "name": "North West Leicestershire",
+      "engine_key": "NORTH_WEST_LEICESTERSHIRE"
+    },
+    "E07000135": {
+      "name": "Oadby and Wigston",
+      "engine_key": "OADBY_AND_WIGSTON"
+    },
+    "E07000136": {
+      "name": "Boston",
+      "engine_key": "BOSTON"
+    },
+    "E07000137": {
+      "name": "East Lindsey",
+      "engine_key": "EAST_LINDSEY"
+    },
+    "E07000138": {
+      "name": "Lincoln",
+      "engine_key": "LINCOLN"
+    },
+    "E07000139": {
+      "name": "North Kesteven",
+      "engine_key": "NORTH_KESTEVEN"
+    },
+    "E07000140": {
+      "name": "South Holland",
+      "engine_key": "SOUTH_HOLLAND"
+    },
+    "E07000141": {
+      "name": "South Kesteven",
+      "engine_key": "SOUTH_KESTEVEN"
+    },
+    "E07000142": {
+      "name": "West Lindsey",
+      "engine_key": "WEST_LINDSEY"
+    },
+    "E07000143": {
+      "name": "Breckland",
+      "engine_key": "BRECKLAND"
+    },
+    "E07000144": {
+      "name": "Broadland",
+      "engine_key": "BROADLAND"
+    },
+    "E07000145": {
+      "name": "Great Yarmouth",
+      "engine_key": "GREAT_YARMOUTH"
+    },
+    "E07000146": {
+      "name": "King's Lynn and West Norfolk",
+      "engine_key": "KINGS_LYNN_AND_WEST_NORFOLK"
+    },
+    "E07000147": {
+      "name": "North Norfolk",
+      "engine_key": "NORTH_NORFOLK"
+    },
+    "E07000148": {
+      "name": "Norwich",
+      "engine_key": "NORWICH"
+    },
+    "E07000149": {
+      "name": "South Norfolk",
+      "engine_key": "SOUTH_NORFOLK"
+    },
+    "E07000170": {
+      "name": "Ashfield",
+      "engine_key": "ASHFIELD"
+    },
+    "E07000171": {
+      "name": "Bassetlaw",
+      "engine_key": "BASSETLAW"
+    },
+    "E07000172": {
+      "name": "Broxtowe",
+      "engine_key": "BROXTOWE"
+    },
+    "E07000173": {
+      "name": "Gedling",
+      "engine_key": "GEDLING"
+    },
+    "E07000174": {
+      "name": "Mansfield",
+      "engine_key": "MANSFIELD"
+    },
+    "E07000175": {
+      "name": "Newark and Sherwood",
+      "engine_key": "NEWARK_AND_SHERWOOD"
+    },
+    "E07000176": {
+      "name": "Rushcliffe",
+      "engine_key": "RUSHCLIFFE"
+    },
+    "E07000177": {
+      "name": "Cherwell",
+      "engine_key": "CHERWELL"
+    },
+    "E07000178": {
+      "name": "Oxford",
+      "engine_key": "OXFORD"
+    },
+    "E07000179": {
+      "name": "South Oxfordshire",
+      "engine_key": "SOUTH_OXFORDSHIRE"
+    },
+    "E07000180": {
+      "name": "Vale of White Horse",
+      "engine_key": "VALE_OF_WHITE_HORSE"
+    },
+    "E07000181": {
+      "name": "West Oxfordshire",
+      "engine_key": "WEST_OXFORDSHIRE"
+    },
+    "E07000192": {
+      "name": "Cannock Chase",
+      "engine_key": "CANNOCK_CHASE"
+    },
+    "E07000193": {
+      "name": "East Staffordshire",
+      "engine_key": "EAST_STAFFORDSHIRE"
+    },
+    "E07000194": {
+      "name": "Lichfield",
+      "engine_key": "LICHFIELD"
+    },
+    "E07000195": {
+      "name": "Newcastle-under-Lyme",
+      "engine_key": "NEWCASTLE_UNDER_LYME"
+    },
+    "E07000196": {
+      "name": "South Staffordshire",
+      "engine_key": "SOUTH_STAFFORDSHIRE"
+    },
+    "E07000197": {
+      "name": "Stafford",
+      "engine_key": "STAFFORD"
+    },
+    "E07000198": {
+      "name": "Staffordshire Moorlands",
+      "engine_key": "STAFFORDSHIRE_MOORLANDS"
+    },
+    "E07000199": {
+      "name": "Tamworth",
+      "engine_key": "TAMWORTH"
+    },
+    "E07000200": {
+      "name": "Babergh",
+      "engine_key": "BABERGH"
+    },
+    "E07000202": {
+      "name": "Ipswich",
+      "engine_key": "IPSWICH"
+    },
+    "E07000203": {
+      "name": "Mid Suffolk",
+      "engine_key": "MID_SUFFOLK"
+    },
+    "E07000207": {
+      "name": "Elmbridge",
+      "engine_key": "ELMBRIDGE"
+    },
+    "E07000208": {
+      "name": "Epsom and Ewell",
+      "engine_key": "EPSOM_AND_EWELL"
+    },
+    "E07000209": {
+      "name": "Guildford",
+      "engine_key": "GUILDFORD"
+    },
+    "E07000210": {
+      "name": "Mole Valley",
+      "engine_key": "MOLE_VALLEY"
+    },
+    "E07000211": {
+      "name": "Reigate and Banstead",
+      "engine_key": "REIGATE_AND_BANSTEAD"
+    },
+    "E07000212": {
+      "name": "Runnymede",
+      "engine_key": "RUNNYMEDE"
+    },
+    "E07000213": {
+      "name": "Spelthorne",
+      "engine_key": "SPELTHORNE"
+    },
+    "E07000214": {
+      "name": "Surrey Heath",
+      "engine_key": "SURREY_HEATH"
+    },
+    "E07000215": {
+      "name": "Tandridge",
+      "engine_key": "TANDRIDGE"
+    },
+    "E07000216": {
+      "name": "Waverley",
+      "engine_key": "WAVERLEY"
+    },
+    "E07000217": {
+      "name": "Woking",
+      "engine_key": "WOKING"
+    },
+    "E07000218": {
+      "name": "North Warwickshire",
+      "engine_key": "NORTH_WARWICKSHIRE"
+    },
+    "E07000219": {
+      "name": "Nuneaton and Bedworth",
+      "engine_key": "NUNEATON_AND_BEDWORTH"
+    },
+    "E07000220": {
+      "name": "Rugby",
+      "engine_key": "RUGBY"
+    },
+    "E07000221": {
+      "name": "Stratford-on-Avon",
+      "engine_key": "STRATFORD_ON_AVON"
+    },
+    "E07000222": {
+      "name": "Warwick",
+      "engine_key": "WARWICK"
+    },
+    "E07000223": {
+      "name": "Adur",
+      "engine_key": "ADUR"
+    },
+    "E07000224": {
+      "name": "Arun",
+      "engine_key": "ARUN"
+    },
+    "E07000225": {
+      "name": "Chichester",
+      "engine_key": "CHICHESTER"
+    },
+    "E07000226": {
+      "name": "Crawley",
+      "engine_key": "CRAWLEY"
+    },
+    "E07000227": {
+      "name": "Horsham",
+      "engine_key": "HORSHAM"
+    },
+    "E07000228": {
+      "name": "Mid Sussex",
+      "engine_key": "MID_SUSSEX"
+    },
+    "E07000229": {
+      "name": "Worthing",
+      "engine_key": "WORTHING"
+    },
+    "E07000234": {
+      "name": "Bromsgrove",
+      "engine_key": "BROMSGROVE"
+    },
+    "E07000235": {
+      "name": "Malvern Hills",
+      "engine_key": "MALVERN_HILLS"
+    },
+    "E07000236": {
+      "name": "Redditch",
+      "engine_key": "REDDITCH"
+    },
+    "E07000237": {
+      "name": "Worcester",
+      "engine_key": "WORCESTER"
+    },
+    "E07000238": {
+      "name": "Wychavon",
+      "engine_key": "WYCHAVON"
+    },
+    "E07000239": {
+      "name": "Wyre Forest",
+      "engine_key": "WYRE_FOREST"
+    },
+    "E07000240": {
+      "name": "St Albans",
+      "engine_key": "ST_ALBANS"
+    },
+    "E07000241": {
+      "name": "Welwyn Hatfield",
+      "engine_key": "WELWYN_HATFIELD"
+    },
+    "E07000242": {
+      "name": "East Hertfordshire",
+      "engine_key": "EAST_HERTFORDSHIRE"
+    },
+    "E07000243": {
+      "name": "Stevenage",
+      "engine_key": "STEVENAGE"
+    },
+    "E07000244": {
+      "name": "East Suffolk",
+      "engine_key": "EAST_SUFFOLK"
+    },
+    "E07000245": {
+      "name": "West Suffolk",
+      "engine_key": "WEST_SUFFOLK"
+    },
+    "E08000001": {
+      "name": "Bolton",
+      "engine_key": "BOLTON"
+    },
+    "E08000002": {
+      "name": "Bury",
+      "engine_key": "BURY"
+    },
+    "E08000003": {
+      "name": "Manchester",
+      "engine_key": "MANCHESTER"
+    },
+    "E08000004": {
+      "name": "Oldham",
+      "engine_key": "OLDHAM"
+    },
+    "E08000005": {
+      "name": "Rochdale",
+      "engine_key": "ROCHDALE"
+    },
+    "E08000006": {
+      "name": "Salford",
+      "engine_key": "SALFORD"
+    },
+    "E08000007": {
+      "name": "Stockport",
+      "engine_key": "STOCKPORT"
+    },
+    "E08000008": {
+      "name": "Tameside",
+      "engine_key": "TAMESIDE"
+    },
+    "E08000009": {
+      "name": "Trafford",
+      "engine_key": "TRAFFORD"
+    },
+    "E08000010": {
+      "name": "Wigan",
+      "engine_key": "WIGAN"
+    },
+    "E08000011": {
+      "name": "Knowsley",
+      "engine_key": "KNOWSLEY"
+    },
+    "E08000012": {
+      "name": "Liverpool",
+      "engine_key": "LIVERPOOL"
+    },
+    "E08000013": {
+      "name": "St. Helens",
+      "engine_key": "ST_HELENS"
+    },
+    "E08000014": {
+      "name": "Sefton",
+      "engine_key": "SEFTON"
+    },
+    "E08000015": {
+      "name": "Wirral",
+      "engine_key": "WIRRAL"
+    },
+    "E08000016": {
+      "name": "Barnsley",
+      "engine_key": "BARNSLEY"
+    },
+    "E08000017": {
+      "name": "Doncaster",
+      "engine_key": "DONCASTER"
+    },
+    "E08000018": {
+      "name": "Rotherham",
+      "engine_key": "ROTHERHAM"
+    },
+    "E08000019": {
+      "name": "Sheffield",
+      "engine_key": "SHEFFIELD"
+    },
+    "E08000021": {
+      "name": "Newcastle upon Tyne",
+      "engine_key": "NEWCASTLE_UPON_TYNE"
+    },
+    "E08000022": {
+      "name": "North Tyneside",
+      "engine_key": "NORTH_TYNESIDE"
+    },
+    "E08000023": {
+      "name": "South Tyneside",
+      "engine_key": "SOUTH_TYNESIDE"
+    },
+    "E08000024": {
+      "name": "Sunderland",
+      "engine_key": "SUNDERLAND"
+    },
+    "E08000025": {
+      "name": "Birmingham",
+      "engine_key": "BIRMINGHAM"
+    },
+    "E08000026": {
+      "name": "Coventry",
+      "engine_key": "COVENTRY"
+    },
+    "E08000027": {
+      "name": "Dudley",
+      "engine_key": "DUDLEY"
+    },
+    "E08000028": {
+      "name": "Sandwell",
+      "engine_key": "SANDWELL"
+    },
+    "E08000029": {
+      "name": "Solihull",
+      "engine_key": "SOLIHULL"
+    },
+    "E08000030": {
+      "name": "Walsall",
+      "engine_key": "WALSALL"
+    },
+    "E08000031": {
+      "name": "Wolverhampton",
+      "engine_key": "WOLVERHAMPTON"
+    },
+    "E08000032": {
+      "name": "Bradford",
+      "engine_key": "BRADFORD"
+    },
+    "E08000033": {
+      "name": "Calderdale",
+      "engine_key": "CALDERDALE"
+    },
+    "E08000034": {
+      "name": "Kirklees",
+      "engine_key": "KIRKLEES"
+    },
+    "E08000035": {
+      "name": "Leeds",
+      "engine_key": "LEEDS"
+    },
+    "E08000036": {
+      "name": "Wakefield",
+      "engine_key": "WAKEFIELD"
+    },
+    "E08000037": {
+      "name": "Gateshead",
+      "engine_key": "GATESHEAD"
+    },
+    "E09000001": {
+      "name": "City of London",
+      "engine_key": "CITY_OF_LONDON"
+    },
+    "E09000002": {
+      "name": "Barking and Dagenham",
+      "engine_key": "BARKING_AND_DAGENHAM"
+    },
+    "E09000003": {
+      "name": "Barnet",
+      "engine_key": "BARNET"
+    },
+    "E09000004": {
+      "name": "Bexley",
+      "engine_key": "BEXLEY"
+    },
+    "E09000005": {
+      "name": "Brent",
+      "engine_key": "BRENT"
+    },
+    "E09000006": {
+      "name": "Bromley",
+      "engine_key": "BROMLEY"
+    },
+    "E09000007": {
+      "name": "Camden",
+      "engine_key": "CAMDEN"
+    },
+    "E09000008": {
+      "name": "Croydon",
+      "engine_key": "CROYDON"
+    },
+    "E09000009": {
+      "name": "Ealing",
+      "engine_key": "EALING"
+    },
+    "E09000010": {
+      "name": "Enfield",
+      "engine_key": "ENFIELD"
+    },
+    "E09000011": {
+      "name": "Greenwich",
+      "engine_key": "GREENWICH"
+    },
+    "E09000012": {
+      "name": "Hackney",
+      "engine_key": "HACKNEY"
+    },
+    "E09000013": {
+      "name": "Hammersmith and Fulham",
+      "engine_key": "HAMMERSMITH_AND_FULHAM"
+    },
+    "E09000014": {
+      "name": "Haringey",
+      "engine_key": "HARINGEY"
+    },
+    "E09000015": {
+      "name": "Harrow",
+      "engine_key": "HARROW"
+    },
+    "E09000016": {
+      "name": "Havering",
+      "engine_key": "HAVERING"
+    },
+    "E09000017": {
+      "name": "Hillingdon",
+      "engine_key": "HILLINGDON"
+    },
+    "E09000018": {
+      "name": "Hounslow",
+      "engine_key": "HOUNSLOW"
+    },
+    "E09000019": {
+      "name": "Islington",
+      "engine_key": "ISLINGTON"
+    },
+    "E09000020": {
+      "name": "Kensington and Chelsea",
+      "engine_key": "KENSINGTON_AND_CHELSEA"
+    },
+    "E09000021": {
+      "name": "Kingston upon Thames",
+      "engine_key": "KINGSTON_UPON_THAMES"
+    },
+    "E09000022": {
+      "name": "Lambeth",
+      "engine_key": "LAMBETH"
+    },
+    "E09000023": {
+      "name": "Lewisham",
+      "engine_key": "LEWISHAM"
+    },
+    "E09000024": {
+      "name": "Merton",
+      "engine_key": "MERTON"
+    },
+    "E09000025": {
+      "name": "Newham",
+      "engine_key": "NEWHAM"
+    },
+    "E09000026": {
+      "name": "Redbridge",
+      "engine_key": "REDBRIDGE"
+    },
+    "E09000027": {
+      "name": "Richmond upon Thames",
+      "engine_key": "RICHMOND_UPON_THAMES"
+    },
+    "E09000028": {
+      "name": "Southwark",
+      "engine_key": "SOUTHWARK"
+    },
+    "E09000029": {
+      "name": "Sutton",
+      "engine_key": "SUTTON"
+    },
+    "E09000030": {
+      "name": "Tower Hamlets",
+      "engine_key": "TOWER_HAMLETS"
+    },
+    "E09000031": {
+      "name": "Waltham Forest",
+      "engine_key": "WALTHAM_FOREST"
+    },
+    "E09000032": {
+      "name": "Wandsworth",
+      "engine_key": "WANDSWORTH"
+    },
+    "E09000033": {
+      "name": "Westminster",
+      "engine_key": "WESTMINSTER"
+    },
+    "N09000001": {
+      "name": "Antrim and Newtownabbey",
+      "engine_key": "ANTRIM_AND_NEWTOWNABBEY"
+    },
+    "N09000002": {
+      "name": "Armagh City, Banbridge and Craigavon",
+      "engine_key": "ARMAGH_CITY_BANBRIDGE_AND_CRAIGAVON"
+    },
+    "N09000003": {
+      "name": "Belfast",
+      "engine_key": "BELFAST"
+    },
+    "N09000004": {
+      "name": "Causeway Coast and Glens",
+      "engine_key": "CAUSEWAY_COAST_AND_GLENS"
+    },
+    "N09000005": {
+      "name": "Derry City and Strabane",
+      "engine_key": "DERRY_CITY_AND_STRABANE"
+    },
+    "N09000006": {
+      "name": "Fermanagh and Omagh",
+      "engine_key": "FERMANAGH_AND_OMAGH"
+    },
+    "N09000007": {
+      "name": "Lisburn and Castlereagh",
+      "engine_key": "LISBURN_AND_CASTLEREAGH"
+    },
+    "N09000008": {
+      "name": "Mid and East Antrim",
+      "engine_key": "MID_AND_EAST_ANTRIM"
+    },
+    "N09000009": {
+      "name": "Mid Ulster",
+      "engine_key": "MID_ULSTER"
+    },
+    "N09000010": {
+      "name": "Newry, Mourne and Down",
+      "engine_key": "NEWRY_MOURNE_AND_DOWN"
+    },
+    "N09000011": {
+      "name": "Ards and North Down",
+      "engine_key": "ARDS_AND_NORTH_DOWN"
+    },
+    "S12000005": {
+      "name": "Clackmannanshire",
+      "engine_key": "CLACKMANNANSHIRE"
+    },
+    "S12000006": {
+      "name": "Dumfries and Galloway",
+      "engine_key": "DUMFRIES_AND_GALLOWAY"
+    },
+    "S12000008": {
+      "name": "East Ayrshire",
+      "engine_key": "EAST_AYRSHIRE"
+    },
+    "S12000010": {
+      "name": "East Lothian",
+      "engine_key": "EAST_LOTHIAN"
+    },
+    "S12000011": {
+      "name": "East Renfrewshire",
+      "engine_key": "EAST_RENFREWSHIRE"
+    },
+    "S12000013": {
+      "name": "Na h-Eileanan Siar",
+      "engine_key": "NA_H_EILEANAN_SIAR"
+    },
+    "S12000014": {
+      "name": "Falkirk",
+      "engine_key": "FALKIRK"
+    },
+    "S12000017": {
+      "name": "Highland",
+      "engine_key": "HIGHLAND"
+    },
+    "S12000018": {
+      "name": "Inverclyde",
+      "engine_key": "INVERCLYDE"
+    },
+    "S12000019": {
+      "name": "Midlothian",
+      "engine_key": "MIDLOTHIAN"
+    },
+    "S12000020": {
+      "name": "Moray",
+      "engine_key": "MORAY"
+    },
+    "S12000021": {
+      "name": "North Ayrshire",
+      "engine_key": "NORTH_AYRSHIRE"
+    },
+    "S12000023": {
+      "name": "Orkney Islands",
+      "engine_key": "ORKNEY_ISLANDS"
+    },
+    "S12000026": {
+      "name": "Scottish Borders",
+      "engine_key": "SCOTTISH_BORDERS"
+    },
+    "S12000027": {
+      "name": "Shetland Islands",
+      "engine_key": "SHETLAND_ISLANDS"
+    },
+    "S12000028": {
+      "name": "South Ayrshire",
+      "engine_key": "SOUTH_AYRSHIRE"
+    },
+    "S12000029": {
+      "name": "South Lanarkshire",
+      "engine_key": "SOUTH_LANARKSHIRE"
+    },
+    "S12000030": {
+      "name": "Stirling",
+      "engine_key": "STIRLING"
+    },
+    "S12000033": {
+      "name": "Aberdeen City",
+      "engine_key": "ABERDEEN_CITY"
+    },
+    "S12000034": {
+      "name": "Aberdeenshire",
+      "engine_key": "ABERDEENSHIRE"
+    },
+    "S12000035": {
+      "name": "Argyll and Bute",
+      "engine_key": "ARGYLL_AND_BUTE"
+    },
+    "S12000036": {
+      "name": "City of Edinburgh",
+      "engine_key": "CITY_OF_EDINBURGH"
+    },
+    "S12000038": {
+      "name": "Renfrewshire",
+      "engine_key": "RENFREWSHIRE"
+    },
+    "S12000039": {
+      "name": "West Dunbartonshire",
+      "engine_key": "WEST_DUNBARTONSHIRE"
+    },
+    "S12000040": {
+      "name": "West Lothian",
+      "engine_key": "WEST_LOTHIAN"
+    },
+    "S12000041": {
+      "name": "Angus",
+      "engine_key": "ANGUS"
+    },
+    "S12000042": {
+      "name": "Dundee City",
+      "engine_key": "DUNDEE_CITY"
+    },
+    "S12000045": {
+      "name": "East Dunbartonshire",
+      "engine_key": "EAST_DUNBARTONSHIRE"
+    },
+    "S12000047": {
+      "name": "Fife",
+      "engine_key": "FIFE"
+    },
+    "S12000048": {
+      "name": "Perth and Kinross",
+      "engine_key": "PERTH_AND_KINROSS"
+    },
+    "S12000049": {
+      "name": "Glasgow City",
+      "engine_key": "GLASGOW_CITY"
+    },
+    "S12000050": {
+      "name": "North Lanarkshire",
+      "engine_key": "NORTH_LANARKSHIRE"
+    },
+    "W06000001": {
+      "name": "Isle of Anglesey",
+      "engine_key": "ISLE_OF_ANGLESEY"
+    },
+    "W06000002": {
+      "name": "Gwynedd",
+      "engine_key": "GWYNEDD"
+    },
+    "W06000003": {
+      "name": "Conwy",
+      "engine_key": "CONWY"
+    },
+    "W06000004": {
+      "name": "Denbighshire",
+      "engine_key": "DENBIGHSHIRE"
+    },
+    "W06000005": {
+      "name": "Flintshire",
+      "engine_key": "FLINTSHIRE"
+    },
+    "W06000006": {
+      "name": "Wrexham",
+      "engine_key": "WREXHAM"
+    },
+    "W06000008": {
+      "name": "Ceredigion",
+      "engine_key": "CEREDIGION"
+    },
+    "W06000009": {
+      "name": "Pembrokeshire",
+      "engine_key": "PEMBROKESHIRE"
+    },
+    "W06000010": {
+      "name": "Carmarthenshire",
+      "engine_key": "CARMARTHENSHIRE"
+    },
+    "W06000011": {
+      "name": "Swansea",
+      "engine_key": "SWANSEA"
+    },
+    "W06000012": {
+      "name": "Neath Port Talbot",
+      "engine_key": "NEATH_PORT_TALBOT"
+    },
+    "W06000013": {
+      "name": "Bridgend",
+      "engine_key": "BRIDGEND"
+    },
+    "W06000014": {
+      "name": "Vale of Glamorgan",
+      "engine_key": "VALE_OF_GLAMORGAN"
+    },
+    "W06000015": {
+      "name": "Cardiff",
+      "engine_key": "CARDIFF"
+    },
+    "W06000016": {
+      "name": "Rhondda Cynon Taf",
+      "engine_key": "RHONDDA_CYNON_TAF"
+    },
+    "W06000018": {
+      "name": "Caerphilly",
+      "engine_key": "CAERPHILLY"
+    },
+    "W06000019": {
+      "name": "Blaenau Gwent",
+      "engine_key": "BLAENAU_GWENT"
+    },
+    "W06000020": {
+      "name": "Torfaen",
+      "engine_key": "TORFAEN"
+    },
+    "W06000021": {
+      "name": "Monmouthshire",
+      "engine_key": "MONMOUTHSHIRE"
+    },
+    "W06000022": {
+      "name": "Newport",
+      "engine_key": "NEWPORT"
+    },
+    "W06000023": {
+      "name": "Powys",
+      "engine_key": "POWYS"
+    },
+    "W06000024": {
+      "name": "Merthyr Tydfil",
+      "engine_key": "MERTHYR_TYDFIL"
+    }
+  }
+}

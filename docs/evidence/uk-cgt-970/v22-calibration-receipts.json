@@ -1,0 +1,1207 @@
+{
+  "blocked_at_phase": null,
+  "calibration": {
+    "effective_sample_size": 4906.858878502037,
+    "final_loss": 0.010380570173263132,
+    "fraction_within_10pct": 0.9655172413793104,
+    "initial_loss": 0.3014686405658722,
+    "n_nonzero": 52846,
+    "n_records": 52846,
+    "realized_max_weight_ratio": 10.000000000000002,
+    "top_1pct_weight_share": 0.25588111843469913
+  },
+  "cgt_targets": [
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_16_to_24@2025",
+      "relative_error": -0.04580519286131672,
+      "target": 319000000.0
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_25_to_34@2025",
+      "relative_error": -0.09738917504276319,
+      "target": 2499000000.0
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_35_to_44@2025",
+      "relative_error": -0.09099713369538649,
+      "target": 11775000000.0
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_45_to_54@2025",
+      "relative_error": -0.0008617503223738624,
+      "target": 28422000000.0
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_55_to_64@2025",
+      "relative_error": -0.0034757721661273916,
+      "target": 38118000000.0
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_65_to_74@2025",
+      "relative_error": -0.00990910706059691,
+      "target": 24260000000.0
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_75_to_84@2025",
+      "relative_error": -0.004451043791979125,
+      "target": 11736000000.0
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_85_plus@2025",
+      "relative_error": -0.023987992892009674,
+      "target": 2076000000.0
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000001@2025",
+      "relative_error": 0.003842304995347341,
+      "target": 1497797150.3974364
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000002@2025",
+      "relative_error": -0.003152726125602141,
+      "target": 8790074083.38308
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000003@2025",
+      "relative_error": -0.007599366066480678,
+      "target": 6970985861.949795
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000004@2025",
+      "relative_error": 0.00035016228352850243,
+      "target": 6299365751.358824
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000005@2025",
+      "relative_error": -6.896364713284721e-05,
+      "target": 5890960774.765152
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000006@2025",
+      "relative_error": -0.003906488915886132,
+      "target": 11545870966.728456
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000007@2025",
+      "relative_error": -0.00041746302406262177,
+      "target": 32519714615.602127
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000008@2025",
+      "relative_error": -0.06881818489001876,
+      "target": 25606804690.69088
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000009@2025",
+      "relative_error": 0.00021772594318457847,
+      "target": 10341263627.509504
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@N92000002@2025",
+      "relative_error": -0.001283718506117194,
+      "target": 1757265449.747086
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@S92000003@2025",
+      "relative_error": 0.0015267828000581117,
+      "target": 5680201325.83493
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@W92000004@2025",
+      "relative_error": 0.0010724509903778682,
+      "target": 2358632410.6946497
+    },
+    {
+      "name": "hmrc.cgt.gains_total@2025",
+      "relative_error": -0.01578000860139608,
+      "target": 119258000000.0
+    },
+    {
+      "name": "hmrc.cgt.liability_total@2025",
+      "relative_error": 0.10047426810067275,
+      "target": 22503000000.0
+    },
+    {
+      "name": "hmrc.cgt.residential_property_gains.ty2024@2025",
+      "relative_error": -0.0034046629656876827,
+      "target": 12242481474.688189
+    },
+    {
+      "name": "hmrc.cgt.residential_property_taxpayers.ty2024@2025",
+      "relative_error": 0.0011599993561563118,
+      "target": 202630.0578034682
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_16_to_24@2025",
+      "relative_error": 0.0012943696615683325,
+      "target": 59000000.0
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_25_to_34@2025",
+      "relative_error": 0.004459362435789485,
+      "target": 456000000.0
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_35_to_44@2025",
+      "relative_error": 0.0046053139139499814,
+      "target": 2246000000.0
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_45_to_54@2025",
+      "relative_error": 0.10033828618580723,
+      "target": 5522000000.0
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_55_to_64@2025",
+      "relative_error": 0.12875680993479263,
+      "target": 7152000000.0
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_65_to_74@2025",
+      "relative_error": 0.1402865291014784,
+      "target": 4409000000.0
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_75_to_84@2025",
+      "relative_error": 0.0718388402250349,
+      "target": 2260000000.0
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_85_plus@2025",
+      "relative_error": 0.004367374998154549,
+      "target": 390000000.0
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_16_to_24@2025",
+      "relative_error": 0.0010654802322387696,
+      "target": 4000.0
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_25_to_34@2025",
+      "relative_error": -0.0012174074031688548,
+      "target": 27000.0
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_35_to_44@2025",
+      "relative_error": 0.0016256333864652194,
+      "target": 65000.0
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_45_to_54@2025",
+      "relative_error": 0.0011383698789440857,
+      "target": 98000.0
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_55_to_64@2025",
+      "relative_error": -0.001191873570283254,
+      "target": 144000.0
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_65_to_74@2025",
+      "relative_error": 0.0012695675392150878,
+      "target": 125000.0
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_75_to_84@2025",
+      "relative_error": -0.0007139132934458115,
+      "target": 68000.0
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_85_plus@2025",
+      "relative_error": 0.00394276950233861,
+      "target": 19000.0
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000001@2025",
+      "relative_error": 0.004040462902366685,
+      "target": 11321.91780821918
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000002@2025",
+      "relative_error": 0.0003893649628837522,
+      "target": 41513.69863013699
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000003@2025",
+      "relative_error": -0.005455274756008045,
+      "target": 32078.767123287675
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000004@2025",
+      "relative_error": -0.0009455790794284241,
+      "target": 31135.273972602743
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000005@2025",
+      "relative_error": 0.0015949360996568693,
+      "target": 33022.260273972606
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000006@2025",
+      "relative_error": 0.0031836662339378677,
+      "target": 58496.57534246576
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000007@2025",
+      "relative_error": -2.3031829771038796e-05,
+      "target": 106614.72602739726
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000008@2025",
+      "relative_error": -0.00013545902162542825,
+      "target": 114162.67123287672
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000009@2025",
+      "relative_error": 0.000157512225386346,
+      "target": 60383.56164383562
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@N92000002@2025",
+      "relative_error": 0.003830817990726981,
+      "target": 9434.931506849316
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@S92000003@2025",
+      "relative_error": -0.002124418984950878,
+      "target": 34909.24657534247
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@W92000004@2025",
+      "relative_error": 0.005629133447184286,
+      "target": 16982.87671232877
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_total@2025",
+      "relative_error": -0.0014481832955147524,
+      "target": 551000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_1000000@2025",
+      "relative_error": 0.0026854631106058755,
+      "target": 9000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_100000@2025",
+      "relative_error": -0.0004961358680099738,
+      "target": 61000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_10000@2025",
+      "relative_error": 8.21837645310622e-05,
+      "target": 26000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_12300@2025",
+      "relative_error": 0.0033558100670883335,
+      "target": 97000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_2000000@2025",
+      "relative_error": 0.0011826237201690674,
+      "target": 5000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_250000@2025",
+      "relative_error": 0.0008463912200927735,
+      "target": 25000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_25000@2025",
+      "relative_error": 0.011272606732893964,
+      "target": 98000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_3000@2025",
+      "relative_error": 0.005316558027920658,
+      "target": 73000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_5000000@2025",
+      "relative_error": 0.0036348886489868163,
+      "target": 3000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_500000@2025",
+      "relative_error": -0.003026472747325897,
+      "target": 16000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_50000@2025",
+      "relative_error": 0.003198197242541191,
+      "target": 78000.0
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_6000@2025",
+      "relative_error": 0.0026080383836177357,
+      "target": 57000.0
+    }
+  ],
+  "demoted_donors_by_band_pre_calibration": [
+    {
+      "band_lower": 12300,
+      "demoted": 30,
+      "donors": 30
+    },
+    {
+      "band_lower": 25000,
+      "demoted": 29,
+      "donors": 30
+    },
+    {
+      "band_lower": 50000,
+      "demoted": 27,
+      "donors": 30
+    },
+    {
+      "band_lower": 100000,
+      "demoted": 27,
+      "donors": 30
+    },
+    {
+      "band_lower": 250000,
+      "demoted": 5,
+      "donors": 30
+    },
+    {
+      "band_lower": 500000,
+      "demoted": 0,
+      "donors": 30
+    },
+    {
+      "band_lower": 1000000,
+      "demoted": 1,
+      "donors": 30
+    },
+    {
+      "band_lower": 2000000,
+      "demoted": 0,
+      "donors": 30
+    },
+    {
+      "band_lower": 5000000,
+      "demoted": 0,
+      "donors": 30
+    }
+  ],
+  "fence": {
+    "base_year": 2024,
+    "bound": 73000.0,
+    "bound_source": "hmrc_cgt_conditioning_facts.json: HMRC Table 2.1a tax year 2024, taxpayers with gains from 3,000 to 6,000",
+    "cumulative_gains_factor_by_year": {
+      "2025": 1.0438,
+      "2026": 1.07427896,
+      "2027": 1.108978170408,
+      "2028": 1.143356493690648,
+      "2029": 1.1771998459038913,
+      "2030": 1.214281641049864
+    },
+    "entrants_by_year": {
+      "2025": 12710.522127628326,
+      "2026": 22331.494442284107,
+      "2027": 43377.05143140629,
+      "2028": 50415.786320358515,
+      "2029": 54320.654136411846,
+      "2030": 67610.8267680183
+    },
+    "exempt_amount_by_year": {
+      "2024": 3000.0,
+      "2025": 3000.0,
+      "2026": 3000.0,
+      "2027": 3000.0,
+      "2028": 3000.0,
+      "2029": 3000.0,
+      "2030": 3000.0
+    },
+    "exempt_amount_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+    "gains_growth_parameter": "gov.economic_assumptions.yoy_growth.obr.per_capita.gdp",
+    "horizon_year": 2030,
+    "max_entrants": 67610.8267680183,
+    "projection_engine": "policyengine-uk==2.98.0",
+    "sub_exempt": {
+      "p10": 1428.2915602712712,
+      "p50": 2116.0751632950937,
+      "p90": 2734.29109226299,
+      "rows": 20642,
+      "weighted_at_exempt_amount": 0.0,
+      "weighted_persons": 326532.0945219784
+    },
+    "worst_year": 2030
+  },
+  "gate_statuses": {
+    "uk_aggregate_admin": "passed",
+    "uk_calibration_reference_coverage": "passed",
+    "uk_cgt_projection_entrants": "passed",
+    "uk_target_fit": "passed",
+    "uk_weight_ess": "passed",
+    "uk_weight_ratio": "passed",
+    "uk_zero_weight_strata": "passed"
+  },
+  "pass2_score": {
+    "candidate_full_loss": 0.01029854759850209,
+    "candidate_target_wins": 500,
+    "incumbent_full_loss": 0.21712115556212358,
+    "incumbent_target_wins": 24,
+    "pruned": {
+      "n_pruned": 120,
+      "n_scored": 524,
+      "n_surface": 644,
+      "note": "Rows pruned from BOTH arms because their measures cannot be computed on the incumbent (admin-basis inputs the enhanced FRS does not carry). The candidate's fit on these rows is measured by the calibration diagnostics and terminal gates instead.",
+      "rows": {
+        "dwp.uc.households_children_1": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_child_count: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_child_count"
+        },
+        "dwp.uc.households_children_2": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_child_count: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_child_count"
+        },
+        "dwp.uc.households_children_3": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_child_count: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_child_count"
+        },
+        "dwp.uc.households_children_4": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_child_count: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_child_count"
+        },
+        "dwp.uc.households_children_5_or_more": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_child_count: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_child_count"
+        },
+        "dwp.uc.households_couple_no_children": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp.uc.households_couple_with_children": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp.uc.households_single_no_children": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp.uc.households_single_with_children": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp.uc.scotland_households_child_under_1": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_has_child_under_one: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_has_child_under_one"
+        },
+        "dwp.uc.two_child_limit.children_affected": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.children_claimant_pip": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.children_disabled_child_element": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.children_in_3_children_households": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.children_in_4_children_households": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.children_in_5_children_households": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.children_in_6_plus_children_households": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.children_in_affected_households": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.households_3_children": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.households_4_children": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.households_5_children": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.households_6_plus_children": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.households_affected": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.households_claimant_pip": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp.uc.two_child_limit.households_disabled_child_element": {
+          "family": "dwp_two_child_limit",
+          "reason": "provider failed computing benunit.uc_tcl_affected_benunit_proxy: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_tcl_affected_benunit_proxy"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_0_to_1_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_10_800_to_12_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_12_000_to_13_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_13_200_to_14_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_14_400_to_15_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_15_600_to_16_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_16_800_to_18_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_18_000_to_19_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_19_200_to_20_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_1_200_to_2_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_20_400_to_21_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_21_600_to_22_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_24_000_to_25_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_25_200_to_26_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_2_400_to_3_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_3_600_to_4_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_4_800_to_6_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_6_000_to_7_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_7_200_to_8_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_8_400_to_9_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_9_600_to_10_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_0_to_1_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_10_800_to_12_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_12_000_to_13_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_13_200_to_14_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_14_400_to_15_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_15_600_to_16_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_16_800_to_18_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_18_000_to_19_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_19_200_to_20_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_1_200_to_2_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_20_400_to_21_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_21_600_to_22_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_22_800_to_24_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_24_000_to_25_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_25_200_to_26_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_26_400_to_27_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_27_600_to_28_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_28_800_to_30_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_2_400_to_3_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_3_600_to_4_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_4_800_to_6_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_6_000_to_7_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_7_200_to_8_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_8_400_to_9_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_9_600_to_10_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_0_to_1_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_10_800_to_12_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_1_200_to_2_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_20_400_to_21_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_22_800_to_24_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_24_000_to_25_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_25_200_to_26_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_26_400_to_27_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_27_600_to_28_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_28_800_to_30_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_2_400_to_3_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_3_600_to_4_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_4_800_to_6_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_6_000_to_7_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_7_200_to_8_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_8_400_to_9_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/LONE_PARENT_annual_payment_9_600_to_10_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_0_to_1_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_10_800_to_12_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_12_000_to_13_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_15_600_to_16_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_16_800_to_18_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_18_000_to_19_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_19_200_to_20_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_1_200_to_2_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_20_400_to_21_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_22_800_to_24_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_24_000_to_25_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_25_200_to_26_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_26_400_to_27_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_2_400_to_3_600": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_3_600_to_4_800": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_4_800_to_6_000": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_6_000_to_7_200": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "dwp/uc_payment_dist/SINGLE_annual_payment_7_200_to_8_400": {
+          "family": "dwp_universal_credit",
+          "reason": "provider failed computing benunit.uc_calibration_administrative_family_type: \"UC relationship benunit inputs missing: ['dependent_children']\"",
+          "unresolvable_measure": "benunit.uc_calibration_administrative_family_type"
+        },
+        "hmrc.cgt.residential_property_gains.ty2024": {
+          "family": "hmrc_cgt",
+          "reason": "provider does not know person.capital_gains_asset_type",
+          "unresolvable_measure": "person.capital_gains_asset_type"
+        },
+        "hmrc.cgt.residential_property_taxpayers.ty2024": {
+          "family": "hmrc_cgt",
+          "reason": "provider does not know person.capital_gains_asset_type",
+          "unresolvable_measure": "person.capital_gains_asset_type"
+        },
+        "ons.household_composition.couple_3_plus_children_households": {
+          "family": "ons_household_composition",
+          "reason": "provider does not know household.ons_household_type",
+          "unresolvable_measure": "household.ons_household_type"
+        },
+        "ons.household_composition.couple_no_children_households": {
+          "family": "ons_household_composition",
+          "reason": "provider does not know household.ons_household_type",
+          "unresolvable_measure": "household.ons_household_type"
+        },
+        "ons.household_composition.couple_non_dependent_children_only_households": {
+          "family": "ons_household_composition",
+          "reason": "provider does not know household.ons_household_type",
+          "unresolvable_measure": "household.ons_household_type"
+        },
+        "ons.household_composition.couple_under_3_children_households": {
+          "family": "ons_household_composition",
+          "reason": "provider does not know household.ons_household_type",
+          "unresolvable_measure": "household.ons_household_type"
+        },
+        "ons.household_composition.lone_households_over_65": {
+          "family": "ons_household_composition",
+          "reason": "provider does not know household.ons_household_type",
+          "unresolvable_measure": "household.ons_household_type"
+        },
+        "ons.household_composition.lone_households_under_65": {
+          "family": "ons_household_composition",
+          "reason": "provider does not know household.ons_household_type",
+          "unresolvable_measure": "household.ons_household_type"
+        },
+        "ons.household_composition.lone_parent_dependent_children_households": {
+          "family": "ons_household_composition",
+          "reason": "provider does not know household.ons_household_type",
+          "unresolvable_measure": "household.ons_household_type"
+        },
+        "ons.household_composition.lone_parent_non_dependent_children_households": {
+          "family": "ons_household_composition",
+          "reason": "provider does not know household.ons_household_type",
+          "unresolvable_measure": "household.ons_household_type"
+        },
+        "ons.household_composition.multi_family_households": {
+          "family": "ons_household_composition",
+          "reason": "provider does not know household.ons_household_type",
+          "unresolvable_measure": "household.ons_household_type"
+        },
+        "ons.household_composition.unrelated_adult_households": {
+          "family": "ons_household_composition",
+          "reason": "provider does not know household.ons_household_type",
+          "unresolvable_measure": "household.ons_household_type"
+        }
+      }
+    },
+    "register": {
+      "country": "uk",
+      "n_specs": 524,
+      "version": "2331a9386a2e"
+    },
+    "target_wins_by_family": {
+      "council_tax_stock": {
+        "candidate_target_wins": 97,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "dfe_funded_childcare": {
+        "candidate_target_wins": 3,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "dft_local_bus": {
+        "candidate_target_wins": 9,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "dwp_benefit_cap": {
+        "candidate_target_wins": 4,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "dwp_legacy_benefits": {
+        "candidate_target_wins": 2,
+        "incumbent_target_wins": 1,
+        "ties": 0
+      },
+      "dwp_universal_credit": {
+        "candidate_target_wins": 6,
+        "incumbent_target_wins": 2,
+        "ties": 0
+      },
+      "hmrc_cgt": {
+        "candidate_target_wins": 73,
+        "incumbent_target_wins": 2,
+        "ties": 0
+      },
+      "hmrc_salary_sacrifice": {
+        "candidate_target_wins": 3,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "hmrc_spi": {
+        "candidate_target_wins": 121,
+        "incumbent_target_wins": 10,
+        "ties": 0
+      },
+      "hmrc_tfc": {
+        "candidate_target_wins": 2,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "isc": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "obr": {
+        "candidate_target_wins": 16,
+        "incumbent_target_wins": 5,
+        "ties": 0
+      },
+      "ons_employment": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "ons_land": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 2,
+        "ties": 0
+      },
+      "ons_national_accounts": {
+        "candidate_target_wins": 2,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "ons_population": {
+        "candidate_target_wins": 148,
+        "incumbent_target_wins": 1,
+        "ties": 0
+      },
+      "orr_rail": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "scotgov_social_security": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "slc_borrowers": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "slc_repayments": {
+        "candidate_target_wins": 3,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "slc_student_support": {
+        "candidate_target_wins": 5,
+        "incumbent_target_wins": 1,
+        "ties": 0
+      }
+    }
+  },
+  "release_id": "uk-spine-assessment-v22",
+  "sub_exempt_split_after_calibration": {
+    "clones": {
+      "entrants_by_year": [
+        1788,
+        2751,
+        4001,
+        4905,
+        5662,
+        6392
+      ],
+      "liable": 486007,
+      "losses": 115955,
+      "sub_exempt": 35433
+    },
+    "donors": {
+      "demoted_rows": 119,
+      "entrants_by_year": [
+        10923,
+        19580,
+        39376,
+        45510,
+        48659,
+        61219
+      ],
+      "liable": 64195,
+      "sub_exempt": 291099
+    },
+    "years": [
+      2025,
+      2026,
+      2027,
+      2028,
+      2029,
+      2030
+    ]
+  },
+  "target_fit_reviewed_exclusions": [
+    "hmrc/self_employment_income_income_band_20_000_to_30_000@2025"
+  ],
+  "what": "The v22 calibration of spine-970 through the branch's seam (v20 recipe: frozen register pin, 1,500 epochs, family_equal; Mar\u00eda's signed SE-band deferral 90bdb809 cherry-picked onto measurement branch 2acbb9dc because it is not on main); aggregates only."
+}

@@ -1,9 +1,12 @@
 # UK national release assembly runbook (#806)
 
-This runbook turns a green UK national calibration candidate into an
-inspectable release without promoting it to `latest.json`. The release id is
-constant across cuts (`microcosm-uk-2024-25-national`); each cut gets an
-immutable tag derived from the calibration attempt id.
+This runbook turns a green UK national calibration candidate into a
+published build of the national release, `microcosm-uk-2024-25-national`,
+and then, after review, makes it the release's current build. Each build is
+published once into its own folder,
+`releases/microcosm-uk-2024-25-national/<build>/`, through the emitter, and
+the repository's `releases.json` records which build is current. The build is
+the calibration attempt id; nothing is tagged.
 
 Do not run this sequence in PR CI. Calibration, certification, assembly, and
 publication consume licensed data and operator credentials.
@@ -13,13 +16,21 @@ publication consume licensed data and operator credentials.
 Before starting, export:
 
 - `MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY`, containing the stable release key
-  as base64-encoded 32 bytes. Certification signs with it and assembly uses it
-  to re-verify the copied certification.
-- `HF_TOKEN`, authenticated for write access to
-  `policyengine/populace-uk-private`.
-- `SLACK_WEBHOOK_POPULACE_UK`, for the eventual promoted-release alert. The
-  inspect publication below uses `--no-latest`, so it does not announce a new
-  latest release.
+  as base64-encoded 32 bytes. Certification signs with it, and assembly and
+  the publication command's release-contract check use it to re-verify the
+  copied certification.
+- `HF_TOKEN` (or `HUGGINGFACE_TOKEN`, or a token saved by `hf auth login`),
+  with write access to `policyengine/populace-uk-private`. The publication
+  command starts the separately installed `microcosm-emitter` (0.14.0 or
+  later) as its child process, and the emitter uses the token it inherits.
+
+These come from your shell: the publication command does not read
+`tools/release.env`, so if you keep the values there, `source
+tools/release.env` first.
+
+The publication command sends no Slack alert. The calibration diagnostics
+dashboard announces new and current builds, comparing `releases.json` before
+and after each change.
 
 Keep the spine H5, its sibling `.build.json` and `.spine_gates.json`, the
 Ledger consumer artifact and manifest digest, and the licensed input-mass
@@ -27,11 +38,13 @@ reference together through the run.
 
 ## 1. Calibrate the national candidate
 
-Use the rowwise driver's national release role and record the input digest
-rather than relying on a mutable path:
+Use the UK build driver's national release role (`microcosm-build-uk`,
+`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub
+over the same driver, and the role dispatches to the retained calibration
+seam) and record the input digest rather than relying on a mutable path:
 
 ```bash
-uv run --no-sync python tools/build_uk_rowwise_candidate.py --release-role national \
+uv run --no-sync python tools/build_uk_full.py --release-role national \
   --input-h5 <spine-h5> \
   --input-sha256 <spine-h5-sha256> \
   --ledger-facts <ledger-consumer-facts> \
@@ -63,8 +76,8 @@ no overrides. It writes `microcosm_uk_2024_25.h5`,
 surface takes its band edges from) and `rowwise_candidate_manifest.json`
 into `<candidate-dir>`. The build
 record's id has the form
-`uk-frs-calibration-attempt-<YYYYMMDDTHHMMSSZ>-<uuid8>`; assembly derives the
-per-cut tag from that suffix.
+`uk-frs-calibration-attempt-<YYYYMMDDTHHMMSSZ>-<uuid8>`; it is the build's
+name in both release manifests and in its folder on the Hub.
 
 ## 2. Score and certify the cut
 
@@ -102,6 +115,26 @@ With the default paths, this writes
 `microcosm_uk_2024_25.release_certification.json` next to the candidate. Continue
 only when the certification says `shippable: true`.
 
+**Interim check until microcosm#1276 lands.** microcosm#1281 removed the QRF
+tail-concentration gate, and nothing release-blocking yet checks the SPI
+stage-1 columns (`hmrc_spi_*` and the other stage-1 outputs). Before assembly,
+measure the candidate and the currently promoted cut together:
+
+```bash
+uv run --no-sync python tools/measure_uk_weighted_integrity_baselines.py \
+  --h5 candidate=<candidate-dir>/microcosm_uk_2024_25.h5 \
+  --h5 previous=<promoted-cut-h5> \
+  --output <candidate-dir>/stage1_comparison.json
+```
+
+Compare each stage-1 column's weighted total (`input_mass_totals`) and carrier
+count (`qrf_tail`) between the two, and explain any column that moves by more
+than half in either direction before continuing. microcosm#1256 cut
+`hmrc_spi_incapacity_benefit_income` by about six-sevenths, and only this kind
+of comparison would have shown it. The file is licensed output: keep it
+local, out of the release directory and out of any public text. The tool
+suppresses carrier counts below 10.
+
 ## 3. Assemble the release directory
 
 Assembly verifies the complete hash join before writing, mints the calibration
@@ -122,11 +155,13 @@ uv run --no-sync python tools/assemble_uk_release_dir.py \
 ```
 
 The output is
-`releases/microcosm-uk-2024-25-national/`. The JSON summary records every
-digest, the derived cut tag, and the exact publication command. Use
-`--cut-tag microcosm-uk-2024-25-national-<YYYYMMDDTHHMMSSZ>-<uuid8>` only to
-override the derived tag deliberately; the override must keep that grammar,
-which the contract validates on every artifact revision.
+`releases/microcosm-uk-2024-25-national/`. Both manifests name the release
+and the build (`release` and `build`), the release manifest records
+`built_at`, `built_with_model_package` and `built_with_core_package` at its
+top level and each file's `role` (`dataset`, `calibration_weights`,
+`calibration_diagnostics`, and each evidence file's key), and no artifact
+pins a revision. The JSON summary records every digest, the release and the
+build, and the exact publication and promotion commands.
 
 Assembly stages into a private directory, validates there, and atomically
 renames into empty destinations: re-assembling a cut requires removing the
@@ -138,28 +173,41 @@ as an operator cross-check but refuses to replace one.
 
 ## 4. Publish for inspection
 
-Run the command printed by the assembler. Its shape is:
+Run the assembler's `publish_command` first. Its shape is:
 
 ```bash
-uv run python -m microcosm.data.publish_cli \
+uv run microcosm-publish-release-build \
   releases/microcosm-uk-2024-25-national \
   --repo-id policyengine/populace-uk-private \
-  --artifact-root <candidate-dir> \
-  --no-latest \
-  --tag-name microcosm-uk-2024-25-national-<timestamp>-<uuid8>
+  --artifact-root <candidate-dir>
 ```
 
-Do not omit `--tag-name`, and do not pass `--no-create-tag`: every artifact in
-the manifest is pinned to that immutable per-cut tag. `--no-latest` is
-mandatory for this inspect lane — and enforced: publication refuses to move
-`latest.json` for any tag that is not the release id itself, so omitting the
-flag fails closed instead of promoting an inspect cut.
+It refuses at once, before it starts an emitter, when `HF_HUB_OFFLINE` or
+`TRANSFORMERS_OFFLINE` is set, since the emitter inherits them and could not
+reach the Hub. It checks the build against the release contract again,
+starts the emitter, and hands nothing over unless the emitter's write-access
+check finds a credential that can write the repository. It then hands every
+file to the emitter with its role and SHA-256. The emitter writes the build's
+folder and `releases.json` in one commit, listing the build without making
+it current. The command waits for the emitter's answer and prints its
+receipt: `status` is `published`, `pending` (the emitter is still trying, and
+keeps the change queued for an hour), `refused` with an `error_code`, or
+`unavailable` (no emitter answered).
+Running the same command again is safe: a build already published with the
+same release manifest is reported `published`, and one published with a
+different manifest is refused (`BUILD_FOLDER_EXISTS`), since a build is never
+changed after publishing. `--preflight-only` runs the checks and starts no
+emitter.
 
-If tag creation returns HTTP 409 after the staging commit, publication can
-leave the constant branch
-`release-staging/microcosm-uk-2024-25-national` behind. Delete that branch
-manually in the private Hugging Face repository before retrying the same cut.
-Do not delete the immutable cut tag.
+The assembler also prints this `promote_command`; keep it for §6 and run it
+only after the build passes the review in §5:
+
+```bash
+uv run microcosm-publish-release-build \
+  releases/microcosm-uk-2024-25-national \
+  --repo-id policyengine/populace-uk-private \
+  --promote
+```
 
 ## 5. Inspect on the dashboard
 
@@ -173,12 +221,26 @@ Adjudicate the release using the copied certification, scoped gate reports,
 calibration diagnostics, and score receipt. The release remains inspect-only
 until that review is complete.
 
-## Promotion is a separate change
+The dashboard shows a build published into its own folder only once it reads
+`releases.json`; until then, review the assembled directory's files.
 
-Do not write `latest.json` for this line yet. The current pointer cannot name a
-per-cut tag, while the certified loader expects the artifact revision to equal
-the release id and fetches the manifest from a tag named by that id. Promotion
-needs the loader/pointer design tracked in microcosm#823 before a reviewed cut
-can become the default; publication enforces this by refusing a pointer move
-for any per-cut tag. Until then, publish every national cut with `--no-latest`
-and its explicit per-cut tag.
+## 6. Make the reviewed build current
+
+After completing the review in §5, run the assembler's `promote_command` shown
+in §4. The emitter sets the national release's `current` in `releases.json`
+to this build. The command succeeds only when the receipt is `published` and
+names this build as `current`.
+
+The emitter refuses every change to a release's current build while any
+`latest*.json` pointer file is in the repository (`POINTER_FILES_PRESENT`),
+so that pointer files and `releases.json` cannot disagree. The repository's
+switch to `releases.json` deleted them and nothing writes them, so the
+command refuses, before it starts an emitter, only if one has appeared
+again: remove it, then run the command again.
+
+The 2025 national release is the default UK load (microcosm#823):
+`microcosm.data.load("uk")` and `microcosm.data.load("uk", 2025)` read its
+current build from `releases.json`, and `load(..., build=<build>)` loads a
+listed build instead. An explicit `microcosm.data.load("uk", 2023)` reads
+the current build of release `populace-uk-2023`, the June 2023 build that the
+switch moved there from `latest.json`.

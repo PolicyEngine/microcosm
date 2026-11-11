@@ -243,6 +243,7 @@ from microcosm.build.us_runtime.educator_expenses import (
 from microcosm.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
     US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
     US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS,
     US_ELIGIBILITY_INPUTS_STAGE_NAME,
     derive_us_eligibility_inputs_from_manifest,
@@ -264,6 +265,21 @@ from microcosm.build.us_runtime.energy_subsidy import (
     us_energy_subsidy_summary,
     with_us_energy_subsidy_input,
 )
+from microcosm.build.us_runtime.esi_premiums import (
+    US_ESI_EMPLOYER_PREMIUM_COLUMN,
+    US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS,
+    US_ESI_PREMIUMS_OUTPUT_COLUMNS,
+    US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS,
+    US_ESI_PREMIUMS_STAGE_NAME,
+    derive_us_employer_esi_premiums_from_manifest,
+    load_meps_ic_esi_premium_cells,
+    us_esi_premiums_anchor_feed_mismatches,
+    us_esi_premiums_anchor_gate,
+    us_esi_premiums_signal_gate,
+    us_esi_premiums_stage_spec,
+    us_esi_premiums_summary,
+    with_us_esi_premium_inputs,
+)
 from microcosm.build.us_runtime.farm_business_income import (
     FARM_BUSINESS_INCOME_ARCHIVED_CPS_FARM_INCOME_URL,
     FARM_BUSINESS_INCOME_ARCHIVED_DERIVATION_URL,
@@ -284,7 +300,9 @@ from microcosm.build.us_runtime.fiscal_targets import (
     US_FISCAL_LEDGER_PARITY_REGISTRY,
     US_FISCAL_LEDGER_PARITY_REPORT,
     US_FISCAL_MACRO_REALISM_BANDS,
+    US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES,
     US_FISCAL_TARGET_LEDGER_REFERENCES,
     US_FISCAL_TARGET_REFERENCES,
     US_FISCAL_TARGET_REGISTRY,
@@ -299,6 +317,7 @@ from microcosm.build.us_runtime.fiscal_targets import (
     US_STATE_INCOME_TAX_TARGET_SPECS,
     SimpleTaxExpenditureReform,
     compile_us_fiscal_target_registry,
+    us_fiscal_target_exclusion_receipt,
 )
 from microcosm.build.us_runtime.form_4952 import (
     FORM_4952_ARCHIVED_DERIVATION_URL,
@@ -580,6 +599,10 @@ from microcosm.build.us_runtime.puf_source_agi import (
     PUF_SYNTHETIC_RECID_START,
     source_year_puf_adjusted_gross_income,
 )
+from microcosm.build.us_runtime.puf_source_schedule_e import (
+    processed_puf_tax_unit_partnership_s_corp_income,
+    source_year_puf_partnership_s_corp_income,
+)
 from microcosm.build.us_runtime.puf_support import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN,
@@ -760,6 +783,28 @@ from microcosm.build.us_runtime.scf_auto_loans import (
     us_scf_auto_loans_summary,
     with_us_scf_auto_loan_inputs,
 )
+from microcosm.build.us_runtime.scf_education_debt import (
+    SCF_2025_FULL_EXTRACT,
+    SCF_2025_SUMMARY_EXTRACT,
+    SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS,
+    SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS,
+    SCF_EDUCATION_DEBT_PREDICTORS,
+    SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION,
+    SCF_EDUCATION_DEBT_VINTAGE,
+    SCF_WHOSE_EDUCATION_HOLDER,
+    US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS,
+    US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS,
+    derive_scf_education_debt_targets,
+    fetch_scf_public_file,
+    impute_us_scf_education_debt,
+    load_scf_2025_education_debt_donor,
+    scf_education_debt_donor_fit_table,
+    us_scf_education_debt_fit_table,
+    us_scf_education_debt_signal_gate,
+    us_scf_education_debt_stage_spec,
+    us_scf_education_debt_summary,
+    with_us_scf_education_debt_inputs,
+)
 from microcosm.build.us_runtime.scf_wealth import (
     FINANCIAL_ASSET_BLEND_AUDIT_KEY,
     FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY,
@@ -913,6 +958,18 @@ from microcosm.build.us_runtime.spine_agreement import (
     validate_spine_agreement_registry,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.build.us_runtime.spm_independence_role import (
+    US_SPM_INDEPENDENCE_ROLE_NONCONSTANT_PERSON_COLUMNS,
+    US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+    US_SPM_INDEPENDENCE_ROLE_REQUIRED_SOURCE_COLUMNS,
+    US_SPM_INDEPENDENCE_ROLE_STAGE_NAME,
+    derive_us_spm_independence_role_from_manifest,
+    resolve_asec_spm_role_source_paths,
+    us_spm_independence_role_signal_gate,
+    us_spm_independence_role_stage_spec,
+    us_spm_independence_role_summary,
+    with_us_spm_independence_role,
+)
 from microcosm.build.us_runtime.ssi_disability_criteria import (
     SIPP_2023_SSI_DISABILITY_DONOR_REVISION,
     SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
@@ -1147,6 +1204,8 @@ __all__ = [
     "US_FISCAL_TARGET_REFERENCES",
     "US_FISCAL_TARGET_SPECS",
     "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS",
+    "US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS",
+    "US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES",
     "US_FISCAL_TARGET_COVERAGE_REQUIREMENTS",
     "US_FISCAL_TARGET_LEDGER_REFERENCES",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
@@ -1232,6 +1291,7 @@ __all__ = [
     "us_pregnancy_summary",
     "with_us_pregnancy_inputs",
     "US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS",
+    "US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS",
     "US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS",
     "US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_ELIGIBILITY_INPUTS_STAGE_NAME",
@@ -1244,11 +1304,21 @@ __all__ = [
     "US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS",
     "US_RELATIONSHIP_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_RELATIONSHIP_INPUTS_STAGE_NAME",
+    "US_SPM_INDEPENDENCE_ROLE_NONCONSTANT_PERSON_COLUMNS",
+    "US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS",
+    "US_SPM_INDEPENDENCE_ROLE_REQUIRED_SOURCE_COLUMNS",
+    "US_SPM_INDEPENDENCE_ROLE_STAGE_NAME",
     "derive_us_relationship_inputs_from_manifest",
+    "derive_us_spm_independence_role_from_manifest",
+    "resolve_asec_spm_role_source_paths",
     "us_relationship_inputs_signal_gate",
+    "us_spm_independence_role_signal_gate",
+    "us_spm_independence_role_stage_spec",
+    "us_spm_independence_role_summary",
     "us_relationship_inputs_stage_spec",
     "us_relationship_inputs_summary",
     "with_us_relationship_inputs",
+    "with_us_spm_independence_role",
     "ALIMONY_ASEC_ARCHIVED_DERIVATION_URL",
     "ALIMONY_PUF_ARCHIVED_DERIVATION_URL",
     "STRIKE_BENEFITS_ASEC_ARCHIVED_DERIVATION_URL",
@@ -1322,6 +1392,19 @@ __all__ = [
     "us_energy_subsidy_stage_spec",
     "us_energy_subsidy_summary",
     "with_us_energy_subsidy_input",
+    "US_ESI_EMPLOYER_PREMIUM_COLUMN",
+    "US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS",
+    "US_ESI_PREMIUMS_OUTPUT_COLUMNS",
+    "US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS",
+    "US_ESI_PREMIUMS_STAGE_NAME",
+    "derive_us_employer_esi_premiums_from_manifest",
+    "load_meps_ic_esi_premium_cells",
+    "us_esi_premiums_anchor_feed_mismatches",
+    "us_esi_premiums_anchor_gate",
+    "us_esi_premiums_signal_gate",
+    "us_esi_premiums_stage_spec",
+    "us_esi_premiums_summary",
+    "with_us_esi_premium_inputs",
     "CHILD_SUPPORT_ARCHIVED_PUF_IMPUTATION_URL",
     "CHILD_SUPPORT_ARCHIVED_PUF_OUTPUTS_URL",
     "CHILD_SUPPORT_EXPENSE_ARCHIVED_DERIVATION_URL",
@@ -1546,6 +1629,26 @@ __all__ = [
     "us_scf_auto_loans_stage_spec",
     "us_scf_auto_loans_summary",
     "with_us_scf_auto_loan_inputs",
+    "SCF_2025_FULL_EXTRACT",
+    "SCF_2025_SUMMARY_EXTRACT",
+    "SCF_EDUCATION_DEBT_CANDIDATE_PREDICTORS",
+    "SCF_EDUCATION_DEBT_EXCLUDED_PREDICTORS",
+    "SCF_EDUCATION_DEBT_PREDICTORS",
+    "SCF_EDUCATION_DEBT_RECIPIENT_DEFINITION",
+    "SCF_EDUCATION_DEBT_VINTAGE",
+    "SCF_WHOSE_EDUCATION_HOLDER",
+    "US_SCF_EDUCATION_DEBT_BALANCE_COLUMNS",
+    "US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS",
+    "derive_scf_education_debt_targets",
+    "fetch_scf_public_file",
+    "impute_us_scf_education_debt",
+    "load_scf_2025_education_debt_donor",
+    "scf_education_debt_donor_fit_table",
+    "us_scf_education_debt_fit_table",
+    "us_scf_education_debt_signal_gate",
+    "us_scf_education_debt_stage_spec",
+    "us_scf_education_debt_summary",
+    "with_us_scf_education_debt_inputs",
     "FINANCIAL_ASSET_BLEND_AUDIT_KEY",
     "FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY",
     "SCF_FINANCIAL_ASSET_TARGET_COMPONENTS",
@@ -1854,6 +1957,7 @@ __all__ = [
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "compile_us_fiscal_target_registry",
+    "us_fiscal_target_exclusion_receipt",
     "assign_congressional_districts_to_households",
     "assert_operator_free_source_frame",
     "build_pooled_asec_unit_frame",
@@ -1886,6 +1990,7 @@ __all__ = [
     "puf_capital_gains_tail_concentration_gate",
     "puf_capital_gains_tail_support_contract_identity",
     "puf_capital_gains_tail_terminal_support_receipt",
+    "processed_puf_tax_unit_partnership_s_corp_income",
     "puf_tax_unit_donor_from_arrays",
     "pool_asec_sources",
     "prepare_us_puf_tax_detail_chain_inputs",
@@ -1893,6 +1998,7 @@ __all__ = [
     "source_gap_family_ids",
     "split_us_puf_e19200_by_agi_band",
     "source_year_puf_adjusted_gross_income",
+    "source_year_puf_partnership_s_corp_income",
     "select_puf_capital_gains_tail_donors",
     "ECPS_PARITY_KNOWN_GAPS_RESOURCE",
     "ECPS_PARITY_REFERENCE_RESOURCE",
@@ -2052,13 +2158,14 @@ class BuildConfig:
 #: the observatory's sources diagram and the dataset card derive from it.
 US_DONORS: Mapping[str, DonorSpec] = {
     "scf_wealth": DonorSpec(
-        survey="Fed SCF 2022 + Census SIPP 2023",
+        survey="Fed SCF 2022 + Fed SCF 2025 + Census SIPP 2023",
         source="https://www.federalreserve.gov/econres/scfindex.htm",
         notes=(
             "SCF anchors signed net worth and one half of household liquid-asset "
             "vectors; the immutable SIPP 2023 public-use donor supplies the "
             "other half and restores low liquid-asset mass. Auto loans use the "
-            "full SCF separately."
+            "full SCF separately. Federal education debt reads the 2025 SCF "
+            "(microcosm#1073) while every other output stays on 2022."
         ),
     ),
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME: DonorSpec(
@@ -2105,10 +2212,17 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "structurally impossible under StagePlan."
         ),
     ),
-    "meps_esi_premiums": DonorSpec(
-        survey="MEPS-IC",
+    US_ESI_PREMIUMS_STAGE_NAME: DonorSpec(
+        survey="MEPS-IC + CPS ASEC current employment-based coverage",
         source="https://meps.ahrq.gov/mepsweb/survey_comp/Insurance.jsp",
-        notes="Employer-sponsored insurance premium parameters.",
+        notes=(
+            "Current ESI policyholders take the MEPS-IC employer share of "
+            "their tier x firm-size x State (or government census-division) "
+            "cell, scaled over every policyholder to BEA NIPA 7.8 line 17 "
+            "(B4923C) and written for the employed ones (microcosm #454). "
+            "Deterministic; "
+            "shared by support clones."
+        ),
     ),
     "aca_marketplace_inputs": DonorSpec(
         survey="CPS ASEC + CMS Marketplace Open Enrollment PUFs",
@@ -2217,6 +2331,18 @@ US_DONORS: Mapping[str, DonorSpec] = {
         notes=(
             "Measured household-head and marital-status flags mapped exactly "
             "from P_SEQ and A_MARITL; nothing is imputed."
+        ),
+    ),
+    US_SPM_INDEPENDENCE_ROLE_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured SPM independence role (the engine's one declared dataset "
+            "source input) restored from the SHA-pinned complete Census ASEC "
+            "person files by exact income-year/PERIDNUM identity through the "
+            "certified derive_spm_role_source: SPM_HEAD == 1 OR (A_FAMTYP in "
+            "{1,4} AND A_FAMREL in {1,2}); reconciled against Census's own "
+            "SPM_NUMADULTS/SPM_NUMKIDS/SPM_NUMPER; nothing is imputed."
         ),
     ),
     US_MEDICARE_TAKE_UP_STAGE_NAME: DonorSpec(
@@ -2433,6 +2559,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_HOURS_WORKED_STAGE_NAME,
     US_SNAP_TAKE_UP_STAGE_NAME,
     US_RELATIONSHIP_INPUTS_STAGE_NAME,
+    US_SPM_INDEPENDENCE_ROLE_STAGE_NAME,
     US_MEDICARE_TAKE_UP_STAGE_NAME,
     US_HOUSING_INPUTS_STAGE_NAME,
     US_RETIREMENT_DISTRIBUTION_STAGE_NAME,
@@ -2458,7 +2585,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_SSI_TAKE_UP_STAGE_NAME,
     "sipp_tips",
     "org_wages",
-    "meps_esi_premiums",
+    US_ESI_PREMIUMS_STAGE_NAME,
     "mortgage_conversion",
     "vehicle_assets",
     US_VOLUNTARY_FILING_STAGE_NAME,

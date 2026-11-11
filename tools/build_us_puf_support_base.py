@@ -4,6 +4,16 @@ This diagnostic builder starts from an existing Microcosm US H5, clones the
 frame into ASEC and PUF-tax-detail support channels, imputes PUF-observed
 inputs onto the PUF channel with Microcosm's weighted QRF, and writes a fresh
 base H5 for the fiscal refresh calibration builder.
+
+Telemetry: after parsing its arguments the builder starts the emitter
+(``microcosm.build.program_telemetry``, pipeline ``us_puf_support_base``) and
+records completion, or failure with the error. With
+``MICROCOSM_TELEMETRY_REQUIRED=1``, which the Modal stage runner sets, an
+emitter that cannot be used stops the builder before it reads any input. A
+checkpointed ``--stage all`` run records a stage change before each child
+interpreter and fails with the first child that exits nonzero; the children
+start no emitter. The compatibility path records the single stage ``all``,
+and a named ``--stage`` run by hand records that stage.
 """
 
 from __future__ import annotations
@@ -17,6 +27,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -33,12 +44,18 @@ from microcosm.build.outer_stage_runtime import (
     assert_unchanged_identity,
     frame_identity,
 )
+from microcosm.build.program_telemetry import (
+    child_stage_environment,
+    program_telemetry,
+    telemetry_recorded_by_parent,
+)
 from microcosm.build.source_manifest import (
     SupportSpineSpec,
     load_support_spine_manifest,
 )
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.stage_profile import profile_stage
+from microcosm.build.telemetry_emitter import LocalTelemetryEmitter
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_MEMBER,
     ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SHA256,
@@ -86,8 +103,11 @@ from microcosm.build.us_runtime import (
     load_asec_raw_stage_checkpoint,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
+    processed_puf_tax_unit_partnership_s_corp_income,
     puf_tax_unit_donor_from_arrays,
+    resolve_asec_spm_role_source_paths,
     source_year_puf_adjusted_gross_income,
+    source_year_puf_partnership_s_corp_income,
     support_channel_column,
     transfer_puf_capital_gains_tail,
     translate_congressional_district_facts_to_current_vintage,
@@ -103,6 +123,7 @@ from microcosm.build.us_runtime import (
     us_educator_expense_signal_gate,
     us_eligibility_inputs_signal_gate,
     us_energy_subsidy_signal_gate,
+    us_esi_premiums_signal_gate,
     us_farm_business_income_signal_gate,
     us_form_4952_election_signal_gate,
     us_geography_ladder_assignment_summary,
@@ -120,6 +141,7 @@ from microcosm.build.us_runtime import (
     us_retirement_distributions_signal_gate,
     us_salt_refund_income_signal_gate,
     us_source_operation_handlers,
+    us_spm_independence_role_signal_gate,
     us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
@@ -133,6 +155,7 @@ from microcosm.build.us_runtime import (
     with_us_education_inputs,
     with_us_eligibility_inputs,
     with_us_energy_subsidy_input,
+    with_us_esi_premium_inputs,
     with_us_housing_inputs,
     with_us_immigration_inputs,
     with_us_medicare_take_up_input,
@@ -142,6 +165,7 @@ from microcosm.build.us_runtime import (
     with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
     with_us_retirement_distribution_inputs,
+    with_us_spm_independence_role,
     with_us_weeks_unemployed,
     with_us_wic_claim_input,
     with_us_workers_compensation,
@@ -206,6 +230,7 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "derive_us_cps_carried_inputs",
             "with_us_prior_year_income_inputs",
             "with_us_relationship_inputs",
+            "with_us_spm_independence_role",
             "with_us_medicare_take_up_input",
             "with_us_housing_inputs[includes_acs_rent_in_current_order]",
             "with_us_eligibility_inputs",
@@ -219,6 +244,7 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "with_us_energy_subsidy_input",
             "with_us_retirement_contribution_inputs",
             "with_us_retirement_distribution_inputs",
+            "with_us_esi_premium_inputs",
             "with_us_immigration_inputs",
         ),
     ),
@@ -337,9 +363,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional INCOME_YEAR=PATH mapping to a local copy of the "
             "SHA-pinned official ASEC survey archive (zip or extracted "
-            "pppub member) restoring that pooled income year's ED_VAL and "
-            "PAW_TYP (income year YYYY maps to the survey-year YYYY+1 "
-            "archive). Years without a mapping are fetched from the "
+            "pppub member) for that pooled income year (income year YYYY "
+            "maps to the survey-year YYYY+1 archive). Source construction "
+            "restores from it the reviewed Census person columns the "
+            "--asec-h5 input lacks (microcosm #720); the raw-stage mapping "
+            "restores ED_VAL and PAW_TYP; the SPM independence role stage "
+            "derives the role. Years without a mapping are fetched from the "
             "official Census archive and verified against the same pins."
         ),
     )
@@ -637,10 +666,29 @@ def _verify_asec_source_digests(args: argparse.Namespace) -> None:
             )
 
 
+#: The telemetry pipeline this builder reports under.
+TELEMETRY_PIPELINE = "us_puf_support_base"
+
+
 def main(argv: list[str] | None = None) -> None:
-    """Dispatch the byte-identical legacy path or checkpoint scaffolding."""
+    """Dispatch the byte-identical legacy path or checkpoint scaffolding.
+
+    A child stage of a checkpointed ``--stage all`` run starts no emitter:
+    its parent records its stage and outcome. Every other run starts one.
+    """
 
     args = _parse_args() if argv is None else _parse_args(argv)
+    if telemetry_recorded_by_parent():
+        _dispatch(args, None)
+        return
+    with program_telemetry(pipeline=TELEMETRY_PIPELINE) as telemetry:
+        _dispatch(args, telemetry)
+
+
+def _dispatch(
+    args: argparse.Namespace, telemetry: LocalTelemetryEmitter | None
+) -> None:
+    """Run the parsed command, recording stage changes on ``telemetry`` if any."""
 
     _verify_asec_source_digests(args)
     stage = getattr(args, "stage", "all")
@@ -656,12 +704,18 @@ def main(argv: list[str] | None = None) -> None:
                 "Named staged builds require an explicit PYTHONHASHSEED; use "
                 "--stage all to default fresh child processes to 0."
             )
+        if telemetry is not None:
+            telemetry.transition_stage(stage)
         _run_configured_stage(args)
         return
     if checkpoint_dir is None:
         # This is intentionally a direct call with no profiler, checkpoint
-        # directory creation, or other side effect.  It is the pre-refactor
-        # pipeline and remains the byte-for-byte compatibility path.
+        # directory creation, or other side effect, except telemetry: the
+        # emitter started in main() and the one stage change below, which
+        # change no output byte. It is the pre-refactor pipeline and remains
+        # the byte-for-byte compatibility path.
+        if telemetry is not None:
+            telemetry.transition_stage("all")
         boundary_dir = getattr(args, "equivalence_boundary_dir", None)
         observer = (
             None if boundary_dir is None else _EquivalenceBoundaryObserver(boundary_dir)
@@ -672,11 +726,18 @@ def main(argv: list[str] | None = None) -> None:
             _run_all(args, boundary_observer=observer)
             observer.assert_complete()
         return
-    _run_staged_all(args)
+    _run_staged_all(args, telemetry)
 
 
-def _run_staged_all(args: argparse.Namespace) -> None:
-    """Run every outer boundary in a fresh interpreter, resuming by prefix."""
+def _run_staged_all(
+    args: argparse.Namespace, telemetry: LocalTelemetryEmitter | None = None
+) -> None:
+    """Run every outer boundary in a fresh interpreter, resuming by prefix.
+
+    Before each child, ``telemetry`` (the parent's, if any) records that
+    child's stage; a child that exits nonzero stops the run, which main()
+    records as that stage's failure. The children start no emitter.
+    """
 
     runtime = StageRuntime(
         args.checkpoint_dir,
@@ -690,6 +751,8 @@ def _run_staged_all(args: argparse.Namespace) -> None:
         # export and stage_all alias after a crash in the post-context window.
         remaining = ("final_export",)
     for stage in remaining:
+        if telemetry is not None:
+            telemetry.transition_stage(stage)
         completed = subprocess.run(
             [
                 sys.executable,
@@ -772,7 +835,8 @@ def _append_path_argument(command: list[str], flag: str, value: Path | None) -> 
 def _staged_subprocess_environment() -> dict[str, str]:
     environment = os.environ.copy()
     environment.setdefault("PYTHONHASHSEED", "0")
-    return environment
+    # The child starts no emitter: this process records its telemetry.
+    return child_stage_environment(environment)
 
 
 def _asec_education_source_paths(
@@ -1090,6 +1154,18 @@ def _run_all(
             "Relationship-input signal gate failed:\n  "
             + "\n  ".join(relationship_inputs_gate.failures)
         )
+    base = with_us_spm_independence_role(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+        asec_spm_role_source_paths=_asec_education_source_paths(args),
+    )
+    spm_independence_role_gate = us_spm_independence_role_signal_gate(base)
+    if not spm_independence_role_gate.passed:
+        raise SystemExit(
+            "SPM independence role signal gate failed:\n  "
+            + "\n  ".join(spm_independence_role_gate.failures)
+        )
     base = with_us_medicare_take_up_input(
         base,
         seed=args.seed,
@@ -1197,6 +1273,17 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
+    base = with_us_esi_premium_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    esi_premiums_gate = us_esi_premiums_signal_gate(base)
+    if not esi_premiums_gate.passed:
+        raise SystemExit(
+            "ESI premium signal gate failed before support cloning:\n  "
+            + "\n  ".join(esi_premiums_gate.failures)
+        )
     base = with_us_immigration_inputs(
         base,
         seed=args.seed,
@@ -1495,6 +1582,14 @@ def _run_all(
             "Education-input signal gate failed:\n  "
             + "\n  ".join(education_inputs_gate.failures)
         )
+    # The ESI premium inputs ride the support clone unchanged; re-prove clone
+    # agreement and the cell multiples on the cloned frame.
+    esi_premiums_post_clone_gate = us_esi_premiums_signal_gate(imputed)
+    if not esi_premiums_post_clone_gate.passed:
+        raise SystemExit(
+            "ESI premium signal gate failed after support cloning:\n  "
+            + "\n  ".join(esi_premiums_post_clone_gate.failures)
+        )
     _observe_frame_boundary(boundary_observer, "education_inputs_post_clone", imputed)
     congressional_district_assignment = {"applied": False}
     if args.assign_congressional_districts:
@@ -1705,6 +1800,16 @@ def _run_all(
             "failures": list(pregnancy_gate.failures),
             "details": dict(pregnancy_gate.details),
         },
+        "esi_premiums_signal": {
+            "passed": esi_premiums_gate.passed,
+            "failures": list(esi_premiums_gate.failures),
+            "details": dict(esi_premiums_gate.details),
+        },
+        "esi_premiums_post_clone_signal": {
+            "passed": esi_premiums_post_clone_gate.passed,
+            "failures": list(esi_premiums_post_clone_gate.failures),
+            "details": dict(esi_premiums_post_clone_gate.details),
+        },
         "wic_claim_signal": {
             "passed": wic_claim_gate.passed,
             "failures": list(wic_claim_gate.failures),
@@ -1779,6 +1884,11 @@ def _run_all(
             "passed": relationship_inputs_gate.passed,
             "failures": list(relationship_inputs_gate.failures),
             "details": dict(relationship_inputs_gate.details),
+        },
+        "spm_independence_role_signal": {
+            "passed": spm_independence_role_gate.passed,
+            "failures": list(spm_independence_role_gate.failures),
+            "details": dict(spm_independence_role_gate.details),
         },
         "medicare_take_up_input_signal": {
             "passed": medicare_take_up_gate.passed,
@@ -2195,6 +2305,16 @@ def _pre_clone_enrichment_stage(
             "Relationship-input signal gate failed",
         )
     }
+    base = with_us_spm_independence_role(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+        asec_spm_role_source_paths=_asec_education_source_paths(args),
+    )
+    signals["spm_independence_role_signal"] = _checked_gate_payload(
+        us_spm_independence_role_signal_gate(base),
+        "SPM independence role signal gate failed before support cloning",
+    )
     base = with_us_medicare_take_up_input(
         base,
         seed=args.seed,
@@ -2292,6 +2412,15 @@ def _pre_clone_enrichment_stage(
         base,
         seed=args.seed,
         time_period=args.target_year,
+    )
+    base = with_us_esi_premium_inputs(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+    )
+    signals["esi_premiums_signal"] = _checked_gate_payload(
+        us_esi_premiums_signal_gate(base),
+        "ESI premium signal gate failed before support cloning",
     )
     base = with_us_immigration_inputs(
         base,
@@ -2839,6 +2968,10 @@ def _post_qrf_frame_stage(
             us_education_inputs_signal_gate(frame),
             "Education-input signal gate failed",
         )
+        signals["esi_premiums_post_clone_signal"] = _checked_gate_payload(
+            us_esi_premiums_signal_gate(frame),
+            "ESI premium signal gate failed after support cloning",
+        )
     elif stage == "congressional_district_assignment":
         assignment: dict[str, object] = {"applied": False}
         if args.assign_congressional_districts:
@@ -2986,6 +3119,8 @@ def _export_staged_result(
         "weeks_unemployed_signal",
         "eligibility_inputs_signal",
         "pregnancy_signal",
+        "esi_premiums_signal",
+        "esi_premiums_post_clone_signal",
         "wic_claim_signal",
         "educator_expense_signal",
         "form_4952_election_signal",
@@ -3224,6 +3359,33 @@ def _asec_sources_from_args(
     *,
     support_spine_spec: SupportSpineSpec | None,
 ) -> tuple[AsecSource, ...]:
+    """Pooled ASEC sources, each bound to its pinned Census person file.
+
+    Every source carries ``census_person_source`` so the pool restores the
+    reviewed Census person columns its H5 lacks (microcosm #720). The files
+    are the ``--asec-education-source`` mappings, with any pooled income year
+    left unmapped fetched from the official Census archive and verified,
+    exactly as the SPM independence role stage resolves them.
+    """
+
+    sources = _pooled_asec_sources_from_args(
+        args, support_spine_spec=support_spine_spec
+    )
+    census_person_sources = resolve_asec_spm_role_source_paths(
+        _asec_education_source_paths(args),
+        income_years=tuple(sorted({source.year for source in sources})),
+    )
+    return tuple(
+        replace(source, census_person_source=census_person_sources[source.year])
+        for source in sources
+    )
+
+
+def _pooled_asec_sources_from_args(
+    args: argparse.Namespace,
+    *,
+    support_spine_spec: SupportSpineSpec | None,
+) -> tuple[AsecSource, ...]:
     if support_spine_spec is None:
         return tuple(
             _parse_asec_source(value, max_households=args.asec_max_households)
@@ -3377,11 +3539,21 @@ def _puf_tax_unit_donor_from_h5(
         processed_tax_unit_ids=arrays["tax_unit_id"],
         processed_tax_unit_weights=arrays["household_weight"],
     )
-    return puf_tax_unit_donor_from_arrays(
+    schedule_e_receipt: dict[str, object] = {}
+    schedule_e = _source_year_puf_partnership_s_corp_income(
+        source_puf_csv,
+        arrays,
+        receipt=schedule_e_receipt,
+    )
+    donor = puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=adjusted_gross_income,
+        schedule_e_partnership_s_corp=schedule_e,
         donor_build_summary=donor_build_summary,
     )
+    if donor_build_summary is not None:
+        donor_build_summary["schedule_e_line_32"] = schedule_e_receipt
+    return donor
 
 
 def _puf_e01000_reconciliation_basis(
@@ -3430,6 +3602,25 @@ def _source_year_puf_adjusted_gross_income(
         source_puf_csv,
         processed_tax_unit_ids=processed_tax_unit_ids,
         processed_tax_unit_weights=processed_tax_unit_weights,
+    )
+
+
+def _source_year_puf_partnership_s_corp_income(
+    source_puf_csv: Path,
+    arrays: Mapping[str, Sequence[object]],
+    *,
+    receipt: dict[str, object] | None = None,
+) -> dict[str, np.ndarray]:
+    """Load Schedule E line 32 by entity through the same narrow seam."""
+
+    return source_year_puf_partnership_s_corp_income(
+        source_puf_csv,
+        processed_tax_unit_ids=arrays["tax_unit_id"],
+        processed_tax_unit_weights=arrays["household_weight"],
+        processed_nonpassive_partnership_s_corp_income=(
+            processed_puf_tax_unit_partnership_s_corp_income(arrays)
+        ),
+        receipt=receipt,
     )
 
 

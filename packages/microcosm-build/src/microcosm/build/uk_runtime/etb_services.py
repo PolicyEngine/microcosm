@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
@@ -12,17 +13,26 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
+from microcosm.build.uk_runtime.bus_support_pricing import (
+    PRICE_BUS_SUPPORT_KIND,
+    bus_support_pricing_operation,
+    price_bus_support,
+)
 from microcosm.build.uk_runtime.donor_uprating import (
     apply_donor_uprating,
     donor_uprating_factors,
     uprating_operation,
 )
-from microcosm.build.uk_runtime.fact_raking import (
-    rake_operations,
-    rake_to_facts,
-    resolve_cells,
-)
+from microcosm.build.uk_runtime.etb_vat import UK_ETB_FAMILY_ROLE_COUNTS
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.household_income import (
+    UK_HBAI_NET_INCOME_PREDICTOR,
+    UK_HBAI_NET_INCOME_VARIABLE,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
@@ -30,11 +40,18 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    UK_GATE_OUTCOMES_EVIDENCE,
+    declared_gate_calibration,
+    gate_outcomes,
+)
 from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
     UKSupportClipResult,
     support_clip_to_donor_with_receipt,
 )
+from microcosm.build.uk_runtime.uc_relationships import household_family_role_counts
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
@@ -51,16 +68,22 @@ UK_ETB_SERVICES_PREDICTORS = (
     "hbai_household_net_income",
 )
 # The education counts are not engine variables: the incumbent derives them
-# from person current_education (etb.py:180-186). Only these materialize.
+# from person current_education (etb.py:180-186), and the adult and child
+# counts are the household's FRS family roles (``UK_ETB_FAMILY_ROLE_COUNTS``).
+# Only these materialize.
 UK_ETB_SERVICES_ENGINE_VARIABLES = (
-    "is_adult",
-    "is_child",
     "is_SP_age",
     "dla",
     "pip",
-    "hbai_household_net_income",
+    UK_HBAI_NET_INCOME_VARIABLE,
     "current_education",
 )
+#: Predictors read from an engine variable of another name: the HBAI net income
+#: is read before the reset to zero (policyengine-uk 2.132.4), since the
+#: donor's ``disinc`` is not reset.
+_ETB_SERVICES_PREDICTOR_VARIABLES = {
+    UK_HBAI_NET_INCOME_PREDICTOR: UK_HBAI_NET_INCOME_VARIABLE,
+}
 UK_ETB_SERVICES_EDUCATION_COUNTS = {
     "count_primary_education": ("PRIMARY",),
     "count_secondary_education": ("LOWER_SECONDARY",),
@@ -102,6 +125,7 @@ UK_ETB_SERVICES_VENDORED_RESOURCES = (
     "orr_rail_facts.json",
     "dft_bus_value_anchors.json",
     "devolved_bus_finance.json",
+    "dft_bus_journeys.json",
 )
 
 
@@ -113,7 +137,8 @@ class UKETBServicesResult:
     support_clip: UKSupportClipReceipt
     nhs_cells: dict[str, object] = field(default_factory=dict)
     donor_uprating: dict[str, object] | None = None
-    bus_support_rake: dict[str, object] | None = None
+    bus_support_pricing: dict[str, object] | None = None
+    gate_outcomes: dict[str, str] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -123,8 +148,10 @@ class UKETBServicesResult:
         }
         if self.donor_uprating is not None:
             evidence["donor_uprating"] = dict(self.donor_uprating)
-        if self.bus_support_rake is not None:
-            evidence["bus_support_rake"] = dict(self.bus_support_rake)
+        if self.bus_support_pricing is not None:
+            evidence["bus_support_pricing"] = dict(self.bus_support_pricing)
+        if self.gate_outcomes:
+            evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.gate_outcomes)
         return evidence
 
 
@@ -172,17 +199,26 @@ class UKETBServicesStageTransform:
             uprating=uprating_factors,
         )
         predictors = recipient_predictors(frame, self.engine)
+        outcomes: dict[str, str] = {}
         draws, records = impute_etb_services(
-            donor, predictors, seed=_qrf_seed(self.stage)
+            donor,
+            predictors,
+            seed=_qrf_seed(self.stage),
+            record_ids=frame.table("household")["household_id"].to_numpy(),
+            gate_calibration=declared_gate_calibration(
+                self.stage, "fit_weighted_qrf_chain"
+            ),
+            outcomes=outcomes,
         )
         clip_result = support_clip_to_donor(
             draws, donor, exempt=support_clip_exempt(self.stage)
         )
         draws = clip_result.clipped
         household = frame.table("household").copy()
-        draws, rake_receipt = etb_bus_support_rake(
+        draws, pricing_receipt = etb_bus_support_pricing(
             self.stage,
             draws,
+            frame=frame,
             household=household,
             weights=frame.weights_for("household").values,
         )
@@ -221,7 +257,8 @@ class UKETBServicesStageTransform:
             support_clip=clip_result.receipt,
             nhs_cells=nhs_cells,
             donor_uprating=uprating_receipt,
-            bus_support_rake=rake_receipt,
+            bus_support_pricing=pricing_receipt,
+            gate_outcomes=outcomes,
         )
         return result
 
@@ -400,13 +437,18 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
 
     result = pd.DataFrame(index=household.index)
     education = np.asarray(materialized["current_education"]).astype(str)
+    adults, children = household_family_role_counts(person, household)
     for predictor in UK_ETB_SERVICES_PREDICTORS:
+        if predictor in UK_ETB_FAMILY_ROLE_COUNTS:
+            result[predictor] = adults if predictor == "is_adult" else children
+            continue
         if predictor in UK_ETB_SERVICES_EDUCATION_COUNTS:
             labels = UK_ETB_SERVICES_EDUCATION_COUNTS[predictor]
             result[predictor] = person_sum(np.isin(education, labels))
             continue
-        values = np.asarray(materialized[predictor])
-        entity = str(engine.variable_metadata(predictor).entity)
+        variable = _ETB_SERVICES_PREDICTOR_VARIABLES.get(predictor, predictor)
+        values = np.asarray(materialized[variable])
+        entity = str(engine.variable_metadata(variable).entity)
         if entity == "household":
             result[predictor] = values
         elif entity == "person":
@@ -417,12 +459,36 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
 
 
 def impute_etb_services(
-    donor: pd.DataFrame, recipient: pd.DataFrame, *, seed: int, n_estimators: int = 100
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    *,
+    seed: int,
+    record_ids: Sequence[object] | np.ndarray,
+    n_estimators: int = 100,
+    gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
+    outcomes: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, tuple[FitWeightRecord, ...]]:
+    """Chain-draw the ETB services targets from household-keyed uniforms.
+
+    Each draw reads uniforms keyed on the household's own id (``record_ids``,
+    in recipient row order) and the target, so a household's draws move only
+    when its own predictors do, whatever happens to the other recipients.
+    ``gate_calibration`` is the chain's declared
+    :class:`~microcosm.fit.GateCalibration`; when it is not the in-sample
+    gate, ``outcomes`` (if given) is filled with each target's gate outcome.
+    """
+
     from microcosm.fit import RegimeGatedQRF
 
     targets = UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3]
-    model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
+    ids = integer_record_keys(record_ids, label="ETB record_ids")
+    if ids.shape != (len(recipient),) or pd.Series(ids).duplicated().any():
+        raise ValueError(
+            "ETB record_ids must name every recipient once, in recipient row order."
+        )
+    model = RegimeGatedQRF(
+        n_estimators=n_estimators, seed=seed, gate_calibration=gate_calibration
+    )
     state = model.start_chain(
         donor,
         list(UK_ETB_SERVICES_PREDICTORS),
@@ -432,17 +498,22 @@ def impute_etb_services(
     raw = pd.DataFrame(index=recipient.index)
     records: list[FitWeightRecord] = []
     for target in targets:
+        salt = f"{UK_ETB_SERVICES_FIT_NAME}:{target}"
         result = model.fit_draw_next(
             donor,
             recipient.loc[:, list(UK_ETB_SERVICES_PREDICTORS)],
             raw,
             state=state,
             weights="weight",
+            quantiles=stable_identity_uniforms(ids, seed=seed, salt=salt),
+            sign_uniforms=stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:sign"),
         )
         raw[target] = result.raw_draw
         records.append(
             FitWeightRecord(f"{UK_ETB_SERVICES_FIT_NAME}:{target}", result.weight_kind)
         )
+        if outcomes is not None and gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
+            outcomes.update(gate_outcomes(UK_ETB_SERVICES_FIT_NAME, result.fitted))
         state = result.state
     return raw, tuple(records)
 
@@ -460,7 +531,7 @@ def support_clip_to_donor(
 
 
 def support_clip_exempt(stage: SourceStageSpec) -> set[str]:
-    """Columns the declared ``support_clip`` exempts (a raked column keeps its level)."""
+    """Columns the declared ``support_clip`` exempts (none since microcosm#930)."""
 
     for operation in stage.operations:
         if operation.kind == "support_clip":
@@ -470,51 +541,54 @@ def support_clip_exempt(stage: SourceStageSpec) -> set[str]:
     return set()
 
 
-def etb_bus_support_rake(
+def etb_bus_support_pricing(
     stage: SourceStageSpec,
     draws: pd.DataFrame,
     *,
+    frame: Frame,
     household: pd.DataFrame,
     weights: np.ndarray,
 ) -> tuple[pd.DataFrame, dict[str, object] | None]:
-    """Apply every declared ``rake_to_vendored_facts`` operation on the stage."""
+    """Price bus support from the frame's journeys where declared (microcosm#930).
 
-    operations = rake_operations(stage)
-    if not operations:
+    The chain's clipped raw draw stands in the declared ``raw_draw_regions``
+    (Wales, Northern Ireland); every other household's ``bus_subsidy_spending``
+    is the published support per boarding times its persons' boardings. The
+    chain drew the column last, so nothing downstream conditioned on it.
+    """
+
+    parameters = bus_support_pricing_operation(stage)
+    if parameters is None:
         return draws, None
-    if "region" not in household:
-        raise KeyError("etb_services rake needs the household 'region' column.")
-    region = household["region"].map(_enum_name).to_numpy()
-    receipts = []
-    raked = draws
-    for parameters in operations:
-        cells = resolve_cells(
-            parameters, allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES
+    column = str(parameters["support_column"])
+    if column not in draws:
+        raise KeyError(
+            f"{PRICE_BUS_SUPPORT_KIND} names {column!r}, not a drawn column."
         )
-        raked, receipt = rake_to_facts(
-            raked,
-            columns=[str(column) for column in parameters["columns"]],
-            cells=cells,
-            region=np.asarray(region).astype(str),
-            weights=weights if bool(parameters.get("weighted", True)) else None,
-            scope=str(parameters["scope"]),
-            iterations=int(parameters.get("iterations", 1)),
-        )
-        receipts.append(receipt)
-    return raked, receipts[0] if len(receipts) == 1 else {"operations": receipts}
+    values, _priced, receipt = price_bus_support(
+        parameters,
+        person=frame.table("person"),
+        household=household,
+        household_weights=np.asarray(weights, dtype=float),
+        raw_support=draws[column].to_numpy(dtype=float),
+        allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES,
+    )
+    priced = draws.copy()
+    priced[column] = values
+    return priced, receipt
 
 
-#: The declared rake levels bus support; the support clip and the committed
-#: support bounds leave it alone.
-UK_ETB_SERVICES_RAKED_COLUMNS = frozenset({"bus_subsidy_spending"})
+#: The declared pricing sets bus support from journeys; the committed support
+#: bounds leave the column alone (the clip still bounds the raw draw first).
+UK_ETB_SERVICES_PRICED_COLUMNS = frozenset({"bus_subsidy_spending"})
 
 
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
-    """Donor support per clipped column; the raked column carries no bounds."""
+    """Donor support per clipped column; the priced column carries no bounds."""
 
     ranges = {}
     for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3]:
-        if column in UK_ETB_SERVICES_RAKED_COLUMNS:
+        if column in UK_ETB_SERVICES_PRICED_COLUMNS:
             continue
         values = donor[column]
         finite = values[np.isfinite(values)]

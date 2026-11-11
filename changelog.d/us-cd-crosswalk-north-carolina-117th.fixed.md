@@ -1,0 +1,1 @@
+Build the packaged 117th->119th congressional-district crosswalk from the CD plan registry, so North Carolina's SOI districts map through its 2019 plan (the 117th Congress's) instead of the 2016 plan in the 2020 BAF layer. Only North Carolina's rows change; the crosswalk sha256 is now a347303f.

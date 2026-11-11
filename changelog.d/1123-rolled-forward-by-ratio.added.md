@@ -1,0 +1,1 @@
+Ledger target references gain a rolled_forward_by_ratio value operation: an official estimate for an earlier period (one cell or the sum of its cells) carried to the target period by base * numerator / denominator, with the numerator pinned to the target period, the denominator to the base's own period, and the growth bounded to (0.5, 2] (microcosm#1123).

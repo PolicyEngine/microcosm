@@ -804,6 +804,12 @@ def validate_source_enrichment_candidate(
                 "compatibility claim; a claim is made at certification, "
                 "against the measured runtime"
             )
+        if CLAIM_MEASUREMENT_KEY in compatibility:
+            failures.append(
+                f"pending source enrichment must not record a "
+                f"{CLAIM_MEASUREMENT_KEY}; what a publisher claim was measured "
+                "against is recorded at certification, beside the claim"
+            )
     elif compatibility.get("status") == "passed":
         if COMPATIBILITY_FILE not in by_path:
             failures.append(
@@ -1194,21 +1200,25 @@ def _narrowing_notice(field, package, lost, *, offer_flags):
     return notice
 
 
-def _narrowed_claims(report) -> dict:
-    """Return the narrowing ``report`` records, or ``{}``.
+def _compatibility_record(report, key: str) -> dict:
+    """Return the mapping ``report`` records at ``compatibility.<key>``, or ``{}``.
 
-    One tolerance for every verdict that reports the record: certification and
+    One tolerance for every verdict that reports a record: certification and
     validation have the report in hand, publication reads it off disk, and a
     bundle they disagreed about would be reported by some of them and not
     others. Anything missing or unexpected reads as no record.
     """
     compatibility = report.get("compatibility") if isinstance(report, Mapping) else None
-    narrowed = (
-        compatibility.get("narrowed_claims")
-        if isinstance(compatibility, Mapping)
-        else None
-    )
-    return dict(narrowed) if isinstance(narrowed, Mapping) else {}
+    record = compatibility.get(key) if isinstance(compatibility, Mapping) else None
+    return dict(record) if isinstance(record, Mapping) else {}
+
+
+def _narrowed_claims(report) -> dict:
+    """Return the narrowing ``report`` records, or ``{}``.
+
+    Read under :func:`_compatibility_record`'s tolerance.
+    """
+    return _compatibility_record(report, "narrowed_claims")
 
 
 def recorded_narrowed_claims(release_dir) -> dict:
@@ -1230,6 +1240,152 @@ def recorded_narrowed_claims(release_dir) -> dict:
     return _narrowed_claims(report)
 
 
+#: The report's record, beside ``publisher_claims``, of the versions a declared
+#: claim was actually measured against (:func:`claim_measurement_record`).
+CLAIM_MEASUREMENT_KEY = "claim_measurement"
+
+
+def claim_measurement_record(claims: Mapping, *, measured_version: str) -> dict:
+    """Return what certification measured each declared claim against.
+
+    ``claims`` is a ``publisher_claims`` mapping of entries
+    :func:`compatibility_claim_entry` validated, and ``measured_version`` is
+    the policyengine-us version the native-loader probe tested, which the
+    manifest also records as ``build.built_with_model_package``. The probe,
+    including the stored-input contract it runs
+    (:func:`_require_stored_inputs`), grades that one version and no other.
+    Every other version a claim admits is unmeasured: later releases inside
+    the range, and earlier ones when the range reaches below the tested
+    version. A stored input that one of them does not define, because a later
+    release renamed it or an earlier one predates it, is not caught for that
+    version, and its engine ignores the column (microcosm#1026's failure
+    mode). The record says in the bundle which versions were measured, so a
+    range cannot be read as a measurement of every version it names::
+
+        {"model": {"specifier": ">=2.0.0,<2.3", "measured_versions": ["2.2.1"]}}
+
+    ``specifier`` is the claim's own, character for character.
+
+    Certification writes this and every replay recomputes it here, from the
+    version the replayed probe tested, so the two cannot drift. An empty
+    ``claims`` gives ``{}``, which certification does not write, so an
+    undeclared bundle keeps the bytes it has always had.
+
+    Raises:
+        ValueError: ``claims`` names a field other than :data:`CLAIM_FIELD`.
+            ``measured_version`` is the model's, so no other field has one.
+    """
+    record = {}
+    for field, entry in claims.items():
+        if field != CLAIM_FIELD:
+            raise ValueError(
+                f"only the {CLAIM_FIELD!r} claim has a measured version; "
+                f"{field!r} is not a field a publisher can declare"
+            )
+        record[field] = {
+            "specifier": entry["specifier"],
+            "measured_versions": [measured_version],
+        }
+    return record
+
+
+def _claim_measurement_failures(
+    compatibility: Mapping,
+    validated_claims: Mapping,
+    *,
+    declared: bool,
+    measured_version: object,
+) -> list[str]:
+    """Failure lines for the report's recorded claim measurement, or ``[]``.
+
+    ``declared`` says whether the report declares a model claim at all, and
+    ``validated_claims`` holds the declared entries that passed
+    :func:`compatibility_claim_entry` against the replayed probe. The record
+    must be absent without a claim and must equal
+    :func:`claim_measurement_record` with one. A declared claim that failed
+    its own validation is already refused, and its measurement is not judged
+    on top of that.
+    """
+    label = f"compatibility.{CLAIM_MEASUREMENT_KEY}"
+    present = CLAIM_MEASUREMENT_KEY in compatibility
+    if not declared:
+        if not present:
+            return []
+        return [
+            f"{label} is recorded, but the report declares no publisher "
+            "compatibility claim for it to describe"
+        ]
+    if not validated_claims:
+        return []
+    expected = claim_measurement_record(
+        validated_claims, measured_version=measured_version
+    )
+    recorded = compatibility.get(CLAIM_MEASUREMENT_KEY)
+    if present and recorded == expected:
+        return []
+    if not present:
+        return [
+            f"{label} is missing; a declared publisher compatibility claim "
+            "must record the versions certification measured it against"
+        ]
+    if not isinstance(recorded, Mapping) or set(recorded) != set(expected):
+        return [
+            f"{label} must map {CLAIM_FIELD!r}, and nothing else, to what the "
+            "declared claim was measured against"
+        ]
+    failures = []
+    for field, want in expected.items():
+        got = recorded[field]
+        where = f"{label}.{field}"
+        if not isinstance(got, Mapping) or set(got) != set(want):
+            failures.append(
+                f"{where} must record exactly 'measured_versions' and 'specifier'"
+            )
+            continue
+        if got["specifier"] != want["specifier"]:
+            failures.append(
+                f"{where}.specifier must be the declared claim's specifier "
+                f"{want['specifier']!r}, as written"
+            )
+        if got["measured_versions"] != want["measured_versions"]:
+            failures.append(
+                f"{where}.measured_versions must be exactly "
+                f"{want['measured_versions']!r}: the native-loader probe and "
+                "its stored-input contract measured the tested policyengine-us "
+                "version and no other version the claim admits"
+            )
+    # Unreachable while the comparisons above cover every key of the record;
+    # kept so a record that differs can never pass silently.
+    return failures or [f"{label} differs from what certification measured"]
+
+
+def _claim_measurement(report) -> dict:
+    """Return the claim measurement ``report`` records, or ``{}``.
+
+    Read under :func:`_compatibility_record`'s tolerance, like the narrowing.
+    """
+    return _compatibility_record(report, CLAIM_MEASUREMENT_KEY)
+
+
+def recorded_claim_measurement(release_dir) -> dict:
+    """Return the claim measurement ``release_dir`` records, or ``{}``.
+
+    A declared compatibility range admits versions no check measured; the
+    bundle records which one was, under ``compatibility.claim_measurement``.
+    This reads that record back so each later verdict can print it beside the
+    range, for whoever is standing in front of the next gate.
+
+    Like :func:`recorded_narrowed_claims`, this is a reporting path, not a
+    gate: the validators accept or refuse the record on their own terms, and
+    an unreadable bundle reads as no record.
+    """
+    try:
+        report = json.loads((Path(release_dir) / SOURCE_ENRICHMENT_FILE).read_text())
+    except (OSError, ValueError):
+        return {}
+    return _claim_measurement(report)
+
+
 def _check_compatibility(
     release_dir,
     manifest,
@@ -1242,6 +1398,8 @@ def _check_compatibility(
     annual_revision: str | None = None,
     native_inputs: Mapping[str, str] | None = None,
 ):
+    from microcosm.data.stored_inputs import StoredInputRefusalError
+
     receipt_path = release_dir / COMPATIBILITY_FILE
     receipt = _json(receipt_path, failures)
     if (
@@ -1283,6 +1441,7 @@ def _check_compatibility(
                 f"publisher_claims must map {CLAIM_FIELD!r} to one declared "
                 "compatibility claim; Core stays pinned to the tested version"
             )
+        validated_claims = {}
         for package, field in (
             ("policyengine-us", "model"),
             ("policyengine-core", "core"),
@@ -1291,9 +1450,7 @@ def _check_compatibility(
             if _mapping(
                 _mapping(manifest.get("build")).get(f"built_with_{field}_package")
             ) != {"name": package, "version": version}:
-                failures.append(
-                    f"compatibility built-with {package} must match tested runtime"
-                )
+                failures.append(_built_with_mismatch(package))
             if malformed_claims:
                 continue
             declared = claims.get(field) if field == CLAIM_FIELD else None
@@ -1321,6 +1478,7 @@ def _check_compatibility(
             except ValueError as exc:
                 failures.append(f"declared {package} compatibility claim: {exc}")
                 continue
+            validated_claims[field] = entry
             if declared != entry:
                 failures.append(
                     f"declared {package} compatibility claim must record only "
@@ -1331,8 +1489,61 @@ def _check_compatibility(
                     f"compatibility {package} must match the declared publisher "
                     "compatibility claim"
                 )
+        if not malformed_claims:
+            # Replayed from the probe that just ran, never read back from the
+            # receipt: the record must say what this runtime measured.
+            failures.extend(
+                _claim_measurement_failures(
+                    compatibility,
+                    validated_claims,
+                    # As the per-package branch reads it: a null model claim
+                    # is no claim, and leaves the exact pin in force.
+                    declared=claims.get(CLAIM_FIELD) is not None,
+                    measured_version=_mapping(
+                        _mapping(actual.get("packages")).get("policyengine-us")
+                    ).get("version"),
+                )
+            )
+    except StoredInputRefusalError as exc:
+        # The probe refused before it reported the runtime it tested, and its
+        # refusal names the installed engine (microcosm#1026). If that is not
+        # the engine the bundle records as built-with, the refusal grades the
+        # bundle against an engine it was never certified with; say that more
+        # basic mismatch first, as a passing probe would.
+        failures.extend(_installed_built_with_mismatches(manifest))
+        failures.append(f"native loader compatibility failed: {exc}")
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:
         failures.append(f"native loader compatibility failed: {exc}")
+
+
+def _built_with_mismatch(package: str) -> str:
+    return f"compatibility built-with {package} must match tested runtime"
+
+
+def _installed_built_with_mismatches(manifest: Mapping) -> list[str]:
+    """Built-with packages that differ from the installed ones, as failure lines.
+
+    The installed versions are what the native-loader probe tests
+    (:func:`_runtime_package_identities` reads the same distributions), so
+    these are the lines :func:`_check_compatibility` reports after a passing
+    probe, for use when the probe did not finish.
+    """
+    from importlib import metadata
+
+    lines = []
+    for package, field in (
+        ("policyengine-us", "model"),
+        ("policyengine-core", "core"),
+    ):
+        try:
+            version = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            version = None
+        if _mapping(
+            _mapping(manifest.get("build")).get(f"built_with_{field}_package")
+        ) != {"name": package, "version": version}:
+            lines.append(_built_with_mismatch(package))
+    return lines
 
 
 def _wheel_files(path: Path) -> tuple[str, str, dict[str, bytes]]:
@@ -1466,6 +1677,11 @@ def run_native_loader_compatibility(
     role it inherits plus its three receipts (:data:`RECEIPT_NATIVE_INPUTS`);
     each must be registered by the tested country as a Boolean of that entity,
     reach both loaders byte-identical, and override its default in Core.
+
+    Before either loader runs, the candidate must store no model input the
+    tested country does not define (:func:`_require_stored_inputs`,
+    microcosm#1026). The receipt's ``stored_inputs`` block records the register
+    that check consulted.
     """
     import inspect
 
@@ -1495,6 +1711,7 @@ def run_native_loader_compatibility(
                 f"tested country model must register {name} as a native {entity} bool"
             )
         source_paths[_native_input_label(name)] = inspect.getsourcefile(type(variable))
+    stored_inputs = _require_stored_inputs(candidate_h5)
     loaded_source_packages = _loaded_source_packages(inputs)
     if require_wheels:
         _check_loaded_source_ownership(source_paths, loaded_source_packages)
@@ -1571,16 +1788,46 @@ def run_native_loader_compatibility(
         "loaded_source_sha256": {
             key: sha256_file(path) for key, path in source_paths.items()
         },
+        "stored_inputs": stored_inputs,
         "checks": [
             *(
                 f"country:registered_{entity}_bool_input"
                 + ("" if name == ROLE_VARIABLE else f":{name}")
                 for name, entity in inputs.items()
             ),
+            "country:defines_every_stored_model_input",
             "country:complete_household_native_input_overrides_default",
             *checked,
         ],
     }
+
+
+def _require_stored_inputs(candidate_h5: Path) -> dict[str, object]:
+    """Refuse a candidate that stores a model input the tested country lacks.
+
+    microcosm#1026: the national default and its reported-receipt child were
+    certified through this probe against policyengine-us 2.2.1 while storing
+    the WIC take-up draw as ``would_claim_wic``, a name 2.2.1 does not define,
+    so the engine ignored the draw. :mod:`microcosm.data.stored_inputs` owns
+    the rule and its reviewed register.
+
+    The engine is the installed policyengine-us, which is the tested runtime:
+    this runs inside the probe, whose receipt names the installed packages, and
+    :func:`_check_compatibility` refuses a bundle whose
+    ``build.built_with_model_package`` is not that runtime. HDF metadata only;
+    no row is read.
+
+    Raises:
+        StoredInputRefusalError: One line per refused column (a
+            ``ValueError``, so validation reports it as a compatibility
+            failure and certification stops).
+        StoredTableLayoutError: The candidate's stored tables cannot be listed.
+    """
+    from microcosm.data import stored_inputs
+
+    return stored_inputs.require_h5_stored_inputs(
+        candidate_h5, engine=stored_inputs.installed_us_engine()
+    )
 
 
 def _check_loaded_source_ownership(
@@ -1701,6 +1948,11 @@ def certify_source_enrichment(
     runtime: ``build.built_with_model_package`` still names the exact version
     certification tested, and the range must contain it.
 
+    A declared claim is recorded with ``compatibility.claim_measurement``
+    beside it (:func:`claim_measurement_record`), naming the one version the
+    probe measured, so the range cannot read as a measurement of every version
+    it admits.
+
     Certifying a bundle that already declares a wider range, without passing
     the flags again, warns and records ``compatibility.narrowed_claims`` rather
     than quietly reverting it to the exact pin.
@@ -1811,6 +2063,12 @@ def certify_source_enrichment(
             # Absent by default, so an undeclared bundle keeps the bytes it
             # has always had.
             report["compatibility"]["publisher_claims"] = claims
+            # Beside the claim, what it was measured against: the tested
+            # version alone, not the other versions the range admits.
+            report["compatibility"][CLAIM_MEASUREMENT_KEY] = claim_measurement_record(
+                claims,
+                measured_version=receipt["packages"]["policyengine-us"]["version"],
+            )
         if narrowed:
             report["compatibility"]["narrowed_claims"] = narrowed
         write(SOURCE_ENRICHMENT_FILE, report)
@@ -1911,6 +2169,11 @@ def main(argv: list[str] | None = None) -> int:
             narrowed = recorded_narrowed_claims(result)
             if narrowed:
                 certified["narrowed_claims"] = narrowed
+            # A declared range admits versions no check measured; say which
+            # one was, beside the verdict. Nothing is added when undeclared.
+            measurement = recorded_claim_measurement(result)
+            if measurement:
+                certified[CLAIM_MEASUREMENT_KEY] = measurement
             print(json.dumps(certified))
         else:
             report = validate_source_enrichment_candidate(
@@ -1930,6 +2193,9 @@ def main(argv: list[str] | None = None) -> int:
             narrowed = _narrowed_claims(report)
             if narrowed:
                 validated["narrowed_claims"] = narrowed
+            measurement = _claim_measurement(report)
+            if measurement:
+                validated[CLAIM_MEASUREMENT_KEY] = measurement
             print(json.dumps(validated))
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:
         print(str(exc), file=sys.stderr)

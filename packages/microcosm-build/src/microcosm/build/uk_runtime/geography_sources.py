@@ -7,12 +7,14 @@ those primitives, without importing the incumbent UK data package.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import time
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -103,8 +105,45 @@ LAD23_ITL_URL = (
     "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
     "02b4942973374f039ec1d2e7d35c16a9/csv?layers=0"
 )
+# "Local Authority Districts (April 2023) Names and Codes in the United
+# Kingdom" — ONS Open Geography Portal item e8b361ba.... The names source for
+# the engine's ``local_authority`` input (microcosm#953). One file on the
+# April 2023 LAD frame covers all four nations: Scottish council-area and
+# Northern Irish district codes are unchanged since ca_2019 / lgd_2014, so the
+# ladder's three roster vintages resolve through a single lookup.
+LAD23_NAMES_ITEM_ID = "e8b361ba9e98418ba8ff2f892d00c352"
+LAD23_NAMES_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    f"{LAD23_NAMES_ITEM_ID}/csv?layers=0"
+)
+#: sha256 of the published CSV bytes (361 rows, LAD23CD/LAD23NM/LAD23NMW/
+#: ObjectId). The loader, the names generator and the committed resource all
+#: assert this digest, so a re-published lookup is a reviewed change here.
+LAD23_NAMES_SHA256 = "6c2d811f50756c459c6a1c7c692ae9262fb4d70df3f535958ef7cdbbbd76cc44"
+
+#: ONS OA (2021) -> Parish/NCP -> LAD -> Region -> Country (December 2024) V2.
+#: Its ``LAD24CD`` field carries the April 2023 LAD code set (the 1 April 2025
+#: Barnsley/Sheffield recode is not in this file) and ``RGN24CD`` the nine
+#: English regions; it replaces the retired OA->LAD (April 2023) and
+#: LAD->Region (2022) items for the FY2024-25 atomic-area supports.
+EW_OA_PARNCP_LAD_REGION_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "7507c0292db546ed83e4ba60f1115b1d/csv?layers=0"
+)
+#: ONS OA (2021) -> Ward (2024) -> LAD (May 2024) best-fit lookup in EW V2.
+EW_OA_WARD24_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "b21c632804094c149ccdfea1ae59c8c8/csv?layers=0"
+)
+#: ONS LAD (December 2024) -> LAU1 -> ITL3 -> ITL2 -> ITL1 (January 2025) lookup
+#: in the UK: the ITL 2025 revision keyed on the April 2023 LAD code set.
+LAD24_ITL25_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "15bdb6b0ff1c4a64b34a64e2e39f8caf/csv?layers=0"
+)
 
 ENGLAND_WALES_OA2021_COUNT = 188_880
+LAD23_COUNT = 361
 SCOTLAND_OA2022_COUNT = 46_363
 NI_DZ2021_COUNT = 3_780
 NI_PARLCON24_COUNT = 18
@@ -155,6 +194,59 @@ def load_england_wales_oa_constituencies(
         frame,
         expected_count=ENGLAND_WALES_OA2021_COUNT,
     )
+
+
+def load_ew_oa_lad_region_lookup(
+    url: str = EW_OA_PARNCP_LAD_REGION_URL,
+) -> pd.DataFrame:
+    """Load the ONS OA2021 -> LAD -> Region (December 2024) lookup.
+
+    Returns one row per OA with ``oa_code``, ``la_code`` and ``region_code``
+    (blank for Wales, whose region is the ``W99999999`` sentinel downstream).
+    The LAD column is accepted as ``LAD23CD`` or ``LAD24CD`` only (the
+    December 2024 file carries the April 2023 LAD code set as ``LAD24CD``);
+    a later vintage such as ``LAD25CD`` is the separate recode follow-up, and
+    a file carrying two of the accepted names is refused rather than guessed.
+    """
+
+    frame = _read_csv_url(url, dtype=str)
+    upper_to_column = {str(column).strip().upper(): column for column in frame}
+    lad_column = _lad23_code_column(upper_to_column)
+    region_column = next(
+        (
+            column
+            for upper, column in upper_to_column.items()
+            if upper.startswith("RGN") and upper.endswith("CD")
+        ),
+        None,
+    )
+    oa_column = upper_to_column.get("OA21CD")
+    if oa_column is None or lad_column is None or region_column is None:
+        raise ValueError(
+            "E/W OA-LAD-region lookup is missing OA, LAD or region columns."
+        )
+    lookup = pd.DataFrame(
+        {
+            "oa_code": frame[oa_column].fillna("").astype(str).str.strip(),
+            "la_code": frame[lad_column].fillna("").astype(str).str.strip(),
+            "region_code": frame[region_column].fillna("").astype(str).str.strip(),
+        }
+    )
+    if (lookup["oa_code"] == "").any() or (lookup["la_code"] == "").any():
+        raise ValueError(
+            "E/W OA-LAD-region lookup must not include blank OA or LAD codes."
+        )
+    if lookup["oa_code"].duplicated().any():
+        raise ValueError("E/W OA-LAD-region lookup OA codes must be unique.")
+    if len(lookup) != ENGLAND_WALES_OA2021_COUNT:
+        raise ValueError(
+            "E/W OA-LAD-region lookup must cover every OA2021: "
+            f"{len(lookup):,} rows, expected {ENGLAND_WALES_OA2021_COUNT:,}."
+        )
+    english = lookup["oa_code"].str.startswith("E")
+    if (lookup.loc[english, "region_code"] == "").any():
+        raise ValueError("E/W OA-LAD-region lookup has English OAs without a region.")
+    return lookup.reset_index(drop=True)
 
 
 def load_england_lad_region_lookup(
@@ -1343,13 +1435,95 @@ def _normalise_scotland_population(
     return population.reset_index(drop=True)
 
 
+def load_lad23_names_lookup(url: str = LAD23_NAMES_URL) -> pd.DataFrame:
+    """Load the ONS April 2023 local authority names-and-codes lookup.
+
+    Returns ``local_authority_code`` and ``local_authority_name`` for every UK
+    local authority district on the April 2023 frame (361 rows across England,
+    Wales, Scotland and Northern Ireland), after the downloaded bytes match
+    ``LAD23_NAMES_SHA256``. The Welsh-language name column (``LAD23NMW``) is
+    not carried: the engine's ``LocalAuthority`` member names derive from the
+    English display name (microcosm#953).
+    """
+
+    payload = verify_lad23_names_bytes(_read_url_bytes(url))
+    return normalise_lad23_names(pd.read_csv(io.BytesIO(payload), dtype=str))
+
+
+def verify_lad23_names_bytes(payload: bytes) -> bytes:
+    """Return ``payload`` if its sha256 is the pinned ``LAD23_NAMES_SHA256``."""
+
+    observed = hashlib.sha256(payload).hexdigest()
+    if observed != LAD23_NAMES_SHA256:
+        raise ValueError(
+            "LAD23 names lookup digest mismatch: expected "
+            f"{LAD23_NAMES_SHA256}, got {observed}. A re-published lookup "
+            "must be re-pinned in geography_sources.LAD23_NAMES_SHA256 and the "
+            "names resource regenerated (microcosm#953)."
+        )
+    return payload
+
+
+def normalise_lad23_names(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normalise an ONS LAD23 names-and-codes table to code and name columns.
+
+    Refuses a table without ``LAD23CD``/``LAD23NM``, blank codes or names,
+    duplicate codes, and any roster size other than ``LAD23_COUNT``.
+    """
+
+    upper_to_column = {
+        str(column).strip().lstrip("\ufeff").upper(): column for column in frame
+    }
+    code_column = upper_to_column.get("LAD23CD")
+    name_column = upper_to_column.get("LAD23NM")
+    if code_column is None or name_column is None:
+        raise ValueError("LAD23 names lookup is missing LAD23CD or LAD23NM columns.")
+    lookup = pd.DataFrame(
+        {
+            "local_authority_code": frame[code_column],
+            "local_authority_name": frame[name_column],
+        }
+    )
+    return _normalise_code_rows(
+        lookup,
+        label="LAD23 names lookup",
+        unique_column="local_authority_code",
+        expected_count=LAD23_COUNT,
+        unit_label="LAD23",
+        prefixes=("E", "W", "S", "N"),
+    )
+
+
+#: Column names under which the April 2023 LAD code set is published: the
+#: April 2023 lookups name it ``LAD23CD``, the December 2024 OA lookup
+#: ``LAD24CD`` (the same code set). ``LAD25CD`` carries the April 2025
+#: recode (Barnsley/Sheffield among others) and is not accepted here.
+LAD23_CODE_COLUMNS: tuple[str, ...] = ("LAD23CD", "LAD24CD")
+
+
+def _lad23_code_column(upper_to_column: Mapping[str, str]) -> str | None:
+    """The one accepted LAD-code column, ``None`` when absent, refused when two."""
+
+    present = [
+        upper_to_column[name] for name in LAD23_CODE_COLUMNS if name in upper_to_column
+    ]
+    if len(present) > 1:
+        raise ValueError(
+            "E/W LAD lookup carries more than one LAD code column: "
+            f"{[str(column) for column in present]}."
+        )
+    return present[0] if present else None
+
+
 def _normalise_ew_lad_lookup(frame: pd.DataFrame) -> pd.DataFrame:
+    upper_to_column = {str(column).strip().upper(): column for column in frame.columns}
+    lad_column = _lad23_code_column(upper_to_column)
     column_map = {}
     for column in frame.columns:
-        upper = str(column).upper()
+        upper = str(column).strip().upper()
         if upper == "OA21CD":
             column_map[column] = "oa_code"
-        elif upper == "LAD23CD":
+        elif lad_column is not None and column == lad_column:
             column_map[column] = "lad23_code"
     lookup = frame.rename(columns=column_map)
     missing = sorted({"oa_code", "lad23_code"} - set(lookup.columns))

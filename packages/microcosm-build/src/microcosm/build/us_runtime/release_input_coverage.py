@@ -49,7 +49,7 @@ must stay hard requirements.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
@@ -70,6 +70,7 @@ from microcosm.build.us_runtime.educator_expenses import (
     US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.energy_subsidy import US_ENERGY_SUBSIDY_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.esi_premiums import US_ESI_EMPLOYER_PREMIUM_COLUMN
 from microcosm.build.us_runtime.farm_business_income import (
     US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
 )
@@ -81,6 +82,7 @@ from microcosm.build.us_runtime.medicare_take_up import (
 from microcosm.build.us_runtime.other_health_insurance import (
     US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
 )
+from microcosm.build.us_runtime.parity_reference import load_ecps_parity_known_gaps
 from microcosm.build.us_runtime.prior_year_income import (
     US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
 )
@@ -99,6 +101,9 @@ from microcosm.build.us_runtime.sipp_head_start import (
     US_SIPP_HEAD_START_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.spm_independence_role import (
+    US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.ssi_disability_criteria import (
     US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
 )
@@ -126,9 +131,11 @@ __all__ = [
     "ReleaseInputCoverageManifest",
     "assert_release_input_coverage_manifest_current",
     "load_release_input_coverage_manifest",
+    "project_ecps_parity_known_gap_names",
     "us_release_input_coverage_gate",
     "us_release_input_coverage_required_columns",
     "us_release_input_coverage_reviewed_exclusions",
+    "us_release_input_coverage_signal_counts",
     "us_release_reform_coverage_probes",
 ]
 
@@ -175,6 +182,21 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "receives_wic",
         "receives_snap",
         "receives_tanf",
+        # The engine's one declared dataset source input
+        # (policyengine_us.spm.DATASET_SOURCE_INPUTS): without it a 15-to-17-
+        # year-old heading an SPM unit is unclassified and the whole
+        # population's SPM measurement refuses (SPM_COMPOSITION_REQUIRED).
+        # Written by the spm_independence_role base-builder stage from the
+        # pinned Census ASEC person files; the certified default carries it
+        # through the Build P source enrichment.
+        *US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+        # PolicyEngine/microcosm#719: the county-file person schema carries a
+        # working indicator and industry with occupation on every record.
+        # Written by the org_wages release stage from ASEC WEIND/WEMIND/WKSWORK
+        # (ACS spine: native INDP/WKWN through the release predictor join).
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
     }
 )
 
@@ -195,6 +217,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         *US_EDUCATOR_EXPENSE_OUTPUT_COLUMNS,
         *US_DOMESTIC_PRODUCTION_ALD_OUTPUT_COLUMNS,
         *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+        US_ESI_EMPLOYER_PREMIUM_COLUMN,
         *US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS,
         *US_FORM_4952_OUTPUT_COLUMNS,
         *US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,
@@ -591,6 +614,53 @@ def _degenerate_columns(
     )
 
 
+def _coverage_present_values(frame: Any, relevant: set[str]) -> dict[str, Any]:
+    """The values of every ``relevant`` column the export would persist."""
+
+    present_values: dict[str, Any] = {}
+    for entity in frame.entities:
+        table = frame.table(entity)
+        for column in table.columns:
+            if column in relevant and column not in present_values:
+                present_values[column] = table[column].to_numpy()
+
+    # Frame weights are typed pipeline state, not ordinary table data. The US
+    # adapter materializes this authoritative vector as ``household_weight``
+    # when writing PolicyEngine H5, overwriting any redundant table column.
+    # Mirror that export behavior here so the gate covers what is persisted.
+    if "household_weight" in relevant:
+        present_values.pop("household_weight", None)
+        if "household" in frame.weighted_entities:
+            present_values["household_weight"] = frame.weights_for("household").values
+    return present_values
+
+
+def us_release_input_coverage_signal_counts(
+    frame: Any,
+    engine: Any,
+    *,
+    manifest: ReleaseInputCoverageManifest | None = None,
+) -> dict[str, int]:
+    """Each present required column's count of records off the engine default.
+
+    Counts the same values :func:`us_release_input_coverage_gate` grades, under
+    its degeneracy comparison, so a count of zero is a column the gate calls
+    degenerate. The release dry run uses the counts to bound whether an L0
+    household selection could leave a required column degenerate on the export.
+    """
+
+    from microcosm.build.gates import non_default_record_count
+
+    manifest = manifest or load_release_input_coverage_manifest()
+    present_values = _coverage_present_values(frame, set(manifest.required_columns))
+    defaults = engine.default_values(sorted(present_values))
+    return {
+        column: non_default_record_count(values, defaults[column])
+        for column, values in sorted(present_values.items())
+        if column in defaults
+    }
+
+
 def us_release_input_coverage_gate(
     frame: Any,
     engine: Any,
@@ -618,24 +688,7 @@ def us_release_input_coverage_gate(
     manifest = manifest or load_release_input_coverage_manifest()
     required = manifest.required_columns
     reviewed = manifest.reviewed_exclusions
-    relevant = required | set(reviewed)
-
-    present_values: dict[str, Any] = {}
-    for entity in frame.entities:
-        table = frame.table(entity)
-        for column in table.columns:
-            if column in relevant and column not in present_values:
-                present_values[column] = table[column].to_numpy()
-
-    # Frame weights are typed pipeline state, not ordinary table data. The US
-    # adapter materializes this authoritative vector as ``household_weight``
-    # when writing PolicyEngine H5, overwriting any redundant table column.
-    # Mirror that export behavior here so the gate covers what is persisted.
-    if "household_weight" in relevant:
-        present_values.pop("household_weight", None)
-        if "household" in frame.weighted_entities:
-            present_values["household_weight"] = frame.weights_for("household").values
-
+    present_values = _coverage_present_values(frame, required | set(reviewed))
     degenerate, no_observed = _degenerate_columns(present_values, engine)
     return input_column_coverage_gate(
         present_values.keys(),
@@ -673,12 +726,8 @@ def _ecps_populated_layers() -> frozenset[str]:
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: 'nonzero_shares' must be a "
             "non-empty JSON object."
         )
-    historical = {
-        str(name) for name, share in shares.items() if float(share) > 0.0
-    }
-    projected = {
-        REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical
-    }
+    historical = {str(name) for name, share in shares.items() if float(share) > 0.0}
+    projected = {REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical}
     if len(projected) != len(historical):
         raise ValueError(
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: reference-layer rename "
@@ -687,10 +736,52 @@ def _ecps_populated_layers() -> frozenset[str]:
     return frozenset(projected)
 
 
+def project_ecps_parity_known_gap_names(names: Iterable[str]) -> dict[str, str]:
+    """Resolve eCPS parity known-gap names onto the live layers they exempt.
+
+    ``ecps_parity_known_gaps.json`` may name a gap by the pinned reference's
+    historical spelling (``would_claim_wic``), while every consumer grades the
+    reference under the live names projected through
+    ``REFERENCE_ECPS_LAYER_RENAMES``. An unprojected historical entry would
+    exempt no live layer and slip past every guard keyed on live names, so the
+    parity gate, the coverage-manifest generator, the restored-input anti-rot
+    check and the cross-register check all resolve register names here.
+
+    Returns:
+        ``{live_name: register_name}`` in input order, keeping each entry's
+        register spelling for provenance.
+
+    Raises:
+        ValueError: If two register names resolve onto one live layer. Like two
+            reference layers, two exemptions are never merged: the register
+            must say once which reason and issue own the gap.
+    """
+    projected: dict[str, str] = {}
+    for name in names:
+        register_name = str(name)
+        live = REFERENCE_ECPS_LAYER_RENAMES.get(register_name, register_name)
+        if live in projected:
+            raise ValueError(
+                f"eCPS parity known-gap exemption {register_name!r} projects onto "
+                f"{live!r}, which register entry {projected[live]!r} already "
+                "exempts; the rename register would merge two exemptions."
+            )
+        projected[live] = register_name
+    return projected
+
+
+def _registered_as(live: str, register_name: str) -> str:
+    """A live layer name, suffixed with its register spelling when renamed."""
+    if register_name == live:
+        return live
+    return f"{live} (registered as {register_name!r})"
+
+
 def assert_release_input_coverage_manifest_current(
     *,
     engine: Any | None = None,
     manifest: ReleaseInputCoverageManifest | None = None,
+    parity_known_gaps: Iterable[str] | None = None,
 ) -> None:
     """Fail if the coverage manifest has drifted from its authoritative sources.
 
@@ -707,6 +798,11 @@ def assert_release_input_coverage_manifest_current(
       ``receives_snap``, ``receives_tanf``) must be ``required`` with no
       reviewed exclusion — #978 option 1: a national default that drops them
       cannot serve as the ACS local-area donor.
+    - No restored reference input may sit in the eCPS parity known-gap register
+      (``ecps_parity_known_gaps.json``, or ``parity_known_gaps`` names when
+      given) under either its live or its historical spelling: the parity gate
+      honours both, so a restored input filed as a gap would be exempted there
+      even while this manifest still requires it.
     - Every declared column must be a real PolicyEngine-US input leaf, and every
       probe's ``binding_inputs`` / ``budget_measure`` must resolve on the live
       engine, so the contract cannot guard names the engine no longer has.
@@ -715,9 +811,13 @@ def assert_release_input_coverage_manifest_current(
     test environment); the checked-in-facts half always runs.
 
     Raises:
-        ValueError: Naming every drift found.
+        ValueError: Naming every drift found, or if two parity known-gap names
+            resolve onto one live layer.
     """
     manifest = manifest or load_release_input_coverage_manifest()
+    if parity_known_gaps is None:
+        parity_known_gaps = tuple(gap.variable for gap in load_ecps_parity_known_gaps())
+    parity_gap_layers = project_ecps_parity_known_gap_names(parity_known_gaps)
     failures: list[str] = []
 
     declared = set(manifest.declared_columns)
@@ -790,6 +890,15 @@ def assert_release_input_coverage_manifest_current(
             failures.append(
                 f"{column}: restored reference eCPS input must remain required."
             )
+    for column in sorted(
+        RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS & parity_gap_layers.keys()
+    ):
+        failures.append(
+            f"{_registered_as(column, parity_gap_layers[column])}: restored "
+            "reference eCPS input cannot return to the parity known-gap "
+            "register (ecps_parity_known_gaps.json); the parity gate would "
+            "exempt it."
+        )
 
     if engine is None:
         engine = _coverage_engine()

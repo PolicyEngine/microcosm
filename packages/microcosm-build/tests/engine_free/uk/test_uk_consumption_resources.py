@@ -1,0 +1,232 @@
+"""Tests split from packages/microcosm-build/tests/test_uk_consumption_resources.py."""
+
+# ruff: noqa: F403, F405
+from test_support.microcosm_build.uk_consumption_resources import *
+
+
+def test_ofgem_region_crosswalk_covers_every_frs_region_once() -> None:
+    from microcosm.build.uk_runtime.energy_pricing import load_ofgem_region_crosswalk
+    from microcosm.build.uk_runtime.lcfs_consumption import LCFS_REGIONS
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendored_resource
+
+    payload = load_ofgem_region_crosswalk()
+    assert payload["version"] == 1
+    assert payload["country"] == "uk"
+    assert not (UK_PACKAGE / "need_energy_targets.json").exists()
+    mapping = payload["mapping"]
+    assert set(mapping) == set(LCFS_REGIONS.values())
+    ofgem_ids = {
+        row["geography"]["id"]
+        for row in load_vendored_resource("ofgem_price_cap_facts.json")["rows"]
+    }
+    assert set(mapping.values()) <= ofgem_ids
+    assert mapping["NORTHERN_IRELAND"] == payload["gb_geography_id"] == "K03000001"
+    assert all(
+        value.startswith("ofgem:")
+        for region, value in mapping.items()
+        if region != "NORTHERN_IRELAND"
+    )
+    # The QEP price-region and DESNZ subnational-area legs cover the same
+    # twelve FRS regions; QEP ids are the vendored groupby ids, areas the
+    # vendored geography ids (Northern Ireland has no subnational row).
+    qep = payload["qep_price_region_mapping"]
+    assert set(qep) == set(LCFS_REGIONS.values())
+    qep_ids = {
+        row["layout"]["groupby_value_id"]
+        for row in load_vendored_resource("qep_energy_prices.json")["rows"]
+    }
+    assert set(qep.values()) <= qep_ids
+    assert payload["qep_uk_average_id"] in qep_ids
+    areas = payload["subnational_area_mapping"]
+    assert set(areas) == set(LCFS_REGIONS.values())
+    area_ids = {
+        row["geography"]["id"]
+        for row in load_vendored_resource("desnz_domestic_energy_facts.json")["rows"]
+    }
+    assert {a for a in areas.values() if a is not None} <= area_ids
+    assert areas["NORTHERN_IRELAND"] is None
+
+
+def test_policy_anchor_resources_carry_parameter_paths() -> None:
+    vat = _load("etb_policy_anchors.json")
+    services = _load("etb_services_anchors.json")
+
+    assert not (UK_PACKAGE / "lcfs_consumption_anchors.json").exists()
+    assert vat["source"]["urls"]
+    assert services["source"]["urls"]
+    assert vat["vat"]["standard_rate"]["parameter_path"] == (
+        "gov.hmrc.vat.standard_rate"
+    )
+    assert vat["vat"]["reduced_rate_share"]["value"] == 0.025
+    for key in ("rail_fare_index_2023", "rail_fare_index_2024"):
+        assert services[key]["parameter_path"] == "gov.dft.rail.fare_index"
+    assert services["rail_fare_index_2024"]["period"] == 2024
+    assert services["nhs_budget_2025_26"]["value"] == 202_000_000_000
+
+
+def test_nhs_consumption_resource_ports_public_csv_rows() -> None:
+    payload = _load("nhs_consumption_by_age_gender.json")
+
+    assert payload["version"] == 1
+    assert payload["source"]["sdc_treatment"].startswith("Public aggregate")
+    assert len(payload["rows"]) == 252
+    first = payload["rows"][0]
+    assert set(first) == {"Service", "Gender", "Age group", "Metric", "Total"}
+    assert isinstance(first["Total"], float)
+
+
+def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None:
+    lcfs = _load("lcfs_consumption_support_bounds.json")
+    vat = _load("etb_vat_support_bounds.json")
+    services = _load("etb_services_support_bounds.json")
+
+    assert lcfs["source"]["household_tab_sha256"] == (
+        "b39b1dd39170b63ca0aa84f747e1d2239213fcfcf197bf8d5c047e146ed8c781"
+    )
+    assert lcfs["source"]["person_tab_sha256"] == (
+        "952d128362334388af12d9e2ef7b40db591d2d3e043ae8f6cc0f98fb813f2089"
+    )
+    # Raked or levelled columns carry no bounds: energy, bus fares since
+    # microcosm#890, and petrol and diesel since microcosm#1113. The housing
+    # and transport totals keep theirs: the stage recomposes them around the
+    # levelled parts, and the terminal support check holds the emitted totals.
+    assert len(lcfs["bounds"]) == 12
+    assert "bus_fare_spending" not in lcfs["bounds"]
+    assert "petrol_spending" not in lcfs["bounds"]
+    # The tool floors the donor as the stage does, so no bound starts below 0.
+    assert lcfs["bounds"]["housing_water_and_electricity_consumption"] == [
+        0.0,
+        80000,
+    ]
+    # LCFS 2024-25, SN 9603 2nd edition (microcosm#1164).
+    assert (lcfs["source"]["ukds_study_number"], lcfs["source"]["doi"]) == (
+        9603,
+        "10.5255/UKDA-SN-9603-2",
+    )
+    assert all(low >= 0 for low, _high in lcfs["bounds"].values())
+    assert lcfs["bounds"]["transport_consumption"] == [0.0, 200000]
+    assert vat["source"]["tab_sha256"] == (
+        "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8"
+    )
+    # The rate is a share of expenditure after VAT (uk-data#572): its bound is
+    # the stage's declared range, not a rounded donor extreme.
+    assert vat["bounds"] == {"full_rate_vat_expenditure_rate": [0.0, 1]}
+    assert "no donor value is committed" in vat["source"]["sdc_treatment"]
+    assert set(services["bounds"]) == {
+        "dfe_education_spending",
+        "rail_subsidy_spending",
+    }
+    # The NTS bus-travel bounds (microcosm#930) bind the SN 5340 19th-edition
+    # tabs and cover the stage's four person-level clip columns.
+    nts = _load("nts_bus_travel_support_bounds.json")
+    assert nts["source"]["ukds_study_number"] == 5340
+    assert nts["source"]["household_tab_sha256"] == (
+        "b70252b606b13c2b7f32e6da09e202e47514f6414045a017e77deb1d2a87ceb7"
+    )
+    assert nts["source"]["individual_tab_sha256"] == (
+        "e8b568497f99aeced2b379d853a1254759cdcb4409acc0b9ff3ea3d95c1f5e8d"
+    )
+    assert nts["source"]["trip_tab_sha256"] == (
+        "878b61c9fdafcbc1a85913f3af4889913bcf73c294f0221e84b3651a404284c4"
+    )
+    assert set(nts["bounds"]) == {
+        "local_bus_use_band",
+        "bus_in_london_trips",
+        "other_local_bus_trips",
+        "local_bus_trips",
+        "local_bus_single_fare_share",
+    }
+    assert nts["bounds"]["local_bus_use_band"] == [0.0, 6.0]
+    assert nts["bounds"]["local_bus_single_fare_share"] == [0.0, 1.0]
+    assert nts["source"]["stage_tab_sha256"] == (
+        "4a6015ed54abc32b48e45a5af663d44a39e1147c7ff8c2e087aa29828665b64c"
+    )
+    assert nts["source"]["ticket_tab_sha256"] == (
+        "276a99bd30ff4aa3506d2126f6fd269db2f2d0265b5231a55aaefca9212363a0"
+    )
+    for column in ("bus_in_london_trips", "other_local_bus_trips", "local_bus_trips"):
+        low, high = nts["bounds"][column]
+        assert low == 0.0 and high > 0.0
+    for name in (
+        "lcfs_consumption_support_bounds.json",
+        "etb_vat_support_bounds.json",
+        "etb_services_support_bounds.json",
+        "nts_bus_travel_support_bounds.json",
+    ):
+        assert (
+            "placeholder" not in (UK_PACKAGE / name).read_text(encoding="utf-8").lower()
+        )
+
+
+def test_e6_support_bounds_round_trip_against_licensed_tabs() -> None:
+    lcfs_hh = os.environ.get("POPULACE_UK_LCFS_HH_TAB")
+    lcfs_person = os.environ.get("POPULACE_UK_LCFS_PERSON_TAB")
+    etb = os.environ.get("POPULACE_UK_ETB_TAB")
+    if not all(
+        value and Path(value).is_file() for value in (lcfs_hh, lcfs_person, etb)
+    ):
+        pytest.skip(
+            "licensed E6 tabs not available "
+            "(set POPULACE_UK_LCFS_HH_TAB, POPULACE_UK_LCFS_PERSON_TAB, "
+            "POPULACE_UK_ETB_TAB)"
+        )
+    import importlib.util
+
+    path = ROOT / "tools/build_uk_e6_support_bounds.py"
+    spec = importlib.util.spec_from_file_location("build_uk_e6_support_bounds", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    expected = {
+        "lcfs_consumption_support_bounds.json": module.build_lcfs_support_bounds(
+            Path(lcfs_hh), Path(lcfs_person)
+        ),
+        "etb_vat_support_bounds.json": module.build_etb_vat_support_bounds(Path(etb)),
+        "etb_services_support_bounds.json": module.build_etb_services_support_bounds(
+            Path(etb)
+        ),
+    }
+    for name, payload in expected.items():
+        assert json.dumps(payload, indent=2, sort_keys=False) + "\n" == (
+            UK_PACKAGE / name
+        ).read_text(encoding="utf-8")
+
+
+def test_support_bound_generator_refuses_a_second_rounding_of_unchanged_tabs(
+    tmp_path,
+) -> None:
+    # microcosm#1164: two outward roundings of one donor extreme under
+    # different factors narrow it, so with the tabs unchanged a re-derivation
+    # may not move a rounded bound; a lower bound may move to the floor (zero).
+    import importlib.util
+
+    path = ROOT / "tools/build_uk_e6_support_bounds.py"
+    spec = importlib.util.spec_from_file_location("build_uk_e6_support_bounds", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    committed = tmp_path / "bounds.json"
+    committed.write_text(
+        json.dumps(
+            {
+                "source": {"household_tab_sha256": "a" * 64},
+                "bounds": {"x": [-20000, 300000], "y": [0.0, 70000]},
+            }
+        )
+    )
+
+    def payload(digest: str, x: list, y: list) -> dict:
+        return {
+            "source": {"household_tab_sha256": digest * 64},
+            "bounds": {"x": x, "y": y},
+        }
+
+    module.refuse_rerounding(committed, payload("a", [0.0, 300000], [0.0, 70000]))
+    module.refuse_rerounding(committed, payload("b", [0.0, 300000], [0.0, 60000]))
+    module.refuse_rerounding(tmp_path / "absent.json", payload("a", [0, 1], [0, 1]))
+    with pytest.raises(SystemExit, match=r"\['y'\] would move"):
+        module.refuse_rerounding(
+            committed, payload("a", [-20000, 300000], [0.0, 60000])
+        )

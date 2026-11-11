@@ -1,0 +1,20 @@
+{
+ "income_year": 2025,
+ "output": "<scratch>/build/y2025/census_cps_2025.h5",
+ "output_sha256": "4c5a32188b6acfbcfbeb9f5d719d3847873887b72ebdbb19bc402c16e0a64e58",
+ "output_bytes": 304753967,
+ "download": {
+  "url": "https://www2.census.gov/programs-surveys/cps/datasets/2026/march/asecpub26csv.zip",
+  "sha256": "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93",
+  "bytes": 139103894,
+  "last_modified": "Tue, 15 Sep 2026 10:55:35 GMT",
+  "etag": null
+ },
+ "loader_commit": "9f177ddd6197dd0e296ad05d080865a3e5c2cdbf",
+ "loader_dirty": "",
+ "python": "3.14.7",
+ "pandas": "2.3.3",
+ "tables": "3.11.1",
+ "numpy": "2.4.3",
+ "policyengine_core": null
+}

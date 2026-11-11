@@ -49,8 +49,6 @@ UK_NONNEGATIVE_SOURCE_OUTPUTS = tuple(
 
 def uk_stage_implementations(
     *,
-    retained_leaves_transform: Callable[[Frame], Frame],
-    hmrc_income_transform: Callable[[Frame], Frame],
     frs_spine_transform: Callable[[Frame], Frame] | None = None,
     frs_relationships_transform: Callable[[Frame], Frame] | None = None,
     frs_employment_transform: Callable[[Frame], Frame] | None = None,
@@ -70,22 +68,21 @@ def uk_stage_implementations(
     etb_services_transform: Callable[[Frame], Frame] | None = None,
     frs_hmrc_spine_leaves_transform: Callable[[Frame], Frame] | None = None,
     spi_support_channel_transform: Callable[[Frame], Frame] | None = None,
+    spi_income_band_donors_transform: Callable[[Frame], Frame] | None = None,
     hmrc_spi_income_spine_transform: Callable[[Frame], Frame] | None = None,
     uc_deduction_attributes_transform: Callable[[Frame], Frame] | None = None,
+    cgt_support_split_transform: Callable[[Frame], Frame] | None = None,
     cgt_incidence_clone_transform: Callable[[Frame], Frame] | None = None,
-    cgt_band_donors_transform: Callable[[Frame], Frame] | None = None,
     hmrc_cgt_gains_spine_transform: Callable[[Frame], Frame] | None = None,
     hmrc_cgt_asset_type_spine_transform: Callable[[Frame], Frame] | None = None,
+    cgt_incidence_anchor_transform: Callable[[Frame], Frame] | None = None,
+    cgt_residential_split_transform: Callable[[Frame], Frame] | None = None,
     salary_sacrifice_transform: Callable[[Frame], Frame] | None = None,
     student_loans_transform: Callable[[Frame], Frame] | None = None,
 ) -> dict[str, Callable[[Frame], Frame]]:
     """Return the whole-stage implementation map for the UK source plan."""
 
     implementations = {
-        "frs_hmrc_retained_leaves": retained_leaves_transform,
-        "hmrc_spi_income": hmrc_income_transform,
-    }
-    optional = {
         "frs_spine": frs_spine_transform,
         "frs_relationships": frs_relationships_transform,
         "frs_employment": frs_employment_transform,
@@ -105,23 +102,23 @@ def uk_stage_implementations(
         "etb_services": etb_services_transform,
         "frs_hmrc_spine_leaves": frs_hmrc_spine_leaves_transform,
         "spi_support_channel": spi_support_channel_transform,
+        "spi_income_band_donors": spi_income_band_donors_transform,
         "hmrc_spi_income_spine": hmrc_spi_income_spine_transform,
         "uc_deduction_attributes": uc_deduction_attributes_transform,
+        "cgt_support_split": cgt_support_split_transform,
         "cgt_incidence_clone": cgt_incidence_clone_transform,
-        "cgt_band_donors": cgt_band_donors_transform,
         "hmrc_cgt_gains_spine": hmrc_cgt_gains_spine_transform,
+        "cgt_incidence_anchor": cgt_incidence_anchor_transform,
+        "cgt_residential_split": cgt_residential_split_transform,
         "hmrc_cgt_asset_type_spine": hmrc_cgt_asset_type_spine_transform,
         "salary_sacrifice": salary_sacrifice_transform,
         "student_loans": student_loans_transform,
     }
-    implementations.update(
-        {
-            name: transform
-            for name, transform in optional.items()
-            if transform is not None
-        }
-    )
-    return implementations
+    return {
+        name: transform
+        for name, transform in implementations.items()
+        if transform is not None
+    }
 
 
 def uk_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:

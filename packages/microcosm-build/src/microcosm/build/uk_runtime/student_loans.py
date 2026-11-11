@@ -1,4 +1,5 @@
-"""UK student-loan cohort assignment and SLC liable-stock support top-ups."""
+"""UK student-loan cohort assignment, SLC liable-stock support top-ups and the
+borrowers' share of the household's student-loan balance."""
 
 from __future__ import annotations
 
@@ -36,16 +37,76 @@ STUDENT_LOAN_SEED = 42
 YEAR_RULE = "calibration_year"
 STUDENT_LOAN_ENUM_DOMAIN = ("NONE", "PLAN_1", "PLAN_2", "PLAN_5")
 EXCLUDED_ENGLAND_REGIONS = ("SCOTLAND", "WALES", "NORTHERN_IRELAND")
+#: A borrower's course starts this many years before they left full-time
+#: education (FRS EDUCLEFT), the length of a first degree in England and
+#: Wales; without an answer the course starts at 18 (microcosm#868).
+ASSUMED_COURSE_YEARS = 3
+DEFAULT_COURSE_START_AGE = 18
+#: Adults who report an outstanding loan but no repayment are borrowers below
+#: the threshold. They are read in the two nations whose starters from 2012/13
+#: hold Plan 2 loans; a Scottish (Plan 4) or Northern Irish (Plan 1) answer
+#: assigns no plan here (María's ruling of 2026-10-16, microcosm#868).
+OUTSTANDING_LOAN_REGIONS_EXCLUDED = ("SCOTLAND", "NORTHERN_IRELAND")
+NOT_IN_EDUCATION = "NOT_IN_EDUCATION"
+START_YEAR_FORMULA = (
+    "year - age + age_left_full_time_education - 3 where "
+    "age_left_full_time_education > 0, else year - age + 18"
+)
+REPORTED_OUTSTANDING_TEST = (
+    "reports_outstanding_student_loan and current_education == NOT_IN_EDUCATION"
+)
+#: No Plan 5 loan is repaid before April 2026 (SLC), so before then a borrower
+#: who repays started a course before Plan 5 existed: a repayer whose dates
+#: point to a course from 2023/24 takes Plan 2, and SLC's published zero of
+#: Plan 5 borrowers above the threshold in academic year 2024/25 holds
+#: (microcosm#868). The year is fixed, not derived from the cohort: with
+#: three-year courses a 2023/24 starter leaves in 2026 and first repays in
+#: April 2027, so a 2026 build would let a repayer take Plan 5 a year before
+#: the assumed cohort repays. Revisit it when the build year moves (Vahid's
+#: review of microcosm#1299).
+PLAN_5_REPAYMENTS_FROM = 2026
 PLAN_SALTS = {
     "PLAN_5": "student_loan_plan_5",
     "PLAN_2": "student_loan_plan_2",
 }
 PLAN_2025_STOCKS = {"PLAN_2": 8_940_000.0, "PLAN_5": 10_000.0}
-STUDENT_LOANS_MASS_CHANGE_REASON = (
-    "Student-loan plan assignment writes an enum column only; household rows "
-    "and typed household weights pass through and total household mass is "
-    "conserved."
+#: How a plan's shortfall against the SLC stock is realised (microcosm#1049):
+#: eligible persons are walked in ascending identity-keyed uniform order, a
+#: person is taken when their weight fits inside the remaining shortfall and
+#: skipped when it would overshoot, and after the walk the skipped person
+#: nearest the remainder is taken if that brings the realised mass nearer the
+#: shortfall. The Bernoulli draw it replaces realised a shortfall of about one
+#: person's weight as zero or two rows, off by around 100 percent either way.
+TOP_UP_IDENTITY_UNIFORM_ORDER = "identity_uniform_order_walk"
+TOP_UP_REALIZATION_BOUND = (
+    "the realised top-up sits within the weight of the lightest person the walk "
+    "skipped of the shortfall, so the plan's final England count sits within that "
+    "weight of the stock; a pool lighter than the shortfall is taken whole and "
+    "receipted as exhausted, and a plan already at or above its stock is left as "
+    "reported"
 )
+STUDENT_LOANS_MASS_CHANGE_REASON = (
+    "Student-loan plan assignment writes the plan and re-splits each household's "
+    "student-loan balance among its members; household rows and typed household "
+    "weights pass through and total household mass is conserved."
+)
+#: ``was_wealth`` draws the household's student-loan balance from the WAS and
+#: splits it among the members before any plan exists, so it can sit on a
+#: member with no loan while the household's borrower holds none.
+#: policyengine-uk caps a borrower's repayment at a positive balance, so once
+#: the plans are set the balance moves to the members who hold one: by their
+#: repayments where any of them repays, else equally. A household with no
+#: borrower keeps was_wealth's split, and no household's total moves
+#: (microcosm#1095 B9).
+BALANCE_COLUMN = "student_loan_balance"
+BALANCE_RULE = (
+    "each household's student_loan_balance re-split to its members with "
+    "student_loan_plan != NONE, by student_loan_repayments where any of them "
+    "repays, else equally; a household with no such member keeps was_wealth's "
+    "split, and every household's total is unchanged"
+)
+#: Absolute tolerance, in pounds, of the household-total check.
+BALANCE_TOLERANCE_GBP = 1e-6
 
 
 def load_slc_liable_stocks() -> Mapping[str, Any]:
@@ -60,18 +121,35 @@ def load_slc_liable_stocks() -> Mapping[str, Any]:
 
 @dataclass(frozen=True)
 class UKStudentLoanPlanReceipt:
+    """One plan's top-up: what the walk was asked for and what it realised.
+
+    ``realization_gap`` is the realised top-up minus the shortfall, in people;
+    when the walk skipped anyone it is smaller in size than
+    ``lightest_skipped_weight``. ``pool_exhausted`` marks a pool lighter than
+    the shortfall, taken whole. ``stock_attainment`` is the final England
+    count over the stock.
+    """
+
     plan: str
     stock: float
     reported_count: float
     reported_england_count: float
     shortfall: float
+    eligible_rows: int
     eligible_mass: float
-    rate: float
     topped_up_rows: int
     topped_up_mass: float
-    expected_topped_up_mass: float
-    realization_deviation: float
+    rows_skipped_for_weight: int
+    lightest_skipped_weight: float | None
+    realization_gap: float
+    pool_exhausted: bool
     final_england_count: float
+    stock_attainment: float | None
+    #: Where the walk's taken rows sit in the spine's lineage: rows and mass
+    #: by household support channel, on CGT support copies and on incidence
+    #: clones. The walk prefers light rows, and after microcosm#1045 the
+    #: lightest rows are the support split's copies, so the receipt shows it.
+    topped_up_lineage: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -79,13 +157,17 @@ class UKStudentLoanPlanReceipt:
             "reported_count": self.reported_count,
             "reported_england_count": self.reported_england_count,
             "shortfall": self.shortfall,
+            "eligible_rows": self.eligible_rows,
             "eligible_mass": self.eligible_mass,
-            "rate": self.rate,
             "topped_up_rows": self.topped_up_rows,
             "topped_up_mass": self.topped_up_mass,
-            "expected_topped_up_mass": self.expected_topped_up_mass,
-            "realization_deviation": self.realization_deviation,
+            "rows_skipped_for_weight": self.rows_skipped_for_weight,
+            "lightest_skipped_weight": self.lightest_skipped_weight,
+            "realization_gap": self.realization_gap,
+            "pool_exhausted": self.pool_exhausted,
             "final_england_count": self.final_england_count,
+            "stock_attainment": self.stock_attainment,
+            "topped_up_lineage": dict(self.topped_up_lineage),
         }
 
 
@@ -96,6 +178,7 @@ class UKStudentLoansResult:
     frame: Frame
     calibration_year: int
     plans: Mapping[str, UKStudentLoanPlanReceipt]
+    balance: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -103,6 +186,7 @@ class UKStudentLoansResult:
             "year_rule": YEAR_RULE,
             "calibration_year": self.calibration_year,
             "plans": {name: receipt.evidence() for name, receipt in self.plans.items()},
+            "balance": dict(self.balance),
         }
 
 
@@ -143,7 +227,22 @@ def assign_student_loan_plans(
     stocks: Mapping[str, Any],
     year: int,
 ) -> UKStudentLoansResult:
-    """Assign reported cohorts, then top up PLAN_5 before PLAN_2."""
+    """Assign reported cohorts, top up PLAN_5 before PLAN_2, then move each
+    household's student-loan balance to its borrowers (:data:`BALANCE_RULE`).
+
+    A reported borrower repays (``student_loan_repayments > 0``) or, in
+    England or Wales, reports an outstanding loan and is not in full-time
+    education; their course starts :data:`ASSUMED_COURSE_YEARS` before they
+    left full-time education (microcosm#868). Before
+    :data:`PLAN_5_REPAYMENTS_FROM` a repayer never takes Plan 5, which nobody
+    repays before April 2026. Each top-up realises the plan's
+    shortfall against the SLC liable stock by the identity-keyed greedy walk
+    in :func:`_walk_top_up`, so the realised mass sits within one skipped
+    person's weight of the shortfall rather than being a Bernoulli draw whose
+    outcome for a shortfall of about one weight is zero or two rows
+    (microcosm#1049). The Plan 2 walk takes nobody in full-time education: a
+    student is not yet liable to repay.
+    """
 
     validate_uk_national_frame(frame)
     person = frame.table("person").copy()
@@ -154,6 +253,10 @@ def assign_student_loan_plans(
         "age",
         "student_loan_repayments",
         "highest_education",
+        "current_education",
+        "reports_outstanding_student_loan",
+        "age_left_full_time_education",
+        BALANCE_COLUMN,
     }
     missing = sorted(required - set(person.columns))
     if missing:
@@ -175,6 +278,20 @@ def assign_student_loan_plans(
     ).to_numpy(dtype=float)
     if not np.isfinite(age).all() or not np.isfinite(repayments).all():
         raise ValueError("Student-loan age and repayment inputs must be finite.")
+    age_left = pd.to_numeric(
+        person["age_left_full_time_education"], errors="coerce"
+    ).to_numpy(dtype=float)
+    if not np.isfinite(age_left).all():
+        raise ValueError("Student-loan education-leaving ages must be finite.")
+    in_education = (
+        np.asarray(
+            [_enum_name(value) for value in person["current_education"]], dtype=object
+        )
+        != NOT_IN_EDUCATION
+    )
+    reports_outstanding = person["reports_outstanding_student_loan"].to_numpy(
+        dtype=bool
+    )
     weights_by_household = pd.Series(
         frame.weights_for("household").values,
         index=household["household_id"],
@@ -182,33 +299,67 @@ def assign_student_loan_plans(
     person_weights = (
         person["person_household_id"].map(weights_by_household).to_numpy(dtype=float)
     )
-    start_year = year - age + 18
-    has_repayments = repayments > 0.0
+    person_lineage = _person_lineage(person, household)
+    start_year = course_start_year(year=year, age=age, age_left=age_left)
+    reported = has_reported_student_loan(
+        repayments=repayments,
+        reports_outstanding=reports_outstanding,
+        in_education=in_education,
+        region_names=region_names,
+    )
     plan = np.full(len(person), "NONE", dtype=object)
-    plan[has_repayments & (start_year < PLAN_1_BEFORE)] = "PLAN_1"
-    plan[has_repayments & (start_year >= PLAN_5_FROM)] = "PLAN_5"
-    plan[has_repayments & (plan == "NONE")] = "PLAN_2"
+    plan[reported & (start_year < PLAN_1_BEFORE)] = "PLAN_1"
+    may_repay_plan_5 = year >= PLAN_5_REPAYMENTS_FROM
+    plan[
+        reported & (start_year >= PLAN_5_FROM) & (may_repay_plan_5 | ~(repayments > 0))
+    ] = "PLAN_5"
+    plan[reported & (plan == "NONE")] = "PLAN_2"
     reported_plan = plan.copy()
     receipts: dict[str, UKStudentLoanPlanReceipt] = {}
     for plan_name in PLAN_PRIORITY:
         stock = _stock(stocks, plan_name, year)
         current_england = float(person_weights[(plan == plan_name) & is_england].sum())
         shortfall = max(0.0, stock - current_england)
+        if plan_name == "PLAN_2":
+            # Liable borrowers have left education; their course dates from
+            # the age they left it.
+            cohort_start, not_a_student = start_year, ~in_education
+        else:
+            # Plan 5 starters from 2023/24 have mostly not left education, so
+            # the age they left it cannot date them: the walk keeps the age
+            # rule and takes students.
+            cohort_start = year - age + DEFAULT_COURSE_START_AGE
+            not_a_student = np.ones(len(person), dtype=bool)
         eligible = (
             (plan == "NONE")
             & is_england
             & (education == "TERTIARY")
-            & _plan_age_cohort_eligibility(plan_name, age=age, start_year=start_year)
+            & not_a_student
+            & _plan_age_cohort_eligibility(plan_name, age=age, start_year=cohort_start)
         )
         eligible_mass = float(person_weights[eligible].sum())
-        rate = min(1.0, shortfall / eligible_mass) if eligible_mass > 0.0 else 0.0
-        draws = stable_identity_uniforms(
+        eligible_index = np.flatnonzero(eligible)
+        walk_key = stable_identity_uniforms(
             person["person_id"].to_numpy(),
             seed=STUDENT_LOAN_SEED,
             salt=PLAN_SALTS[plan_name],
         )
-        topped_up = eligible & (draws < rate)
+        order = eligible_index[
+            np.lexsort(
+                (
+                    person["person_id"].to_numpy()[eligible_index],
+                    walk_key[eligible_index],
+                )
+            )
+        ]
+        taken, skipped_rows, lightest_skipped = _walk_top_up(
+            person_weights, order, shortfall
+        )
+        topped_up = np.zeros(len(person), dtype=bool)
+        topped_up[taken] = True
         plan[topped_up] = plan_name
+        topped_up_mass = float(person_weights[topped_up].sum())
+        final_england = float(person_weights[(plan == plan_name) & is_england].sum())
         receipts[plan_name] = UKStudentLoanPlanReceipt(
             plan=plan_name,
             stock=stock,
@@ -217,25 +368,33 @@ def assign_student_loan_plans(
                 person_weights[(reported_plan == plan_name) & is_england].sum()
             ),
             shortfall=shortfall,
+            eligible_rows=int(eligible_index.size),
             eligible_mass=eligible_mass,
-            rate=rate,
-            topped_up_rows=int(topped_up.sum()),
-            topped_up_mass=float(person_weights[topped_up].sum()),
-            expected_topped_up_mass=rate * eligible_mass,
-            realization_deviation=(
-                (float(person_weights[topped_up].sum()) - rate * eligible_mass)
-                / (rate * eligible_mass)
-                if rate * eligible_mass > 0.0
-                else 0.0
+            topped_up_rows=int(taken.size),
+            topped_up_mass=topped_up_mass,
+            rows_skipped_for_weight=skipped_rows,
+            lightest_skipped_weight=lightest_skipped,
+            realization_gap=topped_up_mass - shortfall,
+            pool_exhausted=bool(
+                shortfall > 0.0 and skipped_rows == 0 and topped_up_mass < shortfall
             ),
-            final_england_count=float(
-                person_weights[(plan == plan_name) & is_england].sum()
-            ),
+            final_england_count=final_england,
+            stock_attainment=final_england / stock if stock > 0.0 else None,
+            topped_up_lineage=_topped_up_lineage(person_lineage, taken, person_weights),
         )
     unknown = sorted(set(plan) - set(STUDENT_LOAN_ENUM_DOMAIN))
     if unknown:
         raise ValueError(f"Student-loan assignment emitted unknown plan(s): {unknown}.")
     person["student_loan_plan"] = plan
+    person[BALANCE_COLUMN], balance_receipt = allocate_balance_to_borrowers(
+        balance=pd.to_numeric(person[BALANCE_COLUMN], errors="coerce").to_numpy(
+            dtype=float
+        ),
+        repayments=repayments,
+        borrower=plan != "NONE",
+        household_ids=person["person_household_id"].to_numpy(),
+        person_weights=person_weights,
+    )
     total = frame.weights_for("household").total
     mass_receipt = MassChangeRecord(
         entity="household",
@@ -258,7 +417,217 @@ def assign_student_loan_plans(
         frame=result_frame,
         calibration_year=year,
         plans=receipts,
+        balance=balance_receipt,
     )
+
+
+def allocate_balance_to_borrowers(
+    *,
+    balance: np.ndarray,
+    repayments: np.ndarray,
+    borrower: np.ndarray,
+    household_ids: np.ndarray,
+    person_weights: np.ndarray,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Move each household's student-loan balance to its borrowers.
+
+    A household with a borrower and a positive balance gives it all to its
+    borrowers, in proportion to their repayments where any of them repays and
+    equally otherwise; every other household keeps its split. Returns the new
+    balances and an aggregate receipt.
+    """
+
+    balance = np.asarray(balance, dtype=float)
+    repayments = np.asarray(repayments, dtype=float)
+    borrower = np.asarray(borrower, dtype=bool)
+    if not np.isfinite(balance).all() or (balance < 0.0).any():
+        raise ValueError("Student-loan balances must be finite and nonnegative.")
+    households = pd.Index(household_ids)
+
+    def by_household(values: np.ndarray, how: str) -> np.ndarray:
+        return pd.Series(values).groupby(households).transform(how).to_numpy()
+
+    total = by_household(balance, "sum")
+    repaying = borrower & (repayments > 0.0)
+    repaid = by_household(np.where(repaying, repayments, 0.0), "sum")
+    borrowers = by_household(borrower.astype(np.int64), "sum")
+    share = np.where(
+        repaid > 0.0,
+        np.where(repaying, repayments / np.where(repaid > 0.0, repaid, 1.0), 0.0),
+        np.where(borrower, 1.0 / np.maximum(borrowers, 1), 0.0),
+    )
+    resplit = (borrowers > 0) & (total > 0.0)
+    allocated = np.where(resplit, total * share, balance)
+    drift = np.abs(by_household(allocated, "sum") - total)
+    if (drift > BALANCE_TOLERANCE_GBP).any():
+        raise ValueError(
+            "Student-loan balance re-split moved a household's total by up to "
+            f"{float(drift.max()):.6f}."
+        )
+    moved = resplit & ~np.isclose(allocated, balance)
+    weights = np.asarray(person_weights, dtype=float)
+    receipt = {
+        "rule": BALANCE_RULE,
+        "households_resplit": int(households[moved].nunique()),
+        "rows_changed": int(moved.sum()),
+        "weighted_balance": float((balance * weights).sum()),
+        "weighted_balance_on_borrowers_before": float(
+            (balance * weights)[borrower].sum()
+        ),
+        "weighted_balance_on_borrowers_after": float(
+            (allocated * weights)[borrower].sum()
+        ),
+        "weighted_borrowers_with_balance_before": float(
+            weights[borrower & (balance > 0.0)].sum()
+        ),
+        "weighted_borrowers_with_balance_after": float(
+            weights[borrower & (allocated > 0.0)].sum()
+        ),
+    }
+    return allocated, receipt
+
+
+#: Household lineage columns the top-up receipt reports the taken rows on,
+#: when the frame carries them: the SPI support channel, the CGT support
+#: split's copy flag, the incidence clone flag and the residential split's
+#: arm flag (microcosm#1063).
+_LINEAGE_CHANNEL_COLUMN = "household_support_channel"
+_LINEAGE_SUPPORT_COPY_COLUMN = "household_is_cgt_support_copy"
+_LINEAGE_CLONE_COLUMN = "household_is_capital_gains_clone"
+_LINEAGE_RESIDENTIAL_ARM_COLUMN = "household_is_cgt_residential_clone"
+
+
+def _person_lineage(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFrame:
+    """Map each person's household lineage columns, absent ones left out."""
+
+    by_household = household.set_index("household_id")
+    lineage = pd.DataFrame(index=person.index)
+    for column in (
+        _LINEAGE_CHANNEL_COLUMN,
+        _LINEAGE_SUPPORT_COPY_COLUMN,
+        _LINEAGE_CLONE_COLUMN,
+        _LINEAGE_RESIDENTIAL_ARM_COLUMN,
+    ):
+        if column in by_household.columns:
+            mapped = person["person_household_id"].map(by_household[column])
+            if mapped.isna().any():
+                raise ValueError(
+                    f"Student-loan people must all map to a household {column!r}."
+                )
+            lineage[column] = mapped.to_numpy()
+    return lineage
+
+
+def _topped_up_lineage(
+    lineage: pd.DataFrame, taken: np.ndarray, person_weights: np.ndarray
+) -> dict[str, object]:
+    """Rows and mass the walk took, by support channel, copy and clone flag."""
+
+    taken = np.asarray(taken, dtype=int)
+    weights = person_weights[taken]
+    receipt: dict[str, object] = {"columns": list(lineage.columns)}
+    if _LINEAGE_CHANNEL_COLUMN in lineage.columns:
+        channels = np.asarray(
+            [_enum_name(value) for value in lineage[_LINEAGE_CHANNEL_COLUMN]],
+            dtype=object,
+        )[taken]
+        receipt["rows_by_channel"] = {
+            str(channel): int((channels == channel).sum())
+            for channel in sorted(set(channels.tolist()))
+        }
+        receipt["mass_by_channel"] = {
+            str(channel): float(weights[channels == channel].sum())
+            for channel in sorted(set(channels.tolist()))
+        }
+    for key, column in (
+        ("support_copy", _LINEAGE_SUPPORT_COPY_COLUMN),
+        ("clone", _LINEAGE_CLONE_COLUMN),
+        ("residential_arm", _LINEAGE_RESIDENTIAL_ARM_COLUMN),
+    ):
+        if column in lineage.columns:
+            flags = lineage[column].to_numpy(dtype=bool)[taken]
+            receipt[f"{key}_rows"] = int(flags.sum())
+            receipt[f"{key}_mass"] = float(weights[flags].sum())
+    return receipt
+
+
+def _walk_top_up(
+    weights: np.ndarray, order: np.ndarray, shortfall: float
+) -> tuple[np.ndarray, int, float | None]:
+    """Greedy weight-fitting walk towards a shortfall (microcosm#1049).
+
+    Along ``order`` a person is taken when their weight fits inside the
+    remaining shortfall and skipped when it would overshoot; after the walk
+    the skipped person nearest the remainder is taken if that brings the
+    realised mass nearer the shortfall, as the gas-connection walk does. Every
+    skipped person outweighs the remainder at the time they were passed, so
+    the realised mass ends within the lightest skipped weight of the
+    shortfall. Returns the taken positions, the number of persons skipped and
+    left out, and the lightest skipped weight (``None`` when nobody was
+    skipped, which is when the pool was lighter than the shortfall).
+    """
+
+    remaining = float(shortfall)
+    taken: list[int] = []
+    skipped: list[int] = []
+    for index in order:
+        if remaining <= 0.0:
+            break
+        weight = float(weights[index])
+        if weight <= remaining:
+            taken.append(int(index))
+            remaining -= weight
+        else:
+            skipped.append(int(index))
+    if remaining > 0.0 and skipped:
+        nearest = min(skipped, key=lambda i: abs(float(weights[i]) - remaining))
+        if abs(float(weights[nearest]) - remaining) < remaining:
+            taken.append(nearest)
+            skipped.remove(nearest)
+            remaining -= float(weights[nearest])
+    lightest = min((float(weights[i]) for i in skipped), default=None)
+    return np.asarray(taken, dtype=int), len(skipped), lightest
+
+
+def course_start_year(
+    *, year: int, age: np.ndarray, age_left: np.ndarray
+) -> np.ndarray:
+    """The year a borrower's course started (microcosm#868).
+
+    The year they left full-time education less :data:`ASSUMED_COURSE_YEARS`;
+    with no leaving age (0), the year they turned
+    :data:`DEFAULT_COURSE_START_AGE`, the rule before #868.
+    """
+
+    left = np.asarray(age_left, dtype=float)
+    age = np.asarray(age, dtype=float)
+    return np.where(
+        left > 0,
+        year - age + left - ASSUMED_COURSE_YEARS,
+        year - age + DEFAULT_COURSE_START_AGE,
+    )
+
+
+def has_reported_student_loan(
+    *,
+    repayments: np.ndarray,
+    reports_outstanding: np.ndarray,
+    in_education: np.ndarray,
+    region_names: np.ndarray,
+) -> np.ndarray:
+    """Who the FRS reports as a borrower (microcosm#868).
+
+    A repayer anywhere, as before; and in England or Wales an adult who
+    reports an outstanding loan (SLOS) and is not in full-time education, a
+    borrower below the repayment threshold.
+    """
+
+    below_threshold = (
+        np.asarray(reports_outstanding, dtype=bool)
+        & ~np.asarray(in_education, dtype=bool)
+        & ~np.isin(region_names, OUTSTANDING_LOAN_REGIONS_EXCLUDED)
+    )
+    return (np.asarray(repayments, dtype=float) > 0.0) | below_threshold
 
 
 def _plan_age_cohort_eligibility(
@@ -321,11 +690,16 @@ def _assert_student_loans_stage_parameters(
                 "assign_student_loan_plan_cohorts",
                 {
                     "year_rule": YEAR_RULE,
-                    "start_year_formula": "year - age + 18",
+                    "start_year_formula": START_YEAR_FORMULA,
                     "reported_repayment_test": "student_loan_repayments > 0",
                     "reported_country_gate": False,
+                    "reported_outstanding_test": REPORTED_OUTSTANDING_TEST,
+                    "reported_outstanding_region_exclusions": list(
+                        OUTSTANDING_LOAN_REGIONS_EXCLUDED
+                    ),
                     "plan_1_before": PLAN_1_BEFORE,
                     "plan_5_from": PLAN_5_FROM,
+                    "plan_5_repayments_from": PLAN_5_REPAYMENTS_FROM,
                     "enum_domain": list(STUDENT_LOAN_ENUM_DOMAIN),
                     "plan_4_imputation": False,
                 },
@@ -340,11 +714,14 @@ def _assert_student_loans_stage_parameters(
                     "year_rule": YEAR_RULE,
                     "age_min": PLAN_5_MIN_AGE,
                     "age_max": PLAN_5_MAX_AGE,
+                    "cohort_start_formula": "year - age + 18",
                     "cohort_start_min": PLAN_5_FROM,
                     "eligible_region_exclusions": region_exclusions,
                     "highest_education": "TERTIARY",
                     "seed": STUDENT_LOAN_SEED,
                     "salt": PLAN_SALTS["PLAN_5"],
+                    "realization": TOP_UP_IDENTITY_UNIFORM_ORDER,
+                    "realization_bound": TOP_UP_REALIZATION_BOUND,
                 },
             ),
             (
@@ -357,15 +734,20 @@ def _assert_student_loans_stage_parameters(
                     "year_rule": YEAR_RULE,
                     "age_min": PLAN_2_MIN_AGE,
                     "age_max": PLAN_2_MAX_AGE,
+                    "cohort_start_formula": START_YEAR_FORMULA,
+                    "current_education": NOT_IN_EDUCATION,
                     "cohort_start_min": PLAN_1_BEFORE,
                     "cohort_start_max_exclusive": PLAN_5_FROM,
                     "eligible_region_exclusions": region_exclusions,
                     "highest_education": "TERTIARY",
                     "seed": STUDENT_LOAN_SEED,
                     "salt": PLAN_SALTS["PLAN_2"],
+                    "realization": TOP_UP_IDENTITY_UNIFORM_ORDER,
+                    "realization_bound": TOP_UP_REALIZATION_BOUND,
                     "reason": STUDENT_LOANS_MASS_CHANGE_REASON,
                 },
             ),
+            ("derive", {"output": BALANCE_COLUMN, "formula": BALANCE_RULE}),
         ),
     )
     if year == 2025:

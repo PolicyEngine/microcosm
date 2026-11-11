@@ -24,6 +24,9 @@ from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
     resolve_acs_pums_earnings_universe,
 )
+from microcosm.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
+)
 from microcosm.build.us_runtime.puf_e01000_reconciliation import (
     PUF_SCHEDULE_D_JOINT_COLUMNS,
     puf_capital_gains_joint_metrics,
@@ -31,6 +34,15 @@ from microcosm.build.us_runtime.puf_e01000_reconciliation import (
 )
 from microcosm.build.us_runtime.puf_interest_components import (
     split_us_puf_e19200_by_agi_band,
+)
+from microcosm.build.us_runtime.puf_source_schedule_e import (
+    PUF_PARTNERSHIP_PASSIVE_INCOME,
+    PUF_PARTNERSHIP_PASSIVE_LOSS_ALLOWED,
+    PUF_S_CORP_PASSIVE_INCOME,
+    PUF_S_CORP_PASSIVE_LOSS_ALLOWED,
+    PUF_SCHEDULE_E_PARTNERSHIP_LEGS,
+    PUF_SCHEDULE_E_S_CORP_LEGS,
+    SCHEDULE_E_DONOR_OUTPUTS,
 )
 from microcosm.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
@@ -56,8 +68,23 @@ from microcosm.frame.schema import EntitySchema
 
 QRF: Any | None = None
 
+#: Person columns whose *values* are ``person_id``s rather than payload.
+#: The support clone renumbers ``person_id``, so these move with it; 0 is the
+#: "no such person" sentinel and is left alone. Source identities
+#: (``source_person_id`` and friends) are deliberately not here — several
+#: operators key clone-stable draws on them precisely because they do not move.
+US_PERSON_REFERENCE_ID_COLUMNS: tuple[str, ...] = (
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+)
+
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
+    "PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES",
+    "PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS",
+    "PUF_TAX_DETAIL_EARNINGS_COMPONENTS",
+    "PUF_TAX_DETAIL_EARNINGS_INDICATOR_SOURCE",
+    "PUF_TAX_DETAIL_INCOME_RANK_SOURCE",
+    "PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_RULE",
     "PufTaxDetailChainInputs",
     "PUF_ABSENT_CELLS_LEGACY_ZERO_FILL",
     "PUF_ABSENT_CELLS_PRESERVE_NULLS",
@@ -68,6 +95,7 @@ __all__ = [
     "PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN",
     "US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS",
     "US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING",
+    "US_PERSON_REFERENCE_ID_COLUMNS",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
@@ -79,6 +107,7 @@ __all__ = [
     "impute_us_puf_tax_detail_support",
     "puf_tax_detail_clone_mask",
     "puf_recipient_predictor_universe_receipt",
+    "puf_tax_detail_recipient_share_bound_identity",
     "puf_tax_detail_tail_bound_quantiles_identity",
     "puf_tax_unit_donor_from_arrays",
     "prepare_us_puf_tax_detail_chain_inputs",
@@ -196,15 +225,68 @@ class _PredictorSourcePlan:
     columns: tuple[str, ...]
 
 
+#: Survey-side tax-unit demographics the PUF imputation conditions on
+#: (microcosm#982). Each is derived identically on both sides from person age,
+#: sex and tax-unit role (``HEAD``/``SPOUSE``/``DEPENDENT``): the PUF donor from
+#: its processed person arrays, the survey recipient from its person table.
+#: ``spouse_age`` is zero when the unit has no spouse (a structural absence,
+#: not a missing value); ``head_age`` is missing when a unit has no head.
+PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES = (
+    "head_age",
+    "spouse_age",
+    "head_is_female",
+    "dependent_count",
+)
+#: The income items whose unit total ranks each tax unit within its own
+#: population (microcosm#982). The same six concepts exist on both sides, so
+#: the survey household and the PUF return are ranked on one definition.
+PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS = (
+    "employment_income",
+    "self_employment_income",
+    "taxable_interest_income",
+    "dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains",
+)
+PUF_TAX_DETAIL_INCOME_RANK_SOURCE = "income_rank_share"
+#: Earnings participation (microcosm#982): 1.0 when the unit has nonzero wages
+#: or self-employment income, else 0.0. The PUF covers filers only, so without
+#: it the rank maps the survey's large zero-income group onto low but positive
+#: PUF incomes and hands wages to survey non-workers (measured before this
+#: predictor: 51% of survey zero-wage units). Surveys observe whether anyone in
+#: the unit works well; the PUF still supplies how much. The donor's value
+#: comes from its own wage and self-employment outputs, so it fixes only
+#: participation, never an income level.
+PUF_TAX_DETAIL_EARNINGS_COMPONENTS = ("employment_income", "self_employment_income")
+PUF_TAX_DETAIL_EARNINGS_INDICATOR_SOURCE = "has_earnings"
+_PUF_COMPOSITE_INCOME_SOURCES: Mapping[str, tuple[str, ...]] = {
+    PUF_TAX_DETAIL_INCOME_RANK_SOURCE: PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS,
+    PUF_TAX_DETAIL_EARNINGS_INDICATOR_SOURCE: PUF_TAX_DETAIL_EARNINGS_COMPONENTS,
+}
+
+#: Predictors for the PUF tax-detail imputation (microcosm#982).
+#:
+#: The survey's income amounts are deliberately NOT predictors. Conditioning an
+#: income target on the recipient's own survey value of that item teaches the
+#: forest "output ~ input": measured on the 2026-09-12 base build, PUF-clone
+#: wages had rank correlation 1.000 with the survey value and, among units
+#: with positive survey wages, 99.98% landed within 10% of it, so no clone
+#: passed the survey topcodes and survey underreporting carried into the PUF
+#: half. Demographics (as in the archived eCPS, ``calibration/puf_impute.py``)
+#: plus the unit's weighted income rank in its own population let a top-ranked
+#: survey household draw a top-ranked PUF return's income vector while ordinary
+#: households keep their position; the earnings flag reduces earnings
+#: assignments to survey non-earners (7 of 67,908 units in the offline
+#: evaluation, experiments/982-puf-self-prediction).
 PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_filing_status_code",
     "puf_predictor_tax_unit_person_count",
-    "puf_predictor_employment_income",
-    "puf_predictor_self_employment_income",
-    "puf_predictor_taxable_interest_income",
-    "puf_predictor_dividend_income",
-    "puf_predictor_short_term_capital_gains",
-    "puf_predictor_long_term_capital_gains",
+    "puf_predictor_head_age",
+    "puf_predictor_spouse_age",
+    "puf_predictor_head_is_female",
+    "puf_predictor_dependent_count",
+    "puf_predictor_income_rank_share",
+    "puf_predictor_has_earnings",
 )
 
 PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
@@ -250,8 +332,12 @@ PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
     "farm_operations_income",
     "farm_rent_income",
     "miscellaneous_income",
+    # Schedule E line 32 by entity (microcosm#1239, #1258): each entity's
+    # share is its own leaf, and their section 469 passive subset follows both
+    # in the chain so the passive draw conditions on the drawn total.
     "partnership_income",
     "s_corp_income",
+    "passive_partnership_s_corp_income",
     "partnership_self_employment_net_earnings",
     *US_QBI_OUTPUT_COLUMNS,
 )
@@ -318,6 +404,65 @@ def puf_tax_detail_tail_bound_quantiles_identity() -> dict[str, float]:
     return dict(sorted(_PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES.items()))
 
 
+# Recipient-share bound at the same finalize seam. A PUF-clone recipient whose
+# weight is the share ``s`` of the recipient population stands for ``s`` of the
+# population, but a QRF draw hands it one donor's value. At the top of the
+# income rank a recipient stands for ~600 tax units while the donors it reaches
+# stand for a fraction of one: the PUF's synthetic Forbes-tail records carry
+# ~0.13 weight each. One such draw carried $141B of line-32 mass in the #1251
+# base, about 5,000 times what its donor represents. Weight-aware leaf draws
+# (#481) cannot fix this: the slice of the population such a donor belongs to
+# is smaller than one recipient, so whichever donor is drawn, one record
+# carries it. The bound caps each raw amount draw at the positive mass, per
+# unit of slice weight, of the donor's top slice of the recipient's own share
+# (and floors losses from the bottom slice), so no record carries more mass
+# than the most extreme slice of the population it could stand for. One
+# exception: a snapped output is bounded by the larger of that cap and its
+# smallest positive donor value, so the bound never erases a carrier. It limits
+# a record to its slice; it does not remove concentration the slice itself
+# has, and the mass it clips from passthrough columns is dropped. It is an
+# interim censor at the finalize seam, like the quantile map above: tail
+# support below pool resolution is the pool's job (DESIGN.md), and the root
+# fix is a tail stratum carrying PUF donors at their own weights (#958, #964),
+# with weight-aware draws (#481) as a complement. Each column is bounded on
+# its own, so a clipped record's links to other columns (mortgage balance and
+# interest, gains and their subsets) loosen further. Shares depend on the
+# recipient population, so a smaller sample rung, whose records stand for
+# more of it, is bounded more tightly. Discrete and boolean outputs are not
+# amounts and are left alone.
+PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_RULE = "recipient_share_slice_mass"
+_PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_SCHEMA_VERSION = 1
+
+
+def puf_tax_detail_recipient_share_bound_identity() -> dict[str, object]:
+    """Return the exact identity of the recipient-share finalization bound."""
+
+    return {
+        "rule": PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_RULE,
+        "schema_version": _PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_SCHEMA_VERSION,
+        "scope": "every_amount_output_of_the_invocation",
+        "excluded_output_classes": [
+            "boolean_person_outputs",
+            "discrete_tax_unit_outputs",
+        ],
+        "recipient_share": "household_design_weight_over_puf_recipient_total",
+        "cap": "top_slice_positive_mass_per_slice_weight",
+        "floor": "bottom_slice_negative_mass_per_slice_weight",
+        "snapped_outputs": "bounded_on_snap_grid_values_cap_lowered_onto_positive_grid",
+        "seam": "raw_tax_unit_draws_after_tail_bound_quantiles",
+    }
+
+
+def _recipient_share_bound_amount_outputs(outputs: Sequence[str]) -> tuple[str, ...]:
+    """Every amount output of an invocation, in chain order."""
+
+    excluded = (
+        _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS
+        | _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS
+    )
+    return tuple(output for output in outputs if output not in excluded)
+
+
 # ASEC directly measures recipient alimony. The PUF QRF therefore sparsifies
 # only the cloned PUF half for this leaf; pruning the ASEC half would discard
 # reported source observations. Expense has no ASEC analogue, so its zero ASEC
@@ -343,6 +488,9 @@ _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS = frozenset(
     {
         "farm_operations_income",
         "partnership_self_employment_net_earnings",
+        # Two percent of donor returns carry a passive amount, of both signs
+        # (microcosm#1239), the same sparse sign-mixed shape as the others.
+        "passive_partnership_s_corp_income",
     }
 )
 
@@ -449,6 +597,11 @@ _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
         "partnership_income",
         "s_corp_income",
     ),
+    # The passive subset belongs to whoever carries the line-32 total.
+    "passive_partnership_s_corp_income": (
+        "partnership_income",
+        "s_corp_income",
+    ),
     "rental_income_would_be_qualified": ("rental_income",),
     "self_employment_income_would_be_qualified": (
         "self_employment_income_before_lsr",
@@ -492,6 +645,15 @@ _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
         "estate_income",
     ),
 }
+# Outputs that are a signed subset of their distribution basis's sum. Their
+# fallback weight is the magnitude of each person's own signed basis total, so a
+# person whose line 32 is a loss carries a share of the passive subset and a
+# person with no line 32 carries none. Clipping the basis at zero instead would
+# move a loss carrier's passive amount onto a spouse with no pass-through
+# activity (microcosm#1239).
+_PERSON_OUTPUT_SIGNED_SUBSET_DISTRIBUTION_OUTPUTS = frozenset(
+    {"passive_partnership_s_corp_income"}
+)
 _PERSON_OUTPUT_BOOLEAN_INCIDENCE_DISTRIBUTION_BASES = frozenset(
     {
         ("qualified_tuition_expenses", "is_full_time_college_student"),
@@ -536,6 +698,23 @@ _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
 }
 # The omitted 13.7% E17500 share represented reported Medicare Part B premiums.
 # Do not redistribute it: the engine computes its distinct singular Part B output.
+# Raw-PUF inputs of the archived partnership self-employment derivation
+# (:func:`_puf_partnership_se_net_earnings_from_raw_columns`). All eight are
+# required: a raw PUF carrying only some of them derives nothing, so the donor
+# build fails closed instead of substituting a different quantity.
+_PUF_PARTNERSHIP_SE_RAW_COLUMNS = (
+    "E30400",
+    "E30500",
+    "E00900",
+    "E02100",
+    "E25920",
+    "E25940",
+    "E25960",
+    "E25980",
+)
+# The archived pipeline's ``SE_DEDUCTION_FACTOR``: it treats E30400 and E30500
+# as already multiplied by this factor and divides it back out.
+_PUF_SE_NET_EARNINGS_FACTOR = 0.9235
 _PUF_PREDICTOR_PREFIX = "puf_predictor_"
 
 
@@ -1242,6 +1421,7 @@ def puf_tax_unit_donor_from_arrays(
     arrays: Mapping[str, Sequence[Any]],
     *,
     adjusted_gross_income: Sequence[Any] | None = None,
+    schedule_e_partnership_s_corp: Mapping[str, Sequence[Any]] | None = None,
     person_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     donor_build_summary: dict[str, object] | None = None,
@@ -1258,6 +1438,14 @@ def puf_tax_unit_donor_from_arrays(
         adjusted_gross_income: Explicit tax-unit-grain AGI used to select the
             published TY2015 SOI Table 2.1 component share for each record.
             Required whenever the processed PUF carries nonzero E19200.
+        schedule_e_partnership_s_corp: Tax-unit-grain Schedule E line 32 by
+            entity (``partnership_income`` and ``s_corp_income``) and their
+            passive subset (``passive_partnership_s_corp_income``) aligned to
+            ``tax_unit_id``, from
+            :func:`~microcosm.build.us_runtime.puf_source_schedule_e.source_year_puf_partnership_s_corp_income`.
+            The processed artifact has neither line 32 nor its entity split,
+            so a processed donor that requests any of these leaves must supply
+            it (microcosm#1239, #1258).
         person_outputs: Person-grain PE input variables to aggregate by tax
             unit.
         tax_unit_outputs: Tax-unit-grain PE input variables to carry or derive.
@@ -1370,6 +1558,10 @@ def puf_tax_unit_donor_from_arrays(
     tax_unit["tax_unit_person_count"] = (
         person.groupby("tax_unit_id", sort=False).size().reindex(tax_unit_id).to_numpy()
     )
+    donor_demographics = _puf_donor_demographics(arrays, tax_unit_id)
+    if donor_demographics is not None:
+        for column in PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES:
+            tax_unit[column] = donor_demographics[column].to_numpy(dtype=np.float64)
     for output in person_outputs:
         if output in tax_unit.columns:
             continue
@@ -1384,6 +1576,13 @@ def puf_tax_unit_donor_from_arrays(
         values = _tax_unit_source_values(arrays, tax_unit_id, output, grouped)
         if values is not None:
             tax_unit[output] = values
+
+    if schedule_e_partnership_s_corp is not None:
+        _attach_schedule_e_partnership_s_corp(
+            tax_unit,
+            schedule_e_partnership_s_corp,
+            person_outputs=person_outputs,
+        )
 
     required_outputs = [*person_outputs, *tax_unit_outputs]
     missing = [column for column in required_outputs if column not in tax_unit.columns]
@@ -1426,6 +1625,48 @@ def puf_tax_unit_donor_from_arrays(
     )
     _add_predictor_aliases(tax_unit, PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
     return tax_unit
+
+
+_SCHEDULE_E_DONOR_OUTPUTS = SCHEDULE_E_DONOR_OUTPUTS
+
+
+def _attach_schedule_e_partnership_s_corp(
+    tax_unit: pd.DataFrame,
+    schedule_e: Mapping[str, Sequence[Any]],
+    *,
+    person_outputs: Sequence[str],
+) -> None:
+    """Carry source-year Schedule E line 32 by entity and its passive subset.
+
+    The three leaves must be supplied together, aligned to ``tax_unit_id`` and
+    finite. A leaf the arrays already derived (a stored leaf or raw Schedule E
+    fields) is a second source for the same value and is refused rather than
+    silently overwritten.
+    """
+
+    supplied = set(schedule_e)
+    if supplied != set(_SCHEDULE_E_DONOR_OUTPUTS):
+        raise ValueError(
+            "Schedule E donor supplement must carry exactly "
+            f"{list(_SCHEDULE_E_DONOR_OUTPUTS)}; got {sorted(supplied)}."
+        )
+    for output in _SCHEDULE_E_DONOR_OUTPUTS:
+        values = np.asarray(schedule_e[output], dtype=np.float64)
+        if values.ndim != 1 or len(values) != len(tax_unit):
+            raise ValueError(
+                f"Schedule E donor supplement {output!r} must align one-for-one "
+                "with tax_unit_id."
+            )
+        if not np.isfinite(values).all():
+            raise ValueError(f"Schedule E donor supplement {output!r} must be finite.")
+        if output not in person_outputs:
+            continue
+        if output in tax_unit.columns:
+            raise ValueError(
+                f"PUF arrays already derive {output!r}; the Schedule E donor "
+                "supplement would be a second source for it."
+            )
+        tax_unit[output] = values
 
 
 def _quarantine_us_puf_mortgage_fields(
@@ -1584,6 +1825,7 @@ def impute_us_puf_tax_detail_support(
     raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     tail_bound_quantiles: Mapping[str, float] | None = None,
+    recipient_share_bound_outputs: Sequence[str] | None = None,
     predictor_universe_receipts: list[dict[str, object]] | None = None,
     require_complete_recipient_predictors: bool = False,
     absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
@@ -1615,6 +1857,10 @@ def impute_us_puf_tax_detail_support(
         tail_bound_diagnostics: Optional output sink for the per-target tail-bound
             records produced during finalization. Build callers publish these
             records with the QRF-finalization telemetry.
+        recipient_share_bound_outputs: Test-only narrowing of the
+            recipient-share bound (see
+            :func:`finalize_us_puf_tax_detail_predictions`). Production callers
+            leave it unset, which bounds every amount output.
         predictor_universe_receipts: Optional output sink for the exact
             recipient predictor source-universe receipt. Stacked callers bind
             this receipt into the PUF-pass provenance; legacy callers omit it.
@@ -1641,6 +1887,9 @@ def impute_us_puf_tax_detail_support(
     predictors = tuple(predictors)
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
+    # Refuse a partial or misordered signed-subset basis before any fit, not
+    # only at finalization after the QRF has run (review of microcosm#1261).
+    _require_signed_subset_outputs_after_their_basis(person_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
     puf_mask = puf_tax_detail_clone_mask(
         frame.table("tax_unit"),
@@ -1712,6 +1961,7 @@ def impute_us_puf_tax_detail_support(
         tax_unit_outputs=tax_unit_outputs,
         tail_bound_diagnostics=tail_bound_diagnostics,
         tail_bound_quantiles=tail_bound_quantiles,
+        recipient_share_bound_outputs=recipient_share_bound_outputs,
         absent_cells=absent_cells,
     )
 
@@ -1749,6 +1999,9 @@ def prepare_us_puf_tax_detail_chain_inputs(
     predictors = tuple(predictors)
     person_outputs = tuple(person_outputs)
     tax_unit_outputs = tuple(tax_unit_outputs)
+    # Refuse a partial or misordered signed-subset basis before any fit, not
+    # only at finalization after the QRF has run (review of microcosm#1261).
+    _require_signed_subset_outputs_after_their_basis(person_outputs)
     outputs = (*person_outputs, *tax_unit_outputs)
     puf_mask = puf_tax_detail_clone_mask(
         frame.table("tax_unit"),
@@ -1811,6 +2064,7 @@ def finalize_us_puf_tax_detail_predictions(
     tax_unit_outputs: Sequence[str] = PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     tail_bound_quantiles: Mapping[str, float] | None = None,
+    recipient_share_bound_outputs: Sequence[str] | None = None,
     absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
 ) -> Frame:
     """Finalize a complete raw PUF QRF chain onto its support channel.
@@ -1819,6 +2073,8 @@ def finalize_us_puf_tax_detail_predictions(
     retain the recipient tax-unit index.  Clipping, snapping, reconciliation,
     placement, and sparsification happen only here, after every target has
     drawn; later targets therefore always condition on raw predecessor draws.
+    CPS Social Security reporters retain their source components after
+    placement; only nonreporters receive the PUF Social Security imputation.
 
     The module tail-bound configuration is validated against the canonical
     production surface and applies whenever a configured target is present.
@@ -1827,6 +2083,21 @@ def finalize_us_puf_tax_detail_predictions(
     invocation's exact output surface. Diagnostics report recipient-design-
     weighted mass over the affected raw tax-unit draws before and after
     clipping; build callers must provide the sink and publish every active cap.
+
+    The recipient-share bound then applies to every amount output of the
+    invocation (see :func:`puf_tax_detail_recipient_share_bound_identity`); an
+    explicit ``recipient_share_bound_outputs`` narrows it for tests and must
+    name amount outputs of this invocation. It writes one diagnostics record
+    per bounded output, including outputs it leaves unchanged. It holds on the
+    raw tax-unit draws and, for snapped outputs, after snapping; a snapped
+    output's cap is never below its smallest positive donor value, so the
+    bound moves no draw to zero. Three later
+    steps move bounded values without adding mass. The donor-rate
+    sparsification of sparse outputs restores the column's mass after zeroing
+    carriers, and the signed-mass calibration scales each leg of its outputs;
+    both lift every kept value of the column or leg by one common factor. The
+    Social Security reconciliation re-splits the four components' bounded
+    total by the CPS shares, keeping the total.
 
     ``absent_cells`` selects the finalization policy for cells outside the PUF
     clone arm (microcosm#578 audit item 1).  The legacy default reproduces the
@@ -1889,7 +2160,20 @@ def finalize_us_puf_tax_detail_predictions(
                 "donor support."
             ) from None
         resolved_tail_bounds[output] = (quantile, bound)
-    if resolved_tail_bounds and tail_bound_diagnostics is None:
+    amount_outputs = _recipient_share_bound_amount_outputs(outputs)
+    if recipient_share_bound_outputs is None:
+        share_bound_outputs = amount_outputs
+    else:
+        share_bound_outputs = tuple(recipient_share_bound_outputs)
+        not_amounts = [
+            output for output in share_bound_outputs if output not in amount_outputs
+        ]
+        if not_amounts or len(set(share_bound_outputs)) != len(share_bound_outputs):
+            raise ValueError(
+                "PUF recipient-share bound outputs must be distinct amount "
+                f"outputs of this invocation; got {not_amounts or 'duplicates'}."
+            )
+    if (resolved_tail_bounds or share_bound_outputs) and tail_bound_diagnostics is None:
         raise ValueError(
             "PUF tax-detail tail-bound finalization requires a diagnostics sink; "
             "tail bounds must not be silent."
@@ -1907,13 +2191,35 @@ def finalize_us_puf_tax_detail_predictions(
             "PUF raw predictions changed recipient row order or index before "
             "finalization."
         )
-    if resolved_tail_bounds:
+    if resolved_tail_bounds or share_bound_outputs:
         recipient_tax_unit_ids = frame.table("tax_unit").loc[puf_mask, "tax_unit_id"]
         recipient_weights = _tax_unit_household_weights(
             frame,
             recipient_tax_unit_ids,
         )
-
+    snapped_outputs = (
+        _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS | _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS
+    )
+    resolved_share_bounds: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    for output in share_bound_outputs:
+        if not np.isfinite(predictions[output].to_numpy(dtype=np.float64)).all():
+            raise ValueError(
+                f"PUF raw predictions for bounded output {output!r} must be finite."
+            )
+        if output in snapped_outputs:
+            # A snapped output lives on its snap grid, so it is bounded on the
+            # donor's grid values: a slice inside one grid value caps at that
+            # value exactly, and the cap is then lowered onto the grid.
+            floor, cap = _recipient_share_slice_bounds(
+                _snap_grid_values(donor[output]), donor["weight"], recipient_weights
+            )
+            cap = _largest_grid_values_within(cap, _observed_snap_grid(donor[output]))
+        else:
+            floor, cap = _recipient_share_slice_bounds(
+                donor[output], donor["weight"], recipient_weights
+            )
+        resolved_share_bounds[output] = (floor, cap)
+    if resolved_tail_bounds:
         for output, (quantile, bound) in resolved_tail_bounds.items():
             values = predictions[output].to_numpy(dtype=np.float64, copy=False)
             clipped = values > bound
@@ -1930,6 +2236,7 @@ def finalize_us_puf_tax_detail_predictions(
             tail_bound_diagnostics.append(
                 {
                     "output": output,
+                    "rule": "weighted_positive_donor_quantile",
                     "quantile": quantile,
                     "bound_value": bound,
                     "clipped_row_count": int(clipped.sum()),
@@ -1937,6 +2244,37 @@ def finalize_us_puf_tax_detail_predictions(
                     "clipped_mass_after": clipped_mass_after,
                 }
             )
+    for output, (floor, cap) in resolved_share_bounds.items():
+        values = predictions[output].to_numpy(dtype=np.float64, copy=True)
+        bounded = np.minimum(np.maximum(values, floor), cap)
+        capped = values > cap
+        floored = values < floor
+        moved = capped | floored
+        weighted_before = np.abs(values * recipient_weights)
+        weighted_after = np.abs(bounded * recipient_weights)
+        predictions[output] = bounded
+        tail_bound_diagnostics.append(
+            {
+                "output": output,
+                "rule": PUF_TAX_DETAIL_RECIPIENT_SHARE_BOUND_RULE,
+                "clipped_row_count": int(moved.sum()),
+                "capped_row_count": int(capped.sum()),
+                "floored_row_count": int(floored.sum()),
+                "clipped_mass_before": float(
+                    (values[moved] * recipient_weights[moved]).sum()
+                ),
+                "clipped_mass_after": float(
+                    (bounded[moved] * recipient_weights[moved]).sum()
+                ),
+                "largest_weighted_draw_before": float(weighted_before.max(initial=0.0)),
+                "largest_weighted_draw_after": float(weighted_after.max(initial=0.0)),
+                "recipient_count": int(len(recipient_weights)),
+                "recipient_weight_total": float(recipient_weights.sum()),
+                "donor_weight_total": float(
+                    pd.to_numeric(donor["weight"], errors="coerce").fillna(0.0).sum()
+                ),
+            }
+        )
 
     for column in outputs:
         if column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS:
@@ -1962,6 +2300,7 @@ def finalize_us_puf_tax_detail_predictions(
                 donor[column],
             )
 
+    _zero_passive_partnership_s_corp_without_line_32(predictions)
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tax_unit_ids = tables["tax_unit"].loc[puf_mask, "tax_unit_id"].to_numpy()
     _reconcile_puf_social_security_components(
@@ -1992,6 +2331,7 @@ def finalize_us_puf_tax_detail_predictions(
                 puf_role_only=preserve_nulls,
             )
 
+    _require_signed_subset_outputs_after_their_basis(person_outputs)
     person_puf_mask = puf_tax_detail_clone_mask(
         tables["person"],
         entity="person",
@@ -2046,6 +2386,9 @@ def finalize_us_puf_tax_detail_predictions(
                 fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
                     column, ()
                 ),
+                fallback_basis_is_signed_superset=(
+                    column in _PERSON_OUTPUT_SIGNED_SUBSET_DISTRIBUTION_OUTPUTS
+                ),
             )
     for column in person_outputs:
         if column in _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS:
@@ -2072,6 +2415,11 @@ def finalize_us_puf_tax_detail_predictions(
                 person_clone_index=person_clone_index,
                 tax_unit_clone_index=tax_unit_clone_index,
             )
+    _preserve_cps_reported_social_security(
+        tables["person"],
+        source_person=frame.table("person"),
+        requested_components=person_outputs,
+    )
     return Frame(
         tables,
         frame.schema,
@@ -2080,6 +2428,71 @@ def finalize_us_puf_tax_detail_predictions(
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
+
+
+def _require_signed_subset_outputs_after_their_basis(
+    person_outputs: Sequence[str],
+) -> None:
+    """Refuse a placement order that would split a subset by a stale basis.
+
+    A signed-subset output is placed by its basis columns as the person table
+    holds them when its turn comes, so every basis column must be imputed in
+    the same pass and placed first. A missing one would leave the placement
+    reading whatever the frame carried before the imputation; for the passive
+    subset that is half of line 32 now that the S-corporation share is its
+    own leaf (microcosm#1258).
+    """
+
+    position = {column: index for index, column in enumerate(person_outputs)}
+    for column in person_outputs:
+        if column not in _PERSON_OUTPUT_SIGNED_SUBSET_DISTRIBUTION_OUTPUTS:
+            continue
+        basis = _PERSON_OUTPUT_DISTRIBUTION_BASIS[column]
+        missing = [name for name in basis if name not in position]
+        if missing:
+            raise ValueError(
+                f"PUF output {column!r} is a subset of {list(basis)!r}; impute "
+                f"all of them in the same pass (missing {missing!r})."
+            )
+        imputed_basis = list(basis)
+        late = [name for name in imputed_basis if position[name] > position[column]]
+        if late:
+            raise ValueError(
+                f"PUF output {column!r} is placed by {late!r}, which must come "
+                "before it in the person outputs."
+            )
+
+
+def _zero_passive_partnership_s_corp_without_line_32(
+    predictions: pd.DataFrame,
+) -> None:
+    """Zero a drawn passive subset whose unit drew no line-32 total.
+
+    The passive amount is a subset of Schedule E line 32, so a unit with no
+    partnership or S-corporation activity has none. The chained draw conditions
+    on the drawn total but its sign gate can still place a passive amount on a
+    zero-total unit. The donor nearly never shows that pattern: 27 of 207,692
+    regular TY2015 records report a passive amount with a zero line 32 (net
+    passive and nonpassive legs cancelling): 3,120 weighted returns with -$14.0
+    million of net passive amounts, $20.5 million in absolute value
+    (microcosm#1239). Units with a nonzero total keep their draw in full,
+    because a passive amount larger than, or of the other sign from, the total
+    is legitimate when nonpassive losses offset it.
+    """
+
+    passive = "passive_partnership_s_corp_income"
+    if passive not in predictions:
+        return
+    totals = ["partnership_income", "s_corp_income"]
+    missing = [column for column in totals if column not in predictions]
+    if missing:
+        raise ValueError(
+            "PUF passive partnership/S-corp draws need the line-32 total "
+            "(partnership_income and s_corp_income) in the same chain; "
+            f"missing {missing!r}."
+        )
+    line_32 = predictions[totals].sum(axis=1)
+    predictions.loc[line_32 == 0.0, passive] = 0.0
 
 
 def _clone_entity_table(
@@ -2091,6 +2504,7 @@ def _clone_entity_table(
     id_multiplier: int,
 ) -> pd.DataFrame:
     id_columns = _entity_id_columns(schema, entity)
+    reference_columns = _person_reference_columns(table, schema=schema, entity=entity)
     source_id = support_source_id_column(entity)
     channel_column = support_channel_column(entity)
     clone_index_column = support_clone_index_column(entity)
@@ -2104,6 +2518,12 @@ def _clone_entity_table(
         clone[clone_index_column] = clone_index
         for column in id_columns:
             clone[column] = _remap_ids(
+                clone[column].to_numpy(),
+                clone_index=clone_index,
+                id_multiplier=id_multiplier,
+            )
+        for column in reference_columns:
+            clone[column] = _remap_person_reference_ids(
                 clone[column].to_numpy(),
                 clone_index=clone_index,
                 id_multiplier=id_multiplier,
@@ -2130,6 +2550,7 @@ def _clone_preassembled_entity_table(
     """Clone one preassembled entity table while preserving source provenance."""
 
     id_columns = _entity_id_columns(schema, entity)
+    reference_columns = _person_reference_columns(table, schema=schema, entity=entity)
     clone_index_column = support_clone_index_column(entity)
     primary_id = schema.entity_id_column(entity)
 
@@ -2138,6 +2559,12 @@ def _clone_preassembled_entity_table(
     detail[clone_index_column] = PUF_TAX_DETAIL_CLONE_INDEX
     for column in id_columns:
         detail[column] = _remap_ids(
+            detail[column].to_numpy(),
+            clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
+            id_multiplier=id_multiplier,
+        )
+    for column in reference_columns:
+        detail[column] = _remap_person_reference_ids(
             detail[column].to_numpy(),
             clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
             id_multiplier=id_multiplier,
@@ -2193,6 +2620,53 @@ def _entity_id_columns(schema: EntitySchema, entity: str) -> tuple[str, ...]:
             *(schema.membership_column(group) for group in schema.group_entities),
         )
     return (schema.entity_id_column(entity),)
+
+
+def _person_reference_columns(
+    table: pd.DataFrame, *, schema: EntitySchema, entity: str
+) -> tuple[str, ...]:
+    """Non-structural person columns whose values are ``person_id``s.
+
+    The clone renumbers ``person_id``, so a column that *names* a person has
+    to move with it or it silently points into the other support arm. These
+    are the only such columns on the US person table
+    (:data:`US_PERSON_REFERENCE_ID_COLUMNS`); ``source_person_id`` and its
+    siblings are deliberately excluded — a source identity is the
+    clone-stable key several operators draw on.
+    """
+
+    if entity != schema.person_entity:
+        return ()
+    return tuple(
+        column for column in US_PERSON_REFERENCE_ID_COLUMNS if column in table.columns
+    )
+
+
+def _remap_person_reference_ids(
+    values: Sequence[Any],
+    *,
+    clone_index: int,
+    id_multiplier: int,
+) -> np.ndarray:
+    """Shift a person-referencing column, leaving the 0 sentinel alone.
+
+    ``0`` means "no such person" on these columns, so it must not be shifted
+    into ``clone_index * id_multiplier`` — a valid-looking id naming a
+    stranger. A missing value (a row, such as a preassembled PUF tax-detail
+    person, that never had a parent pointer to resolve) is that same
+    "unknown" and is written as ``0``.
+    """
+
+    known = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0)
+    shifted = _remap_ids(
+        known.to_numpy(),
+        clone_index=clone_index,
+        id_multiplier=id_multiplier,
+    )
+    original = _validated_integral_ids(
+        known.to_numpy(), label="PUF support person references"
+    )
+    return np.where(original == 0, 0, shifted).astype(np.int64)
 
 
 def _validate_channels(channels: Sequence[str]) -> tuple[str, ...]:
@@ -2512,6 +2986,128 @@ def _weighted_positive_donor_quantile(
             entity="tax_unit",
         )
     )
+
+
+def _top_slice_means(
+    values: np.ndarray,
+    weights: np.ndarray,
+    slice_weights: np.ndarray,
+) -> np.ndarray:
+    """Weighted mean of each requested top slice of a donor column.
+
+    The donors are ordered from the largest value down. A slice of donor weight
+    ``t`` takes whole donors until their weight reaches ``t`` and the needed
+    fraction of the donor at the edge, so the slice holds exactly ``t``. A
+    zero-weight slice has no mean; it reads the largest donor value, which no
+    draw can exceed, so the bound it implies is vacuous.
+    """
+
+    order = np.argsort(-values, kind="stable")
+    ordered_values = values[order]
+    ordered_weights = weights[order]
+    cumulative_weight = np.cumsum(ordered_weights)
+    cumulative_mass = np.cumsum(ordered_values * ordered_weights)
+    take = np.clip(slice_weights, 0.0, cumulative_weight[-1])
+    edge = np.minimum(
+        np.searchsorted(cumulative_weight, take, side="left"),
+        len(ordered_values) - 1,
+    )
+    previous = edge - 1
+    weight_before = np.where(
+        previous >= 0, cumulative_weight[np.maximum(previous, 0)], 0.0
+    )
+    mass_before = np.where(previous >= 0, cumulative_mass[np.maximum(previous, 0)], 0.0)
+    mass = mass_before + (take - weight_before) * ordered_values[edge]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        means = np.where(take > 0.0, mass / take, ordered_values[0])
+    # The mean of a slice lies between its inner edge and the largest value.
+    # Running sums can miss that by the last bits (a slice made only of donors
+    # at one value can come out a hair below it), which would clip draws that
+    # equal the slice's own values, so the exact bounds are restored here.
+    return np.clip(means, ordered_values[edge], ordered_values[0])
+
+
+def _recipient_share_slice_bounds(
+    donor_values: Sequence[Any],
+    donor_weights: Sequence[Any],
+    recipient_weights: Sequence[Any],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return each recipient's (floor, cap) under the recipient-share bound.
+
+    A recipient whose weight is the share ``s`` of all PUF recipients stands
+    for ``s`` of the population. The most positive mass it can carry on an
+    amount column is the positive mass of the donor slice holding the same
+    share ``s`` of donor weight at the top of the column, so a positive value
+    is capped at that mass per unit of slice weight; losses are floored the
+    same way from the bottom slice. Within the positive donors the cap is the
+    slice's weighted mean, and it falls as the share grows. Only donors with
+    positive weight count. A side is infinite only when no such donor has a
+    value of that sign, and a zero-weight recipient's cap is the largest
+    weighted donor value, which binds nothing a weighted draw can reach.
+    Shares make the bound independent of either population's weight scale.
+    """
+
+    values = pd.to_numeric(pd.Series(donor_values), errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    weights = pd.to_numeric(pd.Series(donor_weights), errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    recipients = np.asarray(recipient_weights, dtype=np.float64)
+    if values.ndim != 1 or values.shape != weights.shape:
+        raise ValueError(
+            "Recipient-share bound donor values and weights must be aligned "
+            f"1-D arrays, got {values.shape} and {weights.shape}."
+        )
+    if recipients.ndim != 1:
+        raise ValueError("Recipient-share bound recipient weights must be 1-D.")
+    if len(values) == 0:
+        raise ValueError("Recipient-share bound needs at least one donor.")
+    if not (np.isfinite(values).all() and np.isfinite(weights).all()):
+        raise ValueError("Recipient-share bound donor values must be finite.")
+    if not np.isfinite(recipients).all():
+        raise ValueError("Recipient-share bound recipient weights must be finite.")
+    if (weights < 0.0).any() or (recipients < 0.0).any():
+        raise ValueError("Recipient-share bound weights must be nonnegative.")
+    donor_total = float(weights.sum())
+    recipient_total = float(recipients.sum())
+    if donor_total <= 0.0 or recipient_total <= 0.0:
+        raise ValueError("Recipient-share bound weights must have positive mass.")
+    slice_weights = recipients / recipient_total * donor_total
+    # Only donors with weight stand for anyone, and a zero-weight donor cannot
+    # be drawn (the forests resample by weight), so slices and the largest
+    # value come from the weighted donors alone.
+    weighted = weights > 0.0
+    values = values[weighted]
+    weights = weights[weighted]
+    # Ordering by the positive part orders the top slice exactly as the values
+    # do; donors at or below zero tie at zero and add no positive mass.
+    top = _top_slice_means(np.maximum(values, 0.0), weights, slice_weights)
+    bottom = -_top_slice_means(np.maximum(-values, 0.0), weights, slice_weights)
+    cap = np.where(top > 0.0, top, np.inf)
+    floor = np.where(bottom < 0.0, bottom, -np.inf)
+    return floor, cap
+
+
+def _largest_grid_values_within(caps: np.ndarray, grid: np.ndarray) -> np.ndarray:
+    """Lower each finite cap to the largest positive ``grid`` value not above it.
+
+    A capped value that is itself a grid value snaps to itself, and every value
+    at or below it snaps to a grid value at or below it, so snapping after the
+    bound cannot carry a value past it. Only positive grid values are used: a
+    cap below the smallest of them keeps that smallest value, so the bound
+    never turns a positive draw into a zero. How many records carry a sparse
+    output is the donor-rate sparsification's job, not this bound's.
+    """
+
+    lowered = np.array(caps, dtype=np.float64, copy=True)
+    positive_grid = grid[grid > 0.0]
+    finite = np.isfinite(lowered)
+    if not finite.any() or len(positive_grid) == 0:
+        return lowered
+    position = np.searchsorted(positive_grid, lowered[finite], side="right") - 1
+    lowered[finite] = positive_grid[np.maximum(position, 0)]
+    return lowered
 
 
 def _tax_unit_household_weights(
@@ -2845,6 +3441,20 @@ def _predictor_person_source_columns(
 ) -> tuple[str, ...]:
     if source == "filing_status_code" or source == "tax_unit_person_count":
         return ()
+    if source in ("head_age", "spouse_age"):
+        return ("age", _TAX_UNIT_ROLE_COLUMN)
+    if source == "head_is_female":
+        return ("is_female", _TAX_UNIT_ROLE_COLUMN)
+    if source == "dependent_count":
+        return (_TAX_UNIT_ROLE_COLUMN,)
+    if source in _PUF_COMPOSITE_INCOME_SOURCES:
+        return tuple(
+            dict.fromkeys(
+                column
+                for component in _PUF_COMPOSITE_INCOME_SOURCES[source]
+                for column in _predictor_person_source_columns(component, person)
+            )
+        )
     if source == "dividend_income" and source not in person.columns:
         return ("non_qualified_dividend_income", "qualified_dividend_income")
     if source not in person.columns and source in _PREDICTOR_LEAF_ALIASES:
@@ -2870,6 +3480,27 @@ def _strict_predictor_source_plan(
         return _PredictorSourcePlan(source, "tax_unit", columns)
     if source == "tax_unit_person_count":
         return _PredictorSourcePlan(source, "derived", ("person_tax_unit_id",))
+    if source in PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES:
+        return _PredictorSourcePlan(
+            source, "person", _predictor_person_source_columns(source, person)
+        )
+    if source in _PUF_COMPOSITE_INCOME_SOURCES:
+        # Every component must resolve at person grain, exactly as the
+        # retired income predictors did, so the ACS earnings-universe receipt
+        # and the null checks keep covering the same survey cells.
+        for component in _PUF_COMPOSITE_INCOME_SOURCES[source]:
+            component_plan = _strict_predictor_source_plan(
+                _PUF_PREDICTOR_PREFIX + component, tax_unit=tax_unit, person=person
+            )
+            if component_plan.entity != "person":
+                raise ValueError(
+                    f"PUF {source} component "
+                    f"{component!r} resolves at {component_plan.entity} grain; "
+                    "every component must be a person-grain survey amount."
+                )
+        return _PredictorSourcePlan(
+            source, "person", _predictor_person_source_columns(source, person)
+        )
 
     person_columns = _predictor_person_source_columns(source, person)
     person_source_present = all(column in person for column in person_columns)
@@ -2940,9 +3571,11 @@ def _tax_unit_feature_frame(
     tax_unit = frame.table("tax_unit")
     person = frame.table("person")
     result = pd.DataFrame(index=tax_unit.index)
-    for column in columns:
-        source_column = _predictor_source_column(column)
-        plan = None if source_plans is None else source_plans[str(column)]
+
+    def resolve(
+        source_column: str,
+        plan: _PredictorSourcePlan | None,
+    ) -> Any:
         if (plan is not None and plan.source_column == "filing_status_code") or (
             plan is None and source_column == "filing_status_code"
         ):
@@ -2951,21 +3584,18 @@ def _tax_unit_feature_frame(
                 source = tax_unit.get("filing_status")
             if source is None:
                 raise ValueError("tax_unit table lacks filing-status input.")
-            result[column] = _filing_status_codes(
-                source,
-                preserve_nulls=preserve_nulls,
-            )
-        elif (plan is not None and plan.entity == "derived") or (
+            return _filing_status_codes(source, preserve_nulls=preserve_nulls)
+        if (plan is not None and plan.entity == "derived") or (
             plan is None and source_column == "tax_unit_person_count"
         ):
-            result[column] = (
+            return (
                 person.groupby("person_tax_unit_id", sort=False)
                 .size()
                 .reindex(tax_unit["tax_unit_id"])
                 .fillna(0.0)
                 .to_numpy(dtype=np.float64)
             )
-        elif (plan is not None and plan.entity == "tax_unit") or (
+        if (plan is not None and plan.entity == "tax_unit") or (
             plan is None and source_column in tax_unit.columns
         ):
             tax_unit_source = plan.columns[0] if plan is not None else source_column
@@ -2973,14 +3603,89 @@ def _tax_unit_feature_frame(
                 tax_unit[tax_unit_source],
                 errors="raise" if preserve_nulls else "coerce",
             )
-            result[column] = numeric if preserve_nulls else numeric.fillna(0.0)
+            return numeric if preserve_nulls else numeric.fillna(0.0)
+        return _person_tax_unit_sum(
+            frame,
+            source_column,
+            preserve_nulls=preserve_nulls,
+        )
+
+    demographics: pd.DataFrame | None = None
+    for column in columns:
+        source_column = _predictor_source_column(column)
+        plan = None if source_plans is None else source_plans[str(column)]
+        if source_column in PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES:
+            if demographics is None:
+                demographics = _recipient_tax_unit_demographics(
+                    frame, preserve_nulls=preserve_nulls
+                )
+            result[column] = demographics[source_column].to_numpy(dtype=np.float64)
+        elif source_column in _PUF_COMPOSITE_INCOME_SOURCES:
+            components = [
+                np.asarray(
+                    resolve(
+                        component,
+                        None
+                        if source_plans is None
+                        else _strict_predictor_source_plan(
+                            _PUF_PREDICTOR_PREFIX + component,
+                            tax_unit=tax_unit,
+                            person=person,
+                        ),
+                    ),
+                    dtype=np.float64,
+                )
+                for component in _PUF_COMPOSITE_INCOME_SOURCES[source_column]
+            ]
+            if source_column == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
+                # The unit's weighted rank within the PUF-detail recipient
+                # rows (microcosm#982). Those rows hold each survey unit
+                # exactly once, so this is its rank in the survey population,
+                # independent of any other spine or clone channel the frame
+                # carries. The donor is ranked in the PUF population the same
+                # way; other rows get NaN.
+                recipient_rows = puf_tax_detail_clone_mask(tax_unit, entity="tax_unit")
+                total = np.zeros(len(tax_unit), dtype=np.float64)
+                for values in components:
+                    total += values
+                total[~recipient_rows] = np.nan
+                result[column] = _weighted_top_rank_share(
+                    total,
+                    frame.resolve_weights("tax_unit").values,
+                )
+            else:
+                result[column] = _earnings_indicator(components)
         else:
-            result[column] = _person_tax_unit_sum(
-                frame,
-                source_column,
-                preserve_nulls=preserve_nulls,
-            )
+            result[column] = resolve(source_column, plan)
     return result
+
+
+def _recipient_tax_unit_demographics(
+    frame: Frame,
+    *,
+    preserve_nulls: bool,
+) -> pd.DataFrame:
+    """Survey-side tax-unit demographics for the PUF predictors (microcosm#982)."""
+
+    tax_unit = frame.table("tax_unit")
+    person = frame.table("person")
+    missing = [
+        column
+        for column in ("age", "is_female", _TAX_UNIT_ROLE_COLUMN)
+        if column not in person.columns
+    ]
+    if missing:
+        raise ValueError(
+            f"PUF recipient demographic predictors require person column(s) {missing}."
+        )
+    return _tax_unit_demographics(
+        tax_unit["tax_unit_id"].to_numpy(),
+        person["person_tax_unit_id"].to_numpy(),
+        age=person["age"].to_numpy(),
+        is_female=person["is_female"].to_numpy(),
+        role=person[_TAX_UNIT_ROLE_COLUMN].to_numpy(),
+        preserve_nulls=preserve_nulls,
+    )
 
 
 def _person_tax_unit_sum(
@@ -3295,6 +4000,19 @@ def _ensure_boolean_output_column(table: pd.DataFrame, column: str) -> None:
     )
 
 
+def _snap_grid_values(observed: Sequence[Any]) -> np.ndarray:
+    """Each donor value as :func:`_snap_to_observed_values` places it on its grid."""
+
+    observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
+    return np.rint(observed_values.to_numpy(dtype=np.float64)).clip(min=0.0)
+
+
+def _observed_snap_grid(observed: Sequence[Any]) -> np.ndarray:
+    """The sorted donor values :func:`_snap_to_observed_values` snaps onto."""
+
+    return np.unique(_snap_grid_values(observed))
+
+
 def _snap_to_observed_values(
     values: Sequence[Any],
     observed: Sequence[Any],
@@ -3310,10 +4028,7 @@ def _snap_to_observed_values(
     """
 
     value_array = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0.0)
-    observed_values = pd.to_numeric(pd.Series(observed), errors="coerce").fillna(0.0)
-    observed_array = np.unique(
-        np.rint(observed_values.to_numpy(dtype=np.float64)).clip(min=0.0)
-    )
+    observed_array = _observed_snap_grid(observed)
     if len(observed_array) == 0:
         return value_array.to_numpy(dtype=np.float64)
 
@@ -3362,6 +4077,27 @@ def _puf_earnings_allocation_mask(
 
 
 def _nonnegative_allocation_basis_values(
+    values: pd.Series,
+    *,
+    output_column: str,
+    basis_column: str,
+    allow_legacy_numeric_boolean: bool = False,
+) -> np.ndarray:
+    """Return the basis values clipped at zero (see ``_allocation_basis_values``)."""
+
+    return np.clip(
+        _allocation_basis_values(
+            values,
+            output_column=output_column,
+            basis_column=basis_column,
+            allow_legacy_numeric_boolean=allow_legacy_numeric_boolean,
+        ),
+        0.0,
+        None,
+    )
+
+
+def _allocation_basis_values(
     values: pd.Series,
     *,
     output_column: str,
@@ -3459,11 +4195,7 @@ def _nonnegative_allocation_basis_values(
                     f"{int(outside_boolean_support.sum())} numeric value(s) "
                     "outside exact {0, 1} support."
                 )
-    return np.clip(
-        numeric.to_numpy(dtype=np.float64, na_value=0.0),
-        0.0,
-        None,
-    )
+    return numeric.to_numpy(dtype=np.float64, na_value=0.0)
 
 
 def _write_person_tax_unit_boolean_counts(
@@ -3543,10 +4275,26 @@ def _write_person_tax_unit_totals(
     nonnegative: bool,
     allow_legacy_numeric_boolean_basis: bool = False,
     fallback_basis_columns: tuple[str, ...] = (),
+    fallback_basis_is_signed_superset: bool = False,
 ) -> None:
+    """Split each tax unit's total across its people.
+
+    The split follows the people's current values of ``column``; where a unit
+    has none, it follows ``fallback_basis_columns`` (clipped at zero), and
+    otherwise the unit's first person takes the total. With
+    ``fallback_basis_is_signed_superset`` the output is a subset of the basis
+    columns' signed sum: it ignores the column's current values, the weight is
+    the magnitude of each person's own signed sum, and a unit whose people all
+    have a zero sum gets nothing, because a subset of a zero total is zero.
+    """
+
     row_ids = person.loc[mask, "person_tax_unit_id"]
     current = pd.to_numeric(person.loc[mask, column], errors="coerce").fillna(0.0)
     basis = current.clip(lower=0.0) if nonnegative else current
+    if fallback_basis_is_signed_superset:
+        # A subset always follows its superset, never values the column
+        # already held.
+        basis = pd.Series(0.0, index=current.index)
     basis_sum = basis.groupby(row_ids, sort=False).transform("sum")
     target = row_ids.map(totals).fillna(0.0).to_numpy(dtype=np.float64)
     first = row_ids.groupby(row_ids, sort=False).cumcount() == 0
@@ -3561,15 +4309,28 @@ def _write_person_tax_unit_totals(
     unallocated = ~has_basis
     if fallback_basis_columns:
         fallback = np.zeros(len(row_ids), dtype=np.float64)
+        basis_values = (
+            _allocation_basis_values
+            if fallback_basis_is_signed_superset
+            else _nonnegative_allocation_basis_values
+        )
         for basis_column in fallback_basis_columns:
             if basis_column not in person.columns:
                 continue
-            fallback += _nonnegative_allocation_basis_values(
+            fallback += basis_values(
                 person.loc[mask, basis_column],
                 output_column=column,
                 basis_column=basis_column,
                 allow_legacy_numeric_boolean=allow_legacy_numeric_boolean_basis,
             )
+        if fallback_basis_is_signed_superset:
+            if not any(c in person.columns for c in fallback_basis_columns):
+                raise ValueError(
+                    f"PUF output {column!r} is a subset of "
+                    f"{list(fallback_basis_columns)!r}, none of which is on "
+                    "the person table to place it by."
+                )
+            fallback = np.abs(fallback)
         fallback_sum = (
             pd.Series(fallback, index=row_ids.index)
             .groupby(row_ids, sort=False)
@@ -3581,6 +4342,8 @@ def _write_person_tax_unit_totals(
             target[use_fallback] * fallback[use_fallback] / fallback_sum[use_fallback]
         )
         unallocated &= ~use_fallback
+        if fallback_basis_is_signed_superset:
+            unallocated[:] = False
     allocation[unallocated & first.to_numpy()] = target[unallocated & first.to_numpy()]
     person.loc[mask, column] = allocation
 
@@ -3914,6 +4677,66 @@ def _calibrate_tax_unit_person_output_signed_mass_to_donor(
     )
 
 
+def _preserve_cps_reported_social_security(
+    person: pd.DataFrame,
+    *,
+    source_person: pd.DataFrame,
+    requested_components: Sequence[str],
+) -> None:
+    """Keep CPS reporters' person-level benefits on the PUF support arm (#1178).
+
+    ``SS_VAL > 0`` is the explicit source-receipt rule. The upstream
+    CPS-carried producer splits that reported amount into the four engine
+    leaves. Restore those components exactly after all PUF placement, even
+    when a PUF draw is larger: the donor observes tax-unit gross benefits
+    (E02400), not this host person's benefit or its receipt status. Taxable
+    Social Security is calculated by the engine from the resulting inputs;
+    it is not a persisted PUF tax-unit output that needs reconciliation.
+
+    Nonreporters keep the existing PUF imputation, allowing donor support for
+    survey underreporting. A frame without SS_VAL supplies no explicit CPS
+    receipt evidence and keeps that same imputation. The ASEC arm is never
+    selected. This changes finalized inputs, not the raw QRF predecessor
+    draws used to condition subsequent targets. Invalid reporter source
+    components fail explicitly rather than restoring an erased benefit.
+    """
+
+    components = tuple(
+        component
+        for component in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS
+        if component in requested_components
+    )
+    if not components or "SS_VAL" not in source_person:
+        return
+    reporters = puf_tax_detail_clone_mask(source_person, entity="person") & (
+        pd.to_numeric(source_person["SS_VAL"], errors="coerce").fillna(0.0) > 0.0
+    )
+    if not reporters.any():
+        return
+    source_components = (
+        source_person.loc[reporters]
+        .reindex(columns=list(components))
+        .apply(pd.to_numeric, errors="coerce")
+        .to_numpy(dtype=np.float64)
+    )
+    reported = pd.to_numeric(source_person.loc[reporters, "SS_VAL"]).to_numpy(
+        dtype=np.float64
+    )
+    source_totals = source_components.sum(axis=1)
+    valid = (
+        np.isfinite(source_components).all(axis=1)
+        & (source_components >= 0.0).all(axis=1)
+        & (source_totals >= reported)
+    )
+    if not valid.all():
+        raise ValueError(
+            "CPS-reported Social Security preservation requires nonnegative "
+            "source components covering SS_VAL; "
+            f"{int((~valid).sum())} PUF reporter row(s) violate the source contract."
+        )
+    person.loc[reporters, list(components)] = source_components
+
+
 def _reconcile_puf_social_security_components(
     predictions: pd.DataFrame,
     person: pd.DataFrame,
@@ -3989,6 +4812,46 @@ def _reconcile_puf_social_security_components(
         predictions[component] = shares[:, index] * total
 
 
+# Schedule E line 28 column fields by entity (2014 SOI PUF General Description
+# Booklet, annotated Schedule E Part II): (g) passive income, (j) nonpassive
+# income, (f) passive loss allowed, (h) nonpassive loss, (i) section 179.
+_RAW_SCHEDULE_E_ENTITY_LEGS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "partnership_income": PUF_SCHEDULE_E_PARTNERSHIP_LEGS,
+    "s_corp_income": PUF_SCHEDULE_E_S_CORP_LEGS,
+    "passive_partnership_s_corp_income": (
+        (PUF_PARTNERSHIP_PASSIVE_INCOME, PUF_S_CORP_PASSIVE_INCOME),
+        (PUF_PARTNERSHIP_PASSIVE_LOSS_ALLOWED, PUF_S_CORP_PASSIVE_LOSS_ALLOWED),
+    ),
+}
+
+
+def _raw_schedule_e_line_32_values(
+    arrays: Mapping[str, Sequence[Any]],
+    output: str,
+) -> np.ndarray | None:
+    """Derive a line-32 leaf from raw Schedule E Part II column fields.
+
+    ``partnership_income`` and ``s_corp_income`` are each entity's share of
+    line 32, (g) + (j) - (f) - (h) - (i); together they equal E26270 to within
+    the PUF's per-field rounding. ``passive_partnership_s_corp_income`` is the
+    passive subset (g) - (f) of both entities. Every field of the leaf is
+    required, so a raw source missing one derives nothing.
+    """
+
+    legs = _RAW_SCHEDULE_E_ENTITY_LEGS.get(output)
+    if legs is None:
+        return None
+    income, losses = legs
+    if not set((*income, *losses)).issubset(arrays):
+        return None
+    values = np.zeros_like(_numeric_array(arrays[income[0]]))
+    for field in income:
+        values = values + _numeric_array(arrays[field])
+    for field in losses:
+        values = values - _numeric_array(arrays[field])
+    return values
+
+
 def _person_source_values(
     arrays: Mapping[str, Sequence[Any]],
     output: str,
@@ -4008,23 +4871,22 @@ def _person_source_values(
     for source in source_aliases.get(output, ()):
         if source in arrays:
             return _numeric_array(arrays[source])
-    if output == "partnership_income" and "partnership_s_corp_income" in arrays:
-        return _numeric_array(arrays["partnership_s_corp_income"])
-    if output == "s_corp_income" and "partnership_s_corp_income" in arrays:
-        return np.zeros_like(_numeric_array(arrays["partnership_s_corp_income"]))
+    raw_schedule_e = _raw_schedule_e_line_32_values(arrays, output)
+    if raw_schedule_e is not None:
+        return raw_schedule_e
+    # The processed artifact's partnership_s_corp_income is the archived
+    # nonpassive-only sum of both entities, not Schedule E line 32, so it
+    # stands for neither partnership_income nor s_corp_income;
+    # puf_tax_unit_donor_from_arrays takes both entity shares from the
+    # source-year rows instead (microcosm#1239, #1258).
     if output == "partnership_self_employment_net_earnings" and (
         "partnership_se_income" in arrays
     ):
         return _numeric_array(arrays["partnership_se_income"])
-    if output == "partnership_income" and {"E25980", "E25960"}.issubset(arrays):
-        return _numeric_array(arrays["E25980"]) - _numeric_array(arrays["E25960"])
-    if output == "s_corp_income" and {"E26190", "E26180"}.issubset(arrays):
-        return _numeric_array(arrays["E26190"]) - _numeric_array(arrays["E26180"])
-    if output == "partnership_self_employment_net_earnings" and {
-        "E25960",
-        "E26180",
-    }.issubset(arrays):
-        return _numeric_array(arrays["E25960"]) + _numeric_array(arrays["E26180"])
+    if output == "partnership_self_employment_net_earnings" and set(
+        _PUF_PARTNERSHIP_SE_RAW_COLUMNS
+    ).issubset(arrays):
+        return _puf_partnership_se_net_earnings_from_raw_columns(arrays)
     if output in _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS and "E17500" in arrays:
         return (
             _numeric_array(arrays["E17500"])
@@ -4051,6 +4913,318 @@ def _person_source_values(
     return None
 
 
+def _puf_partnership_se_net_earnings_from_raw_columns(
+    arrays: Mapping[str, Sequence[Any]],
+) -> np.ndarray:
+    """Derive partnership self-employment net earnings from raw PUF columns.
+
+    This ports, operation for operation, the derivation the archived
+    processed-PUF pipeline used for this leaf (the retired enhanced-CPS
+    repository at 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe,
+    ``datasets/puf/puf.py`` lines 723-746), which matches ``part_se`` in Yale
+    Budget Lab Tax-Data's ``src/process_puf.R``. It is a
+    residual, not a read of a Schedule K-1 box 14 field: gross self-employment
+    earnings less the Schedule C and Schedule F amounts.
+
+    The column meanings below are the archived pipeline's own; this module does
+    not check them against the PUF documentation:
+
+    * ``E30400`` and ``E30500``: the taxpayer's and the spouse's taxable
+      self-employment income, already multiplied by 0.9235. Their sum is
+      divided by that factor to recover gross self-employment earnings.
+    * ``E00900`` and ``E02100``: Schedule C net profit or loss and Schedule F
+      farm income, subtracted from the gross amount.
+    * ``E25940 + E25980 - E25920 - E25960``: net partnership income. A record
+      where it is exactly zero has no partnership activity and gets zero.
+
+    No S corporation column (``E26180``, ``E26190``) enters the derivation. A
+    missing value counts as zero, as the archived ``fillna(0)`` did.
+    ``_numeric_array`` also turns a nonnumeric value into zero, where the
+    archived arithmetic would raise; on numeric float64 arrays the result
+    equals the archived formula bit for bit.
+
+    Args:
+        arrays: Mapping carrying every column of
+            ``_PUF_PARTNERSHIP_SE_RAW_COLUMNS`` at one common grain.
+
+    Returns:
+        Partnership self-employment net earnings, one value per input row.
+    """
+
+    raw = {
+        column: _numeric_array(arrays[column])
+        for column in _PUF_PARTNERSHIP_SE_RAW_COLUMNS
+    }
+    gross_se = (raw["E30400"] + raw["E30500"]) / _PUF_SE_NET_EARNINGS_FACTOR
+    schedule_c_f_income = raw["E00900"] + raw["E02100"]
+    has_partnership = (
+        raw["E25940"] + raw["E25980"] - raw["E25920"] - raw["E25960"]
+    ) != 0
+    return np.where(has_partnership, gross_se - schedule_c_f_income, 0.0)
+
+
+_TAX_UNIT_ROLE_COLUMN = "tax_unit_role_input"
+_TAX_UNIT_ROLES = ("HEAD", "SPOUSE", "DEPENDENT")
+
+
+def _weighted_top_rank_share(values: Any, weights: Any) -> np.ndarray:
+    """Return each row's weighted mid-rank share, counted from the top.
+
+    A unit with weight ``w`` stands for the population slice between the weight
+    strictly above it and that plus ``w``; its share is the slice's midpoint
+    divided by the total weight. Tied values form one slice and share its
+    midpoint, so survey topcode ties and clone copies stay tied. The midpoint,
+    not the top edge, keeps a heavily weighted survey unit from being ranked
+    with the single most extreme donor (microcosm#982). Rows with a non-finite
+    value get NaN and are excluded from the population total, which lets
+    strict recipient validation fail them by name.
+    """
+
+    value_array = np.asarray(values, dtype=np.float64)
+    weight_array = np.asarray(weights, dtype=np.float64)
+    if value_array.ndim != 1 or value_array.shape != weight_array.shape:
+        raise ValueError("Income-rank values and weights must be aligned 1-D arrays.")
+    result = np.full(value_array.shape, np.nan, dtype=np.float64)
+    finite = np.isfinite(value_array)
+    if not finite.any():
+        return result
+    ranked_weights = weight_array[finite]
+    if not np.isfinite(ranked_weights).all() or (ranked_weights < 0).any():
+        raise ValueError("Income-rank weights must be finite and nonnegative.")
+    total = float(ranked_weights.sum())
+    if total <= 0:
+        raise ValueError("Income-rank weights must have positive total mass.")
+    ranked_values = value_array[finite]
+    order = np.argsort(-ranked_values, kind="stable")
+    sorted_values = ranked_values[order]
+    sorted_weights = ranked_weights[order]
+    weight_before = np.cumsum(sorted_weights) - sorted_weights
+    first_of_tie = np.r_[True, sorted_values[1:] != sorted_values[:-1]]
+    tie_group = np.cumsum(first_of_tie) - 1
+    tie_weight = np.bincount(tie_group, weights=sorted_weights)
+    midpoint = weight_before[first_of_tie] + tie_weight / 2.0
+    shares = np.empty(len(ranked_values), dtype=np.float64)
+    shares[order] = midpoint[tie_group] / total
+    result[finite] = shares
+    return result
+
+
+def _earnings_indicator(components: Sequence[Any]) -> np.ndarray:
+    """Return 1.0 where any earnings component is nonzero, else 0.0 (#982).
+
+    One definition serves both sides of the PUF imputation. A row with a
+    non-finite component gets NaN, so strict recipient validation names it
+    instead of reading a missing amount as "does not work".
+    """
+
+    stacked = np.vstack([np.asarray(values, dtype=np.float64) for values in components])
+    indicator = (stacked != 0).any(axis=0).astype(np.float64)
+    indicator[~np.isfinite(stacked).all(axis=0)] = np.nan
+    return indicator
+
+
+def _tax_unit_demographics(
+    tax_unit_ids: Any,
+    person_tax_unit_ids: Any,
+    *,
+    age: Any,
+    is_female: Any,
+    role: Any,
+    preserve_nulls: bool,
+) -> pd.DataFrame:
+    """Derive head age, spouse age, head sex and dependent count per tax unit.
+
+    One definition serves both sides of the PUF imputation (microcosm#982).
+    ``spouse_age`` is 0.0 for a unit without a spouse. A role outside
+    ``HEAD``/``SPOUSE``/``DEPENDENT`` and a unit with two heads or two spouses
+    are malformed role structures and fail closed. When nulls are preserved, a
+    unit with no head, a missing role, or a missing head or spouse age or head
+    sex gets NaN demographics so the strict completeness check names it; the
+    legacy policy refuses missing roles and zero-fills the rest.
+    """
+
+    roles = pd.Series(role, dtype="object").astype("string").str.upper()
+    unknown = roles.notna() & ~roles.isin(_TAX_UNIT_ROLES)
+    if unknown.any():
+        raise ValueError(
+            "PUF predictor demographics found unrecognized tax-unit role(s) "
+            f"{sorted(roles[unknown].unique().tolist())}; expected one of "
+            f"{list(_TAX_UNIT_ROLES)}."
+        )
+    missing_role = roles.isna().to_numpy()
+    if missing_role.any() and not preserve_nulls:
+        affected = pd.unique(np.asarray(person_tax_unit_ids)[missing_role])
+        raise ValueError(
+            f"PUF predictor demographics found {int(missing_role.sum())} person(s) "
+            f"without a tax-unit role, in tax unit(s) {affected[:5].tolist()}"
+            f"{' and more' if len(affected) > 5 else ''}."
+        )
+    persons = pd.DataFrame(
+        {
+            "tax_unit_id": np.asarray(person_tax_unit_ids),
+            "age": pd.to_numeric(pd.Series(age), errors="coerce").to_numpy(
+                dtype=np.float64
+            ),
+            "is_female": pd.to_numeric(
+                pd.Series(is_female, dtype="object"), errors="coerce"
+            ).to_numpy(dtype=np.float64),
+            "role": roles.to_numpy(dtype=object),
+        }
+    )
+    index = pd.Index(np.asarray(tax_unit_ids))
+    heads = persons.loc[roles.eq("HEAD").fillna(False).to_numpy()]
+    spouses = persons.loc[roles.eq("SPOUSE").fillna(False).to_numpy()]
+    dependents = persons.loc[roles.eq("DEPENDENT").fillna(False).to_numpy()]
+    for label, members in (("head", heads), ("spouse", spouses)):
+        if members["tax_unit_id"].duplicated().any():
+            raise ValueError(
+                f"PUF predictor demographics found a tax unit with more than one {label}."
+            )
+    head_rows = heads.set_index("tax_unit_id")
+    spouse_rows = spouses.set_index("tax_unit_id")
+    has_spouse = index.isin(spouse_rows.index)
+    spouse_age = spouse_rows["age"].reindex(index).to_numpy(dtype=np.float64)
+    result = pd.DataFrame(
+        {
+            "head_age": head_rows["age"].reindex(index).to_numpy(dtype=np.float64),
+            "spouse_age": np.where(has_spouse, spouse_age, 0.0),
+            "head_is_female": head_rows["is_female"]
+            .reindex(index)
+            .to_numpy(dtype=np.float64),
+            "dependent_count": dependents.groupby("tax_unit_id")
+            .size()
+            .reindex(index)
+            .fillna(0)
+            .to_numpy(dtype=np.float64),
+        },
+        index=index,
+    )
+    if missing_role.any():
+        unresolved = index.isin(persons.loc[missing_role, "tax_unit_id"].unique())
+        result.loc[unresolved, :] = np.nan
+    if not preserve_nulls:
+        result = result.fillna(0.0)
+    return result
+
+
+def _strict_numeric(values: Any) -> np.ndarray:
+    """Numeric array that keeps missing and unparseable entries as NaN."""
+
+    return pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(dtype=np.float64)
+
+
+def _puf_donor_demographics(
+    arrays: Mapping[str, Sequence[Any]],
+    tax_unit_id: np.ndarray,
+) -> pd.DataFrame | None:
+    """Donor demographics from processed PUF person arrays, or None if absent.
+
+    Missing values are never filled: a missing age, sex or role flag, a person
+    with no role or several, sex encodings that disagree, or a unit without a
+    head fails closed by name, so the donor cannot state a demographic the PUF
+    did not record (the survey side keeps the same cells missing under the
+    strict policy).
+    """
+
+    required = ("person_tax_unit_id", "age", "is_tax_unit_head", "is_tax_unit_spouse")
+    if any(column not in arrays for column in required):
+        return None
+    if "is_female" not in arrays and "is_male" not in arrays:
+        return None
+    columns = {
+        "person_tax_unit_id": _strict_numeric(arrays["person_tax_unit_id"]),
+        "age": _strict_numeric(arrays["age"]),
+        "is_tax_unit_head": _strict_numeric(arrays["is_tax_unit_head"]),
+        "is_tax_unit_spouse": _strict_numeric(arrays["is_tax_unit_spouse"]),
+    }
+    if "is_tax_unit_dependent" in arrays:
+        columns["is_tax_unit_dependent"] = _strict_numeric(
+            arrays["is_tax_unit_dependent"]
+        )
+    if "is_female" in arrays:
+        columns["is_female"] = _strict_numeric(arrays["is_female"])
+    if "is_male" in arrays:
+        columns["is_male"] = _strict_numeric(arrays["is_male"])
+    missing = {name: int(np.isnan(values).sum()) for name, values in columns.items()}
+    missing = {name: count for name, count in missing.items() if count}
+    if missing:
+        raise ValueError(f"PUF donor person arrays have missing values: {missing}.")
+    if "is_female" in columns:
+        is_female = columns["is_female"]
+        if "is_male" in columns and not np.array_equal(
+            is_female, 1.0 - columns["is_male"]
+        ):
+            raise ValueError("PUF donor is_female and is_male disagree.")
+    else:
+        is_female = 1.0 - columns["is_male"]
+    head = columns["is_tax_unit_head"] > 0
+    spouse = columns["is_tax_unit_spouse"] > 0
+    dependent = (
+        columns["is_tax_unit_dependent"] > 0
+        if "is_tax_unit_dependent" in columns
+        else ~(head | spouse)
+    )
+    role_count = head.astype(int) + spouse.astype(int) + dependent.astype(int)
+    if (role_count > 1).any():
+        raise ValueError("PUF donor person carries more than one tax-unit role.")
+    if (role_count == 0).any():
+        raise ValueError(
+            f"PUF donor has {int((role_count == 0).sum())} person(s) with no "
+            "tax-unit role."
+        )
+    role = np.where(head, "HEAD", np.where(spouse, "SPOUSE", "DEPENDENT"))
+    demographics = _tax_unit_demographics(
+        tax_unit_id,
+        columns["person_tax_unit_id"].astype("int64"),
+        age=columns["age"],
+        is_female=is_female,
+        role=role,
+        preserve_nulls=True,
+    )
+    headless = demographics["head_age"].isna()
+    if headless.any():
+        raise ValueError(
+            f"PUF donor has {int(headless.sum())} tax unit(s) without a head."
+        )
+    return demographics
+
+
+def _donor_rank_component_values(table: pd.DataFrame, source: str) -> np.ndarray | None:
+    """One donor income-rank component, resolved like its predictor alias.
+
+    Returns None when the donor table cannot supply the component, so the rank
+    predictor stays absent exactly like any other unresolvable alias and the
+    imputation's missing-donor-column check fails closed by name.
+    """
+
+    if source in table.columns:
+        values = table[source]
+    elif source == "dividend_income" and {
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+    }.issubset(table.columns):
+        values = pd.to_numeric(
+            table["qualified_dividend_income"], errors="coerce"
+        ).fillna(0.0) + pd.to_numeric(
+            table["non_qualified_dividend_income"], errors="coerce"
+        ).fillna(0.0)
+    elif source in _PREDICTOR_LEAF_ALIASES and any(
+        leaf in table.columns for leaf in _PREDICTOR_LEAF_ALIASES[source]
+    ):
+        values = sum(
+            pd.to_numeric(table[leaf], errors="coerce").fillna(0.0)
+            for leaf in _PREDICTOR_LEAF_ALIASES[source]
+            if leaf in table.columns
+        )
+    else:
+        return None
+    return (
+        pd.to_numeric(pd.Series(values), errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+
+
 def _add_predictor_aliases(
     table: pd.DataFrame,
     predictors: Sequence[str],
@@ -4059,6 +5233,27 @@ def _add_predictor_aliases(
         if predictor in table.columns:
             continue
         source = _predictor_source_column(predictor)
+        if source in _PUF_COMPOSITE_INCOME_SOURCES:
+            # Built from the donor's own outputs on the same component
+            # concepts the survey recipient uses (microcosm#982): the rank in
+            # the PUF population, or earnings participation.
+            components = [
+                _donor_rank_component_values(table, component)
+                for component in _PUF_COMPOSITE_INCOME_SOURCES[source]
+            ]
+            if any(values is None for values in components):
+                continue
+            if source == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
+                if "weight" not in table.columns:
+                    continue
+                total = np.sum(components, axis=0, dtype=np.float64)
+                table[predictor] = _weighted_top_rank_share(
+                    total,
+                    pd.to_numeric(table["weight"], errors="coerce").fillna(0.0),
+                )
+            else:
+                table[predictor] = _earnings_indicator(components)
+            continue
         if source in table.columns:
             table[predictor] = table[source]
         elif source == "dividend_income" and {

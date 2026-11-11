@@ -1,0 +1,984 @@
+"""Staging run bundles and staged-dataset delivery for UK rowwise roles.
+
+Two destinations, one run id: reviewed aggregate build files go to the
+staging repository under ``runs/<run_id>/``, the finished bundle a manifest
+vouches for to the private artifact repository under ``staged/<run_id>/``.
+Both are best-effort evidence about the build, never a release, and the
+build must never abort on its own progress report.
+
+These helpers were moved from ``tools/build_uk_rowwise_candidate.py`` so the
+graph full-build driver and the rowwise tool stage identically; the tool
+imports them back. The run files and the staged dataset bundle both go to the
+build's emitter, which commits them with the build's own credential; this
+module makes no Hugging Face call. A build whose environment switches the Hub
+off (``HF_HUB_OFFLINE``, as on Modal) keeps its bundle local.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import tempfile
+from collections.abc import Callable, Mapping
+from importlib import metadata
+from pathlib import Path
+from typing import Any
+
+from microcosm.build.calibration_epoch_telemetry import (
+    CALIBRATION_EPOCH_EVERY,
+    calibration_epoch_stride,
+    forwards_calibration_epoch,
+)
+from microcosm.build.run_outcome import (
+    UNRECORDED_GATE_BLOCK,
+    GateBlock,
+    classify_failure,
+)
+from microcosm.build.staging_dataset import (
+    RETRYING_ERROR_CODES,
+    BundleEmitter,
+    StagedBundleHandOver,
+    StagedDatasetBundle,
+    disabled_staged_dataset,
+    hub_offline,
+    local_only_staged_dataset,
+    stage_bundle,
+    write_access_problem,
+    write_sidecars,
+)
+from microcosm.build.staging_v2 import (
+    StagingContractError,
+    StagingRunBundleWriterV2,
+    disabled_staging_delivery,
+)
+from microcosm.build.telemetry_emitter import (
+    EmitterClient,
+    LocalTelemetryEmitter,
+    start_local_telemetry_emitter_service,
+)
+from microcosm.build.uk_runtime.rowwise_cli import (
+    BUDGET_ITERS,
+    MANIFEST_FILENAME,
+    SIZE_RUN_ONLY_OUTPUTS,
+    json_text,
+    posture_of,
+)
+from microcosm.build.uk_runtime.staging import UK_STAGED_DATASET_PREFIX
+
+__all__ = [
+    "STAGED_DATASET_PHASES",
+    "STAGING_UPLOAD_INTERVAL_SECONDS",
+    "add_staging_artifact",
+    "block_staging_run_bundle",
+    "bundle_emitter",
+    "create_staging_run_bundle",
+    "emit_calibration_progress",
+    "fail_staging_run_bundle",
+    "finalize_staging_run_bundle",
+    "fit_summary",
+    "gate_statuses",
+    "graph_progress",
+    "preflight_staged_dataset",
+    "publish_staged_files",
+    "replace_manifest",
+    "start_telemetry_emitter",
+    "stage",
+    "stage_dataset",
+    "staged_dataset_mode",
+    "staging_delivery",
+    "staging_epoch_every",
+    "thinned_epochs",
+]
+
+# Best-effort staging-bundle upload cadence. The Hub allows about 128 commits per
+# hour per repository and one cycle is up to eight single-file commits, so
+# the shared 30-second default exhausts the budget on a multi-hour solve
+# and loses uploads (the v20 national run did); five minutes keeps a
+# 1,500-epoch run well inside it.
+STAGING_UPLOAD_INTERVAL_SECONDS = 300.0
+STAGED_DATASET_PHASES = {
+    "uploaded": "dataset_staged",
+    "already_staged": "dataset_staged",
+    "failed": "dataset_stage_failed",
+    "skipped": "dataset_stage_skipped",
+}
+_STAGING_UPLOAD_INTERVAL_SECONDS = STAGING_UPLOAD_INTERVAL_SECONDS
+_STAGED_DATASET_PHASES = STAGED_DATASET_PHASES
+_ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
+
+
+def active_telemetry_emitter() -> LocalTelemetryEmitter | None:
+    """The process-local emitter of the current UK build attempt, if started."""
+
+    return _ACTIVE_EMITTER
+
+
+def _emitter_client() -> EmitterClient | None:
+    """This build attempt's emitter client, running or not, or None.
+
+    The staging writer hands it the run files, and a refused remote stage
+    reads from it why the emitter cannot take the bundle.
+    """
+
+    return None if _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
+
+
+def bundle_emitter() -> BundleEmitter | None:
+    """The client of this build attempt's running emitter, which takes its
+    staged bundles, or None."""
+
+    if _ACTIVE_EMITTER is None or not _ACTIVE_EMITTER.available:
+        return None
+    return _ACTIVE_EMITTER.client
+
+
+def _requested_staged_dataset_mode(args: argparse.Namespace) -> str:
+    if args.no_staging or args.no_staged_dataset:
+        return "disabled"
+    if args.staging_local_only:
+        return "local_only"
+    return "local_and_remote"
+
+
+def staged_dataset_mode(args: argparse.Namespace) -> str:
+    """The staged dataset's mode: the switches', made local with the Hub off.
+
+    With ``HF_HUB_OFFLINE`` set, as the Modal runner sets it, the emitter
+    could never upload the bundle, so it is verified and kept local, to be
+    staged from the workstation once the outputs are copied back.
+    """
+
+    mode = _requested_staged_dataset_mode(args)
+    if mode == "local_and_remote" and hub_offline():
+        return "local_only"
+    return mode
+
+
+_staged_dataset_mode = staged_dataset_mode
+
+
+def _warn_hub_offline(args: argparse.Namespace) -> None:
+    """Say why a requested remote stage stays local."""
+
+    if _requested_staged_dataset_mode(args) == "local_and_remote" and hub_offline():
+        print(
+            "warning: HF_HUB_OFFLINE is set, as on Modal, so the dataset bundle "
+            "stays local: it is not handed to the emitter. Stage it from a "
+            "workstation once the outputs are copied there.",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
+def preflight_staged_dataset(args: argparse.Namespace) -> None:
+    """Refuse a remote dataset stage the run could not complete.
+
+    The bundle upload is the last step of a multi-hour run, so the build's
+    emitter checks the credential, the repository and the credential's write
+    scope before the spine is read (``check_write_access``). A read token, or
+    a fine-grained token scoped to another owner, would otherwise be refused
+    by the Hub with 403 only when the upload starts, hours later. Telemetry
+    stays best-effort with no pre-flight, as on the national command.
+    """
+
+    if args.dry_run:
+        return
+    _warn_hub_offline(args)
+    if staged_dataset_mode(args) != "local_and_remote":
+        return
+    repo_id = str(args.staged_dataset_repo_id).strip()
+    hint = "pass --staging-local-only or --no-staged-dataset to keep the bundle local"
+    problem = write_access_problem(_emitter_client(), repo_id)
+    if problem is not None:
+        raise ValueError(f"{problem}; {hint}.")
+
+
+_preflight_staged_dataset = preflight_staged_dataset
+
+
+def create_staging_run_bundle(
+    args: argparse.Namespace, *, build_id: str
+) -> StagingRunBundleWriterV2 | None:
+    posture = posture_of(args)
+    run_id = args.staging_run_id or build_id
+    if args.no_staging:
+        return None
+    local_only = bool(args.staging_local_only)
+    out_dir = args.out.expanduser().resolve()
+    return StagingRunBundleWriterV2(
+        run_id=run_id,
+        country_code="GB",
+        operation_id=posture.staging_operation_id,
+        pipeline_id=posture.pipeline,
+        pipeline_version=metadata.version("microcosm-build"),
+        candidate_id=args.staging_candidate_id or build_id,
+        local_dir=args.staging_dir or out_dir / "staging",
+        run_kind="calibration",
+        delivery_mode="local_only" if local_only else "local_and_remote",
+        repo_id=None if local_only else args.staging_repo_id,
+        upload_interval_seconds=args.staging_upload_interval_seconds,
+        emitter_client=None if local_only else _emitter_client(),
+    )
+
+
+def start_telemetry_emitter(
+    args: argparse.Namespace,
+    *,
+    build_id: str,
+    run_kind: str = "calibration",
+    close_service_on_finish: bool = True,
+) -> LocalTelemetryEmitter:
+    """Start or reuse the process-local emitter for one UK build attempt."""
+
+    global _ACTIVE_EMITTER
+    posture = posture_of(args)
+    run_id = args.staging_run_id or build_id
+    if (
+        _ACTIVE_EMITTER is not None
+        and _ACTIVE_EMITTER.available
+        and _ACTIVE_EMITTER.run.run_id == run_id
+    ):
+        return _ACTIVE_EMITTER
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.close()
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="GB",
+        pipeline=posture.pipeline,
+        candidate_id=args.staging_candidate_id or build_id,
+        run_kind=run_kind,
+        close_service_on_finish=close_service_on_finish,
+    )
+    return _ACTIVE_EMITTER
+
+
+_create_staging_run_bundle = create_staging_run_bundle
+
+
+def stage(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    stage_id: str,
+    event_status: str = "started",
+    **details: Any,
+) -> None:
+    """Report one stage independently to the emitter and staging bundle.
+
+    A contract or content refusal of the event is reported and the event
+    dropped; the build must never abort on its own progress report. Each
+    event is judged on its own details, so a refused event does not silence
+    the ones that follow.
+    """
+
+    emitter_details = dict(details)
+    message = emitter_details.pop("message", None)
+    emitter_details.pop("force_upload", None)
+    if "status" in emitter_details:
+        emitter_details["result_status"] = emitter_details.pop("status")
+    if _ACTIVE_EMITTER is not None:
+        _ACTIVE_EMITTER.transition_stage(
+            stage_id,
+            status=event_status,
+            message=message,
+            **emitter_details,
+        )
+    if staging_bundle is None:
+        return
+    try:
+        staging_bundle.stage(stage_id, event_status=event_status, **details)
+    except StagingContractError as error:
+        print(
+            f"warning: staging run bundle refused the {stage_id!r} stage event "
+            f"({type(error).__name__}: {error}); the event is not staged, the "
+            "build continues.",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
+_stage = stage
+
+
+def emit_calibration_progress(event: Mapping[str, Any]) -> None:
+    """Report calibration progress only through the local emitter service."""
+
+    if _ACTIVE_EMITTER is not None:
+        _ACTIVE_EMITTER.transition_calibration_progress(event)
+
+
+def graph_progress(
+    *,
+    node_id: str,
+    done: int,
+    total: int,
+    elapsed_seconds: float,
+) -> None:
+    """Send graph work progress only through the local emitter service."""
+
+    if _ACTIVE_EMITTER is None:
+        return
+    _ACTIVE_EMITTER.emit(
+        event_type="progress",
+        stage_id=node_id,
+        status="completed",
+        details={
+            "done": done,
+            "total": total,
+            "unit": "graph_nodes",
+            "elapsed_seconds": elapsed_seconds,
+        },
+    )
+
+
+def stage_sample(
+    staging_bundle: StagingRunBundleWriterV2 | None, *, sample_fraction: float
+) -> None:
+    """Record the run's sampling evidence in the staging bundle.
+
+    The contract's only sampling statement is ``{"mode": "full"}``, the f100
+    rung; a rung below f100 stages a null sample, as the spine builder does.
+    The national seam and the dense graph driver both call this once their
+    rung is known (for the graph, the pool fraction times the source spine's
+    own fraction), so the two release roles stage the same evidence.
+    """
+
+    if staging_bundle is None or float(sample_fraction) != 1.0:
+        return
+    staging_bundle.set_sample({"mode": "full"})
+
+
+def staging_epoch_every(args: argparse.Namespace) -> int:
+    """The shared calibration epoch stride over this run's solves.
+
+    A dense run solves once; a size run solves the pool, up to ``budget_iters``
+    full-length probes and the refit. The stride grows with that total, as
+    :func:`~microcosm.build.calibration_epoch_telemetry.calibration_epoch_stride`
+    defines for every build, keeping ``calibration_progress.json`` and
+    ``events.ndjson`` under the contract's 5 MiB cap for any ``--epochs``.
+    """
+
+    solves = 1 if args.dataset_households is None else 2 + BUDGET_ITERS
+    return calibration_epoch_stride(int(args.epochs) * solves)
+
+
+_staging_epoch_every = staging_epoch_every
+
+
+def thinned_epochs(
+    sink: Callable[[Mapping[str, Any]], None],
+    *,
+    every: int = CALIBRATION_EPOCH_EVERY,
+) -> Callable[[dict[str, object]], None]:
+    """Forward the shared rule's calibration epochs to ``sink``.
+
+    :func:`~microcosm.build.calibration_epoch_telemetry.forwards_calibration_epoch`
+    selects each phase's first and last epoch and every ``every``-th epoch, as
+    for every build.
+
+    The kernel flags probe epochs with ``budget_search: True``; the staging
+    contract records that field as an integer or null, so the flag becomes 1
+    (the national command never runs a budget search and never met this). A
+    contract or content refusal from the telemetry is reported once and stops
+    the forwarding: the solve must never abort on its own progress report.
+    """
+
+    disabled = False
+
+    def callback(event: dict[str, object]) -> None:
+        nonlocal disabled
+        if disabled or not forwards_calibration_epoch(event, every=every):
+            return
+        forwarded = dict(event)
+        budget_search = forwarded.get("budget_search")
+        if isinstance(budget_search, bool):
+            forwarded["budget_search"] = 1 if budget_search else None
+        try:
+            sink(forwarded)
+        except StagingContractError as error:
+            disabled = True
+            print(
+                "warning: staging run bundle refused a calibration progress row "
+                f"({type(error).__name__}); epoch progress is no longer forwarded, "
+                "the solve continues.",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    return callback
+
+
+_thinned_epochs = thinned_epochs
+
+
+def gate_statuses(gate_report: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        str(gate_id): str(entry.get("status"))
+        for gate_id, entry in gate_report.get("gates", {}).items()
+        if isinstance(entry, Mapping)
+    }
+
+
+_gate_statuses = gate_statuses
+
+
+def fail_staging_run_bundle(
+    staging_bundle: StagingRunBundleWriterV2 | None, error: BaseException
+) -> None:
+    """Close both telemetry destinations for a build that raised.
+
+    The error is classified once (:func:`classify_failure`): a gate refusal
+    anywhere in its cause chain closes the run as ``blocked``; anything else is a
+    ``failed`` run with its error code and failure class.
+    """
+
+    classified = classify_failure(error)
+    if classified.block is not None:
+        _close_blocked(
+            staging_bundle, classified.block, gate_statuses=None, read_back=False
+        )
+        return
+    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+        _ACTIVE_EMITTER.fail(
+            error,
+            failure_class=classified.failure_class or "error",
+            error_code=classified.error_code,
+        )
+    if staging_bundle is None:
+        return
+    if staging_bundle.status != "running":
+        return
+    try:
+        staging_bundle.fail(
+            error,
+            error_code=classified.error_code or "BUILD_FAILED",
+            failure_class=classified.failure_class,
+        )
+        staging_bundle.validate_local_bundle()
+    except Exception:
+        pass
+
+
+def block_staging_run_bundle(
+    args: argparse.Namespace,
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    block: GateBlock,
+    *,
+    gate_statuses: Mapping[str, str] | None = None,
+) -> None:
+    """Close both telemetry destinations for a build its gates refused."""
+
+    _close_blocked(
+        staging_bundle,
+        block,
+        gate_statuses=gate_statuses,
+        read_back=bool(getattr(args, "staging_read_back", False)),
+    )
+
+
+def close_run_blocked(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    emitter: LocalTelemetryEmitter | None,
+    block: GateBlock,
+    *,
+    gate_statuses: Mapping[str, str] | None = None,
+    read_back: bool = False,
+) -> None:
+    """Close the staging run and the hosted emitter as ``blocked``, the same way.
+
+    The gate statuses come from the caller when it holds the report, else from
+    the block itself (a raised refusal whose report could be read). If the
+    staging contract refuses the block's details, the run must still reach a
+    terminal state: both destinations then close ``failed`` with
+    :data:`~microcosm.build.run_outcome.UNRECORDED_GATE_BLOCK`, so they cannot
+    disagree and no run is left ``running``.
+    """
+
+    statuses = gate_statuses if gate_statuses is not None else block.gate_statuses
+    refusal: StagingContractError | None = None
+    if staging_bundle is not None and staging_bundle.status == "running":
+        try:
+            staging_bundle.block(
+                phase=block.phase,
+                blocking_gate_ids=list(block.blocking_gate_ids),
+                blocking_failure_count=block.blocking_failure_count,
+                gate_statuses=statuses,
+            )
+        except StagingContractError as error:
+            refusal = error
+            _warn_telemetry(
+                "could not record the gate block; closing the staging run as failed",
+                error,
+            )
+            try:
+                staging_bundle.fail(
+                    error,
+                    error_code=UNRECORDED_GATE_BLOCK.error_code,
+                    failure_class=UNRECORDED_GATE_BLOCK.failure_class,
+                )
+            except StagingContractError as failure:
+                _warn_telemetry("could not close the staging run", failure)
+        else:
+            try:
+                if read_back:
+                    staging_bundle.verify_remote()
+            finally:
+                try:
+                    staging_bundle.validate_local_bundle()
+                except StagingContractError as error:
+                    _warn_telemetry("the local staging bundle does not validate", error)
+    if emitter is None or not emitter.available:
+        return
+    if refusal is None:
+        emitter.block(
+            phase=block.phase,
+            blocking_gate_ids=list(block.blocking_gate_ids),
+            blocking_failure_count=block.blocking_failure_count,
+            gate_statuses=statuses,
+        )
+    else:
+        emitter.fail(
+            refusal,
+            failure_class=UNRECORDED_GATE_BLOCK.failure_class,
+            error_code=UNRECORDED_GATE_BLOCK.error_code,
+        )
+
+
+def _close_blocked(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    block: GateBlock,
+    *,
+    gate_statuses: Mapping[str, str] | None,
+    read_back: bool,
+) -> None:
+    close_run_blocked(
+        staging_bundle,
+        _ACTIVE_EMITTER,
+        block,
+        gate_statuses=gate_statuses,
+        read_back=read_back,
+    )
+
+
+_fail_staging_run_bundle = fail_staging_run_bundle
+_block_staging_run_bundle = block_staging_run_bundle
+
+
+def finalize_staging_run_bundle(
+    args: argparse.Namespace, staging_bundle: StagingRunBundleWriterV2 | None
+) -> None:
+    """Finalize staging files; only the caller can determine build success."""
+    if staging_bundle is not None:
+        try:
+            staging_bundle.complete(
+                message="UK rowwise candidate staging run completed."
+            )
+        except StagingContractError as error:
+            _warn_telemetry("could not close the staging run", error)
+        else:
+            try:
+                if args.staging_read_back:
+                    # Requested explicitly, so a failed read-back is the run's
+                    # failure, as on the national command.
+                    staging_bundle.verify_remote()
+            finally:
+                try:
+                    staging_bundle.validate_local_bundle()
+                except StagingContractError as error:
+                    _warn_telemetry("the local staging bundle does not validate", error)
+
+
+_finalize_staging_run_bundle = finalize_staging_run_bundle
+
+
+def _warn_telemetry(what: str, error: BaseException) -> None:
+    print(
+        f"warning: {what} ({type(error).__name__}: {error}); the build's own "
+        "evidence is unaffected.",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def staging_delivery(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+) -> dict[str, Any]:
+    if staging_bundle is None:
+        return disabled_staging_delivery("--no-staging")
+    return staging_bundle.delivery_summary
+
+
+_staging_delivery = staging_delivery
+
+
+def stage_dataset(
+    args: argparse.Namespace,
+    *,
+    manifest: Mapping[str, Any],
+    output_paths: Mapping[str, Path],
+    run_id: str,
+    staging_bundle: StagingRunBundleWriterV2 | None,
+) -> StagedBundleHandOver:
+    """Stage the published bundle under ``staged/<run_id>/``; record, never raise.
+
+    The bundle is every file the manifest registers as an output plus the
+    manifest and two sidecars, verified from disk against the manifest's own
+    digests. Nothing else in the run directory is eligible. The build's
+    emitter uploads it; the result says which bundle files the build may
+    rewrite afterwards.
+    """
+
+    mode = staged_dataset_mode(args)
+    if mode == "disabled":
+        return StagedBundleHandOver(
+            disabled_staged_dataset(
+                "--no-staging" if args.no_staging else "--no-staged-dataset"
+            )
+        )
+    _warn_hub_offline(args)
+    repository = (
+        None if mode == "local_only" else str(args.staged_dataset_repo_id).strip()
+    )
+    stage(
+        staging_bundle,
+        "dataset_staging",
+        "started",
+        mode=mode,
+        repository=repository,
+    )
+    statuses = gate_statuses(getattr(args, "_gate_report", {}) or {})
+    bundle = StagedDatasetBundle.from_manifest(
+        output_paths["manifest"].parent,
+        run_id=run_id,
+        manifest_name=MANIFEST_FILENAME,
+        extra_summary={
+            "dataset_households": manifest["parameters"]["dataset_households"],
+            "pool_rows": manifest["solve"]["pool_households"],
+            "realized_households": manifest["solve"]["n_households"],
+            "final_loss": manifest["solve"]["final_loss"],
+            "release_posture": manifest["release_posture"],
+            "gate_statuses": statuses,
+        },
+    )
+    telemetry_reference = (
+        None
+        if staging_bundle is None
+        else {
+            "repository": staging_bundle.repo_id,
+            "prefix": staging_bundle.repo_run_prefix,
+            "mode": staging_bundle.delivery_mode,
+        }
+    )
+    write_sidecars(
+        bundle,
+        repository=repository,
+        prefix=UK_STAGED_DATASET_PREFIX,
+        telemetry=telemetry_reference,
+    )
+    if mode == "local_only":
+        handover = StagedBundleHandOver(
+            local_only_staged_dataset(bundle, prefix=UK_STAGED_DATASET_PREFIX)
+        )
+    else:
+        assert repository is not None, "Remote staging requires a repository."
+        print(
+            f"staging the dataset bundle to {repository} under "
+            f"{bundle.remote_prefix(UK_STAGED_DATASET_PREFIX)}...",
+            file=sys.stderr,
+            flush=True,
+        )
+        handover = stage_bundle(
+            bundle,
+            emitter=bundle_emitter(),
+            repository=repository,
+            prefix=UK_STAGED_DATASET_PREFIX,
+        )
+    delivery = handover.delivery
+    print(_staged_dataset_line(delivery), file=sys.stderr, flush=True)
+    stage(
+        staging_bundle,
+        "dataset_staging",
+        "completed",
+        status=delivery["status"],
+        repository=delivery["repository"],
+        revision=delivery["revision"],
+        error_code=delivery["error_code"],
+        file_count=len(delivery["files"]),
+    )
+    add_staging_artifact(
+        staging_bundle,
+        "staged_dataset",
+        delivery,
+        artifact_kind="build_metadata",
+        classification="non_row_level",
+    )
+    add_staging_artifact(
+        staging_bundle,
+        "fit_summary",
+        fit_summary(
+            manifest,
+            run_id=run_id,
+            gate_statuses=statuses,
+            staged_dataset=delivery,
+        ),
+        artifact_kind="aggregate_diagnostics",
+        classification="aggregate",
+    )
+    return handover
+
+
+_stage_dataset = stage_dataset
+
+
+def _staged_dataset_line(delivery: Mapping[str, Any]) -> str:
+    status = delivery["status"]
+    if status in ("uploaded", "already_staged"):
+        return (
+            f"staged dataset: {status} at {delivery['repository']}/"
+            f"{delivery['prefix']} (revision {delivery['revision']})"
+        )
+    if status == "failed":
+        code = delivery["error_code"]
+        if code in RETRYING_ERROR_CODES:
+            return (
+                f"staged dataset: not uploaded yet ({code}); the emitter keeps the "
+                "bundle queued and the next emitter on this machine retries it. "
+                "Leave the run directory unchanged, and record the outcome with "
+                "tools/stage_uk_rowwise_candidate.py"
+            )
+        if code == "REMOTE_DIFFERS":
+            return (
+                f"staged dataset: failed ({code}); {delivery['prefix']} already "
+                "holds a different bundle. Stage this one under another run id "
+                "(tools/stage_uk_rowwise_candidate.py --run-id) if that is intended"
+            )
+        return (
+            f"staged dataset: failed ({code}); the bundle and its sidecars stay "
+            "local and can be re-staged with tools/stage_uk_rowwise_candidate.py"
+        )
+    return (
+        f"staged dataset: skipped ({delivery['mode']}); sidecars written beside "
+        "the bundle"
+    )
+
+
+def add_staging_artifact(
+    staging_bundle: StagingRunBundleWriterV2 | None,
+    logical_name: str,
+    payload: Mapping[str, Any],
+    *,
+    artifact_kind: str,
+    classification: str,
+) -> None:
+    """Attach a reviewed aggregate JSON artifact to the staging run bundle.
+
+    A content-policy refusal is reported and skipped: the telemetry is
+    best-effort and must never fail a finished build.
+    """
+
+    if staging_bundle is None:
+        return
+    with tempfile.TemporaryDirectory(prefix=".staging-artifact.") as scratch:
+        source = Path(scratch) / f"{logical_name}.json"
+        source.write_text(json_text(payload), encoding="utf-8")
+        try:
+            staging_bundle.add_artifact(
+                logical_name,
+                source,
+                artifact_kind=artifact_kind,
+                classification=classification,
+            )
+        except StagingContractError as error:
+            print(
+                f"warning: staging artifact {logical_name} was refused by the "
+                f"content policy and is not staged: {error}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+
+_add_staging_artifact = add_staging_artifact
+
+
+def fit_summary(
+    manifest: Mapping[str, Any],
+    *,
+    run_id: str,
+    gate_statuses: Mapping[str, str],
+    staged_dataset: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Aggregate fit, gate and size evidence shaped for a reviewed artifact.
+
+    The content policy admits JSON objects without arrays of objects, so the
+    per-family rows become mappings keyed by family and anything row-shaped
+    is dropped by :func:`_aggregate_only`.
+    """
+
+    solve = manifest["solve"]
+    fit = manifest.get("fit") or {}
+    size = solve.get("dataset_size")
+    parameters = manifest["parameters"]
+    return {
+        "schema_name": "microcosm.uk.rowwise-fit-summary",
+        "schema_version": 1,
+        "run_id": run_id,
+        "build_kind": manifest["build_kind"],
+        "releasable": manifest["releasable"],
+        "release_posture": _aggregate_only(manifest["release_posture"]),
+        "git_commit": manifest["git_commit"],
+        "git_dirty": manifest["git_dirty"],
+        "parameters": {
+            key: parameters.get(key)
+            for key in (
+                "n_clones",
+                "dataset_households",
+                "seed",
+                "epochs",
+                "sample_fraction",
+                "release_candidate",
+                "skip_holdout",
+                "target_weight_rule",
+            )
+        },
+        "targets": {
+            "count": solve["n_targets"],
+            "by_kind": _aggregate_only(solve["n_targets_by_kind"]),
+        },
+        "pool_rows": solve["pool_households"],
+        "realized_households": solve["n_households"],
+        "loss": {
+            "initial": solve["initial_loss"],
+            "final": solve["final_loss"],
+            "max_abs_relative_error": solve["max_abs_relative_error"],
+            "median_abs_relative_error": solve["median_abs_relative_error"],
+        },
+        "fit_by_family": {
+            "local": _rows_by_key(fit.get("local_by_family"), key="family"),
+            "national": _rows_by_key(fit.get("national_by_family"), key="family"),
+        },
+        "weakest_areas_by_fit": _aggregate_only(fit.get("weakest_areas_by_fit")),
+        "rotated_holdout": _aggregate_only(fit.get("rotated_holdout")),
+        "gates": dict(gate_statuses),
+        "failing_gate_ids": list(manifest.get("failing_gate_ids", [])),
+        "blocking_failure_count": len(manifest.get("blocking_failures", [])),
+        # The receipt's per-row arrays (pool_row_indices, inclusion
+        # probabilities) live in dataset_size_selection.csv and would push the
+        # artifact past the 5 MiB cap on a real run.
+        "dataset_size": None
+        if size is None
+        else _aggregate_only(
+            {
+                key: value
+                for key, value in size.items()
+                if key not in ("pool_row_indices", "inclusion_probabilities")
+            }
+        ),
+        "staged_dataset": {
+            key: staged_dataset[key]
+            for key in ("repository", "prefix", "revision", "status", "error_code")
+        },
+    }
+
+
+_fit_summary = fit_summary
+
+
+def _rows_by_key(rows: Any, *, key: str) -> dict[str, Any]:
+    """Turn a list of row mappings into a mapping keyed by ``row[key]``."""
+
+    if not isinstance(rows, list):
+        return {}
+    keyed: dict[str, Any] = {}
+    for row in rows:
+        if not isinstance(row, Mapping) or key not in row:
+            continue
+        keyed[str(row[key])] = _aggregate_only(
+            {name: value for name, value in row.items() if name != key}
+        )
+    return keyed
+
+
+def _aggregate_only(value: Any) -> Any:
+    """Drop row-shaped data (lists holding mappings) recursively."""
+
+    if isinstance(value, Mapping):
+        kept = {}
+        for name, item in value.items():
+            cleaned = _aggregate_only(item)
+            if cleaned is not _DROPPED:
+                kept[str(name)] = cleaned
+        return kept
+    if isinstance(value, (list, tuple)):
+        if any(isinstance(item, Mapping) for item in value):
+            return _DROPPED
+        return [
+            item
+            for item in (_aggregate_only(entry) for entry in value)
+            if item is not _DROPPED
+        ]
+    return value
+
+
+_DROPPED = object()
+
+
+def replace_manifest(path: Path, manifest: Mapping[str, Any]) -> None:
+    """Rewrite the published manifest atomically with appended evidence."""
+
+    handle, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary_path = Path(temporary)
+    try:
+        with open(handle, "w", encoding="utf-8") as stream:
+            stream.write(json_text(manifest))
+        temporary_path.replace(path)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
+_replace_manifest = replace_manifest
+
+
+def publish_staged_files(
+    staged: Mapping[str, Path],
+    output_paths: Mapping[str, Path],
+) -> None:
+    out_dir = output_paths["manifest"].parent
+    created_out_dir = not out_dir.exists()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    publish_order = (
+        "dataset",
+        "diagnostics",
+        "support",
+        "past_cap",
+        "calibration_diagnostics",
+        "local_registry",
+        "dense_reference",
+        "selection",
+        "manifest",
+    )
+    published: list[Path] = []
+    succeeded = False
+    try:
+        for key in publish_order:
+            if key in SIZE_RUN_ONLY_OUTPUTS and not staged[key].exists():
+                continue
+            destination = output_paths[key]
+            if destination.exists():
+                raise FileExistsError(
+                    "candidate output appeared during publication; refusing "
+                    f"to overwrite {destination}."
+                )
+            staged[key].replace(destination)
+            published.append(destination)
+        succeeded = True
+    finally:
+        if not succeeded:
+            for path in reversed(published):
+                path.unlink(missing_ok=True)
+            if created_out_dir:
+                try:
+                    out_dir.rmdir()
+                except OSError:
+                    pass
+
+
+_publish_staged_files = publish_staged_files

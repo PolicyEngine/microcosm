@@ -1,0 +1,65 @@
+"""Contract tests for the candidate-time UK local gate scope."""
+
+from microcosm.build import load_country_spec
+from microcosm.build.uk_runtime.calibration_run import (
+    UK_LOCAL_GATE_SCOPE,
+    uk_local_gate_scope_exclusions,
+    uk_scoped_gate_manifest,
+)
+
+
+def test_local_scope_is_the_declared_seven_gate_terminal_battery() -> None:
+    assert UK_LOCAL_GATE_SCOPE == (
+        "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
+        "uk_local_area_support",
+        "uk_local_target_fit",
+        "uk_local_per_family_fit",
+        "uk_local_weight_ratio",
+        "uk_local_weight_ess",
+    )
+    manifest = uk_scoped_gate_manifest(
+        UK_LOCAL_GATE_SCOPE,
+        phases=("terminal",),
+        policy_suffix="local_candidate",
+    )
+    assert tuple(entry.id for entry in manifest.gates) == UK_LOCAL_GATE_SCOPE
+    assert {entry.phase for entry in manifest.gates} == {"terminal"}
+    # PR #870 review: every local gate is release-blocking; the fit and weight
+    # gates no longer report without vetoing.
+    assert {entry.criticality for entry in manifest.gates} == {"release_blocking"}
+
+
+def test_local_area_support_parameters_pin_both_grains_and_all_floors() -> None:
+    entries = {entry.id: entry for entry in load_country_spec("uk").gates.gates}
+    area_support = entries["uk_local_area_support"]
+    assert area_support.gate == "area_support"
+    assert dict(area_support.parameters) == {
+        "crosswalk_resource": "local_area_crosswalk.json",
+        "geography_levels": ("constituency", "local_authority"),
+        "minimum_rows": 50,
+        "minimum_effective_sample_size": 50.0,
+        "minimum_distinct_sources": 50,
+        "exclusions_resource": "local_area_support_exclusions.json",
+    }
+
+
+def test_local_target_fit_parameters_pin_the_bound_and_its_own_register() -> None:
+    # microcosm#1301: the local cells stand on their own register, read by the
+    # gate only, never on the national target-fit register.
+    entries = {entry.id: entry for entry in load_country_spec("uk").gates.gates}
+    target_fit = entries["uk_local_target_fit"]
+    assert target_fit.gate == "target_fit"
+    assert dict(target_fit.parameters) == {
+        "surface": "local_candidate",
+        "max_abs_relative_error": 0.25,
+        "reviewed_exclusions_resource": "local_target_fit_reviewed_exclusions.json",
+    }
+
+
+def test_local_scope_exclusions_classify_every_other_uk_gate() -> None:
+    declared = {entry.id for entry in load_country_spec("uk").gates.gates}
+    exclusions = uk_local_gate_scope_exclusions()
+    assert set(exclusions) | set(UK_LOCAL_GATE_SCOPE) == declared
+    assert not set(exclusions) & set(UK_LOCAL_GATE_SCOPE)
+    assert all(exclusions.values())

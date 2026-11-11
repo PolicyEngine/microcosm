@@ -10,8 +10,10 @@ columns.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+import math
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from functools import cache
 from importlib.resources import files
 from typing import Any, Literal
 
@@ -26,6 +28,11 @@ from microcosm.build.ledger_targets import (
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
+)
+from microcosm.build.us_runtime.fsa_student_loan_targets import (
+    FSA_SOURCE_NAME,
+    apply_fsa_student_loan_plan,
+    plan_fsa_student_loan_targets,
 )
 from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
@@ -51,18 +58,22 @@ __all__ = [
     "US_FISCAL_TARGET_LEDGER_REFERENCES",
     "US_FISCAL_TARGET_REFERENCES",
     "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS",
+    "US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS",
+    "US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES",
     "US_FISCAL_LEDGER_PARITY_REGISTRY",
     "US_FISCAL_LEDGER_PARITY_REPORT",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES",
     "SOI_VARIABLE_MAP",
+    "US_SOI_STATE_AGI_BAND_MINIMUM_LOWER_BOUND",
     "US_SOI_FISCAL_TARGET_SPECS",
     "US_SOI_FISCAL_TARGET_REFERENCES",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "SimpleTaxExpenditureReform",
     "compile_us_fiscal_target_registry",
+    "us_fiscal_target_exclusion_receipt",
 ]
 
 TaxExpenditureReformKind = Literal["neutralize_variable"]
@@ -147,14 +158,36 @@ SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
     # floating export-input columns. Income legs sum the positive part of the
     # signed model variable, loss legs the negative-part magnitude
     # (see _signed_component), matching SOI's returns-with-net-income vs
-    # returns-with-net-loss split. estate_income/miscellaneous_income do not
-    # currently add to AGI (loss-cap / catch-all only), but they are the export
-    # columns the export-mass gate tracks, so pinning them identifies those
-    # dimensions.
+    # returns-with-net-loss split. estate_income and miscellaneous_income are
+    # export columns with reviewed exclusions in
+    # US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+    # (tools/build_us_fiscal_refresh_release.py), so the export-mass gate does
+    # not check their drift. The estate rows pin estate_income to SOI. The
+    # other-income rows compile to no target at any vintage
+    # (US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS, microcosm#393), so no
+    # SOI line pins miscellaneous_income today. Both move federal income tax.
+    # In policyengine-us 2.2.1 and 2.23.2 a non-dependent's positive
+    # miscellaneous_income is gross income; loss_ald deducts estate_income
+    # losses above the line, subject to the section 461(l) limit; and
+    # estate_income counts toward qualified business income while
+    # estate_income_would_be_qualified is true (the default). From 2.23.2
+    # (PolicyEngine/policyengine-us#9633) a non-dependent's positive
+    # estate_income is also gross income, and so AGI, and a non-dependent's
+    # signed estate_income plus the Schedule K-1 (Form 1041) box 14 code H
+    # adjustment enters net investment income.
     "estate_trust_net_income_amount": "estate_income",
     "estate_trust_net_loss_amount": "estate_losses",
     "other_income_net_income_amount": "miscellaneous_income",
     "other_income_net_loss_amount": "miscellaneous_losses",
+    # SOI Table 1.4 publishes partnership and S corporation net income and net
+    # loss separately from TY2021 (Chronicle's table_1_4 measure ids; losses
+    # are positive magnitudes). Each entity leg binds that entity's own Schedule
+    # E line-32 leaf, summed to the return, positive part for net income and
+    # negative-part magnitude for net loss (microcosm#1258).
+    "partnership_net_income_amount": "partnership_income",
+    "partnership_net_loss_amount": "partnership_losses",
+    "s_corporation_net_income_amount": "s_corp_income",
+    "s_corporation_net_loss_amount": "s_corp_losses",
     # SOI Table 1.4 "capital gain distributions reported on Form 1040" ==
     # PUF E01100 == PolicyEngine-US non_sch_d_capital_gains (Form 1040 line 7
     # when Schedule D is not required); concept-confirmed against pe-us source.
@@ -233,6 +266,12 @@ SOI_RETURN_MEASURE_VARIABLES: dict[str, str] = {
     "estate_trust_net_loss_returns": "estate_losses",
     "other_income_net_income_returns": "miscellaneous_income",
     "other_income_net_loss_returns": "miscellaneous_losses",
+    # microcosm#1258: return counts paired with the Table 1.4 partnership and
+    # S corporation legs above.
+    "partnership_net_income_returns": "partnership_income",
+    "partnership_net_loss_returns": "partnership_losses",
+    "s_corporation_net_income_returns": "s_corp_income",
+    "s_corporation_net_loss_returns": "s_corp_losses",
     "capital_gain_distributions_returns": "non_sch_d_capital_gains",
     # Build H (microcosm#299): return count paired with the Table 2.1 home
     # mortgage interest amount above (indicator sum over itemizers claiming a
@@ -284,6 +323,12 @@ SOI_VARIABLE_MAP: dict[str, str] = {
     "ordinary_dividends": "ordinary_dividend_income",
     "partnership_and_s_corp_income": "tax_unit_partnership_s_corp_income",
     "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
+    # microcosm#1258: Table 1.4's entity legs read each entity's own person
+    # leaf; the materializer sums it to the tax unit before taking the part.
+    "partnership_income": "partnership_income",
+    "partnership_losses": "partnership_income",
+    "s_corp_income": "s_corp_income",
+    "s_corp_losses": "s_corp_income",
     "assigned_aca_ptc": "assigned_aca_ptc",
     "qualified_business_income_deduction": "qualified_business_income_deduction",
     "qualified_dividends": "qualified_dividend_income",
@@ -333,6 +378,18 @@ _SOI_TOTAL_UPRATED_RETURN_MEASURES = frozenset({"taxable_interest_returns"})
 _SOI_TOTAL_UPRATED_DECOMPOSITION_MEASURES = (
     _SOI_TOTAL_UPRATED_AMOUNT_MEASURES | _SOI_TOTAL_UPRATED_RETURN_MEASURES
 )
+#: Lowest AGI edge a state Historic Table 2 band may have to bind
+#: (microcosm#940). The SOI slice materializer counts every tax unit in the
+#: band, filer or not, so a return count is the same concept as a tax-unit
+#: count only where filing is near universal; the national size-of-AGI
+#: classes use the same floor for the same reason (microcosm#958).
+US_SOI_STATE_AGI_BAND_MINIMUM_LOWER_BOUND = 100_000.0
+_SOI_STATE_AGI_BAND_MEASURES = frozenset({"return_count", "adjusted_gross_income"})
+#: Period-stripped record-set prefixes: a state's AGI bands, and the state
+#: all-returns totals the bands are rebased onto.
+_SOI_STATE_AGI_BAND_RECORD_SET_PREFIX = "irs_soi.historic_table_2.state_agi."
+_SOI_STATE_AGI_BAND_CONTROL_RECORD_SET_PREFIX = "irs_soi.historic_table_2.state_broad."
+_SOI_STATE_AGI_BAND_REBASE_FLAG = "requires_state_agi_band_rebase"
 _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION = "irs_soi.form_w2_item"
 _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
     {
@@ -434,8 +491,18 @@ DIRECT_LEDGER_TARGETS: dict[
             ),
         },
     ),
+    # 2025 Trustees Report Table III.C3 Part B premiums from enrollees.
+    # gross_medicare_part_b_premium is defined for is_medicare_eligible, so
+    # it also charges eligible people who never enrolled. PolicyEngine-US
+    # documents the enrollment-gated gross_medicare_part_b_premium_if_enrolled
+    # for CMS premiums-from-enrollees targets (microcosm#1206).
+    # The target includes income-related premiums (IRMAA). On the locked
+    # policyengine-us 2.2.1 a 2024 release has none, because IRMAA rests on
+    # income two years earlier and the H5 carries 2024 inputs only, so this
+    # row reads the standard premium alone until Microcosm's engine includes
+    # PolicyEngine/policyengine-us#10106 (see microcosm#1206 for the sums).
     ("cms_medicare", "actual_amount", "premiums_from_enrollees"): (
-        "gross_medicare_part_b_premium",
+        "gross_medicare_part_b_premium_if_enrolled",
         "cms_medicare",
         {"target_role": "medicare_part_b_premium_total"},
     ),
@@ -664,7 +731,8 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "6.04M-return W-2 Box 7 class, so binding the return-count target "
         "would demand ~600x weight concentration on those carriers. The "
         "dollar-amount target binds first; the count target waits for tip "
-        "support widening (PolicyEngine/microcosm#451 item 3)."
+        "support widening (PolicyEngine/microcosm#451 item 3). Every vintage "
+        "of the cell is excluded (decision d179)."
     ),
     "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
         "Current 2024 base microdata have zero positive TANF benefit support "
@@ -808,6 +876,46 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
     ),
 }
 
+# The register above is keyed by exact source_record_id, and latest-vintage
+# selection activates the newest remaining fact for each target shape, so
+# excluding one vintage of a cell hands its key to the next vintage the feed
+# carries. The 2026-09-18 feed re-pin (docs/us-chronicle-feed-repin.md) added
+# SOI Table 1.4 cells for ty2020-2022, and the ty2022 other-income rows then
+# calibrated in place of the excluded ty2023 rows (microcosm#956). A fact
+# matches an entry here when its source_record_id equals the entry's once
+# period tokens are stripped (_period_free_source_record_id), so each entry
+# drops every vintage of its cell:
+#
+# - the four #564 other-income rows: the Form 4797 concept mismatch does not
+#   depend on the tax year;
+# - the #451 W-2 Box 7 tips return count: tip support is thin at every
+#   vintage, and the ty2020 fact carries the same 6,038,613 returns as the
+#   excluded ty2023 row (the pinned feed's ty2023 W-2 record sets come from
+#   the soi-w2-statistics-2020 package, chronicle_feed_scope.json). The July
+#   feed (consumer_facts_buildn_v9_4, facts b3c0835...) carried only the
+#   ty2020 vintage, so the ty2023-keyed exclusion matched nothing and the
+#   row calibrated (-52% in experiments/replacement_scorecard/
+#   incumbent_48b9d479.md). The pinned feed carries both, latest-vintage
+#   fallback selected ty2020, and #1016 kept it as the one reviewed vintage
+#   bypass until decision d179 ruled to enforce #451 at every vintage.
+US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS: frozenset[str] = frozenset(
+    {
+        "irs_soi.ty2023.table_1_4.all.other_income_net_loss_amount",
+        "irs_soi.ty2023.table_1_4.all.other_income_net_loss_returns",
+        "irs_soi.ty2023.table_1_4.all.other_income_net_income_amount",
+        "irs_soi.ty2023.table_1_4.all.other_income_net_income_returns",
+        "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count",
+    }
+)
+
+# Reviewed vintage bypasses. Every other exclusion stays keyed to its exact
+# vintage, and the compile refuses a selected fact that is another vintage of
+# an excluded cell (_check_exclusion_vintage_scope) unless its id is listed
+# here with a reason. Removing an entry is mechanical; adding one needs review.
+# Empty since decision d179 scoped the ty2020 tips return count's exclusion to
+# every vintage.
+US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES: dict[str, str] = {}
+
 
 @dataclass(frozen=True)
 class SimpleTaxExpenditureReform:
@@ -942,6 +1050,7 @@ def compile_us_fiscal_target_registry(
     congressional_district_vintage_crosswalk: object | None = None,
     age_targets: bool = False,
     allow_unaged_dollar_targets: bool = False,
+    student_loan_targets: bool = False,
 ) -> TargetRegistry:
     """Resolve US fiscal targets from an external Ledger fact feed.
 
@@ -963,6 +1072,13 @@ def compile_us_fiscal_target_registry(
             unless aging transformed it. Set this to record an explicit,
             auditable waiver instead of raising; every waived target carries
             ``period_contract_waiver`` metadata in diagnostics.
+        student_loan_targets: Bind Federal Student Aid's portfolio facts
+            (``ed_fsa``) to the SCF education-debt stage's person balances
+            (microcosm#1074; see
+            :mod:`microcosm.build.us_runtime.fsa_student_loan_targets`). Only
+            a build that carries those columns can materialize the targets,
+            so the release tool sets this with ``--scf-education-debt``;
+            otherwise the facts are inert.
     """
     materialized_facts = tuple(facts)
     if congressional_district_vintage_crosswalk is not None:
@@ -970,6 +1086,11 @@ def compile_us_fiscal_target_registry(
             materialized_facts,
             congressional_district_vintage_crosswalk,
         )
+    student_loan_plan = (
+        plan_fsa_student_loan_targets(materialized_facts, target_period=target_period)
+        if student_loan_targets
+        else None
+    )
     references = (
         *_dynamic_us_fiscal_target_references(
             materialized_facts,
@@ -979,14 +1100,23 @@ def compile_us_fiscal_target_registry(
             US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
             target_period=target_period,
         ),
+        *(student_loan_plan.references if student_loan_plan is not None else ()),
     )
     registry = compile_ledger_target_references(
         materialized_facts,
         references,
         country="us",
     )
+    if student_loan_plan is not None:
+        # FSA references resolve at their own reference quarter; the plan
+        # moves them to the build period at their reconciled values
+        # (microcosm#1074), before any pass that reads periods or ages.
+        registry = apply_fsa_student_loan_plan(
+            registry, student_loan_plan, target_period=target_period
+        )
     registry = _uprate_cross_period_eitc_decompositions(registry)
     registry = _with_derived_chip_enrollment_targets(registry)
+    registry = _without_m_chip_state_chip_enrollment_targets(registry)
     registry = _rebase_stale_soi_taxable_interest_distributions(
         registry,
         materialized_facts,
@@ -997,6 +1127,7 @@ def compile_us_fiscal_target_registry(
         materialized_facts,
         target_period=target_period,
     )
+    registry = _rebase_soi_state_agi_bands(registry, materialized_facts)
     registry = apply_ledger_target_profile(
         registry,
         _load_us_fiscal_target_profile(),
@@ -1022,10 +1153,123 @@ def compile_us_fiscal_target_registry(
     )
 
 
-# Medicaid-expansion-CHIP (M-CHIP) states: CMS total_chip_enrollment counts
-# M-CHIP enrollment the model cannot materialize as separate CHIP, so neither
-# direct rows nor the combined-minus-medicaid derivation can produce a
-# supportable target there (PolicyEngine/microcosm#321).
+def us_fiscal_target_exclusion_receipt(
+    facts: object,
+    *,
+    target_period: int | str = 2024,
+    congressional_district_vintage_crosswalk: object | None = None,
+) -> dict[str, object]:
+    """List the concrete feed facts each exclusion rule drops or allows.
+
+    ``US_FISCAL_TARGET_SUPPORT_EXCLUSIONS``'s keys alone do not say what a
+    compile excluded: a key can be absent from the feed, and before
+    microcosm#956 a release would have listed the ty2023 other-income ids as
+    excluded while calibrating their ty2022 siblings. Each rule records the
+    source_record_ids it acts on in ``facts``:
+
+    - ``reviewed_exclusion``: facts whose id is an exact register key, other
+      than all-vintage entries (dropped).
+    - ``all_vintage_reviewed_exclusion``: every vintage of an
+      ``US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS`` entry, the entry's own
+      vintage included (dropped).
+    - ``m_chip_state_chip_enrollment``: CMS CHIP enrollment facts for an
+      ``_M_CHIP_STATE_FIPS`` state, at every period (dropped).
+    - ``allowlisted_vintage_bypass``: facts latest-vintage selection activates
+      at ``target_period`` that are another vintage of an excluded cell and
+      carry a reviewed ``US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`` entry
+      (allowed).
+
+    It replays the compiler's fact filter and latest-vintage selection, so pass
+    the same ``target_period`` and crosswalk as the compile. Like the compile,
+    it raises on a vintage bypass nobody reviewed.
+    """
+
+    materialized_facts = tuple(facts)
+    if congressional_district_vintage_crosswalk is not None:
+        materialized_facts = translate_congressional_district_facts_to_current_vintage(
+            materialized_facts,
+            congressional_district_vintage_crosswalk,
+        )
+    reviewed: set[str] = set()
+    all_vintage: set[str] = set()
+    m_chip: set[str] = set()
+    for fact in materialized_facts:
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        if _is_all_vintage_support_exclusion(source_record_id):
+            all_vintage.add(source_record_id)
+        elif source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+            reviewed.add(source_record_id)
+        elif _source_name(fact) == "cms_medicaid":
+            reference = _reference_from_ledger_fact(fact, target_period=target_period)
+            if reference is not None and _is_m_chip_state_chip_enrollment(
+                reference.family, reference.metadata
+            ):
+                m_chip.add(source_record_id)
+    selected_ids = [
+        source_record_id
+        for source_record_id, _ in _latest_dynamic_target_references(
+            materialized_facts, target_period=target_period
+        )
+    ]
+    allowed = _check_exclusion_vintage_scope(selected_ids)
+    return {
+        "target_period": str(target_period),
+        "rules": {
+            "reviewed_exclusion": {
+                "action": "dropped",
+                "scope": "exact source_record_id",
+                "source_record_ids": sorted(reviewed),
+            },
+            "all_vintage_reviewed_exclusion": {
+                "action": "dropped",
+                "scope": "every vintage of each entry",
+                "entries": sorted(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS),
+                "source_record_ids": sorted(all_vintage),
+            },
+            "m_chip_state_chip_enrollment": {
+                "action": "dropped",
+                "scope": "CMS CHIP enrollment rows for these states, every period",
+                "state_fips": sorted(_M_CHIP_STATE_FIPS),
+                "source_record_ids": sorted(m_chip),
+            },
+            "allowlisted_vintage_bypass": {
+                "action": "allowed",
+                "scope": "selected at target_period in place of an excluded vintage",
+                "bypasses": [
+                    {
+                        "source_record_id": source_record_id,
+                        "bypassed_exclusions": list(keys),
+                        "reason": US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES[
+                            source_record_id
+                        ],
+                    }
+                    for source_record_id, keys in sorted(allowed.items())
+                ],
+                "source_record_ids": sorted(allowed),
+            },
+        },
+    }
+
+
+# Medicaid-expansion-CHIP (M-CHIP) states whose CMS CHIP enrollment rows never
+# calibrate (PolicyEngine/microcosm#321). PolicyEngine-US 2.2.1 sets
+# gov.hhs.chip.child.income_limit to -inf in all twenty (and in Rhode Island,
+# which sits outside the set), covering their children through the Medicaid
+# child limits, so chip_enrolled there can come only from the pregnant-person
+# paths. The reason differs by state:
+# - AK DC HI NC ND NH NM OH SC VT WY: the child, pregnant and FCEP limits are
+#   all -inf, so the model has no CHIP path and the rows have no support.
+# - CA IL KY MD ME MI NE OK: the CMS count is mostly M-CHIP children (PE-US's
+#   MACPAC enrollment parameters), a concept only a pregnant or FCEP path could
+#   stand in for.
+# - MN: most of its count is separate CHIP (884 M-CHIP vs 4,285 separate in
+#   the same parameters), so the concept argument does not hold; MN is
+#   excluded because it is in the #321 state set.
+# _without_m_chip_state_chip_enrollment_targets drops these states' direct and
+# derived CHIP rows at every period, after latest-vintage selection, and the
+# derivation below never builds a derived row for them.
 _M_CHIP_STATE_FIPS = frozenset(
     {
         "02",
@@ -1097,6 +1341,38 @@ def _with_derived_chip_enrollment_targets(registry: TargetRegistry) -> TargetReg
             )
         )
     return TargetRegistry(specs, country=registry.country)
+
+
+def _without_m_chip_state_chip_enrollment_targets(
+    registry: TargetRegistry,
+) -> TargetRegistry:
+    """Drop every CMS CHIP enrollment row for an M-CHIP state.
+
+    The derivation skip above guards only the combined-minus-Medicaid path, and
+    only while no direct row exists for the key. A direct CMS
+    ``total_chip_enrollment`` fact compiles to the same ``chip_enrolled`` role,
+    so the 2026-09-18 feed re-pin, which added direct rows for exactly the
+    ``_M_CHIP_STATE_FIPS`` states, reopened the #321 fence (microcosm#956).
+    This rule runs on the compiled registry, after latest-vintage selection,
+    so it holds whichever CMS month supplied the row.
+    """
+
+    specs = tuple(
+        spec
+        for spec in registry.specs
+        if not _is_m_chip_state_chip_enrollment(spec.family, spec.metadata)
+    )
+    if len(specs) == len(registry.specs):
+        return registry
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _is_m_chip_state_chip_enrollment(family: str, metadata: Mapping[str, str]) -> bool:
+    return (
+        family == "cms_medicaid"
+        and metadata.get("target_role") == "chip_enrollment"
+        and metadata.get("state_fips") in _M_CHIP_STATE_FIPS
+    )
 
 
 def _derived_chip_enrollment_hierarchy(
@@ -1775,6 +2051,358 @@ def _soi_total_uprating_index(measure_id: str) -> str:
     return "total_taxable_interest_amount"
 
 
+def _rebase_soi_state_agi_bands(
+    registry: TargetRegistry,
+    facts: tuple[object, ...],
+) -> TargetRegistry:
+    """Bind state HT2 AGI bands as shares of the state total that binds (#940).
+
+    A state's income above $1M is what progressive state rate schedules tax,
+    and state totals alone leave it unconstrained. #940 measured Build P's
+    ACS-local release matching Colorado's return count and AGI within 0.12%
+    while holding 24% of SOI's Colorado AGI above $1M; after the PUF fix
+    (#982), one pre-calibration Colorado record carries 84% of it. The bands
+    bind return counts and AGI from the $100k floor up, with $500k-$1M and
+    $1M+ split.
+
+    Each flagged band row becomes ``control x band / partition``:
+
+    * ``partition`` is the sum of the same state's published bands of the
+      same vintage, measure and record set over the whole AGI line (under $1
+      to $1M+). HT2 publishes amounts additively exactly and counts rounded
+      to tens, so the shares over one partition sum to one.
+    * ``control`` is the state's HT2 ``state_broad`` all-returns total as the
+      registry binds it: the selected, non-excluded row, so a band's share of
+      the total it calibrates beside is the share it records. A state whose
+      total does not bind has no control. Congressional-district
+      ``<st>_total`` rows are a processing-window subset stamped with the
+      wrong vintage and never anchor a state.
+
+    The value lands at the control's period and ages with the state total
+    (counts never age), so a state's bands keep summing to the same share of
+    its bound total at every stage. The control may be older than the band:
+    the latest published shares scale onto the level the state total binds
+    at, which keeps the two consistent instead of mixing levels.
+
+    The vintage is chosen before this pass, in latest-vintage selection
+    (:func:`_with_one_state_agi_band_vintage`), so the exclusion vintage guard
+    and receipt see only the band ids that can bind. A state with no control
+    has its bands dropped, never shipped as unanchored nominal levels; the
+    per-state ``irs_state_agi_top_tail_*`` release requirements then fail.
+    """
+
+    flagged = [
+        spec
+        for spec in registry.specs
+        if spec.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) == "true"
+    ]
+    if not flagged:
+        return registry
+    controls = _soi_state_agi_band_controls(registry)
+    band_rows = _soi_state_agi_band_rows(facts)
+    vintages: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for spec in flagged:
+        vintages.setdefault(_state_agi_band_key(spec.metadata), set()).add(
+            _state_agi_band_vintage(spec.metadata)
+        )
+    partitions: dict[tuple[str, str], float] = {}
+    for key, kept in vintages.items():
+        if len(kept) != 1:
+            raise ValueError(
+                f"State {key[0]} {key[1]} reached the AGI band rebase with more "
+                f"than one vintage: {sorted(kept)}; latest-vintage selection "
+                "keeps one (microcosm#940)."
+            )
+        group = (*key, *next(iter(kept)))
+        partition = _state_agi_band_partition_total(group, band_rows.get(group, ()))
+        if partition:
+            partitions[key] = partition
+
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        if spec.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) != "true":
+            specs.append(spec)
+            continue
+        key = _state_agi_band_key(spec.metadata)
+        if key not in partitions or key not in controls:
+            continue
+        partition = partitions[key]
+        control = controls[key]
+        source_period = spec.metadata.get("source_period", "")
+        share = spec.value / partition
+        factor = control.value / partition
+        specs.append(
+            replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_index": f"state_total_{key[1]}",
+                    "uprating_from_period": source_period,
+                    # Lands at the CONTROL's period; target aging completes
+                    # the remaining links with the state total (#488).
+                    "uprating_to_period": control.source_period,
+                    "uprating_index_source_period": control.source_period,
+                    "uprating_index_source_record_id": control.source_record_id,
+                    "uprating_factor": _format_float(factor),
+                    "state_agi_band_share": _format_float(share),
+                    "stale_distribution_rebased_to_active_total": "true",
+                },
+            )
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _state_agi_band_key(metadata: Mapping[str, str]) -> tuple[str, str]:
+    """(state FIPS, measure) of a flagged band reference or spec."""
+    return (
+        metadata.get("state_fips", ""),
+        metadata.get("source_measure_id", ""),
+    )
+
+
+def _state_agi_band_vintage(metadata: Mapping[str, str]) -> tuple[str, str]:
+    """(source period, period-free record set) of a compiled band spec."""
+    return (
+        metadata.get("source_period", ""),
+        _normalized_record_set_id(metadata.get("ledger_layout_record_set_id", "")),
+    )
+
+
+def _state_agi_band_vintage_from_fact(fact: object) -> tuple[str, str]:
+    """(source period, period-free record set) of a band fact."""
+    return (
+        str(_period_value(fact)),
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
+    )
+
+
+def _with_one_state_agi_band_vintage(
+    selected: tuple[tuple[str, LedgerTargetReference], ...],
+    facts: tuple[object, ...],
+    band_vintages: Mapping[str, tuple[str, str]],
+) -> tuple[tuple[str, LedgerTargetReference], ...]:
+    """Keep each state's AGI bands of one vintage: the newest that tiles (#940).
+
+    Binding state bands keep their period in the selection key, so every
+    eligible vintage (not after the target period) arrives here;
+    ``band_vintages`` maps each band's source record id
+    to its (period, record set). Per (state, measure) the newest vintage whose
+    published partition tiles the AGI line is kept and every other vintage's
+    rows are dropped: a collapsed ``500k_plus`` row from one year never binds
+    beside another year's split ``500k_to_1m``/``1m_plus`` rows, and a newest
+    vintage with a gap falls back to the last complete one. Choosing here,
+    inside selection, means the exclusion vintage guard and the receipt audit
+    only the band ids that can bind.
+    """
+
+    if not band_vintages:
+        return selected
+    band_rows = _soi_state_agi_band_rows(facts)
+    vintages: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for source_record_id, reference in selected:
+        if source_record_id in band_vintages:
+            vintages.setdefault(_state_agi_band_key(reference.metadata), set()).add(
+                band_vintages[source_record_id]
+            )
+    chosen = {
+        key: _latest_complete_state_agi_band_vintage(key, kept, band_rows)
+        for key, kept in vintages.items()
+    }
+    return tuple(
+        (source_record_id, reference)
+        for source_record_id, reference in selected
+        if source_record_id not in band_vintages
+        or chosen[_state_agi_band_key(reference.metadata)]
+        == band_vintages[source_record_id]
+    )
+
+
+def _soi_state_agi_band_rows(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str, str, str], list[tuple[str, tuple[float, float, float]]]]:
+    """Every published state HT2 AGI band of the binding measures.
+
+    Keyed ``(state_fips, measure_id, period, period-free record set)``; each
+    row is ``(source record id, (lower, upper, value))``, with ``value``
+    ``None`` when it does not parse as a number. All bands count, those below
+    the binding floor and negative AGI under $1 included. Rows are not
+    validated here: a group is checked only when a binding band asks for its
+    partition.
+    """
+
+    groups: dict[
+        tuple[str, str, str, str], list[tuple[str, tuple[float, float, float | None]]]
+    ] = {}
+    for fact in facts:
+        if _soi_state_agi_band_status(fact, _measure_id(fact)) is None:
+            continue
+        if _filing_status_label(_dimensions(fact).get("filing_status")) != "All":
+            continue
+        lower, upper = _agi_bounds(fact)
+        key = (
+            _state_fips(fact) or "",
+            _measure_id(fact),
+            str(_period_value(fact)),
+            _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
+        )
+        groups.setdefault(key, []).append(
+            (
+                _source_record_id(fact),
+                (
+                    _bound_from_metadata_value(lower),
+                    _bound_from_metadata_value(upper),
+                    _parsed_value_or_none(fact),
+                ),
+            )
+        )
+    return groups
+
+
+def _state_agi_band_partition_total(
+    key: tuple[str, str, str, str],
+    rows: Iterable[tuple[str, tuple[float, float, float | None]]],
+) -> float | None:
+    """The sum of one group's bands if they tile the whole AGI line.
+
+    A gap leaves the partition incomplete (``None``). A NaN bound, a value
+    that is infinite, NaN or does not parse, overlapping bands, or one source
+    record id with two different rows is a packaging error and raises; an
+    identical re-emission of one id counts once. (A binding band's own fact is still subject to the compile's
+    one-fact-per-record-id rule, which refuses any duplicate.)
+    """
+
+    state_fips, measure_id, period, record_set = key
+    unique: dict[str, tuple[float, float, float]] = {}
+    for source_record_id, row in rows:
+        lower, upper, value = row
+        if math.isnan(lower) or math.isnan(upper):
+            raise ValueError(
+                f"State AGI band {source_record_id} has a NaN bound: {row} "
+                "(microcosm#940)."
+            )
+        if value is None or not math.isfinite(value):
+            raise ValueError(
+                f"State AGI band {source_record_id} has a value that is not a "
+                f"finite number: {row} (microcosm#940)."
+            )
+        if unique.get(source_record_id, row) != row:
+            raise ValueError(
+                f"State AGI band {source_record_id} appears twice with different "
+                f"bounds or values: {unique[source_record_id]} and {row} "
+                "(microcosm#940)."
+            )
+        unique[source_record_id] = row
+    cursor = -float("inf")
+    complete = True
+    for lower, upper, _ in sorted(unique.values()):
+        if lower < cursor or upper <= lower:
+            raise ValueError(
+                f"Overlapping state AGI bands in {record_set} ({period}) "
+                f"for state {state_fips} {measure_id}: a band starting at "
+                f"{_format_bound(lower)} overlaps the one ending at "
+                f"{_format_bound(cursor)}. One vintage's bands must tile the "
+                "AGI line (microcosm#940)."
+            )
+        if lower > cursor:
+            complete = False
+        cursor = upper
+    if not complete or cursor != float("inf"):
+        return None
+    return sum(value for _, _, value in unique.values())
+
+
+def _latest_complete_state_agi_band_vintage(
+    key: tuple[str, str],
+    vintages: set[tuple[str, str]],
+    band_rows: Mapping[
+        tuple[str, str, str, str], list[tuple[str, tuple[float, float, float | None]]]
+    ],
+) -> tuple[str, str] | None:
+    """The newest vintage of a state's bands with a complete, nonzero partition.
+
+    Vintages are examined newest first and the search stops at the first
+    complete one, so an older malformed vintage that could never bind cannot
+    stop the compile. Two record sets of one period that both tile the line
+    are ambiguous and raise.
+    """
+
+    by_period: dict[tuple[int, int], list[tuple[str, str]]] = {}
+    for vintage in vintages:
+        by_period.setdefault(_period_key_from_value(vintage[0])[:2], []).append(vintage)
+    for period_key in sorted(by_period, reverse=True):
+        complete = [
+            vintage
+            for vintage in sorted(by_period[period_key])
+            if _state_agi_band_partition_total(
+                (*key, *vintage), band_rows.get((*key, *vintage), ())
+            )
+        ]
+        if len(complete) > 1:
+            raise ValueError(
+                f"State {key[0]} {key[1]} has complete AGI band partitions in "
+                f"more than one record set for one period: {complete} "
+                "(microcosm#940)."
+            )
+        if complete:
+            return complete[0]
+    return None
+
+
+def _soi_state_agi_band_controls(
+    registry: TargetRegistry,
+) -> dict[tuple[str, str], _SoiTotalControl]:
+    """The bound HT2 ``state_broad`` all-returns total per (state, measure).
+
+    Read from the registry, not the facts: the control is the row latest-
+    vintage selection kept and the exclusions let through, so the bands are
+    shares of the very total that calibrates beside them. Two such rows for
+    one state and measure are ambiguous and raise.
+    """
+
+    controls: dict[tuple[str, str], _SoiTotalControl] = {}
+    for spec in registry.specs:
+        if spec.family != "irs_soi":
+            continue
+        metadata = spec.metadata
+        measure_id = metadata.get("source_measure_id", "")
+        if measure_id not in _SOI_STATE_AGI_BAND_MEASURES:
+            continue
+        if not _normalized_record_set_id(
+            metadata.get("ledger_layout_record_set_id", "")
+        ).startswith(_SOI_STATE_AGI_BAND_CONTROL_RECORD_SET_PREFIX):
+            continue
+        state_fips = metadata.get("state_fips", "")
+        if (
+            not state_fips
+            or metadata.get("congressional_district_geoid")
+            or metadata.get("ledger_geography_level") != "state"
+        ):
+            continue
+        if _bounds_from_metadata(spec) != (-float("inf"), float("inf")):
+            continue
+        if metadata.get("filing_status") != "All":
+            continue
+        if metadata.get("soi_return_universe", "all_returns") != "all_returns":
+            continue
+        source_period = metadata.get("source_period", "")
+        candidate = _SoiTotalControl(
+            value=spec.value,
+            source_period=source_period,
+            source_record_id=metadata.get("ledger_source_record_id", spec.name),
+            period_key=_period_key_from_value(source_period),
+        )
+        key = (state_fips, measure_id)
+        if key in controls:
+            raise ValueError(
+                f"Two state totals bind for state {state_fips} {measure_id}: "
+                f"{controls[key].source_record_id} and {candidate.source_record_id}; "
+                "a state's AGI bands need one control (microcosm#940)."
+            )
+        controls[key] = candidate
+    return controls
+
+
 @dataclass(frozen=True)
 class _EitcActiveTotal:
     value: float
@@ -1898,8 +2526,14 @@ def _eitc_source_decomposition_total_for_bounds(
     lower: float,
     upper: float,
 ) -> float | None:
-    total = 0.0
-    matched = False
+    """Source-period Table 2.5 EITC inside ``[lower, upper)``, all child splits.
+
+    Each child split's record set nests its AGI bins under its all-AGI total
+    row, so summing every contained row would count a split twice once the
+    interval holds both. Count only each split's outermost contained rows.
+    """
+
+    rows_by_split: dict[str, list[tuple[float, float, float]]] = {}
     for spec in registry.specs:
         if not _is_eitc_decomposition_spec(spec):
             continue
@@ -1909,9 +2543,40 @@ def _eitc_source_decomposition_total_for_bounds(
             continue
         spec_lower, spec_upper = _bounds_from_metadata(spec)
         if _contains_bounds(lower, upper, spec_lower, spec_upper):
-            total += spec.value
-            matched = True
-    return total if matched else None
+            rows_by_split.setdefault(
+                spec.metadata.get("ledger_layout_record_set_id", ""), []
+            ).append((spec_lower, spec_upper, spec.value))
+    if not rows_by_split:
+        return None
+    return sum(
+        _outermost_rows_total(record_set_id, rows)
+        for record_set_id, rows in rows_by_split.items()
+    )
+
+
+def _outermost_rows_total(
+    record_set_id: str,
+    rows: list[tuple[float, float, float]],
+) -> float:
+    outermost = sorted(
+        row
+        for index, row in enumerate(rows)
+        if not any(
+            other_index != index
+            and (other[0], other[1]) != (row[0], row[1])
+            and _contains_bounds(other[0], other[1], row[0], row[1])
+            for other_index, other in enumerate(rows)
+        )
+    )
+    for previous, current in zip(outermost, outermost[1:], strict=False):
+        if current[0] < previous[1]:
+            raise ValueError(
+                f"EITC decomposition {record_set_id!r} has overlapping AGI rows "
+                f"[{_format_bound(previous[0])}, {_format_bound(previous[1])}) and "
+                f"[{_format_bound(current[0])}, {_format_bound(current[1])}); "
+                "its rows must nest or be disjoint."
+            )
+    return sum(value for _, _, value in outermost)
 
 
 def _eitc_agi_uprating_group(
@@ -2100,8 +2765,35 @@ def _dynamic_us_fiscal_target_references(
     *,
     target_period: int | str,
 ) -> tuple[LedgerTargetReference, ...]:
+    selected = _latest_dynamic_target_references(facts, target_period=target_period)
+    _check_exclusion_vintage_scope(source_record_id for source_record_id, _ in selected)
+    return tuple(reference for _, reference in selected)
+
+
+def _latest_dynamic_target_references(
+    facts: Iterable[object],
+    *,
+    target_period: int | str,
+) -> tuple[tuple[str, LedgerTargetReference], ...]:
+    """Select one fact per model target shape: the latest eligible period.
+
+    Returns ``(source_record_id, reference)`` pairs so the exclusion vintage
+    guard and receipt can see which fact won each key. State AGI bands are
+    the one family selected by vintage rather than per key: every eligible
+    vintage is a candidate, and :func:`_with_one_state_agi_band_vintage` keeps one per
+    state and measure (microcosm#940).
+    """
+
+    facts = tuple(facts)
+    band_vintages: dict[str, tuple[str, str]] = {}
     candidates: list[
-        tuple[tuple[str, ...], tuple[int, int, str], float, LedgerTargetReference]
+        tuple[
+            tuple[str, ...],
+            tuple[int, int, str],
+            float,
+            str,
+            LedgerTargetReference,
+        ]
     ] = []
     for fact in facts:
         reference = _reference_from_ledger_fact(
@@ -2109,22 +2801,34 @@ def _dynamic_us_fiscal_target_references(
             target_period=target_period,
         )
         if reference is not None:
+            key = _dynamic_target_key(fact)
+            if reference.metadata.get(_SOI_STATE_AGI_BAND_REBASE_FLAG) == "true":
+                # Every eligible vintage of a state AGI band stays a candidate: one
+                # vintage is chosen per state and measure by partition
+                # completeness, which per-band latest selection cannot see
+                # (microcosm#940).
+                key = (*key, str(_period_value(fact)))
+                band_vintages[_source_record_id(fact)] = (
+                    _state_agi_band_vintage_from_fact(fact)
+                )
             candidates.append(
                 (
-                    _dynamic_target_key(fact),
+                    key,
                     _period_key(fact),
                     _numeric_value(fact),
+                    _source_record_id(fact),
                     reference,
                 )
             )
     keys_with_positive_observations = {
-        key for key, _, value, _ in candidates if value > 0
+        key for key, _, value, _, _ in candidates if value > 0
     }
     latest: dict[
-        tuple[str, ...], tuple[tuple[int, int, str], LedgerTargetReference]
+        tuple[str, ...],
+        tuple[tuple[int, int, str], str, LedgerTargetReference],
     ] = {}
     target_period_key = _period_key_from_value(target_period)
-    for key, period_key, value, reference in candidates:
+    for key, period_key, value, source_record_id, reference in candidates:
         if not _not_after_target_period(period_key, target_period_key):
             continue
         if (
@@ -2135,15 +2839,85 @@ def _dynamic_us_fiscal_target_references(
             continue
         current = latest.get(key)
         if current is None:
-            latest[key] = (period_key, reference)
+            latest[key] = (period_key, source_record_id, reference)
             continue
         if _prefer_candidate(
             period_key,
             current[0],
             target_period_key=target_period_key,
         ):
-            latest[key] = (period_key, reference)
-    return tuple(reference for _, reference in latest.values())
+            latest[key] = (period_key, source_record_id, reference)
+    return _with_one_state_agi_band_vintage(
+        tuple(
+            (source_record_id, reference)
+            for _, source_record_id, reference in latest.values()
+        ),
+        facts,
+        band_vintages,
+    )
+
+
+def _exclusion_vintage_bypasses(
+    source_record_ids: Iterable[str],
+) -> dict[str, tuple[str, ...]]:
+    """Map each selected id that is another vintage of an excluded cell.
+
+    The value lists the ``US_FISCAL_TARGET_SUPPORT_EXCLUSIONS`` keys the id
+    matches once period tokens are stripped from both. An id that is itself a
+    key never reaches selection, so every match is a different vintage, older
+    or newer, of a reviewed exclusion.
+    """
+
+    excluded: dict[str, list[str]] = {}
+    for key in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+        excluded.setdefault(_period_free_source_record_id(key), []).append(key)
+    bypasses: dict[str, tuple[str, ...]] = {}
+    for source_record_id in source_record_ids:
+        if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+            continue
+        keys = excluded.get(_period_free_source_record_id(source_record_id))
+        if keys:
+            bypasses[source_record_id] = tuple(sorted(keys))
+    return bypasses
+
+
+def _check_exclusion_vintage_scope(
+    source_record_ids: Iterable[str],
+) -> dict[str, tuple[str, ...]]:
+    """Refuse a selected fact that sidesteps a reviewed exclusion by vintage.
+
+    Latest-vintage selection falls back to whatever other vintage of an
+    excluded cell the feed carries, so an exclusion keyed to one id silently
+    stops excluding when a feed adds vintages (microcosm#956). A match passes
+    only when its id is a reviewed ``US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES``
+    entry; an all-vintage entry never gets here because its facts were dropped
+    before selection. Returns the reviewed bypasses that passed.
+    """
+
+    bypasses = _exclusion_vintage_bypasses(source_record_ids)
+    unreviewed = {
+        source_record_id: keys
+        for source_record_id, keys in bypasses.items()
+        if source_record_id not in US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES
+    }
+    if unreviewed:
+        raise ValueError(
+            "Reviewed US fiscal target exclusions bypassed by another source "
+            "vintage: "
+            + "; ".join(
+                f"{source_record_id} would calibrate in place of excluded "
+                + ", ".join(keys)
+                for source_record_id, keys in sorted(unreviewed.items())
+            )
+            + ". Scope the exclusion to every vintage "
+            "(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS) or record a "
+            "reviewed bypass (US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES)."
+        )
+    return {
+        source_record_id: keys
+        for source_record_id, keys in bypasses.items()
+        if source_record_id in US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES
+    }
 
 
 def _zero_value_means_missing_for_latest_selection(
@@ -2225,6 +2999,34 @@ def _normalized_record_set_id(record_set_id: str) -> str:
     )
 
 
+def _period_free_source_record_id(source_record_id: str) -> str:
+    """The id with its period tokens stripped, e.g. ``ty2022`` or ``month2024_12``.
+
+    Two vintages of one source cell share this form, which is how the
+    exclusion vintage scope matches them. It reuses the record-set period-token
+    rule of ``_dynamic_target_key``. That rule keys latest-vintage selection
+    only for facts without a direct model target: a mapped fact is selected by
+    ``_model_target_key``, so a sibling fact under a differently named record
+    set that wins an excluded cell's model key is not matched here.
+    """
+
+    return _normalized_record_set_id(source_record_id)
+
+
+def _is_all_vintage_support_exclusion(source_record_id: str) -> bool:
+    return _period_free_source_record_id(source_record_id) in (
+        _period_free_source_record_ids(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS)
+    )
+
+
+@cache
+def _period_free_source_record_ids(source_record_ids: frozenset[str]) -> frozenset[str]:
+    return frozenset(
+        _period_free_source_record_id(source_record_id)
+        for source_record_id in source_record_ids
+    )
+
+
 def _soi_return_universe_from_fact(fact: object) -> str:
     return _soi_return_universe_from_record_set_id(
         _str_at(fact, "layout", "record_set_id")
@@ -2240,9 +3042,38 @@ def _soi_return_universe_from_record_set_id(record_set_id: str) -> str:
     return "all_returns"
 
 
+def _soi_record_set_family(record_set_id: str) -> str:
+    """An SOI record set's table family, without period or data vintage.
+
+    ``irs_soi.ty2023.table_1_4`` is ``table_1_4``,
+    ``irs_soi.ty2022.historic_table_2.state_broad`` is ``historic_table_2`` and
+    ``irs_soi.ty2023.congressional_district_2022.all_returns`` is
+    ``congressional_district``.
+    """
+    parts = record_set_id.split(".")
+    if parts[0] != "irs_soi":
+        return ""
+    rest = parts[2:] if len(parts) > 1 and _is_period_token(parts[1]) else parts[1:]
+    if not rest:
+        return ""
+    family = rest[0]
+    if family.startswith("congressional_district"):
+        return "congressional_district"
+    return family
+
+
 def _is_soi_congressional_district_record_set(fact: object) -> bool:
-    record_set_id = _str_at(fact, "layout", "record_set_id")
-    return ".congressional_district_2022." in record_set_id
+    """Whether a fact comes from an IRS SOI congressional-district file.
+
+    Matched by family, at any data vintage: the next IRS release
+    (``congressional_district_2024``) must meet the same guards as the pinned
+    ``congressional_district_2022`` package — never an interest control
+    (microcosm#489) and no PTC amount target.
+    """
+    return (
+        _soi_record_set_family(_str_at(fact, "layout", "record_set_id"))
+        == "congressional_district"
+    )
 
 
 def _is_soi_cd_premium_tax_credit_amount_conflict(
@@ -2321,6 +3152,8 @@ def _reference_from_ledger_fact(
     source_record_id = _source_record_id(fact)
     if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
         return None
+    if _is_all_vintage_support_exclusion(source_record_id):
+        return None
     source_name = _source_name(fact)
     if source_name == "irs_soi":
         return _soi_reference_from_fact(
@@ -2345,6 +3178,11 @@ def _reference_from_ledger_fact(
         return _ssa_ssi_reference_from_fact(fact, target_period=target_period)
     if source_name == "bea":
         return _bea_reference_from_fact(fact, target_period=target_period)
+    if source_name == FSA_SOURCE_NAME:
+        # Federal Student Aid portfolio facts bind only through
+        # plan_fsa_student_loan_targets, which reconciles the tables to one
+        # in-scope control at one reference quarter (microcosm#1074).
+        return None
     if source_name == "jct":
         # JCT facts never bind through dynamic dispatch: tax-expenditure rows
         # compile only as declared SimpleTaxExpenditureReform references
@@ -2409,10 +3247,22 @@ def _soi_reference_from_fact(
         and _is_cross_period_fact(fact, target_period=target_period)
         and _is_soi_total_uprated_decomposition_fact(fact, measure_id)
     )
+    # A state's Historic Table 2 AGI band binds only as a share of its own
+    # published partition, rebased onto the state total that binds
+    # (_rebase_soi_state_agi_bands), and only from the $100k floor up, for all
+    # filing statuses. Every other state band is refused at every vintage, so
+    # no state band ever binds as a raw nominal level (microcosm#940).
+    requires_state_agi_band_rebase = _is_soi_state_agi_band_fact(fact, measure_id)
+    if (
+        _soi_state_agi_band_status(fact, measure_id) is not None
+        and not requires_state_agi_band_rebase
+    ):
+        return None
     if (
         cross_period_agi_slice
         and not requires_total_eitc_uprating
         and not requires_total_soi_uprating
+        and not requires_state_agi_band_rebase
     ):
         return None
     status = _filing_status_label(_dimensions(fact).get("filing_status"))
@@ -2460,6 +3310,8 @@ def _soi_reference_from_fact(
         metadata["requires_total_eitc_uprating"] = "true"
     if requires_total_soi_uprating:
         metadata["requires_total_soi_uprating"] = "true"
+    if requires_state_agi_band_rebase:
+        metadata[_SOI_STATE_AGI_BAND_REBASE_FLAG] = "true"
     return LedgerTargetReference(
         name=source_record_id,
         ledger_source_record_id=source_record_id,
@@ -2557,6 +3409,43 @@ def _is_soi_total_uprated_decomposition_fact(
     if ".historic_table_2." not in _str_at(fact, "layout", "record_set_id"):
         return False
     return not _is_all_income_range(fact)
+
+
+def _soi_state_agi_band_status(
+    fact: object, measure_id: str
+) -> Literal["binding", "below_floor"] | None:
+    """Classify a state Historic Table 2 AGI band (#940).
+
+    ``None`` unless the fact is a return count or AGI amount from a state
+    record set of the Historic Table 2 AGI table, at state geography, in a
+    bounded AGI band. Such a band is ``"binding"`` when its lower edge is at
+    or above :data:`US_SOI_STATE_AGI_BAND_MINIMUM_LOWER_BOUND`, and
+    ``"below_floor"`` otherwise. The national shape of AGI belongs to Pub 1304
+    Table 1.1, so the HT2 ``us`` rows are never state bands.
+    """
+    if measure_id not in _SOI_STATE_AGI_BAND_MEASURES:
+        return None
+    if not _normalized_record_set_id(
+        _str_at(fact, "layout", "record_set_id")
+    ).startswith(_SOI_STATE_AGI_BAND_RECORD_SET_PREFIX):
+        return None
+    if _geography_level(fact) != "state" or _state_fips(fact) is None:
+        return None
+    if _is_all_agi_range_fact(fact):
+        return None
+    lower, _ = _agi_bounds(fact)
+    if _bound_from_metadata_value(lower) >= US_SOI_STATE_AGI_BAND_MINIMUM_LOWER_BOUND:
+        return "binding"
+    return "below_floor"
+
+
+def _is_soi_state_agi_band_fact(fact: object, measure_id: str) -> bool:
+    """Whether a fact is a state HT2 AGI band that binds (#940): a binding-floor
+    band (:func:`_soi_state_agi_band_status`) for all filing statuses."""
+    return (
+        _soi_state_agi_band_status(fact, measure_id) == "binding"
+        and _filing_status_label(_dimensions(fact).get("filing_status")) == "All"
+    )
 
 
 def _state_income_tax_reference_from_fact(
@@ -3291,6 +4180,14 @@ def _congressional_district_geoid(fact: object) -> str | None:
     return congressional_district_geoid
 
 
+def _parsed_value_or_none(fact: object) -> float | None:
+    """The fact's value as a float, or ``None`` when it does not parse."""
+    try:
+        return float(_at(fact, "value"))
+    except (TypeError, ValueError):
+        return None
+
+
 def _numeric_value(fact: object) -> float:
     value = _at(fact, "value")
     try:
@@ -3397,6 +4294,38 @@ US_SOI_FISCAL_TARGET_REFERENCES: tuple[LedgerTargetReference, ...] = tuple(
     if reference.family == "irs_soi"
 )
 
+
+def _state_agi_top_tail_requirements() -> tuple[TargetCoverageRequirement, ...]:
+    """One release requirement per state and measure for the $1M+ band (#940).
+
+    State totals leave a state's top tail free, which is what progressive
+    state rate schedules tax. A state's AGI above $1M is pinned only by its
+    $1M+ AGI and return count together, and each measure's bands are dropped
+    independently when its partition or bound state total is missing, so the
+    release requires both rows for every state: a feed without the split
+    Historic Table 2 state bands fails, naming each state it leaves free.
+    """
+    return tuple(
+        TargetCoverageRequirement(
+            requirement_id=f"irs_state_agi_top_tail_{postal.lower()}_{measure_id}",
+            label=f"SOI {noun} of returns at $1M+ AGI in {postal}",
+            accepted_families=("irs_soi",),
+            required_metadata=(
+                (_SOI_STATE_AGI_BAND_REBASE_FLAG, "true"),
+                ("source_measure_id", measure_id),
+                ("state_fips", state_fips),
+                ("agi_lower_bound", "1000000.0"),
+                ("agi_upper_bound", "inf"),
+            ),
+        )
+        for state_fips, postal in sorted(US_STATE_FIPS_TO_POSTAL.items())
+        for measure_id, noun in (
+            ("adjusted_gross_income", "AGI"),
+            ("return_count", "count"),
+        )
+    )
+
+
 US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = (
     TargetCoverageRequirement(
         requirement_id="federal_income_tax_total",
@@ -3416,6 +4345,7 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
         accepted_name_substrings=(".adjusted_gross_income",),
         min_matches=20,
     ),
+    *_state_agi_top_tail_requirements(),
     TargetCoverageRequirement(
         requirement_id="irs_wages_distribution",
         label="SOI wages by AGI bracket",

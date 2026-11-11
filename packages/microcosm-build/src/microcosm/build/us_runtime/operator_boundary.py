@@ -14,6 +14,11 @@ from typing import Any
 
 import pandas as pd
 
+from microcosm.build.us_runtime.acs_inputs import (
+    _ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION,
+    ACS_UNRESOLVED_PARENT_ID_MAPPINGS,
+    ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS,
+)
 from microcosm.build.us_runtime.acs_transfer import ACS_DERIVED_TRANSFER_INPUTS
 from microcosm.build.us_runtime.adult_care import US_ADULT_CARE_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.child_support import (
@@ -40,6 +45,7 @@ from microcosm.build.us_runtime.eligibility_inputs import (
 from microcosm.build.us_runtime.energy_subsidy import (
     US_ENERGY_SUBSIDY_OUTPUT_COLUMNS,
 )
+from microcosm.build.us_runtime.esi_premiums import US_ESI_PREMIUMS_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.geography_ladder import US_GEOGRAPHY_LADDER_COLUMNS
 from microcosm.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
@@ -87,6 +93,9 @@ from microcosm.build.us_runtime.scf_wealth import (
     US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
     US_SCF_NET_WORTH_OUTPUT_COLUMNS,
 )
+from microcosm.build.us_runtime.spm_independence_role import (
+    US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.weeks_unemployed import (
     US_WEEKS_UNEMPLOYED_OUTPUT_COLUMNS,
 )
@@ -128,6 +137,12 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
     str,
     tuple[str, tuple[str, ...], str],
 ] = {
+    **{
+        output: ("person", source_columns, transformation)
+        for output, (_, source_columns, transformation) in (
+            ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS.items()
+        )
+    },
     "age": ("person", ("AGEP",), "identity"),
     "is_female": ("person", ("SEX",), "SEX == 2"),
     "is_household_head": ("person", ("RELSHIPP",), "RELSHIPP == 20"),
@@ -187,6 +202,14 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
         ("TAXAMT", "ADJHSG", "RELSHIPP"),
         "TAXAMT * ADJHSG / 1_000_000; reference-person carry",
     ),
+    **{
+        output: (
+            "person",
+            (pointer_column,),
+            _ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION,
+        )
+        for output, pointer_column in ACS_UNRESOLVED_PARENT_ID_MAPPINGS
+    },
 }
 _CAPITAL_GAINS_TAIL_PROVENANCE_COLUMNS = frozenset(
     {
@@ -261,6 +284,9 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     "relationship_inputs": {
         "person": frozenset(US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS),
     },
+    "spm_independence_role": {
+        "person": frozenset(US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS),
+    },
     "medicare_take_up": {
         "person": frozenset(US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS),
     },
@@ -301,6 +327,11 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     },
     "retirement_distributions": {
         "person": frozenset(US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS),
+    },
+    # Base-build only (microcosm#454): no pool operator produces these yet, so
+    # a raw source frame that already carries them was staged elsewhere.
+    "esi_premiums": {
+        "person": frozenset(US_ESI_PREMIUMS_OUTPUT_COLUMNS),
     },
     "immigration": {
         "person": frozenset(US_IMMIGRATION_OUTPUT_COLUMNS),

@@ -50,6 +50,8 @@ def notify_release(
     post: Callable[[str, dict[str, Any]], None] | None = None,
     warn_if_unset: bool = False,
     tier: str = "certified",
+    line: str | None = None,
+    revision: str | None = None,
 ) -> bool:
     """Announce a published release to the country's Slack channel.
 
@@ -59,7 +61,8 @@ def notify_release(
     returning silently, so a release that publishes without an alert is visible
     in the log rather than a mystery. ``tier="evidence"`` labels the alert as
     an evidence-tier publish (microcosm#506) so it can never read as a new
-    certified release; the certified message is unchanged.
+    certified release. ``line`` and ``revision`` label an approved line
+    promotion; the existing certified and evidence messages are unchanged.
     """
     country = country_for_repo(repo_id)
     url = webhook or os.environ.get(CHANNEL_ENV[country])
@@ -87,7 +90,16 @@ def notify_release(
         )
         if part
     )
-    if is_evidence:
+    if line is not None:
+        promoted_revision = revision or release_id
+        text = (
+            f"Microcosm {country.upper()} line promoted: {line} -> {promoted_revision}"
+        )
+        header = (
+            f":rocket: *Microcosm {label} line promoted*\n"
+            f"`{line}` → `{promoted_revision}`"
+        )
+    elif is_evidence:
         text = f"New Microcosm {country.upper()} EVIDENCE release: {release_id}"
         header = f":warning: *New Microcosm {label} EVIDENCE release*\n`{release_id}`"
     else:

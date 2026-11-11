@@ -1,0 +1,886 @@
+{
+ "after": {
+  "census_person_columns": {
+   "2022": {
+    "archive_sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+    "columns_added": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "columns_verified_equal": [],
+    "h5_person_rows": 146133,
+    "identity_columns_verified_equal": [
+     "PH_SEQ",
+     "P_SEQ",
+     "A_LINENO",
+     "A_AGE"
+    ],
+    "income_year": 2022,
+    "join_key": "PERIDNUM (exact 22-digit string), one-to-one and total",
+    "joined_person_rows": 146133,
+    "member": "pppub23.csv",
+    "member_person_rows": 146133,
+    "member_sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe",
+    "member_size_bytes": 281065733,
+    "member_values": {
+     "A_ENRLW": {
+      "0": 74477,
+      "1": 11613,
+      "2": 60043
+     },
+     "A_EXPRRP": {
+      "1": 38440,
+      "10": 2799,
+      "11": 132,
+      "12": 1735,
+      "13": 4312,
+      "14": 919,
+      "2": 18399,
+      "3": 11887,
+      "4": 16284,
+      "5": 43805,
+      "7": 2792,
+      "8": 2765,
+      "9": 1864
+     },
+     "A_FTPT": {
+      "0": 134520,
+      "1": 10164,
+      "2": 1449
+     },
+     "NOW_CHAMPVA": {
+      "1": 260,
+      "2": 145873
+     },
+     "NOW_IHSFLG": {
+      "1": 687,
+      "2": 145446
+     },
+     "NOW_MCAID": {
+      "1": 28184,
+      "2": 117949
+     },
+     "NOW_MIL": {
+      "1": 3882,
+      "2": 142251
+     },
+     "NOW_NONM": {
+      "1": 8666,
+      "2": 137467
+     },
+     "NOW_OTHMT": {
+      "1": 275,
+      "2": 145858
+     },
+     "NOW_VACARE": {
+      "1": 1271,
+      "2": 144862
+     },
+     "PTOTVAL": {
+      "negative_rows": 66,
+      "nonzero_rows": 102532
+     }
+    },
+    "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asecpub23csv.zip",
+    "operation": "exact_source_join",
+    "reviewed_columns": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "source_form": "archive",
+    "source_path": "/Users/maxghenis/PolicyEngine/_buildm-runtime/inputs/asec_education/asecpub23csv.zip",
+    "survey_year": 2023
+   },
+   "2023": {
+    "archive_sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09",
+    "columns_added": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "columns_verified_equal": [],
+    "h5_person_rows": 144265,
+    "identity_columns_verified_equal": [
+     "PH_SEQ",
+     "P_SEQ",
+     "A_LINENO",
+     "A_AGE"
+    ],
+    "income_year": 2023,
+    "join_key": "PERIDNUM (exact 22-digit string), one-to-one and total",
+    "joined_person_rows": 144265,
+    "member": "pppub24.csv",
+    "member_person_rows": 144265,
+    "member_sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+    "member_size_bytes": 277250415,
+    "member_values": {
+     "A_ENRLW": {
+      "0": 72991,
+      "1": 11620,
+      "2": 59654
+     },
+     "A_EXPRRP": {
+      "1": 37875,
+      "10": 2763,
+      "11": 147,
+      "12": 1752,
+      "13": 4387,
+      "14": 968,
+      "2": 18376,
+      "3": 11652,
+      "4": 16147,
+      "5": 42756,
+      "7": 2661,
+      "8": 2854,
+      "9": 1927
+     },
+     "A_FTPT": {
+      "0": 132645,
+      "1": 10174,
+      "2": 1446
+     },
+     "NOW_CHAMPVA": {
+      "1": 335,
+      "2": 143930
+     },
+     "NOW_IHSFLG": {
+      "1": 651,
+      "2": 143614
+     },
+     "NOW_MCAID": {
+      "1": 26367,
+      "2": 117898
+     },
+     "NOW_MIL": {
+      "1": 4318,
+      "2": 139947
+     },
+     "NOW_NONM": {
+      "1": 8435,
+      "2": 135830
+     },
+     "NOW_OTHMT": {
+      "1": 331,
+      "2": 143934
+     },
+     "NOW_VACARE": {
+      "1": 1178,
+      "2": 143087
+     },
+     "PTOTVAL": {
+      "negative_rows": 59,
+      "nonzero_rows": 102389
+     }
+    },
+    "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asecpub24csv.zip",
+    "operation": "exact_source_join",
+    "reviewed_columns": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "source_form": "archive",
+    "source_path": "/Users/maxghenis/PolicyEngine/_buildm-runtime/inputs/asec_education/asecpub24csv.zip",
+    "survey_year": 2024
+   },
+   "2024": {
+    "archive_sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+    "columns_added": [],
+    "columns_verified_equal": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "h5_person_rows": 142125,
+    "identity_columns_verified_equal": [
+     "PH_SEQ",
+     "P_SEQ",
+     "A_LINENO",
+     "A_AGE"
+    ],
+    "income_year": 2024,
+    "join_key": "PERIDNUM (exact 22-digit string), one-to-one and total",
+    "joined_person_rows": 142125,
+    "member": "pppub25.csv",
+    "member_person_rows": 142125,
+    "member_sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+    "member_size_bytes": 277882549,
+    "member_values": {
+     "A_ENRLW": {
+      "0": 72079,
+      "1": 11445,
+      "2": 58601
+     },
+     "A_EXPRRP": {
+      "1": 37382,
+      "10": 2659,
+      "11": 134,
+      "12": 1734,
+      "13": 4257,
+      "14": 844,
+      "2": 18380,
+      "3": 11334,
+      "4": 15918,
+      "5": 42053,
+      "7": 2570,
+      "8": 2876,
+      "9": 1984
+     },
+     "A_FTPT": {
+      "0": 130680,
+      "1": 10014,
+      "2": 1431
+     },
+     "NOW_CHAMPVA": {
+      "1": 368,
+      "2": 141757
+     },
+     "NOW_IHSFLG": {
+      "1": 685,
+      "2": 141440
+     },
+     "NOW_MCAID": {
+      "1": 24844,
+      "2": 117281
+     },
+     "NOW_MIL": {
+      "1": 4413,
+      "2": 137712
+     },
+     "NOW_NONM": {
+      "1": 8486,
+      "2": 133639
+     },
+     "NOW_OTHMT": {
+      "1": 312,
+      "2": 141813
+     },
+     "NOW_VACARE": {
+      "1": 1270,
+      "2": 140855
+     },
+     "PTOTVAL": {
+      "negative_rows": 75,
+      "nonzero_rows": 101163
+     }
+    },
+    "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asecpub25csv.zip",
+    "operation": "exact_source_join",
+    "reviewed_columns": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "source_form": "archive",
+    "source_path": "/Users/maxghenis/PolicyEngine/_buildm-runtime/inputs/asec_education/asecpub25csv.zip",
+    "survey_year": 2025
+   }
+  },
+  "checkpoint": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/asec-720-fix/checkpoints/asec_raw_stage.checkpoint.h5",
+  "checkpoint_sha256": "0ae0b7558094ee1175fc03494e07ef79554e40b253a9373ed3f62c1224435395",
+  "gate": {
+   "failure_count": 0,
+   "failures": [],
+   "passed": true,
+   "vintages": {
+    "2022": {
+     "enforced": true,
+     "null_counts": {
+      "has_champva_health_coverage_at_interview": 0,
+      "has_esi": 0,
+      "has_indian_health_service_coverage_at_interview": 0,
+      "has_marketplace_health_coverage_at_interview": 0,
+      "has_medicaid_health_coverage_at_interview": 0,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 0,
+      "has_other_means_tested_health_coverage_at_interview": 0,
+      "has_tricare_health_coverage_at_interview": 0,
+      "has_va_health_coverage_at_interview": 0
+     },
+     "reporter_counts": {
+      "has_champva_health_coverage_at_interview": 260,
+      "has_esi": 78773,
+      "has_indian_health_service_coverage_at_interview": 687,
+      "has_marketplace_health_coverage_at_interview": 4666,
+      "has_medicaid_health_coverage_at_interview": 28184,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 8666,
+      "has_other_means_tested_health_coverage_at_interview": 275,
+      "has_tricare_health_coverage_at_interview": 3882,
+      "has_va_health_coverage_at_interview": 1271
+     },
+     "rows": 146133
+    },
+    "2023": {
+     "enforced": true,
+     "null_counts": {
+      "has_champva_health_coverage_at_interview": 0,
+      "has_esi": 0,
+      "has_indian_health_service_coverage_at_interview": 0,
+      "has_marketplace_health_coverage_at_interview": 0,
+      "has_medicaid_health_coverage_at_interview": 0,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 0,
+      "has_other_means_tested_health_coverage_at_interview": 0,
+      "has_tricare_health_coverage_at_interview": 0,
+      "has_va_health_coverage_at_interview": 0
+     },
+     "reporter_counts": {
+      "has_champva_health_coverage_at_interview": 335,
+      "has_esi": 76710,
+      "has_indian_health_service_coverage_at_interview": 651,
+      "has_marketplace_health_coverage_at_interview": 5530,
+      "has_medicaid_health_coverage_at_interview": 26367,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 8435,
+      "has_other_means_tested_health_coverage_at_interview": 331,
+      "has_tricare_health_coverage_at_interview": 4318,
+      "has_va_health_coverage_at_interview": 1178
+     },
+     "rows": 144265
+    },
+    "2024": {
+     "enforced": true,
+     "null_counts": {
+      "has_champva_health_coverage_at_interview": 0,
+      "has_esi": 0,
+      "has_indian_health_service_coverage_at_interview": 0,
+      "has_marketplace_health_coverage_at_interview": 0,
+      "has_medicaid_health_coverage_at_interview": 0,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 0,
+      "has_other_means_tested_health_coverage_at_interview": 0,
+      "has_tricare_health_coverage_at_interview": 0,
+      "has_va_health_coverage_at_interview": 0
+     },
+     "reporter_counts": {
+      "has_champva_health_coverage_at_interview": 368,
+      "has_esi": 75388,
+      "has_indian_health_service_coverage_at_interview": 685,
+      "has_marketplace_health_coverage_at_interview": 5828,
+      "has_medicaid_health_coverage_at_interview": 24844,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 8486,
+      "has_other_means_tested_health_coverage_at_interview": 312,
+      "has_tricare_health_coverage_at_interview": 4413,
+      "has_va_health_coverage_at_interview": 1270
+     },
+     "rows": 142125
+    }
+   }
+  },
+  "raw_source_mappings": [
+   "ED_VAL",
+   "LKWEEKS",
+   "PAW_TYP"
+  ],
+  "relationship_recode_source": {
+   "2022": "source:A_EXPRRP",
+   "2023": "source:A_EXPRRP",
+   "2024": "source:A_EXPRRP"
+  },
+  "rows": {
+   "family": 189401,
+   "household": 168852,
+   "marital_unit": 345873,
+   "person": 432523,
+   "spm_unit": 176039,
+   "tax_unit": 226102
+  }
+ },
+ "before": {
+  "census_person_columns": {
+   "2022": null,
+   "2023": null,
+   "2024": null
+  },
+  "checkpoint": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/route-a/run-47976be6ce75/base-checkpoints/asec_raw_stage.checkpoint.h5",
+  "checkpoint_sha256": "0e828cca816940b7e227ca806a7db3749f656fe7616f8a809d4eb107b78bedb8",
+  "gate": {
+   "failure_count": 14,
+   "failures": [
+    "has_champva_health_coverage_at_interview: vintage 2022 has 0 reporters over 146133 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_indian_health_service_coverage_at_interview: vintage 2022 has 0 reporters over 146133 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_medicaid_health_coverage_at_interview: vintage 2022 has 0 reporters over 146133 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_non_marketplace_direct_purchase_health_coverage_at_interview: vintage 2022 has 0 reporters over 146133 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_other_means_tested_health_coverage_at_interview: vintage 2022 has 0 reporters over 146133 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_tricare_health_coverage_at_interview: vintage 2022 has 0 reporters over 146133 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_va_health_coverage_at_interview: vintage 2022 has 0 reporters over 146133 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_champva_health_coverage_at_interview: vintage 2023 has 0 reporters over 144265 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_indian_health_service_coverage_at_interview: vintage 2023 has 0 reporters over 144265 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_medicaid_health_coverage_at_interview: vintage 2023 has 0 reporters over 144265 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_non_marketplace_direct_purchase_health_coverage_at_interview: vintage 2023 has 0 reporters over 144265 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_other_means_tested_health_coverage_at_interview: vintage 2023 has 0 reporters over 144265 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_tricare_health_coverage_at_interview: vintage 2023 has 0 reporters over 144265 person rows (consistent with a source input lacking the at-interview recode, microcosm #720).",
+    "has_va_health_coverage_at_interview: vintage 2023 has 0 reporters over 144265 person rows (consistent with a source input lacking the at-interview recode, microcosm #720)."
+   ],
+   "passed": false,
+   "vintages": {
+    "2022": {
+     "enforced": true,
+     "null_counts": {
+      "has_champva_health_coverage_at_interview": 0,
+      "has_esi": 0,
+      "has_indian_health_service_coverage_at_interview": 0,
+      "has_marketplace_health_coverage_at_interview": 0,
+      "has_medicaid_health_coverage_at_interview": 0,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 0,
+      "has_other_means_tested_health_coverage_at_interview": 0,
+      "has_tricare_health_coverage_at_interview": 0,
+      "has_va_health_coverage_at_interview": 0
+     },
+     "reporter_counts": {
+      "has_champva_health_coverage_at_interview": 0,
+      "has_esi": 78773,
+      "has_indian_health_service_coverage_at_interview": 0,
+      "has_marketplace_health_coverage_at_interview": 4666,
+      "has_medicaid_health_coverage_at_interview": 0,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 0,
+      "has_other_means_tested_health_coverage_at_interview": 0,
+      "has_tricare_health_coverage_at_interview": 0,
+      "has_va_health_coverage_at_interview": 0
+     },
+     "rows": 146133
+    },
+    "2023": {
+     "enforced": true,
+     "null_counts": {
+      "has_champva_health_coverage_at_interview": 0,
+      "has_esi": 0,
+      "has_indian_health_service_coverage_at_interview": 0,
+      "has_marketplace_health_coverage_at_interview": 0,
+      "has_medicaid_health_coverage_at_interview": 0,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 0,
+      "has_other_means_tested_health_coverage_at_interview": 0,
+      "has_tricare_health_coverage_at_interview": 0,
+      "has_va_health_coverage_at_interview": 0
+     },
+     "reporter_counts": {
+      "has_champva_health_coverage_at_interview": 0,
+      "has_esi": 76710,
+      "has_indian_health_service_coverage_at_interview": 0,
+      "has_marketplace_health_coverage_at_interview": 5530,
+      "has_medicaid_health_coverage_at_interview": 0,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 0,
+      "has_other_means_tested_health_coverage_at_interview": 0,
+      "has_tricare_health_coverage_at_interview": 0,
+      "has_va_health_coverage_at_interview": 0
+     },
+     "rows": 144265
+    },
+    "2024": {
+     "enforced": true,
+     "null_counts": {
+      "has_champva_health_coverage_at_interview": 0,
+      "has_esi": 0,
+      "has_indian_health_service_coverage_at_interview": 0,
+      "has_marketplace_health_coverage_at_interview": 0,
+      "has_medicaid_health_coverage_at_interview": 0,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 0,
+      "has_other_means_tested_health_coverage_at_interview": 0,
+      "has_tricare_health_coverage_at_interview": 0,
+      "has_va_health_coverage_at_interview": 0
+     },
+     "reporter_counts": {
+      "has_champva_health_coverage_at_interview": 368,
+      "has_esi": 75388,
+      "has_indian_health_service_coverage_at_interview": 685,
+      "has_marketplace_health_coverage_at_interview": 5828,
+      "has_medicaid_health_coverage_at_interview": 24844,
+      "has_non_marketplace_direct_purchase_health_coverage_at_interview": 8486,
+      "has_other_means_tested_health_coverage_at_interview": 312,
+      "has_tricare_health_coverage_at_interview": 4413,
+      "has_va_health_coverage_at_interview": 1270
+     },
+     "rows": 142125
+    }
+   }
+  },
+  "raw_source_mappings": [
+   "ED_VAL",
+   "LKWEEKS",
+   "PAW_TYP"
+  ],
+  "relationship_recode_source": {
+   "2022": "derived:line_spouse_parent",
+   "2023": "derived:line_spouse_parent",
+   "2024": "source:A_EXPRRP"
+  },
+  "rows": {
+   "family": 189401,
+   "household": 168852,
+   "marital_unit": 345873,
+   "person": 432523,
+   "spm_unit": 176039,
+   "tax_unit": 231007
+  }
+ },
+ "corrected_h5_comparison": {
+  "2022": {
+   "NOW_MCAID_yes_rows": 28184,
+   "added_columns_vs_corrected": {
+    "A_ENRLW": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "A_EXPRRP": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "A_FTPT": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_CHAMPVA": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_IHSFLG": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_MCAID": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_MIL": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_NONM": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_OTHMT": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_VACARE": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "PTOTVAL": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    }
+   },
+   "all_added_columns_identical": true,
+   "columns_added": [
+    "NOW_MCAID",
+    "NOW_NONM",
+    "NOW_CHAMPVA",
+    "NOW_MIL",
+    "NOW_VACARE",
+    "NOW_OTHMT",
+    "NOW_IHSFLG",
+    "A_EXPRRP",
+    "PTOTVAL",
+    "A_ENRLW",
+    "A_FTPT"
+   ],
+   "columns_verified_equal": [],
+   "corrected_h5": "/Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/asec-720/census_cps_2022.h5",
+   "corrected_h5_sha256": "797fb7e0ea3e94a52dc6c9c7f5a01d70d28a6c5620f3c112bcbd7c6cf6cffe9f",
+   "corrected_only_columns": [
+    "A_FAMREL",
+    "A_FAMTYP",
+    "LKWEEKS",
+    "NOW_CAID",
+    "NOW_COV",
+    "NOW_DIR",
+    "NOW_MCARE",
+    "NOW_MRKS",
+    "NOW_MRKUN",
+    "NOW_PCHIP",
+    "NOW_PRIV",
+    "NOW_PUB",
+    "PECOHAB"
+   ],
+   "corrected_only_columns_all_in_not_restored": true,
+   "existing_columns_identical_to_corrected": true,
+   "h5_sha256": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+   "joined_person_rows": 146133,
+   "source_form": "archive"
+  },
+  "2023": {
+   "NOW_MCAID_yes_rows": 26367,
+   "added_columns_vs_corrected": {
+    "A_ENRLW": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "A_EXPRRP": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "A_FTPT": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_CHAMPVA": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_IHSFLG": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_MCAID": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_MIL": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_NONM": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_OTHMT": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "NOW_VACARE": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    },
+    "PTOTVAL": {
+     "dtype": [
+      "int64",
+      "int64"
+     ],
+     "identical": true
+    }
+   },
+   "all_added_columns_identical": true,
+   "columns_added": [
+    "NOW_MCAID",
+    "NOW_NONM",
+    "NOW_CHAMPVA",
+    "NOW_MIL",
+    "NOW_VACARE",
+    "NOW_OTHMT",
+    "NOW_IHSFLG",
+    "A_EXPRRP",
+    "PTOTVAL",
+    "A_ENRLW",
+    "A_FTPT"
+   ],
+   "columns_verified_equal": [],
+   "corrected_h5": "/Users/maxghenis/PolicyEngine/_buildo-runtime/inputs/asec-720/census_cps_2023.h5",
+   "corrected_h5_sha256": "5fc2feca08aa125ac2ed127711457038e0d493a5ad1d60aff763fb8e42a9d60a",
+   "corrected_only_columns": [
+    "A_FAMREL",
+    "A_FAMTYP",
+    "NOW_CAID",
+    "NOW_COV",
+    "NOW_DIR",
+    "NOW_MCARE",
+    "NOW_MRKS",
+    "NOW_MRKUN",
+    "NOW_PCHIP",
+    "NOW_PRIV",
+    "NOW_PUB",
+    "PECOHAB"
+   ],
+   "corrected_only_columns_all_in_not_restored": true,
+   "existing_columns_identical_to_corrected": true,
+   "h5_sha256": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+   "joined_person_rows": 144265,
+   "source_form": "archive"
+  },
+  "2024": {
+   "NOW_MCAID_yes_rows": 24844,
+   "columns_added": [],
+   "columns_verified_equal": [
+    "NOW_MCAID",
+    "NOW_NONM",
+    "NOW_CHAMPVA",
+    "NOW_MIL",
+    "NOW_VACARE",
+    "NOW_OTHMT",
+    "NOW_IHSFLG",
+    "A_EXPRRP",
+    "PTOTVAL",
+    "A_ENRLW",
+    "A_FTPT"
+   ],
+   "h5_sha256": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+   "joined_person_rows": 142125,
+   "source_form": "archive"
+  }
+ },
+ "lkweeks_2022_vs_corrected": {
+  "equal_rows": 146133,
+  "rows_joined": 146133
+ },
+ "peak_rss_gb": 10.541154304,
+ "structural_deltas": {
+  "A_ENRLW_null_by_year_after": {
+   "2022": 0,
+   "2023": 0,
+   "2024": 0
+  },
+  "A_ENRLW_null_by_year_before": {
+   "2022": 146133,
+   "2023": 144265,
+   "2024": 0
+  },
+  "A_EXPRRP_changed_2022": 20595,
+  "A_EXPRRP_changed_2023": 20561,
+  "A_EXPRRP_changed_2024": 0,
+  "A_EXPRRP_partner_roommate_13_2022": {
+   "after": 4312,
+   "before": 0
+  },
+  "A_EXPRRP_partner_roommate_13_2023": {
+   "after": 4387,
+   "before": 0
+  },
+  "A_EXPRRP_partner_roommate_13_2024": {
+   "after": 4257,
+   "before": 4257
+  },
+  "A_FTPT_null_by_year_after": {
+   "2022": 0,
+   "2023": 0,
+   "2024": 0
+  },
+  "A_FTPT_null_by_year_before": {
+   "2022": 146133,
+   "2023": 144265,
+   "2024": 0
+  },
+  "PTOTVAL_null_by_year_after": {
+   "2022": 0,
+   "2023": 0,
+   "2024": 0
+  },
+  "PTOTVAL_null_by_year_before": {
+   "2022": 146133,
+   "2023": 144265,
+   "2024": 0
+  },
+  "persons_joined": 432523,
+  "tax_units_after": 226102,
+  "tax_units_before": 231007,
+  "tax_units_by_year_after": {
+   "2022": 75797,
+   "2023": 75608,
+   "2024": 74697
+  },
+  "tax_units_by_year_before": {
+   "2022": 78221,
+   "2023": 78089,
+   "2024": 74697
+  }
+ }
+}

@@ -10,10 +10,11 @@ projections needed to compile a source manifest into a
 the US plan (an implementation per declared stage or nothing).
 
 Belgium is the first full consumer (microcosm#261, epic microcosm#259): the
-``be/`` package declares its BE-SILC source stages, clone-and-assign commune
-geography spine (vintage-aware NIS codes), Ledger target references (never
-values), gate selection with criticality tiers, and the release contract —
-zero Python in the country folder.
+``be/`` package declares its donor-transport source stage (the pinned
+populace-us support pool), clone-and-assign commune geography spine
+(vintage-aware NIS codes), Ledger target references (never values), gate
+selection with criticality tiers, and the release contract — zero Python in
+the country folder.
 
 Typed resources, by canonical filename:
 
@@ -32,11 +33,13 @@ JSON/YAML spec-engine domains; their interpretation belongs to the compiler.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
+from functools import cache
 from importlib import resources as importlib_resources
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -114,15 +117,21 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
         "aggregate_admin",
         "area_support",
         "calibration_reference_coverage",
+        "cell_support",
+        "cell_support_target",
+        "cgt_projection_entrants",
         "column_implication",
         "degenerate_release_surface",
         "enum_domain",
         "export_surface",
         "exported_nonzero",
         "formula_owned_export",
+        "high_value_home_benchmarks",
+        "high_value_home_support",
         "input_mass_parity",
         "ledger_compile_parity",
         "macro_realism",
+        "measurement_prefit",
         "nonconstant_columns",
         "nonnegative_columns",
         "parity",
@@ -1653,6 +1662,51 @@ class ResolvedCountrySpec:
         """
         return compute_composition_fingerprint(self.resource_hashes.values())
 
+    def fingerprint_excluding(self, excluded: Collection[str]) -> str:
+        """Composition fingerprint over every resource hash but ``excluded``.
+
+        A node whose computation reads none of the excluded resources keys on
+        this rather than :attr:`fingerprint`, so an edit to one of them leaves
+        the node a cache hit (microcosm#1301: the UK solve and its gate-only
+        registers). The excluded names are bound too, under their own domain
+        tag, so the value is never the fingerprint of a package that merely
+        lacks those resources, and another exclusion set is another value.
+        Release manifests keep recording :attr:`fingerprint`.
+
+        Raises:
+            TypeError: If ``excluded`` is a single string.
+            ValueError: If a name is not a declared resource, or is
+                ``country_package.json``, which declares the roster itself.
+        """
+        if isinstance(excluded, str):
+            raise TypeError("fingerprint_excluding takes a collection of names.")
+        names = frozenset(excluded)
+        if "country_package.json" in names:
+            raise ValueError(
+                "country_package.json declares the resource roster and cannot "
+                "be excluded from a fingerprint."
+            )
+        undeclared = sorted(names - set(self.resource_hashes))
+        if undeclared:
+            raise ValueError(
+                f"{self.country}: cannot exclude undeclared resource(s) "
+                f"{undeclared} from the fingerprint."
+            )
+        tag = hashlib.sha256(
+            b"microcosm-country-spec/excluding/1\n"
+            + "\n".join(sorted(names)).encode("utf-8")
+        ).hexdigest()
+        return compute_composition_fingerprint(
+            (
+                *(
+                    digest
+                    for name, digest in self.resource_hashes.items()
+                    if name not in names
+                ),
+                tag,
+            )
+        )
+
 
 # Compatibility is an exact alias, not a parallel representation. Existing
 # annotations and imports continue to work while every loader caller receives
@@ -1887,6 +1941,19 @@ def _attest_be_typed_geography_compatibility(
             typed_preserves_constraint,
             True,
         )
+    elif spine.constrain_to_column == "":
+        # Donor support has no observed Belgian region to preserve.
+        require_equal(
+            "assignment/draw/universe <-> geography_spine/constrain_to_column",
+            draw_contract.get("universe"),
+            f"{spine.geography_level}_nationally",
+        )
+        require_equal(
+            "assignment/assertions/source_nuts1_preserved "
+            "<-> geography_spine/constrain_to_column",
+            isinstance(assertions, list) and "source_nuts1_preserved" in assertions,
+            False,
+        )
     else:
         mismatches.append(
             "geography_spine/constrain_to_column: typed BE compatibility "
@@ -2099,7 +2166,9 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
 
     Returns:
         The validated :class:`ResolvedCountrySpec` (also exported through the
-        exact compatibility alias :class:`CountrySpec`).
+        exact compatibility alias :class:`CountrySpec`). A country code is
+        loaded once per process and the same immutable object is returned to
+        every caller; a path is re-read on every call.
 
     Raises:
         FileNotFoundError: If the package or a declared resource is missing.
@@ -2108,9 +2177,21 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
             declared), or a country mismatch.
     """
     if isinstance(country, Path):
-        root = country
-    else:
-        root = Path(str(importlib_resources.files("microcosm.build").joinpath(country)))
+        return _load_country_spec(country)
+    return _load_packaged_country_spec(country)
+
+
+@cache
+def _load_packaged_country_spec(country: str) -> ResolvedCountrySpec:
+    # Packaged resources cannot change while the process runs, and a full load
+    # re-validates every bundle schema and tens of megabytes of target
+    # references (seconds for the UK), so callers share one validated load.
+    return _load_country_spec(
+        Path(str(importlib_resources.files("microcosm.build").joinpath(country)))
+    )
+
+
+def _load_country_spec(root: Path) -> ResolvedCountrySpec:
     package_path = root / "country_package.json"
     if not package_path.exists():
         raise FileNotFoundError(f"No country package at {package_path}.")
@@ -2300,7 +2381,8 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         gates=gates,
         release_contract=release_contract,
         take_up_contract=take_up_contract,
-        resource_hashes=hashes,
+        # Read-only: a cached spec is shared by every caller in the process.
+        resource_hashes=MappingProxyType(hashes),
         resolved_spec=resolved_spec,
     )
 

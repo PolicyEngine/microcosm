@@ -1,0 +1,434 @@
+{
+ "h5": "base_populace_us_2024_puf_support.h5",
+ "h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+ "units": "USD weighted sums unless a key says count or share",
+ "totals": {
+  "rows_count": 907863,
+  "weighted_persons_count": 325952369.05999994,
+  "wages": 10446862521444.438,
+  "desired_traditional_401k": 298716596960.859,
+  "negative_wage_rows_count": 0,
+  "negative_deferral_rows_count": 0,
+  "engine_pre_tax_401k": 297979450698.07776,
+  "engine_taxed_wage": 10149175244250.338,
+  "gross_minus_taxed": 297687277194.09814,
+  "lost_to_zero_floor": 292173503.9796837
+ },
+ "by_channel_and_clone": {
+  "asec/clone0": {
+   "rows_count": 432523,
+   "weighted_persons_count": 162976184.52999997,
+   "wage_earners_count": 80358823.11898607,
+   "wages": 5638320346899.926,
+   "desired_traditional_401k": 166972332492.55276,
+   "deferral_share_of_wages": 0.029613842814794636,
+   "deferral_capped_at_wage": 166705590528.10522,
+   "engine_pre_tax_401k": 166534299148.7981,
+   "engine_taxed_wage": 5472050810961.665,
+   "gross_minus_taxed": 166269535938.25974,
+   "gross_minus_taxed_share_of_wages": 0.029489196375597642,
+   "desired_roth_401k": 29465705733.979897,
+   "contributors_count": 29084774.53441707,
+   "contributors_without_wages_count": 0.0,
+   "contributor_share_of_earners": 0.3619362928119504,
+   "deferral_share_of_contributor_wages": 0.056154071885311074,
+   "mean_wage_of_earners": 70164.29718677378,
+   "unweighted_mean_wage": 33046.11798216511,
+   "wage_earners_under_15_rows_count": 0
+  },
+  "asec/all": {
+   "rows_count": 432523,
+   "weighted_persons_count": 162976184.52999997,
+   "wage_earners_count": 80358823.11898607,
+   "wages": 5638320346899.926,
+   "desired_traditional_401k": 166972332492.55276,
+   "deferral_share_of_wages": 0.029613842814794636,
+   "deferral_capped_at_wage": 166705590528.10522,
+   "engine_pre_tax_401k": 166534299148.7981,
+   "engine_taxed_wage": 5472050810961.665,
+   "gross_minus_taxed": 166269535938.25974,
+   "gross_minus_taxed_share_of_wages": 0.029489196375597642,
+   "desired_roth_401k": 29465705733.979897,
+   "contributors_count": 29084774.53441707,
+   "contributors_without_wages_count": 0.0,
+   "contributor_share_of_earners": 0.3619362928119504,
+   "deferral_share_of_contributor_wages": 0.056154071885311074,
+   "mean_wage_of_earners": 70164.29718677378,
+   "unweighted_mean_wage": 33046.11798216511,
+   "wage_earners_under_15_rows_count": 0
+  },
+  "puf_tax_detail/clone1": {
+   "rows_count": 432523,
+   "weighted_persons_count": 162809530.41265315,
+   "wage_earners_count": 79370443.48628676,
+   "wages": 4794405903596.947,
+   "desired_traditional_401k": 131331565550.42848,
+   "deferral_share_of_wages": 0.02739266724411016,
+   "deferral_capped_at_wage": 131304157870.57767,
+   "engine_pre_tax_401k": 131034350733.86198,
+   "engine_taxed_wage": 4663398960542.936,
+   "gross_minus_taxed": 131006943054.01117,
+   "gross_minus_taxed_share_of_wages": 0.027324958647269464,
+   "desired_roth_401k": 23160283443.02305,
+   "contributors_count": 25236823.771585032,
+   "contributors_without_wages_count": 0.0,
+   "contributor_share_of_earners": 0.31796248909640185,
+   "deferral_share_of_contributor_wages": 0.05562484012459733,
+   "mean_wage_of_earners": 60405.431707400014,
+   "unweighted_mean_wage": 28249.108275354407,
+   "wage_earners_under_15_rows_count": 0
+  },
+  "puf_tax_detail/clone2": {
+   "rows_count": 42817,
+   "weighted_persons_count": 166654.11734682307,
+   "wage_earners_count": 94558.54467608577,
+   "wages": 14136270947.56422,
+   "desired_traditional_401k": 412698917.8777408,
+   "deferral_share_of_wages": 0.029194327090119317,
+   "deferral_capped_at_wage": 412696304.28724325,
+   "engine_pre_tax_401k": 410800815.4177048,
+   "engine_taxed_wage": 13725472745.737015,
+   "gross_minus_taxed": 410798201.8272073,
+   "gross_minus_taxed_share_of_wages": 0.029059870410731676,
+   "desired_roth_401k": 72849971.1733531,
+   "contributors_count": 51369.35813897018,
+   "contributors_without_wages_count": 0.0,
+   "contributor_share_of_earners": 0.543254534161223,
+   "deferral_share_of_contributor_wages": 0.044266526979189036,
+   "mean_wage_of_earners": 149497.55197680555,
+   "unweighted_mean_wage": 78909.0764958216,
+   "wage_earners_under_15_rows_count": 0
+  },
+  "puf_tax_detail/all": {
+   "rows_count": 475340,
+   "weighted_persons_count": 162976184.52999997,
+   "wage_earners_count": 79465002.03096285,
+   "wages": 4808542174544.512,
+   "desired_traditional_401k": 131744264468.30623,
+   "deferral_share_of_wages": 0.027397963808185936,
+   "deferral_capped_at_wage": 131716854174.86491,
+   "engine_pre_tax_401k": 131445151549.2797,
+   "engine_taxed_wage": 4677124433288.673,
+   "gross_minus_taxed": 131417741255.8384,
+   "gross_minus_taxed_share_of_wages": 0.027330058983684992,
+   "desired_roth_401k": 23233133414.1964,
+   "contributors_count": 25288193.129724,
+   "contributors_without_wages_count": 0.0,
+   "contributor_share_of_earners": 0.3182305729995536,
+   "deferral_share_of_contributor_wages": 0.055580165610507534,
+   "mean_wage_of_earners": 60511.44594032609,
+   "unweighted_mean_wage": 32812.38479173372,
+   "wage_earners_under_15_rows_count": 0
+  }
+ },
+ "deferral_by_wage_band": {
+  "asec": [
+   {
+    "wage_over": 0,
+    "wage_up_to": 25000,
+    "wages": 244185002522.89716,
+    "desired_traditional_401k": 2632985775.613635,
+    "deferral_share_of_wages": 0.010782749752891728,
+    "contributor_share_count_basis": 0.0732849891954355
+   },
+   {
+    "wage_over": 25000,
+    "wage_up_to": 50000,
+    "wages": 876183161901.9768,
+    "desired_traditional_401k": 12345861668.826134,
+    "deferral_share_of_wages": 0.014090503225405887,
+    "contributor_share_count_basis": 0.24982571666239536
+   },
+   {
+    "wage_over": 50000,
+    "wage_up_to": 100000,
+    "wages": 1850139527003.5771,
+    "desired_traditional_401k": 64306574029.783936,
+    "deferral_share_of_wages": 0.03475768886140856,
+    "contributor_share_count_basis": 0.5006845431150748
+   },
+   {
+    "wage_over": 100000,
+    "wage_up_to": 200000,
+    "wages": 1528230965102.9458,
+    "desired_traditional_401k": 61981579680.76474,
+    "deferral_share_of_wages": 0.040557730536882226,
+    "contributor_share_count_basis": 0.6634434554465969
+   },
+   {
+    "wage_over": 200000,
+    "wage_up_to": 500000,
+    "wages": 723141059039.4664,
+    "desired_traditional_401k": 22454618992.515694,
+    "deferral_share_of_wages": 0.031051506081457618,
+    "contributor_share_count_basis": 0.730642257742011
+   },
+   {
+    "wage_over": 500000,
+    "wage_up_to": null,
+    "wages": 416440631329.062,
+    "desired_traditional_401k": 3250712345.0486207,
+    "deferral_share_of_wages": 0.007805944234293462,
+    "contributor_share_count_basis": 0.5605728194364933
+   }
+  ],
+  "puf_tax_detail": [
+   {
+    "wage_over": 0,
+    "wage_up_to": 25000,
+    "wages": 299444032930.8551,
+    "desired_traditional_401k": 2328087496.2634964,
+    "deferral_share_of_wages": 0.0077746999112888555,
+    "contributor_share_count_basis": 0.06738247372069946
+   },
+   {
+    "wage_over": 25000,
+    "wage_up_to": 50000,
+    "wages": 975291131342.5945,
+    "desired_traditional_401k": 10798011778.903343,
+    "deferral_share_of_wages": 0.011071577944155715,
+    "contributor_share_count_basis": 0.23017049295730083
+   },
+   {
+    "wage_over": 50000,
+    "wage_up_to": 100000,
+    "wages": 1559289288107.4648,
+    "desired_traditional_401k": 54439995749.794655,
+    "deferral_share_of_wages": 0.034913339150728966,
+    "contributor_share_count_basis": 0.49411827486929827
+   },
+   {
+    "wage_over": 100000,
+    "wage_up_to": 200000,
+    "wages": 1073545084686.2108,
+    "desired_traditional_401k": 48144916276.905655,
+    "deferral_share_of_wages": 0.04484666453573122,
+    "contributor_share_count_basis": 0.6417354932592395
+   },
+   {
+    "wage_over": 200000,
+    "wage_up_to": 500000,
+    "wages": 514121948193.588,
+    "desired_traditional_401k": 14797666110.30127,
+    "deferral_share_of_wages": 0.028782404957217157,
+    "contributor_share_count_basis": 0.7457973568829839
+   },
+   {
+    "wage_over": 500000,
+    "wage_up_to": null,
+    "wages": 386850689283.79834,
+    "desired_traditional_401k": 1235587056.1378021,
+    "deferral_share_of_wages": 0.003193963692879349,
+    "contributor_share_count_basis": 0.6434596619661844
+   }
+  ]
+ },
+ "matched_persons": {
+  "asec_rows_count": 432523,
+  "puf_clone1_rows_count": 432523,
+  "matched_count": 432523,
+  "duplicate_keys_count": 0,
+  "pearson_all": 0.5236258411337904,
+  "spearman_all": 0.9377782438890656,
+  "both_positive_count": 198762,
+  "pearson_both_positive": 0.49079420179111327,
+  "spearman_both_positive": 0.9116379416058873,
+  "puf_over_asec_ratio_both_positive": {
+   "p5": 0.4901358028283518,
+   "p25": 0.8208527041598519,
+   "p50": 0.8535100132822729,
+   "p75": 0.9287329786439297,
+   "p95": 1.8162641963312935,
+   "within_1pct": 0.01058049325323754,
+   "within_10pct": 0.17415803825680964
+  },
+  "asec_positive_puf_zero_count": 8444,
+  "asec_zero_puf_positive_count": 5513,
+  "exactly_equal_count": 219804,
+  "exactly_equal_and_positive_count": 0,
+  "unweighted_mean_asec": 33046.11798216511,
+  "unweighted_mean_puf": 28249.108275354407,
+  "unweighted_sum_ratio_puf_over_asec": 0.8548389342009964,
+  "max_asec": 2099999.0,
+  "max_puf": 34235366.874910645,
+  "deferral_pearson_all": 0.34484121515435906,
+  "deferral_exactly_equal_and_positive_count": 680
+ },
+ "matched_tax_units": {
+  "tax_units_count": 226102,
+  "one_to_one_count": 226102,
+  "pearson_all": 0.5020792337530701,
+  "spearman_all": 0.9042728055335659,
+  "both_positive_count": 147952,
+  "puf_over_asec_ratio_both_positive": {
+   "p5": 0.5127392978367625,
+   "p25": 0.8266388546898737,
+   "p50": 0.8645520905003212,
+   "p75": 0.9626133921453883,
+   "p95": 2.187617558382937,
+   "within_1pct": 0.011287444576619444,
+   "within_10pct": 0.19288688223207526
+  },
+  "asec_positive_puf_zero_count": 6597,
+  "asec_zero_puf_positive_count": 5513,
+  "person_share_rows_checked_count": 57335,
+  "person_share_max_abs_gap": 2.220446049250313e-16,
+  "person_share_rows_gap_over_1e-9_count": 0
+ },
+ "tail_clone_vs_clone1": {
+  "tail_rows_count": 42817,
+  "matched_count": 42817,
+  "wage_max_abs_difference": 0.0,
+  "deferral_max_abs_difference": 26241.2
+ },
+ "distributions": {
+  "asec/clone0": {
+   "person_positive_wage_quantiles": {
+    "p10": 12000.0,
+    "p25": 28000.0,
+    "p50": 50000.0,
+    "p75": 85000.0,
+    "p90": 136547.1597825604,
+    "p95": 181000.0,
+    "p99": 400000.0,
+    "p99.9": 1099999.0
+   },
+   "person_max": 2099999.0,
+   "person_rows_at_max_count": 1,
+   "tax_unit_positive_wage_quantiles": {
+    "p10": 16000.0,
+    "p25": 32500.0,
+    "p50": 60000.0,
+    "p75": 114000.0,
+    "p90": 191000.0,
+    "p95": 260000.0,
+    "p99": 530000.0,
+    "p99.9": 1159614.8549007808
+   },
+   "tax_unit_max": 2449998.0,
+   "tax_units_count": 226102,
+   "tax_units_with_wages_count": 154549,
+   "weighted_tax_units_with_wages_count": 61110173.85630624,
+   "weighted_tax_units_count": 89756130.16575196,
+   "share_of_wages_over_1m_person": 0.035784523323663685,
+   "share_of_wages_over_250k_person": 0.15680281482621594,
+   "tax_unit_distinct_positive_totals_count": 12161
+  },
+  "puf_tax_detail/clone1": {
+   "person_positive_wage_quantiles": {
+    "p10": 14007.53568390935,
+    "p25": 24678.44783707195,
+    "p50": 42141.314981252704,
+    "p75": 70334.7359848431,
+    "p90": 113093.03281484295,
+    "p95": 151352.61014393577,
+    "p99": 309611.6241592307,
+    "p99.9": 1205303.0238644842
+   },
+   "person_max": 34235366.874910645,
+   "person_rows_at_max_count": 1,
+   "tax_unit_positive_wage_quantiles": {
+    "p10": 18281.021146796946,
+    "p25": 28727.31894496663,
+    "p50": 50450.870047978584,
+    "p75": 93541.84846542851,
+    "p90": 154217.98532452277,
+    "p95": 210113.03525864024,
+    "p99": 411441.68373245595,
+    "p99.9": 1428056.3921816056
+   },
+   "tax_unit_max": 34235366.874910645,
+   "tax_units_count": 226102,
+   "tax_units_with_wages_count": 153465,
+   "weighted_tax_units_with_wages_count": 60797341.92495917,
+   "weighted_tax_units_count": 89696603.76594031,
+   "share_of_wages_over_1m_person": 0.05465206742972954,
+   "share_of_wages_over_250k_person": 0.14733726102277844,
+   "tax_unit_distinct_positive_totals_count": 21318
+  }
+ },
+ "asec_wage_over_survey_source_by_year": {
+  "2022": {
+   "rows_count": 69148,
+   "wage_over_WSAL_VAL_min": 1.0,
+   "wage_over_WSAL_VAL_median": 1.0,
+   "wage_over_WSAL_VAL_max": 1.0
+  },
+  "2023": {
+   "rows_count": 69489,
+   "wage_over_WSAL_VAL_min": 1.0,
+   "wage_over_WSAL_VAL_median": 1.0,
+   "wage_over_WSAL_VAL_max": 1.0
+  },
+  "2024": {
+   "rows_count": 68569,
+   "wage_over_WSAL_VAL_min": 1.0,
+   "wage_over_WSAL_VAL_median": 1.0,
+   "wage_over_WSAL_VAL_max": 1.0
+  }
+ },
+ "puf_clone_wage_equals_copied_WSAL_VAL_rows_count": 0,
+ "same_rows_comparison": {
+  "other_h5": "populace_us_2024.h5",
+  "other_h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
+  "rows_count": 907863,
+  "rows_missing_in_other_count": 0,
+  "household_weights_identical": false,
+  "employment_income_before_lsr": {
+   "max_abs_difference": 0.0,
+   "rows_changed_count": 0,
+   "rows_changed_by_channel_count": {
+    "asec/clone0": 0,
+    "puf_tax_detail/clone1": 0,
+    "puf_tax_detail/clone2": 0
+   }
+  },
+  "traditional_401k_contributions_desired": {
+   "max_abs_difference": 26241.2,
+   "rows_changed_count": 30435,
+   "rows_changed_by_channel_count": {
+    "asec/clone0": 0,
+    "puf_tax_detail/clone1": 25729,
+    "puf_tax_detail/clone2": 4706
+   }
+  },
+  "roth_401k_contributions_desired": {
+   "max_abs_difference": 4792.093764192386,
+   "rows_changed_count": 28695,
+   "rows_changed_by_channel_count": {
+    "asec/clone0": 0,
+    "puf_tax_detail/clone1": 24316,
+    "puf_tax_detail/clone2": 4379
+   }
+  },
+  "traditional_ira_contributions_desired": {
+   "max_abs_difference": 2916.9504,
+   "rows_changed_count": 28912,
+   "rows_changed_by_channel_count": {
+    "asec/clone0": 0,
+    "puf_tax_detail/clone1": 24403,
+    "puf_tax_detail/clone2": 4509
+   }
+  },
+  "roth_ira_contributions_desired": {
+   "max_abs_difference": 4524.2496,
+   "rows_changed_count": 29222,
+   "rows_changed_by_channel_count": {
+    "asec/clone0": 0,
+    "puf_tax_detail/clone1": 24726,
+    "puf_tax_detail/clone2": 4496
+   }
+  },
+  "self_employed_pension_contributions_desired": {
+   "max_abs_difference": 1380.0,
+   "rows_changed_count": 1219,
+   "rows_changed_by_channel_count": {
+    "asec/clone0": 0,
+    "puf_tax_detail/clone1": 1002,
+    "puf_tax_detail/clone2": 217
+   }
+  },
+  "person_support_channel_differing_rows_count": 0,
+  "person_support_clone_index_differing_rows_count": 0
+ }
+}

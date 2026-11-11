@@ -1,0 +1,124 @@
+{
+  "branch_head": "98ac4757 (direct) / 98ac4757 (seam)",
+  "direct": {
+    "details": {
+      "base_year": 2024,
+      "bound": 73000.0,
+      "bound_source": "hmrc_cgt_conditioning_facts.json: HMRC Table 2.1a tax year 2024, taxpayers with gains from 3,000 to 6,000",
+      "cumulative_gains_factor_by_year": {
+        "2025": 1.0438,
+        "2026": 1.07427896,
+        "2027": 1.108978170408,
+        "2028": 1.143356493690648,
+        "2029": 1.1771998459038913,
+        "2030": 1.214281641049864
+      },
+      "entrants_by_year": {
+        "2025": 10832804.010787928,
+        "2026": 10866856.974258387,
+        "2027": 10897468.20161053,
+        "2028": 10923076.027606929,
+        "2029": 10958313.550277675,
+        "2030": 10978624.221754039
+      },
+      "exempt_amount_by_year": {
+        "2024": 3000.0,
+        "2025": 3000.0,
+        "2026": 3000.0,
+        "2027": 3000.0,
+        "2028": 3000.0,
+        "2029": 3000.0,
+        "2030": 3000.0
+      },
+      "exempt_amount_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+      "gains_growth_parameter": "gov.economic_assumptions.yoy_growth.obr.per_capita.gdp",
+      "horizon_year": 2030,
+      "max_entrants": 10978624.221754039,
+      "projection_engine": "policyengine-uk==2.98.0",
+      "sub_exempt": {
+        "p10": 3000.0,
+        "p50": 3000.0,
+        "p90": 3000.0,
+        "rows": 20642,
+        "weighted_at_exempt_amount": 10815254.376677955,
+        "weighted_persons": 11664956.898602244
+      },
+      "worst_year": 2030
+    },
+    "passed": false
+  },
+  "engine": "policyengine-uk==2.98.0",
+  "seam": {
+    "blocked_at_phase": "terminal",
+    "evidence_sha256_keys": [
+      "uk_cgt_projection_entrants"
+    ],
+    "fence": {
+      "details": {
+        "base_year": 2024,
+        "bound": 73000.0,
+        "bound_source": "hmrc_cgt_conditioning_facts.json: HMRC Table 2.1a tax year 2024, taxpayers with gains from 3,000 to 6,000",
+        "cumulative_gains_factor_by_year": {
+          "2025": 1.0438,
+          "2026": 1.07427896,
+          "2027": 1.108978170408,
+          "2028": 1.143356493690648,
+          "2029": 1.1771998459038913,
+          "2030": 1.214281641049864
+        },
+        "entrants_by_year": {
+          "2025": 10832804.010787928,
+          "2026": 10866856.974258387,
+          "2027": 10897468.20161053,
+          "2028": 10923076.027606929,
+          "2029": 10958313.550277675,
+          "2030": 10978624.221754039
+        },
+        "exempt_amount_by_year": {
+          "2024": 3000.0,
+          "2025": 3000.0,
+          "2026": 3000.0,
+          "2027": 3000.0,
+          "2028": 3000.0,
+          "2029": 3000.0,
+          "2030": 3000.0
+        },
+        "exempt_amount_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+        "gains_growth_parameter": "gov.economic_assumptions.yoy_growth.obr.per_capita.gdp",
+        "horizon_year": 2030,
+        "max_entrants": 10978624.221754039,
+        "projection_engine": "policyengine-uk==2.98.0",
+        "sub_exempt": {
+          "p10": 3000.0,
+          "p50": 3000.0,
+          "p90": 3000.0,
+          "rows": 20642,
+          "weighted_at_exempt_amount": 10815254.376677955,
+          "weighted_persons": 11664956.898602244
+        },
+        "worst_year": 2030
+      },
+      "failures": [
+        "microcosm_uk_2024: 10,978,624 weighted sub-exempt gainers cross the frozen annual exempt amount by 2030 under the engine's uprating, above the bound of 73,000 (hmrc_cgt_conditioning_facts.json: HMRC Table 2.1a tax year 2024, taxpayers with gains from 3,000 to 6,000)."
+      ],
+      "status": "failed"
+    },
+    "gate_statuses": {
+      "uk_aggregate_admin": "passed",
+      "uk_calibration_reference_coverage": "passed",
+      "uk_cgt_projection_entrants": "failed",
+      "uk_target_fit": "failed",
+      "uk_weight_ess": "passed",
+      "uk_weight_ratio": "passed",
+      "uk_zero_weight_strata": "passed"
+    },
+    "gates_manifest_sha256": "59323ffc470884c49f77105a80cb05eb6cc5321e9bfb109733ff51ea9f557d94",
+    "policy_sha256": "daa0b7fd4abeea97ffeeca227b1524458d00cc5f1bf45278b437dacb79cf4032",
+    "release_id": "uk-spine-assessment-v20-970-fence",
+    "staging_h5_written": false,
+    "target_fit_failures": [
+      "microcosm_uk_2024: hmrc/self_employment_income_income_band_20_000_to_30_000@2025 relative error +25.3% exceeds 25%."
+    ]
+  },
+  "what": "The #970 projection fence evaluated on the calibrated v20 artifact (spine-assessment-v20/microcosm_uk_2024.h5, sha256 8883e592\u2026), directly and as the signed seam receipt of calibrating the v20 spine (spine-s.h5 4d9752fd\u2026) through the branch; aggregates only."
+}

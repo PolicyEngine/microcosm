@@ -93,6 +93,8 @@ import pandas as pd
 
 from .support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    _validated_clone_indices,
+    require_assembled_support_provenance,
     support_channel_column,
     support_clone_index_column,
 )
@@ -400,34 +402,23 @@ def _assert_one_kind_per_household(
 def _person_clone_copies(person: pd.DataFrame) -> np.ndarray:
     """Each person's support-clone copy; refuses an undecidable clone index.
 
-    A support clone deep-copies every column of a table and remaps only the
-    structural id and membership columns
-    (``puf_support._clone_entity_table``), so clone copy ``k`` carries the
-    native row's source fields under new ids. With no clone-index column the
-    frame was never support-cloned and every person is native. When the column
-    is present, a missing, non-finite, negative or non-integral value is
-    undecidable provenance, and the module refuses it rather than guess a copy:
-    reading it as native could merge a genuine cross-copy collision into an
-    apparent bijection in the degraded-partition check. The maintained readers
-    of this column refuse the same values (``acs_transfer`` raises on an
-    invalid clone index; ``stacked_spine`` and ``puf_support`` parse it with
-    ``errors="raise"`` or refuse a missing one).
+    Historical input without a clone-index column retains the native-copy
+    fallback. Assembled input must carry complete support provenance before
+    that fallback is considered. Shared int64 validation rejects invalid
+    values and preserves distinct large integer copy indices, so the native
+    partition check does not merge copies through a float conversion.
     """
-    if _PERSON_CLONE_INDEX_COLUMN not in person.columns:
-        return np.full(len(person), _NATIVE_CLONE_INDEX, dtype=float)
-    values = pd.to_numeric(
-        person[_PERSON_CLONE_INDEX_COLUMN], errors="coerce"
-    ).to_numpy(dtype=float)
-    invalid = ~np.isfinite(values) | (values < 0) | (values != np.floor(values))
-    _require(
-        not invalid.any(),
-        "SPM_UNIVERSE_INVALID_CLONE_INDEX",
-        f"{int(invalid.sum())} person row(s) carry a missing, non-finite, "
-        f"negative or non-integral {_PERSON_CLONE_INDEX_COLUMN}; the row's "
-        "support-clone copy is undecidable, so neither the group-quarters nor "
-        "the degraded-partition check can be judged.",
-    )
-    return values
+    try:
+        require_assembled_support_provenance(person, entity="person")
+        if _PERSON_CLONE_INDEX_COLUMN not in person.columns:
+            return np.full(len(person), _NATIVE_CLONE_INDEX, dtype=float)
+        return _validated_clone_indices(
+            person,
+            _PERSON_CLONE_INDEX_COLUMN,
+            owner="SPM universe support provenance",
+        )
+    except ValueError as exc:
+        _require(False, "SPM_UNIVERSE_INVALID_CLONE_INDEX", str(exc))
 
 
 def _assert_group_quarters_are_single_native_records(

@@ -36,6 +36,13 @@ and build packages. It currently defines:
 - `UK_REGION_TIER`, `UK_REGION_TIER_ENUM` and `UK_LADDER_NATION_REGION_CODES` (the
   twelve-area region tier UK national references fan out over, its spine
   `region` enum names, and the ladder's nation pseudo-codes; microcosm#905)
+- `UK_WIDE_GEOGRAPHY_IDS` (the K-prefixed UK-wide aggregates among
+  `UK_GEOGRAPHY_ID_TO_LABEL`, which the nation grain of the UK target-weight
+  rules splits on; microcosm#1124)
+- `US_STATE_FIPS_TO_NAME` (each state's Census name, "District of Columbia"
+  included: the names Chronicle's state facts carry, so a target Microcosm
+  labels itself gives a state the same label as the ledger targets;
+  microcosm#1335)
 - `US_STATE_FIPS_TO_POSTAL`
 - `US_STATE_NUMERIC_FIPS_TO_POSTAL`
 - `US_STATE_POSTAL_TO_NUMERIC_FIPS`
@@ -48,6 +55,21 @@ from microcosm.calibrate.geography_constants import (
 )
 ```
 
-Do not add another state FIPS/postal mapping to a country runtime or diagnostics
-module. Extend the shared definition and its consistency test when supported
-geographies change.
+Do not add another state FIPS/postal or FIPS/name mapping to a country runtime
+or diagnostics module. Extend the shared definition and its consistency test
+when supported geographies change. The block ladder's `US_STATES` table derives
+its P.L. 94-171 directory names from `US_STATE_FIPS_TO_NAME`. A congressional
+district's label is the Census Bureau's district name, from
+`congressional_district_label` in
+`microcosm.build.us_runtime.congressional_district_vintage`; it spells the
+state with `US_STATE_FIPS_TO_NAME`.
+
+The engine's `local_authority` member names are not a constants table: the 361
+April 2023 authority names are published ONS data, held in the sha-pinned
+resource `microcosm/build/uk/local_authority_names.json` (regenerate with
+`tools/generate_uk_local_authority_names.py`). Only the mechanical key rule and
+its declared aliases are code, in
+[`microcosm.build.uk_runtime.local_authority_input`](../packages/microcosm-build/src/microcosm/build/uk_runtime/local_authority_input.py);
+derive an engine key through `local_authority_engine_key` rather than
+re-implementing the rule, and resolve codes through
+`resolve_local_authority_engine_keys`, which fails closed (microcosm#953).

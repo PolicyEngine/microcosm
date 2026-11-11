@@ -1,0 +1,1 @@
+Check, rather than assert, that the UK `energy_rake` stage-health gate reads a converged NEED rake: each fuel's per-sweep residual may move by at most `maximum_residual_change_over_window` (0.1 point) over the last `convergence_window_sweeps` (10) sweeps, or the receipt fails as a truncated rake. The residual tolerance stays 2.5 %.

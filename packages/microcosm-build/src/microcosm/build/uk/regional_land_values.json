@@ -3,70 +3,72 @@
   "country": "uk",
   "policy": "Public regional land-value reference for deterministic post-WAS property uprating.",
   "source": {
-    "provenance": "Incumbent public regional_land_values.csv re-homed as a JSON country-package resource for Microcosm. Values combine MHCLG dwellings and ONS UK House Price Index average prices for December 2025.",
+    "provenance": "Incumbent public regional_land_values.csv re-homed as a JSON country-package resource for Microcosm. Values combine MHCLG dwellings and the UK House Price Index average price by region, averaged over the twelve months of calendar 2024 from the July 2026 full file (HM Land Registry, registered raw-only in Chronicle as hmlr-uk-hpi-full-file-july-2026, sha256 654a541934ba7b393a741e23bc0c6fb668690f562feb8a7b4fff62d653fd6607).",
+    "valuation_basis": "calendar-2024 average prices: the stored main_residence_value sits at the dataset period's price level, so the engine's annual uprating from 2024 projects it once (microcosm#1240 fix 5; the December 2025 level this resource carried before was projected from 2024 a second time)",
     "citation_urls": [
       "https://www.gov.uk/government/collections/dwelling-stock-including-vacants",
-      "https://www.ons.gov.uk/economy/inflationandpriceindices/bulletins/housepriceindex/december2025"
+      "https://www.gov.uk/government/statistical-data-sets/uk-house-price-index-data-downloads-july-2026"
     ]
   },
   "values": [
     {
       "region": "NORTH_EAST",
-      "avg_house_price": 165257,
+      "avg_house_price": 151900,
       "dwellings": 1280700
     },
     {
       "region": "NORTH_WEST",
-      "avg_house_price": 217428,
+      "avg_house_price": 203147,
       "dwellings": 3441730
     },
     {
       "region": "YORKSHIRE",
-      "avg_house_price": 208447,
+      "avg_house_price": 196802,
       "dwellings": 2530680
     },
     {
       "region": "EAST_MIDLANDS",
-      "avg_house_price": 243632,
+      "avg_house_price": 231829,
       "dwellings": 2213820
     },
     {
       "region": "WEST_MIDLANDS",
-      "avg_house_price": 246141,
+      "avg_house_price": 237893,
       "dwellings": 2619300
     },
     {
       "region": "EAST_OF_ENGLAND",
-      "avg_house_price": 338002,
+      "avg_house_price": 329196,
       "dwellings": 2841060
     },
     {
       "region": "LONDON",
-      "avg_house_price": 551294,
+      "avg_house_price": 556104,
       "dwellings": 3813790
     },
     {
       "region": "SOUTH_EAST",
-      "avg_house_price": 378800,
+      "avg_house_price": 374675,
       "dwellings": 4138200
     },
     {
       "region": "SOUTH_WEST",
-      "avg_house_price": 301226,
+      "avg_house_price": 300062,
       "dwellings": 2683030
     },
     {
       "region": "WALES",
-      "avg_house_price": 214883,
+      "avg_house_price": 203051,
       "dwellings": 1476690
     },
     {
       "region": "SCOTLAND",
-      "avg_house_price": 190649,
+      "avg_house_price": 182008,
       "dwellings": 2602545
     }
   ],
   "chronicle": [
-    "2026-08-18: added for microcosm#681 E5 WAS wealth and regional property uprating."
+    "2026-08-18: added for microcosm#681 E5 WAS wealth and regional property uprating.",
+    "2026-10-13: regional prices moved from the December 2025 level to the calendar-2024 average (microcosm#1240 fix 5, valuation-date contract)."
   ]
 }

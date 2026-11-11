@@ -20,13 +20,17 @@ from .canonical import canonical_json
 from .decl import (
     MASS_POLICIES,
     ROWS_ALL,
+    GraphError,
     Node,
     Owned,
     Ownership,
     StructuralDelta,
+    WeightUpdate,
 )
+from .expansion import declared_expand_cells
 from .kernel import KernelResult
 from .store import _encode_object_scalar
+from .weight_update import weight_update_receipt
 
 __all__ = [
     "MassRecord",
@@ -1140,7 +1144,11 @@ def patch(
             node,
             transitioning=node.weights.entity,
         )
-        frame = _apply_weight_transition(population, frame, node, result)
+        frame = (
+            _apply_weight_update(population, frame, node, result)
+            if isinstance(node.weights, WeightUpdate)
+            else _apply_weight_transition(population, frame, node, result)
+        )
     elif result.weights is not None:
         raise PopulationError(
             f"Node {node.id!r} returned weights without declaring a transition."
@@ -1178,34 +1186,10 @@ def patch(
 def _expand_cells(node: Node) -> tuple[tuple[str, str, str], ...]:
     """Return the normative ``(entity, column, dtype)`` EXPAND overlays."""
 
-    raw = node.params.get("expand_cells")
-    if not isinstance(raw, tuple):
-        raise PopulationError(
-            f"EXPAND node {node.id!r} needs tuple params['expand_cells']."
-        )
-    cells: list[tuple[str, str, str]] = []
-    for item in raw:
-        if (
-            not isinstance(item, tuple)
-            or len(item) != 3
-            or any(not isinstance(part, str) or not part for part in item)
-        ):
-            raise PopulationError(
-                f"EXPAND node {node.id!r} has malformed expand_cells entry {item!r}."
-            )
-        entity, column, dtype = item
-        if "." in entity or "." in column:
-            raise PopulationError(
-                f"EXPAND node {node.id!r} params['expand_cells'] entity and "
-                f"column names must be dot-free; got {entity!r}, {column!r}."
-            )
-        # Reuse the declaration token validator without importing frozen
-        # declaration internals into this runtime convention.
-        dtype_for_token(dtype)
-        cells.append((entity, column, dtype))
-    if len({(entity, column) for entity, column, _ in cells}) != len(cells):
-        raise PopulationError(f"EXPAND node {node.id!r} repeats an expanded cell.")
-    return tuple(cells)
+    try:
+        return declared_expand_cells(node)
+    except GraphError as error:
+        raise PopulationError(str(error)) from error
 
 
 def _expand_weight_entity(node: Node) -> str | None:
@@ -1969,6 +1953,67 @@ def _apply_weight_transition(
             f"{current.kind.value!r}."
         )
     return _replace_weights(frame, transition.entity, result.weights)
+
+
+def _apply_weight_update(
+    population: Population, frame: Frame, node: Node, result: KernelResult
+) -> Frame:
+    """Replace an entity's weight values without moving their kind.
+
+    The kind is checked three ways — incumbent, declaration and returned
+    weights must all be the same one — and the kernel's ordered-axis
+    binding is recomputed against the incumbent axis these values are
+    about to be applied to. A cached hit re-enters this function with the
+    restored weights and receipt, so replay is checked by the same code
+    rather than a parallel rule (amendment 26).
+    """
+
+    update = node.weights
+    assert isinstance(update, WeightUpdate)
+    if result.weights is None:
+        raise PopulationError(
+            f"Node {node.id!r} declares a weight update but returned no weights."
+        )
+    if update.entity not in population.frame.weighted_entities:
+        raise PopulationError(
+            f"Node {node.id!r} cannot update inherited weights for "
+            f"{update.entity!r}; explicit weights are required."
+        )
+    old = population.frame.weights_for(update.entity)
+    declared_kind = WeightKind(update.kind)
+    if old.kind is not declared_kind:
+        raise PopulationError(
+            f"Node {node.id!r} declares a same-kind weight update to "
+            f"{update.kind!r}, but the incumbent weights are "
+            f"{old.kind.value!r}; a change of kind is a WeightTransition."
+        )
+    if result.weights.kind is not declared_kind:
+        raise PopulationError(
+            f"Node {node.id!r} declared {update.kind!r} weights but the kernel "
+            f"returned {result.weights.kind.value!r}."
+        )
+
+    id_column = population.frame.schema.entity_id_column(update.entity)
+    axis = population.frame.table(update.entity)[id_column].tolist()
+    if len(result.weights.values) != len(axis):
+        raise PopulationError(
+            f"Node {node.id!r} returned {len(result.weights.values)} weights for "
+            f"an incumbent {update.entity!r} axis of {len(axis)} rows."
+        )
+    declared_axis = result.receipt.get("weight_update")
+    if not isinstance(declared_axis, Mapping):
+        raise PopulationError(
+            f"Node {node.id!r} weight update requires receipt['weight_update']; "
+            "positional weights without their ordered axis are unverifiable."
+        )
+    expected = weight_update_receipt(axis)
+    if dict(declared_axis) != expected:
+        raise PopulationError(
+            f"Node {node.id!r} bound its replacement weights to a different "
+            f"{update.entity!r} axis than the incumbent population carries."
+        )
+
+    return _replace_weights(frame, update.entity, result.weights)
 
 
 def _replace_weights(frame: Frame, entity: str, replacement: Weights) -> Frame:

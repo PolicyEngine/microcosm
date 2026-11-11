@@ -25,7 +25,18 @@ the frame declares kernel entities (``person``, ``household``). The adapter
 maps between them via ``entity_names`` (frame name -> engine name, default:
 capitalize). Engine entities outside the mapping (rulespec-be also defines
 ``Child``, ``Vehicle``, ...) are invisible to the kernel: their variables
-resolve and materialize only once a frame entity is mapped to them.
+resolve and materialize only once a frame entity is mapped to them, or a
+binding-local view (:class:`AxiomView`) runs one over selected person rows.
+
+Binding-local views
+-------------------
+A view names an unmapped engine entity (its logical entity), one bool person
+column (its selector) and an outside value per output. The adapter gathers
+the selected person rows in table order, runs the module's program on the
+logical entity over them, and scatters the outputs back through the same
+mask; every unselected row holds the outside value. View outputs resolve to
+the person entity, and the selector joins the person entity's whole-table
+dependencies (:meth:`AxiomEngine.relation_dependencies`).
 
 RuleSpec authority roots
 ------------------------
@@ -57,21 +68,81 @@ and reform runs construct a second adapter over the reform module — no
 ``materialize(..., reform=...)`` protocol extension is needed for the BE
 validation oracles (microcosm#264), which sequence behind reform modules
 compiled upstream, not behind a protocol change.
+
+Explicit periods
+----------------
+A year label maps to the calendar year and ``YYYY-MM`` to the month unless
+the adapter is given a ``periods`` mapping. With one, every period label must
+appear in it: ``"2026-27"`` resolves to the :class:`AxiomPeriod` bounds the
+caller declared (for example a New Zealand ``tax_year`` from 1 April), and an
+unmapped label fails instead of falling back to a calendar year.
+
+Graph output types
+------------------
+By default :meth:`AxiomEngine.materialize` returns each dense output as a
+numpy array (``np.asarray`` of what the surface returns), with no cast:
+judgments as int8 codes, and text and dates (which the surface returns as
+Python string lists) as numpy string arrays. A graph node may own only a
+closed set of dtypes, so
+``output_dtypes="graph"`` casts each output to one of them without loss —
+judgments to int64 codes, integers to int64, decimals to float64, booleans
+to bool — and refuses text and date outputs before the engine runs.
+
+Engine references
+-----------------
+``simulate.rules@1`` binds a node to its adapter through the node's
+``engine_ref`` parameter, and its implementation hash covers adapter source,
+not RuleSpec bytes or the native engine build. :func:`axiom_engine_ref` builds
+that reference from the pins that decide the adapter's outputs: the engine
+commit and wheel digest, the RuleSpec commit, the module path and digest, the
+content digest of the whole RuleSpec root, and the adapter's configuration.
+Any edit to a RuleSpec byte therefore moves the reference, and with it every
+node key that names it. The reference also pins the adapter: from then on it
+compiles only from a root whose digest still matches and that holds no
+symbolic link, and only when its module path still resolves to the file the
+reference named, so a node keyed by the reference is never computed from
+other bytes.
 """
 
-from collections.abc import Mapping, Sequence
+import hashlib
+import json
+import os
+import re
+import subprocess
+import unicodedata
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import date
+from functools import cache
+from importlib import resources
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from microcosm.frame.bundle import Frame
+from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.materialize import engine_tables, put_frame_table, read_frame_table
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
+from microcosm.graph.canonical import canonical_json
 
-__all__ = ["AxiomEngine", "AxiomEntityTableDataset", "BE_SCHEMA"]
+__all__ = [
+    "AxiomEngine",
+    "AxiomEntityTableDataset",
+    "AxiomPeriod",
+    "AxiomRelation",
+    "AxiomView",
+    "BE_SCHEMA",
+    "NZ_NESTING",
+    "NZ_SCHEMA",
+    "assert_no_relations",
+    "axiom_concept_mapping",
+    "axiom_engine_ref",
+    "rulespec_tree_digest",
+]
 
 #: The Belgian frame schema for the populace-be pilot: persons in households.
 #: Belgian PIT is individual with household-level elements (joint assessment,
@@ -79,6 +150,16 @@ __all__ = ["AxiomEngine", "AxiomEntityTableDataset", "BE_SCHEMA"]
 #: units beyond the household enter as group entities when the encoded slice
 #: needs them, mapped via ``entity_names``.
 BE_SCHEMA = EntitySchema(group_entities=("household",))
+
+#: The New Zealand transport schema: persons in households and in benefit
+#: units (``family``, the engine's ``Family`` entity). Only households carry
+#: explicit weights; a family inherits its household's weight through
+#: membership (:meth:`Frame.resolve_weights`).
+NZ_SCHEMA = EntitySchema(group_entities=("household", "family"))
+
+#: Group nesting the New Zealand schema requires: every family lies inside
+#: exactly one household. Pass it as ``AxiomEngine(nesting=NZ_NESTING)``.
+NZ_NESTING: Mapping[str, str] = MappingProxyType({"family": "household"})
 
 #: Engine dtype vocabulary -> kernel dtype kind. ``judgment`` is tri-state
 #: (holds / not holds / undetermined) and materializes as int8 codes
@@ -98,6 +179,294 @@ _DTYPE_KIND_BY_ENGINE: dict[str, str] = {
 _PERIOD_BY_ENGINE: dict[str, str] = {"year": "year", "month": "month"}
 
 _WEIGHT_COLUMN_SUFFIX = "_weight"
+
+# A rulespec country tree: ``nz``, or a subnational ``be-bru`` under ``be``.
+_COUNTRY_TREE = re.compile(r"^([a-z]{2})(?:-[a-z0-9]+)*$")
+_MAPPINGS_DIRECTORY = "axiom_concept_mappings"
+
+#: ``native`` returns the dense surface's arrays unchanged; ``graph`` casts
+#: them to graph-ownable dtypes (see "Graph output types" above).
+_OUTPUT_DTYPE_MODES: tuple[str, ...] = ("native", "graph")
+
+#: Engine dtype -> the owned-column dtype token of its graph-typed output.
+#: Text and date outputs reach Python as string lists and have no entry.
+_GRAPH_DTYPE_BY_ENGINE: dict[str, str] = {
+    "bool": "bool",
+    "integer": "int64",
+    "decimal": "float64",
+    "judgment": "int64",
+}
+_GRAPH_OUTPUT_DTYPES: frozenset[str] = frozenset(_GRAPH_DTYPE_BY_ENGINE)
+
+#: The tri-state judgment codes the dense surface emits.
+_JUDGMENT_CODES = np.asarray((-1, 0, 1), dtype=np.int64)
+
+#: Versioned schema of :func:`axiom_engine_ref` documents.
+_ENGINE_REF_SCHEMA = "microcosm.frame.axiom-engine-ref/1"
+
+# A full git object name (SHA-1 or SHA-256 repositories), lowercase.
+_GIT_COMMIT = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+@dataclass(frozen=True)
+class AxiomRelation:
+    """An explicit binary relation from a partition to its person members.
+
+    ``arguments`` records the source declaration's engine entity tuple; slots
+    and ``key`` must agree with the compiled dense program. Related columns
+    are named explicitly so they also form graph input dependencies. No rows
+    or data-derived batches are retained in this declaration.
+    """
+
+    predicate: str
+    key: str
+    current_slot: int
+    related_slot: int
+    arguments: tuple[str, str]
+    root_entity: str
+    related_entity: str
+    membership_column: str
+    related_inputs: Mapping[str, str]
+    cardinality: str
+    period: str
+    role_column: str | None = None
+    roles: tuple[str, ...] | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "predicate",
+            "key",
+            "root_entity",
+            "related_entity",
+            "membership_column",
+            "period",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"Relation {name} must be a non-empty string.")
+        if (
+            type(self.current_slot) is not int
+            or type(self.related_slot) is not int
+            or {self.current_slot, self.related_slot} != {0, 1}
+        ):
+            raise ValueError(
+                "Relation slots must be distinct binary coordinates 0 and 1."
+            )
+        if isinstance(self.arguments, str | bytes) or not isinstance(
+            self.arguments, Sequence
+        ):
+            raise ValueError(
+                "Relation arguments must be a sequence of two engine entity names."
+            )
+        arguments = tuple(self.arguments)
+        if len(arguments) != 2 or any(
+            not isinstance(x, str) or not x for x in arguments
+        ):
+            raise ValueError("Relation arguments must contain two engine entity names.")
+        object.__setattr__(self, "arguments", arguments)
+        expected = f"{self.predicate}:{self.current_slot}:{self.related_slot}"
+        if self.key != expected:
+            raise ValueError(
+                f"Relation key must agree with predicate and slots: {expected!r}."
+            )
+        if self.cardinality not in ("one", "many"):
+            raise ValueError("Relation cardinality must be 'one' or 'many'.")
+        if not isinstance(self.related_inputs, Mapping) or any(
+            not isinstance(k, str) or not k or not isinstance(v, str) or not v
+            for k, v in self.related_inputs.items()
+        ):
+            raise ValueError(
+                "Relation related_inputs must map engine names to physical columns."
+            )
+        object.__setattr__(
+            self, "related_inputs", MappingProxyType(dict(self.related_inputs))
+        )
+        if (self.role_column is None) != (self.roles is None):
+            raise ValueError(
+                "Relation role_column and roles must be supplied together."
+            )
+        if self.roles is not None:
+            if isinstance(self.roles, str | bytes) or not isinstance(
+                self.roles, Sequence
+            ):
+                raise ValueError("Relation roles must be a sequence of role names.")
+            roles = tuple(self.roles)
+            if (
+                not isinstance(self.role_column, str)
+                or not self.role_column
+                or not roles
+                or any(not isinstance(x, str) or not x for x in roles)
+                or len(set(roles)) != len(roles)
+            ):
+                raise ValueError(
+                    "Relation roles must be unique non-empty strings and name a role_column."
+                )
+            object.__setattr__(self, "roles", roles)
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the JSON declaration, preserving absent role selection."""
+        result: dict[str, object] = {
+            "predicate": self.predicate,
+            "key": self.key,
+            "current_slot": self.current_slot,
+            "related_slot": self.related_slot,
+            "arguments": list(self.arguments),
+            "root_entity": self.root_entity,
+            "related_entity": self.related_entity,
+            "membership_column": self.membership_column,
+            "related_inputs": dict(sorted(self.related_inputs.items())),
+            "cardinality": self.cardinality,
+            "period": self.period,
+        }
+        if self.role_column is not None:
+            result["role_column"] = self.role_column
+            result["roles"] = list(self.roles)
+        return result
+
+    def input_dependencies(self, schema: EntitySchema) -> tuple[tuple[str, str], ...]:
+        """The physical identity, membership, selector and input columns."""
+        related = self.related_entity
+        dependencies = {
+            (self.root_entity, schema.entity_id_column(self.root_entity)),
+            (related, schema.entity_id_column(related)),
+            (related, self.membership_column),
+            *((related, column) for column in self.related_inputs.values()),
+        }
+        if self.role_column is not None:
+            dependencies.add((related, self.role_column))
+        return tuple(sorted(dependencies))
+
+
+@dataclass(frozen=True, eq=False)
+class AxiomView:
+    """A binding-local view: one logical engine entity over selected persons.
+
+    The engine entity ``logical_entity`` (rulespec-be's ``Child``) has no
+    frame table. The adapter gathers the person rows whose bool ``selector``
+    column holds true, in table order, runs the module's program on
+    ``logical_entity`` over them, and writes one value to every person row:
+    the program's output on a selected row and the declared ``outside``
+    value on every other row. ``outside`` maps each output on the logical
+    entity to that value; no output has an implicit fill. A view's root
+    inputs read the person columns of the same names. No rows or batches are
+    retained in this declaration.
+    """
+
+    logical_entity: str
+    selector: str
+    outside: Mapping[str, bool | int | float]
+
+    def __post_init__(self) -> None:
+        for name in ("logical_entity", "selector"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"View {name} must be a non-empty string.")
+        if not isinstance(self.outside, Mapping) or not self.outside:
+            raise ValueError(
+                "View outside must map each output to its value outside the view."
+            )
+        for name, value in self.outside.items():
+            if not isinstance(name, str) or not name:
+                raise ValueError("View outside keys must be non-empty output names.")
+            if not isinstance(value, bool | int | float) or (
+                isinstance(value, float) and not np.isfinite(value)
+            ):
+                raise ValueError(
+                    f"View outside value for {name!r} must be a finite bool, "
+                    "integer or decimal number."
+                )
+        object.__setattr__(self, "outside", MappingProxyType(dict(self.outside)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, AxiomView):
+            return NotImplemented
+        return canonical_json(self.to_dict()) == canonical_json(other.to_dict())
+
+    def __hash__(self) -> int:
+        return hash(canonical_json(self.to_dict()))
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the JSON declaration."""
+        return {
+            "logical_entity": self.logical_entity,
+            "selector": {"column": self.selector},
+            "outside": dict(sorted(self.outside.items())),
+        }
+
+
+@dataclass(frozen=True)
+class AxiomPeriod:
+    """Explicit dense-execution bounds for one policy period.
+
+    Attributes:
+        start: First day, ISO ``YYYY-MM-DD``.
+        end: Last day, ISO ``YYYY-MM-DD``, not before ``start``.
+        kind: The engine's period identifier (for example ``tax_year``), not
+            a display label. No fiscal-year convention is inferred from a
+            year; the caller states the bounds.
+
+    Raises:
+        ValueError: If ``kind`` is empty or padded with whitespace, a date is
+            not a valid ISO ``YYYY-MM-DD`` string, or ``start`` follows
+            ``end``.
+    """
+
+    start: str
+    end: str
+    kind: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.kind, str)
+            or not self.kind.strip()
+            or self.kind != self.kind.strip()
+        ):
+            raise ValueError(
+                "Axiom period kind must be a non-empty string without "
+                "surrounding whitespace."
+            )
+        try:
+            start = date.fromisoformat(self.start)
+            end = date.fromisoformat(self.end)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "Axiom period dates must be valid ISO YYYY-MM-DD dates."
+            ) from exc
+        if start.isoformat() != self.start or end.isoformat() != self.end:
+            raise ValueError("Axiom period dates must use ISO YYYY-MM-DD format.")
+        if start > end:
+            raise ValueError("Axiom period start must not follow end.")
+
+    def bounds(self) -> tuple[str, str, str]:
+        """Return the dense executor's ``(start, end, period_kind)`` tuple."""
+        return self.start, self.end, self.kind
+
+
+@cache
+def axiom_concept_mapping(country: str) -> ConceptMapping:
+    """The committed concept mapping for rulespec ``country``.
+
+    Axiom inputs are module-scoped and untyped (usage-inferred;
+    TheAxiomFoundation/axiom-rules-engine#62), so each binding names its
+    RuleSpec module and the engine's canonical request name, and the mapping
+    records ``input_declaration = usage_inferred``. The household concept
+    entity corresponds to the engine's ``Household`` entity; rulespec-nz has
+    none, so New Zealand household concepts reach it only through ``Family``
+    bindings with group rules. The mapping is data,
+    committed beside this module as ``axiom_concept_mappings/<country>.json``
+    and validated like every other mapping when loaded.
+
+    Raises:
+        FileNotFoundError: If no mapping is committed for ``country``.
+    """
+
+    resource = resources.files(__package__).joinpath(
+        _MAPPINGS_DIRECTORY, f"{country}.json"
+    )
+    if not resource.is_file():
+        raise FileNotFoundError(f"No Axiom concept mapping for {country!r}.")
+    return ConceptMapping.from_dict(json.loads(resource.read_text("utf-8")))
 
 
 class AxiomEngine:
@@ -123,6 +492,28 @@ class AxiomEngine:
         arithmetic: ``"decimal"`` (exact, canonical) or ``"f64"`` (faster,
             floating-point rounding) — which dense execution mode
             :meth:`materialize` uses.
+        periods: Optional period label -> :class:`AxiomPeriod` mapping. When
+            given, :meth:`materialize` resolves every label through it and an
+            unmapped label fails, rather than becoming a calendar year or
+            month. Labels compare as strings, so ``2026`` and ``"2026"`` are
+            the same label and may not both appear. :meth:`materialize` also
+            accepts an :class:`AxiomPeriod` directly.
+        nesting: Optional child group -> parent group mapping (for example
+            :data:`NZ_NESTING`). Each declared child group must lie inside
+            exactly one parent group, which :meth:`materialize` and
+            :meth:`write_dataset` check from the person memberships alone.
+        output_dtypes: ``"native"`` (default) returns the dense surface's
+            arrays unchanged; ``"graph"`` casts them to graph-ownable dtypes
+            and refuses text and date outputs (see the module docstring).
+        relations: Optional explicit partition relations
+            (:class:`AxiomRelation`).
+        views: Optional binding-local views (:class:`AxiomView`), at most one
+            per logical entity. Each logical entity must be an engine entity
+            no frame entity maps to, and a view's outputs resolve to the
+            person entity. Views need ``output_dtypes="graph"`` (each outside
+            value casts through the graph dtype of its output) and exclude
+            ``relations``. Absent views leave every call and the engine
+            reference as they were without the field.
 
     The compiled dense programs (one per engine entity) and the module's
     variable metadata are loaded lazily and cached; constructing the adapter
@@ -139,10 +530,20 @@ class AxiomEngine:
         defaults: Mapping[str, object] | None = None,
         entity_names: Mapping[str, str] | None = None,
         arithmetic: str = "decimal",
+        periods: Mapping[int | str, AxiomPeriod] | None = None,
+        nesting: Mapping[str, str] | None = None,
+        output_dtypes: str = "native",
+        relations: Sequence[AxiomRelation] | None = None,
+        views: Sequence[AxiomView] | None = None,
     ) -> None:
         if arithmetic not in ("decimal", "f64"):
             raise ValueError(
                 f"arithmetic must be 'decimal' or 'f64', got {arithmetic!r}."
+            )
+        if output_dtypes not in _OUTPUT_DTYPE_MODES:
+            raise ValueError(
+                f"output_dtypes must be one of {list(_OUTPUT_DTYPE_MODES)}, "
+                f"got {output_dtypes!r}."
             )
         if isinstance(rulespec_roots, (str, Path)):
             raise TypeError(
@@ -175,11 +576,129 @@ class AxiomEngine:
                 f"schema declares {list(schema.entities)}."
             )
         self._arithmetic = arithmetic
+        self._output_dtypes = output_dtypes
+        self._periods = _validated_periods(periods)
+        self._nesting = _validated_nesting(nesting, schema)
         self._frame_entity_by_engine = {
             engine: frame for frame, engine in self._entity_names.items()
         }
+        self._relations = None if relations is None else tuple(relations)
+        if self._relations is not None:
+            keys: set[tuple[str, str]] = set()
+            for relation in self._relations:
+                if not isinstance(relation, AxiomRelation):
+                    raise TypeError(
+                        "relations must contain AxiomRelation declarations."
+                    )
+                key = (relation.root_entity, relation.key)
+                if key in keys:
+                    raise ValueError(f"Duplicate relation declaration {key!r}.")
+                keys.add(key)
+                if (
+                    relation.root_entity not in schema.group_entities
+                    or relation.related_entity != schema.person_entity
+                    or relation.membership_column
+                    != schema.membership_column(relation.root_entity)
+                ):
+                    raise ValueError(
+                        "Relations require a declared partition's person membership column."
+                    )
+                if relation.arguments[relation.current_slot] != self._entity_names.get(
+                    relation.root_entity
+                ) or relation.arguments[
+                    relation.related_slot
+                ] != self._entity_names.get(relation.related_entity):
+                    raise ValueError(
+                        "Relation argument slots disagree with the entity mapping."
+                    )
+                if self._periods is not None and relation.period not in self._periods:
+                    raise ValueError(
+                        f"Relation period {relation.period!r} is not declared."
+                    )
+        self._views = None if views is None else tuple(views)
+        if self._views is not None:
+            self._validate_views(schema)
         self._programs: dict[str, Any] = {}
+        # View programs compile per logical entity under their own key, apart
+        # from the frame-entity programs above.
+        self._view_programs: dict[str, Any] = {}
         self._metadata: dict[str, Any] | None = None
+        # Set by axiom_engine_ref: the RuleSpec tree digest this adapter's
+        # reference names, and the file its module path resolved to. Every
+        # later compile re-checks both.
+        self._pinned_tree_sha256: str | None = None
+        self._pinned_module: Path | None = None
+
+    def _validate_views(self, schema: EntitySchema) -> None:
+        """Refuse a view declaration the adapter cannot execute.
+
+        Raises:
+            TypeError: If an entry is not an :class:`AxiomView`.
+            ValueError: If the sequence is empty, a logical entity names a
+                mapped engine entity or repeats, a selector names a structural
+                column or a view output, views accompany relations, or the
+                adapter does not cast to graph dtypes.
+        """
+        if not self._views:
+            raise ValueError("views must be None or name at least one view.")
+        if self._relations is not None:
+            raise ValueError("A binding declares views or relations, not both.")
+        if self._output_dtypes != "graph":
+            raise ValueError(
+                "Views require output_dtypes='graph': each outside value casts "
+                "through its output's graph dtype."
+            )
+        if not all(isinstance(view, AxiomView) for view in self._views):
+            raise TypeError("views must contain AxiomView declarations.")
+        structural = {schema.person_id_column} | {
+            schema.membership_column(group) for group in schema.group_entities
+        }
+        outputs = {name for view in self._views for name in view.outside}
+        logical: set[str] = set()
+        for view in self._views:
+            if view.logical_entity in self._frame_entity_by_engine:
+                raise ValueError(
+                    f"View logical entity {view.logical_entity!r} names an engine "
+                    "entity a frame entity maps to; a view runs only an unmapped "
+                    "engine entity."
+                )
+            if view.logical_entity in logical:
+                raise ValueError(
+                    f"Two views declare logical entity {view.logical_entity!r}."
+                )
+            logical.add(view.logical_entity)
+            if view.selector in structural:
+                raise ValueError(
+                    f"View selector {view.selector!r} names a structural column."
+                )
+            if view.selector in outputs:
+                raise ValueError(
+                    f"View selector {view.selector!r} names a view output."
+                )
+
+    def _view_for(self, engine_entity: str) -> AxiomView | None:
+        """The view whose logical entity is ``engine_entity``, if any."""
+        for view in self._views or ():
+            if view.logical_entity == engine_entity:
+                return view
+        return None
+
+    def view_root_inputs(self) -> dict[str, tuple[str, ...]]:
+        """Logical engine entity -> the root inputs its view's program reads.
+
+        Each name reads the person column of the same name. An adapter with
+        no views returns an empty mapping.
+
+        Raises:
+            ImportError: If ``axiom_rules_engine`` is not installed.
+            ValueError: If a view's logical entity has no derived rules.
+        """
+        return {
+            view.logical_entity: tuple(
+                sorted(self._view_program(view.logical_entity).root_inputs)
+            )
+            for view in self._views or ()
+        }
 
     # ------------------------------------------------------------------
     # Variable metadata
@@ -211,6 +730,9 @@ class AxiomEngine:
             raise ValueError(f"Unknown Axiom variable {name!r}.")
         item = derived[name]
         frame_entity = self._frame_entity_by_engine.get(item.entity)
+        if frame_entity is None and self._view_for(item.entity) is not None:
+            # A view writes one value to every person row.
+            frame_entity = self._schema.person_entity
         if frame_entity is None:
             raise ValueError(
                 f"Variable {name!r} lives on engine entity {item.entity!r}, "
@@ -225,11 +747,41 @@ class AxiomEngine:
             period=_PERIOD_BY_ENGINE.get(period, "point"),
         )
 
+    def graph_dtype(self, name: str) -> str:
+        """The owned-column dtype token of ``name``'s graph-typed output.
+
+        What a graph node declares in ``Owned(entity, name, dtype)`` when it
+        materializes ``name`` through an ``output_dtypes="graph"`` adapter:
+        ``bool``, ``int64`` (integers and judgment codes), or ``float64``
+        (decimals).
+
+        Raises:
+            ImportError: If ``axiom_rules_engine`` is not installed.
+            ValueError: If the adapter is not ``output_dtypes="graph"`` (its
+                native arrays, int8 judgment codes among them, are not graph
+                dtypes), or the variable is unknown, an input, on an unmapped
+                engine entity, or a text or date output.
+        """
+        if self._output_dtypes != "graph":
+            raise ValueError(
+                "graph_dtype describes output_dtypes='graph' adapters only; this "
+                "adapter returns native engine arrays."
+            )
+        self.variable_metadata(name)
+        engine_dtype = self._derived_metadata()[name].dtype
+        token = _GRAPH_DTYPE_BY_ENGINE.get(engine_dtype)
+        if token is None:
+            raise ValueError(
+                f"{name!r} is a {engine_dtype!r} output; no graph column holds "
+                "text or date values."
+            )
+        return token
+
     def variables(self) -> list[str]:
         """Return the input variables the engine accepts on a dataset.
 
-        The union of the dense root inputs across every mapped engine
-        entity, sorted. Computed (derived) outputs are not included.
+        The union of root and declared related inputs across every mapped
+        engine entity, sorted. Computed outputs are not included.
 
         Raises:
             ImportError: If ``axiom_rules_engine`` is not installed.
@@ -239,11 +791,238 @@ class AxiomEngine:
             program = self._program(frame_entity, missing_ok=True)
             if program is not None:
                 names.update(program.root_inputs)
+                if self._relations is not None:
+                    self.assert_declared_relations(frame_entity)
+                    for relation in self._relations:
+                        if relation.root_entity == frame_entity:
+                            names.update(relation.related_inputs)
+        for inputs in self.view_root_inputs().values():
+            names.update(inputs)
         return sorted(names)
+
+    def relation_dependencies(self, entity: str) -> tuple[tuple[str, str], ...]:
+        """Physical columns required to construct this root's relation batches.
+
+        A view's selector joins the person entity's dependencies: the view
+        gathers the rows it selects from the whole person table, so a node
+        must slice the selector over every row. A view's root inputs do not
+        join: the engine refuses a required input the slice lacks.
+        """
+        dependencies: set[tuple[str, str]] = set()
+        for relation in self._relations or ():
+            if relation.root_entity != entity:
+                continue
+            dependencies.update(relation.input_dependencies(self._schema))
+        if entity == self._schema.person_entity:
+            dependencies.update((entity, view.selector) for view in self._views or ())
+        return tuple(sorted(dependencies))
+
+    def validate_input_override(self, entity: str, column: str) -> None:
+        """Refuse unread view selectors and related inputs without a source mapping.
+
+        A view selector chooses batch rows. A selector that a program also
+        reads as a root input is an engine input: an override changes that
+        input and, through the column it writes, the rows each view selects.
+        Bridges refuse an override of any other selector as outside the
+        engine's inputs; this check names the selector instead. Bridges write
+        physical table columns after checking logical engine inputs. An
+        aliased relation input needs both names resolved together, and only
+        the related entity's table feeds a batch. Accepting either override
+        would silently leave the source intact.
+        """
+        if (
+            entity == self._schema.person_entity
+            and any(view.selector == column for view in self._views or ())
+            and column not in self.variables()
+        ):
+            raise ValueError(
+                f"Input overrides cannot change view selector {column!r}, which "
+                "no program reads as an input."
+            )
+        if not self._relations:
+            return
+        program = self._program(entity, missing_ok=True)
+        root_inputs = () if program is None else program.root_inputs
+        for relation in self._relations:
+            for name, physical in relation.related_inputs.items():
+                if column not in (name, physical):
+                    continue
+                if entity != relation.related_entity:
+                    if column not in root_inputs:
+                        raise ValueError(
+                            f"Related Axiom input {column!r} belongs to "
+                            f"{relation.related_entity!r}, not {entity!r}."
+                        )
+                elif name != physical:
+                    raise NotImplementedError(
+                        "Input overrides of aliased related Axiom inputs are not supported."
+                    )
+
+    def assert_declared_relations(self, entity: str) -> None:
+        """Validate manifests against compiled slots, input union and source tuple."""
+        program = self._program(entity)
+        manifests = {
+            item.key: item
+            for item in self._relations or ()
+            if item.root_entity == entity
+        }
+        compiled: dict[str, set[str]] = {}
+        for item in program.relations:
+            manifest = manifests.get(item.key)
+            if manifest is None:
+                raise NotImplementedError(
+                    f"Module {self._module_label()} declares dense relations "
+                    f"{[relation.name for relation in program.relations]} on entity {entity!r}; "
+                    "an explicit relation declaration is required."
+                )
+            if (
+                item.name != manifest.predicate
+                or item.current_slot != manifest.current_slot
+                or item.related_slot != manifest.related_slot
+            ):
+                raise ValueError(
+                    f"Compiled relation slots disagree with manifest {manifest.key!r}."
+                )
+            compiled.setdefault(item.key, set()).update(item.related_inputs)
+        if set(manifests) != set(compiled):
+            raise ValueError(
+                f"Relation declarations do not match compiled keys on {entity!r}."
+            )
+        for key, inputs in compiled.items():
+            manifest = manifests[key]
+            if set(manifest.related_inputs) != inputs:
+                raise ValueError(
+                    f"Relation {key!r} related inputs disagree with compiled input union."
+                )
+            arguments = _source_relation_arguments(
+                self._module, self._rulespec_roots, manifest.predicate
+            )
+            if arguments != manifest.arguments:
+                raise ValueError(
+                    f"Relation {key!r} source arguments {arguments!r} disagree with manifest."
+                )
+
+    def _relation_batches(
+        self, bundle: Frame, entity: str, period: object
+    ) -> dict[str, Any]:
+        """Gather identity-ordered related rows following the native dense contract."""
+        from axiom_rules_engine.dense import DenseRelationBatch
+
+        batches: dict[str, Any] = {}
+        root = bundle.table(entity)
+        root_ids = root[self._schema.entity_id_column(entity)].to_numpy()
+        for relation in self._relations or ():
+            if relation.root_entity != entity:
+                continue
+            if self._materialization_period(
+                relation.period
+            ) != self._materialization_period(period):
+                raise ValueError(
+                    f"Relation {relation.key!r} does not cover the requested period."
+                )
+            table = bundle.table(relation.related_entity)
+            required = {
+                relation.membership_column,
+                self._schema.entity_id_column(relation.related_entity),
+                *relation.related_inputs.values(),
+            }
+            if relation.role_column is not None:
+                required.add(relation.role_column)
+            missing = sorted(required - set(table.columns))
+            if missing:
+                raise ValueError(
+                    f"Relation {relation.key!r} is missing related columns {missing}."
+                )
+            selected = table
+            if relation.role_column is not None:
+                selected = selected.loc[
+                    selected[relation.role_column].isin(relation.roles)
+                ]
+            if not selected[relation.membership_column].isin(root_ids).all():
+                raise ValueError(
+                    f"Relation {relation.key!r} contains dangling membership identities."
+                )
+            identity = self._schema.entity_id_column(relation.related_entity)
+            if selected[identity].isna().any() or selected[identity].duplicated().any():
+                raise ValueError(
+                    f"Relation {relation.key!r} requires unique non-null related identities."
+                )
+            # Physical identity orders the rows, never input values, so
+            # equal-valued people remain separate targets.
+            selected = selected.sort_values(identity, kind="stable")
+            positions_by_root: dict[object, list[int]] = {}
+            for position, root_id in enumerate(
+                selected[relation.membership_column].to_numpy()
+            ):
+                positions_by_root.setdefault(root_id, []).append(position)
+            rows: list[int] = []
+            offsets = [0]
+            for root_id in root_ids:
+                positions = positions_by_root.get(root_id, [])
+                if relation.cardinality == "one" and len(positions) != 1:
+                    raise ValueError(
+                        f"Relation {relation.key!r} requires exactly one related identity per root."
+                    )
+                rows.extend(positions)
+                offsets.append(len(rows))
+            # Mapping two engine inputs to one physical column is valid.
+            gathered = _batch_from_table(
+                selected.iloc[rows],
+                tuple(dict.fromkeys(relation.related_inputs.values())),
+            )
+            inputs = {
+                name: gathered[column]
+                for name, column in relation.related_inputs.items()
+            }
+            batches[relation.key] = DenseRelationBatch(
+                np.asarray(offsets, dtype=np.int64),
+                inputs,
+                related_row_count=len(rows),
+            )
+        return batches
 
     def entity_schema(self) -> EntitySchema:
         """Return the frame entity schema (no engine import required)."""
         return self._schema
+
+    def concept_mapping(self) -> ConceptMapping:
+        """Return the concept mapping for this adapter's rulespec country.
+
+        The country is read from the module's path under its root (see
+        :meth:`rulespec_country`), so no engine import is needed. The
+        mapping is country-wide; each binding names the module whose
+        program takes it.
+
+        Raises:
+            ValueError: If no root contains the module, or it is not under a
+                country tree.
+            FileNotFoundError: If no mapping is committed for that country.
+        """
+        return axiom_concept_mapping(self.rulespec_country())
+
+    def rulespec_country(self) -> str:
+        """The rulespec country whose tree holds the module.
+
+        Read from the module's first path component under its root
+        (``nz/statutes/...`` is New Zealand; ``be-bru/...`` is Belgium), so
+        the root directory's own name (a worktree, a symlink) never matters.
+
+        Raises:
+            ValueError: If no root contains the module.
+        """
+        module = self._module.resolve()
+        for root in self._rulespec_roots:
+            resolved = root.resolve()
+            if module.is_relative_to(resolved):
+                top = module.relative_to(resolved).parts[0]
+                match = _COUNTRY_TREE.match(top)
+                if match is None:
+                    raise ValueError(
+                        f"Module {self._module} is not under a country tree "
+                        f"(found {top!r})."
+                    )
+                return match.group(1)
+        raise ValueError(f"No RuleSpec root contains module {self._module}.")
 
     # ------------------------------------------------------------------
     # Materialization
@@ -253,7 +1032,7 @@ class AxiomEngine:
         self,
         bundle: Frame,
         variables: Sequence[str],
-        period: int | str,
+        period: int | str | AxiomPeriod,
     ) -> Mapping[str, np.ndarray]:
         """Compute ``variables`` for ``period`` over the bundle's tables.
 
@@ -265,51 +1044,81 @@ class AxiomEngine:
             bundle: A bundle whose entities match the adapter's schema.
             variables: Computed (derived) variable names.
             period: ``2025`` / ``"2025"`` for a calendar year, ``"2025-01"``
-                for a month.
+                for a month, or explicit :class:`AxiomPeriod` bounds. When
+                the adapter has a ``periods`` mapping, a label resolves only
+                through it.
 
         Returns:
             One array per variable, row-aligned to the variable's entity
-            table. Judgment variables come back as int8 codes (``1`` holds,
-            ``-1`` not holds, ``0`` undetermined).
+            table. By default judgment variables come back as int8 codes
+            (``1`` holds, ``-1`` not holds, ``0`` undetermined); with
+            ``output_dtypes="graph"`` they come back as int64 codes and every
+            array holds a graph-ownable dtype.
 
         Raises:
             ImportError: If ``axiom_rules_engine`` is not installed.
             ValueError: If the bundle's entities do not match the schema, a
-                requested variable is unknown or an input, or a computed
-                array's length does not match its entity table.
-            NotImplementedError: If the compiled module declares relations
-                (cross-entity aggregation batches; not yet wired — the BE
-                pilot slice declares none).
+                declared nesting or relation column is violated, the period
+                label is unmapped, a requested variable is unknown or an
+                input, a graph-typed output is text, date, or not losslessly
+                castable, or a computed array's length does not match its
+                entity table.
+            NotImplementedError: If a compiled relation has no explicit
+                validated binding declaration.
         """
         self._require_schema(bundle)
-        start, end, period_kind = _period_bounds(period)
+        start, end, period_kind = self._materialization_period(period)
 
+        # Group requested names by execution root: a frame entity's program,
+        # or a view's program on its logical entity.
         by_entity: dict[str, list[str]] = {}
+        by_view: dict[str, list[str]] = {}
         for name in variables:
             metadata = self.variable_metadata(name)
-            by_entity.setdefault(metadata.entity, []).append(name)
+            view = self._view_for(self._derived_metadata()[name].entity)
+            if view is not None:
+                by_view.setdefault(view.logical_entity, []).append(name)
+            else:
+                by_entity.setdefault(metadata.entity, []).append(name)
+        engine_dtypes: dict[str, str] = {}
+        if self._output_dtypes == "graph":
+            derived = self._derived_metadata()
+            engine_dtypes = {name: derived[name].dtype for name in variables}
+            unsupported = sorted(
+                f"{name} ({dtype})"
+                for name, dtype in engine_dtypes.items()
+                if dtype not in _GRAPH_OUTPUT_DTYPES
+            )
+            if unsupported:
+                raise ValueError(
+                    "output_dtypes='graph' cannot type text or date outputs as "
+                    f"graph columns; refused: {unsupported}."
+                )
 
         results: dict[str, np.ndarray] = {}
         for frame_entity, names in by_entity.items():
             program = self._program(frame_entity)
-            if program.relations:
-                raise NotImplementedError(
-                    f"Module {self._module.name!r} declares dense relations "
-                    f"{[item.name for item in program.relations]}; relation "
-                    "batches from frame membership are not wired yet."
-                )
+            if program.relations or self._relations:
+                self.assert_declared_relations(frame_entity)
             table = bundle.table(frame_entity)
             inputs = _batch_from_table(table, program.root_inputs)
             execute = (
                 program.execute_f64 if self._arithmetic == "f64" else program.execute
             )
-            outputs = execute(
+            arguments: dict[str, Any] = dict(
                 period_kind=period_kind,
                 start=start,
                 end=end,
                 inputs=inputs,
                 outputs=list(names),
-            )["outputs"]
+            )
+            # Omit the keyword entirely for legacy bindings, preserving the
+            # existing execution call as well as its engine reference.
+            if program.relations:
+                arguments["relations"] = self._relation_batches(
+                    bundle, frame_entity, period
+                )
+            outputs = execute(**arguments)["outputs"]
             expected = bundle.n(frame_entity)
             for name in names:
                 values = np.asarray(outputs[name])
@@ -319,8 +1128,127 @@ class AxiomEngine:
                         f"{values.shape} but entity {frame_entity!r} has "
                         f"{expected} row(s)."
                     )
+                if self._output_dtypes == "graph":
+                    values = _graph_output(name, engine_dtypes[name], values)
                 results[name] = values
+        for logical_entity, names in by_view.items():
+            view = self._view_for(logical_entity)
+            results.update(
+                self._materialize_view(
+                    bundle,
+                    view,
+                    names,
+                    engine_dtypes,
+                    dict(period_kind=period_kind, start=start, end=end),
+                )
+            )
         return results
+
+    def _view_selection(self, table: pd.DataFrame, view: AxiomView) -> np.ndarray:
+        """The boolean mask of the person rows ``view`` selects.
+
+        Raises:
+            ValueError: If the person table lacks the selector, or the selector
+                is not a bool column or holds a null.
+        """
+        if view.selector not in table.columns:
+            raise ValueError(
+                f"View {view.logical_entity!r} selector {view.selector!r} is not "
+                f"a column of the {self._schema.person_entity!r} table."
+            )
+        column = table[view.selector]
+        if column.dtype.kind != "b":
+            raise ValueError(
+                f"View {view.logical_entity!r} selector {view.selector!r} has "
+                f"dtype {column.dtype}; a selector must be a bool column."
+            )
+        if column.isna().any():
+            raise ValueError(
+                f"View {view.logical_entity!r} selector {view.selector!r} holds a "
+                "null; a null selects neither way."
+            )
+        return column.to_numpy(dtype=bool)
+
+    def _materialize_view(
+        self,
+        bundle: Frame,
+        view: AxiomView,
+        names: Sequence[str],
+        engine_dtypes: Mapping[str, str],
+        bounds: Mapping[str, str],
+    ) -> dict[str, np.ndarray]:
+        """Run ``view``'s program on the rows it selects; fill every other row.
+
+        Gather and scatter apply one boolean mask to one person table, so the
+        engine sees the selected rows in table order and each output lands on
+        the row it came from. An empty selection makes no engine call.
+
+        Raises:
+            ValueError: As :meth:`_view_selection`; if an output has no outside
+                value, an outside value does not cast losslessly to the
+                output's graph dtype, or the engine's array length differs
+                from the selected count.
+        """
+        table = bundle.table(self._schema.person_entity)
+        mask = self._view_selection(table, view)
+        n = len(table)
+        selected = int(mask.sum())
+        missing = sorted(set(names) - set(view.outside))
+        if missing:
+            raise ValueError(
+                f"View {view.logical_entity!r} declares no outside value for {missing}."
+            )
+        results = {
+            name: _outside_values(name, engine_dtypes[name], view.outside[name], n)
+            for name in names
+        }
+        if not selected:
+            return results
+        program = self._view_program(view.logical_entity)
+        execute = program.execute_f64 if self._arithmetic == "f64" else program.execute
+        outputs = execute(
+            **bounds,
+            inputs=_batch_from_table(table.loc[mask], program.root_inputs),
+            outputs=list(names),
+        )["outputs"]
+        for name in names:
+            values = np.asarray(outputs[name])
+            if values.shape != (selected,):
+                raise ValueError(
+                    f"Materialized view variable {name!r} has shape "
+                    f"{values.shape} but view {view.logical_entity!r} selects "
+                    f"{selected} row(s)."
+                )
+            out = results[name]
+            out[mask] = _graph_output(name, engine_dtypes[name], values)
+            if out.shape != (n,):
+                raise ValueError(
+                    f"Scattered view variable {name!r} has shape {out.shape} but "
+                    f"entity {self._schema.person_entity!r} has {n} row(s)."
+                )
+        return results
+
+    def _materialization_period(
+        self, period: int | str | AxiomPeriod
+    ) -> tuple[str, str, str]:
+        """Resolve a period to dense ``(start, end, period_kind)`` bounds.
+
+        Raises:
+            ValueError: If the adapter has a ``periods`` mapping and the label
+                is not in it, or (without one) the label is neither a year
+                nor a month.
+        """
+        if isinstance(period, AxiomPeriod):
+            return period.bounds()
+        if self._periods is not None:
+            bounds = self._periods.get(str(period))
+            if bounds is None:
+                raise ValueError(
+                    f"No explicit Axiom period bounds for {period!r}; the "
+                    f"adapter maps only {sorted(self._periods)}."
+                )
+            return bounds.bounds()
+        return _period_bounds(period)
 
     # ------------------------------------------------------------------
     # Export
@@ -421,6 +1349,19 @@ class AxiomEngine:
     # Lazy engine plumbing
     # ------------------------------------------------------------------
 
+    def _module_label(self) -> str:
+        """The module's path under its RuleSpec root, for error messages.
+
+        Many modules share a file name (``core.yaml``), so a message names the
+        relative path; a module under no root falls back to its given path.
+        """
+        module = self._module.resolve()
+        for root in self._rulespec_roots:
+            resolved = root.resolve()
+            if module.is_relative_to(resolved):
+                return module.relative_to(resolved).as_posix()
+        return str(self._module)
+
     def _import_engine(self) -> Any:
         try:
             import axiom_rules_engine
@@ -456,6 +1397,8 @@ class AxiomEngine:
                     f"engine entity {engine_entity!r}."
                 )
             return program
+        if self._pinned_tree_sha256 is not None:
+            self._require_pinned_tree()
         engine = self._import_engine()
         try:
             program = engine.CompiledDenseProgram.from_file(
@@ -487,12 +1430,109 @@ class AxiomEngine:
             self._metadata = {item.name: item for item in program.derived_metadata}
         return program
 
-    def _derived_metadata(self) -> dict[str, Any]:
-        """Name -> authoring metadata for every derived rule in the module."""
+    def _view_program(self, logical_entity: str) -> Any:
+        """The compiled dense program of the view on ``logical_entity``.
+
+        Cached per logical entity, apart from the frame-entity programs. Like
+        :meth:`_program`, it re-checks the pinned RuleSpec tree before it
+        compiles, and it refuses a program with dense relations: a view
+        gathers no related rows. Its derived metadata joins the module's.
+
+        Raises:
+            ImportError: If ``axiom_rules_engine`` is not installed.
+            ValueError: If no view declares ``logical_entity``, the module has
+                no derived rules on it, or the pinned tree moved.
+            NotImplementedError: If the program declares relations.
+        """
+        if self._view_for(logical_entity) is None:
+            raise ValueError(f"No view declares logical entity {logical_entity!r}.")
+        if logical_entity in self._view_programs:
+            return self._view_programs[logical_entity]
+        if self._pinned_tree_sha256 is not None:
+            self._require_pinned_tree()
+        engine = self._import_engine()
+        try:
+            program = engine.CompiledDenseProgram.from_file(
+                self._module,
+                rulespec_roots=self._rulespec_roots,
+                entity=logical_entity,
+            )
+        except ValueError as exc:
+            missing_entity = (
+                "dense compilation could not find derived outputs for entity "
+                f"`{logical_entity}`"
+            )
+            if str(exc) != missing_entity:
+                raise
+            raise ValueError(
+                f"Module {self._module.name!r} has no derived rules on the view's "
+                f"logical entity {logical_entity!r}."
+            ) from None
+        relations = list(program.relations)
+        if relations:
+            raise NotImplementedError(
+                f"Module {self._module_label()} declares dense relations "
+                f"{[item.name for item in relations]} on view entity "
+                f"{logical_entity!r}; a view gathers no related rows."
+            )
+        self._view_programs[logical_entity] = program
+        metadata = {item.name: item for item in program.derived_metadata}
         if self._metadata is None:
-            for frame_entity in self._schema.entities:
-                if self._program(frame_entity, missing_ok=True) is not None:
-                    break
+            self._metadata = metadata
+        else:
+            for name, item in metadata.items():
+                self._metadata.setdefault(name, item)
+        return program
+
+    def _require_pinned_tree(self) -> None:
+        """Refuse to compile when the root no longer holds the referenced bytes.
+
+        Once :func:`axiom_engine_ref` has named this adapter's RuleSpec tree,
+        every compile requires the module path to resolve to the file the
+        reference named (a module given through a link outside the root could
+        be repointed at another file under it without moving the digest),
+        refuses a symbolic link under the root (the digest does not descend
+        into a linked directory, so a directory or dangling link added after
+        the reference would not move it) and re-hashes the root, so a node
+        keyed by that reference is never computed from other bytes.
+
+        Raises:
+            ValueError: If the module path resolves to another file, the root
+                holds a symbolic link, its digest moved since the reference,
+                or a file under it is removed while it is hashed.
+        """
+        module = self._module.resolve()
+        if module != self._pinned_module:
+            raise ValueError(
+                f"Module {self._module} resolves to {module}, not the file "
+                f"{self._pinned_module} this adapter's engine_ref named; "
+                "construct a new adapter and reference."
+            )
+        _refuse_symlinks(self._rulespec_roots[0].resolve())
+        current, _ = rulespec_tree_digest(self._rulespec_roots[0].resolve())
+        if current != self._pinned_tree_sha256:
+            raise ValueError(
+                f"RuleSpec root {self._rulespec_roots[0]} changed after this "
+                "adapter's engine_ref named it (tree digest "
+                f"{self._pinned_tree_sha256} -> {current}); construct a new "
+                "adapter and reference."
+            )
+
+    def _derived_metadata(self) -> dict[str, Any]:
+        """Name -> authoring metadata for every derived rule in the module.
+
+        With views, each view's program also contributes its metadata, so a
+        module whose only program is a view's still has metadata.
+        """
+        if self._metadata is None or (
+            self._views is not None and len(self._view_programs) < len(self._views)
+        ):
+            if self._metadata is None:
+                for frame_entity in self._schema.entities:
+                    if self._program(frame_entity, missing_ok=True) is not None:
+                        break
+            for view in self._views or ():
+                self._view_program(view.logical_entity)
             if self._metadata is None:
                 raise ValueError(
                     f"Module {self._module.name!r} has no derived rules on "
@@ -501,13 +1541,76 @@ class AxiomEngine:
                 )
         return self._metadata
 
-    def _require_schema(self, bundle: Frame) -> None:
+    def _require_schema(self, bundle: Frame, *, export: bool = False) -> None:
+        """Refuse a bundle whose entities or group nesting the adapter cannot run.
+
+        Beyond matching the schema's entities, two nesting checks run, both
+        against the person memberships. Weight agreement alone never proves
+        nesting: a family split across two equally weighted households still
+        resolves a family weight.
+
+        * Every child -> parent pair in the adapter's ``nesting`` must nest:
+          all members of one child group share one parent group.
+        * An explicit group-to-group id column ``{group}_{parent}_id`` (for
+          example ``family_household_id``) must sit on ``group``'s table and
+          agree with the members' ``parent`` membership. When ``export`` is
+          true (the :meth:`write_dataset` path), a relation column the export
+          contract requires must be present; a graph node materializing
+          through the adapter need not slice it.
+
+        Raises:
+            ValueError: On an entity mismatch or a violated nesting check.
+        """
         if set(bundle.entities) != set(self._schema.entities):
             raise ValueError(
                 f"Axiom adapter requires the schema entities "
                 f"{list(self._schema.entities)}; bundle has "
                 f"{list(bundle.entities)}."
             )
+        schema = self._schema
+        person = bundle.table(schema.person_entity)
+        for child, parent in self._nesting.items():
+            pairs = pd.DataFrame(
+                {
+                    "child": person[schema.membership_column(child)].to_numpy(),
+                    "parent": person[schema.membership_column(parent)].to_numpy(),
+                }
+            ).drop_duplicates()
+            spanning = pairs.loc[pairs["child"].duplicated(keep=False), "child"]
+            if not spanning.empty:
+                ids = sorted(spanning.unique().tolist())
+                raise ValueError(
+                    f"Every {child!r} must nest in exactly one {parent!r}; "
+                    f"{child} id(s) {ids[:5]} have members in more than one "
+                    f"{parent}."
+                )
+        for group in schema.group_entities:
+            for parent in schema.group_entities:
+                if group == parent:
+                    continue
+                column = f"{group}_{parent}_id"
+                try:
+                    owner = bundle.column_entity(column)
+                except ValueError:
+                    if export and column in self._contract.required:
+                        raise ValueError(
+                            f"Required relation column {column!r} is missing "
+                            f"from entity {group!r}."
+                        ) from None
+                    continue
+                if owner != group:
+                    raise ValueError(
+                        f"{column!r} must be on entity {group!r}, not {owner!r}."
+                    )
+                broadcast = bundle.place(
+                    column, schema.person_entity, how="broadcast"
+                ).table(schema.person_entity)[column]
+                membership = person[schema.membership_column(parent)]
+                if not np.array_equal(broadcast.to_numpy(), membership.to_numpy()):
+                    raise ValueError(
+                        f"{column!r} disagrees with person membership; every "
+                        f"{group!r} must be nested in its declared {parent!r}."
+                    )
 
     def _engine_tables(self, bundle: Frame) -> dict[str, pd.DataFrame]:
         """Copy the bundle's tables and materialize typed weights as columns.
@@ -516,7 +1619,7 @@ class AxiomEngine:
         (typed weights authoritative, any existing ``{entity}_weight`` column
         overwritten, never trusted), keyed to this adapter's schema order.
         """
-        self._require_schema(bundle)
+        self._require_schema(bundle, export=True)
         tables = engine_tables(bundle)
         return {name: tables[name] for name in self._schema.entities}
 
@@ -685,6 +1788,348 @@ class AxiomEntityTableDataset:
         return tables, time_period
 
 
+def rulespec_tree_digest(root: str | Path) -> tuple[str, int]:
+    """Content digest and payload size of a RuleSpec root directory.
+
+    The formula is the graph's directory source identity
+    (``microcosm.graph.keys``): SHA-256 over a fixed prefix and then, for every
+    regular file in sorted path order, its length-prefixed relative POSIX path
+    and its length-prefixed bytes. The digest therefore equals the content hash
+    :func:`microcosm.graph.keys.source_content_key` binds when the same
+    directory is declared as a graph source. Renaming the root is inert;
+    adding, removing, renaming, or editing any file inside it changes the
+    digest. A ``.git`` directory, if present, is hashed like any other.
+
+    Args:
+        root: The RuleSpec root directory (for example a ``git archive``
+            export of rulespec-nz).
+
+    Returns:
+        ``(sha256 hex digest, total bytes of the hashed files)``.
+
+    Raises:
+        ValueError: If ``root`` is not a directory, or a file listed under it
+            is removed before it is read: a tree that changes while it is
+            hashed has no digest to name.
+    """
+    path = Path(root)
+    if not path.is_dir():
+        raise ValueError(f"RuleSpec root {path} is not a directory.")
+    digest = hashlib.sha256(b"microcosm-graph/source-directory/1\0")
+    size = 0
+    files = sorted(candidate for candidate in path.rglob("*") if candidate.is_file())
+    for candidate in files:
+        relative = candidate.relative_to(path).as_posix().encode("utf-8")
+        try:
+            content = candidate.read_bytes()
+        except FileNotFoundError as exc:
+            raise ValueError(
+                f"RuleSpec root {path} changed while it was being hashed: "
+                f"{relative.decode('utf-8')} was listed and then removed. Hash "
+                "the tree once nothing is writing to it. If the root is a git "
+                "checkout, a git process still working in it can do this (its "
+                "background maintenance holds a lock file under .git); wait "
+                "for it to finish, or reference a git archive export instead."
+            ) from exc
+        digest.update(len(relative).to_bytes(8, "little"))
+        digest.update(relative)
+        digest.update(len(content).to_bytes(8, "little"))
+        digest.update(content)
+        size += len(content)
+    return digest.hexdigest(), size
+
+
+def axiom_engine_ref(
+    engine: AxiomEngine,
+    *,
+    engine_commit: str,
+    wheel_sha256: str,
+    rulespec_root: str | Path,
+    rulespec_commit: str,
+) -> str:
+    """The ``engine_ref`` that names one Axiom adapter and the bytes behind it.
+
+    A graph node binds its rules engine through ``params["engine_ref"]``, and
+    that parameter enters the node key. The reference this function returns is
+    canonical JSON of everything that decides the adapter's outputs:
+
+    * the engine (``axiom-rules-engine``) and the commit and wheel SHA-256
+      the caller declares for it;
+    * the RuleSpec commit, the module's path relative to the root, the
+      module's SHA-256, and :func:`rulespec_tree_digest` of the whole root
+      (imports resolve anywhere under it);
+    * the adapter's arithmetic, output dtypes, entity schema, entity names,
+      period map, and declared nesting.
+
+    For a ``git archive`` export (the normal root, with no ``.git``) no
+    absolute path enters the reference: the same tree exported to two places
+    gives the same reference, and editing any byte under the root gives a
+    different one. The engine commit and wheel SHA-256 are pins the caller
+    declares, not values read from the installed engine: nothing here
+    inspects ``axiom_rules_engine``, so a different engine installed under the
+    same pins gives the same reference. The RuleSpec commit is also a
+    declaration, checked only for a git checkout root (below). The directory
+    digest is the authority.
+
+    A git checkout root is accepted only when it is the top level of its own
+    repository, clean, at ``rulespec_commit``, contains no submodules, has no
+    tracked file flagged skip-worktree or assume-unchanged (``git status``
+    does not report edits to those), and holds outside ``.git`` exactly the
+    commit's files, each byte for byte the blob the commit records and with
+    its executable bit. A recorded name matches a file whose name is the
+    same or, when that one file opens under both, canonically equivalent
+    (git on macOS with ``core.precomposeunicode=true`` records precomposed
+    names, usually NFC, that the file system may list in NFD); one directory
+    entry never answers for two recorded names. Git runs
+    without the caller's repository-selecting variables (``GIT_DIR``,
+    ``GIT_WORK_TREE`` and the rest of ``git rev-parse --local-env-vars``) and
+    without replace refs, so neither can point the check at other objects.
+    The commit's file list and blob names are read through git from the
+    repository's object database, whose commit and tree objects are not
+    rehashed, so the check assumes that database is intact: it does not
+    detect an object rewritten under another object's name (a substituted
+    nested tree, say), though the directory digest still pins the bytes
+    present.
+    Its ``.git`` is then hashed
+    like any other file, as the graph's source key hashes it. That makes the
+    reference specific to one clone: two clones or worktrees of one commit
+    (a worktree's ``.git`` file names an absolute path) and an export of that
+    commit all give different references, and any later git operation in the
+    checkout moves it. That includes the maintenance git starts in the
+    background after a commit: until it finishes, its lock file under ``.git``
+    is part of the tree. A reference taken then is refused if the lock is
+    removed between the digest's listing and its read; otherwise it names a
+    tree that holds the lock, and the adapter's next compile or reference
+    refuses the root once the lock is gone. Prefer the export.
+
+    The first call pins the adapter to the tree digest it names and to the
+    file its module path resolves to: it refuses an adapter that has already
+    compiled (those programs were read from bytes no reference names), and
+    from then on every compile, and every later reference to the same
+    adapter, refuses a root whose digest has moved or that holds a symbolic
+    link, and a module path that now resolves to another file.
+
+    Args:
+        engine: The adapter the reference names.
+        engine_commit: Full lowercase git commit of axiom-rules-engine, as
+            the caller declares it. It is recorded as given; the installed
+            engine is not checked against it.
+        wheel_sha256: Lowercase SHA-256 of the engine wheel, as the caller
+            declares it. It is recorded as given; no installed wheel or
+            native library is hashed to confirm it.
+        rulespec_root: The adapter's only RuleSpec root.
+        rulespec_commit: Full lowercase git commit the root was exported from.
+
+    Returns:
+        The reference, a canonical JSON string.
+
+    Raises:
+        TypeError: If ``engine`` is not an :class:`AxiomEngine`.
+        ValueError: If a pin is malformed; ``rulespec_root`` is not the
+            adapter's only root; the module is not a file under it; the root
+            contains a symbolic link (the digest would not cover what it
+            points at); a git checkout root is not its repository's top
+            level, is dirty, contains a submodule, has a file flagged
+            skip-worktree or assume-unchanged, holds bytes its commit does
+            not, or is at another commit; a file under the root is removed
+            while the tree is hashed; or the adapter compiled before its
+            first reference, or its root or module moved after it.
+    """
+    if not isinstance(engine, AxiomEngine):
+        raise TypeError(f"{engine!r} is not an AxiomEngine.")
+    pins = (
+        ("engine_commit", engine_commit, _GIT_COMMIT, "a full lowercase git commit"),
+        (
+            "rulespec_commit",
+            rulespec_commit,
+            _GIT_COMMIT,
+            "a full lowercase git commit",
+        ),
+        ("wheel_sha256", wheel_sha256, _SHA256, "a lowercase SHA-256 hex digest"),
+    )
+    for label, value, pattern, shape in pins:
+        if not isinstance(value, str) or pattern.fullmatch(value) is None:
+            raise ValueError(f"{label} must be {shape}, got {value!r}.")
+    root = Path(rulespec_root)
+    if not root.is_dir():
+        raise ValueError(f"rulespec_root {root} is not a directory.")
+    resolved_root = root.resolve()
+    if tuple(item.resolve() for item in engine._rulespec_roots) != (resolved_root,):
+        raise ValueError(
+            "axiom_engine_ref digests one RuleSpec root, which must be the "
+            "adapter's only root; adapter roots "
+            f"{[str(item) for item in engine._rulespec_roots]}, rulespec_root "
+            f"{root}."
+        )
+    module = engine._module.resolve()
+    if not module.is_file() or not module.is_relative_to(resolved_root):
+        raise ValueError(
+            f"Module {engine._module} is not a file under rulespec_root {root}."
+        )
+    _refuse_symlinks(resolved_root)
+    if (resolved_root / ".git").exists():
+        _require_clean_checkout(resolved_root, rulespec_commit)
+    tree_sha256, tree_bytes = rulespec_tree_digest(resolved_root)
+    if engine._pinned_tree_sha256 is None:
+        if engine._programs or engine._view_programs:
+            raise ValueError(
+                "axiom_engine_ref must name the adapter's RuleSpec tree before "
+                "the adapter compiles: it has already compiled programs from "
+                "bytes no reference names. Compute the reference on a fresh "
+                "adapter."
+            )
+        engine._pinned_tree_sha256 = tree_sha256
+        engine._pinned_module = module
+    elif engine._pinned_tree_sha256 != tree_sha256:
+        raise ValueError(
+            f"RuleSpec root {root} changed after this adapter's engine_ref named "
+            f"it (tree digest {engine._pinned_tree_sha256} -> {tree_sha256}); "
+            "construct a new adapter and reference."
+        )
+    elif engine._pinned_module != module:
+        raise ValueError(
+            f"Module {engine._module} resolves to {module}, not the file "
+            f"{engine._pinned_module} this adapter's engine_ref named; "
+            "construct a new adapter and reference."
+        )
+    schema = engine._schema
+    periods = (
+        None
+        if engine._periods is None
+        else {
+            label: {"start": item.start, "end": item.end, "kind": item.kind}
+            for label, item in sorted(engine._periods.items())
+        }
+    )
+    document = {
+        "format": _ENGINE_REF_SCHEMA,
+        "engine": "axiom-rules-engine",
+        "engine_commit": engine_commit,
+        "engine_wheel_sha256": wheel_sha256,
+        "rulespec_commit": rulespec_commit,
+        "rulespec_tree_sha256": tree_sha256,
+        "rulespec_tree_bytes": tree_bytes,
+        "module": module.relative_to(resolved_root).as_posix(),
+        "module_sha256": hashlib.sha256(module.read_bytes()).hexdigest(),
+        "arithmetic": engine._arithmetic,
+        "output_dtypes": engine._output_dtypes,
+        "person_entity": schema.person_entity,
+        "group_entities": list(schema.group_entities),
+        "entity_names": dict(sorted(engine._entity_names.items())),
+        "periods": periods,
+        "nesting": dict(sorted(engine._nesting.items())),
+    }
+    if engine._relations is not None:
+        document["relations"] = [item.to_dict() for item in engine._relations]
+    # Absent views add no key, so every reference without them is unchanged.
+    if engine._views is not None:
+        document["views"] = [item.to_dict() for item in engine._views]
+    return canonical_json(document).decode("utf-8")
+
+
+def _source_relation_arguments(
+    module: Path, roots: Sequence[Path], predicate: str
+) -> tuple[str, ...] | None:
+    """Read the authored data-relation tuple along the module's import graph.
+
+    PyYAML is a dependency of Axiom itself and is imported only for opt-in
+    relation bindings. Compiled slot coordinates alone cannot establish what
+    entity the author's tuple places at each coordinate.
+    """
+    import yaml
+
+    seen: set[Path] = set()
+    pending = [module]
+    found: set[tuple[str, ...]] = set()
+    canonical_roots = tuple(root.resolve() for root in roots)
+    while pending:
+        path = pending.pop().resolve()
+        if path in seen:
+            continue
+        seen.add(path)
+        if not any(path.is_relative_to(root) for root in canonical_roots):
+            raise ValueError("Relation declaration import escapes the RuleSpec roots.")
+        document = yaml.safe_load(path.read_text()) or {}
+        for rule in document.get("rules", ()):
+            declaration = rule.get("data_relation")
+            if rule.get("kind") == "data_relation" and isinstance(declaration, Mapping):
+                name = declaration.get("predicate", rule.get("name"))
+                qualified = {
+                    f"{relative.parts[0]}:{relative.with_suffix('').relative_to(relative.parts[0]).as_posix()}#relation.{rule['name']}"
+                    for root in canonical_roots
+                    if path.is_relative_to(root)
+                    for relative in (path.relative_to(root),)
+                    if len(relative.parts) > 1
+                }
+                if name == predicate or predicate in qualified:
+                    if declaration.get("arity") != 2:
+                        raise ValueError(
+                            f"Relation {predicate!r} source must be binary."
+                        )
+                    found.add(tuple(declaration.get("arguments", ())))
+        for reference in document.get("imports", ()):
+            if not isinstance(reference, str):
+                raise ValueError(
+                    "Relation declaration imports must name RuleSpec modules."
+                )
+            target = reference.split("#", 1)[0]
+            if ":" in target:
+                country, relative = target.split(":", 1)
+                candidates = [
+                    root / country / f"{relative}.yaml" for root in canonical_roots
+                ]
+            else:
+                candidates = [path.parent / target]
+                if not Path(target).suffix:
+                    candidates = [
+                        candidate.with_suffix(".yaml") for candidate in candidates
+                    ]
+            existing = [candidate for candidate in candidates if candidate.is_file()]
+            if len(existing) != 1:
+                raise ValueError(
+                    f"Relation declaration import {reference!r} is missing or ambiguous."
+                )
+            pending.extend(existing)
+    if len(found) > 1:
+        raise ValueError(f"Relation {predicate!r} has conflicting source declarations.")
+    return next(iter(found), None)
+
+
+def assert_no_relations(engine: AxiomEngine, entity: str) -> None:
+    """Refuse a module whose dense program on ``entity`` declares relations.
+
+    The adapter builds no relation batches from frame membership, so a module
+    with dense relations cannot run on the graph. Callers check this when
+    they compose a node, before any data reaches the engine.
+
+    Args:
+        engine: The adapter to check.
+        entity: The frame entity the node materializes (``"family"``), or
+            the logical engine entity of one of the adapter's views
+            (``"Child"``), whose own program is then checked.
+
+    Raises:
+        TypeError: If ``engine`` is not an :class:`AxiomEngine`.
+        ImportError: If ``axiom_rules_engine`` is not installed.
+        ValueError: If the module has no derived rules on ``entity``.
+        NotImplementedError: If the program declares relations; the message
+            names the module and the relations.
+    """
+    if not isinstance(engine, AxiomEngine):
+        raise TypeError(f"{engine!r} is not an AxiomEngine.")
+    if engine._view_for(entity) is not None:
+        engine._view_program(entity)
+        return
+    relations = list(engine._program(entity).relations)
+    if relations:
+        raise NotImplementedError(
+            f"Module {engine._module_label()} declares dense relations "
+            f"{[item.name for item in relations]} on entity {entity!r}; "
+            "relation batches from frame membership are not wired, so it "
+            "cannot run on the graph."
+        )
+
+
 def _period_bounds(period: int | str) -> tuple[str, str, str]:
     """Map a kernel period to dense-execution (start, end, period_kind).
 
@@ -741,3 +2186,484 @@ def _batch_from_table(
                 "be bool, integer, or float columns."
             )
     return batch
+
+
+def _validated_periods(
+    periods: Mapping[int | str, AxiomPeriod] | None,
+) -> dict[str, AxiomPeriod] | None:
+    """Normalize a ``periods`` mapping to string labels, refusing ambiguity.
+
+    Raises:
+        TypeError: If ``periods`` is not a mapping, a label is not an int or
+            a non-empty string, or a value is not an :class:`AxiomPeriod`.
+        ValueError: If the mapping is empty, or two labels share a string
+            form (``2026`` and ``"2026"``).
+    """
+    if periods is None:
+        return None
+    if not isinstance(periods, Mapping):
+        raise TypeError("periods must map period labels to AxiomPeriod bounds.")
+    if not periods:
+        raise ValueError(
+            "periods must map at least one label; omit it to use calendar years "
+            "and months."
+        )
+    resolved: dict[str, AxiomPeriod] = {}
+    for label, bounds in periods.items():
+        if (
+            isinstance(label, bool)
+            or not isinstance(label, int | str)
+            or (isinstance(label, str) and not label)
+        ):
+            raise TypeError(
+                f"periods labels must be ints or non-empty strings, got {label!r}."
+            )
+        if not isinstance(bounds, AxiomPeriod):
+            raise TypeError("periods values must be AxiomPeriod instances.")
+        key = str(label)
+        if key in resolved:
+            raise ValueError(f"Duplicate explicit Axiom period label {key!r}.")
+        resolved[key] = bounds
+    return resolved
+
+
+def _validated_nesting(
+    nesting: Mapping[str, str] | None, schema: EntitySchema
+) -> dict[str, str]:
+    """Validate a child group -> parent group mapping against ``schema``.
+
+    Raises:
+        TypeError: If ``nesting`` is not a mapping.
+        ValueError: If a side is not a group entity of ``schema``, a group
+            maps to itself, or the declared parents form a cycle.
+    """
+    if nesting is None:
+        return {}
+    if not isinstance(nesting, Mapping):
+        raise TypeError("nesting must map child group entities to parent groups.")
+    groups = set(schema.group_entities)
+    resolved: dict[str, str] = {}
+    for child, parent in nesting.items():
+        for side in (child, parent):
+            if not isinstance(side, str) or side not in groups:
+                raise ValueError(
+                    f"nesting names {side!r}, which is not a group entity of "
+                    f"the schema {list(schema.group_entities)}."
+                )
+        if child == parent:
+            raise ValueError(f"nesting maps group {child!r} to itself.")
+        resolved[child] = parent
+    for start in resolved:
+        seen = {start}
+        current = resolved[start]
+        while current in resolved:
+            if current in seen:
+                raise ValueError(f"nesting is cyclic through group {current!r}.")
+            seen.add(current)
+            current = resolved[current]
+    return resolved
+
+
+def _graph_output(name: str, engine_dtype: str, values: np.ndarray) -> np.ndarray:
+    """Cast one dense output array to its graph-ownable dtype without loss.
+
+    Bool stays bool; integers and judgment codes become int64; decimals
+    become float64. Judgment codes must be ``-1``, ``0`` or ``1``. The input
+    must already hold the engine's numpy kind for that dtype: nothing is
+    parsed, rounded, or truncated.
+
+    Raises:
+        ValueError: If ``engine_dtype`` has no graph type, the array's numpy
+            dtype does not match it, or a value would not survive the cast.
+    """
+    if engine_dtype not in _GRAPH_DTYPE_BY_ENGINE:
+        raise ValueError(
+            f"Output {name!r} has engine dtype {engine_dtype!r}, which no graph "
+            "column holds."
+        )
+    kind = values.dtype.kind
+    if engine_dtype == "bool" and kind == "b":
+        return values.astype(np.bool_)
+    if engine_dtype == "decimal" and kind == "f":
+        return values.astype(np.float64)
+    if engine_dtype in ("integer", "judgment") and kind in ("i", "u"):
+        if kind == "u" and values.size and values.max() > np.iinfo(np.int64).max:
+            raise ValueError(
+                f"Output {name!r} holds unsigned values beyond the int64 range."
+            )
+        cast = values.astype(np.int64)
+        if engine_dtype == "judgment" and not np.isin(cast, _JUDGMENT_CODES).all():
+            invalid = sorted(set(np.unique(cast).tolist()) - {-1, 0, 1})
+            raise ValueError(
+                f"Judgment output {name!r} holds codes outside -1/0/1: {invalid[:5]}."
+            )
+        return cast
+    raise ValueError(
+        f"Output {name!r} ({engine_dtype}) arrived as numpy dtype {values.dtype}, "
+        "which does not cast to a graph column without loss."
+    )
+
+
+def _outside_values(
+    name: str, engine_dtype: str, value: object, count: int
+) -> np.ndarray:
+    """``count`` copies of a view's outside value, in its output's graph dtype.
+
+    The value takes the numpy kind the engine returns for ``engine_dtype``
+    (bool, int64 or float64) and passes through :func:`_graph_output`, so a
+    judgment code must be -1, 0 or 1. An integer stands for a decimal only
+    when float64 holds it exactly.
+
+    Raises:
+        ValueError: If the value does not cast losslessly to the graph dtype.
+    """
+    refused = ValueError(
+        f"View outside value {value!r} for {name!r} does not cast losslessly to "
+        f"its {engine_dtype!r} output."
+    )
+    if engine_dtype == "bool":
+        if not isinstance(value, bool | np.bool_):
+            raise refused
+        array = np.full(max(count, 1), bool(value), dtype=np.bool_)
+    elif engine_dtype in ("integer", "judgment"):
+        if isinstance(value, bool | np.bool_) or not isinstance(
+            value, int | np.integer
+        ):
+            raise refused
+        if not np.iinfo(np.int64).min <= int(value) <= np.iinfo(np.int64).max:
+            raise refused
+        array = np.full(max(count, 1), int(value), dtype=np.int64)
+    elif engine_dtype == "decimal":
+        if isinstance(value, bool | np.bool_) or not isinstance(
+            value, int | float | np.integer | np.floating
+        ):
+            raise refused
+        cast = float(value)
+        if not np.isfinite(cast) or (
+            isinstance(value, int | np.integer) and int(cast) != int(value)
+        ):
+            raise refused
+        array = np.full(max(count, 1), cast, dtype=np.float64)
+    else:
+        raise refused
+    # One element even for an empty table, so the cast always checks it.
+    return _graph_output(name, engine_dtype, array)[:count].copy()
+
+
+def _refuse_symlinks(root: Path) -> None:
+    """Refuse a RuleSpec root holding symbolic links.
+
+    The tree digest walks the root without following directory links, so a
+    linked directory's files would reach the engine without entering the
+    reference; a linked file would bind its target's bytes under the link's
+    name. A ``git archive`` export of a RuleSpec repository has none.
+
+    Raises:
+        ValueError: Naming the first link found.
+    """
+    for directory, directories, files in root.walk(follow_symlinks=False):
+        for name in sorted((*directories, *files)):
+            candidate = directory / name
+            if candidate.is_symlink():
+                raise ValueError(
+                    f"RuleSpec root {root} contains the symbolic link "
+                    f"{candidate.relative_to(root).as_posix()}; export the tree "
+                    "without links."
+                )
+
+
+def _require_clean_checkout(root: Path, commit: str) -> None:
+    """Require a git-checkout RuleSpec root to hold exactly ``commit``.
+
+    Git examines the root's own repository: it runs without the caller's
+    repository-selecting variables (:func:`_git_environment`) and without
+    replace refs (a ``refs/replace`` entry makes one commit read as another),
+    and the root must be the repository's top level (``core.worktree`` can
+    point a repository at another directory). ``--no-optional-locks`` stops
+    ``git status`` refreshing the index, which would otherwise rewrite
+    ``.git/index`` and move the digest taken next.
+
+    The index may hold no submodule: the commit records a submodule's
+    commit, not its files, and ``git status`` does not report every change
+    inside one. No tracked file may be flagged skip-worktree or
+    assume-unchanged, even unedited, because ``git status`` does not report
+    edits to it. Ignored files count as changes: the digest hashes them, but
+    the commit does not hold them. Last, the files outside the top-level
+    ``.git`` must be exactly the commit's, each byte for byte the regular-file
+    blob the commit records at its path, with its recorded executable bit.
+    That refuses a change ``git status``
+    does not report: an edit hidden from a stat cache trusted under
+    ``core.trustctime=false``, by a clean filter, or by a file system monitor;
+    a nested ``.git`` entry, which git's untracked scan skips; or a committed
+    symbolic link held as a plain file under ``core.symlinks=false``; or an
+    executable-bit change hidden by ``core.filemode=false``. Recorded paths
+    pair with files one to one as :func:`_match_checkout_paths` describes,
+    so an NFC name git records matches the one file the file system lists
+    under an equivalent NFD name. The paths and blob names come from
+    ``git ls-tree``, which reads the object database; the commit and tree
+    objects are not rehashed, so an intact object database is assumed.
+
+    Raises:
+        ValueError: If git fails or times out; the root is not its
+            repository's top level; the index holds a submodule or a file
+            flagged skip-worktree or assume-unchanged; the checkout has
+            modified, untracked, or ignored files; ``HEAD`` is not
+            ``commit``; or the files outside ``.git`` are not the commit's.
+    """
+
+    environment = _git_environment()
+
+    def git(*args: str) -> str:
+        try:
+            completed = subprocess.run(
+                [
+                    "git",
+                    "--no-optional-locks",
+                    "--no-replace-objects",
+                    "-C",
+                    str(root),
+                    *args,
+                ],
+                capture_output=True,
+                encoding="utf-8",
+                errors="surrogateescape",
+                check=False,
+                timeout=120,
+                env=environment,
+            )
+        except FileNotFoundError as exc:
+            raise ValueError(
+                f"git is required to verify the RuleSpec checkout {root}."
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError(
+                f"git {' '.join(args)} timed out in RuleSpec checkout {root}."
+            ) from exc
+        if completed.returncode != 0:
+            raise ValueError(
+                f"git {' '.join(args)} failed in RuleSpec checkout {root}: "
+                f"{completed.stderr.strip()}"
+            )
+        return completed.stdout
+
+    toplevel = Path(git("rev-parse", "--show-toplevel").removesuffix("\n"))
+    try:
+        same = toplevel.samefile(root)
+    except OSError:
+        same = False
+    if not same:
+        raise ValueError(
+            f"RuleSpec checkout {root} is not the top level of its git "
+            f"repository, whose work tree is {toplevel}; reference a git archive "
+            "export instead."
+        )
+    submodules: list[str] = []
+    flagged: list[str] = []
+    for entry in git("ls-files", "--stage", "-v", "-z").split("\0"):
+        if not entry:
+            continue
+        # "<tag> <mode> <object> <stage>\t<path>". A submodule has mode
+        # 160000; -v tags a skip-worktree file "S" and an assume-unchanged
+        # file in lower case.
+        fields, path = entry.split("\t", 1)
+        tag, mode = fields.split(" ")[:2]
+        if mode == "160000":
+            submodules.append(path)
+        if tag == "S" or tag.islower():
+            flagged.append(path)
+    if submodules:
+        raise ValueError(
+            f"RuleSpec checkout {root} contains the submodule {submodules[0]} "
+            f"({len(submodules)} submodule(s)); commit {commit} records a "
+            "submodule's commit, not its files, and git status does not report "
+            "every change inside one. Reference a git archive export instead."
+        )
+    if flagged:
+        raise ValueError(
+            f"RuleSpec checkout {root}: {flagged[0]} is flagged skip-worktree "
+            f"or assume-unchanged ({len(flagged)} flagged file(s)), so git "
+            "status does not report edits to it; clear the flags or reference "
+            "a git archive export instead."
+        )
+    if git("status", "--porcelain=v1", "--untracked-files=all", "--ignored").strip():
+        raise ValueError(
+            f"RuleSpec checkout {root} has modified, untracked, or ignored "
+            f"files that commit {commit} does not hold; reference a git "
+            "archive export instead."
+        )
+    head = git("rev-parse", "--verify", "HEAD^{commit}").strip()
+    if head != commit:
+        raise ValueError(
+            f"RuleSpec checkout {root} is at {head}, not the declared "
+            f"rulespec_commit {commit}."
+        )
+    algorithm = git("rev-parse", "--show-object-format").strip()
+    if algorithm not in ("sha1", "sha256"):
+        raise ValueError(
+            f"RuleSpec checkout {root} uses the git object format {algorithm!r}, "
+            "which this check cannot hash."
+        )
+    recorded: dict[str, tuple[str, str]] = {}
+    for entry in git("ls-tree", "-r", "-z", "--full-tree", commit).split("\0"):
+        if not entry:
+            continue
+        # "<mode> <type> <object>\t<path>"
+        fields, path = entry.split("\t", 1)
+        mode, _, name = fields.split(" ")
+        recorded[path] = (mode, name)
+    files, lacking, extra = _match_checkout_paths(root, recorded, _checkout_files(root))
+    unexpected = sorted((*lacking, *extra))
+    if unexpected:
+        first = unexpected[0]
+        state = "lacks" if first in lacking else "holds"
+        raise ValueError(
+            f"RuleSpec checkout {root} {state} {first}, unlike commit {commit} "
+            f"({len(unexpected)} path(s) differ), though git status reports no "
+            "change; reference a git archive export instead."
+        )
+    for path, (mode, name) in sorted(recorded.items()):
+        # A symbolic link checked out under core.symlinks=false is a plain
+        # file holding the link's blob, and git status reports no change.
+        if mode not in ("100644", "100755"):
+            raise ValueError(
+                f"RuleSpec checkout {root}: commit {commit} records {path} with "
+                f"mode {mode}, not as a regular file, though the checkout holds "
+                "a plain file there; reference a git archive export instead."
+            )
+        file = files[path]
+        if not file.is_file() or _git_blob_id(file.read_bytes(), algorithm) != name:
+            raise ValueError(
+                f"RuleSpec checkout {root}: {path} is not the blob {name} commit "
+                f"{commit} records for it, though git status reports no change; "
+                "reference a git archive export instead."
+            )
+        # Git records the owner's executable bit; core.filemode=false can
+        # hide a change to it from git status.
+        actual_mode = "100755" if file.stat().st_mode & 0o100 else "100644"
+        if actual_mode != mode:
+            raise ValueError(
+                f"RuleSpec checkout {root}: {path} has mode {actual_mode}, not "
+                f"the mode {mode} commit {commit} records for it, though git "
+                "status reports no change; reference a git archive export "
+                "instead."
+            )
+
+
+def _git_environment() -> dict[str, str]:
+    """This process's environment without the variables that choose git's repository.
+
+    The names removed are the installed git's own list of variables local to
+    one repository (``git rev-parse --local-env-vars``): ``GIT_DIR``,
+    ``GIT_WORK_TREE``, ``GIT_INDEX_FILE``, ``GIT_OBJECT_DIRECTORY``,
+    ``GIT_COMMON_DIR``, the ``git -c`` carriers ``GIT_CONFIG_PARAMETERS`` and
+    ``GIT_CONFIG_COUNT``, and the rest. Each names the repository, index,
+    object store, or work tree git reads, or carries configuration into it.
+
+    Raises:
+        ValueError: If git is missing, fails, or times out.
+    """
+
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "--local-env-vars"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except FileNotFoundError as exc:
+        raise ValueError("git is required to verify a RuleSpec checkout.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("git rev-parse --local-env-vars timed out.") from exc
+    if completed.returncode != 0:
+        raise ValueError(
+            f"git rev-parse --local-env-vars failed: {completed.stderr.strip()}"
+        )
+    local = frozenset(completed.stdout.split())
+    return {name: value for name, value in os.environ.items() if name not in local}
+
+
+def _checkout_files(root: Path) -> dict[str, Path]:
+    """Every non-directory entry under ``root`` except the top-level ``.git``.
+
+    Keyed by POSIX path relative to ``root``, the form ``git ls-tree`` prints.
+    """
+
+    present: dict[str, Path] = {}
+    for directory, directories, files in root.walk():
+        if directory == root:
+            directories[:] = [name for name in directories if name != ".git"]
+            files = [name for name in files if name != ".git"]
+        for name in files:
+            path = directory / name
+            present[path.relative_to(root).as_posix()] = path
+    return present
+
+
+def _match_checkout_paths(
+    root: Path, recorded: Collection[str], present: Mapping[str, Path]
+) -> tuple[dict[str, Path], list[str], list[str]]:
+    """Pair each path a commit records with the checkout entry holding it, one to one.
+
+    Git and the file system can spell one file's name differently: on macOS
+    with ``core.precomposeunicode=true``, git records a name in Unicode NFC
+    while the file system lists it as it was created, for instance in NFD,
+    and both spellings open the same file. A recorded path pairs with the
+    entry of the identical name when there is one. Otherwise it pairs with
+    the one remaining entry whose name is canonically equivalent (the same
+    NFD form), and only when ``root / path`` opens that entry's file
+    (:meth:`Path.samefile`). Each entry pairs at most once; when a form has
+    more than one unpaired path or entry, none of them pairs. Nothing is
+    normalized wholesale: where the file system keeps an NFC and an NFD name
+    apart they are two entries, neither standing in for the other, and one
+    file cannot stand in for two recorded spellings. Names that differ in
+    case are not equivalent.
+
+    Args:
+        root: The checkout's top level.
+        recorded: Paths the commit records, POSIX and relative to ``root``.
+        present: :func:`_checkout_files` of ``root``.
+
+    Returns:
+        The entry each paired recorded path names, the recorded paths left
+        unpaired, and the entries left unpaired (as the file system spells
+        them); both lists sorted.
+    """
+
+    paired = {path: present[path] for path in recorded if path in present}
+    lacking: dict[str, list[str]] = {}
+    for path in recorded:
+        if path not in paired:
+            lacking.setdefault(unicodedata.normalize("NFD", path), []).append(path)
+    extra: dict[str, list[str]] = {}
+    for path in present:
+        if path not in paired:
+            extra.setdefault(unicodedata.normalize("NFD", path), []).append(path)
+    unpaired: list[str] = []
+    for form, paths in lacking.items():
+        entries = extra.get(form, [])
+        if len(paths) == 1 and len(entries) == 1:
+            try:
+                same = (root / paths[0]).samefile(present[entries[0]])
+            except OSError:
+                same = False
+            if same:
+                paired[paths[0]] = present[entries.pop()]
+                continue
+        unpaired.extend(paths)
+    leftover = sorted(path for entries in extra.values() for path in entries)
+    return paired, sorted(unpaired), leftover
+
+
+def _git_blob_id(content: bytes, algorithm: str) -> str:
+    """The object name git gives ``content`` as a blob (no filters applied).
+
+    Args:
+        content: The blob's bytes.
+        algorithm: The repository's object format, ``"sha1"`` or ``"sha256"``.
+    """
+
+    digest = hashlib.new(algorithm)
+    digest.update(b"blob %d\0" % len(content))
+    digest.update(content)
+    return digest.hexdigest()

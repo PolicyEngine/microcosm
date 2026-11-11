@@ -1,0 +1,318 @@
+From 9f177ddd6197dd0e296ad05d080865a3e5c2cdbf Mon Sep 17 00:00:00 2001
+From: Max Ghenis <max@maxghenis.com>
+Date: Sun, 27 Sep 2026 21:24:03 -0400
+Subject: [PATCH] Load income year 2025 from the ASEC 2026 public-use archive
+
+Add CensusCPS_2025 and its asecpub26csv.zip URL. The ASEC 2026 person file
+no longer carries SPM_BBSUBVAL, which the loader required for every income
+year after 2020; request it only for income years 2021-2024, the files that
+publish it, through spm_unit_columns_for_year().
+
+Based on 40314a75 (#824), the loader revision that reproduces every table
+of the pinned census_cps_2024.h5 exactly.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../datasets/cps/census_cps.py                |  40 ++--
+ tests/unit/datasets/test_census_cps_2025.py   | 207 ++++++++++++++++++
+ 2 files changed, 232 insertions(+), 15 deletions(-)
+ create mode 100644 tests/unit/datasets/test_census_cps_2025.py
+
+diff --git a/policyengine_us_data/datasets/cps/census_cps.py b/policyengine_us_data/datasets/cps/census_cps.py
+index a62aeeed..5ad4cdef 100644
+--- a/policyengine_us_data/datasets/cps/census_cps.py
++++ b/policyengine_us_data/datasets/cps/census_cps.py
+@@ -50,6 +50,19 @@ def _resolve_person_usecols(
+     return [column for column in requested_columns if column in available_columns]
+ 
+ 
++# SPM_BBSUBVAL (the SPM unit's broadband subsidy value) is published only in
++# the ASEC 2022-2025 public-use person files, i.e. income years 2021-2024.
++# The ASEC 2026 file (income year 2025) no longer carries it.
++SPM_BBSUBVAL_INCOME_YEARS = range(2021, 2025)
++
++
++def spm_unit_columns_for_year(time_period: int) -> list[str]:
++    """SPM unit columns the Census person file carries for an income year."""
++    if int(time_period) in SPM_BBSUBVAL_INCOME_YEARS:
++        return list(SPM_UNIT_COLUMNS)
++    return [col for col in SPM_UNIT_COLUMNS if col != "SPM_BBSUBVAL"]
++
++
+ def _fill_missing_optional_person_columns(person: pd.DataFrame) -> pd.DataFrame:
+     for column in OPTIONAL_PERSON_COLUMNS:
+         if column not in person.columns:
+@@ -72,11 +85,7 @@ class CensusCPS(Dataset):
+ 
+         url = self._cps_download_url
+ 
+-        spm_unit_columns = SPM_UNIT_COLUMNS
+-        if self.time_period <= 2020:
+-            spm_unit_columns = [
+-                col for col in spm_unit_columns if col != "SPM_BBSUBVAL"
+-            ]
++        spm_unit_columns = spm_unit_columns_for_year(self.time_period)
+ 
+         response = requests.get(url, stream=True)
+         total_size_in_bytes = int(response.headers.get("content-length", 200e6))
+@@ -98,11 +107,7 @@ class CensusCPS(Dataset):
+             progress_bar.total = content_length_actual
+             progress_bar.close()
+             zipfile = ZipFile(file)
+-            spm_unit_columns = SPM_UNIT_COLUMNS
+-            if self.time_period <= 2020:
+-                spm_unit_columns = [
+-                    col for col in spm_unit_columns if col != "SPM_BBSUBVAL"
+-                ]
++            spm_unit_columns = spm_unit_columns_for_year(self.time_period)
+             with pd.HDFStore(self.file_path, mode="w") as storage:
+                 file_year = int(self.time_period) + 1
+                 file_year_code = str(file_year)[-2:]
+@@ -165,14 +170,18 @@ class CensusCPS(Dataset):
+     def _create_spm_unit_table(
+         self, person: pd.DataFrame, time_period: int
+     ) -> pd.DataFrame:
+-        spm_unit_columns = SPM_UNIT_COLUMNS
+-        if time_period <= 2020:
+-            spm_unit_columns = [
+-                col for col in spm_unit_columns if col != "SPM_BBSUBVAL"
+-            ]
++        spm_unit_columns = spm_unit_columns_for_year(time_period)
+         return person[spm_unit_columns].groupby(person.SPM_ID).first()
+ 
+ 
++class CensusCPS_2025(CensusCPS):
++    time_period = 2025
++    label = "Census CPS (2025)"
++    name = "census_cps_2025"
++    file_path = STORAGE_FOLDER / "census_cps_2025.h5"
++    data_format = Dataset.TABLES
++
++
+ class CensusCPS_2024(CensusCPS):
+     time_period = 2024
+     label = "Census CPS (2024)"
+@@ -237,6 +246,7 @@ CPS_URL_BY_YEAR = {
+     2022: "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asecpub23csv.zip",
+     2023: "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asecpub24csv.zip",
+     2024: "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asecpub25csv.zip",
++    2025: "https://www2.census.gov/programs-surveys/cps/datasets/2026/march/asecpub26csv.zip",
+ }
+ 
+ 
+diff --git a/tests/unit/datasets/test_census_cps_2025.py b/tests/unit/datasets/test_census_cps_2025.py
+new file mode 100644
+index 00000000..28d7e315
+--- /dev/null
++++ b/tests/unit/datasets/test_census_cps_2025.py
+@@ -0,0 +1,207 @@
++"""The income-year 2025 (ASEC 2026) Census CPS loader.
++
++The ASEC 2026 public-use person file drops SPM_BBSUBVAL, which the loader
++required for every income year after 2020. These tests pin the URL map, the
++year-keyed SPM column list, and an end-to-end ``generate()`` over a synthetic
++ASEC 2026 archive with no network access.
++"""
++
++import io
++import re
++import zipfile
++
++import pandas as pd
++import pytest
++
++from policyengine_us_data.datasets.cps import census_cps
++from policyengine_us_data.datasets.cps.census_cps import (
++    CPS_URL_BY_YEAR,
++    PERSON_COLUMNS,
++    SPM_BBSUBVAL_INCOME_YEARS,
++    SPM_UNIT_COLUMNS,
++    TAX_UNIT_COLUMNS,
++    CensusCPS_2024,
++    CensusCPS_2025,
++    _resolve_person_usecols,
++    spm_unit_columns_for_year,
++)
++
++URL_PATTERN = re.compile(
++    r"^https://www2\.census\.gov/programs-surveys/cps/datasets/"
++    r"(?P<survey>\d{4})/march/asecpub(?P<code>\d{2})csv\.zip$"
++)
++
++
++@pytest.mark.parametrize("income_year", sorted(CPS_URL_BY_YEAR))
++def test_every_url_is_the_following_survey_year(income_year):
++    match = URL_PATTERN.match(CPS_URL_BY_YEAR[income_year])
++    assert match is not None
++    assert int(match["survey"]) == income_year + 1
++    assert match["code"] == str(income_year + 1)[-2:]
++
++
++def test_income_year_2025_reads_the_asec_2026_archive():
++    assert CPS_URL_BY_YEAR[2025] == (
++        "https://www2.census.gov/programs-surveys/cps/datasets/2026/march/"
++        "asecpub26csv.zip"
++    )
++    dataset = object.__new__(CensusCPS_2025)
++    assert dataset.time_period == 2025
++    assert dataset.name == "census_cps_2025"
++    assert dataset.file_path.name == "census_cps_2025.h5"
++    assert dataset._cps_download_url == CPS_URL_BY_YEAR[2025]
++
++
++@pytest.mark.parametrize("income_year", range(1990, 2101))
++def test_spm_columns_carry_bbsubval_exactly_in_income_years_2021_to_2024(
++    income_year,
++):
++    columns = spm_unit_columns_for_year(income_year)
++    assert ("SPM_BBSUBVAL" in columns) == (2021 <= income_year <= 2024)
++    # Every other SPM column is always requested, in the original order.
++    assert [c for c in SPM_UNIT_COLUMNS if c != "SPM_BBSUBVAL"] == [
++        c for c in columns if c != "SPM_BBSUBVAL"
++    ]
++    assert columns == [c for c in SPM_UNIT_COLUMNS if c in columns]
++
++
++def test_spm_bbsubval_window_matches_the_published_files():
++    # ASEC 2022-2025 (income 2021-2024) carry SPM_BBSUBVAL; ASEC 2021 and 2026
++    # do not. Earlier loader versions encoded the lower edge as `<= 2020`.
++    assert list(SPM_BBSUBVAL_INCOME_YEARS) == [2021, 2022, 2023, 2024]
++    assert "SPM_BBSUBVAL" in SPM_UNIT_COLUMNS
++
++
++def test_spm_columns_for_a_year_do_not_alias_the_module_list():
++    columns = spm_unit_columns_for_year(2024)
++    columns.append("SENTINEL")
++    assert "SENTINEL" not in SPM_UNIT_COLUMNS
++
++
++def _asec_2026_person_header() -> list[str]:
++    return [
++        c
++        for c in dict.fromkeys(PERSON_COLUMNS + SPM_UNIT_COLUMNS + TAX_UNIT_COLUMNS)
++        if c != "SPM_BBSUBVAL"
++    ]
++
++
++def test_an_asec_2026_header_resolves_for_2025_and_refuses_for_2024():
++    header = _asec_2026_person_header()
++    usecols = _resolve_person_usecols(header, spm_unit_columns_for_year(2025))
++    assert "SPM_BBSUBVAL" not in usecols
++    assert "SPM_ID" in usecols
++    with pytest.raises(KeyError, match="SPM_BBSUBVAL"):
++        _resolve_person_usecols(header, spm_unit_columns_for_year(2024))
++
++
++def _synthetic_asec_2026_archive() -> bytes:
++    header = _asec_2026_person_header()
++    rows = []
++    for line, (age, wages, expr) in enumerate(
++        ((40, 50_000, 1), (38, 20_000, 3), (10, 0, 5)), start=1
++    ):
++        row = dict.fromkeys(header, 0)
++        row.update(
++            PH_SEQ=1,
++            PF_SEQ=1,
++            P_SEQ=line,
++            A_LINENO=line,
++            A_AGE=age,
++            A_SEX=1 + line % 2,
++            A_MARITL=1 if age >= 18 else 7,
++            A_SPOUSE=(2 if line == 1 else 1) if age >= 18 else 0,
++            A_EXPRRP=expr,
++            PEPAR1=1 if age < 18 else -1,
++            PEPAR2=2 if age < 18 else -1,
++            PECOHAB=-1,
++            WSAL_VAL=wages,
++            PTOTVAL=wages,
++            A_FNLWGT=150_000,
++            TAX_ID=7,
++            SPM_ID=9,
++            SPM_WEIGHT=150_000,
++            SPM_NUMPER=3,
++        )
++        rows.append(row)
++    person = pd.DataFrame(rows, columns=header)
++    family = pd.DataFrame({"FH_SEQ": [1, 2], "FFPOS": [1, 1], "FTOTVAL": [70_000, 0]})
++    household = pd.DataFrame(
++        {"H_SEQ": [1, 2], "H_IDNUM": ["000000000000001", "000000000000002"]}
++    )
++    buffer = io.BytesIO()
++    with zipfile.ZipFile(buffer, "w") as archive:
++        archive.writestr("pppub26.csv", person.to_csv(index=False))
++        archive.writestr("ffpub26.csv", family.to_csv(index=False))
++        archive.writestr("hhpub26.csv", household.to_csv(index=False))
++    return buffer.getvalue()
++
++
++class _FakeResponse:
++    status_code = 200
++
++    def __init__(self, payload: bytes):
++        self._payload = payload
++        self.headers = {"content-length": str(len(payload))}
++
++    def iter_content(self, chunk_size):
++        for start in range(0, len(self._payload), chunk_size):
++            yield self._payload[start : start + chunk_size]
++
++
++def test_generate_writes_an_income_year_2025_store_without_spm_bbsubval(
++    tmp_path, monkeypatch
++):
++    payload = _synthetic_asec_2026_archive()
++    requested = []
++
++    def fake_get(url, stream):
++        requested.append(url)
++        return _FakeResponse(payload)
++
++    monkeypatch.setattr(census_cps.requests, "get", fake_get)
++    dataset = object.__new__(CensusCPS_2025)
++    dataset.file_path = tmp_path / "census_cps_2025.h5"
++
++    dataset.generate()
++
++    assert requested == [CPS_URL_BY_YEAR[2025]]
++    with pd.HDFStore(dataset.file_path, mode="r") as store:
++        assert sorted(store.keys()) == [
++            "/family",
++            "/household",
++            "/person",
++            "/spm_unit",
++            "/tax_unit",
++        ]
++        person = store["person"]
++        spm_unit = store["spm_unit"]
++        household = store["household"]
++        family = store["family"]
++    assert "SPM_BBSUBVAL" not in person.columns
++    assert list(spm_unit.columns) == spm_unit_columns_for_year(2025)
++    assert spm_unit.index.tolist() == [9]
++    assert person["CENSUS_TAX_ID"].tolist() == [7, 7, 7]
++    # Only households and families that have persons are kept.
++    assert household["H_SEQ"].tolist() == [1]
++    assert family["FH_SEQ"].tolist() == [1]
++
++
++def test_generate_for_2024_still_requires_spm_bbsubval(tmp_path, monkeypatch):
++    payload = _synthetic_asec_2026_archive()
++    with zipfile.ZipFile(io.BytesIO(payload)) as source:
++        members = {name: source.read(name) for name in source.namelist()}
++    buffer = io.BytesIO()
++    with zipfile.ZipFile(buffer, "w") as archive:
++        for name, data in members.items():
++            archive.writestr(name.replace("26", "25"), data)
++    monkeypatch.setattr(
++        census_cps.requests,
++        "get",
++        lambda url, stream: _FakeResponse(buffer.getvalue()),
++    )
++    dataset = object.__new__(CensusCPS_2024)
++    dataset.file_path = tmp_path / "census_cps_2024.h5"
++
++    with pytest.raises(KeyError, match="SPM_BBSUBVAL"):
++        dataset.generate()
+-- 
+2.55.0
+

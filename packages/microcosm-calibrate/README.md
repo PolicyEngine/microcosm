@@ -83,8 +83,23 @@ country declaration; Chronicle supplies geography, fact labels, dimension ids,
 and categorical value labels where present. Microcosm supplies a deterministic
 label only when Chronicle has no label for that field. The dashboard consumes
 these identifiers and labels verbatim and does not infer schema-8 display text.
-Generic calibrations whose targets carry no hierarchy retain schema 6; a payload
-cannot mix hierarchy-bearing and hierarchy-free targets.
+Generic in-memory payloads whose targets carry no hierarchy retain schema 6 for
+historical readers; a payload cannot mix hierarchy-bearing and hierarchy-free
+targets. Current release builders assemble schema 8 and publish schema 9: they
+pass a complete `TargetRegistry` to `write_calibration_diagnostics`, which
+validates the typed document, declares each provider, category, geography and
+dimension label once in `hierarchy_catalogs`, and writes it atomically. Rows
+that give one identifier two labels are refused (`label_conflict`) unless the
+registry country's reviewed choices in `microcosm.calibrate.hierarchy_labels`
+name the label. The writer returns either `available` with the
+file digest or `failed` with a structured error. A failed diagnostics attempt
+does not invalidate the calibrated dataset.
+
+Producer code converts an unavailable calculated measurement to `None` before
+model construction. Schema 8 otherwise rejects non-finite numbers recursively,
+including values nested in solver options, target metadata, or build provenance.
+The writer repeats this requirement during strict JSON serialization and never
+converts a surviving `NaN` or infinity to `null`.
 
 Dimensions are not manually enumerated in the target declaration. A single
 fact or fan-out target inherits all Chronicle dimensions, with

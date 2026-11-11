@@ -1,0 +1,1 @@
+The UK build's telemetry emitter adapter now waits up to 15 seconds, rather than 3, for the local emitter service to become ready. The service took about four seconds to start on an M1 Max even with a warm cache, so every build on such a machine fell back to local-only telemetry. The value is a ceiling: a faster start is not delayed.

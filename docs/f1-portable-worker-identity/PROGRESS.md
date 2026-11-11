@@ -10,7 +10,7 @@ focused green; documentation and full verification are in progress on
 
 ## Done
 
-- Read `CLAUDE.md`, the reproduced refusal in `_inputs/STOP.md`, and the F1
+- Read the canonical agent guide, the reproduced refusal in `_inputs/STOP.md`, and the F1
   specification in `_inputs/FIX-PLAN.md`.
 - Confirmed that runner-owned root journals and task inputs will remain
   untouched.

@@ -1,0 +1,2127 @@
+"""Country-neutral gate bindings for transport countries' gate batteries.
+
+``gates.battery@1`` (:mod:`~microcosm.build.transport.gate_kernels`) takes its
+binding registry as a constructor argument; :data:`TRANSPORT_GATE_REGISTRY`
+is that registry for a donor-based (transport) country. It is
+:data:`~microcosm.build.gate_battery.DEFAULT_REGISTRY` plus one
+:class:`~microcosm.build.gate_battery.FunctionBinding` per gate below. An
+implemented binding adapts evidence the transport graph already produces to
+a gate comparison. The comparisons stay in :mod:`microcosm.build.gates` where one
+exists; the two weight-concentration gates and the calibration-reference
+coverage check have none there and are defined here.
+
+Everything a binding reads arrives one of three ways, because the gate
+kernel offers no spec object and binds no data a module reads from disk:
+
+- **Thresholds and declared surfaces** come only from the entry's
+  ``parameters`` in the country's ``gates.json``. No tunable threshold has a
+  default here: an entry that omits one fails closed when the gate runs, and
+  a composer that calls :func:`validate_required_gate_parameters` refuses
+  such a manifest before any gate runs (the kernel itself runs only the
+  battery's ``validate_gate_parameters``). The shared comparisons keep their
+  own fixed semantics: non-negative means at least zero, and
+  ``aggregate_admin_gate`` measures a miss relative to ``max(|value|, 1)``.
+- **Artifacts** arrive under the aliases below, decoded by type
+  (``gate_kernels.EVIDENCE_DECODERS``). A composer wires each alias to the
+  output of the same name.
+- **The frame** is the node's rebuilt population (``entities`` with
+  ``weight_entity``) plus that entity's typed weights. The frame gates check
+  the columns the node slices, so a node gating an export must slice what
+  ``export.prepare@1`` slices; their details list the columns they read.
+
+The evidence each bound gate reads:
+
+- ``per_family_fit``: ``diagnostics`` (``diagnostics.calibration@1``).
+- ``aggregate_admin``: ``surface`` (``targets.compile@1``) and
+  ``diagnostics``.
+- ``calibration_reference_coverage``: ``surface`` and ``problem``
+  (``targets.problem@1``).
+- ``target_profile_coverage``: ``problem``.
+- ``nonnegative_columns``: the frame; ``columns`` from ``gates.json``.
+- ``exported_nonzero``: the frame.
+- ``formula_owned_export``: the frame; ``formula_owned_columns`` from
+  ``gates.json``.
+- ``weight_ess`` and ``weight_ratio``: the frame's one weighted entity.
+
+``measurement_prefit`` reads ``problem`` and the battery's reserved
+``graph_evidence`` map: the problem's interval diagnostics with their
+per-band support, and its matrix at the weights entering calibration.
+
+``release_input_coverage`` reads ``donor_artifact_receipt``
+(``transport.donor_receipt@1``) and ``axiom_input_closure``
+(``transport.input_closure@1``) with the battery's reserved
+``graph_evidence`` map and the frame, and requires
+``allow_engine_optional`` from ``gates.json``. Each artifact's identity
+header must name the producer node the battery's own edge names, the
+producer kernel and its implementation hash, and the digests of the bytes
+and frame columns the battery also holds
+(:func:`~microcosm.build.transport.evidence_contract.checked_header`); the
+gate then reports every bound module, never stopping at the first failure.
+``support`` reads ``donor_support_bounds`` (``transport.support_bounds@1``,
+which reads ``donor_ranges``) with ``graph_evidence`` and the frame, and
+requires ``structural_columns`` from ``gates.json``; it reports every roster
+column by its producer class. Missing artifacts resolve to registered
+``evidence_absent``. Only ``macro_realism`` has no transport binding and
+remains ``not_applicable`` pending national-accounts evidence and reviewed
+bands. ``weights_audit`` overrides the
+``DEFAULT_REGISTRY`` binding for transport countries only: it reads
+``fit_weight_records`` from ``transport.weights_audit@1``, runs
+``weights_audit_gate`` unchanged over its fit records, then checks the
+design-to-calibrated transition, the destination-mass change against the
+required ``maximum_relative_mass_change`` and the one-vector rule over every
+declared partition. ``DEFAULT_REGISTRY``, ``gates.py`` and the UK registry
+keep their binding.
+
+Every binding is a frozen dataclass over top-level functions, so
+``gates.battery@1`` can describe it exactly
+(:mod:`~microcosm.build.transport.binding_identity`). Failure lines and
+details are built in a fixed order, never from unordered set iteration.
+"""
+
+from __future__ import annotations
+
+import inspect
+import math
+import statistics
+from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import replace
+from fractions import Fraction
+from types import MappingProxyType
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from microcosm.build.country_spec import GatesManifest
+from microcosm.build.gate_battery import (
+    DEFAULT_REGISTRY,
+    EvidenceContext,
+    FunctionBinding,
+    GateBinding,
+)
+from microcosm.build.gates import (
+    FitWeightRecord,
+    GateResult,
+    TargetCoverageRequirement,
+    aggregate_admin_gate,
+    exported_nonzero_gate,
+    formula_owned_export_gate,
+    nonnegative_columns_gate,
+    per_family_fit_gate,
+    target_profile_coverage_gate,
+    weights_audit_gate,
+)
+from microcosm.build.plan import _nonzero_share
+from microcosm.calibrate.solve import effective_sample_size
+from microcosm.frame import Frame
+
+from .evidence_contract import (
+    AXIOM_INPUT_CLOSURE,
+    CLOSURE_CLASSES,
+    DONOR_ARTIFACT_RECEIPT,
+    DONOR_RANGES,
+    DONOR_RECEIPT_REF,
+    DONOR_SUPPORT_BOUNDS,
+    FIT_WEIGHT_RECORDS,
+    GRAPH_EVIDENCE,
+    INPUT_CLOSURE_REF,
+    SUPPORT_BOUNDS_REF,
+    WEIGHTS_AUDIT_REF,
+    EvidenceDocument,
+    checked_header,
+    partition_counts,
+)
+from .weight_quality import aggregate_source_weights
+
+__all__ = [
+    "DIAGNOSTICS",
+    "PROBLEM",
+    "SURFACE",
+    "TRANSPORT_GATE_REGISTRY",
+    "required_gate_parameters",
+    "validate_required_gate_parameters",
+    "weight_ess_gate",
+    "weight_ratio_gate",
+    "weight_summary",
+]
+
+#: Alias of the compiled target surface (``targets.compile@1`` ``surface``).
+SURFACE = "surface"
+#: Alias of the ordered calibration problem (``targets.problem@1`` ``problem``).
+PROBLEM = "problem"
+#: Alias of one calibration's schema-8 diagnostics
+#: (``diagnostics.calibration@1`` ``diagnostics``).
+DIAGNOSTICS = "diagnostics"
+CELL_DIAGNOSTICS = "cell_diagnostics"
+
+
+# ---------------------------------------------------------------------------
+# Parameter and evidence readers
+# ---------------------------------------------------------------------------
+
+
+def _number(name: str, value: object) -> float:
+    """A finite real number; a JSON boolean is refused, never read as 0 or 1."""
+
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError(f"{name} must be a number, got {value!r}.")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be finite, got {value!r}.")
+    return number
+
+
+def _strings(name: str, value: object) -> tuple[str, ...]:
+    """A non-empty sequence of distinct, non-empty strings."""
+
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise TypeError(f"{name} must be a list of strings, got {value!r}.")
+    items = tuple(value)
+    if not items:
+        raise ValueError(f"{name} must name at least one item.")
+    bad = [item for item in items if not isinstance(item, str) or not item]
+    if bad:
+        raise ValueError(f"{name} must hold non-empty strings, got {bad!r}.")
+    if len(set(items)) != len(items):
+        raise ValueError(f"{name} repeats {_repeated(items)}.")
+    return items
+
+
+def _optional_strings(name: str, value: object) -> tuple[str, ...] | None:
+    return None if value is None else _strings(name, value)
+
+
+def _reviewed_exclusions(value: Mapping[str, str] | None) -> dict[str, str] | None:
+    """Review reasons must be strings before the shared gate can coerce them."""
+
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise TypeError("Reviewed exclusions must be a mapping from name to reason.")
+    for name, reason in value.items():
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(
+                f"Reviewed exclusion {name!r} needs a non-empty string reason."
+            )
+    return dict(value)
+
+
+def _diagnostics_rows(diagnostics: object) -> tuple[Mapping[str, Any], ...]:
+    """The target rows of a decoded schema-8 calibration diagnostics model."""
+
+    if not isinstance(diagnostics, Mapping):
+        raise TypeError(
+            "diagnostics must be a decoded calibration diagnostics mapping, got "
+            f"{type(diagnostics).__name__}."
+        )
+    rows = diagnostics.get("targets")
+    if not isinstance(rows, list | tuple) or not rows:
+        raise ValueError("diagnostics must carry a non-empty list of target rows.")
+    for index, row in enumerate(rows):
+        if not isinstance(row, Mapping):
+            raise TypeError(f"diagnostics target row {index} is not a mapping.")
+    return tuple(rows)
+
+
+def _row_family(row: Mapping[str, Any]) -> str:
+    """The registry family of a diagnostics row, usable as a family label."""
+
+    registry = row.get("registry")
+    family = registry.get("family") if isinstance(registry, Mapping) else None
+    if not isinstance(family, str) or not family or "/" in family:
+        raise ValueError(
+            f"diagnostics target {row.get('name')!r} has no usable registry "
+            f"family ({family!r}); a target without one cannot be gated per "
+            "family."
+        )
+    return family
+
+
+def _row_name(row: Mapping[str, Any]) -> str:
+    name = row.get("name")
+    if not isinstance(name, str) or not name:
+        raise ValueError(f"diagnostics target row has no name ({name!r}).")
+    return name
+
+
+def _row_number(row: Mapping[str, Any], key: str) -> float:
+    value = row.get(key)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(
+            f"diagnostics target {row.get('name')!r} has no finite {key} ({value!r})."
+        )
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(
+            f"diagnostics target {row.get('name')!r} has no finite {key} ({value!r})."
+        )
+    return number
+
+
+def _missing_selection(
+    gate: str, kind: str, declared: tuple[str, ...], found: Iterable[str]
+) -> list[str]:
+    present = set(found)
+    return [
+        f"{label}: declared {kind} has no calibrated target in the {gate} evidence."
+        for label in declared
+        if label not in present
+    ]
+
+
+def _with_failures(
+    result: GateResult,
+    *,
+    failures: Sequence[str],
+    details: Mapping[str, object],
+    legacy: str | None = None,
+    name: str | None = None,
+) -> GateResult:
+    """``result`` with extra failures (first) and details appended.
+
+    A shared comparison that mints a legacy name is re-minted under ``name``
+    only when it returns exactly ``legacy``; any other name passes through,
+    so the battery's name check still fails a mismatch closed.
+    """
+
+    renamed = name if legacy is not None and result.name == legacy else result.name
+    return GateResult(
+        name=renamed,
+        passed=result.passed and not failures,
+        failures=(*failures, *result.failures),
+        details={**dict(result.details), **dict(details)},
+    )
+
+
+def _repeated(items: Sequence[str]) -> list[str]:
+    return sorted(item for item, count in Counter(items).items() if count > 1)
+
+
+def _frame_columns(frame: Frame) -> dict[str, pd.Series]:
+    """Every exported column: each entity table's columns, then the weights.
+
+    Column names are unique across a frame's entity tables (a ``Frame``
+    invariant). A weighted entity's typed weights stand in for its
+    ``{entity}_weight`` column, which an export writes from them.
+    """
+
+    columns: dict[str, pd.Series] = {}
+    for entity in frame.entities:
+        table = frame.table(entity)
+        for column in table.columns:
+            columns[str(column)] = table[column]
+    for entity in frame.weighted_entities:
+        columns[f"{entity}_weight"] = pd.Series(
+            frame.weights_for(entity).values, name=f"{entity}_weight"
+        )
+    return columns
+
+
+def _structural_columns(frame: Frame) -> tuple[str, ...]:
+    """Entity ids and the person table's memberships of the frame's groups.
+
+    ``context_frame`` keeps memberships of groups outside the node's entities
+    as ordinary person columns; those are measured like any other column.
+    """
+
+    schema = frame.schema
+    return (
+        schema.person_id_column,
+        *(schema.membership_column(group) for group in schema.group_entities),
+        *(schema.id_column(group) for group in schema.group_entities),
+    )
+
+
+def _weighted_entity(frame: Frame) -> tuple[str, np.ndarray]:
+    weighted = frame.weighted_entities
+    if len(weighted) != 1:
+        raise ValueError(
+            "The weight gates read one weighted entity; the frame carries "
+            f"{list(weighted)}."
+        )
+    entity = weighted[0]
+    return entity, frame.weights_for(entity).values
+
+
+# ---------------------------------------------------------------------------
+# Weight concentration (no shared comparison in microcosm.build.gates)
+# ---------------------------------------------------------------------------
+
+
+class _InvalidWeightSummaryError(ValueError):
+    """Finite input weights produced an unusable concentration summary."""
+
+
+def _exact_median(positive: np.ndarray) -> float:
+    """The median of positive weights, rounded once from exact arithmetic.
+
+    An odd count's median is its middle weight. An even count's is the
+    midpoint of its two middle weights, formed as a rational number and
+    rounded once to float64: a float ``(a + b) / 2`` overflows near the
+    float64 maximum, and a median rescaled from normalized weights rounds
+    more than once (giving 1.5e-323, not 2e-323, for ``[1e-323, 2.5e-323]``).
+    """
+
+    count = positive.size
+    middle = list(range((count - 1) >> 1, (count >> 1) + 1))
+    central = np.partition(positive, middle)[middle]
+    return float(statistics.median(Fraction(float(value)) for value in central))
+
+
+def weight_summary(
+    weights: Sequence[float] | np.ndarray,
+    *,
+    source_household_ids: Sequence[object] | np.ndarray | None = None,
+) -> dict[str, Any]:
+    """The concentration summary of one shipped weight vector.
+
+    The ESS fraction divides the Kish effective sample size by every record,
+    zero-weight rows included; the median is over positive weights only, so
+    the max-to-median ratio does not depend on how many dead rows ship. An
+    all-zero vector is reportable: its median and ratio are ``None``.
+    Concentration (the ESS fraction and the max-to-median ratio) is computed
+    after scaling by the largest weight to avoid overflow and underflow; a
+    positive weight whose scaled value rounds to zero is kept at the smallest
+    subnormal, so scaling never drops positive support. The reported
+    ``median_positive_weight`` is the exact median of the original positive
+    weights, rounded once. An unrepresentable diagnostic total is ``None``;
+    invalid concentration summaries are refused rather than compared.
+    """
+
+    values = (
+        np.asarray(weights, dtype=np.float64)
+        if source_household_ids is None
+        else aggregate_source_weights(weights, source_household_ids)
+    )
+    if values.ndim != 1 or values.size == 0:
+        raise ValueError("Weights must be a non-empty vector.")
+    if not np.isfinite(values).all() or (values < 0).any():
+        raise ValueError("Weights must be finite and non-negative.")
+    positive_mask = values > 0
+    positive_records = int(positive_mask.sum())
+    maximum = float(values.max())
+    if maximum > 0:
+        scaled = values / maximum
+        scaled[positive_mask & (scaled == 0)] = np.finfo(np.float64).smallest_subnormal
+    else:
+        scaled = values
+    ess = float(effective_sample_size(scaled))
+    record_limit = float(values.size)
+    roundoff = math.ulp(record_limit) * record_limit
+    if not math.isfinite(ess) or not 0 <= ess <= record_limit + roundoff:
+        raise _InvalidWeightSummaryError(
+            "Computed weight ESS must be finite and within record bounds."
+        )
+    # Kish ESS is bounded by record count; allow only summation roundoff.
+    ess = min(ess, record_limit)
+    fraction = ess / values.size
+    if positive_records:
+        if not ess >= 1:
+            raise _InvalidWeightSummaryError(
+                "Computed positive-weight ESS must be at least one."
+            )
+        scaled_median = float(np.median(scaled[positive_mask]))
+        if not math.isfinite(scaled_median) or not 0 < scaled_median <= 1:
+            raise _InvalidWeightSummaryError(
+                "Computed positive-weight median must be finite and positive."
+            )
+        ratio = 1 / scaled_median
+        # Not maximum * scaled_median, which rounds the median a second time.
+        median = _exact_median(values[positive_mask])
+        if not math.isfinite(ratio) or ratio < 1:
+            raise _InvalidWeightSummaryError(
+                "Computed max/positive-median ratio must be finite and at least one."
+            )
+        if not math.isfinite(median) or not 0 < median <= maximum:
+            raise _InvalidWeightSummaryError(
+                "Computed positive-weight median must be finite and positive."
+            )
+    else:
+        median = ratio = None
+    with np.errstate(over="ignore"):
+        total = float(values.sum())
+    return {
+        "n_records": int(values.size),
+        "positive_weight_records": positive_records,
+        "zero_weight_records": int(values.size - positive_records),
+        "total_weight": total if math.isfinite(total) else None,
+        "effective_sample_size": ess,
+        "ess_fraction": fraction,
+        "median_positive_weight": median,
+        "max_weight": maximum,
+        "max_to_median_positive_weight": ratio,
+    }
+
+
+def weight_ess_gate(
+    weights: Sequence[float] | np.ndarray,
+    *,
+    minimum_ess_fraction: float | None = None,
+    minimum_effective_sample_size: float | None = None,
+    source_household_ids: Sequence[object] | np.ndarray | None = None,
+) -> GateResult:
+    """Require the shipped weights to retain an effective-sample-size floor."""
+
+    if minimum_ess_fraction is None and minimum_effective_sample_size is None:
+        raise ValueError(
+            "Declare minimum_ess_fraction or minimum_effective_sample_size."
+        )
+    minimum = (
+        None
+        if minimum_ess_fraction is None
+        else _number("minimum_ess_fraction", minimum_ess_fraction)
+    )
+    if minimum is not None and not 0 < minimum <= 1:
+        raise ValueError("minimum_ess_fraction must lie in (0, 1].")
+    absolute = (
+        None
+        if minimum_effective_sample_size is None
+        else _number("minimum_effective_sample_size", minimum_effective_sample_size)
+    )
+    if absolute is not None and not absolute > 0:
+        raise ValueError("minimum_effective_sample_size must be strictly positive.")
+    thresholds = {
+        **({"minimum_ess_fraction": minimum} if minimum is not None else {}),
+        **({"minimum_effective_sample_size": absolute} if absolute is not None else {}),
+    }
+    try:
+        summary = weight_summary(weights, source_household_ids=source_household_ids)
+    except _InvalidWeightSummaryError as exc:
+        return GateResult(
+            name="weight_ess",
+            passed=False,
+            failures=(str(exc),),
+            details=thresholds,
+        )
+    fraction = float(summary["ess_fraction"])
+    failures = (
+        (f"ESS fraction {fraction:.6g} is below the reviewed minimum {minimum:.6g}.",)
+        if minimum is not None and not fraction >= minimum
+        else ()
+    )
+    if absolute is not None and not summary["effective_sample_size"] >= absolute:
+        failures = (
+            *failures,
+            f"ESS {summary['effective_sample_size']:.6g} is below the reviewed "
+            f"absolute minimum {absolute:.6g}.",
+        )
+    return GateResult(
+        name="weight_ess",
+        passed=not failures,
+        failures=failures,
+        details={**summary, **thresholds},
+    )
+
+
+def weight_ratio_gate(
+    weights: Sequence[float] | np.ndarray,
+    *,
+    maximum_max_to_median_ratio: float,
+    source_household_ids: Sequence[object] | np.ndarray | None = None,
+) -> GateResult:
+    """Backstop a shipped-weight max to positive-median concentration blowout."""
+
+    maximum = _number("maximum_max_to_median_ratio", maximum_max_to_median_ratio)
+    if not maximum > 0:
+        raise ValueError("maximum_max_to_median_ratio must be strictly positive.")
+    try:
+        summary = weight_summary(weights, source_household_ids=source_household_ids)
+    except _InvalidWeightSummaryError as exc:
+        return GateResult(
+            name="weight_ratio",
+            passed=False,
+            failures=(str(exc),),
+            details={"maximum_max_to_median_ratio": maximum},
+        )
+    ratio = summary["max_to_median_positive_weight"]
+    if ratio is None:
+        failures: tuple[str, ...] = (
+            "Max/positive-median weight ratio is undefined because no weight "
+            "is positive.",
+        )
+    elif not ratio <= maximum:
+        failures = (
+            f"Max/positive-median weight ratio {ratio!r} exceeds the reviewed "
+            f"maximum {maximum!r}.",
+        )
+    else:
+        failures = ()
+    return GateResult(
+        name="weight_ratio",
+        passed=not failures,
+        failures=failures,
+        details={**summary, "maximum_max_to_median_ratio": maximum},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Evaluators: one per bound gate (keyword-only; thresholds have no default)
+# ---------------------------------------------------------------------------
+
+
+def _per_family_fit(
+    *,
+    diagnostics: object,
+    within: float,
+    min_family_share: float,
+    hard_within: float,
+    min_hard_family_share: float,
+    min_family_size: int,
+    families: Sequence[str] | None = None,
+) -> GateResult:
+    """Per-family calibration fit over one calibration's diagnostics rows.
+
+    Every threshold of :func:`~microcosm.build.gates.per_family_fit_gate` is
+    required. ``hard_within`` must be a number: the shared gate treats
+    ``None`` as report-only, which belongs in a ``diagnostic`` entry, not in
+    a binding that can pass a release-blocking one. ``families`` restricts
+    the gate to those registry families, so a country can declare a tighter
+    entry for one family; each declared family must have at least one target.
+    """
+
+    if isinstance(min_family_size, bool) or not isinstance(min_family_size, int):
+        raise TypeError(f"min_family_size must be an integer, got {min_family_size!r}.")
+    if min_family_size < 0:
+        raise ValueError("min_family_size must be non-negative.")
+    thresholds = {
+        "within": _number("within", within),
+        "min_family_share": _number("min_family_share", min_family_share),
+        "hard_within": _number("hard_within", hard_within),
+        "min_hard_family_share": _number(
+            "min_hard_family_share", min_hard_family_share
+        ),
+        "min_family_size": min_family_size,
+    }
+    for key in ("within", "hard_within"):
+        if thresholds[key] < 0:
+            raise ValueError(f"{key} must be non-negative.")
+    for key in ("min_family_share", "min_hard_family_share"):
+        if not 0 <= thresholds[key] <= 1:
+            raise ValueError(f"{key} must lie in [0, 1].")
+    declared = _optional_strings("families", families)
+    rows = [
+        (_row_family(row), _row_name(row), _row_number(row, "relative_error"))
+        for row in _diagnostics_rows(diagnostics)
+    ]
+    repeated = _repeated([name for _, name, _ in rows])
+    if repeated:
+        raise ValueError(f"diagnostics repeat targets {repeated}.")
+    if declared is not None:
+        rows = [row for row in rows if row[0] in declared]
+    missing = (
+        []
+        if declared is None
+        else _missing_selection(
+            "per_family_fit", "family", declared, (row[0] for row in rows)
+        )
+    )
+    result = per_family_fit_gate(
+        [f"{family}/{name}" for family, name, _ in rows],
+        [error for _, _, error in rows],
+        **thresholds,
+    )
+    return _with_failures(
+        result,
+        failures=missing,
+        details={
+            "min_family_size": min_family_size,
+            "families": None if declared is None else list(declared),
+        },
+    )
+
+
+def _aggregate_admin(
+    *,
+    surface: object,
+    diagnostics: object,
+    default_rtol: float,
+    families: Sequence[str] | None = None,
+    geography_levels: Sequence[str] | None = None,
+) -> GateResult:
+    """Calibrated aggregates against the compiled surface's anchors, signed.
+
+    Anchors are the surface's compiled target specs (each with its source);
+    the achieved aggregate is the
+    diagnostics' final estimate of the same target. The diagnostics must
+    record this surface (``build.surface_sha256``, which
+    ``diagnostics.calibration@1`` writes), so another calibration's
+    estimates cannot be graded against it. Every anchor uses ``default_rtol``
+    from ``gates.json``; surface tolerances cannot change it.
+    ``families`` and ``geography_levels``
+    restrict the anchors; each declared value must select at least one.
+    """
+
+    rtol = _number("default_rtol", default_rtol)
+    if rtol < 0:
+        raise ValueError("default_rtol must be non-negative.")
+    declared_families = _optional_strings("families", families)
+    declared_levels = _optional_strings("geography_levels", geography_levels)
+    specs = tuple(surface.registry.specs)
+    if declared_families is not None:
+        specs = tuple(spec for spec in specs if spec.family in declared_families)
+    levels: list[str] = []
+    if declared_levels is not None:
+        selected = []
+        for spec in specs:
+            if spec.hierarchy is None:
+                raise ValueError(
+                    f"surface target {spec.name!r} has no hierarchy, so its "
+                    "geography level cannot be selected."
+                )
+            levels.append(spec.hierarchy.geography.level)
+            if spec.hierarchy.geography.level in declared_levels:
+                selected.append(spec)
+        specs = tuple(selected)
+    missing = []
+    build = diagnostics.get("build") if isinstance(diagnostics, Mapping) else None
+    recorded = build.get("surface_sha256") if isinstance(build, Mapping) else None
+    if recorded != surface.sha256:
+        missing.append(
+            f"The diagnostics record surface {recorded!r}, not {surface.sha256!r}."
+        )
+    if declared_families is not None:
+        missing += _missing_selection(
+            "aggregate_admin",
+            "family",
+            declared_families,
+            (spec.family for spec in specs),
+        )
+    if declared_levels is not None:
+        missing += _missing_selection(
+            "aggregate_admin", "geography level", declared_levels, levels
+        )
+    achieved: dict[tuple[object, object], Mapping[str, Any]] = {}
+    for row in _diagnostics_rows(diagnostics):
+        key = (row.get("target_name"), row.get("period"))
+        if key in achieved:
+            raise ValueError(f"diagnostics repeat target {key[0]!r} @ {key[1]!r}.")
+        achieved[key] = row
+    aggregates = {
+        spec.name: _row_number(achieved[(spec.name, spec.period)], "final_estimate")
+        for spec in specs
+        if (spec.name, spec.period) in achieved
+    }
+    if not specs:
+        missing.append("aggregate_admin: no compiled anchor was selected.")
+    result = aggregate_admin_gate(
+        aggregates, [replace(spec, tolerance=None) for spec in specs], default_rtol=rtol
+    )
+    return _with_failures(
+        result,
+        legacy="aggregate_vs_admin",
+        name="aggregate_admin",
+        failures=missing,
+        details={
+            "default_rtol": rtol,
+            "anchors": [spec.name for spec in specs],
+            "families": None if declared_families is None else list(declared_families),
+            "geography_levels": None
+            if declared_levels is None
+            else list(declared_levels),
+        },
+    )
+
+
+def _calibration_reference_coverage(*, surface: object, problem: object) -> GateResult:
+    """Every activated reference resolved to a target that entered the matrix.
+
+    The surface traces each compiled target to the one executable reference
+    that produced it; the problem's rows are the calibration matrix. The gate
+    passes iff at least one reference is activated, the activated
+    references, the resolved targets and the matrix rows are the same set
+    with no repeats and no skipped target, and the problem was compiled from
+    this surface.
+    """
+
+    trace = tuple(surface.trace)
+    activated = [str(row.get("reference")) for row in trace]
+    resolved = [spec.name for spec in surface.registry.specs]
+    resolved_rows = [spec.to_target().row_name for spec in surface.registry.specs]
+    matrix_rows = [str(name) for name in problem.problem.names]
+    failures: list[str] = []
+    if not activated:
+        failures.append("No calibration reference is activated.")
+    for label, items in (
+        ("activated references", activated),
+        ("resolved targets", resolved_rows),
+        ("matrix rows", matrix_rows),
+    ):
+        repeated = _repeated(items)
+        if repeated:
+            failures.append(f"The {label} repeat {repeated}.")
+    if sorted(activated) != sorted(resolved):
+        failures.append(
+            "Activated references and resolved targets differ: "
+            f"{sorted(set(activated) ^ set(resolved))}."
+        )
+    not_in_matrix = sorted(set(resolved_rows) - set(matrix_rows))
+    not_activated = sorted(set(matrix_rows) - set(resolved_rows))
+    if not_in_matrix:
+        failures.append(f"Activated targets missing from the matrix: {not_in_matrix}.")
+    if not_activated:
+        failures.append(f"Matrix rows with no activated reference: {not_activated}.")
+    skipped = sorted(item.target.row_name for item in problem.problem.skipped)
+    if skipped:
+        failures.append(f"The problem skipped targets {skipped}.")
+    bound = problem.bindings.get("surface_sha256")
+    if bound != surface.sha256:
+        failures.append(
+            f"The problem was compiled from surface {bound!r}, not {surface.sha256!r}."
+        )
+    return GateResult(
+        name="calibration_reference_coverage",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "activated": len(activated),
+            "resolved": len(resolved_rows),
+            "matrix": len(matrix_rows),
+            "not_in_matrix": not_in_matrix,
+            "not_activated": not_activated,
+            "skipped": skipped,
+            "surface_sha256": surface.sha256,
+            "problem_surface_sha256": bound,
+        },
+    )
+
+
+def _target_profile_coverage(
+    *,
+    problem: object,
+    required_families: Sequence[str],
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """The calibration matrix keeps at least one target of every declared family.
+
+    Each declared family is one requirement matched on the family the
+    problem records for its rows (``target_metadata``). A reviewed exclusion
+    names a family and its reason.
+    """
+
+    declared = _strings("required_families", required_families)
+    names = tuple(problem.problem.names)
+    metadata = tuple(problem.target_metadata)
+    if len(metadata) != len(names):
+        raise ValueError("Problem target metadata does not cover its matrix rows.")
+    targets = [
+        {"name": str(name), "family": str(row.get("family") or "")}
+        for name, row in zip(names, metadata, strict=True)
+    ]
+    requirements = [
+        TargetCoverageRequirement(
+            requirement_id=family,
+            label=f"calibration family {family!r}",
+            accepted_families=(family,),
+        )
+        for family in declared
+    ]
+    return target_profile_coverage_gate(
+        targets,
+        requirements,
+        reviewed_exclusions=_reviewed_exclusions(reviewed_exclusions),
+    )
+
+
+def _nonnegative_columns(
+    *,
+    frame: Frame,
+    columns: Sequence[str],
+    reviewed_exclusions: Mapping[str, str] | None = None,
+) -> GateResult:
+    """The declared physically non-negative columns hold finite values >= 0.
+
+    ``columns`` is the country's declared list (its source manifest's
+    non-negative outputs); a declared column the frame lacks fails. The
+    shared gate skips non-finite values, so this binding fails them itself:
+    ``-inf`` is negative, and a missing value cannot be certified
+    non-negative (exclude the column with a reason if that is intended).
+    """
+
+    required = _strings("columns", columns)
+    exclusions = _reviewed_exclusions(reviewed_exclusions)
+    values = _frame_columns(frame)
+    result = nonnegative_columns_gate(values, required, reviewed_exclusions=exclusions)
+    nonfinite: dict[str, int] = {}
+    for column in required:
+        if column in (exclusions or {}) or column not in values:
+            continue
+        array = values[column].to_numpy(dtype=np.float64, na_value=np.nan)
+        count = int((~np.isfinite(array)).sum())
+        if count:
+            nonfinite[column] = count
+    return _with_failures(
+        result,
+        failures=[
+            f"{column}: {count} non-finite value(s); a declared non-negative "
+            "column must hold finite values."
+            for column, count in nonfinite.items()
+        ],
+        details={"nonfinite_counts": nonfinite},
+    )
+
+
+def _exported_nonzero(
+    *, frame: Frame, exemptions: Mapping[str, str] | None = None
+) -> GateResult:
+    """No exported column is all zero, except reviewed exemptions.
+
+    Every column of the frame is measured with the build plan's share
+    definition (non-zero numbers, ``True`` booleans, non-empty text), entity
+    ids and memberships aside.
+    """
+
+    structural = set(_structural_columns(frame))
+    shares = {
+        column: _nonzero_share(values)
+        for column, values in _frame_columns(frame).items()
+        if column not in structural
+    }
+    result = exported_nonzero_gate(
+        shares, exemptions=None if exemptions is None else dict(exemptions)
+    )
+    return _with_failures(result, failures=(), details={"columns": sorted(shares)})
+
+
+def _formula_owned_export(
+    *, frame: Frame, formula_owned_columns: Sequence[str]
+) -> GateResult:
+    """No rule output declared formula-owned is exported as an input column."""
+
+    owned = _strings("formula_owned_columns", formula_owned_columns)
+    exported = list(_frame_columns(frame))
+    result = formula_owned_export_gate(
+        exported, owned, structural_columns=_structural_columns(frame)
+    )
+    return _with_failures(
+        result, failures=(), details={"exported_columns": sorted(exported)}
+    )
+
+
+def _weight_inputs(
+    frame: Frame,
+    aggregation_column: str | None,
+    required_weight_entity: str | None,
+    required_weight_kind: str | None,
+) -> tuple[str, np.ndarray, np.ndarray | None, dict[str, object]]:
+    entity, weights = _weighted_entity(frame)
+    if required_weight_entity is not None and entity != required_weight_entity:
+        raise ValueError(
+            f"Weight gates require {required_weight_entity!r} weights, got {entity!r}."
+        )
+    kind = frame.weights_for(entity).kind.value
+    if required_weight_kind is not None and kind != required_weight_kind:
+        raise ValueError(
+            f"Weight gates require {required_weight_kind!r} weights, got {kind!r}."
+        )
+    lineage = None
+    details: dict[str, object] = {"weight_entity": entity}
+    if aggregation_column is not None:
+        if not isinstance(aggregation_column, str) or not aggregation_column:
+            raise ValueError("aggregation_column must name a lineage column.")
+        table = frame.table(entity)
+        if aggregation_column not in table:
+            raise ValueError(
+                f"Missing source-household lineage column {aggregation_column!r} "
+                f"on {entity!r}."
+            )
+        lineage = table[aggregation_column].to_numpy()
+        details.update(
+            aggregation_column=aggregation_column,
+            weight_kind=kind,
+            n_support_rows=int(weights.size),
+        )
+    return entity, weights, lineage, details
+
+
+def _weight_ess(
+    *,
+    frame: Frame,
+    minimum_ess_fraction: float | None = None,
+    minimum_effective_sample_size: float | None = None,
+    aggregation_column: str | None = None,
+    required_weight_entity: str | None = None,
+    required_weight_kind: str | None = None,
+) -> GateResult:
+    _, weights, lineage, details = _weight_inputs(
+        frame, aggregation_column, required_weight_entity, required_weight_kind
+    )
+    result = weight_ess_gate(
+        weights,
+        minimum_ess_fraction=minimum_ess_fraction,
+        minimum_effective_sample_size=minimum_effective_sample_size,
+        source_household_ids=lineage,
+    )
+    return _with_failures(result, failures=(), details=details)
+
+
+def _weight_ratio(
+    *,
+    frame: Frame,
+    maximum_max_to_median_ratio: float,
+    aggregation_column: str | None = None,
+    required_weight_entity: str | None = None,
+    required_weight_kind: str | None = None,
+) -> GateResult:
+    _, weights, lineage, details = _weight_inputs(
+        frame, aggregation_column, required_weight_entity, required_weight_kind
+    )
+    result = weight_ratio_gate(
+        weights,
+        maximum_max_to_median_ratio=maximum_max_to_median_ratio,
+        source_household_ids=lineage,
+    )
+    return _with_failures(result, failures=(), details=details)
+
+
+def _cell_rows(
+    cell_diagnostics: object,
+    required_scenarios: Sequence[str],
+    required_cells: Sequence[str],
+    aggregation_column: str,
+    required_weight_entity: str,
+    required_weight_kind: str,
+) -> list[tuple[str, Mapping[str, Any]]]:
+    """Refuse absent identities or incomplete declared cell/scenario coverage."""
+
+    scenarios = _strings("required_scenarios", required_scenarios)
+    cells = _strings("required_cells", required_cells)
+    if not isinstance(cell_diagnostics, Mapping):
+        raise ValueError("Cell diagnostics must be a decoded artifact mapping.")
+    if (
+        cell_diagnostics.get("schema_version") != 1
+        or cell_diagnostics.get("kind") != "transport_cell_support_diagnostics"
+    ):
+        raise ValueError("Unsupported cell diagnostics schema.")
+    for key, expected in (
+        ("source_household_column", aggregation_column),
+        ("weight_entity", required_weight_entity),
+        ("weight_kind", required_weight_kind),
+    ):
+        if not expected or cell_diagnostics.get(key) != expected:
+            raise ValueError(
+                f"Cell diagnostics require {key}={expected!r}, got "
+                f"{cell_diagnostics.get(key)!r}."
+            )
+    entries = cell_diagnostics.get("scenarios")
+    if not isinstance(entries, list | tuple) or not entries:
+        raise ValueError("Cell diagnostics are missing declared scenarios.")
+    found: list[str] = []
+    all_cells: set[str] | None = None
+    result = []
+    for entry in entries:
+        if not isinstance(entry, Mapping) or entry.get("scenario") not in scenarios:
+            raise ValueError("Cell diagnostics contain an undeclared scenario.")
+        scenario = entry["scenario"]
+        found.append(scenario)
+        rows = entry.get("cells")
+        if not isinstance(rows, list | tuple) or not rows:
+            raise ValueError(f"Cell diagnostics for {scenario} are missing cells.")
+        names = [row.get("name") for row in rows if isinstance(row, Mapping)]
+        if len(names) != len(rows) or len(set(names)) != len(names):
+            raise ValueError(f"Cell diagnostics for {scenario} repeat or omit cells.")
+        if not set(cells) <= set(names):
+            raise ValueError(
+                f"Cell diagnostics for {scenario} have incomplete declared cells: "
+                f"missing {[name for name in cells if name not in names]}."
+            )
+        if all_cells is None:
+            all_cells = set(names)
+        elif set(names) != all_cells:
+            raise ValueError(
+                "Cell diagnostics must cover the same cells in every scenario."
+            )
+        for row in rows:
+            period = row.get("period")
+            if (
+                isinstance(period, bool)
+                or not isinstance(period, int | str)
+                or period == ""
+            ):
+                raise ValueError(f"Cell {row['name']} needs an explicit period.")
+            for flag in ("structural_zero", "suppressed", "meets_tracked_target"):
+                if not isinstance(row.get(flag), bool):
+                    raise ValueError(f"Cell {row['name']} needs boolean {flag}.")
+            for metric in ("source_household_ess", "dollar_contribution_ess"):
+                if _number(metric, row.get(metric)) < 0:
+                    raise ValueError(f"Cell {row['name']} has negative {metric}.")
+            contributors = row.get("positive_contributors")
+            if (
+                isinstance(contributors, bool)
+                or not isinstance(contributors, int)
+                or contributors < 0
+            ):
+                raise ValueError(f"Cell {row['name']} needs a contributor count.")
+            if row["structural_zero"]:
+                if (
+                    contributors
+                    or row["dollar_contribution_ess"]
+                    or row.get("contribution_cv") != 0
+                    or row.get("maximum_single_donor_dollar_share") != 0
+                ):
+                    raise ValueError(
+                        "Structural-zero cells cannot have dollar support."
+                    )
+            elif contributors:
+                if _number("contribution_cv", row.get("contribution_cv")) < 0:
+                    raise ValueError("Contribution CV must be non-negative.")
+                share = _number(
+                    "maximum_single_donor_dollar_share",
+                    row.get("maximum_single_donor_dollar_share"),
+                )
+                if not 0 < share <= 1:
+                    raise ValueError(
+                        "Nonzero cells need positive donor dollar support."
+                    )
+            elif (
+                row.get("contribution_cv") is not None
+                or row.get("maximum_single_donor_dollar_share") is not None
+                or row["dollar_contribution_ess"] != 0
+            ):
+                raise ValueError(
+                    "Cells without positive contributors have no dollar ratios."
+                )
+            result.append((scenario, row))
+    if len(set(found)) != len(found) or set(found) != set(scenarios):
+        raise ValueError(
+            "Cell diagnostics have missing or repeated scenarios: "
+            f"missing {[name for name in scenarios if name not in found]}."
+        )
+    return result
+
+
+def _cell_support(
+    *,
+    cell_diagnostics: object,
+    required_scenarios: Sequence[str],
+    required_cells: Sequence[str],
+    aggregation_column: str,
+    required_weight_entity: str,
+    required_weight_kind: str,
+    minimum_cell_ess: float,
+    maximum_contribution_cv: float,
+    maximum_single_donor_dollar_share: float,
+    target_minimum_cell_ess: float,
+    target_maximum_single_donor_dollar_share: float,
+) -> GateResult:
+    """Require complete diagnostics and suppression, allowing sparse cells."""
+
+    rows = _cell_rows(
+        cell_diagnostics,
+        required_scenarios,
+        required_cells,
+        aggregation_column,
+        required_weight_entity,
+        required_weight_kind,
+    )
+    minimum = _number("minimum_cell_ess", minimum_cell_ess)
+    cv_limit = _number("maximum_contribution_cv", maximum_contribution_cv)
+    share_limit = _number(
+        "maximum_single_donor_dollar_share", maximum_single_donor_dollar_share
+    )
+    target_minimum = _number("target_minimum_cell_ess", target_minimum_cell_ess)
+    target_share = _number(
+        "target_maximum_single_donor_dollar_share",
+        target_maximum_single_donor_dollar_share,
+    )
+    if (
+        minimum <= 0
+        or cv_limit < 0
+        or not 0 < share_limit <= 1
+        or target_minimum <= 0
+        or not 0 < target_share <= 1
+    ):
+        raise ValueError("Cell support thresholds are outside their valid ranges.")
+    failures = []
+    suppressed = []
+    structural = []
+    for scenario, row in rows:
+        identity = f"{scenario}/{row['name']}"
+        zero = row["structural_zero"]
+        unsupported = row["positive_contributors"] == 0
+        should_suppress = (
+            zero
+            or unsupported
+            or (
+                row["source_household_ess"] < minimum
+                or row["contribution_cv"] > cv_limit
+                or row["maximum_single_donor_dollar_share"] > share_limit
+            )
+        )
+        if should_suppress and not row["suppressed"]:
+            failures.append(f"{identity}: failing cell is not suppressed.")
+        tracked = (
+            not zero
+            and not unsupported
+            and (
+                row["source_household_ess"] >= target_minimum
+                and row["maximum_single_donor_dollar_share"] <= target_share
+            )
+        )
+        if row["meets_tracked_target"] != tracked:
+            failures.append(f"{identity}: tracked-target flag is inconsistent.")
+        if row["suppressed"]:
+            suppressed.append(identity)
+        if zero:
+            structural.append(identity)
+    return GateResult(
+        name="cell_support",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "n_cell_scenarios": len(rows),
+            "suppressed_cells": suppressed,
+            "structural_zero_cells": structural,
+        },
+    )
+
+
+def _cell_support_target(
+    *,
+    cell_diagnostics: object,
+    required_scenarios: Sequence[str],
+    required_cells: Sequence[str],
+    aggregation_column: str,
+    required_weight_entity: str,
+    required_weight_kind: str,
+    minimum_cell_ess: float,
+    maximum_single_donor_dollar_share: float,
+) -> GateResult:
+    """Report the tighter cell screen without blocking release."""
+
+    rows = _cell_rows(
+        cell_diagnostics,
+        required_scenarios,
+        required_cells,
+        aggregation_column,
+        required_weight_entity,
+        required_weight_kind,
+    )
+    minimum = _number("minimum_cell_ess", minimum_cell_ess)
+    maximum = _number(
+        "maximum_single_donor_dollar_share", maximum_single_donor_dollar_share
+    )
+    if minimum <= 0 or not 0 < maximum <= 1:
+        raise ValueError("Tracked cell support thresholds are outside valid ranges.")
+    flags = {
+        f"{scenario}/{row['name']}": not row["structural_zero"]
+        and row["positive_contributors"] > 0
+        and row["source_household_ess"] >= minimum
+        and row["maximum_single_donor_dollar_share"] <= maximum
+        for scenario, row in rows
+    }
+    return GateResult(
+        name="cell_support_target",
+        passed=all(flags.values()),
+        failures=tuple(
+            f"{identity}: tracked cell target not met."
+            for identity, passed in flags.items()
+            if not passed
+        ),
+        details={"meets_tracked_target": flags},
+    )
+
+
+#: The support classes a derived row may rest on.
+_SUPPORT_COVERED = frozenset(
+    {
+        "copied",
+        "normalized",
+        "quantile_mapped",
+        "currency",
+        "structural",
+        "closure_default",
+    }
+)
+#: Classes whose rows carry realized and expected bounds.
+_SUPPORT_BOUNDED = frozenset({"copied", "normalized", "quantile_mapped", "currency"})
+_RANK_ONLY = (
+    "{entity}.{column}: lineage class 'rank_only' is reserved for the declared "
+    "rank-only input (BE d1902); no producer implements it yet."
+)
+
+
+def _support(
+    *,
+    donor_support_bounds: object,
+    graph_evidence: object,
+    frame: Frame,
+    structural_columns: Sequence[Mapping[str, str]],
+) -> GateResult:
+    """Every roster column's realized support against its producer's support.
+
+    The header is checked first, including the ``donor_ranges`` digest
+    against the battery's own edge. Every row the artifact classes structural
+    must be one of the ``structural_columns`` declared here, and its roster
+    must name every
+    data column the battery's frame slices. Then every row is reported, in
+    roster order: a bounded row (copied, normalized, quantile-mapped or
+    currency-bridged) passes only with no record and no weight outside its
+    expected bounds, where ``None`` is an open bound; a derived row passes
+    only when every walked source is covered; ``pending``, ``uncovered`` and
+    ``rank_only`` rows fail with their reasons.
+    """
+
+    if isinstance(structural_columns, str | bytes) or not isinstance(
+        structural_columns, Sequence
+    ):
+        raise TypeError("structural_columns must be a list of rows.")
+    declared = [(row["entity"], row["column"]) for row in structural_columns]
+    failures = checked_header(
+        DONOR_SUPPORT_BOUNDS,
+        donor_support_bounds,
+        graph_evidence,
+        frame,
+        kernel=SUPPORT_BOUNDS_REF,
+    )
+    details: dict[str, object] = {"structural_columns": [".".join(k) for k in declared]}
+    document = _decoded_document(donor_support_bounds, "transport_donor_support_bounds")
+    if document is None:
+        return GateResult("support", False, tuple(failures), details)
+    rows = document["columns"]
+    recorded = {
+        (row["entity"], row["column"]) for row in document["structural_columns"]
+    }
+    recorded |= {
+        (row["entity"], row["column"]) for row in rows if row["class"] == "structural"
+    }
+    for entity, column in sorted(recorded - set(declared)):
+        failures.append(
+            f"{entity}.{column}: classed structural, but gates.json's "
+            "structural_columns does not declare it."
+        )
+    # A declared row excuses a column only when the roster reaches it (H46);
+    # the rows it never reaches are listed, and do not fail the gate.
+    details["declared_unreached"] = [
+        ".".join(key) for key in declared if key not in recorded
+    ]
+    named = {(row["entity"], row["column"]) for row in rows}
+    if frame is not None:
+        skip = set(_structural_columns(frame))
+        for entity in frame.entities:
+            for column in frame.table(entity).columns:
+                if column in skip:
+                    continue
+                if (entity, str(column)) not in named:
+                    failures.append(
+                        f"{entity}.{column}: the battery slices it, but the support "
+                        "roster does not name it."
+                    )
+    counts: Counter = Counter()
+    report = []
+    for row in rows:
+        label = f"{row['entity']}.{row['column']}"
+        cls = row["class"]
+        counts[cls] += 1
+        if cls == "rank_only":
+            failures.append(
+                _RANK_ONLY.format(entity=row["entity"], column=row["column"])
+            )
+        elif cls in _SUPPORT_BOUNDED:
+            if row["records_outside"] != 0 or row["weighted_outside"] != 0:
+                failures.append(
+                    f"{label} ({cls}): {row['records_outside']} records and "
+                    f"{row['weighted_outside']!r} weight lie outside "
+                    f"[{row['expected_min']!r}, {row['expected_max']!r}]"
+                    + (
+                        " or the donor's categories"
+                        if row["expected_categories"] is not None
+                        else ""
+                    )
+                    + "."
+                )
+        elif cls == "derived":
+            missing = [
+                f"{source['entity']}.{source['column']} ({source['class']})"
+                for source in row["sources"]
+                if source["class"] not in _SUPPORT_COVERED
+            ]
+            if not row["sources"]:
+                failures.append(
+                    f"{label} (derived): the walk reached no source, so nothing "
+                    "covers it."
+                )
+            if missing:
+                failures.append(
+                    f"{label} (derived): sources without coverage: "
+                    + ", ".join(missing)
+                    + ". "
+                    + (row["reason"] or "")
+                )
+        elif cls in {"pending", "uncovered"}:
+            failures.append(f"{label} ({cls}): {row['reason']}.")
+        elif cls not in _SUPPORT_COVERED:
+            failures.append(f"{label}: unknown support class {cls!r}.")
+        report.append(
+            {
+                "column": label,
+                "class": cls,
+                "realized": [row["realized_min"], row["realized_max"]],
+                "expected": [row["expected_min"], row["expected_max"]],
+                "records_outside": row["records_outside"],
+                "weighted_outside": row["weighted_outside"],
+            }
+        )
+    details.update({"counts": dict(sorted(counts.items())), "columns": report})
+    return GateResult("support", not failures, tuple(failures), details)
+
+
+def _decoded_document(value: object, kind: str) -> Mapping[str, Any] | None:
+    if isinstance(value, EvidenceDocument) and value.kind == kind:
+        return value.document
+    return None
+
+
+def _donor_receipt_rows(receipt: Mapping[str, Any]) -> tuple[list[str], dict]:
+    donor, pin = receipt["donor"], receipt["pin"]
+    failures = []
+    if donor["sha256"] != pin["sha256"] or donor["size_bytes"] != pin["size_bytes"]:
+        failures.append(
+            f"donor: SHA-256 {donor['sha256']} ({donor['size_bytes']} bytes) is not "
+            f"the source_stages pin {pin['sha256']} ({pin['size_bytes']} bytes)."
+        )
+    for key in ("content_basis", "donor_time_period"):
+        if receipt[key] in (None, ""):
+            failures.append(f"donor: the receipt records no {key}.")
+    return failures, {
+        "sha256": donor["sha256"],
+        "size_bytes": donor["size_bytes"],
+        "pin_stage": pin["stage"],
+        "content_basis": receipt["content_basis"],
+        "donor_time_period": receipt["donor_time_period"],
+    }
+
+
+def _closure_rows(
+    closure: Mapping[str, Any], *, allow_engine_optional: bool
+) -> tuple[list[str], dict]:
+    failures = [f"closure check: {problem}" for problem in closure["check"]]
+    engine = closure["engine"]
+    declared = engine.get("declared_commit")
+    surface = engine.get("closure_surface_commit")
+    if declared is None:
+        failures.append(
+            "engine: the run declares no engine commit "
+            "(axiom_rules_bindings.engine.commit is null)."
+        )
+    elif declared != surface:
+        failures.append(
+            f"engine: the run's engine commit {declared} is not the closure's "
+            f"surface engine commit {surface}; regenerate the input surface and "
+            "re-review the closure, including its engine_optional_evidence."
+        )
+    modules = []
+    for row in closure["modules"]:
+        label = f"{row['binding']} ({row['rulespec_path']})"
+        counts = partition_counts(row)
+        if sum(counts.values()) != len(row["roots"]):
+            failures.append(f"{label}: the classes do not partition its roots.")
+        if row["sha256"] != row["reviewed_sha256"]:
+            failures.append(
+                f"{label}: module SHA-256 {row['sha256']} is not the reviewed "
+                f"{row['reviewed_sha256']}."
+            )
+        failures += [f"{label}: gap {name}." for name in row["gap"]]
+        failures += [
+            f"{label}: relation input {item} is missing from the producer's "
+            "frame slice."
+            for item in row["relation_missing"]
+        ]
+        failures += [
+            f"{label}: {name} is closed but is not a live root."
+            for name in row["unexpected"]
+        ]
+        failures += [
+            f"{label}: {name} is closed as a graph column the producer's frame "
+            "slice lacks."
+            for name in row["frame_missing"]
+        ]
+        if not allow_engine_optional:
+            failures += [
+                f"{label}: {name} is engine-optional, and gates.json sets "
+                "allow_engine_optional false."
+                for name in row["engine_optional"]
+            ]
+        modules.append(
+            {
+                "binding": row["binding"],
+                "rulespec_path": row["rulespec_path"],
+                "counts": counts,
+                "covered": sorted(
+                    name for names in row["encoded"].values() for name in names
+                ),
+                "knob_targeted": list(row["knob_targeted"]),
+                "defaulted": [item["input"] for item in row["defaulted"]],
+                "engine_optional": list(row["engine_optional"]),
+                "relation": [item["input"] for item in row["relation"]],
+                "unreached": list(row["unreached"]),
+                "unmapped_entity": list(row["unmapped_entity"]),
+                "gap": list(row["gap"]),
+            }
+        )
+    return failures, {"engine": dict(engine), "modules": modules}
+
+
+def _release_input_coverage(
+    *,
+    donor_artifact_receipt: object,
+    axiom_input_closure: object,
+    graph_evidence: object,
+    frame: Frame,
+    allow_engine_optional: bool,
+) -> GateResult:
+    """Donor authentication and per-module Axiom input closure, both checked.
+
+    Both artifacts' headers are checked first
+    (:func:`~microcosm.build.transport.evidence_contract.checked_header`).
+    The donor's bytes must equal its ``source_stages`` pin, and the receipt
+    must record ``content_basis`` and ``donor_time_period``. Every bound
+    module's live roots must partition into the closure classes with no
+    gap, no closed input that is not a root, no encoded column missing from
+    the producer's slice, and no engine-optional input unless
+    ``allow_engine_optional`` is true; the closure check must hold, and the
+    run's declared engine commit must equal the closure's surface engine
+    commit. Every module is reported, in binding order.
+    """
+
+    if not isinstance(allow_engine_optional, bool):
+        raise TypeError(
+            f"allow_engine_optional must be true or false, got {allow_engine_optional!r}."
+        )
+    failures = checked_header(
+        DONOR_ARTIFACT_RECEIPT,
+        donor_artifact_receipt,
+        graph_evidence,
+        frame,
+        kernel=DONOR_RECEIPT_REF,
+    )
+    failures += checked_header(
+        AXIOM_INPUT_CLOSURE,
+        axiom_input_closure,
+        graph_evidence,
+        frame,
+        kernel=INPUT_CLOSURE_REF,
+    )
+    details: dict[str, object] = {
+        "allow_engine_optional": allow_engine_optional,
+        "classes": list(CLOSURE_CLASSES),
+    }
+    receipt = _decoded_document(
+        donor_artifact_receipt, "transport_donor_artifact_receipt"
+    )
+    if receipt is not None:
+        donor_failures, details["donor"] = _donor_receipt_rows(receipt)
+        failures += donor_failures
+    closure = _decoded_document(axiom_input_closure, "transport_axiom_input_closure")
+    if closure is not None:
+        closure_failures, closure_details = _closure_rows(
+            closure, allow_engine_optional=allow_engine_optional
+        )
+        failures += closure_failures
+        details.update(closure_details)
+    return GateResult(
+        name="release_input_coverage",
+        passed=not failures,
+        failures=tuple(failures),
+        details=details,
+    )
+
+
+#: H38: the battery's weights evidence covers the central branch only.
+_VARIANT_WEIGHTS_NOTE = (
+    "This audit covers the central calibration only. Uncertainty bands read "
+    "variant calibrations' weights, which no gate audits yet; per-variant "
+    "audits come due before the bands take release status (G8-y)."
+)
+
+
+def _transport_weights_audit(
+    *,
+    fit_weight_records: object,
+    graph_evidence: object,
+    frame: Frame,
+    maximum_relative_mass_change: float,
+    allowed_unweighted: Mapping[str, str] | None = None,
+) -> GateResult:
+    """The fit-kind audit plus the transport weight transition, both checked.
+
+    Runs :func:`~microcosm.build.gates.weights_audit_gate` unchanged over the
+    records' ``fit_records``, then, all reported in a fixed order: the
+    header; a ``design`` to ``calibrated`` transition; the battery frame's
+    weights and ids equal to the recorded calibrated weights; the binding of
+    the solution and result to the problem; the person-mass change within
+    ``maximum_relative_mass_change`` of the destination mass; and, for the
+    person entity and every declared partition, effective weights that are
+    exactly the inherited household vector with no persisted weight column.
+    """
+
+    limit = _number("maximum_relative_mass_change", maximum_relative_mass_change)
+    if limit < 0:
+        raise ValueError("maximum_relative_mass_change must be non-negative.")
+    failures = checked_header(
+        FIT_WEIGHT_RECORDS,
+        fit_weight_records,
+        graph_evidence,
+        frame,
+        kernel=WEIGHTS_AUDIT_REF,
+    )
+    details: dict[str, object] = {
+        "maximum_relative_mass_change": limit,
+        "variant_weights": _VARIANT_WEIGHTS_NOTE,
+    }
+    audit = _decoded_document(fit_weight_records, "transport_weights_audit")
+    if audit is None:
+        return GateResult("weights_audit", False, tuple(failures), details)
+    records = [
+        FitWeightRecord(row["fit_name"], row["weight_kind"])
+        for row in audit["fit_records"]
+    ]
+    result = weights_audit_gate(records, allowed_unweighted=allowed_unweighted)
+    transition = audit["transition"]
+    if (transition["from_kind"], transition["to_kind"]) != ("design", "calibrated"):
+        failures.append(
+            f"The transition runs {transition['from_kind']!r} to "
+            f"{transition['to_kind']!r}, not design to calibrated."
+        )
+    entity = audit["weight_entity"]
+    if frame is not None and entity in frame.entities:
+        table = frame.table(entity)
+        ids = table[frame.schema.entity_id_column(entity)].tolist()
+        weights = frame.resolve_weights(entity).values.tolist()
+        if ids != list(transition["household_id"]):
+            failures.append(f"The battery's {entity} ids differ from the audit's.")
+        elif weights != list(transition["calibrated_weight"]):
+            failures.append(
+                f"The battery's {entity} weights differ from the audited calibrated "
+                "weights."
+            )
+    binding = audit["binding"]
+    if not (
+        binding["problem_sha256"]
+        == binding["solution_problem_sha256"]
+        == binding["result_problem_sha256"]
+    ):
+        failures.append("The solution or result belongs to another problem.")
+    mass = audit["mass"]
+    change = mass["relative_change"]
+    if change is None or not abs(change) <= limit:
+        failures.append(
+            f"The calibrated person mass {mass['calibrated_person_mass']!r} moves "
+            f"{change!r} relative to the destination mass "
+            f"{mass['destination_person_mass']!r}; the declared limit is {limit!r}."
+        )
+    for row in audit["partitions"]:
+        if not row["inherited"]:
+            failures.append(
+                f"{row['entity']}: its effective weights are not the inherited "
+                f"{entity} vector; a unit may not persist a second weight vector."
+            )
+        if row["weight_columns"]:
+            failures.append(
+                f"{row['entity']}: persisted weight columns {row['weight_columns']}."
+            )
+    details.update(
+        {
+            "weight_entity": entity,
+            "transition": [transition["from_kind"], transition["to_kind"]],
+            "n_records": len(transition["household_id"]),
+            "mass": dict(mass),
+            "source_households": dict(audit["source_households"]),
+            "partitions": [dict(row) for row in audit["partitions"]],
+        }
+    )
+    return _with_failures(result, failures=failures, details=details)
+
+
+# ---------------------------------------------------------------------------
+# Pre-fit measurement acceptance (G8-r2c hunk D, ruling R2C-3)
+# ---------------------------------------------------------------------------
+
+
+def _ratio_bounds(name: str, value: object) -> tuple[Fraction, Fraction]:
+    if isinstance(value, str | bytes) or not isinstance(value, Sequence):
+        raise TypeError(f"{name} must be a [lower, upper] pair.")
+    # Exactly two items, counted without a numeric literal: this module
+    # holds no threshold literal (test_holds_no_threshold_literal).
+    *rest, last = value or (None,)
+    if len(rest) != 1:
+        raise ValueError(f"{name} must be a [lower, upper] pair.")
+    lower, upper = (Fraction(_number(name, item)) for item in (*rest, last))
+    if not 0 <= lower <= upper:
+        raise ValueError(f"{name} must satisfy 0 <= lower <= upper.")
+    return lower, upper
+
+
+def _inside(model: Fraction, reference: Fraction, bounds) -> bool:
+    lower, upper = bounds
+    return reference > 0 and lower * reference <= model <= upper * reference
+
+
+def _ratio_text(model: Fraction, reference: Fraction) -> str:
+    return "undefined" if reference == 0 else f"{float(model / reference):.6g}"
+
+
+def _measurement_prefit(
+    *,
+    problem: object,
+    graph_evidence: object,
+    tables: Sequence[str],
+    roster_total_bounds: Sequence[float],
+    band_bounds: Sequence[float],
+    maximum_discrepant_bands: int,
+    minimum_source_households: int,
+    minimum_kish_ess: float,
+    required_evidence: Sequence[str],
+) -> GateResult:
+    """Pre-fit acceptance of a measurement's interval targets (ruling R2C-3).
+
+    Each comparator is the weighted model total at the weights entering
+    calibration (the problem's ``A @ w0``) against the reference the matrix
+    uses (its right-hand side), for every band's count and amount rows of
+    each declared interval table. The gate refuses on four checks:
+
+    - roster totals: the summed count, or the summed amount, outside
+      ``roster_total_bounds`` of the summed references;
+    - concentrated discrepancy: more than ``maximum_discrepant_bands`` bands
+      whose count or amount falls outside ``band_bounds`` (a band counts
+      once if either fails);
+    - support: any band with fewer than ``minimum_source_households``
+      distinct source households, or a source-household Kish ESS below
+      ``minimum_kish_ess``, checked for count and amount contributions
+      separately (``reference_intervals.band_support``);
+    - evidence: no interval diagnostics or per-band support for a declared
+      table, a band whose references did not enter the matrix, or a
+      ``required_evidence`` alias the battery node does not wire.
+
+    Every threshold comes from ``gates.json``; none has a default.
+    """
+
+    declared_tables = _strings("tables", tables)
+    totals_bounds = _ratio_bounds("roster_total_bounds", roster_total_bounds)
+    per_band = _ratio_bounds("band_bounds", band_bounds)
+    if isinstance(maximum_discrepant_bands, bool) or not isinstance(
+        maximum_discrepant_bands, int
+    ):
+        raise TypeError("maximum_discrepant_bands must be an integer.")
+    if isinstance(minimum_source_households, bool) or not isinstance(
+        minimum_source_households, int
+    ):
+        raise TypeError("minimum_source_households must be an integer.")
+    minimum_ess = Fraction(_number("minimum_kish_ess", minimum_kish_ess))
+    evidence = _strings("required_evidence", required_evidence)
+    failures: list[str] = []
+    wired = graph_evidence if isinstance(graph_evidence, Mapping) else {}
+    for alias in evidence:
+        if alias not in wired:
+            failures.append(f"evidence: the run lacks required evidence {alias!r}.")
+    report = problem.bindings.get("interval_diagnostics")
+    reports = (
+        {row.get("table"): row for row in report.get("tables", ())}
+        if isinstance(report, Mapping)
+        else {}
+    )
+    names = [str(row.get("reference")) for row in problem.target_metadata]
+    rows = {name: index for index, name in enumerate(names)}
+    problem_rows = problem.problem
+    estimates = problem_rows.estimates(problem_rows.initial_weights.values)
+    targets = problem_rows.target_vector
+    band_details: list[dict[str, object]] = []
+    sums = {"count": [Fraction(0), Fraction(0)], "amount": [Fraction(0), Fraction(0)]}
+    discrepant: list[str] = []
+    for table_id in declared_tables:
+        table = reports.get(table_id)
+        if table is None:
+            failures.append(
+                f"evidence: the problem has no interval diagnostics for {table_id!r}."
+            )
+            continue
+        if not isinstance(table.get("support"), Mapping):
+            failures.append(
+                f"evidence: interval table {table_id!r} reports no per-band support."
+            )
+            continue
+        for band in table.get("bands", ()):
+            label = f"{table_id}/{band.get('band')}"
+            references = band.get("references")
+            support = band.get("support")
+            if not isinstance(references, Mapping) or not isinstance(support, Mapping):
+                failures.append(
+                    f"evidence: band {label} names no count and amount references."
+                )
+                continue
+            detail: dict[str, object] = {"band": label}
+            band_fails = False
+            for role in ("count", "amount"):
+                name = references.get(role)
+                if name not in rows:
+                    failures.append(
+                        f"evidence: band {label} {role} reference {name!r} did not "
+                        "enter the matrix."
+                    )
+                    band_fails = None
+                    continue
+                model = Fraction(float(estimates[rows[name]]))
+                reference = Fraction(float(targets[rows[name]]))
+                sums[role][0] += model
+                sums[role][1] += reference
+                inside = _inside(model, reference, per_band)
+                if not inside and band_fails is not None:
+                    band_fails = True
+                measured = support.get(role, {})
+                households = measured.get("source_households")
+                ess = measured.get("kish_ess")
+                if not isinstance(households, int) or not isinstance(ess, Mapping):
+                    failures.append(f"evidence: band {label} has no {role} support.")
+                else:
+                    value = Fraction(ess["numerator"], ess["denominator"])
+                    if households < minimum_source_households:
+                        failures.append(
+                            f"support: band {label} {role} has {households} source "
+                            f"households, below {minimum_source_households}."
+                        )
+                    if value < minimum_ess:
+                        failures.append(
+                            f"support: band {label} {role} has source-household Kish "
+                            f"ESS {float(value):.6g}, below {float(minimum_ess):.6g}."
+                        )
+                detail[role] = {
+                    "reference": name,
+                    "model": float(model),
+                    "comparator": float(reference),
+                    "ratio": _ratio_text(model, reference),
+                    "inside_band_bounds": inside,
+                    "source_households": households,
+                    "kish_ess": None
+                    if not isinstance(ess, Mapping)
+                    else float(Fraction(ess["numerator"], ess["denominator"])),
+                }
+            if band_fails:
+                discrepant.append(label)
+            band_details.append(detail)
+    for role in ("count", "amount"):
+        model, reference = sums[role]
+        if band_details and not _inside(model, reference, totals_bounds):
+            failures.append(
+                f"roster totals: the summed {role} is "
+                f"{_ratio_text(model, reference)} of its comparator, outside "
+                f"[{float(totals_bounds[0]):.6g}, {float(totals_bounds[1]):.6g}]."
+            )
+    if len(discrepant) > maximum_discrepant_bands:
+        failures.append(
+            f"concentrated discrepancy: {len(discrepant)} bands fall outside "
+            f"[{float(per_band[0]):.6g}, {float(per_band[1]):.6g}] "
+            f"({discrepant}); at most {maximum_discrepant_bands} may."
+        )
+    return GateResult(
+        name="measurement_prefit",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "tables": list(declared_tables),
+            "bands": band_details,
+            "roster_totals": {
+                role: {
+                    "model": float(sums[role][0]),
+                    "comparator": float(sums[role][1]),
+                    "ratio": _ratio_text(*sums[role]),
+                }
+                for role in ("count", "amount")
+            },
+            "discrepant_bands": discrepant,
+            "required_evidence": list(evidence),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Evidence payloads (the report's evidence_sha256 lines)
+# ---------------------------------------------------------------------------
+
+
+def _diagnostics_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {"diagnostics": context.artifacts[DIAGNOSTICS]}
+
+
+def _surface_diagnostics_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        "surface_sha256": context.artifacts[SURFACE].sha256,
+        "diagnostics": context.artifacts[DIAGNOSTICS],
+    }
+
+
+def _surface_problem_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        "surface_sha256": context.artifacts[SURFACE].sha256,
+        "problem_sha256": context.artifacts[PROBLEM].sha256,
+    }
+
+
+def _problem_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {"problem_sha256": context.artifacts[PROBLEM].sha256}
+
+
+def _release_input_coverage_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        alias: getattr(context.artifacts[alias], "sha256", None)
+        for alias in (DONOR_ARTIFACT_RECEIPT, AXIOM_INPUT_CLOSURE)
+    }
+
+
+def _support_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        DONOR_SUPPORT_BOUNDS: getattr(
+            context.artifacts[DONOR_SUPPORT_BOUNDS], "sha256", None
+        )
+    }
+
+
+def _weights_audit_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {
+        FIT_WEIGHT_RECORDS: getattr(
+            context.artifacts[FIT_WEIGHT_RECORDS], "sha256", None
+        )
+    }
+
+
+def _measurement_prefit_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {"problem_sha256": context.artifacts[PROBLEM].sha256}
+
+
+def _cell_diagnostics_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    return {CELL_DIAGNOSTICS: context.artifacts[CELL_DIAGNOSTICS]}
+
+
+# ---------------------------------------------------------------------------
+# The registry
+# ---------------------------------------------------------------------------
+
+
+def _parameters(gate: object) -> frozenset[str]:
+    """Every keyword the evaluator takes that no artifact or frame supplies."""
+
+    supplied = {
+        "frame",
+        SURFACE,
+        PROBLEM,
+        DIAGNOSTICS,
+        CELL_DIAGNOSTICS,
+        GRAPH_EVIDENCE,
+        DONOR_ARTIFACT_RECEIPT,
+        AXIOM_INPUT_CLOSURE,
+        DONOR_SUPPORT_BOUNDS,
+        DONOR_RANGES,
+        FIT_WEIGHT_RECORDS,
+    }
+    return frozenset(
+        name for name in inspect.signature(gate).parameters if name not in supplied
+    )
+
+
+#: The country-neutral bindings, merged over ``DEFAULT_REGISTRY``.
+TRANSPORT_GATE_REGISTRY: Mapping[str, GateBinding] = MappingProxyType(
+    {
+        **DEFAULT_REGISTRY,
+        "per_family_fit": FunctionBinding(
+            name="per_family_fit",
+            gate=_per_family_fit,
+            parameter_keys=_parameters(_per_family_fit),
+            artifact_arguments=MappingProxyType({"diagnostics": DIAGNOSTICS}),
+            evidence=_diagnostics_evidence,
+        ),
+        "aggregate_admin": FunctionBinding(
+            name="aggregate_admin",
+            gate=_aggregate_admin,
+            parameter_keys=_parameters(_aggregate_admin),
+            artifact_arguments=MappingProxyType(
+                {"surface": SURFACE, "diagnostics": DIAGNOSTICS}
+            ),
+            evidence=_surface_diagnostics_evidence,
+        ),
+        "calibration_reference_coverage": FunctionBinding(
+            name="calibration_reference_coverage",
+            gate=_calibration_reference_coverage,
+            parameter_keys=_parameters(_calibration_reference_coverage),
+            artifact_arguments=MappingProxyType(
+                {"surface": SURFACE, "problem": PROBLEM}
+            ),
+            evidence=_surface_problem_evidence,
+        ),
+        "target_profile_coverage": FunctionBinding(
+            name="target_profile_coverage",
+            gate=_target_profile_coverage,
+            parameter_keys=_parameters(_target_profile_coverage),
+            artifact_arguments=MappingProxyType({"problem": PROBLEM}),
+            evidence=_problem_evidence,
+        ),
+        "nonnegative_columns": FunctionBinding(
+            name="nonnegative_columns",
+            gate=_nonnegative_columns,
+            parameter_keys=_parameters(_nonnegative_columns),
+            frame_argument="frame",
+        ),
+        "exported_nonzero": FunctionBinding(
+            name="exported_nonzero",
+            gate=_exported_nonzero,
+            parameter_keys=_parameters(_exported_nonzero),
+            frame_argument="frame",
+        ),
+        "formula_owned_export": FunctionBinding(
+            name="formula_owned_export",
+            gate=_formula_owned_export,
+            parameter_keys=_parameters(_formula_owned_export),
+            frame_argument="frame",
+        ),
+        "weight_ess": FunctionBinding(
+            name="weight_ess",
+            gate=_weight_ess,
+            parameter_keys=_parameters(_weight_ess),
+            frame_argument="frame",
+        ),
+        "weight_ratio": FunctionBinding(
+            name="weight_ratio",
+            gate=_weight_ratio,
+            parameter_keys=_parameters(_weight_ratio),
+            frame_argument="frame",
+        ),
+        "cell_support": FunctionBinding(
+            name="cell_support",
+            gate=_cell_support,
+            parameter_keys=_parameters(_cell_support),
+            artifact_arguments=MappingProxyType({CELL_DIAGNOSTICS: CELL_DIAGNOSTICS}),
+            evidence=_cell_diagnostics_evidence,
+        ),
+        "cell_support_target": FunctionBinding(
+            name="cell_support_target",
+            gate=_cell_support_target,
+            parameter_keys=_parameters(_cell_support_target),
+            artifact_arguments=MappingProxyType({CELL_DIAGNOSTICS: CELL_DIAGNOSTICS}),
+            evidence=_cell_diagnostics_evidence,
+        ),
+        "weights_audit": FunctionBinding(
+            name="weights_audit",
+            gate=_transport_weights_audit,
+            parameter_keys=_parameters(_transport_weights_audit),
+            artifact_arguments=MappingProxyType(
+                {
+                    FIT_WEIGHT_RECORDS: FIT_WEIGHT_RECORDS,
+                    GRAPH_EVIDENCE: GRAPH_EVIDENCE,
+                }
+            ),
+            frame_argument="frame",
+            evidence=_weights_audit_evidence,
+        ),
+        "support": FunctionBinding(
+            name="support",
+            gate=_support,
+            parameter_keys=_parameters(_support),
+            artifact_arguments=MappingProxyType(
+                {
+                    DONOR_SUPPORT_BOUNDS: DONOR_SUPPORT_BOUNDS,
+                    GRAPH_EVIDENCE: GRAPH_EVIDENCE,
+                }
+            ),
+            frame_argument="frame",
+            evidence=_support_evidence,
+        ),
+        "measurement_prefit": FunctionBinding(
+            name="measurement_prefit",
+            gate=_measurement_prefit,
+            parameter_keys=_parameters(_measurement_prefit),
+            artifact_arguments=MappingProxyType(
+                {PROBLEM: PROBLEM, GRAPH_EVIDENCE: GRAPH_EVIDENCE}
+            ),
+            evidence=_measurement_prefit_evidence,
+        ),
+        "release_input_coverage": FunctionBinding(
+            name="release_input_coverage",
+            gate=_release_input_coverage,
+            parameter_keys=_parameters(_release_input_coverage),
+            artifact_arguments=MappingProxyType(
+                {
+                    DONOR_ARTIFACT_RECEIPT: DONOR_ARTIFACT_RECEIPT,
+                    AXIOM_INPUT_CLOSURE: AXIOM_INPUT_CLOSURE,
+                    GRAPH_EVIDENCE: GRAPH_EVIDENCE,
+                }
+            ),
+            frame_argument="frame",
+            evidence=_release_input_coverage_evidence,
+        ),
+    }
+)
+
+
+def required_gate_parameters(binding: GateBinding) -> frozenset[str]:
+    """The ``gates.json`` parameters a binding cannot evaluate without.
+
+    For a :class:`~microcosm.build.gate_battery.FunctionBinding`, these are
+    its gate function's parameters that have no default and that neither an
+    artifact nor the frame supplies. Any other binding declares none.
+    """
+
+    if not isinstance(binding, FunctionBinding):
+        return frozenset()
+    supplied = set(binding.artifact_arguments)
+    if binding.frame_argument is not None:
+        supplied.add(binding.frame_argument)
+    return frozenset(
+        parameter.name
+        for parameter in inspect.signature(binding.gate).parameters.values()
+        if parameter.default is inspect.Parameter.empty
+        and parameter.kind
+        in (inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+        and parameter.name not in supplied
+    )
+
+
+def validate_required_gate_parameters(
+    gates: GatesManifest,
+    registry: Mapping[str, GateBinding] = TRANSPORT_GATE_REGISTRY,
+) -> None:
+    """Refuse an applicable entry that omits a parameter its binding requires.
+
+    The battery's :func:`~microcosm.build.gate_battery.validate_gate_parameters`
+    refuses parameters a binding cannot route; this refuses the converse, a
+    threshold the entry never declares. Without it the omission surfaces
+    only when the gate runs, as a failed result. Entries declared
+    ``not_applicable`` and gates with no binding are skipped: neither runs.
+
+    Raises:
+        ValueError: Naming the first offending entry and its missing keys.
+    """
+
+    for entry in gates.gates:
+        if entry.not_applicable is not None:
+            continue
+        binding = registry.get(entry.gate)
+        if binding is None:
+            continue
+        missing = sorted(required_gate_parameters(binding) - set(entry.parameters))
+        if entry.gate == "weight_ess" and not (
+            {"minimum_ess_fraction", "minimum_effective_sample_size"}
+            & set(entry.parameters)
+        ):
+            missing.append("minimum_ess_fraction or minimum_effective_sample_size")
+        if missing:
+            raise ValueError(
+                f"gate entry {entry.id!r} omits parameters {missing} that the "
+                f"{entry.gate!r} binding requires; thresholds come only from "
+                "gates.json."
+            )

@@ -22,7 +22,15 @@ import pandas as pd
 
 from microcosm.frame import Frame
 
-__all__ = ["input_mass_totals"]
+__all__ = ["PERSON_REFERENCE_COLUMNS", "input_mass_totals"]
+
+#: Person columns whose values name another person (a co-resident parent's
+#: ``person_id``, ``0`` = unknown; microcosm#884). Like entity ids they are
+#: labels, not measured quantities: their weighted sum means nothing and moves
+#: whenever person ids are renumbered, so a parity comparison against a release
+#: on a different id space would fail for no reason. They are skipped as
+#: structural in every schema that carries them.
+PERSON_REFERENCE_COLUMNS: frozenset[str] = frozenset({"parent_1_id", "parent_2_id"})
 
 
 def input_mass_totals(
@@ -35,8 +43,8 @@ def input_mass_totals(
     Every non-structural numeric column is summed under the owning entity's
     effective weights (household weights broadcast through membership for
     entities without their own vector); boolean columns total their weighted
-    ``True`` mass. String/enum columns and structural columns (entity ids and
-    person membership ids) are skipped.
+    ``True`` mass. String/enum columns and structural columns (entity ids,
+    person membership ids, and :data:`PERSON_REFERENCE_COLUMNS`) are skipped.
 
     Args:
         frame: A microcosm frame in any country schema.
@@ -56,7 +64,7 @@ def input_mass_totals(
     """
 
     schema = frame.schema
-    structural = {schema.person_id_column}
+    structural = {schema.person_id_column, *PERSON_REFERENCE_COLUMNS}
     for group in schema.group_entities:
         structural.add(schema.id_column(group))
         structural.add(schema.membership_column(group))

@@ -1,0 +1,158 @@
+{
+ "family": {
+  "differing_shared_columns": [],
+  "only_ours": [],
+  "only_theirs": [],
+  "rows": [
+   189401,
+   189401
+  ],
+  "shared_columns": 1
+ },
+ "household": {
+  "differing_shared_columns": [],
+  "only_ours": [],
+  "only_theirs": [],
+  "rows": [
+   168852,
+   168852
+  ],
+  "shared_columns": 3
+ },
+ "marital_unit": {
+  "differing_shared_columns": [],
+  "only_ours": [],
+  "only_theirs": [],
+  "rows": [
+   345873,
+   345873
+  ],
+  "shared_columns": 1
+ },
+ "ours": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/overnight-20260923/asec-720-fix/checkpoints/asec_raw_stage.checkpoint.h5",
+ "peak_rss_gb": 4.952326144,
+ "person": {
+  "differing_shared_columns": [
+   "PECOHAB",
+   "A_FAMREL",
+   "A_FAMTYP",
+   "NOW_CAID",
+   "NOW_COV",
+   "NOW_DIR",
+   "NOW_MCARE",
+   "NOW_MRKS",
+   "NOW_MRKUN",
+   "NOW_PCHIP",
+   "NOW_PRIV",
+   "NOW_PUB"
+  ],
+  "only_ours": [],
+  "only_theirs": [],
+  "rows": [
+   432523,
+   432523
+  ],
+  "shared_columns": 176
+ },
+ "restored_columns_identical_across_all_rows": {
+  "A_ENRLW": true,
+  "A_EXPRRP": true,
+  "A_FTPT": true,
+  "NOW_CHAMPVA": true,
+  "NOW_IHSFLG": true,
+  "NOW_MCAID": true,
+  "NOW_MIL": true,
+  "NOW_NONM": true,
+  "NOW_OTHMT": true,
+  "NOW_VACARE": true,
+  "PTOTVAL": true
+ },
+ "spm_unit": {
+  "differing_shared_columns": [],
+  "only_ours": [],
+  "only_theirs": [],
+  "rows": [
+   176039,
+   176039
+  ],
+  "shared_columns": 1
+ },
+ "tax_unit": {
+  "differing_shared_columns": [],
+  "only_ours": [],
+  "only_theirs": [],
+  "rows": [
+   226102,
+   226102
+  ],
+  "shared_columns": 2
+ },
+ "theirs": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/asec-720-source/checkpoints/asec_raw_stage.checkpoint.h5",
+ "unrestored_columns": {
+  "A_FAMREL": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "A_FAMTYP": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "LKWEEKS": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 0,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "NOW_CAID": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "NOW_COV": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "NOW_DIR": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "NOW_MCARE": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "NOW_MRKS": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "NOW_MRKUN": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "NOW_PCHIP": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "NOW_PRIV": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "NOW_PUB": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  },
+  "PECOHAB": {
+   "2024_rows_identical": true,
+   "ours_null_rows_2022_2023": 290398,
+   "theirs_null_rows_2022_2023": 0
+  }
+ }
+}

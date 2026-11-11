@@ -1,0 +1,1 @@
+The NZ Chronicle feed is re-pinned to acbedb5f (PolicyEngine/chronicle#379), adding Stats NZ's estimated resident population at 30 June 2023 for New Zealand and its 16 regions; no other NZ fact changes.

@@ -45,11 +45,22 @@ Three documented approximations, in order of consequence:
    allocation reconciles to published numbers by construction.
    The bottom band's support is floored at the annual exempt amount, since
    every allocated person is a taxpayer with a liability.
-4. **Gainers beyond the published taxpayer mass keep their existing amounts,
-   capped at the annual exempt amount.** Table 3 covers only individuals
-   with a CGT liability, so the candidate's remaining gainers are treated as
-   sub-AEA gainers rather than being invented into the liability
-   distribution or deleted.
+4. **Gainers beyond the published taxpayer mass take Advani and Summers
+   within-band amounts restricted to (0, AEA].** Table 3 covers only
+   individuals with a CGT liability, so the candidate's remaining gainers
+   are sub-AEA gainers. Their amounts come from the Advani and Summers
+   (2020) quantile surface of gains by total-income band, the surface the
+   spine's gainer set was drawn from, restricted to the quantiles between
+   the band spline's zero crossing and its crossing of the build period's
+   annual exempt amount and placed rank-preservingly within each band,
+   rather than from a cap on the candidate's amounts (microcosm#970). A cap
+   left every such gainer at exactly the exempt amount, which the engine's
+   uprating then carried past the frozen threshold in the first projected
+   year. The table is used as published, 2017-18 nominal pounds without
+   uprating: between the 10th and 25th percentiles the spline is one
+   straight segment, so the shape on (0, AEA] is close to uniform whatever
+   the scale. Nothing is invented into the liability distribution or
+   deleted.
 5. **The joint is the published 2024-25 surface, not an aged one.** The
    2026 release publishes Table 3 for 2024-25, the tax year of the Table 1
    observations the calibration fits, and its rows are vendored verbatim
@@ -88,6 +99,18 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.advani_summers import (
+    ADVANI_SUMMERS_RESOURCE,
+    ADVANI_SUMMERS_VINTAGE,
+    CGT_QUANTILE_POINTS,
+    advani_summers_band_index,
+    advani_summers_knots,
+    advani_summers_resource_sha256,
+    advani_summers_rows,
+    exempt_range_quantiles,
+    load_advani_summers_distribution,
+    stratified_amounts_within_range,
+)
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_BUILD_PERIOD,
     HMRC_CGT_CONDITIONING_RECORD_SETS,
@@ -99,6 +122,10 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRCCGTConditioningFacts,
     load_hmrc_cgt_conditioning_facts,
     load_hmrc_cgt_joint_distribution,
+)
+from microcosm.build.uk_runtime.hmrc_income import (
+    LOSS_RELIEF_COLUMN,
+    self_employment_income_after_loss_relief,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -123,11 +150,15 @@ __all__ = [
     "UK_CGT_RAKE_TOLERANCE",
     "UK_CGT_REGION_GROUP_LABELS",
     "UK_CGT_REGION_GROUPS",
+    "UK_CGT_PLACEMENT_ROW_TYPES",
+    "UK_CGT_REMAINDER_POLICY",
+    "UK_CGT_SUPPORT_COPIES_COLUMN",
     "UKCGTAllocationReport",
     "impute_uk_capital_gains",
     "impute_uk_capital_gains_with_report",
     "summarize_uk_cgt_imputation",
     "uk_cgt_spine_stage_transform",
+    "uk_cgt_component_sum_income",
     "uk_cgt_policy_parameters",
     "uk_cgt_taxable_income_proxy",
 ]
@@ -140,6 +171,11 @@ UK_CGT_SPINE_STAGE_NAME = "hmrc_cgt_gains_spine"
 #: Base seed for the stage's draws. Combined with the build period so two
 #: periods draw differently while each build is reproducible.
 UK_CGT_IMPUTATION_SEED = 552
+
+#: How the sub-AEA remainder takes its amounts (microcosm#970): the
+#: Advani-Summers within-band quantile function restricted to the exempt
+#: range, rank-preserving within each total-income band, no seeded draw.
+UK_CGT_REMAINDER_POLICY = "advani_summers_within_band_exempt_range"
 
 #: The reviewed mass-conservation receipt the spine stage records. The
 #: terminal family gate requires a valid mass-conserving MassChangeRecord
@@ -155,7 +191,10 @@ UK_CGT_SPINE_MASS_CONSERVATION_REASON = (
 #: Persisted components of the model's ``total_income`` concept (ITA 2007
 #: s.23: taxable income after tax reliefs and before allowances).
 #: ``state_pension_reported`` stands in for ``social_security_income``; the
-#: other taxable benefits inside that concept are not persisted inputs.
+#: other taxable benefits inside that concept are not persisted inputs. ISA
+#: interest is exempt, but gross interest held it before the additive
+#: contract (microcosm#1360), so it stays beside non-ISA interest and the
+#: proxy, and every draw on it, are unchanged.
 UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS: tuple[str, ...] = (
     "employment_income",
     "self_employment_income",
@@ -163,6 +202,7 @@ UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS: tuple[str, ...] = (
     "private_pension_income",
     "property_income",
     "savings_interest_income",
+    "individual_savings_account_interest_income",
     "dividend_income",
     "miscellaneous_income",
 )
@@ -249,10 +289,41 @@ UK_CGT_CONDITIONING_DIMENSIONS: tuple[str, ...] = (
     "region group",
 )
 
+#: The allocation ranks gainers within each cell by a blend of their prior-gain
+#: rank and their household's investable-wealth rank among gainers, the wealth
+#: rank weighted by this share and the prior's by the rest (microcosm#1014).
+#: The cells, walks and plan amounts do not change; only which gainer takes
+#: which amount does. On the licensed spine a weight of 0.75 raised the
+#: within-income-column Spearman of gains against investable wealth from 0.08
+#: to 0.46 and left no gainer of GBP 1m or more without investable wealth,
+#: while the calibration fit stayed as it was.
+UK_CGT_WEALTH_RANK_WEIGHT = 0.75
+
+#: Household investable wealth: the WAS-imputed stocks a gain is realised on,
+#: without the main residence and pensions.
+UK_CGT_INVESTABLE_WEALTH_COLUMNS: tuple[str, ...] = (
+    "gross_financial_wealth",
+    "corporate_wealth",
+    "other_residential_property_value",
+    "non_residential_property_value",
+)
+
+#: The household column the support split (``cgt_support_split``,
+#: microcosm#1045) writes: the family's copy count on every member of a split
+#: household, root included, and 1 on every other household. The redraw reads
+#: it for its placement receipts only — a row belongs to a support family when
+#: the count exceeds 1 — and a frame without the column reports every row as
+#: plain. The split stage imports this module, so the name is declared here
+#: and the stage's own constant is bound to it by test.
+UK_CGT_SUPPORT_COPIES_COLUMN = "cgt_support_copies"
+
+#: The row types the placement receipts partition the redraw's rows into.
+UK_CGT_PLACEMENT_ROW_TYPES: tuple[str, ...] = ("plain", "support_family")
+
 
 @dataclass(frozen=True)
 class UKCGTPolicyParameters:
-    """Policy amounts the proxy and the sub-AEA cap depend on.
+    """Policy amounts the proxy and the sub-AEA remainder range depend on.
 
     Read from the policyengine-uk parameter tree at a stated instant by
     :func:`uk_cgt_policy_parameters`, or constructed directly in tests.
@@ -306,10 +377,13 @@ def uk_cgt_policy_parameters(build_period: int | str) -> UKCGTPolicyParameters:
     )
 
 
-def uk_cgt_taxable_income_proxy(
-    person: pd.DataFrame, parameters: UKCGTPolicyParameters
-) -> np.ndarray:
-    """Approximate taxable income after reliefs and the Personal Allowance."""
+def uk_cgt_component_sum_income(person: pd.DataFrame) -> np.ndarray:
+    """Sum the persisted total_income components before any allowance.
+
+    The Advani-Summers surface conditions on total income, so the prior
+    draw and the sub-AEA remainder band persons on this sum; the Table 3
+    proxy subtracts the tapered Personal Allowance from it.
+    """
     missing = [
         column
         for column in UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS
@@ -321,7 +395,25 @@ def uk_cgt_taxable_income_proxy(
         )
     total = np.zeros(len(person))
     for column in UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS:
-        total += pd.to_numeric(person[column], errors="raise").to_numpy(dtype=float)
+        values = pd.to_numeric(person[column], errors="raise").to_numpy(dtype=float)
+        if column == "self_employment_income" and LOSS_RELIEF_COLUMN in person:
+            # Total income holds the profit after losses brought forward,
+            # which policyengine-uk keeps apart in loss_relief (microcosm#1095).
+            values = self_employment_income_after_loss_relief(
+                values,
+                pd.to_numeric(person[LOSS_RELIEF_COLUMN], errors="raise").to_numpy(
+                    dtype=float
+                ),
+            )
+        total += values
+    return total
+
+
+def uk_cgt_taxable_income_proxy(
+    person: pd.DataFrame, parameters: UKCGTPolicyParameters
+) -> np.ndarray:
+    """Approximate taxable income after reliefs and the Personal Allowance."""
+    total = uk_cgt_component_sum_income(person)
 
     taper = parameters.personal_allowance_taper_rate * np.maximum(
         0.0, total - parameters.personal_allowance_taper_threshold
@@ -552,7 +644,22 @@ def _band_plans(
 
 @dataclass(frozen=True)
 class UKCGTAllocationReport:
-    """What the rake asked for and what the walk delivered, cell by cell."""
+    """What the rake asked for and what the walk delivered, cell by cell.
+
+    The placement receipts (microcosm#1045) record where the wealth-ranked
+    walk seated the rows it was given, without changing the walk:
+    ``placement_by_row_type`` partitions gainers into plain rows and the
+    support families the split stage created and counts, per initial Table
+    2.1a band of the prior gain, the rows and mass placed in a plan and
+    demoted to the sub-exempt remainder; ``heaviest_placed_weight`` is the
+    heaviest person weight seated in each band of the redrawn gains and in
+    each (gain band, income band) plan; ``income_band_rows`` compares each
+    Table 3 income column's target with its pass-1 and pooled-walk
+    achievement and reports the overshoot; ``open_band`` reads the GBP 5m+
+    band against its published people and gains; and
+    ``placed_share_by_wealth_decile`` is the share of gainer mass placed in
+    each decile of the rank key's investable-wealth component.
+    """
 
     band_rows: tuple[dict[str, object], ...]
     joint_rows: tuple[dict[str, object], ...]
@@ -561,9 +668,18 @@ class UKCGTAllocationReport:
     fallback_share_by_band: Mapping[int, float]
     conditioning: Mapping[str, object]
     rounding_carry_out: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+    remainder: Mapping[str, object] = field(default_factory=dict)
+    rank_key: Mapping[str, object] = field(default_factory=dict)
+    placement_by_row_type: Mapping[str, object] = field(default_factory=dict)
+    heaviest_placed_weight: Mapping[str, object] = field(default_factory=dict)
+    income_band_rows: tuple[dict[str, object], ...] = ()
+    open_band: Mapping[str, object] = field(default_factory=dict)
+    placed_share_by_wealth_decile: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
+            "remainder": dict(self.remainder),
+            "rank_key": dict(self.rank_key),
             "band_rows": [dict(row) for row in self.band_rows],
             "joint_rows": [dict(row) for row in self.joint_rows],
             "rake": dict(self.rake),
@@ -575,6 +691,11 @@ class UKCGTAllocationReport:
             "rounding_carry_out": {
                 key: dict(value) for key, value in self.rounding_carry_out.items()
             },
+            "placement_by_row_type": dict(self.placement_by_row_type),
+            "heaviest_placed_weight": dict(self.heaviest_placed_weight),
+            "income_band_rows": [dict(row) for row in self.income_band_rows],
+            "open_band": dict(self.open_band),
+            "placed_share_by_wealth_decile": dict(self.placed_share_by_wealth_decile),
         }
 
 
@@ -1157,7 +1278,7 @@ def _draw_plan_amounts(
     """Draw one plan's amounts on weight-proportional quantile strata.
 
     The persons a (gain band, income band) plan received across every cell
-    take, in ascending prior-gain order, the quantile strata that partition
+    take, in ascending rank-key order, the quantile strata that partition
     (0, 1) in proportion to their household weights, with one seeded jitter
     per plan inside the stratum. The published mean is a people-weighted
     mean, so the strata must be too: equal strata on unequal weights put the
@@ -1197,10 +1318,415 @@ def _draw_plan_amounts(
 def _ranked(
     indices: np.ndarray, *, person_id: np.ndarray, existing: np.ndarray
 ) -> np.ndarray:
-    # Rank by existing gains, largest first; person_id breaks ties so the
-    # ordering, and with it every draw, is deterministic.
+    # Rank by the given key, largest first: the allocation's wealth-blended
+    # rank key, or the prior gain for the sub-AEA remainder. person_id breaks
+    # ties so the ordering, and with it every draw, is deterministic.
     order = np.lexsort((person_id[indices], -existing[indices]))
     return indices[order]
+
+
+def _map_remainder_amounts(
+    *,
+    remainder: np.ndarray,
+    existing: np.ndarray,
+    person_id: np.ndarray,
+    person_weight: np.ndarray,
+    band_index: np.ndarray,
+    rows: Sequence[Mapping[str, object]],
+    annual_exempt_amount: float,
+    new_gains: np.ndarray,
+) -> dict[str, object]:
+    """Place the sub-AEA remainder on the A&S within-band surface (microcosm#970).
+
+    ``remainder`` holds the row positions of the gainers the allocation left
+    unassigned. Within each Advani-Summers total-income band they take, in
+    ascending existing-gain order (the prior-gain ranking reversed; the
+    allocation and the plan draws rank on the wealth-blended key), the
+    midpoints of the weight-proportional
+    quantile strata of ``(q0, q_aea)``, the band spline's zero crossing and
+    its crossing of the annual exempt amount, so the band's weighted
+    remainder reproduces the published conditional shape on (0, AEA]. The
+    mapping is a monotone transform of the existing gains inside each band,
+    consumes no seeded draw, and fails closed if any amount leaves the
+    range. Returns the receipt for the allocation report.
+    """
+
+    band_rows: list[dict[str, object]] = []
+    for band in np.unique(band_index[remainder]):
+        members = remainder[band_index[remainder] == band]
+        ordered = _ranked(members, person_id=person_id, existing=existing)[::-1]
+        knots = advani_summers_knots(rows[int(band)])
+        lower_quantile, upper_quantile = exempt_range_quantiles(
+            knots, annual_exempt_amount
+        )
+        amounts = stratified_amounts_within_range(
+            knots,
+            weights=person_weight[ordered],
+            lower_quantile=lower_quantile,
+            upper_quantile=upper_quantile,
+        )
+        if not ((amounts > 0.0).all() and (amounts <= annual_exempt_amount).all()):
+            raise ValueError(
+                "Sub-AEA remainder amounts left (0, annual exempt amount]."
+            )
+        new_gains[ordered] = amounts
+        band_rows.append(
+            {
+                "minimum_total_income": float(rows[int(band)]["minimum_total_income"]),
+                "zero_quantile": lower_quantile,
+                "exempt_quantile": upper_quantile,
+                "persons": int(ordered.size),
+                "mass": float(person_weight[ordered].sum()),
+                "min_amount": float(amounts.min()),
+                "max_amount": float(amounts.max()),
+            }
+        )
+    return {
+        "policy": UK_CGT_REMAINDER_POLICY,
+        "resource": ADVANI_SUMMERS_RESOURCE,
+        "resource_sha256": advani_summers_resource_sha256(),
+        "resource_vintage": ADVANI_SUMMERS_VINTAGE,
+        "income_measure": "component_sum_without_allowance",
+        "annual_exempt_amount": float(annual_exempt_amount),
+        "persons": int(remainder.size),
+        "mass": float(person_weight[remainder].sum()),
+        "min_amount": float(new_gains[remainder].min()) if remainder.size else 0.0,
+        "max_amount": float(new_gains[remainder].max()) if remainder.size else 0.0,
+        "bands_with_remainder": len(band_rows),
+        "band_rows": band_rows,
+    }
+
+
+def _allocation_rank_key(
+    person: pd.DataFrame, household: pd.DataFrame, existing: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """The allocation's ranking key and each person's household investable wealth.
+
+    Among gainers the key blends the prior-gain rank with the household
+    investable-wealth rank (average ranks as fractions of the gainers), the
+    wealth rank weighted by ``UK_CGT_WEALTH_RANK_WEIGHT``. Non-gainers keep
+    their prior gain, which no walk reads. Refuses a household table without
+    the declared wealth columns rather than ranking on the prior alone.
+    """
+
+    missing = [
+        column
+        for column in UK_CGT_INVESTABLE_WEALTH_COLUMNS
+        if column not in household.columns
+    ]
+    if missing:
+        raise ValueError(
+            "The CGT allocation ranks gainers on household investable wealth; "
+            f"the household table lacks {missing}."
+        )
+    wealth_by_household = (
+        household.set_index("household_id")[list(UK_CGT_INVESTABLE_WEALTH_COLUMNS)]
+        .apply(pd.to_numeric, errors="raise")
+        .sum(axis=1)
+    )
+    wealth = (
+        person["person_household_id"].map(wealth_by_household).to_numpy(dtype=float)
+    )
+    if not np.isfinite(wealth).all():
+        raise ValueError("Household investable wealth must be finite for every person.")
+    gainer = existing > 0
+    key = existing.astype(float).copy()
+    if gainer.any():
+        prior_rank = pd.Series(existing[gainer]).rank(pct=True).to_numpy()
+        wealth_rank = pd.Series(wealth[gainer]).rank(pct=True).to_numpy()
+        key[gainer] = (
+            UK_CGT_WEALTH_RANK_WEIGHT * wealth_rank
+            + (1.0 - UK_CGT_WEALTH_RANK_WEIGHT) * prior_rank
+        )
+    return key, wealth
+
+
+def _within_band_spearman(
+    values: np.ndarray, wealth: np.ndarray, band: np.ndarray, weights: np.ndarray
+) -> dict[str, object]:
+    """Spearman of drawn gains against wealth inside each income band, and its mass-weighted mean."""
+
+    rows: dict[str, float | None] = {}
+    total = 0.0
+    mass = 0.0
+    for lower in np.unique(band):
+        inside = band == lower
+        correlation = None
+        if int(inside.sum()) >= 3:
+            ranks = pd.DataFrame({"g": values[inside], "w": wealth[inside]}).rank()
+            if ranks["g"].std() > 0 and ranks["w"].std() > 0:
+                correlation = float(np.corrcoef(ranks["g"], ranks["w"])[0, 1])
+        rows[str(int(lower))] = correlation
+        if correlation is not None:
+            band_mass = float(weights[inside].sum())
+            total += correlation * band_mass
+            mass += band_mass
+    return {"by_income_band": rows, "mass_weighted": total / mass if mass else None}
+
+
+def _support_family_rows(
+    person: pd.DataFrame, household: pd.DataFrame
+) -> tuple[np.ndarray, bool]:
+    """Which person rows belong to a CGT support family, and whether the column was read.
+
+    A support family is a household the support split (microcosm#1045)
+    divided into copies: ``cgt_support_copies`` above 1 on its root and on
+    every copy alike. A household table without the column — a spine built
+    before the stage, or a fixture without it — marks every row plain. The
+    placement receipts are the only reader; the walk never sees the row type.
+    """
+
+    if UK_CGT_SUPPORT_COPIES_COLUMN not in household.columns:
+        return np.zeros(len(person), dtype=bool), False
+    copies_by_household = pd.Series(
+        pd.to_numeric(household[UK_CGT_SUPPORT_COPIES_COLUMN], errors="raise").to_numpy(
+            dtype=float
+        ),
+        index=household["household_id"],
+    )
+    copies = (
+        person["person_household_id"].map(copies_by_household).to_numpy(dtype=float)
+    )
+    if not np.isfinite(copies).all() or (copies < 1.0).any():
+        raise ValueError(
+            f"Household {UK_CGT_SUPPORT_COPIES_COLUMN} must be a finite copy count "
+            "of at least 1 on every household."
+        )
+    return copies > 1.0, True
+
+
+def _heaviest(weights: np.ndarray, mask: np.ndarray) -> float:
+    """The heaviest weight under ``mask``; 0.0 where nothing is selected."""
+
+    return float(weights[mask].max()) if mask.any() else 0.0
+
+
+def _rows_and_mass(weights: np.ndarray, mask: np.ndarray) -> tuple[int, float]:
+    return int(mask.sum()), float(weights[mask].sum())
+
+
+def _placement_receipts(
+    *,
+    existing: np.ndarray,
+    new_gains: np.ndarray,
+    is_gainer: np.ndarray,
+    assigned: np.ndarray,
+    person_weight: np.ndarray,
+    income_band: np.ndarray,
+    support_family: np.ndarray,
+    support_column_present: bool,
+    members: Mapping[tuple[int, int], Sequence[np.ndarray]],
+    joint: Mapping[tuple[int, int], _CellPlan],
+    pass1_by_band: np.ndarray,
+    achieved_fallback: np.ndarray,
+    band_rows: Sequence[Mapping[str, object]],
+    investable_wealth: np.ndarray,
+) -> dict[str, object]:
+    """Where the walk placed the rows it was given (microcosm#1045).
+
+    Receipts only: every input is what the two passes, the plan draws and
+    the remainder mapping already produced, and nothing here touches
+    ``new_gains`` or the seeded stream. Placed rows are the gainers a pass
+    assigned to a plan; demoted rows are the gainers left to the sub-exempt
+    remainder. The initial band is the Table 2.1a band of the prior gain; the
+    redrawn band is the band of the new amount, which for a placed row is the
+    band of its plan. Rows are person rows. Every value is a plain finite
+    number, string or flag keyed by strings, so the receipt is
+    JSON-serialisable as it stands; a heaviest weight is 0.0 and a share is
+    0.0 where nothing was placed.
+    """
+
+    gains = HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
+    incomes = HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
+    placed = is_gainer & assigned
+    demoted = is_gainer & ~assigned
+    initial_band = np.searchsorted(gains, existing, side="right") - 1
+    redrawn_band = np.searchsorted(gains, new_gains, side="right") - 1
+    row_types = {"plain": ~support_family, "support_family": support_family}
+    if tuple(row_types) != UK_CGT_PLACEMENT_ROW_TYPES:
+        raise RuntimeError("Placement row types must match the declared tuple.")
+
+    by_row_type: dict[str, dict[str, object]] = {}
+    for name, in_type in row_types.items():
+        by_initial_band: dict[str, dict[str, object]] = {}
+        for gi, gain_lower in enumerate(gains):
+            in_band = in_type & (initial_band == gi)
+            placed_rows, placed_mass = _rows_and_mass(person_weight, in_band & placed)
+            demoted_rows, demoted_mass = _rows_and_mass(
+                person_weight, in_band & demoted
+            )
+            by_initial_band[str(gain_lower)] = {
+                "placed_rows": placed_rows,
+                "placed_mass": placed_mass,
+                "demoted_rows": demoted_rows,
+                "demoted_mass": demoted_mass,
+            }
+        persons, person_mass = _rows_and_mass(person_weight, in_type)
+        gainers, gainer_mass = _rows_and_mass(person_weight, in_type & is_gainer)
+        placed_rows, placed_mass = _rows_and_mass(person_weight, in_type & placed)
+        demoted_rows, demoted_mass = _rows_and_mass(person_weight, in_type & demoted)
+        by_row_type[name] = {
+            "persons": persons,
+            "person_mass": person_mass,
+            "gainers": gainers,
+            "gainer_mass": gainer_mass,
+            "placed_rows": placed_rows,
+            "placed_mass": placed_mass,
+            "demoted_rows": demoted_rows,
+            "demoted_mass": demoted_mass,
+            "by_initial_gain_band": by_initial_band,
+        }
+    placement_by_row_type = {
+        "row_type_column": UK_CGT_SUPPORT_COPIES_COLUMN,
+        "row_type_column_present": bool(support_column_present),
+        "gain_band_lower_bounds": [int(gain_lower) for gain_lower in gains],
+        "by_row_type": by_row_type,
+        "remainder_mass_by_row_type": {
+            name: by_row_type[name]["demoted_mass"] for name in row_types
+        },
+    }
+
+    # The plans' members, concatenated once per (gain band, income band).
+    plan_rows: dict[tuple[int, int], np.ndarray] = {}
+    by_cell: dict[str, dict[str, float]] = {}
+    for gain_lower in gains:
+        by_cell[str(gain_lower)] = {}
+        for income_lower in incomes:
+            chunks = members.get((gain_lower, income_lower), ())
+            rows = (
+                np.concatenate(list(chunks))
+                if len(chunks)
+                else np.empty(0, dtype=np.intp)
+            )
+            plan_rows[(gain_lower, income_lower)] = rows
+            by_cell[str(gain_lower)][str(income_lower)] = (
+                float(person_weight[rows].max()) if rows.size else 0.0
+            )
+    heaviest_placed_weight = {
+        "overall": _heaviest(person_weight, placed),
+        "placed_rows": int(placed.sum()),
+        "by_gain_band": {
+            str(gain_lower): _heaviest(person_weight, placed & (redrawn_band == gi))
+            for gi, gain_lower in enumerate(gains)
+        },
+        "by_cell": by_cell,
+    }
+
+    income_band_rows: list[dict[str, object]] = []
+    for ii, income_lower in enumerate(incomes):
+        in_income = income_band == income_lower
+        target = float(
+            sum(
+                joint[(gain_lower, income_lower)].allocation_people
+                for gain_lower in gains
+            )
+        )
+        pass1 = float(pass1_by_band[:, ii].sum())
+        fallback = float(achieved_fallback[:, ii].sum())
+        residual = target - pass1 - fallback
+        gainers, gainer_mass = _rows_and_mass(person_weight, in_income & is_gainer)
+        placed_rows, placed_mass = _rows_and_mass(person_weight, in_income & placed)
+        income_band_rows.append(
+            {
+                "income_lower_bound": int(income_lower),
+                "target_people": target,
+                "achieved_pass1": pass1,
+                "achieved_fallback": fallback,
+                "achieved_people": pass1 + fallback,
+                "residual": residual,
+                "overshoot": max(0.0, -residual),
+                "gainers": gainers,
+                "gainer_mass": gainer_mass,
+                "placed_rows": placed_rows,
+                "placed_mass": placed_mass,
+                "heaviest_placed_weight": _heaviest(person_weight, in_income & placed),
+            }
+        )
+
+    # The open band: achieved against the Table 2.1a 2024-25 row folded onto
+    # it, the figures the stage summary reports as published, and the joint's
+    # target for the band; per income column the plan's target and what the
+    # two passes seated there.
+    top_index = len(gains) - 1
+    top_lower = gains[top_index]
+    top_row = band_rows[top_index]
+    if int(top_row["gain_lower_bound"]) != top_lower:
+        raise RuntimeError("Band rows must be ordered as the gain band bounds.")
+    in_open = new_gains >= float(top_lower)
+    open_by_income: dict[str, dict[str, object]] = {}
+    for ii, income_lower in enumerate(incomes):
+        rows = plan_rows[(top_lower, income_lower)]
+        open_by_income[str(income_lower)] = {
+            "target_people": float(joint[(top_lower, income_lower)].allocation_people),
+            "achieved_people": float(
+                pass1_by_band[top_index, ii] + achieved_fallback[top_index, ii]
+            ),
+            "placed_rows": int(rows.size),
+            "heaviest_placed_weight": (
+                float(person_weight[rows].max()) if rows.size else 0.0
+            ),
+        }
+    open_band = {
+        "gain_lower_bound": int(top_lower),
+        "achieved_people": float(person_weight[in_open].sum()),
+        "achieved_gains": float((new_gains[in_open] * person_weight[in_open]).sum()),
+        "published_people": float(top_row["table2_1a_people"]),
+        "published_gains": float(top_row["table2_1a_gains"]),
+        "target_people": float(top_row["target_people"]),
+        "placed_rows": int(in_open.sum()),
+        "heaviest_placed_weight": _heaviest(person_weight, in_open),
+        "by_income_band": open_by_income,
+    }
+
+    # Deciles of the rank key's wealth component: the average rank of
+    # household investable wealth among gainers, as the key takes it.
+    gainer_rows = np.flatnonzero(is_gainer)
+    decile = np.zeros(len(existing), dtype=int)
+    if gainer_rows.size:
+        wealth_rank = (
+            pd.Series(investable_wealth[gainer_rows]).rank(pct=True).to_numpy()
+        )
+        decile[gainer_rows] = np.clip(np.ceil(wealth_rank * 10.0), 1, 10).astype(int)
+    deciles: dict[str, dict[str, object]] = {}
+    for tenth in range(1, 11):
+        in_decile = decile == tenth
+        gainers, gainer_mass = _rows_and_mass(person_weight, in_decile)
+        placed_rows, placed_mass = _rows_and_mass(person_weight, in_decile & placed)
+        deciles[str(tenth)] = {
+            "gainers": gainers,
+            "gainer_mass": gainer_mass,
+            "placed_rows": placed_rows,
+            "placed_mass": placed_mass,
+            "placed_share": placed_mass / gainer_mass if gainer_mass > 0.0 else 0.0,
+        }
+    share_by_income: dict[str, dict[str, float]] = {}
+    for income_lower in incomes:
+        in_income = income_band == income_lower
+        shares: dict[str, float] = {}
+        for tenth in range(1, 11):
+            in_cell = in_income & (decile == tenth)
+            cell_mass = float(person_weight[in_cell].sum())
+            shares[str(tenth)] = (
+                float(person_weight[in_cell & placed].sum() / cell_mass)
+                if cell_mass > 0.0
+                else 0.0
+            )
+        share_by_income[str(income_lower)] = shares
+    placed_share_by_wealth_decile = {
+        "wealth_measure": "household investable wealth, average rank among gainers",
+        "investable_wealth_columns": list(UK_CGT_INVESTABLE_WEALTH_COLUMNS),
+        "wealth_rank_weight": UK_CGT_WEALTH_RANK_WEIGHT,
+        "deciles": deciles,
+        "by_income_band": share_by_income,
+    }
+
+    return {
+        "placement_by_row_type": placement_by_row_type,
+        "heaviest_placed_weight": heaviest_placed_weight,
+        "income_band_rows": tuple(income_band_rows),
+        "open_band": open_band,
+        "placed_share_by_wealth_decile": placed_share_by_wealth_decile,
+    }
 
 
 def impute_uk_capital_gains_with_report(
@@ -1211,10 +1737,20 @@ def impute_uk_capital_gains_with_report(
     conditioning: HMRCCGTConditioningFacts,
     seed: int = UK_CGT_IMPUTATION_SEED,
     mass_change_reason: str = UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+    remainder_distribution: Mapping[str, object] | None = None,
 ) -> tuple[Frame, UKCGTAllocationReport]:
-    """Redraw gainers' amounts, conditioned on income, age and region."""
+    """Redraw gainers' amounts, conditioned on income, age and region.
+
+    ``remainder_distribution`` is the Advani-Summers surface the sub-AEA
+    remainder maps onto; it defaults to the committed resource.
+    """
 
     validate_uk_national_frame(frame)
+    remainder_rows = advani_summers_rows(
+        remainder_distribution
+        if remainder_distribution is not None
+        else load_advani_summers_distribution()
+    )
     time_period = uk_time_period(frame)
     person = frame.table("person").reset_index(drop=True)
     if "capital_gains" not in person.columns:
@@ -1246,6 +1782,10 @@ def impute_uk_capital_gains_with_report(
         np.digitize(taxable_income, HMRC_CGT_INCOME_BAND_LOWER_BOUNDS[1:])
     ]
     _, age_group, _, region_group = _person_conditioning_cells(person, household)
+
+    rank_key, investable_wealth = _allocation_rank_key(person, household, existing)
+    # Receipts only (microcosm#1045): the walk never reads the row type.
+    support_family, support_column_present = _support_family_rows(person, household)
 
     rng = np.random.default_rng((seed, int(time_period)))
     new_gains = existing.copy()
@@ -1306,7 +1846,7 @@ def impute_uk_capital_gains_with_report(
                     carry = -deferred
                     continue
                 ranked = _ranked(
-                    np.flatnonzero(in_cell), person_id=person_id, existing=existing
+                    np.flatnonzero(in_cell), person_id=person_id, existing=rank_key
                 )
                 weights = person_weight[ranked]
                 # When the cell holds less gainer mass than its target,
@@ -1362,7 +1902,7 @@ def impute_uk_capital_gains_with_report(
             gain_lower: value * net_shortfall / positive_total
             for gain_lower, value in positive.items()
         }
-        ranked = _ranked(np.flatnonzero(pool), person_id=person_id, existing=existing)
+        ranked = _ranked(np.flatnonzero(pool), person_id=person_id, existing=rank_key)
         weights = person_weight[ranked]
         scale = min(1.0, float(weights.sum()) / net_shortfall)
         boundaries = [
@@ -1395,17 +1935,27 @@ def impute_uk_capital_gains_with_report(
                 joint[(gain_lower, income_lower)],
                 np.concatenate(chunks),
                 person_id=person_id,
-                existing=existing,
+                existing=rank_key,
                 weights=person_weight,
                 rng=rng,
                 new_gains=new_gains,
             )
 
-    # Below the published taxpayer mass: sub-AEA gainers keep their
-    # existing amounts, capped at the annual exempt amount.
-    remainder = is_gainer & ~assigned
-    new_gains[remainder] = np.minimum(
-        existing[remainder], parameters.annual_exempt_amount
+    # Below the published taxpayer mass: sub-AEA gainers take Advani-Summers
+    # within-band amounts restricted to (0, AEA], rank-preserving within each
+    # A&S total-income band (microcosm#970). Nothing here touches rng, so the
+    # walk and plan draw order above is unchanged.
+    remainder_receipt = _map_remainder_amounts(
+        remainder=np.flatnonzero(is_gainer & ~assigned),
+        existing=existing,
+        person_id=person_id,
+        person_weight=person_weight,
+        band_index=advani_summers_band_index(
+            remainder_rows, uk_cgt_component_sum_income(person)
+        ),
+        rows=remainder_rows,
+        annual_exempt_amount=parameters.annual_exempt_amount,
+        new_gains=new_gains,
     )
 
     if not np.isfinite(new_gains).all():
@@ -1447,7 +1997,36 @@ def impute_uk_capital_gains_with_report(
         )
         for gi, gain_lower in enumerate(gains)
     }
+    liable_after = assigned & (new_gains > 0)
+    placement = _placement_receipts(
+        existing=existing,
+        new_gains=new_gains,
+        is_gainer=is_gainer,
+        assigned=assigned,
+        person_weight=person_weight,
+        income_band=income_band,
+        support_family=support_family,
+        support_column_present=support_column_present,
+        members=members,
+        joint=joint,
+        pass1_by_band=pass1_by_band,
+        achieved_fallback=achieved_fallback,
+        band_rows=band_rows,
+        investable_wealth=investable_wealth,
+    )
     report = UKCGTAllocationReport(
+        remainder=remainder_receipt,
+        rank_key={
+            "wealth_rank_weight": UK_CGT_WEALTH_RANK_WEIGHT,
+            "investable_wealth_columns": list(UK_CGT_INVESTABLE_WEALTH_COLUMNS),
+            "ranked_gainers": int(is_gainer.sum()),
+            "gains_wealth_spearman_within_income_band": _within_band_spearman(
+                new_gains[liable_after],
+                investable_wealth[liable_after],
+                income_band[liable_after],
+                person_weight[liable_after],
+            ),
+        },
         band_rows=band_rows,
         joint_rows=tuple(joint_rows),
         rake=rake_report,
@@ -1475,6 +2054,11 @@ def impute_uk_capital_gains_with_report(
             "region_groups": dict(UK_CGT_REGION_GROUPS),
             "fallback_policy": UK_CGT_FALLBACK_POLICY,
         },
+        placement_by_row_type=placement["placement_by_row_type"],
+        heaviest_placed_weight=placement["heaviest_placed_weight"],
+        income_band_rows=placement["income_band_rows"],
+        open_band=placement["open_band"],
+        placed_share_by_wealth_decile=placement["placed_share_by_wealth_decile"],
     )
 
     new_person = person.copy()
@@ -1513,10 +2097,12 @@ def impute_uk_capital_gains(
     conditioning: HMRCCGTConditioningFacts | None = None,
     seed: int = UK_CGT_IMPUTATION_SEED,
     mass_change_reason: str = UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+    remainder_distribution: Mapping[str, object] | None = None,
 ) -> Frame:
     """Redraw gainers' amounts from the published joint distribution.
 
-    ``conditioning`` defaults to the committed vendored 2024-25 resource.
+    ``conditioning`` defaults to the committed vendored 2024-25 resource and
+    ``remainder_distribution`` to the committed Advani-Summers surface.
     """
 
     result, _ = impute_uk_capital_gains_with_report(
@@ -1526,6 +2112,7 @@ def impute_uk_capital_gains(
         conditioning=conditioning or load_hmrc_cgt_conditioning_facts(),
         seed=seed,
         mass_change_reason=mass_change_reason,
+        remainder_distribution=remainder_distribution,
     )
     return result
 
@@ -1639,6 +2226,7 @@ def uk_cgt_spine_stage_transform(
     distribution: HMRCCapitalGainsJointDistribution | None = None,
     parameters: UKCGTPolicyParameters | None = None,
     conditioning: HMRCCGTConditioningFacts | None = None,
+    remainder_distribution: Mapping[str, object] | None = None,
 ):
     """Bind the spine manifest, then reuse the reviewed merged CGT runtime.
 
@@ -1652,6 +2240,7 @@ def uk_cgt_spine_stage_transform(
         distribution=distribution,
         parameters=parameters,
         conditioning=conditioning,
+        remainder_distribution=remainder_distribution,
     )
 
 
@@ -1663,6 +2252,7 @@ class UKCGTSpineStageTransform:
     distribution: HMRCCapitalGainsJointDistribution | None = None
     parameters: UKCGTPolicyParameters | None = None
     conditioning: HMRCCGTConditioningFacts | None = None
+    remainder_distribution: Mapping[str, object] | None = None
     last_result: UKCGTImputationSummary | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
@@ -1683,6 +2273,7 @@ class UKCGTSpineStageTransform:
             conditioning=conditioning,
             seed=UK_CGT_IMPUTATION_SEED,
             mass_change_reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+            remainder_distribution=self.remainder_distribution,
         )
         summary = summarize_uk_cgt_imputation(
             frame,
@@ -1753,7 +2344,9 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "2007 s.23); state_pension_reported stands in for "
                 "social_security_income, whose other taxable benefits are "
                 "not persisted; reliefs such as pension contributions and "
-                "Gift Aid are not deducted."
+                "Gift Aid are not deducted. ISA interest is exempt but stays "
+                "beside non-ISA interest, as gross interest held it before "
+                "microcosm#1360, so the proxy is unchanged."
             ),
             "allowance": (
                 "tapered Personal Allowance from the policy_parameters artifact"
@@ -1840,7 +2433,14 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "income band x age group x region group cell, then the income "
                 "band's pooled unassigned gainers"
             ),
-            "ordering": "existing gains descending, person_id ascending on ties",
+            "ordering": (
+                "a rank key descending, person_id ascending on ties: among "
+                "gainers, the household investable-wealth rank times the wealth "
+                "rank weight plus the prior-gain rank times its complement, "
+                "both as average ranks over the gainers"
+            ),
+            "wealth_rank_weight": UK_CGT_WEALTH_RANK_WEIGHT,
+            "investable_wealth_columns": list(UK_CGT_INVESTABLE_WEALTH_COLUMNS),
             "band_order": "highest gain band first",
             "suppressed_cell_allocation": (
                 "count implied by the cell's published gains at the band-total mean"
@@ -1888,7 +2488,7 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "stratified by weight: the persons a (gain band, income band) "
                 "plan receives across every cell and the pooled walk take the "
                 "quantile strata that partition (0, 1) in proportion to their "
-                "household weights, in ascending prior-gain order with one "
+                "household weights, in ascending rank-key order with one "
                 "seeded jitter per plan, so the plan's weighted realised mean "
                 "sits on its published mean rather than carrying n independent "
                 "draws or the weight-rank mix of equal strata"
@@ -1928,14 +2528,52 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
         },
         "sub_aea_remainder": {
             "policy": (
-                "gainers beyond the published taxpayer mass keep their "
-                "existing amounts capped at the annual exempt amount"
+                "gainers beyond the published taxpayer mass take amounts from "
+                "the Advani-Summers within-band gains distribution restricted "
+                "to (0, annual exempt amount], rank-preserving within each "
+                "Advani-Summers total-income band"
             ),
             "rationale": (
-                "Table 3 covers only individuals with a CGT liability; "
-                "remaining gainers are treated as sub-AEA gainers rather "
-                "than invented into the liability distribution or deleted."
+                "Table 3 covers only individuals with a CGT liability; the "
+                "remaining gainers are sub-AEA gainers, so their amounts come "
+                "from the only published within-band distribution that reaches "
+                "below the exempt amount, the surface the spine's gainer set "
+                "was drawn from, rather than from capping the candidate's "
+                "amounts, and none is invented into the liability distribution "
+                "or deleted (microcosm#970)."
             ),
+            "resource": ADVANI_SUMMERS_RESOURCE,
+            "resource_vintage": (
+                "2017-18 nominal pounds as published (Advani and Summers 2020, "
+                "CAGE WP 465, Table A1); no uprating is applied"
+            ),
+            "banding": (
+                "Advani-Summers total-income bands at the person's component-sum "
+                "income without allowance subtraction, the banding the prior "
+                "draw uses"
+            ),
+            "range": (
+                "quantiles strictly between the band's degree-1 quantile spline "
+                "zero crossing and its crossing of the build period's annual "
+                "exempt amount, so every amount lies in (0, AEA]"
+            ),
+            "mapping": (
+                "remainder gainers take the midpoints of the weight-proportional "
+                "quantile strata that partition the range, evaluated on the "
+                "band's spline; zero-weight persons take a nominal stratum of "
+                "the band's smallest positive weight and carry no mass; no "
+                "seeded draw is consumed, so the walk and plan draw order is "
+                "unchanged"
+            ),
+            "ordering": (
+                "existing gains ascending, person_id descending on ties (the "
+                "prior-gain ranking reversed; the allocation and the within-band "
+                "draws rank on the wealth-blended key)"
+            ),
+            "quantile_points": list(CGT_QUANTILE_POINTS),
+            "spline_degree": 1,
+            "extrapolation": "ext=0",
+            "deterministic": True,
         },
         "record_mass_conservation_receipt": {
             "entity": "household",
@@ -1949,10 +2587,11 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
         "classify_cgt_band_facts_with_reviewed_fence": {
             "calibration_permitted": False,
             "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
-            "fenced_fact_count": 76,
+            "fenced_fact_count": 70,
             "fenced_fact_composition": (
-                "60 joint cells, 10 gain-band row totals, 6 income-column totals "
-                "(Table 3 2024-25, 2026 release)"
+                "60 joint cells and 10 gain-band row totals (Table 3 2024-25, "
+                "2026 release); the 6 all-gains income-column totals are "
+                "promoted (microcosm#1014)"
             ),
             "classification_rationale": (
                 "The taxpayer count is endogenous to policy, the income "
@@ -1963,24 +2602,34 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             "calibrated_facts_unchanged": (
                 "The calibrated CGT facts are the FY2024-25 individual Table 1 "
                 "references (hmrc.cgt.taxpayers_total, hmrc.cgt.gains_total, "
-                "hmrc.cgt.liability_total; UK_CGT_TARGET_COVERAGE_REQUIREMENTS) "
-                "and the Table 2.1a size-of-gain, Table 6 age-band and Table 5 "
+                "hmrc.cgt.liability_total; UK_CGT_TARGET_COVERAGE_REQUIREMENTS), "
+                "the Table 2.1a size-of-gain, Table 6 age-band and Table 5 "
                 "region rows declared in uk_population_targets.json "
-                "(microcosm#467, #725); the 76 Table 3 2024-25 joint and "
-                "marginal cells stay fenced and condition the imputation only, "
-                "and Table 3's all-gains, all-incomes pair restates the Table 1 "
-                "individual observations already bound."
+                "(microcosm#467, #725), and the Table 3 2024-25 all-gains "
+                "income-column totals measured on the engine's CGT taxable "
+                "income (hmrc.cgt.taxpayers_by_taxable_income_band, "
+                "hmrc.cgt.gains_by_taxable_income_band; microcosm#1014); the 70 "
+                "Table 3 2024-25 joint cells and gain-band row totals stay "
+                "fenced and condition the imputation only, and Table 3's "
+                "all-gains, all-incomes pair restates the Table 1 individual "
+                "observations already bound."
             ),
             "promotion_path": (
                 "A separately reviewed target profile may lift specific band "
                 "facts after the reconciliation and proxy adequacy are "
                 "adjudicated; the Table 2.1a, 6 and 5 rows were promoted under "
                 "microcosm#467 and #725 on the FY2024-25 individual "
-                "observations, while the Table 3 joint cells remain fenced "
-                "because the taxable-income proxy is still an arithmetic "
-                "approximation."
+                "observations, and the six Table 3 all-gains income-column "
+                "totals under microcosm#1014: they are unsuppressed and "
+                "reconcile to the published totals (taxpayer bands sum to "
+                "551,000, gains bands to GBP 119,257m of 119,258m), and they "
+                "are measured on the taxable income policyengine-uk's CGT "
+                "formula sets the rate bands on rather than the redraw's "
+                "arithmetic proxy. The joint cells remain fenced because they "
+                "carry suppressed cells and the redraw's taxable-income proxy "
+                "is still an arithmetic approximation."
             ),
-            "adjudication": "https://github.com/PolicyEngine/microcosm/issues/552",
+            "adjudication": "https://github.com/PolicyEngine/microcosm/issues/1014",
         },
     }
     for kind, expected_parameters in expected_operations.items():
@@ -1995,3 +2644,21 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 f"CGT spine {kind} declaration drifted from the reviewed "
                 f"mapping on parameter(s) {drifted}."
             )
+    # The sub-AEA remainder reads the Advani-Summers surface (microcosm#970),
+    # so the stage must declare it as a hash-covered artifact alongside the
+    # conditioning facts; an undeclared read would sit outside the manifest.
+    artifacts = {
+        str(artifact.get("role")): dict(artifact) for artifact in stage.artifacts
+    }
+    expected_artifact = {
+        "role": "capital_gains_within_band_distribution",
+        "kind": "public_aggregate_reference",
+        "resource": ADVANI_SUMMERS_RESOURCE,
+        "format": "json",
+        "runtime_sha256_required": True,
+    }
+    if artifacts.get("capital_gains_within_band_distribution") != expected_artifact:
+        raise ValueError(
+            "CGT spine must declare the Advani-Summers within-band distribution "
+            "artifact exactly as reviewed."
+        )

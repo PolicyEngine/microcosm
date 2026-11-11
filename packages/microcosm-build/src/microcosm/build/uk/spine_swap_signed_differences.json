@@ -845,6 +845,85 @@
      ]
     }
    }
+  },
+  {
+   "id": "lifetime-isa-person-net-new-column",
+   "class": "net_new_column",
+   "scope": {
+    "surface": "nonzero_shares",
+    "columns": [
+     "has_lifetime_isa",
+     "lifetime_isa_balance"
+    ],
+    "entities": [
+     "person"
+    ]
+   },
+   "expectation": "column_missing_in_reference",
+   "magnitude_evidence": "The was_lisa stage (microcosm#1003) imputes each adult's Lifetime ISA holding from the WAS round-8 person tab: has_lifetime_isa from a weighted ridge logistic with person-keyed draws, lifetime_isa_balance from the regime-gated QRF fitted on the credible donor holders, positive exactly where the person holds (both zero under 18). The pinned incumbent has no such columns, so they are present in the candidate and absent from the reference: coverage the spine adds rather than a divergence in a shared column. On the licensed candidate spine 996 of 116,077 person rows hold (unweighted nonzero share 0.00858 on both columns); 1.25% of weighted adults hold at stage time against the donor's 0.89%, with a weighted median owner balance of GBP 6,500 against the donor's GBP 6,000, the excess traced to the spine's WAS financial draws (receipts Part F).",
+   "evidence": "experiments/1003-uk-lisa-receipts.md#part-c-realised-holdings-against-the-donor",
+   "adjudicator": "juaristi22",
+   "adjudicated_on": "2026-09-29",
+   "quantitative": {
+    "structural": {
+     "expected_columns": [
+      "has_lifetime_isa",
+      "lifetime_isa_balance"
+     ]
+    }
+   }
+  },
+  {
+   "id": "lifetime-isa-household-net-new-column",
+   "class": "net_new_column",
+   "scope": {
+    "surface": "nonzero_shares",
+    "columns": [
+     "household_lifetime_isa_balance"
+    ],
+    "entities": [
+     "household"
+    ]
+   },
+   "expectation": "column_missing_in_reference",
+   "magnitude_evidence": "household_lifetime_isa_balance is the sum of the household's persons' lifetime_isa_balance (the was_lisa stage, microcosm#1003), after the pro-rata cap at the household's gross_financial_wealth draw, inside which WAS already counts LISAs; it is a detail of gross financial wealth and is never added to it. The pinned incumbent has no such column, so it is present in the candidate and absent from the reference: coverage the spine adds rather than a divergence in a shared column. On the licensed candidate spine 964 of 53,806 household rows carry a positive total (unweighted nonzero share 0.0179; 2.16% of weighted households), the total equals the sum of its persons on every row and no total exceeds its gross financial wealth.",
+   "evidence": "experiments/1003-uk-lisa-receipts.md#part-d-coherence-support-and-release-checks",
+   "adjudicator": "juaristi22",
+   "adjudicated_on": "2026-09-29",
+   "quantitative": {
+    "structural": {
+     "expected_columns": [
+      "household_lifetime_isa_balance"
+     ]
+    }
+   }
+  },
+  {
+   "id": "landlord-inputs-person-net-new-columns",
+   "class": "net_new_column",
+   "scope": {
+    "surface": "nonzero_shares",
+    "columns": [
+     "property_finance_costs",
+     "property_rental_income"
+    ],
+    "entities": [
+     "person"
+    ]
+   },
+   "expectation": "column_missing_in_reference",
+   "magnitude_evidence": "policyengine-uk 2.123.0 reads two landlord inputs beside property_income (PolicyEngine/policyengine-uk#2172; microcosm#1106). property_finance_costs is the SPI tape's restricted residential finance costs on the SPI channel (hmrc_spi_income_spine) and a tape-trained keyed draw on FRS-concept landlords, added back to their profit (property_components); property_rental_income is every landlord's receipts, allocated into PRIS 2024-25 Table 13's bands by rank of profit and never below profit. The pinned incumbent has no such columns, so they are present in the candidate and absent from the reference: coverage the spine adds rather than a divergence in a shared column. On the licensed candidate spine of the final head (arm c7, 2026-10-11, after the band donors' pools were cut on income leaves) 9,541 of 145,292 person rows carry receipts, every landlord with profit, and 3,442 carry finance costs (unweighted nonzero shares 0.0657 and 0.0237).",
+   "evidence": "experiments/1106-uk-property-income-receipts.md#c9-the-head-after-the-adversarial-review-f478063d5-arm-c7",
+   "adjudicator": "juaristi22",
+   "adjudicated_on": "2026-10-11",
+   "quantitative": {
+    "structural": {
+     "expected_columns": [
+      "property_finance_costs",
+      "property_rental_income"
+     ]
+    }
+   }
   }
  ]
 }

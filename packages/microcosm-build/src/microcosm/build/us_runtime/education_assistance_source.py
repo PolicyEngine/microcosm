@@ -32,6 +32,8 @@ from typing import BinaryIO
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.asec_sources import ASEC_DEFAULT_POOL_INCOME_YEARS
+
 __all__ = [
     "ASEC_EDUCATION_ASSISTANCE_ARCHIVES",
     "ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS",
@@ -88,12 +90,13 @@ class AsecEducationArchive:
     weighted_total: float
 
 
-#: One pinned archive per pooled income year. The survey-year file published
-#: the March after each income year carries that income year's person
-#: universe: row counts equal the pooled cohorts exactly and PERIDNUM
-#: coverage is 100.0% per year (and only ~33% against any adjacent survey
-#: year, the CPS rotation-group overlap — pinning the wrong vintage fails the
-#: full-coverage join loudly).
+#: One pinned archive per pinned income year; a build pools a subset
+#: (:data:`.asec_sources.ASEC_DEFAULT_POOL_INCOME_YEARS` by default). The
+#: survey-year file published the March after each income year carries that
+#: income year's person universe: row counts equal the pooled cohorts exactly
+#: and PERIDNUM coverage is 100.0% per year (and only ~33% against any adjacent
+#: survey year, the CPS rotation-group overlap — pinning the wrong vintage
+#: fails the full-coverage join loudly).
 ASEC_EDUCATION_ASSISTANCE_ARCHIVES: dict[int, AsecEducationArchive] = {
     archive.income_year: archive
     for archive in (
@@ -162,6 +165,28 @@ ASEC_EDUCATION_ASSISTANCE_ARCHIVES: dict[int, AsecEducationArchive] = {
             positive_rows=2_948,
             weighted_positive_share=0.023247141039884213,
             weighted_total=83_164_893_924.73,
+        ),
+        AsecEducationArchive(
+            survey_year=2026,
+            income_year=2025,
+            zip_url=(
+                "https://www2.census.gov/programs-surveys/cps/datasets/2026/"
+                "march/asecpub26csv.zip"
+            ),
+            zip_size_bytes=139_103_894,
+            zip_sha256=(
+                "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93"
+            ),
+            member="pppub26.csv",
+            member_size_bytes=259_887_437,
+            member_crc32="477a9e19",
+            member_sha256=(
+                "f78920699bf671cc211cb720ff8c6274392524a22138aedaf9e3954f91ba4334"
+            ),
+            rows=134_729,
+            positive_rows=2_574,
+            weighted_positive_share=0.022465627092607597,
+            weighted_total=84_013_616_601.91,
         ),
     )
 }
@@ -390,7 +415,7 @@ def _load_one_source(
 def load_asec_education_assistance_sources(
     paths: Mapping[int, str | Path] | None = None,
     *,
-    income_years: tuple[int, ...] = ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
+    income_years: tuple[int, ...] = ASEC_DEFAULT_POOL_INCOME_YEARS,
     chunk_size: int = 8 * 1024 * 1024,
 ) -> pd.DataFrame:
     """Load and pin-verify the pooled education-assistance sidecar.

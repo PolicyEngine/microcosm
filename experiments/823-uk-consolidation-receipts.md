@@ -144,7 +144,7 @@ parity gates, `uk_qrf_tail_concentration`, `uk_release_family_build_stages`,
 - *Data findings.* `uk_degenerate_release_surface`: two persisted all-zero
   columns (`person.incapacity_benefit_reported`, `person.is_in_approved_training`).
   `uk_nonnegative_columns`: `housing_water_and_electricity_consumption` has 239
-  values below zero (minimum −14,165).
+  values below zero.
 
 The evaluation path therefore works end to end and the receipt is certifiable
 in shape; the cut does not certify today because the release-cut battery had
