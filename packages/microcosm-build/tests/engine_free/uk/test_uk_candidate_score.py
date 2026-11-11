@@ -651,10 +651,32 @@ def test_the_register_lends_each_reference_only_its_own_entries(tmp_path):
     assert other == {}
 
 
-def test_the_packaged_register_starts_empty():
-    """The enhanced FRS's nine entries retired with it (microcosm#1095)."""
+def test_the_packaged_register_signs_only_the_current_build_s_carrier_gap():
+    """The enhanced FRS's nine entries retired with it (microcosm#1095). The
+    current national build carries no trading allowance full-relief carrier,
+    which five SPI rows filter on since microcosm#1439, as the enhanced FRS
+    did not (microcosm#1572); María signed it for that build on 2026-11-11."""
 
-    assert candidate_score.load_uk_reference_unresolvable_register() == {}
+    national = (
+        "microcosm-uk-2024-25-national@"
+        "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+    )
+    register = candidate_score.load_uk_reference_unresolvable_register()
+
+    assert {label: sorted(entries) for label, entries in register.items()} == {
+        national: ["person.trading_allowance_full_relief"]
+    }
+    entry = register[national]["person.trading_allowance_full_relief"]
+    assert entry.approved_by == "juaristi22"
+    assert not entry.premature(date(2026, 11, 11))
+    assert not entry.expired(date(2026, 11, 11))
+    # Every other reference, a promoted one included, finds nothing.
+    assert (
+        load_uk_reference_unresolvable_measures(
+            reference_label="microcosm-uk-2024-25-national@a-later-build"
+        )
+        == {}
+    )
 
 
 def _one_target_per_probe(monkeypatch, *, failing_h5: Path) -> list[str]:
