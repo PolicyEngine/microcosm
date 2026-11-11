@@ -8,449 +8,37 @@
   "tier": "frs"
  },
  "columns": {
-  "a_and_e_visits": {
-   "status": "required"
-  },
-  "aa_category": {
-   "status": "required"
-  },
-  "access_fund": {
-   "status": "required"
-  },
-  "accommodation_type": {
-   "status": "required"
-  },
-  "admitted_patient_visits": {
-   "status": "required"
-  },
-  "adult_ema": {
-   "status": "required"
-  },
-  "afcs_reported": {
-   "status": "required"
-  },
-  "age": {
-   "status": "required"
-  },
-  "age_started_or_accepted_current_education_or_training": {
-   "status": "required"
-  },
-  "alcohol_and_tobacco_consumption": {
-   "status": "required"
-  },
-  "attends_private_school_random_draw": {
-   "status": "required"
-  },
-  "brma": {
-   "status": "required"
-  },
-  "bsp_reported": {
-   "status": "required"
-  },
-  "bus_subsidy_spending": {
-   "status": "required"
-  },
-  "capital_gains": {
-   "status": "required"
-  },
-  "carers_allowance_reported": {
-   "status": "required"
-  },
-  "charitable_investment_gifts": {
-   "status": "required"
-  },
-  "child_benefit_opts_out": {
-   "status": "required"
-  },
-  "child_benefit_reported": {
-   "status": "required"
-  },
-  "child_ema": {
-   "status": "required"
-  },
-  "child_tax_credit_reported": {
-   "status": "required"
-  },
-  "childcare_expenses": {
-   "status": "required"
-  },
-  "clothing_and_footwear_consumption": {
-   "status": "required"
-  },
-  "communication_consumption": {
-   "status": "required"
-  },
-  "corporate_wealth": {
-   "status": "required"
-  },
-  "council_tax": {
-   "status": "required"
-  },
-  "council_tax_band": {
-   "status": "required"
-  },
-  "council_tax_benefit_reported": {
-   "status": "required"
-  },
-  "current_education": {
-   "status": "required"
-  },
-  "dfe_education_spending": {
-   "status": "required"
-  },
-  "diesel_spending": {
-   "status": "required"
-  },
-  "dividend_income": {
-   "status": "required"
-  },
-  "dla_m_category": {
-   "status": "required"
-  },
-  "dla_sc_category": {
-   "status": "required"
-  },
-  "domestic_energy_consumption": {
-   "status": "required"
-  },
-  "domestic_rates": {
-   "status": "required"
-  },
-  "education_consumption": {
-   "status": "required"
-  },
-  "education_grants": {
-   "status": "required"
-  },
-  "electricity_consumption": {
-   "status": "required"
-  },
-  "employee_pension_contributions": {
-   "status": "required"
-  },
-  "employer_pension_contributions": {
-   "status": "required"
-  },
-  "employment_income": {
-   "status": "required"
-  },
-  "employment_status": {
-   "status": "required"
-  },
-  "esa_contrib_reported": {
-   "status": "required"
-  },
-  "esa_income_reported": {
-   "status": "required"
-  },
-  "external_child_payments": {
-   "status": "required"
-  },
-  "food_and_non_alcoholic_beverages_consumption": {
-   "status": "required"
-  },
-  "free_school_fruit_veg": {
-   "status": "required"
-  },
-  "free_school_meals": {
-   "status": "required"
-  },
-  "full_rate_vat_expenditure_rate": {
-   "status": "required"
-  },
-  "gas_consumption": {
-   "status": "required"
-  },
-  "gender": {
-   "status": "required"
-  },
-  "gift_aid": {
-   "status": "required"
-  },
-  "gross_financial_wealth": {
-   "status": "required"
-  },
-  "health_consumption": {
-   "status": "required"
-  },
-  "healthy_start_vouchers": {
-   "status": "required"
-  },
-  "highest_education": {
-   "status": "required"
-  },
-  "hours_worked": {
-   "status": "required"
-  },
-  "household_furnishings_consumption": {
-   "status": "required"
-  },
-  "household_owns_tv": {
-   "status": "required"
-  },
-  "household_weight": {
-   "status": "required"
-  },
-  "housing_benefit_reported": {
-   "status": "required"
-  },
-  "housing_service_charges": {
-   "status": "required"
-  },
-  "housing_water_and_electricity_consumption": {
-   "status": "required"
-  },
-  "iidb_reported": {
-   "status": "required"
-  },
-  "income_support_reported": {
-   "status": "required"
-  },
-  "is_before_universal_credit_qualifying_young_person_terminal_date": {
-   "status": "required"
-  },
-  "is_benunit_head": {
-   "status": "required"
-  },
-  "is_disabled_for_benefits": {
-   "status": "required"
-  },
-  "is_enhanced_disabled_for_benefits": {
-   "status": "required"
-  },
-  "is_household_head": {
-   "status": "required"
-  },
-  "is_in_non_advanced_education": {
-   "status": "required"
-  },
-  "is_married": {
-   "status": "required"
-  },
-  "is_parent": {
-   "status": "required"
-  },
-  "is_severely_disabled_for_benefits": {
-   "status": "required"
-  },
-  "jsa_contrib_reported": {
-   "status": "required"
-  },
-  "jsa_income_reported": {
-   "status": "required"
-  },
-  "lump_sum_income": {
-   "status": "required"
-  },
-  "main_residence_value": {
-   "status": "required"
-  },
-  "main_residential_property_purchased_is_first_home": {
-   "status": "required"
-  },
-  "maintenance_expenses": {
-   "status": "required"
-  },
-  "maintenance_income": {
-   "status": "required"
-  },
-  "marital_status": {
-   "status": "required"
-  },
-  "maximum_extended_childcare_hours_usage": {
-   "status": "required"
-  },
-  "miscellaneous_consumption": {
-   "status": "required"
-  },
-  "miscellaneous_income": {
-   "status": "required"
-  },
-  "mortgage_capital_repayment": {
-   "status": "required"
-  },
-  "mortgage_interest_repayment": {
-   "status": "required"
-  },
-  "net_financial_wealth": {
-   "status": "required"
-  },
-  "nhs_a_and_e_spending": {
-   "status": "required"
-  },
-  "nhs_admitted_patient_spending": {
-   "status": "required"
-  },
-  "nhs_outpatient_spending": {
-   "status": "required"
-  },
-  "non_residential_property_value": {
-   "status": "required"
-  },
-  "num_vehicles": {
-   "status": "required"
-  },
-  "other_residential_property_value": {
-   "status": "required"
-  },
-  "outpatient_visits": {
-   "status": "required"
-  },
-  "owned_land": {
-   "status": "required"
-  },
-  "pension_contributions_via_salary_sacrifice": {
-   "status": "required"
-  },
-  "pension_credit_reported": {
-   "status": "required"
-  },
-  "personal_pension_contributions": {
-   "status": "required"
-  },
-  "petrol_spending": {
-   "status": "required"
-  },
   "pip_dl_category": {
-   "status": "required"
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "status": "reviewed_exclusion",
+   "tracking_note": "microcosm#1095 (P1 of the November event-data plan): policyengine-uk 2.177.7 derives pip_dl_category from pip_dl_points (8 points for the standard rate, 12 for the enhanced) where no category is supplied for the year; the pip_points stage stores the points within the stored award, and the release and calibration boundaries drop the category, which the spine keeps (María's signature of 2026-11-09)."
   },
   "pip_m_category": {
-   "status": "required"
-  },
-  "private_pension_income": {
-   "status": "required"
-  },
-  "private_transfer_income": {
-   "status": "required"
-  },
-  "property_income": {
-   "status": "required"
-  },
-  "property_purchased": {
-   "status": "required"
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "status": "reviewed_exclusion",
+   "tracking_note": "microcosm#1095 (P1 of the November event-data plan): policyengine-uk 2.177.7 derives pip_m_category from pip_m_points (8 points for the standard rate, 12 for the enhanced) where no category is supplied for the year; the pip_points stage stores the points within the stored award, and the release and calibration boundaries drop the category, which the spine keeps (María's signature of 2026-11-09)."
   },
   "property_wealth": {
-   "status": "required"
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "status": "reviewed_exclusion",
+   "tracking_note": "microcosm#1106 (the uk-data#543 defect): the release and calibration boundaries drop the WAS total, and policyengine-uk sums main_residence_value, other_residential_property_value and non_residential_property_value, which stay required."
   },
-  "rail_subsidy_spending": {
-   "status": "required"
-  },
-  "rail_usage": {
-   "status": "required"
-  },
-  "receives_benefits_in_own_right": {
-   "status": "required"
-  },
-  "recreation_consumption": {
-   "status": "required"
-  },
-  "region": {
-   "status": "required"
-  },
-  "rent": {
-   "status": "required"
-  },
-  "restaurants_and_hotels_consumption": {
-   "status": "required"
-  },
-  "savings": {
-   "status": "required"
-  },
-  "savings_interest_income": {
-   "status": "required"
-  },
-  "sda_reported": {
-   "status": "required"
-  },
-  "self_employment_income": {
-   "status": "required"
-  },
-  "ssmg_reported": {
-   "status": "required"
-  },
-  "state_pension_reported": {
-   "status": "required"
-  },
-  "statutory_maternity_pay": {
-   "status": "required"
-  },
-  "statutory_sick_pay": {
-   "status": "required"
-  },
-  "structural_insurance_payments": {
-   "status": "required"
-  },
-  "student_loan_balance": {
-   "status": "required"
-  },
-  "student_loan_plan": {
-   "status": "required"
-  },
-  "student_loan_repayments": {
-   "status": "required"
-  },
-  "student_loans": {
-   "status": "required"
+  "self_employment_gross_receipts": {
+   "reason": "microcosm#1550 (microcosm#1439) stops writing it: the trading allowance stage stores each trader's trading_allowance_claim_status and leaves gross receipts at the engine's zero, since neither the FRS nor the SPI records them. The current builds (national eeb6093e, dense 38605444) still carry the receipts encoding microcosm#1428 wrote (María's signature of 2026-11-10).",
+   "status": "reviewed_exclusion",
+   "tracking_note": "microcosm#1095: remove once neither line's current build carries it."
   },
   "tax_free_savings_income": {
-   "status": "required"
-  },
-  "tenure_type": {
-   "status": "required"
-  },
-  "transport_consumption": {
-   "status": "required"
-  },
-  "universal_credit_reported": {
-   "status": "required"
-  },
-  "water_and_sewerage_charges": {
-   "status": "required"
-  },
-  "winter_fuel_allowance_reported": {
-   "status": "required"
-  },
-  "working_tax_credit_reported": {
-   "status": "required"
-  },
-  "would_claim_child_benefit": {
-   "status": "required"
-  },
-  "would_claim_extended_childcare": {
-   "status": "required"
-  },
-  "would_claim_marriage_allowance": {
-   "status": "required"
-  },
-  "would_claim_pc": {
-   "status": "required"
-  },
-  "would_claim_scp": {
-   "status": "required"
-  },
-  "would_claim_targeted_childcare": {
-   "status": "required"
-  },
-  "would_claim_tfc": {
-   "status": "required"
-  },
-  "would_claim_uc": {
-   "status": "required"
-  },
-  "would_claim_universal_childcare": {
-   "status": "required"
-  },
-  "would_evade_tv_licence_fee": {
-   "status": "required"
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "status": "reviewed_exclusion",
+   "tracking_note": "microcosm#1360: under the additive ISA income contract the producer stores ISA interest in individual_savings_account_interest_income, which policyengine-uk adds into tax_free_savings_income; savings_interest_income, now interest outside ISAs, stays required."
   }
  },
  "counts": {
-  "required": 145,
-  "reviewed_exclusion": 0,
-  "total": 145
+  "reviewed_exclusion": 5
  },
- "derivation": "Surface = efrs_parity_reference.json populated effective loader inputs. status='required' when the sha-pinned candidate evidence records non-default signal on at least the reviewed owning-entity effective-mass share OR the column is pinned in restored_required_columns after a source-family restoration; all remaining surface columns are reviewed_exclusion with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note. The final release gate applies the same effective-mass floor, and distributional restorations must pass it on their required source channel.",
- "description": "Declared full-coverage contract for a UK release: every populated effective loader input in the pinned enhanced FRS must be persisted with non-default signal, or carry a reviewed exclusion with the campaign reason and tracking note.",
+ "derivation": "Columns = the reviewed exclusions of efrs_parity_known_gaps.json: its known gaps, with reason 'not yet ported from enhanced FRS pipeline — pending review' and a UK_COVERAGE_PROGRESS.md tracking note, and its engine_derived_exclusions, with their own reason because the engine computes them from persisted inputs; and the inputs the current builds carry that a later build stops carrying on purpose, each a signed ruling until a promotion moves the reference past it. Every other input the cut's reference build carries is required. The gate applies one effective-mass floor to the reference and the candidate, and distributional restorations must pass it on their required source channel.",
+ "description": "Release input-coverage contract for a UK cut: every loader input the current build of the cut's line carries must be persisted with non-default signal on the reviewed share of effective population mass, unless it carries a reviewed exclusion here with its reason and tracking note (microcosm#1095).",
  "effective_mass_coverage": {
   "minimum_nondefault_mass_share": 1e-06,
   "rationale": "One part per million rejects zero-weight support and numerical dust while remaining about 100 times below the rarest populated record share in the pinned enhanced-FRS reference.",
@@ -468,7 +56,7 @@
    "required_mass_change_reason": "Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
     "survey": "Family Resources Survey 2024-25, SPI synthetic support, the HMRC Table 3 redrawn gains on the spine and Advani-Summers capital-gains incidence"
@@ -491,7 +79,7 @@
     "capital_gains"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
     "survey": "Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence"
@@ -514,7 +102,7 @@
    "required_mass_change_reason": "Capital-gains residential split divides every household carrying liable gainers into arms weighted by the solved residential probabilities, one arm per subset of residential gainers; every household's mass and the total household mass are conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
     "survey": "HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative) on the amounts the Table 3 redraw placed"
@@ -536,12 +124,46 @@
    "required_mass_change_reason": "Capital-gains support split divides the wealthiest households of each HMRC Table 3 income band into light copies at equal weight; every household's mass and the total household mass are conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "HMRC Capital Gains Tax statistics, July 2026 release, Table 3 for 2024-25, via the vendored conditioning facts",
     "survey": "Family Resources Survey 2024-25, SPI synthetic support and HMRC Capital Gains Tax statistics Table 3 (2024-25 individuals by size of gain and taxable income)"
    },
    "stage": "cgt_support_split",
+   "status": "required_at_build"
+  },
+  "company_cars": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "company_car_list_price",
+    "company_car_co2_emissions",
+    "company_car_fuel_type",
+    "company_car_electric_range",
+    "company_car_capital_contributions",
+    "company_car_private_fuel_provided",
+    "employment_income",
+    "uc_is_in_gainful_self_employment",
+    "hmrc_spi_pay",
+    "hmrc_spi_employment_benefits"
+   ],
+   "required_mass_change_reason": "Company cars per employee from the FRS job record, WAS round-8 list prices and HMRC's company car tables on the source spine: household weights pass through unchanged and total household mass is conserved.",
+   "rewrites": [
+    "employment_income",
+    "uc_is_in_gainful_self_employment",
+    "hmrc_spi_pay",
+    "hmrc_spi_employment_benefits"
+   ],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
+   "source_vintages": {
+    "source": "The FRS job record's company car answers through frs_spine's carriers (EXPBEN01, EXPBEN03, CARVAL, FUELTYP, CARCON, CARAMT), WAS round-8 company cars' list prices, and HMRC's 2024-25 company car recipients by CO2 band (Table 2A) and fuel (Table 2C), via the vendored facts",
+    "survey": "Family Resources Survey 2024-25 job record; Wealth and Assets Survey round 8; HMRC Benefits in kind statistics (July 2026)"
+   },
+   "stage": "company_cars",
    "status": "required_at_build"
   },
   "etb_services": {
@@ -565,7 +187,7 @@
    "required_mass_change_reason": "ETB public-services imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab, DfT rail fare index, and public NHS activity/cost table.",
     "survey": "Effects of Taxes and Benefits 1977-2024 and NHS age-gender public table"
@@ -585,12 +207,34 @@
    "required_mass_change_reason": "ETB VAT expenditure-rate imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab and cited VAT anchor resource.",
     "survey": "Effects of Taxes and Benefits 1977-2024"
    },
    "stage": "etb_vat",
+   "status": "required_at_build"
+  },
+  "high_value_home_support": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "household_is_high_value_support_copy",
+    "high_value_support_copies",
+    "high_value_support_copy_index"
+   ],
+   "required_mass_change_reason": "High-value home support divides every owner household in the top value stratum of its region into light copies at equal weight; every household's mass and the total household mass are conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
+   "source_vintages": {
+    "source": "Microcosm structural operator (microcosm#1240 fix 1); no publisher input",
+    "survey": "Family Resources Survey 2024-25 and SPI synthetic support, after the WAS wealth draw and the regional property uprating"
+   },
+   "stage": "high_value_home_support",
    "status": "required_at_build"
   },
   "hmrc_cgt_asset_type_spine": {
@@ -606,7 +250,7 @@
    "required_mass_change_reason": "CGT asset-type assignment on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
     "survey": "HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative), Table 4.1 (individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain, 2024-25, administrative) and Table 7 (disposals, proceeds and gains by asset type, 2023-24, sample-based), vendored from the pinned Chronicle feed"
@@ -630,10 +274,10 @@
     "capital_gains"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "conditioning_resource": "hmrc_cgt_conditioning_facts.json",
-    "conditioning_resource_sha256": "067ba21c12aeb4e95e6a8a16141dbaa075e8787ed875a005f549cab6e91a6b56",
+    "conditioning_resource_sha256": "c3dace8b693dc5e7a3c6acc46ad43d412e3d1fb5702341ed9119e286a12d18e5",
     "conditioning_surface": "2024-25",
     "hmrc_surface": "2024-25",
     "mapped_build_period": "2024"
@@ -685,6 +329,7 @@
    "required_mass_change_reason": "Allocate 0.5 of certified UK national household prior mass in households without, and 0.2 in households with, a member at or over State Pension age to the rebuilt 2022-23 SPI support channel; total national mass is conserved.",
    "required_predecessor_stages": [
     "frs_hmrc_spine_leaves",
+    "frs_annual_income_spells",
     "spi_support_channel",
     "spi_income_band_donors"
    ],
@@ -719,7 +364,7 @@
     "full_frs_tei_band_unavailable"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2024",
@@ -728,6 +373,30 @@
    },
    "spi_prior_national_household_mass_share": 0.5,
    "stage": "hmrc_spi_income_spine",
+   "status": "required_at_build"
+  },
+  "isa_subscriptions": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "cash_isa_balance",
+    "stocks_and_shares_isa_balance",
+    "cash_isa_subscriptions",
+    "stocks_and_shares_isa_subscriptions",
+    "lifetime_isa_payments"
+   ],
+   "required_mass_change_reason": "ISA subscriptions per adult from HMRC's ISA tables on the source spine: household weights pass through unchanged and total household mass is conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
+   "source_vintages": {
+    "source": "HMRC Individual Savings Account statistics Tables 9.4, 9.6 and 9.7 to 9.9, the cash ISA limit reduction impact note and Lifetime ISA Table 1a, via the vendored facts; Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed round-8 person and household tabs (interviews April 2020 to March 2022, Great Britain).",
+    "survey": "HMRC Annual savings statistics (September 2026 release); Wealth and Assets Survey round 8"
+   },
+   "stage": "isa_subscriptions",
    "status": "required_at_build"
   },
   "lcfs_consumption": {
@@ -755,15 +424,49 @@
     "domestic_energy_consumption",
     "electricity_consumption",
     "gas_consumption",
-    "has_fuel_consumption"
+    "liquid_fuel_consumption",
+    "solid_fuel_consumption",
+    "has_fuel_consumption",
+    "uses_energy_prepayment_meter",
+    "electricity_kwh",
+    "gas_kwh",
+    "beer_litres",
+    "cider_litres",
+    "wine_litres",
+    "spirits_litres",
+    "other_fermented_litres",
+    "beer_draught_share",
+    "cider_draught_share",
+    "cigarettes_per_week",
+    "hand_rolling_tobacco_grams_per_week",
+    "cigars_grams_per_week",
+    "other_tobacco_grams_per_week",
+    "remote_gaming_net_losses",
+    "pool_betting_net_receipts",
+    "bingo_net_receipts",
+    "national_lottery_ticket_spending",
+    "land_based_casino_net_losses",
+    "machine_games_lower_rate_net_takings",
+    "machine_games_standard_rate_net_takings",
+    "machine_games_higher_rate_net_takings",
+    "land_based_fixed_odds_betting_net_losses",
+    "remote_uk_horseracing_betting_net_losses",
+    "remote_other_betting_net_losses",
+    "betting_exchange_commission",
+    "horse_and_dog_pool_betting_net_losses",
+    "car_fuel_type",
+    "car_co2_emissions",
+    "car_engine_size",
+    "car_first_registration_date",
+    "car_is_ved_exempt"
    ],
    "required_mass_change_reason": "LCFS consumption imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
-    "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs and the vendored Chronicle facts for NEED 2023 mean kWh, the FY2024-25 Ofgem cap levels, road-fuel outturn (DESNZ, HMRC, ONS), the DfT VEH1103 licensed-car stock, NTS bus use and the DfT and devolved bus finance tables.",
-    "survey": "Living Costs and Food Survey 2023-24"
+    "source": "UK Data Service SN 9603 Living Costs and Food Survey 2024-25 (2nd edition) household/person tabs and the vendored Chronicle facts for NEED 2024 mean kWh, DESNZ Energy Trends and QEP average prices paid for calendar 2024, road-fuel outturn (DESNZ, HMRC, ONS Consumer Trends) and road fuel by vehicle type (DESNZ), ONS Consumer Trends household spending by COICOP division, the DfT VEH1103 licensed-car stock, NTS bus use, the NTS private cars (UK Data Service SN 5340, End User Licence; the vehicle and household tabs, survey years 2022-2024) for the zero-emission share by income fifth and the household-paid road-fuel mix, and the DfT and devolved bus finance tables and fares indices.",
+    "survey": "Living Costs and Food Survey 2024-25"
    },
    "stage": "lcfs_consumption",
    "status": "required_at_build"
@@ -786,12 +489,120 @@
    "required_mass_change_reason": "NTS bus-travel imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "Department for Transport National Travel Survey, UK Data Service SN 5340 (End User Licence, 19th edition, November 2025), DOI 10.5255/UKDA-SN-5340-19; local licensed tab files (household, individual, trip); England residents only from 2013.",
     "survey": "National Travel Survey 2002-2024"
    },
    "stage": "nts_bus_travel",
+   "status": "required_at_build"
+  },
+  "pip_points": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "pip_dl_points",
+    "pip_m_points"
+   ],
+   "required_mass_change_reason": "PIP points stored on the source spine: household weights pass through unchanged and total household mass is conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
+   "source_vintages": {
+    "source": "pip_dl_category and pip_m_category (frs_disability, and hmrc_spi_income_spine for the SPI rows) and the stored age; dwp_pip_points_facts.json, vendored from the pinned feed",
+    "survey": "DWP's Pathways to Work evidence pack, chapter 2, Tables 2.9 and 2.10 (PIP points by age group, England and Wales, end of January 2025), on the spine's stored PIP awards"
+   },
+   "stage": "pip_points",
+   "status": "required_at_build"
+  },
+  "private_school_attendance": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "attends_private_school"
+   ],
+   "required_mass_change_reason": "Private-school attendance stored on the source spine: household weights pass through unchanged and total household mass is conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
+   "source_vintages": {
+    "source": "policyengine-uk attends_private_school (the gov.simulation.private_school_vat attendance rates and factor), evaluated by the pinned engine",
+    "survey": "policyengine-uk private-school attendance imputation, stored at the spine's weights"
+   },
+   "stage": "private_school_attendance",
+   "status": "required_at_build"
+  },
+  "property_components": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "property_rental_income"
+   ],
+   "required_mass_change_reason": "Landlords' receipts and finance costs on the source spine: household weights pass through unchanged and total household mass is conserved.",
+   "rewrites": [
+    "property_income",
+    "property_finance_costs"
+   ],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
+   "source_vintages": {
+    "source": "https://www.gov.uk/government/statistics/property-rental-income-statistics",
+    "survey": "Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Property Rental Income Statistics 2026 (tax year 2024-25)"
+   },
+   "stage": "property_components",
+   "status": "required_at_build"
+  },
+  "property_purchases": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "additional_residential_property_purchased",
+    "non_residential_property_purchased"
+   ],
+   "required_mass_change_reason": "Annual property purchases imputed on the source spine: household weights pass through unchanged and total household mass is conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
+   "source_vintages": {
+    "source": "https://www.gov.uk/government/statistics/uk-stamp-tax-statistics",
+    "survey": "HMRC Annual Stamp Tax Statistics 2024 to 2025 (corrected 11 March 2026), Tables 6b, 8a and 8b"
+   },
+   "stage": "property_purchases",
+   "status": "required_at_build"
+  },
+  "regional_home_values": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "main_residence_value_rank_basis"
+   ],
+   "required_mass_change_reason": "Regional home values assigned on the source spine: household weights pass through unchanged and total household mass is conserved.",
+   "rewrites": [
+    "main_residence_value",
+    "property_wealth"
+   ],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
+   "source_vintages": {
+    "source": "uk/high_value_home_value_knots.json, built by tools/build_uk_high_value_home_stock.py from PolicyEngine/chronicle#343's registrations",
+    "survey": "HM Land Registry Price Paid latest sales uprated with the UK House Price Index, owner-weighted by region (the dense value node's knots, region level)"
+   },
+   "stage": "regional_home_values",
    "status": "required_at_build"
   },
   "regional_property_uprating": {
@@ -810,9 +621,9 @@
     "non_residential_property_value"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
-    "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
+    "source": "MHCLG dwellings and the UK House Price Index regional average price averaged over the twelve months of calendar 2024 from the July 2026 full file, the frame's valuation basis, so the engine's annual uprating from 2024 projects the value once (microcosm#1240 fix 5).",
     "survey": "Public regional property reference"
    },
    "stage": "regional_property_uprating",
@@ -826,6 +637,7 @@
    "output_weight_kind": "importance",
    "outputs": [
     "pension_contributions_via_salary_sacrifice",
+    "pension_contributions_via_bonus_sacrifice",
     "employee_pension_contributions",
     "employment_income",
     "salary_sacrifice_pre_conversion_pay"
@@ -837,7 +649,7 @@
     "employment_income"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029",
     "survey": "Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis"
@@ -870,7 +682,7 @@
     "household_source_id"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "Reserved SPI support households for the HMRC Table 2.5 total-income bands from GBP 200,000, stacked at the published band taxpayer count over the donors per band (PolicyEngine/chronicle#280 lane).",
     "survey": "Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Income Tax liabilities statistics July 2026 Table 2.5"
@@ -887,17 +699,60 @@
    "outputs": [
     "student_loan_plan"
    ],
-   "required_mass_change_reason": "Student-loan plan assignment writes an enum column only; household rows and typed household weights pass through and total household mass is conserved.",
+   "required_mass_change_reason": "Student-loan plan assignment writes the plan and re-splits each household's student-loan balance among its members; household rows and typed household weights pass through and total household mass is conserved.",
    "rewrites": [
-    "student_loan_plan"
+    "student_loan_plan",
+    "student_loan_balance"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "Explore Education Statistics Table 6a, Higher education total",
     "survey": "Family Resources Survey 2024-25 and Student Loans Company borrower forecasts for England"
    },
    "stage": "student_loans",
+   "status": "required_at_build"
+  },
+  "trading_allowance_receipts": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "trading_allowance_claim_status",
+    "trading_allowance_full_relief"
+   ],
+   "required_mass_change_reason": "Trading allowance claim statuses stored on the source spine: household weights pass through unchanged and total household mass is conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
+   "source_vintages": {
+    "source": "self_employment_income after the SPI income stage, and household_is_spi_synthetic for the full-relief group; HMRC's published gainers of the raise to GBP 3,000, about 400,000 taxpayers with a lower bill by about GBP 380 on average",
+    "survey": "The self-employed's own profit on the final spine, and HMRC's policy paper on the Budget 2026 trading allowance raise (calibration)"
+   },
+   "stage": "trading_allowance_receipts",
+   "status": "required_at_build"
+  },
+  "uc_limited_capability": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "mass_change_semantics": "mass_conserving",
+   "output_weight_kind": "importance",
+   "outputs": [
+    "uc_limited_capability_for_WRA",
+    "uc_limited_capability_for_work"
+   ],
+   "required_mass_change_reason": "UC limited capability flags stored on the source spine: household weights pass through unchanged and total household mass is conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
+   "source_vintages": {
+    "source": "frs_uc_lcw_status (frs_spine) on the UC row's person, and the locked engine's uc_limited_capability_for_WRA, uc_limited_capability_for_work, is_uc_assessed_claimant and is_carer_for_benefits on the frame as it stands",
+    "survey": "Family Resources Survey 2024-25 (BENEFITS.UCLCW, DWP's limited capability status on a linked Universal Credit claim) and policyengine-uk's limited capability proxy, evaluated by the pinned engine"
+   },
+   "stage": "uc_limited_capability",
    "status": "required_at_build"
   },
   "was_lisa": {
@@ -914,7 +769,7 @@
    "required_mass_change_reason": "WAS Lifetime ISA imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed round-8 person and household tabs (interviews April 2020 to March 2022, Great Britain).",
     "survey": "Wealth and Assets Survey round 8"
@@ -944,12 +799,16 @@
     "stocks_and_shares_isa",
     "student_loan_balance",
     "mortgage_debt",
-    "consumer_debt"
+    "consumer_debt",
+    "directly_held_shares",
+    "unit_and_investment_trusts",
+    "other_residential_property_secured_debt",
+    "non_residential_property_secured_debt"
    ],
    "required_mass_change_reason": "WAS wealth imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "5c1c704066c0bba26859c57617b72b57d1f56399c600f2f65b6c19a6c0ece570",
+   "source_manifest_sha256": "49167c36a5e479071433deece39d35eade229caf5ac9977254c715df93de5d0d",
    "source_vintages": {
     "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",
     "survey": "Wealth and Assets Survey round 8"
@@ -959,13 +818,8 @@
   }
  },
  "reference": {
-  "derived_from": "efrs_parity_reference.json",
-  "filename": "enhanced_frs_2024_25.h5",
-  "period": "2024",
-  "populated_input_columns": 145,
-  "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-  "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
-  "vintage": "2024_25"
+  "kind": "current_build",
+  "required_inputs": "The loader inputs the current build of the cut's line carries, measured by the coverage gate's own rule; the cut's reference step records them in reference_surface.json. Until microcosm#1095 they were the populated inputs of the frozen enhanced-FRS reference."
  },
  "restoration_evidence": {
   "derived_from": "efrs_parity_known_gaps.json",
@@ -974,5 +828,5 @@
    "gift_aid"
   ]
  },
- "schema_version": 3
+ "schema_version": 4
 }

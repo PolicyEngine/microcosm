@@ -25,30 +25,35 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
+    UK_CURRENT_BUILD_REFERENCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
-    UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
-    UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKInputMassReference,
     UKInputMassReferenceDescriptor,
-    UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
     coerce_input_mass_reference_registry,
+    coerce_reviewed_exclusions,
     load_uk_input_mass_reference,
     load_uk_local_area_support_exclusion_register,
     load_uk_reference_scoped_exclusion_register,
     load_uk_reviewed_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
-    uk_default_qrf_tail_reviewed_exclusions,
+    uk_input_mass_carriers,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
-    uk_qrf_tail_concentration_gate,
 )
 
+#: A synthetic approval window. The gates compare it with the real date when a
+#: test passes no ``now``, so a real-looking window (it was 2026-08-10 to
+#: 2027-02-10) would fail those tests once it lapsed, as the UK build
+#: fixture's did on 2026-10-04 (microcosm#1103). Expiry itself is tested with
+#: explicit dates.
+SYNTHETIC_EXPIRY = "2099-12-31"
 
-def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
+
+def _entry(reason: str, *, expires_on: str = SYNTHETIC_EXPIRY) -> dict[str, str]:
     """A valid schema-2 approval receipt around the fixture's reason."""
 
     return {
@@ -90,12 +95,17 @@ def _frame(
     )
 
 
+REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+REFERENCE_LABEL = f"microcosm-uk-2024-25-national@{REFERENCE_BUILD}"
+
+
 def _reference(totals, **overrides) -> UKInputMassReference:
     fields = {
-        "filename": "enhanced_frs_2024_25.h5",
-        "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-        "sha256": ("e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"),
+        "filename": "microcosm_uk_2024_25.h5",
+        "revision": REFERENCE_BUILD,
+        "sha256": "9" * 64,
         "vintage": "2024_25",
+        "label": REFERENCE_LABEL,
     }
     fields.update(overrides)
     return UKInputMassReference(totals=totals, **fields)
@@ -103,12 +113,12 @@ def _reference(totals, **overrides) -> UKInputMassReference:
 
 def _descriptor(**overrides) -> UKInputMassReferenceDescriptor:
     fields = {
-        "name": "efrs-post-calibration",
-        "filename": "enhanced_frs_2024_25.h5",
-        "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-        "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
+        "name": "current_build",
+        "filename": "microcosm_uk_2024_25.h5",
+        "revision": REFERENCE_BUILD,
+        "sha256": "9" * 64,
         "vintage": "2024_25",
-        "totals_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+        "totals_sha256": "8" * 64,
         "scope_note": "Seeded scoped-reference note.",
     }
     fields.update(overrides)
@@ -116,7 +126,12 @@ def _descriptor(**overrides) -> UKInputMassReferenceDescriptor:
 
 
 def _policy(**overrides) -> UKInputMassParityPolicy:
-    fields = {"relative_tolerance": 0.5, "minimum_reference_total": 0.0}
+    fields = {
+        "relative_tolerance": 0.5,
+        "minimum_reference_total": 0.0,
+        # Within a 0.5 tolerance a drop past 0.5 already fails; 1.0 adds none.
+        "maximum_relative_drop": 1.0,
+    }
     fields.update(overrides)
     return UKInputMassParityPolicy(**fields)
 
@@ -273,80 +288,34 @@ def test_input_mass_reference_identity_is_recorded() -> None:
     )
 
     assert gate.details["reference_identity"] == {
-        "filename": "enhanced_frs_2024_25.h5",
-        "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-        "sha256": ("e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"),
+        "filename": "microcosm_uk_2024_25.h5",
+        "revision": REFERENCE_BUILD,
+        "sha256": "9" * 64,
         "vintage": "2024_25",
     }
+    assert gate.details["reference_label"] == REFERENCE_LABEL
 
 
-def test_input_mass_reference_rejects_substituted_totals_at_approved_identity(
-    tmp_path,
-) -> None:
-    caller_self_reference = _reference(
-        {"employment_income": 1.0},
+def test_the_descriptor_is_made_from_the_reference_itself() -> None:
+    """The spec names the kind; the identity and totals digest the gate checks
+    are the reference build's own (microcosm#1095)."""
+
+    reference = _reference({"employment_income": 1.0})
+    descriptor = UK_CURRENT_BUILD_REFERENCE.descriptor_for(reference)
+
+    assert descriptor.identity == reference.identity
+    gate = uk_input_mass_parity_gate(
+        {"employment_income": 1.0}, reference, descriptor=descriptor, policy=_policy()
     )
-
+    assert gate.passed
+    other = _reference({"employment_income": 2.0})
     with pytest.raises(ValueError, match="reference totals must match the reviewed"):
         uk_input_mass_parity_gate(
-            {"employment_income": 1.0},
-            caller_self_reference,
-            descriptor=_descriptor(),
-            policy=_policy(),
+            {"employment_income": 1.0}, other, descriptor=descriptor, policy=_policy()
         )
-    path = tmp_path / "self-reference.json"
-    path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "identity": caller_self_reference.identity,
-                "totals": dict(caller_self_reference.totals),
-            }
-        ),
-        encoding="utf-8",
-    )
-    with pytest.raises(ValueError, match="did not match any reviewed reference"):
-        load_uk_input_mass_reference(path)
-
-
-def test_input_mass_reference_identity_pin_cannot_be_shadowed_from_cwd(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    shadow = {
-        "schema_version": 3,
-        "source": {
-            "repo_id": "caller/repo",
-            "repo_type": "model",
-            "filename": "caller.h5",
-            "revision": "caller",
-            "sha256": "b" * 64,
-            "url": "https://example.invalid/caller.h5",
-            "vintage": "caller",
-            "period": "2023",
-            "size_bytes": 1,
-        },
-        "nonzero_shares": {"employment_income": 1.0},
-        "input_entities": {"employment_income": "person"},
-    }
-    (tmp_path / "efrs_parity_reference.json").write_text(
-        json.dumps(shadow), encoding="utf-8"
-    )
-    monkeypatch.chdir(tmp_path)
-    caller_reference = _reference(
-        {"employment_income": 1.0},
-        filename="caller.h5",
-        revision="caller",
-        sha256="b" * 64,
-        vintage="caller",
-    )
-
-    with pytest.raises(ValueError, match="identity must match the reviewed"):
-        uk_input_mass_parity_gate(
-            {"employment_income": 1.0},
-            caller_reference,
-            descriptor=_descriptor(),
-            policy=_policy(),
+    with pytest.raises(ValueError, match="names no build"):
+        UK_CURRENT_BUILD_REFERENCE.descriptor_for(
+            _reference({"employment_income": 1.0}, label=None)
         )
 
 
@@ -405,30 +374,28 @@ def test_input_mass_policy_and_reference_validation() -> None:
 
 
 def test_input_mass_reference_registry_coercion_is_closed_world() -> None:
-    descriptor = next(iter(UK_INPUT_MASS_REFERENCE_REGISTRY.values()))
-
     coerced = coerce_input_mass_reference_registry(
-        {"efrs-post-calibration": descriptor.spec_payload()}, label="fixture"
+        {"current_build": UK_CURRENT_BUILD_REFERENCE.spec_payload()}, label="fixture"
     )
 
     assert coerced == dict(UK_INPUT_MASS_REFERENCE_REGISTRY)
-    extra = descriptor.spec_payload()
-    extra["unexpected"] = "ignored?"
-    with pytest.raises(ValueError, match="fields must be exactly"):
+    extra = {**UK_CURRENT_BUILD_REFERENCE.spec_payload(), "unexpected": "x"}
+    with pytest.raises(ValueError, match="must be exactly"):
+        coerce_input_mass_reference_registry({"current_build": extra}, label="fixture")
+    # A reference pinned by file identity, as the enhanced FRS was, is refused.
+    pinned = {
+        "identity": {
+            "filename": "a.h5",
+            "revision": "r",
+            "sha256": "0" * 64,
+            "vintage": "v",
+        },
+        "totals_sha256": "0" * 64,
+        "scope_note": "pinned",
+    }
+    with pytest.raises(ValueError, match="no longer accepted"):
         coerce_input_mass_reference_registry(
-            {"efrs-post-calibration": extra}, label="fixture"
-        )
-    malformed = descriptor.spec_payload()
-    malformed["identity"] = {**descriptor.identity, "sha256": "A" * 64}
-    with pytest.raises(ValueError, match="sha256 must be a lowercase sha256"):
-        coerce_input_mass_reference_registry(
-            {"efrs-post-calibration": malformed}, label="fixture"
-        )
-    bad_totals = descriptor.spec_payload()
-    bad_totals["totals_sha256"] = "not-a-sha"
-    with pytest.raises(ValueError, match="totals_sha256"):
-        coerce_input_mass_reference_registry(
-            {"efrs-post-calibration": bad_totals}, label="fixture"
+            {"efrs-post-calibration": pinned}, label="fixture"
         )
 
 
@@ -464,188 +431,71 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
     assert "density_filter" in surface
     # Declared outputs the fixture does not carry are reported, not invented.
     assert "dividend_income" in surface["absent_columns"]
-    assert surface["declared_qrf_outputs"] >= 47
+    # The 59 declared outputs (since microcosm#1095, stage 2's trading_loss and
+    # six owner-manager inputs, and stage 1's two loss draws, which the stage
+    # moves into loss_relief and drops, so a frame never carries them), less
+    # the thirteen spi_benefit_coherence replaces on every SPI-channel row
+    # (microcosm#1100; contributory ESA since B10); they hold no forest draw.
+    assert surface["declared_qrf_outputs"] == 46
+    assert surface["superseded_by_spi_benefit_coherence"] == [
+        "income_support_reported",
+        "working_tax_credit_reported",
+        "child_tax_credit_reported",
+        "sda_reported",
+        "iidb_reported",
+        "afcs_reported",
+        "bsp_reported",
+        "war_widows_pension_reported",
+        "widowed_parents_allowance_reported",
+        "jsa_contrib_reported",
+        "jsa_income_reported",
+        "esa_contrib_reported",
+        "esa_income_reported",
+    ]
+    assert not set(surface["superseded_by_spi_benefit_coherence"]) & set(values)
 
 
-def test_declared_absent_qrf_output_is_a_named_gate_failure() -> None:
-    values, weights, surface = uk_qrf_tail_concentration_columns(
-        _frame(),
-        output_columns=("declared_but_absent",),
+def test_the_superseded_columns_are_the_coherence_stage_declaration() -> None:
+    """The gate reads the stage's declaration, which names the same columns
+    the stage's transform zeroes and restores."""
+
+    from microcosm.build.uk_runtime.hmrc_source_contract import (
+        uk_spi_coherence_superseded_columns,
+    )
+    from microcosm.build.uk_runtime.spi_benefit_coherence import (
+        SPI_RESTORED_REPORT_COLUMNS,
+        SPI_WITHIN_LIMIT_REPORT_COLUMNS,
+        SPI_ZEROED_REPORT_COLUMNS,
     )
 
-    assert set(values) == {"declared_but_absent"}
-    assert set(weights) == {"declared_but_absent"}
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-        ),
-        surface=surface,
+    assert uk_spi_coherence_superseded_columns() == (
+        *SPI_ZEROED_REPORT_COLUMNS,
+        *SPI_RESTORED_REPORT_COLUMNS,
+        *SPI_WITHIN_LIMIT_REPORT_COLUMNS,
     )
 
-    assert not gate.passed
-    assert gate.details["columns_checked"] == 0
-    assert gate.details["surface"]["absent_columns"] == ["declared_but_absent"]
-    assert "declared_but_absent" in gate.failures[0]
-    assert "absent" in gate.failures[0]
 
+def test_release_lines_scope_a_receipt_without_moving_unscoped_payloads() -> None:
+    plain = coerce_reviewed_exclusions({"x": _entry("r")}, label="t")["x"]
+    # Unscoped receipts keep the pre-scope payload, so pinned digests hold.
+    assert set(plain.policy_payload()) == set(_entry("r"))
+    assert plain.applies_on("local") and plain.applies_on(None)
 
-def test_declared_nonnumeric_qrf_output_is_a_named_gate_failure() -> None:
-    values, weights, surface = uk_qrf_tail_concentration_columns(
-        _frame(person_columns={"declared_nonnumeric": ["x"] * 4}),
-        output_columns=("declared_nonnumeric",),
-    )
+    scoped = coerce_reviewed_exclusions(
+        {"x": {**_entry("r"), "release_lines": ["national"]}}, label="t"
+    )["x"]
+    assert scoped.policy_payload()["release_lines"] == ["national"]
+    assert scoped.applies_on("national") and not scoped.applies_on("local")
+    # A scoped entry fails closed where no line is declared.
+    assert not scoped.applies_on(None)
 
-    assert set(values) == {"declared_nonnumeric"}
-    assert set(weights) == {"declared_nonnumeric"}
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-        ),
-        surface=surface,
-    )
-
-    assert not gate.passed
-    assert gate.details["columns_checked"] == 0
-    assert gate.details["surface"]["non_numeric_columns"] == ["declared_nonnumeric"]
-    assert "declared_nonnumeric" in gate.failures[0]
-    assert "not numeric" in gate.failures[0]
-
-
-def test_qrf_surface_rejects_partially_omitted_declared_outputs() -> None:
-    gate = uk_qrf_tail_concentration_gate(
-        {"self_employment_income": np.ones(4)},
-        {"self_employment_income": np.ones(4)},
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.75,
-            min_nonzero_records=2,
-        ),
-        surface={
-            "declared_qrf_outputs": 2,
-            "checked_columns": ["self_employment_income"],
-            "absent_columns": [],
-            "non_numeric_columns": [],
-            "density_filter": "none: every declared output is checked (#609)",
-        },
-    )
-
-    assert not gate.passed
-    assert "QRF surface declarations must reconcile exactly" in gate.failures[0]
-
-
-def test_concentrated_qrf_column_fails_by_name() -> None:
-    n = 10
-    concentrated = np.ones(n)
-    concentrated[0] = 1_000.0
-    frame = _frame(n=n, person_columns={"self_employment_income": concentrated})
-    values, weights, surface = uk_qrf_tail_concentration_columns(frame)
-
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-        ),
-        surface=surface,
-    )
-
-    assert gate.name == "qrf_tail_concentration"
-    assert not gate.passed
-    assert "self_employment_income" in gate.failures[0]
-    assert gate.details["surface"]["declared_qrf_outputs"] >= 47
-
-
-def test_thin_qrf_column_is_reported_not_checked() -> None:
-    n = 4
-    frame = _frame(n=n, person_columns={"self_employment_income": np.ones(n)})
-    values, weights, _surface = uk_qrf_tail_concentration_columns(frame)
-
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=10,
-            max_top_share=0.5,
-            min_nonzero_records=100,
-        ),
-    )
-
-    assert not gate.passed
-    assert gate.details["thin_columns"]["self_employment_income"] == 4
-    assert "No declared QRF output" in gate.failures[0]
-
-
-def test_thin_qrf_exclusion_is_classified_as_dormant() -> None:
-    values = {"x": np.ones(4)}
-    weights = {"x": np.ones(4)}
-
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=10,
-            max_top_share=0.5,
-            min_nonzero_records=100,
-            reviewed_exclusions={"x": _entry("Seeded thin entry.")},
-        ),
-    )
-
-    assert not gate.passed
-    assert gate.details["thin_columns"] == {"x": 4}
-    assert gate.details["reviewed_exclusions"] == {}
-    assert gate.details["stale_exclusions"] == []
-    assert gate.details["dormant_exclusions"] == ["x"]
-
-
-def test_qrf_stale_exclusion_fails_and_dormant_is_reported() -> None:
-    n = 10
-    frame = _frame(n=n, person_columns={"self_employment_income": np.ones(n)})
-    values, weights, _surface = uk_qrf_tail_concentration_columns(frame)
-
-    gate = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-            reviewed_exclusions={
-                "self_employment_income": _entry("Seeded stale entry."),
-                "dividend_income": _entry("Seeded dormant entry."),
-            },
-        ),
-    )
-
-    assert not gate.passed
-    assert "Stale reviewed exclusions" in gate.failures[0]
-    assert gate.details["stale_exclusions"] == ["self_employment_income"]
-    assert gate.details["dormant_exclusions"] == ["dividend_income"]
-
-
-def test_qrf_policy_validation() -> None:
-    with pytest.raises(ValueError, match="strict subset"):
-        UKQRFTailConcentrationPolicy(
-            top_k=10, max_top_share=0.5, min_nonzero_records=10
-        )
-    with pytest.raises(ValueError, match=r"in \(0, 1\)"):
-        UKQRFTailConcentrationPolicy(top_k=1, max_top_share=1.0, min_nonzero_records=2)
-    with pytest.raises(ValueError, match="reason must be a non-empty string"):
-        UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-            reviewed_exclusions={"self_employment_income": _entry("")},
-        )
+    for bad in ([], ["regional"], ["local", "local"], "national"):
+        with pytest.raises(ValueError, match="release_lines"):
+            coerce_reviewed_exclusions(
+                {"x": {**_entry("r"), "release_lines": bad}}, label="t"
+            )
+    with pytest.raises(ValueError, match="optionally with"):
+        coerce_reviewed_exclusions({"x": {**_entry("r"), "scope": "x"}}, label="t")
 
 
 def test_committed_exclusion_registers_load() -> None:
@@ -653,55 +503,71 @@ def test_committed_exclusion_registers_load() -> None:
         None,
         resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     )
-    qrf_tail = load_uk_reviewed_exclusion_register(
-        None,
-        resource=UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
-    )
 
-    assert set(input_mass) == {"efrs-post-calibration"}
-    # The 2026-09-21 retirements (charitable_investment_gifts and owned_land
-    # measured inside the fence on the first national candidate) stand; the
-    # certifier rehearsal on the 2026-09-30 build earned three entries
-    # (microcosm#1063 c9): the two FRS education inputs the enhanced-FRS
-    # reference barely carries, and the sparse charity-gifts leaf back at
-    # the concentration threshold. The gate fails any of them as stale the
-    # day a build brings the column inside the fence, which the 2 October
-    # final build did for adult_ema (+74% against the reference): its entry
-    # is retired. The 3 October final build's certifier earned three more,
-    # signed 2026-10-04: the FRS access-fund outlier at the weight bound
-    # (expiring with the owed period rule) and the SPI channel's two
-    # legacy-benefit leaves. All three are retired with the microcosm#1095
-    # ports: spi_benefit_coherence zeroes income-based JSA and Working Tax
-    # Credit on SPI rows, and on the review-head arm the columns sit at +316%
-    # and +103% of the reference and the access fund at +62%, its household
-    # off the weight bound, all inside the fence, so the gate fails them as
-    # stale.
-    assert set(input_mass["efrs-post-calibration"]) == {"dfe_education_spending"}
-    assert set(qrf_tail) == {"charitable_investment_gifts"}
-    for record in (*input_mass["efrs-post-calibration"].values(), *qrf_tail.values()):
-        assert record.approved_by == "juaristi22"
-        assert record.approved_on in {"2026-10-02", "2026-10-04"}
-        assert record.expires_on in {"2027-04-02", "2027-01-04", "2027-04-04"}
-        assert "microcosm#1063" in record.adjudication
+    # The enhanced-FRS reference's three entries (dfe_education_spending,
+    # property_wealth, tax_free_savings_income) retired with it
+    # (microcosm#1095); entries are now signed for one reference build: the
+    # gross receipts microcosm#1550 stops writing, against both current builds.
+    assert {label: set(entries) for label, entries in input_mass.items()} == {
+        "microcosm-uk-2024-25-dense@uk-local-candidate-f100-s42-20261107T173210Z-38605444": {
+            "self_employment_gross_receipts"
+        },
+        "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e": {
+            "self_employment_gross_receipts"
+        },
+    }
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()
-    )
-    assert uk_default_qrf_tail_reviewed_exclusions() is (
-        uk_default_qrf_tail_reviewed_exclusions()
     )
 
 
 def test_local_area_support_register_loads_both_schema3_blocks() -> None:
     loaded = load_uk_local_area_support_exclusion_register(None)
     assert set(loaded["exclusions"]) == {
+        "constituency/S14000027",
         "local_authority/E06000053",
         "local_authority/E09000001",
+        "local_authority/S12000013",
+        "local_authority/S12000023",
+        "local_authority/S12000027",
     }
     assert set(loaded["bound_despite_support_floor"]) == {"census_households"}
     approval = loaded["bound_despite_support_floor"]["census_households"]
     assert approval.approved_by == "juaristi22"
     assert approval.approved_on == "2026-09-10"
     assert approval.expires_on == "2026-12-10"
+
+
+@pytest.mark.parametrize(
+    ("code", "name"),
+    [("S12000023", "Orkney Islands"), ("S12000027", "Shetland Islands")],
+)
+def test_the_islands_are_pre_signed_gate_only_on_the_local_line(
+    code: str, name: str
+) -> None:
+    # microcosm#1301: Orkney and Shetland missed the local-authority support
+    # floor on every build measured for the release, so they are signed before
+    # the first build. The entries are gate-only (the generator defers nothing
+    # for them) and scoped to the local line, the evidence that earned them.
+    record = load_uk_local_area_support_exclusion_register(None)["exclusions"][
+        f"local_authority/{code}"
+    ]
+    assert record.release_lines == ("local",)
+    assert record.applies_on("local") is True
+    assert record.applies_on("national") is False
+    assert record.approved_by == "juaristi22"
+    assert record.approved_on == "2026-10-16"
+    assert record.expires_on == "2027-01-16"
+    assert "microcosm#1301" in record.adjudication
+    assert f"{name} ({code})" in record.reason
+    assert "Gate-only" in record.reason
+    assert "signed-deferred" not in record.reason
+    # The reason names the builds, never the area's support figures: once the
+    # code and the cited builds are taken out no number is left.
+    residue = record.reason
+    for cited in (code, "K=25", "K=15", "60,000", "100,000", "95,000", "#1301"):
+        residue = residue.replace(cited, "")
+    assert not any(character.isdigit() for character in residue), residue
 
 
 def test_local_area_support_register_refuses_schema2(tmp_path) -> None:
@@ -948,8 +814,9 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
     """Without exclusions the UK wrapper must reproduce the US gate verbatim.
 
     Same failure lines, same verdict, same details — the UK result may only
-    add the reference identity and the (empty) stale/dormant register fields
-    the #609 discipline requires on top of the shared gate.
+    add the reference identity, the (empty) stale/dormant register fields
+    the #609 discipline requires, and the drop limit (microcosm#1095), which
+    at 1.0 adds no failure on top of the shared gate.
     """
 
     from microcosm.build.gates import input_mass_parity_gate
@@ -994,89 +861,120 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
         "reference",
         "reference_scope_note",
         "reference_identity",
+        "reference_label",
+        "withheld_thin_columns",
+        "maximum_relative_drop",
+        "excess_drops",
     }
+    assert ported.details["excess_drops"] == []
 
 
-def test_uk_tail_gate_is_the_shared_gate_under_the_uk_name() -> None:
-    """Exclusion discipline included: the shared US gate already carries it."""
-
-    from microcosm.build.gates import tail_concentration_gate
-
-    n = 12
-    concentrated = np.ones(n)
-    concentrated[0] = 500.0
-    values = {"self_employment_income": concentrated, "dividend_income": np.ones(n)}
-    weights = {name: np.ones(n) for name in values}
-    reason = "Seeded stale entry."
-
-    shared = tail_concentration_gate(
-        values,
-        weights,
-        top_k=1,
-        max_top_share=0.5,
-        min_nonzero_records=2,
-        reviewed_exclusions={"dividend_income": reason},
-    )
-    ported = uk_qrf_tail_concentration_gate(
-        values,
-        weights,
-        policy=UKQRFTailConcentrationPolicy(
-            top_k=1,
-            max_top_share=0.5,
-            min_nonzero_records=2,
-            reviewed_exclusions={"dividend_income": _entry(reason)},
-        ),
-    )
-
-    assert shared.name == "tail_concentration"
-    assert ported.name == "qrf_tail_concentration"
-    assert ported.passed == shared.passed
-    assert ported.failures == shared.failures
-    shared_details = dict(shared.details)
-    assert {
-        key: value for key, value in ported.details.items() if key in shared_details
-    } == shared_details
-    assert set(ported.details) - set(shared_details) == {
-        "expired_exclusions",
-        "premature_exclusions",
-        "exclusions_evaluated_on",
+def test_input_mass_reference_round_trips_the_cut_schema(tmp_path) -> None:
+    path = tmp_path / "input_mass_reference.json"
+    payload = {
+        "schema_version": 2,
+        "kind": "uk_input_mass_reference",
+        "label": REFERENCE_LABEL,
+        "identity": {
+            "filename": "microcosm_uk_2024_25.h5",
+            "revision": REFERENCE_BUILD,
+            "sha256": "9" * 64,
+            "vintage": "2024_25",
+        },
+        "totals": {"employment_income": 10.5},
+        "carriers": {"employment_income": 7},
     }
+    path.write_text(json.dumps(payload))
 
+    reference = load_uk_input_mass_reference(path)
 
-def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> None:
-    path = tmp_path / "reference.json"
-    path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "identity": {
-                    "filename": "enhanced_frs_2024_25.h5",
-                    "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-                    "sha256": (
-                        "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"
-                    ),
-                    "vintage": "2024_25",
-                },
-                "totals": {"employment_income": 10.5},
-            }
-        )
-    )
-
-    # The licensed 131-column totals are intentionally unavailable to CI;
-    # make the small fixture present the reviewed digest while checking the
-    # measurement schema and registry identity resolution.
-    with patch.object(
-        weighted_integrity,
-        "_input_mass_reference_evidence_sha256",
-        return_value=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
-    ):
-        reference = load_uk_input_mass_reference(path)
-
-    assert reference.filename == "enhanced_frs_2024_25.h5"
+    assert reference.label == REFERENCE_LABEL
+    assert reference.revision == REFERENCE_BUILD
     assert dict(reference.totals) == {"employment_income": 10.5}
-    with pytest.raises(ValueError, match="schema_version"):
-        path.write_text(json.dumps({"schema_version": 9}))
-        load_uk_input_mass_reference(path)
+    assert dict(reference.carriers) == {"employment_income": 7}
+    for broken, message in (
+        ({"schema_version": 1}, "retired with microcosm#1095"),
+        ({"label": "microcosm-uk-2024-25-national@other"}, "does not name the build"),
+        ({"carriers": None}, "'carriers' objects"),
+    ):
+        path.write_text(json.dumps({**payload, **broken}))
+        with pytest.raises(ValueError, match=message):
+            load_uk_input_mass_reference(path)
+
+
+def test_input_mass_reference_reads_the_record_since_the_baseline(tmp_path) -> None:
+    """Round 2 of the review of microcosm#1574: the columns that left the
+    chain come with it, each with why, its last ratio and its last build."""
+
+    path = tmp_path / "input_mass_reference.json"
+    gone = {"reason": "thin", "last_ratio": 0.4, "last_build": REFERENCE_LABEL}
+    since = {
+        "baseline": REFERENCE_LABEL,
+        "ratios": {"employment_income": 1.0},
+        "left": {"gift_aid": gone},
+    }
+    payload = {
+        "schema_version": 2,
+        "kind": "uk_input_mass_reference",
+        "label": REFERENCE_LABEL,
+        "identity": {
+            "filename": "microcosm_uk_2024_25.h5",
+            "revision": REFERENCE_BUILD,
+            "sha256": "9" * 64,
+            "vintage": "2024_25",
+        },
+        "totals": {"employment_income": 10.5},
+        "carriers": {"employment_income": 7},
+        "since_baseline": since,
+    }
+    path.write_text(json.dumps(payload))
+
+    assert load_uk_input_mass_reference(path).since_baseline == since
+    for left in (
+        {"gift_aid": {**gone, "reason": "vanished"}},
+        {"gift_aid": {**gone, "last_ratio": -1.0}},
+        # A column is in the chain or has left it, never both.
+        {"employment_income": gone},
+        None,
+    ):
+        broken = {**since, "left": left}
+        path.write_text(json.dumps({**payload, "since_baseline": broken}))
+        with pytest.raises(ValueError, match="columns that left the chain"):
+            load_uk_input_mass_reference(path)
+
+
+def test_carriers_count_source_households_not_rows() -> None:
+    """Clones repeat their source household; a person counts its household's."""
+
+    household_ids = np.arange(1, 5, dtype=np.int64)
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": np.arange(101, 105, dtype=np.int64),
+                "person_household_id": household_ids,
+                "person_benunit_id": np.arange(201, 205, dtype=np.int64),
+                "employment_income": np.arange(1, 5, dtype=float),
+                "rare_flag": np.array([True, True, False, False]),
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": np.arange(201, 205, dtype=np.int64)}),
+        household=pd.DataFrame(
+            {
+                "household_id": household_ids,
+                "household_weight": np.ones(4),
+                "council_tax": np.full(4, 10.0),
+                # Two clones of one source household, and two others.
+                "household_source_id": np.array([7, 7, 8, 9], dtype=np.int64),
+            }
+        ),
+        time_period="2023",
+    )
+
+    carriers = uk_input_mass_carriers(frame)
+
+    assert carriers["rare_flag"] == 1
+    assert carriers["employment_income"] == 3
+    assert carriers["council_tax"] == 3
 
 
 def test_expired_exclusion_stops_suppressing_and_names_its_receipt() -> None:
@@ -1088,7 +986,9 @@ def test_expired_exclusion_stops_suppressing_and_names_its_receipt() -> None:
     reference = _reference({"employment_income": 10.0})
     policy = _policy(
         minimum_reference_total=1.0,
-        reviewed_exclusions={"employment_income": _entry(reason)},
+        reviewed_exclusions={
+            "employment_income": _entry(reason, expires_on="2027-02-10")
+        },
     )
     candidate = {"employment_income": 0.0}
 

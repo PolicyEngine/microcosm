@@ -1,0 +1,4147 @@
+{
+ "inputs": {
+  "checkpoint": {
+   "file": "target_frame_checkpoint.h5",
+   "sha256": "8758635b4bf60aae62c990d36b2604fbcc1b9e2b12a33f47ba33a68898cdd28c"
+  },
+  "calibration_npz": {
+   "file": "populace_us_2024_calibration.npz",
+   "sha256": "d1403f75c549f030dcc13c2df3c2e4f7365b67105caa1bb0440e9ab8683f2d55"
+  },
+  "diagnostics": {
+   "file": "calibration_diagnostics.json",
+   "sha256": "64b55a02aaf573964cffee44d4a86bd63f33dc30c7f5012e4345348eecc06f80"
+  },
+  "release_h5": {
+   "file": "populace_us_2024.h5",
+   "sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559"
+  },
+  "base_h5": {
+   "file": "base_populace_us_2024_puf_support.h5",
+   "sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2"
+  }
+ },
+ "diagnostics_build_base_dataset_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+ "support_value_repairs": {
+  "social_security_components": {
+   "method": "rescale_social_security_component_leaves_to_ssa_targets",
+   "applied": true,
+   "reason": "US fiscal refresh rescaled Social Security component leaf inputs to SSA component payment targets from the active fiscal target registry before mass='conserve' calibration.",
+   "components": {
+    "social_security_disability": {
+     "target": 147174000000.0,
+     "initial_estimate": 132545532665.57057,
+     "factor": 1.1103656007127674,
+     "repaired_estimate": 147174000000.0
+    },
+    "social_security_retirement": {
+     "target": 1111728000000.0,
+     "initial_estimate": 968865974976.6425,
+     "factor": 1.1474528249656013,
+     "repaired_estimate": 1111728000000.0
+    },
+    "social_security_survivors": {
+     "target": 161218000000.0,
+     "initial_estimate": 64678312282.415146,
+     "factor": 2.4926129688735283,
+     "repaired_estimate": 161218000000.0
+    },
+    "social_security_dependents": {
+     "target": 51075000000.0,
+     "initial_estimate": 56398661750.30339,
+     "factor": 0.9056065944636575,
+     "repaired_estimate": 51075000000.0
+    }
+   }
+  },
+  "non_sch_d_capital_gains": {
+   "method": "rescale_non_sch_d_capital_gains_to_soi_table_1_4_fact",
+   "applied": true,
+   "reason": "The PUF E01100-lineage donor carries $24.31B across 4.67M weighted carriers (weighted mean $5,206) against the SOI Pub 1304 Table 1.4 TY2023 direct-route concept of $10.16B across 3.21M returns (mean $3,165) - 2.39x on mass, measured on the sha-pinned puf_2024.h5 donor via puf_tax_unit_donor_from_arrays. The eCPS-era pipeline produced $13.69B from the same lineage, so the current 2024-level uprating overstates a mean-reverting distribution series. Until the donor uprating is variable-specific (root issue filed on the #462 thread), the level is pinned to the ledger-fed Table 1.4 dollar fact (aging provenance in target_aged_to) - the same repair class as the Social Security component rescale above; the returns-count row is an indicator and is unaffected.",
+   "target": 10155465319.076845,
+   "target_aged_to": "2024",
+   "initial_estimate": 31930071391.640575,
+   "factor": 0.3180533232924618,
+   "repaired_estimate": 10155465319.076845
+  }
+ },
+ "checkpoint_design_weights_equal_npz_initial": true,
+ "households": {
+  "asec": 168852,
+  "puf_clone": 168852,
+  "cg_tail_clone": 15228
+ },
+ "household_weight_by_channel": {
+  "asec": {
+   "initial": 69049208.30936486,
+   "final": 63365680.39408916,
+   "final_over_initial": 0.9176887316388701
+  },
+  "puf_clone": {
+   "initial": 68988175.70244002,
+   "final": 74690465.85316485,
+   "final_over_initial": 1.0826560507313596
+  },
+  "cg_tail_clone": {
+   "initial": 61032.606924819964,
+   "final": 42270.3714757042,
+   "final_over_initial": 0.6925866943185451
+  }
+ },
+ "household_weight_ratio_by_channel": {
+  "asec": {
+   "percentiles": {
+    "1": 0.055844938512457226,
+    "5": 0.08563398510184053,
+    "25": 0.1819045335146498,
+    "50": 0.34241108322806635,
+    "75": 0.801424912711076,
+    "95": 4.999998166652652,
+    "99": 5.0
+   },
+   "share_at_or_above_4_99": 0.0647608556605785,
+   "share_below_0_01": 0.0
+  },
+  "puf_clone": {
+   "percentiles": {
+    "1": 0.05968804757584997,
+    "5": 0.09157062930311544,
+    "25": 0.2008581632931957,
+    "50": 0.3863680080114026,
+    "75": 1.0278072268608978,
+    "95": 4.9999994483155525,
+    "99": 5.0
+   },
+   "share_at_or_above_4_99": 0.08813635609883211,
+   "share_below_0_01": 0.0
+  },
+  "cg_tail_clone": {
+   "percentiles": {
+    "1": 0.20932558083554398,
+    "5": 0.24810575852961755,
+    "25": 0.38227762595487685,
+    "50": 0.547563264986553,
+    "75": 0.8040949152899242,
+    "95": 1.9687517979339888,
+    "99": 4.965738723949841
+   },
+   "share_at_or_above_4_99": 0.009521933280798528,
+   "share_below_0_01": 0.0
+  }
+ },
+ "asec_stored_wage_vs_survey_wage": {
+  "2022": {
+   "persons": 146133,
+   "share_stored_equals_WSAL_VAL": 1.0
+  },
+  "2023": {
+   "persons": 144265,
+   "share_stored_equals_WSAL_VAL": 1.0
+  },
+  "2024": {
+   "persons": 142125,
+   "share_stored_equals_WSAL_VAL": 1.0
+  }
+ },
+ "stored_inputs_by_arm": {
+  "employment_income_before_lsr": {
+   "entity": "person",
+   "asec_design_positive": 5780987772440.752,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 4546201680812.67,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 4930213574968.566,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 6188731462439.031,
+   "puf_arm_final_negative": 0.0
+  },
+  "self_employment_income_before_lsr": {
+   "entity": "person",
+   "asec_design_positive": 274920281791.011,
+   "asec_design_negative": -1142186104.4877677,
+   "asec_final_positive": 179937155325.75772,
+   "asec_final_negative": -1033537787.3186597,
+   "puf_arm_design_positive": 351907115447.5354,
+   "puf_arm_design_negative": -2309886373.030448,
+   "puf_arm_final_positive": 308957620838.5232,
+   "puf_arm_final_negative": -3270031953.164216
+  },
+  "sstb_self_employment_income_before_lsr": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 160224809512.1462,
+   "puf_arm_design_negative": -3946593327.9930677,
+   "puf_arm_final_positive": 348028629976.77423,
+   "puf_arm_final_negative": -11630167692.846292
+  },
+  "taxable_interest_income": {
+   "entity": "person",
+   "asec_design_positive": 218110593371.1429,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 156481347572.47855,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 79363157440.69016,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 130924373168.18488,
+   "puf_arm_final_negative": 0.0
+  },
+  "tax_exempt_interest_income": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 54460727245.351875,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 61952320685.704445,
+   "puf_arm_final_negative": 0.0
+  },
+  "qualified_dividend_income": {
+   "entity": "person",
+   "asec_design_positive": 48518629528.91691,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 33680749498.402813,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 181941706341.10397,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 303812616557.0574,
+   "puf_arm_final_negative": 0.0
+  },
+  "non_qualified_dividend_income": {
+   "entity": "person",
+   "asec_design_positive": 59781882812.41548,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 41499494917.6749,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 68813393527.62613,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 77962153070.25664,
+   "puf_arm_final_negative": 0.0
+  },
+  "short_term_capital_gains": {
+   "entity": "person",
+   "asec_design_positive": 14470321748.00317,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 13357931462.344105,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 53442447791.39975,
+   "puf_arm_design_negative": -76036068183.38943,
+   "puf_arm_final_positive": 74228229885.02844,
+   "puf_arm_final_negative": -97974822997.0257
+  },
+  "long_term_capital_gains_before_response": {
+   "entity": "person",
+   "asec_design_positive": 106115692818.68991,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 97958164057.1901,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 1112906581740.4924,
+   "puf_arm_design_negative": -303604806.1982089,
+   "puf_arm_final_positive": 1128554179890.2808,
+   "puf_arm_final_negative": -302424937.3199244
+  },
+  "long_term_capital_gains_on_collectibles": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 17087075436.346214,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 24719229737.37828,
+   "puf_arm_final_negative": 0.0
+  },
+  "unrecaptured_section_1250_gain": {
+   "entity": "tax_unit",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 44215463498.07482,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 50035107567.71188,
+   "puf_arm_final_negative": 0.0
+  },
+  "non_sch_d_capital_gains": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 10155465319.076847,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 10152521937.26543,
+   "puf_arm_final_negative": 0.0
+  },
+  "taxable_private_pension_income": {
+   "entity": "person",
+   "asec_design_positive": 167798156565.80255,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 132712460306.16821,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 787072742037.2976,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 869706566024.1636,
+   "puf_arm_final_negative": 0.0
+  },
+  "taxable_ira_distributions": {
+   "entity": "person",
+   "asec_design_positive": 55416018264.65787,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 54606775789.17772,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 365368067963.778,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 430983522309.7833,
+   "puf_arm_final_negative": 0.0
+  },
+  "social_security_retirement": {
+   "entity": "person",
+   "asec_design_positive": 599316924682.2822,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 602830092994.8159,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 512411075317.7178,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 465389917682.8069,
+   "puf_arm_final_negative": 0.0
+  },
+  "social_security_disability": {
+   "entity": "person",
+   "asec_design_positive": 57299377483.03669,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 62632593181.89562,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 89874622516.9633,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 84598123024.99353,
+   "puf_arm_final_negative": 0.0
+  },
+  "social_security_survivors": {
+   "entity": "person",
+   "asec_design_positive": 25883148614.357224,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 31299980504.33101,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 135334851385.64279,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 130038137907.21065,
+   "puf_arm_final_negative": 0.0
+  },
+  "social_security_dependents": {
+   "entity": "person",
+   "asec_design_positive": 4842217768.534931,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 5804820998.568124,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 46232782231.465065,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 45305227665.56256,
+   "puf_arm_final_negative": 0.0
+  },
+  "partnership_income": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 410755325147.82556,
+   "puf_arm_design_negative": -96098810489.162,
+   "puf_arm_final_positive": 1128517679151.5771,
+   "puf_arm_final_negative": -107975045122.44382
+  },
+  "s_corp_income": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 0.0,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 0.0,
+   "puf_arm_final_negative": 0.0
+  },
+  "partnership_self_employment_net_earnings": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 61009241095.822754,
+   "puf_arm_design_negative": -44933418795.26918,
+   "puf_arm_final_positive": 156344702690.83093,
+   "puf_arm_final_negative": -77837349229.90657
+  },
+  "rental_income": {
+   "entity": "person",
+   "asec_design_positive": 122585515417.56264,
+   "asec_design_negative": -1632766696.7235675,
+   "asec_final_positive": 139586409752.89606,
+   "asec_final_negative": -1665001318.8754663,
+   "puf_arm_design_positive": 138574070813.5011,
+   "puf_arm_design_negative": -48798960255.75704,
+   "puf_arm_final_positive": 195582506406.0423,
+   "puf_arm_final_negative": -84716163417.55432
+  },
+  "estate_income": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 75369410040.48557,
+   "puf_arm_design_negative": -2743494809.7890224,
+   "puf_arm_final_positive": 52104395702.16916,
+   "puf_arm_final_negative": -5329284975.221441
+  },
+  "farm_income": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 16061599550.43576,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 40851485558.61867,
+   "puf_arm_final_negative": 0.0
+  },
+  "farm_operations_income": {
+   "entity": "person",
+   "asec_design_positive": 20957474857.20787,
+   "asec_design_negative": -342359957.7497027,
+   "asec_final_positive": 32138759233.31659,
+   "asec_final_negative": -564837150.8453832,
+   "puf_arm_design_positive": 8622414768.17624,
+   "puf_arm_design_negative": -18163447672.118843,
+   "puf_arm_final_positive": 11988206042.194523,
+   "puf_arm_final_negative": -29947090294.481163
+  },
+  "farm_rent_income": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 12161472125.363218,
+   "puf_arm_design_negative": -3614533647.449573,
+   "puf_arm_final_positive": 13225380301.14615,
+   "puf_arm_final_negative": -8694189661.574562
+  },
+  "miscellaneous_income": {
+   "entity": "person",
+   "asec_design_positive": 8548100418.741043,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 6981777019.211489,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 25345112321.991585,
+   "puf_arm_design_negative": -29093991343.03754,
+   "puf_arm_final_positive": 39847471939.19627,
+   "puf_arm_final_negative": -55988375561.498924
+  },
+  "alimony_income": {
+   "entity": "person",
+   "asec_design_positive": 2616147189.8909264,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 1057586689.1019764,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 16318557099.21455,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 13887033928.985619,
+   "puf_arm_final_negative": 0.0
+  },
+  "alimony_expense": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 7703645789.023842,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 12723517086.752907,
+   "puf_arm_final_negative": 0.0
+  },
+  "salt_refund_income": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 28289638031.911987,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 45926735218.55081,
+   "puf_arm_final_negative": 0.0
+  },
+  "charitable_cash_donations": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 134835305442.41255,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 250146994817.11664,
+   "puf_arm_final_negative": 0.0
+  },
+  "charitable_non_cash_donations": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 52414112302.537994,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 115100658484.49277,
+   "puf_arm_final_negative": 0.0
+  },
+  "real_estate_taxes": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 156144901532.67163,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 215141355898.61633,
+   "puf_arm_final_negative": 0.0
+  },
+  "home_mortgage_interest": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 238088949913.04956,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 367228375652.8728,
+   "puf_arm_final_negative": 0.0
+  },
+  "investment_interest_expense": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 20625938373.954395,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 44630401896.25472,
+   "puf_arm_final_negative": 0.0
+  },
+  "investment_income_elected_form_4952": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 11541764760.748577,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 30265497747.38611,
+   "puf_arm_final_negative": 0.0
+  },
+  "student_loan_interest": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 12842269400.505302,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 14327824698.655571,
+   "puf_arm_final_negative": 0.0
+  },
+  "educator_expense": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 780952605.7545393,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 947557599.4398181,
+   "puf_arm_final_negative": 0.0
+  },
+  "qualified_tuition_expenses": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 3395464916.270527,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 4101786563.4562087,
+   "puf_arm_final_negative": 0.0
+  },
+  "casualty_loss": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 4003737724.6820292,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 7977778123.049208,
+   "puf_arm_final_negative": 0.0
+  },
+  "unreimbursed_business_employee_expenses": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 146423874899.3669,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 198138513933.0159,
+   "puf_arm_final_negative": 0.0
+  },
+  "traditional_ira_contributions_desired": {
+   "entity": "person",
+   "asec_design_positive": 9250062037.034567,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 7274734246.938626,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 6633674687.770941,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 8223050082.456674,
+   "puf_arm_final_negative": 0.0
+  },
+  "self_employed_pension_contributions_desired": {
+   "entity": "person",
+   "asec_design_positive": 428140771.2832167,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 642390716.1571527,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 343323331.46377546,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 822242302.9671359,
+   "puf_arm_final_negative": 0.0
+  },
+  "domestic_production_ald": {
+   "entity": "tax_unit",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 12116765451.411587,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 24356282805.55695,
+   "puf_arm_final_negative": 0.0
+  },
+  "health_savings_account_ald": {
+   "entity": "tax_unit",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 4200668620.499748,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 8016449026.9537525,
+   "puf_arm_final_negative": 0.0
+  },
+  "w2_wages_from_qualified_business": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 201541044318.59042,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 439644706006.3221,
+   "puf_arm_final_negative": 0.0
+  },
+  "unadjusted_basis_qualified_property": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 1717535980862.5098,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 3083440838967.2188,
+   "puf_arm_final_negative": 0.0
+  },
+  "qualified_reit_and_ptp_income": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 4850416653.189299,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 9644460738.466469,
+   "puf_arm_final_negative": 0.0
+  },
+  "qualified_bdc_income": {
+   "entity": "person",
+   "asec_design_positive": 0.0,
+   "asec_design_negative": 0.0,
+   "asec_final_positive": 0.0,
+   "asec_final_negative": 0.0,
+   "puf_arm_design_positive": 94110606.81452852,
+   "puf_arm_design_negative": 0.0,
+   "puf_arm_final_positive": 104864434.07310125,
+   "puf_arm_final_negative": 0.0
+  }
+ },
+ "weighted_units_by_arm": {
+  "tax_units": {
+   "asec_design": 92027245.53866541,
+   "puf_arm_design": 92027245.53866541
+  },
+  "persons": {
+   "asec_design": 167100000.0,
+   "puf_arm_design": 167100000.0
+  }
+ },
+ "decomposition_reconciles": {
+  "targets": 2955,
+  "max_relative_gap_initial": 6.250068812382077e-13,
+  "max_relative_gap_final": 1.7176314546366158e-14
+ },
+ "national_targets": {
+  "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_amount@2024": {
+   "variable": "real_estate_taxes",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "real_estate_taxes",
+   "target": 118976211843.9755,
+   "initial_estimate": 65485338487.215256,
+   "final_estimate": 118959999540.8402,
+   "relative_error": -0.00013626508092693667,
+   "target_loss_weight_share": 0.0006332397859582511,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 65093209952.23133,
+     "final": 118600323860.15936,
+     "nonzero_households": 19966
+    },
+    "cg_tail_clone": {
+     "initial": 392128534.98404646,
+     "final": 359675680.6794138,
+     "nonzero_households": 9249
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.taxable_pension_income_amount@2024": {
+   "variable": "taxable_pension_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_pension_income",
+   "target": 1013424547797.8289,
+   "initial_estimate": 954870900177.9478,
+   "final_estimate": 1002419027763.81,
+   "relative_error": -0.010859733028900661,
+   "target_loss_weight_share": 0.0018481356087058944,
+   "channels": {
+    "asec": {
+     "initial": 167798156633.29083,
+     "final": 132712460487.41286,
+     "nonzero_households": 22107
+    },
+    "puf_clone": {
+     "initial": 786726543048.7197,
+     "final": 869480110093.5535,
+     "nonzero_households": 53593
+    },
+    "cg_tail_clone": {
+     "initial": 346200495.94680965,
+     "final": 226457182.8505921,
+     "nonzero_households": 2221
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount@2024": {
+   "variable": "taxable_social_security",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "tax_unit_taxable_social_security",
+   "target": 510771015700.78534,
+   "initial_estimate": 654840125915.31,
+   "final_estimate": 510919420204.8083,
+   "relative_error": 0.00029054997143746706,
+   "target_loss_weight_share": 0.0013120526032816156,
+   "channels": {
+    "asec": {
+     "initial": 198978102641.96835,
+     "final": 114526436558.9689,
+     "nonzero_households": 24583
+    },
+    "puf_clone": {
+     "initial": 455631251228.395,
+     "final": 396237776660.485,
+     "nonzero_households": 49458
+    },
+    "cg_tail_clone": {
+     "initial": 230772044.9507848,
+     "final": 155206985.35994643,
+     "nonzero_households": 1246
+    }
+   }
+  },
+  "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.ordinary_dividends_returns@2024": {
+   "variable": "ordinary_dividend_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": null,
+   "target": 32984944.0,
+   "initial_estimate": 42614154.85789571,
+   "final_estimate": 32443822.662814267,
+   "relative_error": -0.01640510098139724,
+   "target_loss_weight_share": 0.0012818974955780436,
+   "channels": {
+    "asec": {
+     "initial": 15683802.625212457,
+     "final": 9577532.697407722,
+     "nonzero_households": 35458
+    },
+    "puf_clone": {
+     "initial": 26898945.96843961,
+     "final": 22843701.67500043,
+     "nonzero_households": 60642
+    },
+    "cg_tail_clone": {
+     "initial": 31406.264254829366,
+     "final": 22588.290406196735,
+     "nonzero_households": 7011
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount@2024": {
+   "variable": "capital_gains_gross",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.31536580395354",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.net_capital_gain.projected_amount",
+   "base_variable": "capital_gains",
+   "target": 1270864366489.301,
+   "initial_estimate": 1236087586692.3894,
+   "final_estimate": 1245274867480.002,
+   "relative_error": -0.020135507520750447,
+   "target_loss_weight_share": 0.0020696062455142572,
+   "channels": {
+    "asec": {
+     "initial": 120586014566.69307,
+     "final": 111316095519.53421,
+     "nonzero_households": 13206
+    },
+    "puf_clone": {
+     "initial": 594459561838.872,
+     "final": 815255541286.085,
+     "nonzero_households": 32748
+    },
+    "cg_tail_clone": {
+     "initial": 521042010286.8301,
+     "final": 318703230674.3777,
+     "nonzero_households": 15228
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.real_estate_taxes_amount@2024": {
+   "variable": "real_estate_taxes",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "real_estate_taxes",
+   "target": 118078311586.37292,
+   "initial_estimate": 65485338487.215256,
+   "final_estimate": 118959999540.8402,
+   "relative_error": 0.007466976302606811,
+   "target_loss_weight_share": 0.0006308457653826995,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 65093209952.23133,
+     "final": 118600323860.15936,
+     "nonzero_households": 19966
+    },
+    "cg_tail_clone": {
+     "initial": 392128534.98404646,
+     "final": 359675680.6794138,
+     "nonzero_households": 9249
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns@2024": {
+   "variable": "non_sch_d_capital_gains",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "non_sch_d_capital_gains",
+   "target": 3209131.0,
+   "initial_estimate": 4299973.503077152,
+   "final_estimate": 3210583.6325863767,
+   "relative_error": 0.000452656057473734,
+   "target_loss_weight_share": 0.0003998426769674399,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 4299973.503077157,
+     "final": 3210583.6325863665,
+     "nonzero_households": 10218
+    },
+    "cg_tail_clone": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.taxable_pension_income_returns@2024": {
+   "variable": "taxable_pension_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "taxable_pension_income",
+   "target": 29541284.0,
+   "initial_estimate": 32789207.86177393,
+   "final_estimate": 29833372.760111403,
+   "relative_error": 0.009887476797264557,
+   "target_loss_weight_share": 0.0012131377227995927,
+   "channels": {
+    "asec": {
+     "initial": 9550170.442849204,
+     "final": 7504087.08938355,
+     "nonzero_households": 22107
+    },
+    "puf_clone": {
+     "initial": 23229482.97147306,
+     "final": 22323152.201916553,
+     "nonzero_households": 53593
+    },
+    "cg_tail_clone": {
+     "initial": 9554.447449588366,
+     "final": 6133.46881122037,
+     "nonzero_households": 2221
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_2.all_returns.all.total_itemized_deductions_amount@2024": {
+   "variable": "itemized_taxable_income_deductions",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "itemized_taxable_income_deductions",
+   "target": 751096520902.8955,
+   "initial_estimate": 365707043902.47577,
+   "final_estimate": 714577548495.9878,
+   "relative_error": -0.04862087813029428,
+   "target_loss_weight_share": 0.0015910579577930314,
+   "channels": {
+    "asec": {
+     "initial": 20442498286.663715,
+     "final": 45508196050.2558,
+     "nonzero_households": 1348
+    },
+    "puf_clone": {
+     "initial": 343627423189.1104,
+     "final": 667202424044.5834,
+     "nonzero_households": 21462
+    },
+    "cg_tail_clone": {
+     "initial": 1637122426.6965294,
+     "final": 1866928401.1498413,
+     "nonzero_households": 9800
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_5.eitc_all_returns.total.adjusted_gross_income@2024": {
+   "variable": "adjusted_gross_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "adjusted_gross_income",
+   "target": 598279175320.393,
+   "initial_estimate": 322457541216.8742,
+   "final_estimate": 584106304863.3075,
+   "relative_error": -0.023689392915097765,
+   "target_loss_weight_share": 0.001420005635930279,
+   "channels": {
+    "asec": {
+     "initial": 150769222053.36746,
+     "final": 275065709206.9911,
+     "nonzero_households": 14841
+    },
+    "puf_clone": {
+     "initial": 171688319163.50522,
+     "final": 309040595656.31415,
+     "nonzero_households": 15292
+    },
+    "cg_tail_clone": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.limited_state_local_taxes_amount@2024": {
+   "variable": "salt_deduction",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "salt_deduction",
+   "target": 131608046105.74428,
+   "initial_estimate": 76203297285.95322,
+   "final_estimate": 129769662774.42722,
+   "relative_error": -0.013968624151140124,
+   "target_loss_weight_share": 0.0006660078462903588,
+   "channels": {
+    "asec": {
+     "initial": 1769138487.4952517,
+     "final": 4009037049.0959105,
+     "nonzero_households": 1181
+    },
+    "puf_clone": {
+     "initial": 74023677618.97412,
+     "final": 125440798536.89586,
+     "nonzero_households": 21372
+    },
+    "cg_tail_clone": {
+     "initial": 410481179.4701354,
+     "final": 319827188.4355953,
+     "nonzero_households": 9795
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.taxable_social_security_amount@2024": {
+   "variable": "taxable_social_security",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "tax_unit_taxable_social_security",
+   "target": 573040726871.6981,
+   "initial_estimate": 654840125915.31,
+   "final_estimate": 510919420204.8083,
+   "relative_error": -0.10840644260316,
+   "target_loss_weight_share": 0.0013897313974999739,
+   "channels": {
+    "asec": {
+     "initial": 198978102641.96835,
+     "final": 114526436558.9689,
+     "nonzero_households": 24583
+    },
+    "puf_clone": {
+     "initial": 455631251228.395,
+     "final": 396237776660.485,
+     "nonzero_households": 49458
+    },
+    "cg_tail_clone": {
+     "initial": 230772044.9507848,
+     "final": 155206985.35994643,
+     "nonzero_households": 1246
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.taxable_ira_distributions_amount@2024": {
+   "variable": "ira_distributions",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_ira_distributions",
+   "target": 486992822981.1038,
+   "initial_estimate": 420784086226.1921,
+   "final_estimate": 485590297446.9648,
+   "relative_error": -0.0028799716709448477,
+   "target_loss_weight_share": 0.0012811483020805186,
+   "channels": {
+    "asec": {
+     "initial": 55416018264.65785,
+     "final": 54606775789.17772,
+     "nonzero_households": 5403
+    },
+    "puf_clone": {
+     "initial": 365112328057.3942,
+     "final": 430715791691.79785,
+     "nonzero_households": 31904
+    },
+    "cg_tail_clone": {
+     "initial": 255739904.14056647,
+     "final": 267729965.99131572,
+     "nonzero_households": 1308
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.taxable_social_security_returns@2024": {
+   "variable": "taxable_social_security",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "tax_unit_taxable_social_security",
+   "target": 25716763.0,
+   "initial_estimate": 31902366.851939574,
+   "final_estimate": 24429516.683500584,
+   "relative_error": -0.05005475675532787,
+   "target_loss_weight_share": 0.001131888310446753,
+   "channels": {
+    "asec": {
+     "initial": 10517380.214908954,
+     "final": 6974965.529714458,
+     "nonzero_households": 24583
+    },
+    "puf_clone": {
+     "initial": 21378591.26578393,
+     "final": 17450524.74143183,
+     "nonzero_households": 49458
+    },
+    "cg_tail_clone": {
+     "initial": 6395.37124497323,
+     "final": 4026.4123540778464,
+     "nonzero_households": 1246
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.wages_salaries_returns@2024": {
+   "variable": "employment_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "employment_income",
+   "target": 128591050.0,
+   "initial_estimate": 125047670.62495571,
+   "final_estimate": 126760551.29614215,
+   "relative_error": -0.01423503971588889,
+   "target_loss_weight_share": 0.002531050409147052,
+   "channels": {
+    "asec": {
+     "initial": 62656455.486654736,
+     "final": 56787807.536660336,
+     "nonzero_households": 123667
+    },
+    "puf_clone": {
+     "initial": 62335707.913143635,
+     "final": 69933617.57391672,
+     "nonzero_households": 122317
+    },
+    "cg_tail_clone": {
+     "initial": 55507.22513175025,
+     "final": 39126.18556718455,
+     "nonzero_households": 14292
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.taxable_ira_distributions_returns@2024": {
+   "variable": "ira_distributions",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "taxable_ira_distributions",
+   "target": 16694154.0,
+   "initial_estimate": 15943105.618776565,
+   "final_estimate": 16398431.569684535,
+   "relative_error": -0.01771413096557422,
+   "target_loss_weight_share": 0.0009119638665688349,
+   "channels": {
+    "asec": {
+     "initial": 2389830.1821800875,
+     "final": 2242016.5452983174,
+     "nonzero_households": 5403
+    },
+    "puf_clone": {
+     "initial": 13547276.91055724,
+     "final": 14152441.9984192,
+     "nonzero_households": 31904
+    },
+    "cg_tail_clone": {
+     "initial": 5998.526039147006,
+     "final": 3973.025966953399,
+     "nonzero_households": 1308
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.estate_trust_net_loss_amount@2024": {
+   "variable": "estate_losses",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "estate_income",
+   "target": 5326071785.78782,
+   "initial_estimate": 2743494799.8362083,
+   "final_estimate": 5329284971.208147,
+   "relative_error": 0.0006032936748808578,
+   "target_loss_weight_share": 0.00013398051188769685,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 2732443109.8293486,
+     "final": 5311088666.314347,
+     "nonzero_households": 261
+    },
+    "cg_tail_clone": {
+     "initial": 11051690.006858913,
+     "final": 18196304.893799648,
+     "nonzero_households": 51
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount@2024": {
+   "variable": "non_sch_d_capital_gains",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "non_sch_d_capital_gains",
+   "target": 10155465319.076845,
+   "initial_estimate": 10155465320.794628,
+   "final_estimate": 10152521917.705027,
+   "relative_error": -0.00028983422022912334,
+   "target_loss_weight_share": 0.00018500694791922416,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 10155465320.794624,
+     "final": 10152521917.705027,
+     "nonzero_households": 10218
+    },
+    "cg_tail_clone": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.net_capital_gains_returns@2024": {
+   "variable": "capital_gains_gross",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "capital_gains",
+   "target": 12392020.0,
+   "initial_estimate": 20062702.54142004,
+   "final_estimate": 27886265.773297235,
+   "relative_error": 1.2503406041385694,
+   "target_loss_weight_share": 0.0007857175908552094,
+   "channels": {
+    "asec": {
+     "initial": 5864523.909404879,
+     "final": 6313128.57780289,
+     "nonzero_households": 13206
+    },
+    "puf_clone": {
+     "initial": 14137146.025077801,
+     "final": 21530866.824018285,
+     "nonzero_households": 32748
+    },
+    "cg_tail_clone": {
+     "initial": 61032.60692481995,
+     "final": 42270.371475704196,
+     "nonzero_households": 15228
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.taxable_ira_distributions_amount@2024": {
+   "variable": "ira_distributions",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_ira_distributions",
+   "target": 113319020490.3762,
+   "initial_estimate": 74126202446.62082,
+   "final_estimate": 113386065782.32648,
+   "relative_error": 0.0005916508249024755,
+   "target_loss_weight_share": 0.0006180015023576076,
+   "channels": {
+    "asec": {
+     "initial": 833928594.4620419,
+     "final": 1165283973.3278909,
+     "nonzero_households": 80
+    },
+    "puf_clone": {
+     "initial": 73088146592.57614,
+     "final": 111974966189.38013,
+     "nonzero_households": 3992
+    },
+    "cg_tail_clone": {
+     "initial": 204127259.58270076,
+     "final": 245815619.61831102,
+     "nonzero_households": 869
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.taxable_ira_distributions_amount@2024": {
+   "variable": "ira_distributions",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_ira_distributions",
+   "target": 476360339775.7405,
+   "initial_estimate": 420784086226.1921,
+   "final_estimate": 485590297446.9648,
+   "relative_error": 0.019375999428435955,
+   "target_loss_weight_share": 0.0012670855059142097,
+   "channels": {
+    "asec": {
+     "initial": 55416018264.65785,
+     "final": 54606775789.17772,
+     "nonzero_households": 5403
+    },
+    "puf_clone": {
+     "initial": 365112328057.3942,
+     "final": 430715791691.79785,
+     "nonzero_households": 31904
+    },
+    "cg_tail_clone": {
+     "initial": 255739904.14056647,
+     "final": 267729965.99131572,
+     "nonzero_households": 1308
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount@2024": {
+   "variable": "itemized_taxable_income_deductions",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "itemized_taxable_income_deductions",
+   "target": 728802287524.4347,
+   "initial_estimate": 365707043902.47577,
+   "final_estimate": 714577548495.9878,
+   "relative_error": -0.01951796704256363,
+   "target_loss_weight_share": 0.0015672669970120674,
+   "channels": {
+    "asec": {
+     "initial": 20442498286.663715,
+     "final": 45508196050.2558,
+     "nonzero_households": 1348
+    },
+    "puf_clone": {
+     "initial": 343627423189.1104,
+     "final": 667202424044.5834,
+     "nonzero_households": 21462
+    },
+    "cg_tail_clone": {
+     "initial": 1637122426.6965294,
+     "final": 1866928401.1498413,
+     "nonzero_households": 9800
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_1.all.adjusted_gross_income@2024": {
+   "variable": "adjusted_gross_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "adjusted_gross_income",
+   "target": 16619163965918.531,
+   "initial_estimate": 16202749628589.41,
+   "final_estimate": 16692908500634.531,
+   "relative_error": 0.004437319161615491,
+   "target_loss_weight_share": 0.007484153929484113,
+   "channels": {
+    "asec": {
+     "initial": 6911806391330.77,
+     "final": 5369887734765.459,
+     "nonzero_households": 149018
+    },
+    "puf_clone": {
+     "initial": 8751918244596.457,
+     "final": 10989330423177.604,
+     "nonzero_households": 168698
+    },
+    "cg_tail_clone": {
+     "initial": 539024992662.02356,
+     "final": 333690342691.2244,
+     "nonzero_households": 15227
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.taxable_pension_income_returns@2024": {
+   "variable": "taxable_pension_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "taxable_pension_income",
+   "target": 3756067.0,
+   "initial_estimate": 3042229.6562736332,
+   "final_estimate": 3757364.3416499323,
+   "relative_error": 0.00034539896384497965,
+   "target_loss_weight_share": 0.0004325756696629991,
+   "channels": {
+    "asec": {
+     "initial": 100403.86806215376,
+     "final": 140494.8291564398,
+     "nonzero_households": 224
+    },
+    "puf_clone": {
+     "initial": 2935713.6986192167,
+     "final": 3612224.1318394714,
+     "nonzero_households": 7035
+    },
+    "cg_tail_clone": {
+     "initial": 6112.089592178528,
+     "final": 4645.380654014354,
+     "nonzero_households": 1434
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.taxable_pension_income_amount@2024": {
+   "variable": "taxable_pension_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_pension_income",
+   "target": 1006766934453.9479,
+   "initial_estimate": 954870900177.9478,
+   "final_estimate": 1002419027763.81,
+   "relative_error": -0.004318682449077495,
+   "target_loss_weight_share": 0.001842055014550286,
+   "channels": {
+    "asec": {
+     "initial": 167798156633.29083,
+     "final": 132712460487.41286,
+     "nonzero_households": 22107
+    },
+    "puf_clone": {
+     "initial": 786726543048.7197,
+     "final": 869480110093.5535,
+     "nonzero_households": 53593
+    },
+    "cg_tail_clone": {
+     "initial": 346200495.94680965,
+     "final": 226457182.8505921,
+     "nonzero_households": 2221
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.home_mortgage_interest_returns@2024": {
+   "variable": "deductible_mortgage_interest",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "deductible_mortgage_interest_tax_unit",
+   "target": 11644348.0,
+   "initial_estimate": 7650592.215875473,
+   "final_estimate": 11769461.17979394,
+   "relative_error": 0.010744541454269561,
+   "target_loss_weight_share": 0.0007616457299161846,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 7612403.46939847,
+     "final": 11739807.71553403,
+     "nonzero_households": 18295
+    },
+    "cg_tail_clone": {
+     "initial": 38188.74647838513,
+     "final": 29653.464259974928,
+     "nonzero_households": 8788
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_returns@2024": {
+   "variable": "ordinary_dividend_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": null,
+   "target": 32693980.0,
+   "initial_estimate": 42614154.85789571,
+   "final_estimate": 32443822.662814267,
+   "relative_error": -0.007651480094675932,
+   "target_loss_weight_share": 0.0012762310889733253,
+   "channels": {
+    "asec": {
+     "initial": 15683802.625212457,
+     "final": 9577532.697407722,
+     "nonzero_households": 35458
+    },
+    "puf_clone": {
+     "initial": 26898945.96843961,
+     "final": 22843701.67500043,
+     "nonzero_households": 60642
+    },
+    "cg_tail_clone": {
+     "initial": 31406.264254829366,
+     "final": 22588.290406196735,
+     "nonzero_households": 7011
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024": {
+   "variable": "income_tax",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "income_tax",
+   "target": 2358715520045.6733,
+   "initial_estimate": 2158653264423.1636,
+   "final_estimate": 2403624149860.7275,
+   "relative_error": 0.01903944304999723,
+   "target_loss_weight_share": 0.0028195247241924017,
+   "channels": {
+    "asec": {
+     "initial": 878057021292.8326,
+     "final": 690943712446.1697,
+     "nonzero_households": 116237
+    },
+    "puf_clone": {
+     "initial": 1148564011680.103,
+     "final": 1630986773144.431,
+     "nonzero_households": 139949
+    },
+    "cg_tail_clone": {
+     "initial": 132032231450.16348,
+     "final": 81693664270.11873,
+     "nonzero_households": 15212
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024": {
+   "variable": "employment_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.05578784246075",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.wages_and_salaries.projected_amount",
+   "base_variable": "employment_income",
+   "target": 10773360188644.922,
+   "initial_estimate": 10711201348861.768,
+   "final_estimate": 10734933149454.555,
+   "relative_error": -0.0035668573701702773,
+   "target_loss_weight_share": 0.006025786150314577,
+   "channels": {
+    "asec": {
+     "initial": 5780987772440.752,
+     "final": 4546201680812.669,
+     "nonzero_households": 123667
+    },
+    "puf_clone": {
+     "initial": 4915719612888.267,
+     "final": 6177684558621.323,
+     "nonzero_households": 122317
+    },
+    "cg_tail_clone": {
+     "initial": 14493963532.879894,
+     "final": 11046910020.396801,
+     "nonzero_households": 14292
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.real_estate_taxes_claims@2024": {
+   "variable": "real_estate_taxes",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "real_estate_taxes",
+   "target": 12905140.0,
+   "initial_estimate": 8367013.748248025,
+   "final_estimate": 12907121.778829494,
+   "relative_error": 0.00015356507790651564,
+   "target_loss_weight_share": 0.0008018198133419082,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 8326696.192568889,
+     "final": 12875854.324430972,
+     "nonzero_households": 19966
+    },
+    "cg_tail_clone": {
+     "initial": 40317.555680559504,
+     "final": 31267.4543985817,
+     "nonzero_households": 9249
+    }
+   }
+  },
+  "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.taxable_interest_returns@2024": {
+   "variable": "taxable_interest_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "taxable_interest_income",
+   "target": 54167410.0,
+   "initial_estimate": 52140866.79485187,
+   "final_estimate": 53884166.89268229,
+   "relative_error": -0.005229031761306447,
+   "target_loss_weight_share": 0.0016427234573741477,
+   "channels": {
+    "asec": {
+     "initial": 26070144.743468497,
+     "final": 24896046.515289642,
+     "nonzero_households": 60223
+    },
+    "puf_clone": {
+     "initial": 26048056.198708706,
+     "final": 28971993.56895198,
+     "nonzero_households": 58674
+    },
+    "cg_tail_clone": {
+     "initial": 22665.852682938,
+     "final": 16126.808440497667,
+     "nonzero_households": 4825
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_amount@2024": {
+   "variable": "employment_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.10621361783409",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_4.all.wages_salaries_amount+cbo.revenue_projection.ty2024.income_by_source.wages_and_salaries.projected_amount",
+   "base_variable": "employment_income",
+   "target": 10740065415423.898,
+   "initial_estimate": 10711201348861.768,
+   "final_estimate": 10734933149454.555,
+   "relative_error": -0.0004778617048247453,
+   "target_loss_weight_share": 0.006016467681980524,
+   "channels": {
+    "asec": {
+     "initial": 5780987772440.752,
+     "final": 4546201680812.669,
+     "nonzero_households": 123667
+    },
+    "puf_clone": {
+     "initial": 4915719612888.267,
+     "final": 6177684558621.323,
+     "nonzero_households": 122317
+    },
+    "cg_tail_clone": {
+     "initial": 14493963532.879894,
+     "final": 11046910020.396801,
+     "nonzero_households": 14292
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024": {
+   "variable": "medical_expense_deduction",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "medical_expense_deduction",
+   "target": 89891939590.30547,
+   "initial_estimate": 49507575103.05825,
+   "final_estimate": 89878104734.87181,
+   "relative_error": -0.00015390540572056836,
+   "target_loss_weight_share": 0.0005504254428891742,
+   "channels": {
+    "asec": {
+     "initial": 18673359792.20263,
+     "final": 41499158889.34958,
+     "nonzero_households": 1348
+    },
+    "puf_clone": {
+     "initial": 30834190740.69426,
+     "final": 48378849720.7954,
+     "nonzero_households": 6422
+    },
+    "cg_tail_clone": {
+     "initial": 24570.161229724843,
+     "final": 96124.72711063449,
+     "nonzero_households": 3
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_returns@2024": {
+   "variable": "tax_exempt_interest_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "tax_exempt_interest_income",
+   "target": 6837120.0,
+   "initial_estimate": 6239203.637571466,
+   "final_estimate": 6807079.39529312,
+   "relative_error": -0.004393751273471828,
+   "target_loss_weight_share": 0.0005836224974488465,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 6229879.25321354,
+     "final": 6799435.253009539,
+     "nonzero_households": 14582
+    },
+    "cg_tail_clone": {
+     "initial": 9324.384358212545,
+     "final": 7644.142283571748,
+     "nonzero_households": 1898
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_amount@2024": {
+   "variable": "qualified_dividends",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "qualified_dividend_income",
+   "target": 346585456967.9997,
+   "initial_estimate": 230460335951.138,
+   "final_estimate": 337493365998.8962,
+   "relative_error": -0.02623333087499684,
+   "target_loss_weight_share": 0.0010807949146958082,
+   "channels": {
+    "asec": {
+     "initial": 48518629548.695724,
+     "final": 33680749494.682526,
+     "nonzero_households": 35458
+    },
+    "puf_clone": {
+     "initial": 181269347740.40292,
+     "final": 302953384353.5482,
+     "nonzero_households": 57178
+    },
+    "cg_tail_clone": {
+     "initial": 672358662.0369053,
+     "final": 859232150.6656492,
+     "nonzero_households": 6735
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.taxable_ira_distributions_returns@2024": {
+   "variable": "ira_distributions",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "taxable_ira_distributions",
+   "target": 2563808.0,
+   "initial_estimate": 1706086.2168153604,
+   "final_estimate": 2564388.6193522927,
+   "relative_error": 0.00022646756398791765,
+   "target_loss_weight_share": 0.00035738652415639863,
+   "channels": {
+    "asec": {
+     "initial": 33185.56439742187,
+     "final": 59819.39373259089,
+     "nonzero_households": 80
+    },
+    "puf_clone": {
+     "initial": 1668671.34060085,
+     "final": 2501371.428342356,
+     "nonzero_households": 3992
+    },
+    "cg_tail_clone": {
+     "initial": 4229.311817121458,
+     "final": 3197.797277349119,
+     "nonzero_households": 869
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.estate_trust_net_income_returns@2024": {
+   "variable": "estate_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "estate_income",
+   "target": 648583.0,
+   "initial_estimate": 854699.2161497726,
+   "final_estimate": 649354.4923289281,
+   "relative_error": 0.0011895043948547603,
+   "target_loss_weight_share": 0.00017975385130968404,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 853695.7404206132,
+     "final": 648409.761552926,
+     "nonzero_households": 2036
+    },
+    "cg_tail_clone": {
+     "initial": 1003.4757291558324,
+     "final": 944.730776002069,
+     "nonzero_households": 210
+    }
+   }
+  },
+  "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.ordinary_dividends_amount@2024": {
+   "variable": "ordinary_dividend_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": null,
+   "target": 544750257120.6067,
+   "initial_estimate": 359055612349.0944,
+   "final_estimate": 456955014452.3419,
+   "relative_error": -0.1611660417240098,
+   "target_loss_weight_share": 0.0013549923611592951,
+   "channels": {
+    "asec": {
+     "initial": 108300512341.3324,
+     "final": 75180244416.07771,
+     "nonzero_households": 35458
+    },
+    "puf_clone": {
+     "initial": 249855202321.5869,
+     "final": 380627060268.0167,
+     "nonzero_households": 60642
+    },
+    "cg_tail_clone": {
+     "initial": 899897686.1683054,
+     "final": 1147709768.2498655,
+     "nonzero_households": 7011
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns@2024": {
+   "variable": "taxable_social_security",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "tax_unit_taxable_social_security",
+   "target": 24475090.0,
+   "initial_estimate": 31902366.851939574,
+   "final_estimate": 24429516.683500584,
+   "relative_error": -0.0018620285563573325,
+   "target_loss_weight_share": 0.0011042249917919363,
+   "channels": {
+    "asec": {
+     "initial": 10517380.214908954,
+     "final": 6974965.529714458,
+     "nonzero_households": 24583
+    },
+    "puf_clone": {
+     "initial": 21378591.26578393,
+     "final": 17450524.74143183,
+     "nonzero_households": 49458
+    },
+    "cg_tail_clone": {
+     "initial": 6395.37124497323,
+     "final": 4026.4123540778464,
+     "nonzero_households": 1246
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.taxable_interest_returns@2024": {
+   "variable": "taxable_interest_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "taxable_interest_income",
+   "target": 9541475.0,
+   "initial_estimate": 3744402.966647097,
+   "final_estimate": 7269177.206504899,
+   "relative_error": -0.23814953070621692,
+   "target_loss_weight_share": 0.0006894506444408821,
+   "channels": {
+    "asec": {
+     "initial": 258541.8813603399,
+     "final": 530225.8937789332,
+     "nonzero_households": 588
+    },
+    "puf_clone": {
+     "initial": 3469982.754984407,
+     "final": 6725729.454115801,
+     "nonzero_households": 8456
+    },
+    "cg_tail_clone": {
+     "initial": 15878.330302143739,
+     "final": 13221.8586101319,
+     "nonzero_households": 3343
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_amount@2024": {
+   "variable": "business_net_profits",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "self_employment_income",
+   "target": 472289642161.9491,
+   "initial_estimate": 626827396858.1854,
+   "final_estimate": 488894776128.99677,
+   "relative_error": 0.03515879342819408,
+   "target_loss_weight_share": 0.0012616600034148643,
+   "channels": {
+    "asec": {
+     "initial": 274920281791.011,
+     "final": 179937155325.75772,
+     "nonzero_households": 14315
+    },
+    "puf_clone": {
+     "initial": 350621506156.18524,
+     "final": 308229649198.4358,
+     "nonzero_households": 18253
+    },
+    "cg_tail_clone": {
+     "initial": 1285608910.9918242,
+     "final": 727971604.801209,
+     "nonzero_households": 2133
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount@2024": {
+   "variable": "salt_deduction",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "salt_deduction",
+   "target": 137379203044.0616,
+   "initial_estimate": 76203297285.95322,
+   "final_estimate": 129769662774.42722,
+   "relative_error": -0.05539077313757438,
+   "target_loss_weight_share": 0.0006804537647301464,
+   "channels": {
+    "asec": {
+     "initial": 1769138487.4952517,
+     "final": 4009037049.0959105,
+     "nonzero_households": 1181
+    },
+    "puf_clone": {
+     "initial": 74023677618.97412,
+     "final": 125440798536.89586,
+     "nonzero_households": 21372
+    },
+    "cg_tail_clone": {
+     "initial": 410481179.4701354,
+     "final": 319827188.4355953,
+     "nonzero_households": 9795
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.estate_trust_net_loss_returns@2024": {
+   "variable": "estate_losses",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "estate_income",
+   "target": 36592.0,
+   "initial_estimate": 109957.9355169199,
+   "final_estimate": 152538.44530441938,
+   "relative_error": 3.1686282603962446,
+   "target_loss_weight_share": 4.269612852745088e-05,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 109685.3193735595,
+     "final": 152072.47880863876,
+     "nonzero_households": 261
+    },
+    "cg_tail_clone": {
+     "initial": 272.61614336045113,
+     "final": 465.9664957805394,
+     "nonzero_households": 51
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.taxable_pension_income_returns@2024": {
+   "variable": "taxable_pension_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "taxable_pension_income",
+   "target": 29951210.0,
+   "initial_estimate": 32789207.86177393,
+   "final_estimate": 29833372.760111403,
+   "relative_error": -0.003934306490074935,
+   "target_loss_weight_share": 0.0012215257026816828,
+   "channels": {
+    "asec": {
+     "initial": 9550170.442849204,
+     "final": 7504087.08938355,
+     "nonzero_households": 22107
+    },
+    "puf_clone": {
+     "initial": 23229482.97147306,
+     "final": 22323152.201916553,
+     "nonzero_households": 53593
+    },
+    "cg_tail_clone": {
+     "initial": 9554.447449588366,
+     "final": 6133.46881122037,
+     "nonzero_households": 2221
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_4.all.estate_trust_net_income_amount@2024": {
+   "variable": "estate_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "estate_income",
+   "target": 52068877487.483215,
+   "initial_estimate": 75369409549.01874,
+   "final_estimate": 52104395576.86679,
+   "relative_error": 0.000682136644718596,
+   "target_loss_weight_share": 0.0004189162743736589,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 75007560543.1375,
+     "final": 51816682711.558395,
+     "nonzero_households": 2036
+    },
+    "cg_tail_clone": {
+     "initial": 361849005.8813746,
+     "final": 287712865.3083385,
+     "nonzero_households": 210
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.taxable_social_security_returns@2024": {
+   "variable": "taxable_social_security",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "tax_unit_taxable_social_security",
+   "target": 3369892.0,
+   "initial_estimate": 2438784.979519852,
+   "final_estimate": 3190035.9125299305,
+   "relative_error": -0.05337146931417076,
+   "target_loss_weight_share": 0.0004097353315129418,
+   "channels": {
+    "asec": {
+     "initial": 112800.88541876663,
+     "final": 197621.2966111779,
+     "nonzero_households": 253
+    },
+    "puf_clone": {
+     "initial": 2322523.6417302787,
+     "final": 2989584.3260531463,
+     "nonzero_households": 5502
+    },
+    "cg_tail_clone": {
+     "initial": 3460.4523707696126,
+     "final": 2830.2898656134685,
+     "nonzero_households": 739
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_amount@2024": {
+   "variable": "charitable_deduction",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "charitable_deduction",
+   "target": 230462208899.5986,
+   "initial_estimate": 111367197506.80789,
+   "final_estimate": 262141865584.8014,
+   "relative_error": 0.13746139480509842,
+   "target_loss_weight_share": 0.0008813288462154165,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 110795182835.78027,
+     "final": 261231773985.63873,
+     "nonzero_households": 18750
+    },
+    "cg_tail_clone": {
+     "initial": 572014671.0277752,
+     "final": 910091599.1624689,
+     "nonzero_households": 8881
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.interest_paid_deduction_returns@2024": {
+   "variable": "interest_deduction",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "interest_deduction",
+   "target": 11944817.0,
+   "initial_estimate": 7650592.215875473,
+   "final_estimate": 11769461.17979394,
+   "relative_error": -0.014680494494478998,
+   "target_loss_weight_share": 0.0007714098389748951,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 7612403.46939847,
+     "final": 11739807.71553403,
+     "nonzero_households": 18295
+    },
+    "cg_tail_clone": {
+     "initial": 38188.74647838513,
+     "final": 29653.464259974928,
+     "nonzero_households": 8788
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.home_mortgage_interest_amount@2024": {
+   "variable": "deductible_mortgage_interest",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "deductible_mortgage_interest_tax_unit",
+   "target": 186310104604.25217,
+   "initial_estimate": 112122413291.70114,
+   "final_estimate": 192735362422.3906,
+   "relative_error": 0.03448689931115944,
+   "target_loss_weight_share": 0.0007924216449267146,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 111565807252.542,
+     "final": 192269460738.07224,
+     "nonzero_households": 18295
+    },
+    "cg_tail_clone": {
+     "initial": 556606039.1580117,
+     "final": 465901684.3179207,
+     "nonzero_households": 8788
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.ordinary_dividends_returns@2024": {
+   "variable": "ordinary_dividend_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": null,
+   "target": 6513096.0,
+   "initial_estimate": 4140754.555868994,
+   "final_estimate": 6514676.39344287,
+   "relative_error": 0.00024264857187274958,
+   "target_loss_weight_share": 0.0005696251596032096,
+   "channels": {
+    "asec": {
+     "initial": 172469.96552743023,
+     "final": 258612.91837796237,
+     "nonzero_households": 388
+    },
+    "puf_clone": {
+     "initial": 3944543.738265727,
+     "final": 6236983.223749483,
+     "nonzero_households": 9484
+    },
+    "cg_tail_clone": {
+     "initial": 23740.8520755444,
+     "final": 19080.25131542275,
+     "nonzero_households": 4973
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.taxable_income_returns@2024": {
+   "variable": "taxable_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "taxable_income",
+   "target": 128608350.0,
+   "initial_estimate": 142186455.25703767,
+   "final_estimate": 128167298.19910593,
+   "relative_error": -0.0034294180812837324,
+   "target_loss_weight_share": 0.0025312206608848298,
+   "channels": {
+    "asec": {
+     "initial": 62876318.787747994,
+     "final": 49188134.01464544,
+     "nonzero_households": 127179
+    },
+    "puf_clone": {
+     "initial": 79249136.42123796,
+     "final": 78936935.46494767,
+     "nonzero_households": 153012
+    },
+    "cg_tail_clone": {
+     "initial": 61000.04808493664,
+     "final": 42228.719514936965,
+     "nonzero_households": 15220
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.qualified_dividends_returns@2024": {
+   "variable": "qualified_dividends",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "qualified_dividend_income",
+   "target": 30610150.0,
+   "initial_estimate": 40961312.39741427,
+   "final_estimate": 30451725.161277298,
+   "relative_error": -0.0051755655794794245,
+   "target_loss_weight_share": 0.0012348896549144296,
+   "channels": {
+    "asec": {
+     "initial": 15683802.625212457,
+     "final": 9577532.697407722,
+     "nonzero_households": 35458
+    },
+    "puf_clone": {
+     "initial": 25247209.075456403,
+     "final": 20852399.002115935,
+     "nonzero_households": 57178
+    },
+    "cg_tail_clone": {
+     "initial": 30300.696756067373,
+     "final": 21793.46175368805,
+     "nonzero_households": 6735
+    }
+   }
+  },
+  "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.taxable_income_amount@2024": {
+   "variable": "taxable_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_income",
+   "target": 12956718165651.217,
+   "initial_estimate": 12557707946524.23,
+   "final_estimate": 12955303767833.732,
+   "relative_error": -0.00010916327725905165,
+   "target_loss_weight_share": 0.006608237314755583,
+   "channels": {
+    "asec": {
+     "initial": 5341935934978.3125,
+     "final": 4059160010309.6963,
+     "nonzero_households": 127179
+    },
+    "puf_clone": {
+     "initial": 6679149996308.203,
+     "final": 8564877692927.693,
+     "nonzero_households": 153012
+    },
+    "cg_tail_clone": {
+     "initial": 536622015237.6711,
+     "final": 331266064596.36597,
+     "nonzero_households": 15220
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.charitable_returns@2024": {
+   "variable": "charitable_deduction",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "charitable_deduction",
+   "target": 11747949.0,
+   "initial_estimate": 7812982.246188312,
+   "final_estimate": 12385822.353253571,
+   "relative_error": 0.054296571533769114,
+   "target_loss_weight_share": 0.0007650264483624944,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 7774040.376272293,
+     "final": 12355173.90125422,
+     "nonzero_households": 18750
+    },
+    "cg_tail_clone": {
+     "initial": 38941.86991737966,
+     "final": 30648.451999433346,
+     "nonzero_households": 8881
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.adjusted_gross_income@2024": {
+   "variable": "adjusted_gross_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "adjusted_gross_income",
+   "target": 5076561078303.816,
+   "initial_estimate": 2834072940107.27,
+   "final_estimate": 5077113969360.413,
+   "relative_error": 0.000108910549497695,
+   "target_loss_weight_share": 0.00413640384138756,
+   "channels": {
+    "asec": {
+     "initial": 45885361815.91042,
+     "final": 104934871302.03998,
+     "nonzero_households": 1221
+    },
+    "puf_clone": {
+     "initial": 2445813783067.586,
+     "final": 4724170253903.186,
+     "nonzero_households": 21454
+    },
+    "cg_tail_clone": {
+     "initial": 342373795223.77466,
+     "final": 248008844155.14294,
+     "nonzero_households": 9800
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.real_estate_taxes_claims@2024": {
+   "variable": "real_estate_taxes",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "real_estate_taxes",
+   "target": 12812159.0,
+   "initial_estimate": 8367013.748248025,
+   "final_estimate": 12907121.778829494,
+   "relative_error": 0.007411926345083174,
+   "target_loss_weight_share": 0.0007989260522643167,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 8326696.192568889,
+     "final": 12875854.324430972,
+     "nonzero_households": 19966
+    },
+    "cg_tail_clone": {
+     "initial": 40317.555680559504,
+     "final": 31267.4543985817,
+     "nonzero_households": 9249
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.ordinary_dividends_amount@2024": {
+   "variable": "ordinary_dividend_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": null,
+   "target": 457395367290.9117,
+   "initial_estimate": 359055612349.0944,
+   "final_estimate": 456955014452.3419,
+   "relative_error": -0.0009627400495503726,
+   "target_loss_weight_share": 0.0012416065805332453,
+   "channels": {
+    "asec": {
+     "initial": 108300512341.3324,
+     "final": 75180244416.07771,
+     "nonzero_households": 35458
+    },
+    "puf_clone": {
+     "initial": 249855202321.5869,
+     "final": 380627060268.0167,
+     "nonzero_households": 60642
+    },
+    "cg_tail_clone": {
+     "initial": 899897686.1683054,
+     "final": 1147709768.2498655,
+     "nonzero_households": 7011
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.interest_paid_deduction_amount@2024": {
+   "variable": "interest_deduction",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "interest_deduction",
+   "target": 226332586182.10248,
+   "initial_estimate": 128628974135.69818,
+   "final_estimate": 232787915232.61774,
+   "relative_error": 0.02852143016349151,
+   "target_loss_weight_share": 0.0008733969437186239,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 127974372128.34659,
+     "final": 232151001738.2193,
+     "nonzero_households": 18295
+    },
+    "cg_tail_clone": {
+     "initial": 654602007.3516158,
+     "final": 636913494.4007183,
+     "nonzero_households": 8788
+    }
+   }
+  },
+  "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.taxable_income_returns@2024": {
+   "variable": "taxable_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "taxable_income",
+   "target": 127394785.0,
+   "initial_estimate": 142186455.25703767,
+   "final_estimate": 128167298.19910593,
+   "relative_error": 0.006063931102877824,
+   "target_loss_weight_share": 0.002519249891992611,
+   "channels": {
+    "asec": {
+     "initial": 62876318.787747994,
+     "final": 49188134.01464544,
+     "nonzero_households": 127179
+    },
+    "puf_clone": {
+     "initial": 79249136.42123796,
+     "final": 78936935.46494767,
+     "nonzero_households": 153012
+    },
+    "cg_tail_clone": {
+     "initial": 61000.04808493664,
+     "final": 42228.719514936965,
+     "nonzero_households": 15220
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.taxable_income_amount@2024": {
+   "variable": "taxable_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_income",
+   "target": 13084971599037.432,
+   "initial_estimate": 12557707946524.23,
+   "final_estimate": 12955303767833.732,
+   "relative_error": -0.00990967616721751,
+   "target_loss_weight_share": 0.0066408629415173025,
+   "channels": {
+    "asec": {
+     "initial": 5341935934978.3125,
+     "final": 4059160010309.6963,
+     "nonzero_households": 127179
+    },
+    "puf_clone": {
+     "initial": 6679149996308.203,
+     "final": 8564877692927.693,
+     "nonzero_households": 153012
+    },
+    "cg_tail_clone": {
+     "initial": 536622015237.6711,
+     "final": 331266064596.36597,
+     "nonzero_households": 15220
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_2.all_returns.all.adjusted_gross_income@2024": {
+   "variable": "adjusted_gross_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "adjusted_gross_income",
+   "target": 16619163965918.531,
+   "initial_estimate": 16202749628589.41,
+   "final_estimate": 16692908500634.531,
+   "relative_error": 0.004437319161615491,
+   "target_loss_weight_share": 0.007484153929484113,
+   "channels": {
+    "asec": {
+     "initial": 6911806391330.77,
+     "final": 5369887734765.459,
+     "nonzero_households": 149018
+    },
+    "puf_clone": {
+     "initial": 8751918244596.457,
+     "final": 10989330423177.604,
+     "nonzero_households": 168698
+    },
+    "cg_tail_clone": {
+     "initial": 539024992662.02356,
+     "final": 333690342691.2244,
+     "nonzero_households": 15227
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.taxable_interest_amount@2024": {
+   "variable": "taxable_interest_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_interest_income",
+   "target": 179972765558.77216,
+   "initial_estimate": 30798897801.85521,
+   "final_estimate": 86470196067.98479,
+   "relative_error": -0.5195373266643115,
+   "target_loss_weight_share": 0.0007788279343933037,
+   "channels": {
+    "asec": {
+     "initial": 2363745308.8519382,
+     "final": 4317741972.026796,
+     "nonzero_households": 588
+    },
+    "puf_clone": {
+     "initial": 28236508040.100647,
+     "final": 81628979837.16287,
+     "nonzero_households": 8456
+    },
+    "cg_tail_clone": {
+     "initial": 198644452.90251094,
+     "final": 523474258.7949872,
+     "nonzero_households": 3343
+    }
+   }
+  },
+  "irs_soi.ty2023.table_1_2.all_returns.all.taxable_income_amount@2024": {
+   "variable": "taxable_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_income",
+   "target": 12986163651852.494,
+   "initial_estimate": 12557707946524.23,
+   "final_estimate": 12955303767833.732,
+   "relative_error": -0.002376366480978354,
+   "target_loss_weight_share": 0.006615742005806405,
+   "channels": {
+    "asec": {
+     "initial": 5341935934978.3125,
+     "final": 4059160010309.6963,
+     "nonzero_households": 127179
+    },
+    "puf_clone": {
+     "initial": 6679149996308.203,
+     "final": 8564877692927.693,
+     "nonzero_households": 153012
+    },
+    "cg_tail_clone": {
+     "initial": 536622015237.6711,
+     "final": 331266064596.36597,
+     "nonzero_households": 15220
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.taxable_ira_distributions_returns@2024": {
+   "variable": "ira_distributions",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "taxable_ira_distributions",
+   "target": 16429980.0,
+   "initial_estimate": 15943105.618776565,
+   "final_estimate": 16398431.569684535,
+   "relative_error": -0.001920174602492805,
+   "target_loss_weight_share": 0.000904719478871426,
+   "channels": {
+    "asec": {
+     "initial": 2389830.1821800875,
+     "final": 2242016.5452983174,
+     "nonzero_households": 5403
+    },
+    "puf_clone": {
+     "initial": 13547276.91055724,
+     "final": 14152441.9984192,
+     "nonzero_households": 31904
+    },
+    "cg_tail_clone": {
+     "initial": 5998.526039147006,
+     "final": 3973.025966953399,
+     "nonzero_households": 1308
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.tax_exempt_interest_amount@2024": {
+   "variable": "tax_exempt_interest_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "tax_exempt_interest_income",
+   "target": 61719678255.34045,
+   "initial_estimate": 54460727259.39997,
+   "final_estimate": 61952320744.374306,
+   "relative_error": 0.0037693405994664157,
+   "target_loss_weight_share": 0.00045608937135319317,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 54313132515.53647,
+     "final": 61794680403.04572,
+     "nonzero_households": 14582
+    },
+    "cg_tail_clone": {
+     "initial": 147594743.86382693,
+     "final": 157640341.32856813,
+     "nonzero_households": 1898
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.total_itemized_deductions_amount@2024": {
+   "variable": "itemized_taxable_income_deductions",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "itemized_taxable_income_deductions",
+   "target": 751096520902.8955,
+   "initial_estimate": 365707043902.47577,
+   "final_estimate": 714577548495.9878,
+   "relative_error": -0.04862087813029428,
+   "target_loss_weight_share": 0.0015910579577930314,
+   "channels": {
+    "asec": {
+     "initial": 20442498286.663715,
+     "final": 45508196050.2558,
+     "nonzero_households": 1348
+    },
+    "puf_clone": {
+     "initial": 343627423189.1104,
+     "final": 667202424044.5834,
+     "nonzero_households": 21462
+    },
+    "cg_tail_clone": {
+     "initial": 1637122426.6965294,
+     "final": 1866928401.1498413,
+     "nonzero_households": 9800
+    }
+   }
+  },
+  "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.itemized_deductions_amount@2024": {
+   "variable": "itemized_taxable_income_deductions",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "itemized_taxable_income_deductions",
+   "target": 750317793383.3157,
+   "initial_estimate": 365707043902.47577,
+   "final_estimate": 714577548495.9878,
+   "relative_error": -0.04763347637828072,
+   "target_loss_weight_share": 0.0015902329493592416,
+   "channels": {
+    "asec": {
+     "initial": 20442498286.663715,
+     "final": 45508196050.2558,
+     "nonzero_households": 1348
+    },
+    "puf_clone": {
+     "initial": 343627423189.1104,
+     "final": 667202424044.5834,
+     "nonzero_households": 21462
+    },
+    "cg_tail_clone": {
+     "initial": 1637122426.6965294,
+     "final": 1866928401.1498413,
+     "nonzero_households": 9800
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.ordinary_dividends_amount@2024": {
+   "variable": "ordinary_dividend_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": null,
+   "target": 293406693640.7274,
+   "initial_estimate": 106283267219.44476,
+   "final_estimate": 243888413439.5466,
+   "relative_error": -0.16877011082035945,
+   "target_loss_weight_share": 0.000994427517831467,
+   "channels": {
+    "asec": {
+     "initial": 1447222999.0365508,
+     "final": 2825947324.573326,
+     "nonzero_households": 388
+    },
+    "puf_clone": {
+     "initial": 104093721279.62863,
+     "final": 239998115268.8869,
+     "nonzero_households": 9484
+    },
+    "cg_tail_clone": {
+     "initial": 742322940.7782996,
+     "final": 1064350846.0852757,
+     "nonzero_households": 4973
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_returns@2024": {
+   "variable": "medical_expense_deduction",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "medical_expense_deduction",
+   "target": 3895410.0,
+   "initial_estimate": 3202507.959688907,
+   "final_estimate": 3895767.1671649646,
+   "relative_error": 9.168923552709507e-05,
+   "target_loss_weight_share": 0.0004405264718784845,
+   "channels": {
+    "asec": {
+     "initial": 579846.1521242654,
+     "final": 1034209.7127146915,
+     "nonzero_households": 1348
+    },
+    "puf_clone": {
+     "initial": 2622659.033287798,
+     "final": 2861550.4282709546,
+     "nonzero_households": 6422
+    },
+    "cg_tail_clone": {
+     "initial": 2.774276851698854,
+     "final": 7.026179304153276,
+     "nonzero_households": 3
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_amount@2024": {
+   "variable": "rent_and_royalty_net_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": null,
+   "target": 95949567370.41321,
+   "initial_estimate": 219274797973.19006,
+   "final_estimate": 253318942421.4058,
+   "relative_error": 1.6401259470349487,
+   "target_loss_weight_share": 0.0005686691063946525,
+   "channels": {
+    "asec": {
+     "initial": 120952748720.83907,
+     "final": 137921408434.02057,
+     "nonzero_households": 12947
+    },
+    "puf_clone": {
+     "initial": 98184755490.59116,
+     "final": 115280733913.14993,
+     "nonzero_households": 22508
+    },
+    "cg_tail_clone": {
+     "initial": 137293761.75886938,
+     "final": 116800074.23477319,
+     "nonzero_households": 2409
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_amount@2024": {
+   "variable": "partnership_and_s_corp_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "tax_unit_partnership_s_corp_income",
+   "target": 1157602275777.119,
+   "initial_estimate": 410755324739.47076,
+   "final_estimate": 1128517678095.899,
+   "relative_error": -0.025124862217202334,
+   "target_loss_weight_share": 0.001975230626631739,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 408304826063.964,
+     "final": 1125214511621.7573,
+     "nonzero_households": 8242
+    },
+    "cg_tail_clone": {
+     "initial": 2450498675.507044,
+     "final": 3303166474.1513186,
+     "nonzero_households": 1575
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.limited_state_local_taxes_returns@2024": {
+   "variable": "salt_deduction",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "salt_deduction",
+   "target": 14928283.0,
+   "initial_estimate": 9527442.590178039,
+   "final_estimate": 14980454.815415658,
+   "relative_error": 0.0034948302772434083,
+   "target_loss_weight_share": 0.0008623833306677868,
+   "channels": {
+    "asec": {
+     "initial": 509344.01988203055,
+     "final": 904807.7337011616,
+     "nonzero_households": 1181
+    },
+    "puf_clone": {
+     "initial": 8975343.919217572,
+     "final": 14042108.972793255,
+     "nonzero_households": 21372
+    },
+    "cg_tail_clone": {
+     "initial": 42754.65107846887,
+     "final": 33538.1089212737,
+     "nonzero_households": 9795
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.rental_royalty_income_returns@2024": {
+   "variable": "rent_and_royalty_net_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": null,
+   "target": 9398010.0,
+   "initial_estimate": 10734407.233779091,
+   "final_estimate": 9321528.97427554,
+   "relative_error": -0.00813800216476248,
+   "target_loss_weight_share": 0.0006842477451384821,
+   "channels": {
+    "asec": {
+     "initial": 4940930.364874499,
+     "final": 3320971.5736934664,
+     "nonzero_households": 12308
+    },
+    "puf_clone": {
+     "initial": 5786978.135400023,
+     "final": 5995554.3933052495,
+     "nonzero_households": 14018
+    },
+    "cg_tail_clone": {
+     "initial": 6498.733504499094,
+     "final": 5003.007276822911,
+     "nonzero_households": 1440
+    }
+   }
+  },
+  "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.adjusted_gross_income@2024": {
+   "variable": "adjusted_gross_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "adjusted_gross_income",
+   "target": 16522240985619.51,
+   "initial_estimate": 16202749628589.41,
+   "final_estimate": 16692908500634.531,
+   "relative_error": 0.010329562143753118,
+   "target_loss_weight_share": 0.007462298220787241,
+   "channels": {
+    "asec": {
+     "initial": 6911806391330.77,
+     "final": 5369887734765.459,
+     "nonzero_households": 149018
+    },
+    "puf_clone": {
+     "initial": 8751918244596.457,
+     "final": 10989330423177.604,
+     "nonzero_households": 168698
+    },
+    "cg_tail_clone": {
+     "initial": 539024992662.02356,
+     "final": 333690342691.2244,
+     "nonzero_households": 15227
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.wages_salaries_returns@2024": {
+   "variable": "employment_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "employment_income",
+   "target": 127705530.0,
+   "initial_estimate": 125047670.62495571,
+   "final_estimate": 126760551.29614215,
+   "relative_error": -0.007399669410227216,
+   "target_loss_weight_share": 0.002522320533797039,
+   "channels": {
+    "asec": {
+     "initial": 62656455.486654736,
+     "final": 56787807.536660336,
+     "nonzero_households": 123667
+    },
+    "puf_clone": {
+     "initial": 62335707.913143635,
+     "final": 69933617.57391672,
+     "nonzero_households": 122317
+    },
+    "cg_tail_clone": {
+     "initial": 55507.22513175025,
+     "final": 39126.18556718455,
+     "nonzero_households": 14292
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.taxable_pension_income_amount@2024": {
+   "variable": "taxable_pension_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_pension_income",
+   "target": 181788315290.64206,
+   "initial_estimate": 160934393131.07812,
+   "final_estimate": 181835490376.40625,
+   "relative_error": 0.0002595055996243072,
+   "target_loss_weight_share": 0.0007827464512810696,
+   "channels": {
+    "asec": {
+     "initial": 2115550077.5965958,
+     "final": 2973175221.283367,
+     "nonzero_households": 224
+    },
+    "puf_clone": {
+     "initial": 158577410080.6065,
+     "final": 178680499855.29327,
+     "nonzero_households": 7035
+    },
+    "cg_tail_clone": {
+     "initial": 241432972.875443,
+     "final": 181815299.83020216,
+     "nonzero_households": 1434
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.income_tax_before_credits_returns@2024": {
+   "variable": "income_tax_before_credits",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "income_tax_before_credits",
+   "target": 128597410.0,
+   "initial_estimate": 141153941.63446015,
+   "final_estimate": 127528562.05460118,
+   "relative_error": -0.008311582211483284,
+   "target_loss_weight_share": 0.0025311130001343927,
+   "channels": {
+    "asec": {
+     "initial": 62732024.10067764,
+     "final": 49140994.72393966,
+     "nonzero_households": 126905
+    },
+    "puf_clone": {
+     "initial": 78360953.26194507,
+     "final": 78345388.35095751,
+     "nonzero_households": 151552
+    },
+    "cg_tail_clone": {
+     "initial": 60964.271870927354,
+     "final": 42178.97970620347,
+     "nonzero_households": 15215
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.partnership_scorp_income_returns@2024": {
+   "variable": "partnership_and_s_corp_income",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "tax_unit_partnership_s_corp_income",
+   "target": 9551770.0,
+   "initial_estimate": 3308285.8147256635,
+   "final_estimate": 9479193.161301691,
+   "relative_error": -0.007598260709618104,
+   "target_loss_weight_share": 0.0006898224936993299,
+   "channels": {
+    "asec": {
+     "initial": 0.0,
+     "final": 0.0,
+     "nonzero_households": 0
+    },
+    "puf_clone": {
+     "initial": 3301163.604053223,
+     "final": 9471631.293205617,
+     "nonzero_households": 8242
+    },
+    "cg_tail_clone": {
+     "initial": 7122.210672354184,
+     "final": 7561.86809605717,
+     "nonzero_households": 1575
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.schedule_c_income_returns@2024": {
+   "variable": "business_net_profits",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "self_employment_income",
+   "target": 30354680.0,
+   "initial_estimate": 13246498.273220168,
+   "final_estimate": 26300786.91539395,
+   "relative_error": -0.13355084239418935,
+   "target_loss_weight_share": 0.0012297257099697105,
+   "channels": {
+    "asec": {
+     "initial": 5884413.9776650965,
+     "final": 10696268.960061787,
+     "nonzero_households": 14315
+    },
+    "puf_clone": {
+     "initial": 7353415.803537661,
+     "final": 15598236.337557875,
+     "nonzero_households": 18253
+    },
+    "cg_tail_clone": {
+     "initial": 8668.492017598908,
+     "final": 6281.617774443287,
+     "nonzero_households": 2133
+    }
+   }
+  },
+  "irs_soi.ty2023.table_2_1.itemized_all_returns.all.taxable_social_security_amount@2024": {
+   "variable": "taxable_social_security",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "tax_unit_taxable_social_security",
+   "target": 95485411201.91693,
+   "initial_estimate": 68280746813.39664,
+   "final_estimate": 95542615222.23161,
+   "relative_error": 0.0005990864949381252,
+   "target_loss_weight_share": 0.0005672919700957568,
+   "channels": {
+    "asec": {
+     "initial": 2163187680.770393,
+     "final": 3510698753.3464775,
+     "nonzero_households": 253
+    },
+    "puf_clone": {
+     "initial": 65980398530.88305,
+     "final": 91915381565.57701,
+     "nonzero_households": 5502
+    },
+    "cg_tail_clone": {
+     "initial": 137160601.74302182,
+     "final": 116534903.30806352,
+     "nonzero_households": 739
+    }
+   }
+  },
+  "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all.taxable_interest_amount@2024": {
+   "variable": "taxable_interest_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2023",
+   "aging_factor": "1.08721346938244",
+   "aging_factor_source": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "taxable_interest_income",
+   "target": 340428148892.9851,
+   "initial_estimate": 297473750795.34454,
+   "final_estimate": 287405720898.9991,
+   "relative_error": -0.1557521849071706,
+   "target_loss_weight_share": 0.0010711513921001833,
+   "channels": {
+    "asec": {
+     "initial": 218110593378.17413,
+     "final": 156481347590.15588,
+     "nonzero_households": 60223
+    },
+    "puf_clone": {
+     "initial": 79119463625.65727,
+     "final": 130329710363.72101,
+     "nonzero_households": 58674
+    },
+    "cg_tail_clone": {
+     "initial": 243693791.51205146,
+     "final": 594662945.1216948,
+     "nonzero_households": 4825
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_returns@2024": {
+   "variable": "salt_deduction",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "salt_deduction",
+   "target": 14968720.0,
+   "initial_estimate": 9527442.590178039,
+   "final_estimate": 14980454.815415658,
+   "relative_error": 0.0007839558369491885,
+   "target_loss_weight_share": 0.0008635505315993864,
+   "channels": {
+    "asec": {
+     "initial": 509344.01988203055,
+     "final": 904807.7337011616,
+     "nonzero_households": 1181
+    },
+    "puf_clone": {
+     "initial": 8975343.919217572,
+     "final": 14042108.972793255,
+     "nonzero_households": 21372
+    },
+    "cg_tail_clone": {
+     "initial": 42754.65107846887,
+     "final": 33538.1089212737,
+     "nonzero_households": 9795
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.adjusted_gross_income@2024": {
+   "variable": "adjusted_gross_income",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "adjusted_gross_income",
+   "target": 16561505578793.234,
+   "initial_estimate": 16202749628589.41,
+   "final_estimate": 16692908500634.531,
+   "relative_error": 0.007934237694521952,
+   "target_loss_weight_share": 0.007471159919142323,
+   "channels": {
+    "asec": {
+     "initial": 6911806391330.77,
+     "final": 5369887734765.459,
+     "nonzero_households": 149018
+    },
+    "puf_clone": {
+     "initial": 8751918244596.457,
+     "final": 10989330423177.604,
+     "nonzero_households": 168698
+    },
+    "cg_tail_clone": {
+     "initial": 539024992662.02356,
+     "final": 333690342691.2244,
+     "nonzero_households": 15227
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns@2024": {
+   "variable": "income_tax",
+   "unit": "count",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1",
+   "aging_factor_source": "not_dollar_amount",
+   "base_variable": "income_tax",
+   "target": 113562590.0,
+   "initial_estimate": 130266777.97708617,
+   "final_estimate": 113292804.40384103,
+   "relative_error": -0.002375655540781224,
+   "target_loss_weight_share": 0.0023785542866324805,
+   "channels": {
+    "asec": {
+     "initial": 57744885.32318868,
+     "final": 42820820.57734124,
+     "nonzero_households": 116237
+    },
+    "puf_clone": {
+     "initial": 72460929.52952127,
+     "final": 70429805.68305272,
+     "nonzero_households": 139949
+    },
+    "cg_tail_clone": {
+     "initial": 60963.12434757107,
+     "final": 42178.14344773046,
+     "nonzero_households": 15212
+    }
+   }
+  },
+  "irs_soi.ty2022.historic_table_2.us.all.income_tax_before_credits_amount@2024": {
+   "variable": "income_tax_before_credits",
+   "unit": "usd",
+   "geography_level": "country",
+   "agi_lower_bound": "-inf",
+   "agi_upper_bound": "inf",
+   "filing_status": "All",
+   "source_period": "2022",
+   "aging_factor": "1.12034597479376",
+   "aging_factor_source": "chained:irs_soi.ty2023.table_1_1.all.adjusted_gross_income+cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income.projected_amount",
+   "base_variable": "income_tax_before_credits",
+   "target": 2524660787155.186,
+   "initial_estimate": 2203814986170.2485,
+   "final_estimate": 2437230080079.8726,
+   "relative_error": -0.034630674948546776,
+   "target_loss_weight_share": 0.00291702158144712,
+   "channels": {
+    "asec": {
+     "initial": 917647733867.755,
+     "final": 718958980894.8174,
+     "nonzero_households": 126905
+    },
+    "puf_clone": {
+     "initial": 1173784693199.352,
+     "final": 1648586822133.069,
+     "nonzero_households": 151552
+    },
+    "cg_tail_clone": {
+     "initial": 112382559103.12312,
+     "final": 69684277051.99567,
+     "nonzero_households": 15215
+    }
+   }
+  }
+ },
+ "all_targets_csv": "release_puf_channel_cost_targets.csv.gz",
+ "by_variable": {
+  "adjusted_gross_income|usd": {
+   "rows": 57,
+   "asec_initial_share": 0.42782902323448063,
+   "asec_final_share": 0.33953481175274614,
+   "puf_clone_initial_share": 0.5391409280543895,
+   "puf_clone_final_share": 0.64092685974082,
+   "cg_tail_clone_initial_share": 0.032539574379843034,
+   "cg_tail_clone_final_share": 0.019677091371686394,
+   "initial_over_target": 0.9961432239146987,
+   "final_over_target": 1.0127130609472828
+  },
+  "business_net_profits|count": {
+   "rows": 52,
+   "asec_initial_share": 0.44267568731053886,
+   "asec_final_share": 0.4069137732211483,
+   "puf_clone_initial_share": 0.5568878632316029,
+   "puf_clone_final_share": 0.5928917908385274,
+   "cg_tail_clone_initial_share": 0.0006422456125744689,
+   "cg_tail_clone_final_share": 0.00018080522600324222,
+   "initial_over_target": 0.4911663603730366,
+   "final_over_target": 0.999421118773405
+  },
+  "business_net_profits|usd": {
+   "rows": 52,
+   "asec_initial_share": 0.46026383823421,
+   "asec_final_share": 0.3694417168715157,
+   "puf_clone_initial_share": 0.538276263738714,
+   "puf_clone_final_share": 0.6297107667828327,
+   "cg_tail_clone_initial_share": 0.0017277640178906247,
+   "cg_tail_clone_final_share": 0.0010746734187229122,
+   "initial_over_target": 1.3606603236354462,
+   "final_over_target": 1.001057045360216
+  },
+  "capital_gains_gross|count": {
+   "rows": 52,
+   "asec_initial_share": 0.28595148029803785,
+   "asec_final_share": 0.218112509469776,
+   "puf_clone_initial_share": 0.7111955107016721,
+   "puf_clone_final_share": 0.7805636061370207,
+   "cg_tail_clone_initial_share": 0.003041605530572167,
+   "cg_tail_clone_final_share": 0.0012002310491210058,
+   "initial_over_target": 0.6793813906032706,
+   "final_over_target": 0.9992933650837561
+  },
+  "capital_gains_gross|usd": {
+   "rows": 52,
+   "asec_initial_share": 0.0948348293694348,
+   "asec_final_share": 0.07872333992784716,
+   "puf_clone_initial_share": 0.43731622999624864,
+   "puf_clone_final_share": 0.6086146847250771,
+   "cg_tail_clone_initial_share": 0.4617450365048459,
+   "cg_tail_clone_final_share": 0.299642513748796,
+   "initial_over_target": 1.0993071063761644,
+   "final_over_target": 1.0014446431301824
+  },
+  "charitable_deduction|count": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9950157483162057,
+   "puf_clone_final_share": 0.9975255214288375,
+   "cg_tail_clone_initial_share": 0.0049842516839684456,
+   "cg_tail_clone_final_share": 0.002474478571169112,
+   "initial_over_target": 0.6650507459802824,
+   "final_over_target": 1.054296571533769
+  },
+  "charitable_deduction|usd": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9948637059759661,
+   "puf_clone_final_share": 0.9965282477976863,
+   "cg_tail_clone_initial_share": 0.00513629402403529,
+   "cg_tail_clone_final_share": 0.0034717522023129856,
+   "initial_over_target": 0.48323409741909257,
+   "final_over_target": 1.1374613948050984
+  },
+  "deductible_mortgage_interest|count": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9950083934159033,
+   "puf_clone_final_share": 0.9974804739310563,
+   "cg_tail_clone_initial_share": 0.004991606584277361,
+   "cg_tail_clone_final_share": 0.0025195260689490715,
+   "initial_over_target": 0.657021948835218,
+   "final_over_target": 1.0107445414542695
+  },
+  "deductible_mortgage_interest|usd": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9950357290498997,
+   "puf_clone_final_share": 0.997582687066542,
+   "cg_tail_clone_initial_share": 0.00496427095009031,
+   "cg_tail_clone_final_share": 0.0024173129334557216,
+   "initial_over_target": 0.6018053262857873,
+   "final_over_target": 1.0344868993111593
+  },
+  "employment_income|count": {
+   "rows": 53,
+   "asec_initial_share": 0.5010605569341202,
+   "asec_final_share": 0.45148979133912337,
+   "puf_clone_initial_share": 0.49847772443610716,
+   "puf_clone_final_share": 0.5483033351637061,
+   "cg_tail_clone_initial_share": 0.00043285829204171166,
+   "cg_tail_clone_final_share": 0.0002477105137038087,
+   "initial_over_target": 0.9828260329937488,
+   "final_over_target": 0.9999680181648258
+  },
+  "employment_income|usd": {
+   "rows": 53,
+   "asec_initial_share": 0.540037701718704,
+   "asec_final_share": 0.44971627171536194,
+   "puf_clone_initial_share": 0.4589326120184118,
+   "puf_clone_final_share": 0.5501015291839783,
+   "cg_tail_clone_initial_share": 0.0012866180782343324,
+   "cg_tail_clone_final_share": 0.0007550383655716567,
+   "initial_over_target": 1.033809643561708,
+   "final_over_target": 1.0008985930593917
+  },
+  "estate_income|count": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9988259311460704,
+   "puf_clone_final_share": 0.9985451232151891,
+   "cg_tail_clone_initial_share": 0.0011740688539253195,
+   "cg_tail_clone_final_share": 0.0014548767848109676,
+   "initial_over_target": 1.3177946633657875,
+   "final_over_target": 1.0011895043948547
+  },
+  "estate_income|usd": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9951989937556045,
+   "puf_clone_final_share": 0.9944781459966473,
+   "cg_tail_clone_initial_share": 0.004801006244397275,
+   "cg_tail_clone_final_share": 0.005521854003351623,
+   "initial_over_target": 1.4474944186599128,
+   "final_over_target": 1.0006821366447185
+  },
+  "estate_losses|count": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9975207233377126,
+   "puf_clone_final_share": 0.9969452520979174,
+   "cg_tail_clone_initial_share": 0.002479276662287844,
+   "cg_tail_clone_final_share": 0.0030547479020820944,
+   "initial_over_target": 3.00497200253935,
+   "final_over_target": 4.168628260396244
+  },
+  "estate_losses|usd": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9959716745198425,
+   "puf_clone_final_share": 0.9965856010717936,
+   "cg_tail_clone_initial_share": 0.004028325480157177,
+   "cg_tail_clone_final_share": 0.003414398928206414,
+   "initial_over_target": 0.5151066133124598,
+   "final_over_target": 1.0006032936748808
+  },
+  "income_tax|count": {
+   "rows": 52,
+   "asec_initial_share": 0.44661515353058445,
+   "asec_final_share": 0.3777009144213995,
+   "puf_clone_initial_share": 0.5531852124787748,
+   "puf_clone_final_share": 0.6219630097952352,
+   "cg_tail_clone_initial_share": 0.0004452488075851566,
+   "cg_tail_clone_final_share": 0.00029290601129907014,
+   "initial_over_target": 1.1425363655650105,
+   "final_over_target": 1.000746420053773
+  },
+  "income_tax|usd": {
+   "rows": 52,
+   "asec_initial_share": 0.4077913994146648,
+   "asec_final_share": 0.31725418916023107,
+   "puf_clone_initial_share": 0.5249423242267983,
+   "puf_clone_final_share": 0.6502672591979308,
+   "cg_tail_clone_initial_share": 0.059350589948333074,
+   "cg_tail_clone_final_share": 0.03373843963868582,
+   "initial_over_target": 0.9670483333701752,
+   "final_over_target": 1.0204723666115285
+  },
+  "income_tax_before_credits|count": {
+   "rows": 52,
+   "asec_initial_share": 0.4469402532323853,
+   "asec_final_share": 0.38546269061806504,
+   "puf_clone_initial_share": 0.5529209204916645,
+   "puf_clone_final_share": 0.6142191690307635,
+   "cg_tail_clone_initial_share": 0.0004118388090368694,
+   "cg_tail_clone_final_share": 0.0002574728457717119,
+   "initial_over_target": 1.1011874054045907,
+   "final_over_target": 0.998569802279045
+  },
+  "income_tax_before_credits|usd": {
+   "rows": 52,
+   "asec_initial_share": 0.4198016113176291,
+   "asec_final_share": 0.3259599958764363,
+   "puf_clone_initial_share": 0.5254694287304852,
+   "puf_clone_final_share": 0.6480878065306821,
+   "cg_tail_clone_initial_share": 0.04895944154800311,
+   "cg_tail_clone_final_share": 0.02832469928239737,
+   "initial_over_target": 0.9372842779587875,
+   "final_over_target": 0.9755078177596159
+  },
+  "interest_deduction|count": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9950083934159033,
+   "puf_clone_final_share": 0.9974804739310563,
+   "cg_tail_clone_initial_share": 0.004991606584277361,
+   "cg_tail_clone_final_share": 0.0025195260689490715,
+   "initial_over_target": 0.6404947196658997,
+   "final_over_target": 0.985319505505521
+  },
+  "interest_deduction|usd": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9949109288031714,
+   "puf_clone_final_share": 0.9972639752636558,
+   "cg_tail_clone_initial_share": 0.00508907119682878,
+   "cg_tail_clone_final_share": 0.0027360247363539918,
+   "initial_over_target": 0.5683184039270686,
+   "final_over_target": 1.0285214301634915
+  },
+  "ira_distributions|count": {
+   "rows": 54,
+   "asec_initial_share": 0.15206983916503541,
+   "asec_final_share": 0.14046515444625945,
+   "puf_clone_initial_share": 0.8474422262797254,
+   "puf_clone_final_share": 0.8591475051280228,
+   "cg_tail_clone_initial_share": 0.00037624576933633323,
+   "cg_tail_clone_final_share": 0.00020513586745566612,
+   "initial_over_target": 0.9512448721599956,
+   "final_over_target": 1.0003892767115217
+  },
+  "ira_distributions|usd": {
+   "rows": 54,
+   "asec_initial_share": 0.13038689402596593,
+   "asec_final_share": 0.09563799097790844,
+   "puf_clone_initial_share": 0.869102170191232,
+   "puf_clone_final_share": 0.9041452584249384,
+   "cg_tail_clone_initial_share": 0.0005118498155112632,
+   "cg_tail_clone_final_share": 0.0002609620389967044,
+   "initial_over_target": 0.8966170723130482,
+   "final_over_target": 1.0003880978915531
+  },
+  "itemized_taxable_income_deductions|usd": {
+   "rows": 55,
+   "asec_initial_share": 0.05589856314639425,
+   "asec_final_share": 0.06368545463825374,
+   "puf_clone_initial_share": 0.9410742987922979,
+   "puf_clone_final_share": 0.9337019130378256,
+   "cg_tail_clone_initial_share": 0.004333013768537852,
+   "cg_tail_clone_final_share": 0.002053590517939913,
+   "initial_over_target": 0.565890630695278,
+   "final_over_target": 0.999484481423871
+  },
+  "medical_expense_deduction|count": {
+   "rows": 52,
+   "asec_initial_share": 0.17427724035626171,
+   "asec_final_share": 0.26775800270969285,
+   "puf_clone_initial_share": 0.8257227596437383,
+   "puf_clone_final_share": 0.732241095519357,
+   "cg_tail_clone_initial_share": 0.0,
+   "cg_tail_clone_final_share": 0.0,
+   "initial_over_target": 0.9158002319556184,
+   "final_over_target": 1.0004013715903861
+  },
+  "medical_expense_deduction|usd": {
+   "rows": 52,
+   "asec_initial_share": 0.3558395663172305,
+   "asec_final_share": 0.46895507552448434,
+   "puf_clone_initial_share": 0.6441604336827694,
+   "puf_clone_final_share": 0.5310449244755158,
+   "cg_tail_clone_initial_share": 0.0,
+   "cg_tail_clone_final_share": 0.0,
+   "initial_over_target": 0.5712897408652704,
+   "final_over_target": 1.0005369606209191
+  },
+  "non_sch_d_capital_gains|count": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 1.000000000000001,
+   "puf_clone_final_share": 0.9999999999999968,
+   "cg_tail_clone_initial_share": 0.0,
+   "cg_tail_clone_final_share": 0.0,
+   "initial_over_target": 1.3399183464548976,
+   "final_over_target": 1.0004526560574738
+  },
+  "non_sch_d_capital_gains|usd": {
+   "rows": 1,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9999999999999997,
+   "puf_clone_final_share": 1.0,
+   "cg_tail_clone_initial_share": 0.0,
+   "cg_tail_clone_final_share": 0.0,
+   "initial_over_target": 1.0000000001691487,
+   "final_over_target": 0.9997101657797709
+  },
+  "ordinary_dividend_income|count": {
+   "rows": 54,
+   "asec_initial_share": 0.3680420901813685,
+   "asec_final_share": 0.2859461525287124,
+   "puf_clone_initial_share": 0.6312209184515992,
+   "puf_clone_final_share": 0.7132992089301431,
+   "cg_tail_clone_initial_share": 0.0007224063007009928,
+   "cg_tail_clone_final_share": 0.0005299265340000915,
+   "initial_over_target": 1.3125624013540986,
+   "final_over_target": 1.0009143536401943
+  },
+  "ordinary_dividend_income|usd": {
+   "rows": 54,
+   "asec_initial_share": 0.3165809058824234,
+   "asec_final_share": 0.14338553354549255,
+   "puf_clone_initial_share": 0.6796694166468249,
+   "puf_clone_final_share": 0.853671679617531,
+   "cg_tail_clone_initial_share": 0.0021036291250539833,
+   "cg_tail_clone_final_share": 0.0016380408345620591,
+   "initial_over_target": 0.8352302435143427,
+   "final_over_target": 1.0016585730279157
+  },
+  "partnership_and_s_corp_income|count": {
+   "rows": 52,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9979883547555763,
+   "puf_clone_final_share": 0.9994925016688083,
+   "cg_tail_clone_initial_share": 0.002011645244423126,
+   "cg_tail_clone_final_share": 0.0005074983311916857,
+   "initial_over_target": 0.3709396434725666,
+   "final_over_target": 0.9998104811212183
+  },
+  "partnership_and_s_corp_income|usd": {
+   "rows": 52,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9958096414366395,
+   "puf_clone_final_share": 0.9987864134841378,
+   "cg_tail_clone_initial_share": 0.004190358563360584,
+   "cg_tail_clone_final_share": 0.0012135865158619445,
+   "initial_over_target": 0.3328605677290747,
+   "final_over_target": 1.0000076238296336
+  },
+  "qualified_dividends|count": {
+   "rows": 52,
+   "asec_initial_share": 0.3827417173078149,
+   "asec_final_share": 0.30713823246458705,
+   "puf_clone_initial_share": 0.616452736878633,
+   "puf_clone_final_share": 0.6919297118537097,
+   "cg_tail_clone_initial_share": 0.0007126724672179901,
+   "cg_tail_clone_final_share": 0.0005204375820890444,
+   "initial_over_target": 1.3648970537390377,
+   "final_over_target": 1.0013266902700142
+  },
+  "qualified_dividends|usd": {
+   "rows": 52,
+   "asec_initial_share": 0.22927312752378787,
+   "asec_final_share": 0.08536437175385025,
+   "puf_clone_initial_share": 0.7657148746793998,
+   "puf_clone_final_share": 0.913026205389347,
+   "cg_tail_clone_initial_share": 0.002514098298014646,
+   "cg_tail_clone_final_share": 0.0015345529280137633,
+   "initial_over_target": 0.7183592703123254,
+   "final_over_target": 1.0000255779510452
+  },
+  "real_estate_taxes|count": {
+   "rows": 53,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9954631831460516,
+   "puf_clone_final_share": 0.9977221496144876,
+   "cg_tail_clone_initial_share": 0.00453681685395632,
+   "cg_tail_clone_final_share": 0.0022778503855115143,
+   "initial_over_target": 0.7816155672935517,
+   "final_over_target": 1.0005543125066914
+  },
+  "real_estate_taxes|usd": {
+   "rows": 53,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9946019256602222,
+   "puf_clone_final_share": 0.9970584497206824,
+   "cg_tail_clone_initial_share": 0.0053980743397770365,
+   "cg_tail_clone_final_share": 0.0029415502793179032,
+   "initial_over_target": 0.8540068208197407,
+   "final_over_target": 1.001721607398795
+  },
+  "rent_and_royalty_net_income|count": {
+   "rows": 52,
+   "asec_initial_share": 0.47532381553058023,
+   "asec_final_share": 0.37533969655029276,
+   "puf_clone_initial_share": 0.5241588672331159,
+   "puf_clone_final_share": 0.6236997411186902,
+   "cg_tail_clone_initial_share": 0.0005155252312675769,
+   "cg_tail_clone_final_share": 0.000409649156936595,
+   "initial_over_target": 1.149877052319276,
+   "final_over_target": 1.000714498643903
+  },
+  "rent_and_royalty_net_income|usd": {
+   "rows": 52,
+   "asec_initial_share": 0.5580136170910277,
+   "asec_final_share": 0.6152327659350662,
+   "puf_clone_initial_share": 0.4418284853356844,
+   "puf_clone_final_share": 0.3839925209673656,
+   "cg_tail_clone_initial_share": 0.00033742714658278536,
+   "cg_tail_clone_final_share": 0.0001991051432382396,
+   "initial_over_target": 2.549152681251078,
+   "final_over_target": 2.5427865896635478
+  },
+  "salt_deduction|count": {
+   "rows": 53,
+   "asec_initial_share": 0.053460728318333796,
+   "asec_final_share": 0.06236362176546349,
+   "puf_clone_initial_share": 0.942051745183998,
+   "puf_clone_final_share": 0.9330177569719654,
+   "cg_tail_clone_initial_share": 0.00428913520142679,
+   "cg_tail_clone_final_share": 0.0020651562910590795,
+   "initial_over_target": 0.7433218740120872,
+   "final_over_target": 1.0007315296938513
+  },
+  "salt_deduction|usd": {
+   "rows": 53,
+   "asec_initial_share": 0.021421434517492004,
+   "asec_final_share": 0.02907130324067863,
+   "puf_clone_initial_share": 0.9731913070648269,
+   "puf_clone_final_share": 0.9692450983057739,
+   "cg_tail_clone_initial_share": 0.005171878493316454,
+   "cg_tail_clone_final_share": 0.002322720656494494,
+   "initial_over_target": 0.65952678916133,
+   "final_over_target": 0.9647746304710596
+  },
+  "tax_exempt_interest_income|count": {
+   "rows": 52,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9987256426529543,
+   "puf_clone_final_share": 0.999163562600696,
+   "cg_tail_clone_initial_share": 0.0012743573470468054,
+   "cg_tail_clone_final_share": 0.0008364373993039894,
+   "initial_over_target": 0.9601961128827481,
+   "final_over_target": 1.0005437910281931
+  },
+  "tax_exempt_interest_income|usd": {
+   "rows": 52,
+   "asec_initial_share": 0.0,
+   "asec_final_share": 0.0,
+   "puf_clone_initial_share": 0.9975071193947943,
+   "puf_clone_final_share": 0.9984416034254469,
+   "cg_tail_clone_initial_share": 0.0024928806052053366,
+   "cg_tail_clone_final_share": 0.0015583965745535468,
+   "initial_over_target": 0.9532763564783175,
+   "final_over_target": 1.0006406694174765
+  },
+  "taxable_income|count": {
+   "rows": 53,
+   "asec_initial_share": 0.4436886934877557,
+   "asec_final_share": 0.38420221281232786,
+   "puf_clone_initial_share": 0.5560476572216417,
+   "puf_clone_final_share": 0.6155277728351318,
+   "cg_tail_clone_initial_share": 0.0004123276748506412,
+   "cg_tail_clone_final_share": 0.00026123404120893486,
+   "initial_over_target": 1.1089947366760453,
+   "final_over_target": 1.0008434969268551
+  },
+  "taxable_income|usd": {
+   "rows": 54,
+   "asec_initial_share": 0.42755073253740783,
+   "asec_final_share": 0.3339082569866322,
+   "puf_clone_initial_share": 0.5313008030747697,
+   "puf_clone_final_share": 0.6415478420925924,
+   "cg_tail_clone_initial_share": 0.04069575109064775,
+   "cg_tail_clone_final_share": 0.02556991874006496,
+   "initial_over_target": 1.000365129034928,
+   "final_over_target": 0.9995467386318693
+  },
+  "taxable_interest_income|count": {
+   "rows": 519,
+   "asec_initial_share": 0.49233526348001905,
+   "asec_final_share": 0.4501167505558433,
+   "puf_clone_initial_share": 0.5067371662597654,
+   "puf_clone_final_share": 0.5497390892277401,
+   "cg_tail_clone_initial_share": 0.0,
+   "cg_tail_clone_final_share": 0.0,
+   "initial_over_target": 0.9329547779865174,
+   "final_over_target": 1.0005924046118695
+  },
+  "taxable_interest_income|usd": {
+   "rows": 519,
+   "asec_initial_share": 0.6736362247782252,
+   "asec_final_share": 0.6284284181467362,
+   "puf_clone_initial_share": 0.325609926484651,
+   "puf_clone_final_share": 0.371261469349862,
+   "cg_tail_clone_initial_share": 0.0,
+   "cg_tail_clone_final_share": 0.0,
+   "initial_over_target": 1.433507742060989,
+   "final_over_target": 1.0010887930288421
+  },
+  "taxable_pension_income|count": {
+   "rows": 54,
+   "asec_initial_share": 0.29687407963507584,
+   "asec_final_share": 0.25201305305645494,
+   "puf_clone_initial_share": 0.7025488757616984,
+   "puf_clone_final_share": 0.747884151512726,
+   "cg_tail_clone_initial_share": 0.00027600924702094734,
+   "cg_tail_clone_final_share": 0.00014073076364078813,
+   "initial_over_target": 1.0671740911828294,
+   "final_over_target": 1.000346374621813
+  },
+  "taxable_pension_income|usd": {
+   "rows": 54,
+   "asec_initial_share": 0.17607979385479322,
+   "asec_final_share": 0.1290049510764248,
+   "puf_clone_initial_share": 0.823658470024601,
+   "puf_clone_final_share": 0.8706572571344345,
+   "cg_tail_clone_initial_share": 0.00030978815642743266,
+   "cg_tail_clone_final_share": 0.000143172046279247,
+   "initial_over_target": 0.9490318020272666,
+   "final_over_target": 1.0004376369467614
+  },
+  "taxable_social_security|count": {
+   "rows": 54,
+   "asec_initial_share": 0.3355692503061143,
+   "asec_final_share": 0.28168169029461354,
+   "puf_clone_initial_share": 0.6642829891523743,
+   "puf_clone_final_share": 0.7182255474655982,
+   "cg_tail_clone_initial_share": 0.00017649313172619428,
+   "cg_tail_clone_final_share": 0.0001288261085500983,
+   "initial_over_target": 1.2629529947658726,
+   "final_over_target": 1.0008976265331595
+  },
+  "taxable_social_security|usd": {
+   "rows": 54,
+   "asec_initial_share": 0.311392419946099,
+   "asec_final_share": 0.22249645550306613,
+   "puf_clone_initial_share": 0.6886075800539,
+   "puf_clone_final_share": 0.7774126438674468,
+   "cg_tail_clone_initial_share": 0.0003333830358520359,
+   "cg_tail_clone_final_share": 0.0002434419044994804,
+   "initial_over_target": 1.258975464072775,
+   "final_over_target": 1.0009566471365545
+  }
+ }
+}

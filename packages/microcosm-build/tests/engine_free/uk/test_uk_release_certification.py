@@ -8,6 +8,7 @@ import importlib.util
 import json
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,6 +17,7 @@ from microcosm.build.gate_battery import gate_signing_key_env
 from microcosm.build.uk_runtime import release_certification
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
+    UK_LOCAL_DIAGNOSTIC_GATE_SCOPE,
     UK_LOCAL_GATE_SCOPE,
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
@@ -48,6 +50,8 @@ _FIXTURES = _load_fixture_module()
 _TEST_KEY = _FIXTURES.TEST_KEY
 _green_certification_inputs_fixture = _FIXTURES.green_certification_inputs
 green_score_receipt = _FIXTURES.green_score_receipt
+GREEN_REFERENCE_RECORD = _FIXTURES.GREEN_REFERENCE_RECORD
+GREEN_REFERENCE_LABEL = _FIXTURES.GREEN_REFERENCE_LABEL
 _signing_key_fixture = _FIXTURES.signing_key
 _sha = _FIXTURES.sha256
 _stub_registry = _FIXTURES.stub_registry
@@ -123,23 +127,39 @@ def test_parity_evidence_refuses_bare_name_grain():
     class _Registry:
         specs = ()
 
-    class _Reference:
-        input_entities = {}
-
     with pytest.raises(UKReleaseCertificationError, match="name@period"):
         uk_release_parity_evidence(
             _Frame(),
             diagnostics_targets=[{"name": "dwp.uc.households", "relative_error": 0.1}],
             reference_registry=_Registry(),
-            parity_reference=_Reference(),
         )
     evidence = uk_release_parity_evidence(
         _Frame(),
         diagnostics_targets=[{"name": "dwp.uc.households@2025", "relative_error": 0.1}],
         reference_registry=_Registry(),
-        parity_reference=_Reference(),
     )
+    # The export-surface gate reads the reference's columns from the cut's
+    # reference surface itself (microcosm#1095).
+    assert not hasattr(evidence, "reference_columns")
     assert evidence.candidate_targets == {"dwp.uc.households@2025"}
+    assert evidence.target_relative_errors == {"dwp.uc.households@2025": 0.1}
+    # A run built before María's ruling of 2026-10-26 dropped the withholding
+    # left a thin row's figures blank; the fit gate judges every row, so such
+    # a run is refused rather than certified without the row.
+    thin = "dwp.uc.payment_distribution_single_thin@2025"
+    with pytest.raises(UKReleaseCertificationError, match="withholds its model"):
+        uk_release_parity_evidence(
+            _Frame(),
+            diagnostics_targets=[
+                {"name": "dwp.uc.households@2025", "relative_error": 0.1},
+                {
+                    "name": thin,
+                    "relative_error": None,
+                    "metadata": {"model_figures_withheld": "model figures withheld"},
+                },
+            ],
+            reference_registry=_Registry(),
+        )
 
 
 def test_compose_green_certification(green_certification_inputs):
@@ -155,7 +175,7 @@ def test_compose_green_certification(green_certification_inputs):
         declared
     )
     assert certification["spec"]["certification_excluded_gate_ids"] == sorted(
-        UK_LOCAL_GATE_SCOPE
+        set(UK_LOCAL_GATE_SCOPE) | set(UK_LOCAL_DIAGNOSTIC_GATE_SCOPE)
     )
     assert certification["spec"]["shared_gate_ids"] == sorted(UK_SHARED_GATE_IDS)
     assert certification["doctrine"]["overrides"] == {
@@ -230,7 +250,7 @@ def test_compose_refuses_tampered_part_signature(green_certification_inputs):
 def test_compose_refuses_entry_id_gap(green_certification_inputs):
     cut_path = green_certification_inputs["release_cut_report_path"]
     payload = json.loads(cut_path.read_text(encoding="utf-8"))
-    payload["gates"].pop("uk_qrf_tail_concentration")
+    payload["gates"].pop("uk_input_mass_parity")
     cut_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     with pytest.raises(UKReleaseCertificationError, match="entry ids"):
         compose_uk_release_certification(**green_certification_inputs)
@@ -359,7 +379,7 @@ def test_compose_refuses_score_receipt_scored_on_another_artifact(
             {
                 "artifacts": {
                     "candidate": {"sha256": "8" * 64},
-                    "incumbent": {"sha256": candidate_sha},
+                    "reference": {"sha256": candidate_sha},
                 },
                 "provenance": {"inputs": [candidate_sha]},
             }
@@ -370,30 +390,66 @@ def test_compose_refuses_score_receipt_scored_on_another_artifact(
         compose_uk_release_certification(**green_certification_inputs)
 
 
-def test_compose_refuses_a_score_receipt_whose_verdict_is_not_passed(
+def test_compose_refuses_a_receipt_measured_against_another_reference(
     green_certification_inputs,
 ):
+    """The comparison must be with the cut's own reference (microcosm#1095)."""
     receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
-    receipt["evaluation"]["verdict"] = "failed"
-    receipt["evaluation"]["rule_1"]["passed"] = False
+    receipt["reference"]["build"] = (
+        "uk-frs-calibration-attempt-20261025T091414Z-a6299504"
+    )
     green_certification_inputs["score_receipt_path"].write_text(
         json.dumps(receipt), encoding="utf-8"
     )
-    with pytest.raises(UKReleaseCertificationError, match="verdict is 'failed'"):
+    with pytest.raises(UKReleaseCertificationError, match="another reference"):
         compose_uk_release_certification(**green_certification_inputs)
+
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["artifacts"]["reference"]["sha256"] = "7" * 64
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="another reference"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_certifies_a_candidate_that_fits_worse_than_its_reference(
+    green_certification_inputs,
+):
+    """The comparison has no threshold: it is evidence, never a refusal."""
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["evaluation"]["losses"] = {
+        "candidate_full_loss": 0.5,
+        "reference_full_loss": 0.01,
+    }
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["shippable"] is True
+    assert certification["score_receipt"]["evaluation"]["candidate_full_loss"] == 0.5
 
 
 def test_compose_refuses_a_score_receipt_without_an_evaluation(
     green_certification_inputs,
 ):
-    # A receipt from the strict scorer carries the cross-pin but no verdict:
-    # rule 1 was never decided on a closed surface, so it cannot certify.
+    # A receipt without the head-to-head summary, or one scored against the
+    # enhanced FRS under the old strict rule, was not made against the cut's
+    # reference, so it cannot certify.
     receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
     del receipt["evaluation"]
     green_certification_inputs["score_receipt_path"].write_text(
         json.dumps(receipt), encoding="utf-8"
     )
-    with pytest.raises(UKReleaseCertificationError, match="no evaluation block"):
+    with pytest.raises(UKReleaseCertificationError, match="no schema-2 evaluation"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["evaluation"] = {"schema_version": 1, "verdict": "passed"}
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="no schema-2 evaluation"):
         compose_uk_release_certification(**green_certification_inputs)
 
 
@@ -413,9 +469,9 @@ def test_compose_refuses_a_score_receipt_pruned_through_an_unlisted_measure(
     green_certification_inputs,
 ):
     """Pruning from both arms is doctrine: a measure the scorer pruned must
-    carry a signed entry on the reviewed incumbent-unresolvable register."""
+    carry a signed entry on the reviewed reference-unresolvable register."""
     receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
-    receipt["incumbent_unresolvable_pruned"].update(
+    receipt["reference_unresolvable_pruned"].update(
         {"n_pruned": 1, "n_scored": 306, "measures": ["benunit.not_reviewed"]}
     )
     receipt["evaluation"]["scored_surface"].update({"n_pruned": 1, "n_scored": 306})
@@ -430,7 +486,7 @@ def test_compose_refuses_a_score_receipt_pruned_through_an_unlisted_measure(
     def _listed(approved_on: str, expires_on: str):
         return {
             "benunit.not_reviewed": UKReviewedExclusion(
-                reason="the incumbent never carried it",
+                reason="the reference never carried it",
                 approved_by="juaristi22",
                 adjudication="microcosm#823 (test)",
                 approved_on=approved_on,
@@ -475,17 +531,30 @@ def test_compose_refuses_a_build_record_without_a_recorded_parent(
         compose_uk_release_certification(**green_certification_inputs)
 
 
-def test_certification_summarises_the_score_receipt_verdict(
+def test_certification_names_its_reference_and_summarises_the_comparison(
     green_certification_inputs,
 ):
     certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["schema_version"] == 2
+    assert certification["reference"] == {
+        "release": GREEN_REFERENCE_RECORD["release"],
+        "build": GREEN_REFERENCE_RECORD["build"],
+        "filename": GREEN_REFERENCE_RECORD["filename"],
+        "sha256": GREEN_REFERENCE_RECORD["sha256"],
+        "built_with_model_package": GREEN_REFERENCE_RECORD["built_with_model_package"],
+        "selection": "current",
+    }
+    assert certification["score_receipt"]["filename"] == "score_vs_reference.json"
     assert certification["score_receipt"]["evaluation"] == {
-        "verdict": "passed",
+        "reference": GREEN_REFERENCE_LABEL,
         "n_scored": 307,
         "n_pruned": 0,
         "n_surface": 307,
         "candidate_full_loss": 0.0096,
-        "incumbent_full_loss": 0.211,
+        "reference_full_loss": 0.0101,
+        "candidate_lower_count": 293,
+        "reference_lower_count": 12,
+        "equal_count": 2,
     }
 
 
@@ -493,6 +562,34 @@ def test_compose_refuses_absent_signing_key(green_certification_inputs, monkeypa
     monkeypatch.delenv(gate_signing_key_env("uk"))
     with pytest.raises(UKReleaseCertificationError, match="must be set"):
         compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_release_cut_battery_refuses_a_compiled_period_with_no_unsupported_report(
+    tmp_path: Path,
+):
+    # The compile-parity gates read an unresolved reference as ledger_absent
+    # only from the compile's own report, so a period that was compiled must
+    # bring its report, empty or not.
+    with pytest.raises(ValueError, match=r"national compile reported no .*\['2025'\]"):
+        run_uk_release_cut_battery(
+            object(),
+            report_path=tmp_path / "release_cut_gates.json",
+            release_id="uk-757-first-certified-cut",
+            diagnostics_sha256="a" * 64,
+            coverage_engine=object(),
+            build_stage_names=("frs_spine",),
+            ledger_registries={2025: object()},
+            local_ledger_registries={2025: object()},
+            ledger_unsupported={},
+            local_ledger_unsupported={2025: ()},
+            parity_evidence=object(),
+            fit_weight_records=None,
+            input_mass_reference={},
+            reference_surface=object(),
+            exclusions_evaluated_on=date(2026, 8, 27),
+            gate_registry=_stub_registry(),
+            spine_frame=object(),
+        )
 
 
 def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
@@ -509,11 +606,14 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         diagnostics_sha256="a" * 64,
         coverage_engine=object(),
         build_stage_names=("frs_spine",),
-        ledger_registries={2023: object(), 2025: object()},
+        ledger_registries={2025: object()},
         local_ledger_registries={2025: object()},
-        parity_evidence=object(),
+        ledger_unsupported={2025: ()},
+        local_ledger_unsupported={2025: ()},
+        parity_evidence=SimpleNamespace(),
         fit_weight_records=None,
         input_mass_reference={},
+        reference_surface=SimpleNamespace(),
         exclusions_evaluated_on=date(2026, 8, 27),
         gate_registry=_stub_registry(),
         spine_frame=object(),
@@ -527,6 +627,7 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         set(UK_SPINE_GATE_SCOPE)
         | set(UK_CALIBRATION_GATE_SCOPE)
         | set(UK_LOCAL_GATE_SCOPE)
+        | set(UK_LOCAL_DIAGNOSTIC_GATE_SCOPE)
     ) - set(UK_NATIONAL_GATE_SCOPE)
     on_disk = json.loads(report_path.read_text(encoding="utf-8"))
     assert on_disk["attestation"]["signature"] == payload["attestation"]["signature"]
@@ -545,34 +646,174 @@ def test_certification_fields_mirror_the_data_contract(green_certification_input
 
 
 def test_compose_refuses_a_receipt_scored_under_another_register(
-    green_certification_inputs,
+    green_certification_inputs, monkeypatch
 ):
     """Against the committed register of record, the receipt's register
     digest must be the committed one (review A2, second half)."""
-    from datetime import date
+    from microcosm.build.uk_runtime import candidate_score
+    from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
 
-    from microcosm.build.uk_runtime.candidate_score import (
-        load_uk_incumbent_unresolvable_measures,
-        uk_incumbent_unresolvable_register_digest,
+    measure = "benunit.reviewed_for_this_reference"
+    monkeypatch.setattr(
+        candidate_score,
+        "load_uk_reference_unresolvable_measures",
+        lambda *, reference_label, source=None: (
+            {
+                measure: UKReviewedExclusion(
+                    reason="the reference never carried it",
+                    approved_by="juaristi22",
+                    adjudication="microcosm#1095 (test)",
+                    approved_on="2026-08-01",
+                    expires_on="2027-03-01",
+                )
+            }
+            if reference_label == GREEN_REFERENCE_LABEL
+            else {}
+        ),
     )
-
-    measure = sorted(load_uk_incumbent_unresolvable_measures())[0]
     receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
-    receipt["incumbent_unresolvable_pruned"].update(
+    receipt["reference_unresolvable_pruned"].update(
         {"n_pruned": 1, "n_scored": 306, "measures": [measure]}
     )
-    receipt["incumbent_unresolvable_pruned"]["reviewed_register"]["sha256"] = "0" * 64
+    receipt["reference_unresolvable_pruned"]["reviewed_register"]["sha256"] = "0" * 64
     receipt["evaluation"]["scored_surface"].update({"n_pruned": 1, "n_scored": 306})
     path = green_certification_inputs["score_receipt_path"]
     path.write_text(json.dumps(receipt), encoding="utf-8")
-    # Inside the committed entries' window (they take force 2026-09-22).
-    green_certification_inputs["exclusions_evaluated_on"] = date(2026, 10, 1)
     with pytest.raises(UKReleaseCertificationError, match="not the committed register"):
         compose_uk_release_certification(**green_certification_inputs)
 
-    receipt["incumbent_unresolvable_pruned"]["reviewed_register"]["sha256"] = (
-        uk_incumbent_unresolvable_register_digest()["sha256"]
+    receipt["reference_unresolvable_pruned"]["reviewed_register"]["sha256"] = (
+        candidate_score.uk_reference_unresolvable_register_digest()["sha256"]
     )
     path.write_text(json.dumps(receipt), encoding="utf-8")
     certification = compose_uk_release_certification(**green_certification_inputs)
     assert certification["score_receipt"]["evaluation"]["n_pruned"] == 1
+
+
+def test_compose_refuses_a_reference_that_is_the_candidate_itself(
+    green_certification_inputs,
+):
+    """The review of microcosm#1574 (S1): after the cut's own promotion,
+    re-resolving would compare the candidate with itself."""
+
+    by_sha = dict(green_certification_inputs)
+    by_sha["reference_record"] = {
+        **by_sha["reference_record"],
+        "sha256": by_sha["candidate_sha256"],
+    }
+    with pytest.raises(UKReleaseCertificationError, match="candidate itself"):
+        compose_uk_release_certification(**by_sha)
+    by_build = dict(green_certification_inputs)
+    by_build["build_record"] = {
+        **by_build["build_record"],
+        "build_id": by_build["reference_record"]["build"],
+    }
+    with pytest.raises(UKReleaseCertificationError, match="candidate itself"):
+        compose_uk_release_certification(**by_build)
+
+
+def test_compose_refuses_a_reference_of_another_line(green_certification_inputs):
+    inputs = dict(green_certification_inputs)
+    inputs["reference_record"] = {
+        **inputs["reference_record"],
+        "release": "microcosm-uk-2024-25-dense",
+    }
+    with pytest.raises(UKReleaseCertificationError, match="national line"):
+        compose_uk_release_certification(**inputs)
+
+
+def test_the_certification_records_the_change_since_the_baseline(
+    green_certification_inputs,
+):
+    """The review of microcosm#1574 (S5): each certification records its
+    change since a fixed baseline, chained from its reference's."""
+
+    mass = _FIXTURES.GREEN_SINCE_BASELINE_MASS
+    coverage = _FIXTURES.GREEN_SINCE_BASELINE_COVERAGE
+
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["since_baseline"] == {
+        "baseline": mass["baseline"],
+        # The chain starts at the national line's origin: no restart.
+        "restarted_from": None,
+        "input_mass_ratios": mass["ratios"],
+        # Round 2 of the review: the columns that left the chain stay listed.
+        "input_mass_left": mass["left"],
+        "baseline_inputs": coverage["inputs"],
+        "inputs_dropped": coverage["dropped"],
+    }
+
+
+def _release_cut_since(baseline: str, *, left: dict | None = None) -> dict:
+    mass = {"baseline": baseline, "ratios": {"employment_income": 1.1}}
+    if left is not None:
+        mass["left"] = left
+    return {
+        "gates": {
+            "uk_input_mass_parity": {"details": {"since_baseline": mass}},
+            "uk_release_input_coverage": {
+                "details": {
+                    "since_baseline": {
+                        "baseline": baseline,
+                        "inputs": ["employment_income"],
+                        "dropped": [],
+                    }
+                }
+            },
+        }
+    }
+
+
+def test_a_chain_that_restarted_says_so():
+    """Round 2 of the review of microcosm#1574: a chain that starts at any
+    build but the national line's origin has restarted, and the
+    certification records where the line's chain began."""
+
+    from microcosm.build.uk_runtime.cut_reference import (
+        UK_NATIONAL_SINCE_BASELINE_ORIGIN,
+    )
+    from microcosm.build.uk_runtime.release_certification import _since_baseline
+
+    origin = _since_baseline(
+        _release_cut_since(UK_NATIONAL_SINCE_BASELINE_ORIGIN, left={})
+    )
+    assert origin["restarted_from"] is None
+    restarted = _since_baseline(
+        _release_cut_since("microcosm-uk-2024-25-national@older", left={})
+    )
+    assert restarted["baseline"] == "microcosm-uk-2024-25-national@older"
+    assert restarted["restarted_from"] == UK_NATIONAL_SINCE_BASELINE_ORIGIN
+
+
+def test_compose_refuses_a_release_cut_with_no_record_since_the_baseline():
+    from microcosm.build.uk_runtime.release_certification import _since_baseline
+
+    with pytest.raises(UKReleaseCertificationError, match="no change since"):
+        _since_baseline({"gates": {"uk_input_mass_parity": {"details": {}}}})
+    # Evidence from before the record listed the columns that leave it.
+    with pytest.raises(UKReleaseCertificationError, match="no change since"):
+        _since_baseline(_release_cut_since("microcosm-uk-2024-25-national@a"))
+    mixed = {
+        "gates": {
+            "uk_input_mass_parity": {
+                "details": {
+                    "since_baseline": {
+                        "baseline": "microcosm-uk-2024-25-national@a",
+                        "ratios": {},
+                        "left": {},
+                    }
+                }
+            },
+            "uk_release_input_coverage": {
+                "details": {
+                    "since_baseline": {
+                        "baseline": "microcosm-uk-2024-25-national@b",
+                        "inputs": [],
+                        "dropped": [],
+                    }
+                }
+            },
+        }
+    }
+    with pytest.raises(UKReleaseCertificationError, match="one national baseline"):
+        _since_baseline(mixed)

@@ -1,20 +1,20 @@
 sources:
-- byte_size: 2897
+- byte_size: 2928
   id: nz_populace_us_support_contract
   loader: kernel:load_populace_us_support_pool
   role: nz_populace_us_support_pool
-  sha256: cc1eef0769c79917f33c5ba0f99edf861070143168db48e0145b71efeee751d1
+  sha256: cc82c68878ac0fc07ecbd796c1a66de6f34786ef8785125046425c37f26aff31
   vintage_authorities:
   - id: nz_support_pool_2024_buildp
     kind: survey_period
     value: '2024'
   vintages:
   - vintage:nz_support_pool_2024_buildp
-- byte_size: 2058
+- byte_size: 2448
   id: nz_region_assignment_contract
   loader: kernel:assign_nz_regions
   role: nz_region_assignment_contract
-  sha256: 353821844d85d2622c328b4986dd9e3a8075c13498b9f56d349c4578edf7495a
+  sha256: 5f2b1bdd9f8768249912ffd0fbcb2f7d4ed493b51c74306f793ec12441fd383f
   vintage_authorities:
   - id: nz_region_2025
     kind: geography_vintage
@@ -60,6 +60,7 @@ stages:
   - person_id
   - household_id
   - person_household_id
+  - source_household_id
   - household_weight
   - support_stratum
   - donor_country_code

@@ -52,9 +52,13 @@ from microcosm.graph import (
 from microcosm.graph.canonical import canonical_json
 
 from . import dataset_size, size_checkpoint
-from .dataset_size import UKSizeDraw, UKSizeSelection
+from .dataset_size import UKSizeDraw, UKSizeL2, UKSizeSelection
 from .graph_population import context_frame, population_slices
-from .local_doctrine import UK_LOCAL_SOLVE_EPOCHS
+from .local_doctrine import (
+    UK_LOCAL_L0_SEARCH_FLOOR,
+    UK_LOCAL_SOLVE_EPOCHS,
+    UK_LOCAL_TARGET_WEIGHT_RULES,
+)
 
 SIZE_SEARCH_TYPE = ArtifactType("microcosm.uk.size-search", 1)
 SIZE_DRAW_TYPE = ArtifactType("microcosm.uk.size-draw", 1)
@@ -80,8 +84,18 @@ class UKGraphCalibrationConfig:
     selection_seed: int | None = None
     selection_pi_hi: float = 1.0
     selection_initial_lambda: float | None = None
+    #: microcosm#1301: the lowest L0 penalty the size search may probe, a
+    #: parameter of the search, draw and refit nodes beside the warm start
+    #: (which must lie inside its bracket). Only a sized build reads it.
+    selection_l0_search_floor: float = UK_LOCAL_L0_SEARCH_FLOOR
     baseline_pi_floor: float = 0.0
     target_weight_rule: str = "uniform"
+    #: microcosm#1124: each size stage's L2 penalty (``None``: off). The
+    #: selection's is a parameter of the search, draw and refit nodes; the
+    #: refit's of the refit node alone, like ``baseline_pi_floor``. Off adds
+    #: no node parameter, so a default build's node keys keep their params.
+    selection_l2: UKSizeL2 | None = None
+    refit_l2: UKSizeL2 | None = None
 
     def __post_init__(self):
         if type(self.epochs) is not int or self.epochs < 1:
@@ -96,8 +110,26 @@ class UKGraphCalibrationConfig:
         ):
             raise ValueError("Dataset household count must be a positive integer.")
         dataset_size._check_pi_hi(self.selection_pi_hi)
-        dataset_size._check_initial_lambda(self.selection_initial_lambda)
+        floor = dataset_size._check_l0_search_floor(self.selection_l0_search_floor)
+        dataset_size._check_initial_lambda(self.selection_initial_lambda, floor=floor)
         dataset_size._check_baseline_pi_floor(self.baseline_pi_floor)
+        for stage, l2 in (("selection", self.selection_l2), ("refit", self.refit_l2)):
+            if l2 is None:
+                continue
+            if not isinstance(l2, UKSizeL2) or l2.stage != stage:
+                raise ValueError(
+                    f"{stage}_l2 must be a {stage}-stage UKSizeL2 or None."
+                )
+            if self.dataset_households is None:
+                raise ValueError(f"A {stage} L2 penalty requires a dataset size.")
+        if self.target_weight_rule not in (
+            *UK_LOCAL_TARGET_WEIGHT_RULES,
+            "family_equal",
+        ):
+            raise ValueError(
+                f"Unknown target_weight_rule {self.target_weight_rule!r}; admitted: "
+                f"{(*UK_LOCAL_TARGET_WEIGHT_RULES, 'family_equal')}."
+            )
 
 
 @dataclass(frozen=True)
@@ -299,6 +331,12 @@ class UKSizeCheckpointImportKernel(_CalibrationKernel):
             or not np.array_equal(
                 dense.target_loss_weights, binding["target_loss_weights"]
             )
+            or (
+                binding.get("target_loss_scales") is not None
+                and not np.allclose(
+                    dense.target_loss_scales, binding["target_loss_scales"]
+                )
+            )
         ):
             raise ValueError("Imported dense solve has a different solve doctrine.")
         metadata = {
@@ -343,14 +381,25 @@ class _ObservedSolveKernel(_CalibrationKernel):
 
 
 #: The doctrine fields the dense node does not pass to the solver, with the
-#: one value it solves under: free mass, the default target-loss scales and
-#: no L0 penalty. A problem that binds another value would record a doctrine
+#: one value it solves under: free mass, the default target-loss scales with
+#: the reviewed family floors (microcosm#1240) and no L0 penalty. A problem that binds another value would record a doctrine
 #: the solve did not honour, so the node refuses it instead.
 UK_DENSE_SOLVE_FIXED_DOCTRINE: Mapping[str, object] = {
     "mass_rule": "free",
-    "scale_rule": "default_target_loss_scales",
+    "scale_rule": "default_target_loss_scales_with_family_floors",
     "l0_lambda": 0.0,
 }
+
+
+#: The scale rules the dense node honours: its own (the default with the
+#: family floors, which a problem binds together with the row scales it
+#: yields) and the plain default, which a problem binds without row scales
+#: and which coincides with the floors rule wherever no floored family has a
+#: row (the national seam).
+UK_DENSE_HONOURED_SCALE_RULES = (
+    "default_target_loss_scales_with_family_floors",
+    "default_target_loss_scales",
+)
 
 
 def refuse_unhonoured_solve_doctrine(binding: Mapping[str, object]) -> None:
@@ -362,6 +411,13 @@ def refuse_unhonoured_solve_doctrine(binding: Mapping[str, object]) -> None:
         bound = binding[key]
         if key == "l0_lambda":
             bound = float(bound)
+        if key == "scale_rule":
+            if bound not in UK_DENSE_HONOURED_SCALE_RULES:
+                raise ValueError(
+                    f"UK dense solve cannot honour {key}={binding[key]!r}: it solves "
+                    f"under {honoured!r}."
+                )
+            continue
         if bound != honoured:
             raise ValueError(
                 f"UK dense solve cannot honour {key}={binding[key]!r}: it solves "
@@ -444,6 +500,22 @@ class UKDenseSolveKernel(_ObservedSolveKernel):
         if not required <= set(binding):
             raise ValueError("UK ordered problem is missing its solve doctrine.")
         refuse_unhonoured_solve_doctrine(binding)
+        bound_scales = binding.get("target_loss_scales")
+        # A problem under the floors rule binds the row scales the rule
+        # yields; one under the plain default binds none and solves under
+        # the solver's default, which coincides with the floors rule there.
+        floors_rule = UK_DENSE_SOLVE_FIXED_DOCTRINE["scale_rule"]
+        bound_rule = binding.get("scale_rule")
+        if bound_rule == floors_rule and bound_scales is None:
+            raise ValueError(
+                f"UK ordered problem binds scale_rule={bound_rule!r} without its "
+                "target_loss_scales."
+            )
+        if bound_rule == "default_target_loss_scales" and bound_scales is not None:
+            raise ValueError(
+                "UK ordered problem binds target_loss_scales under the plain default "
+                "scale rule."
+            )
         result = calibrate(
             frame,
             problem.to_target_set(),
@@ -456,6 +528,11 @@ class UKDenseSolveKernel(_ObservedSolveKernel):
             max_weight_ratio=binding["max_weight_ratio"],
             target_loss_weights=np.asarray(
                 binding["target_loss_weights"], dtype=np.float64
+            ),
+            target_loss_scales=(
+                None
+                if bound_scales is None
+                else np.asarray(bound_scales, dtype=np.float64)
             ),
             target_loss_cap=binding["target_loss_cap"],
             progress_callback=self.progress_callback,
@@ -605,27 +682,18 @@ class UKSizeRefitKernel(_ObservedSolveKernel):
         dense = _dense(context, frame, problem)
         selection = _selection(context, frame, problem)
         draw = json.loads(context.artifacts["draw"].payload)
-        if draw.pop("problem_sha256") != problem.sha256:
-            raise ValueError("Exact-count draw belongs to another ordered problem.")
-        method = draw.pop("method")
         if selection is None:
-            if method != "full_pool" or draw["support"] != list(
+            if draw.get("problem_sha256") != problem.sha256:
+                raise ValueError("Exact-count draw belongs to another ordered problem.")
+            if draw.get("method") != "full_pool" or draw.get("support") != list(
                 range(frame.n("household"))
             ):
                 raise ValueError("Full-pool draw has a different support.")
             cached_draw = None
         else:
-            if method != "exact_count":
+            cached_draw = UKSizeDraw.from_payload(draw, problem_sha256=problem.sha256)
+            if cached_draw is None:
                 raise ValueError("Compact refit requires a completed exact-count draw.")
-            cached_draw = UKSizeDraw(
-                **{
-                    **draw,
-                    "support": np.asarray(draw["support"]),
-                    "inclusion_probabilities": np.asarray(
-                        draw["inclusion_probabilities"], dtype=np.float64
-                    ),
-                }
-            )
         compact = dataset_size.refit_uk_dataset_size(
             frame,
             dense,
@@ -816,6 +884,10 @@ def uk_calibration_nodes(
             # search verifies it like any probe, so it is a parameter of the
             # search node and of the nodes that reuse its selection.
             "initial_lambda": config.selection_initial_lambda,
+            # microcosm#1301: the search's L0 floor. The doctrine module is not
+            # in the kernels' code hash, so the floor keys the nodes here.
+            "l0_search_floor": config.selection_l0_search_floor,
+            **({} if config.selection_l2 is None else config.selection_l2.params()),
         }
         dense_input = ArtifactInput("dense", dense_id, "result", RESULT_TYPE)
         search_id, draw_id, refit_id = (
@@ -876,7 +948,11 @@ def uk_calibration_nodes(
                 kernel=UKSizeRefitKernel.ref,
                 population=base,
                 inputs=inputs,
-                params={**params, "baseline_pi_floor": config.baseline_pi_floor},
+                params={
+                    **params,
+                    "baseline_pi_floor": config.baseline_pi_floor,
+                    **({} if config.refit_l2 is None else config.refit_l2.params()),
+                },
                 artifact_inputs=(
                     *search_inputs,
                     ArtifactInput("draw", draw_id, "draw", SIZE_DRAW_TYPE),

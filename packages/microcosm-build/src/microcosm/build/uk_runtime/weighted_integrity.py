@@ -1,28 +1,39 @@
-"""UK weighted-integrity gates: input-mass parity and QRF tail concentration.
+"""UK weighted-integrity gates: input-mass parity, and the QRF tail surface.
 
 Increment 4 of the UK parity plan (#609, under the #578 acceptance rule)
-ports the two US integrity gates that were each purchased with a named
+ported the two US integrity gates that were each purchased with a named
 incident:
 
 - **Input-mass parity** (#278): a rebuilt or selected artifact can zero an
   untargeted input column while every calibrated target still fits. The gate
-  compares weighted per-column totals against a frozen reference; total loss
-  fails at any tolerance.
+  compares weighted per-column totals against the current build of the cut's
+  own line (microcosm#1095; until then a frozen enhanced-FRS reference);
+  total loss fails at any tolerance, and so does a drop past the reviewed
+  share.
 - **QRF tail concentration** (#462): a weighted QRF can broadcast a
   donor-tail point mass so a handful of records carry most of a column's
   shipped weighted mass while the paired count target is hit exactly. The
   tell is weighted-mass concentration, which neither support clipping nor
   count targets can see.
 
-Both gates reuse the shared implementations in :mod:`microcosm.build.gates`
-verbatim — the UK wrappers only add the evidence plumbing for the national
-table layout, the reference identity record, and the universal
-reviewed-exclusion discipline (mandatory reason, dormant entries reported,
-stale entries fail).
+The QRF tail-concentration *gate* was removed in microcosm#1276. On the UK
+surface its top-100 share could only bite on a column with fewer than 100
+independent draws whose CGT-clone copies took it past the carrier floor, so
+its verdict measured how little mass those copies carry; and at the armed
+0.99947 threshold the #462 incident itself (89%) would have passed.
+:func:`uk_qrf_tail_concentration_columns` stays: it is the measurement
+surface of ``tools/measure_uk_weighted_integrity_baselines.py`` and of the
+source-fidelity check #1276 asks for in the gate's place.
+
+The input-mass gate reuses the shared implementation in
+:mod:`microcosm.build.gates` verbatim — the UK wrapper only adds the evidence
+plumbing for the national table layout, the reference identity record, and
+the universal reviewed-exclusion discipline (mandatory reason, dormant
+entries reported, stale entries fail).
 
 Thresholds carry **no committed defaults**: the US numbers are calibrated to
 US incidents and the #609 measurement pass has not yet adjudicated UK
-boundaries. Arming either gate requires explicit policy values; once the
+boundaries. Arming the gate requires explicit policy values; once the
 measurement numbers are adjudicated, the schema-4 manifest parameters should
 carry the same derivation-comment discipline as the weight-ratio threshold.
 
@@ -113,6 +124,7 @@ from datetime import UTC, date, datetime
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -120,26 +132,26 @@ import pandas as pd
 from microcosm.build.gates import (
     GateResult,
     input_mass_parity_gate,
-    tail_concentration_gate,
 )
-from microcosm.build.input_mass import input_mass_totals
+from microcosm.build.input_mass import PERSON_REFERENCE_COLUMNS, input_mass_totals
 from microcosm.build.uk_runtime.national_frame import UK_EXPORTED_WEIGHT_COLUMNS
 from microcosm.frame import Frame
 
 __all__ = [
     "UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE",
     "UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE",
+    "UK_CURRENT_BUILD_REFERENCE",
     "UK_INPUT_MASS_PARITY_GATE_NAME",
-    "UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256",
-    "UK_QRF_TAIL_CONCENTRATION_GATE_NAME",
-    "UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE",
+    "UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE",
     "UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE",
     "UKInputMassParityPolicy",
     "UKInputMassReference",
+    "UKCurrentBuildReference",
     "UKInputMassReferenceDescriptor",
-    "UKQRFTailConcentrationPolicy",
     "UKReviewedExclusion",
     "UK_INPUT_MASS_REFERENCE_REGISTRY",
+    "UK_RELEASE_LINES",
+    "UK_SINCE_BASELINE_LEFT_REASONS",
     "coerce_input_mass_reference_registry",
     "coerce_reviewed_exclusions",
     "exclusion_evaluation_date",
@@ -148,28 +160,33 @@ __all__ = [
     "load_uk_reference_scoped_exclusion_register",
     "load_uk_reviewed_exclusion_register",
     "uk_default_input_mass_reviewed_exclusions",
-    "uk_default_qrf_tail_reviewed_exclusions",
+    "uk_input_mass_carriers",
     "uk_input_mass_parity_gate",
     "uk_input_mass_totals",
     "uk_qrf_tail_concentration_columns",
-    "uk_qrf_tail_concentration_gate",
 ]
 
 UK_INPUT_MASS_PARITY_GATE_NAME = "input_mass_parity"
-UK_QRF_TAIL_CONCENTRATION_GATE_NAME = "qrf_tail_concentration"
 UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE = "input_mass_reviewed_exclusions.json"
-UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE = "qrf_tail_reviewed_exclusions.json"
 UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE = "degenerate_reviewed_exclusions.json"
 UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE = "target_fit_reviewed_exclusions.json"
-
-# Canonical sha256 of {"reference": {"identity": ..., "totals": ...}} for
-# the weighted input surface emitted from the pinned enhanced-FRS artifact by
-# build_uk_efrs_parity_reference.py. The totals remain uncommitted under the
-# UKDS EUL; this reviewed digest lets the gate and publication contract bind
-# them without disclosing them.
-UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c"
+# The local-area battery's own target-fit register (microcosm#1301): keyed by
+# the local gate's family/area_code/metric cell names, read by that gate only.
+UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE = (
+    "local_target_fit_reviewed_exclusions.json"
 )
+
+#: The input-mass reference file a cut writes from its reference build
+#: (microcosm#1095): schema 2 names the build and carries each column's
+#: carriers. Schema 1 held the enhanced FRS's totals, which retired with it.
+UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION = 2
+UK_INPUT_MASS_REFERENCE_KIND = "uk_input_mass_reference"
+#: Why a column leaves the record of change since the baseline, where it
+#: stays listed with its last ratio (round 2 of the review of
+#: microcosm#1574): absent from the candidate or the reference, a zero
+#: reference total (no ratio continues), or one or two source households on
+#: a side (its figures are withheld).
+UK_SINCE_BASELINE_LEFT_REASONS = ("absent", "zero_reference_total", "thin")
 
 
 _SHA256_HEX = frozenset("0123456789abcdef")
@@ -239,29 +256,79 @@ class UKInputMassReferenceDescriptor:
         }
 
 
-_UK_INPUT_MASS_REFERENCE_DESCRIPTOR = UKInputMassReferenceDescriptor(
-    name="efrs-post-calibration",
-    filename="enhanced_frs_2024_25.h5",
-    revision="a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-    sha256="e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
-    vintage="2024_25",
-    totals_sha256=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+@dataclass(frozen=True)
+class UKCurrentBuildReference:
+    """The input-mass reference kind: the current build of the cut's own line.
+
+    The spec names the kind, not a file (microcosm#1095): a cut compares its
+    candidate with the build its line's ``releases.json`` named when the cut
+    fetched its inputs, and every report records which build that was. The
+    concrete descriptor is made from the reference file the cut wrote
+    (:meth:`descriptor_for`), so the identity and totals digest the gate
+    checks are the reference's own.
+    """
+
+    name: str
+    scope_note: str
+
+    def __post_init__(self) -> None:
+        for field_name in ("name", "scope_note"):
+            value = getattr(self, field_name)
+            if (
+                not isinstance(value, str)
+                or not value.strip()
+                or value != value.strip()
+            ):
+                raise ValueError(
+                    f"UK input-mass reference {field_name} must be a non-empty "
+                    "trimmed string."
+                )
+
+    def spec_payload(self) -> dict[str, object]:
+        """The gates.json registry entry shape."""
+
+        return {"kind": "current_build", "scope_note": self.scope_note}
+
+    def descriptor_for(
+        self, reference: UKInputMassReference
+    ) -> UKInputMassReferenceDescriptor:
+        if reference.label is None:
+            raise ValueError(
+                "The input-mass reference names no build; a cut's reference file "
+                "records the build it was measured from."
+            )
+        return UKInputMassReferenceDescriptor(
+            name=self.name,
+            filename=reference.filename,
+            revision=reference.revision,
+            sha256=reference.sha256,
+            vintage=reference.vintage,
+            totals_sha256=_input_mass_reference_evidence_sha256(reference),
+            scope_note=self.scope_note,
+        )
+
+
+UK_CURRENT_BUILD_REFERENCE = UKCurrentBuildReference(
+    name="current_build",
     scope_note=(
-        "Channel-blind post-calibration enhanced-FRS production incumbent, "
-        "pinned to the 2024-25 line; its artifact carries the SPI-synthetic "
-        "rows structurally but no admin-restored mass in the "
-        "SPI-channel-exclusive columns, so those columns are comparable "
-        "only through per-reference reviewed exclusions."
+        "The current build of the cut's own release line, as releases.json "
+        "named it when the cut fetched its inputs (microcosm#1095): totals "
+        "at each build's own solved weights, on the export surface."
     ),
 )
 
 UK_INPUT_MASS_REFERENCE_REGISTRY = MappingProxyType(
-    {_UK_INPUT_MASS_REFERENCE_DESCRIPTOR.name: _UK_INPUT_MASS_REFERENCE_DESCRIPTOR}
+    {UK_CURRENT_BUILD_REFERENCE.name: UK_CURRENT_BUILD_REFERENCE}
 )
 
 _REVIEWED_EXCLUSION_FIELDS = frozenset(
     {"reason", "approved_by", "adjudication", "approved_on", "expires_on"}
 )
+#: An entry may name the release lines whose evidence earned it.
+_REVIEWED_EXCLUSION_OPTIONAL_FIELDS = frozenset({"release_lines"})
+#: The UK release lines a gate context can declare (``release_line``): the
+#: national seam and the geographic K-clone pool of the local line.
+UK_RELEASE_LINES = frozenset({"national", "local"})
 
 
 @dataclass(frozen=True)
@@ -285,8 +352,24 @@ class UKReviewedExclusion:
     adjudication: str
     approved_on: str
     expires_on: str
+    release_lines: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
+        if self.release_lines is not None:
+            lines = self.release_lines
+            if (
+                isinstance(lines, str)
+                or not isinstance(lines, tuple | list)
+                or not lines
+                or any(line not in UK_RELEASE_LINES for line in lines)
+                or len(set(lines)) != len(lines)
+            ):
+                raise ValueError(
+                    "UK reviewed exclusion release_lines must be a non-empty "
+                    f"list of distinct lines from {sorted(UK_RELEASE_LINES)}; "
+                    f"got {lines!r}."
+                )
+            object.__setattr__(self, "release_lines", tuple(sorted(lines)))
         for name in ("reason", "approved_by", "adjudication"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
@@ -335,16 +418,38 @@ class UKReviewedExclusion:
 
         return now < date.fromisoformat(self.approved_on)
 
-    def policy_payload(self) -> dict[str, str]:
+    def applies_on(self, line: str | None) -> bool:
+        """Whether the entry is in scope on a release line.
+
+        An entry without ``release_lines`` applies on every line. A scoped
+        entry applies only where the context declares one of its lines, and
+        stands aside elsewhere, including where no line is declared: it then
+        neither suppresses a failure nor reads as stale, because that context's
+        evidence never earned it (a register is shared by the national seam and
+        the K-clone local pool, whose record counts differ by a factor of K).
+        Failing closed keeps a scoped entry from applying in a context that
+        forgot to declare its line.
+        """
+
+        if self.release_lines is None:
+            return True
+        return line is not None and line in self.release_lines
+
+    def policy_payload(self) -> dict[str, object]:
         """The complete record, sealed into the policy digest."""
 
-        return {
+        payload: dict[str, object] = {
             "reason": self.reason,
             "approved_by": self.approved_by,
             "adjudication": self.adjudication,
             "approved_on": self.approved_on,
             "expires_on": self.expires_on,
         }
+        # Unscoped records keep their pre-scope payload, and with it every
+        # policy digest already pinned.
+        if self.release_lines is not None:
+            payload["release_lines"] = list(self.release_lines)
+        return payload
 
 
 def coerce_reviewed_exclusions(
@@ -384,16 +489,28 @@ def coerce_reviewed_exclusions(
                 f"fields {sorted(_REVIEWED_EXCLUSION_FIELDS)} (schema 2); "
                 f"got {type(entry).__name__}."
             )
-        if set(entry) != _REVIEWED_EXCLUSION_FIELDS:
+        if not _REVIEWED_EXCLUSION_FIELDS <= set(entry) or (
+            set(entry)
+            - _REVIEWED_EXCLUSION_FIELDS
+            - _REVIEWED_EXCLUSION_OPTIONAL_FIELDS
+        ):
             raise ValueError(
                 f"{label} reviewed exclusion {name!r} fields must be exactly "
-                f"{sorted(_REVIEWED_EXCLUSION_FIELDS)}, got {sorted(entry)}."
+                f"{sorted(_REVIEWED_EXCLUSION_FIELDS)}, optionally with "
+                f"{sorted(_REVIEWED_EXCLUSION_OPTIONAL_FIELDS)}; got "
+                f"{sorted(entry)}."
             )
         try:
             records[name] = UKReviewedExclusion(
                 **{
                     field_name: entry[field_name]
-                    for field_name in sorted(_REVIEWED_EXCLUSION_FIELDS)
+                    for field_name in sorted(
+                        set(entry)
+                        & (
+                            _REVIEWED_EXCLUSION_FIELDS
+                            | _REVIEWED_EXCLUSION_OPTIONAL_FIELDS
+                        )
+                    )
                 }
             )
         except ValueError as exc:
@@ -403,57 +520,43 @@ def coerce_reviewed_exclusions(
 
 def coerce_input_mass_reference_registry(
     value: object, *, label: str
-) -> dict[str, UKInputMassReferenceDescriptor]:
-    """Validate the closed-world input-mass reference registry."""
+) -> dict[str, UKCurrentBuildReference]:
+    """Validate the closed-world input-mass reference registry.
+
+    Its one kind is the current build of the cut's own line
+    (``{"kind": "current_build", "scope_note": ...}``); a file pinned by
+    identity, as the enhanced-FRS entry was, is refused.
+    """
 
     if not isinstance(value, Mapping) or not value:
         raise TypeError(f"{label} reference_registry must be a non-empty mapping.")
-    records: dict[str, UKInputMassReferenceDescriptor] = {}
+    records: dict[str, UKCurrentBuildReference] = {}
     for name, entry in value.items():
         if not isinstance(name, str) or not name.strip() or name != name.strip():
             raise ValueError(
                 f"{label} reference_registry names must be non-empty trimmed "
                 f"strings; got {name!r}."
             )
-        if isinstance(entry, UKInputMassReferenceDescriptor):
-            descriptor = entry
-            if descriptor.name != name:
+        if isinstance(entry, UKCurrentBuildReference):
+            if entry.name != name:
                 raise ValueError(
                     f"{label} reference_registry entry {name!r} carries "
-                    f"descriptor name {descriptor.name!r}."
+                    f"reference name {entry.name!r}."
                 )
-            records[name] = descriptor
+            records[name] = entry
             continue
         if not isinstance(entry, Mapping):
             raise TypeError(
                 f"{label} reference_registry entry {name!r} must be an object."
             )
-        expected_entry_fields = {"identity", "totals_sha256", "scope_note"}
-        if set(entry) != expected_entry_fields:
+        if set(entry) != {"kind", "scope_note"} or entry.get("kind") != "current_build":
             raise ValueError(
-                f"{label} reference_registry entry {name!r} fields must be "
-                f"exactly {sorted(expected_entry_fields)}, got {sorted(entry)}."
+                f"{label} reference_registry entry {name!r} must be exactly "
+                '{"kind": "current_build", "scope_note": ...}; a reference pinned '
+                "by file identity is no longer accepted (microcosm#1095)."
             )
-        identity = entry["identity"]
-        if not isinstance(identity, Mapping):
-            raise TypeError(
-                f"{label} reference_registry entry {name!r} identity must be an object."
-            )
-        expected_identity_fields = {"filename", "revision", "sha256", "vintage"}
-        if set(identity) != expected_identity_fields:
-            raise ValueError(
-                f"{label} reference_registry entry {name!r} identity fields "
-                f"must be exactly {sorted(expected_identity_fields)}, got "
-                f"{sorted(identity)}."
-            )
-        records[name] = UKInputMassReferenceDescriptor(
-            name=name,
-            filename=identity["filename"],
-            revision=identity["revision"],
-            sha256=identity["sha256"],
-            vintage=identity["vintage"],
-            totals_sha256=entry["totals_sha256"],
-            scope_note=entry["scope_note"],
+        records[name] = UKCurrentBuildReference(
+            name=name, scope_note=entry["scope_note"]
         )
     return dict(sorted(records.items()))
 
@@ -730,61 +833,126 @@ def uk_default_input_mass_reviewed_exclusions() -> Mapping[
     )
 
 
-@functools.cache
-def uk_default_qrf_tail_reviewed_exclusions() -> Mapping[str, UKReviewedExclusion]:
-    """Committed schema-2 QRF tail exclusions."""
+def _is_ratio(value: object) -> bool:
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and float(value) >= 0.0
+    )
 
-    return MappingProxyType(
-        load_uk_reviewed_exclusion_register(
-            None, resource=UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE
-        )
+
+def _left_chain_ok(left: object, ratios: Mapping[str, Any]) -> bool:
+    """Each column that left the chain: why, its last ratio and build."""
+
+    return isinstance(left, Mapping) and all(
+        isinstance(entry, Mapping)
+        and set(entry) == {"reason", "last_ratio", "last_build"}
+        and entry["reason"] in UK_SINCE_BASELINE_LEFT_REASONS
+        and _is_ratio(entry["last_ratio"])
+        and isinstance(entry["last_build"], str)
+        and entry["last_build"].count("@") == 1
+        and column not in ratios
+        for column, entry in left.items()
     )
 
 
 def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
-    """Load frozen reference totals emitted by the #609 measurement tooling.
+    """Load the input-mass reference a cut wrote from its reference build.
 
-    Schema: ``{"schema_version": 1, "identity": {filename, revision, sha256,
-    vintage}, "totals": {column: weighted_total}}`` — totals keys are flat
-    frame column names, matching :func:`uk_input_mass_totals`. The identity
-    names the pinned artifact the totals were measured from and is recorded
-    verbatim in the gate details and the attestation evidence digest.
+    Schema 2: ``{"schema_version": 2, "kind": "uk_input_mass_reference",
+    "label": "<release>@<build>", "identity": {filename, revision, sha256,
+    vintage}, "totals": {column: weighted_total}, "carriers": {column:
+    distinct source households}}``. The revision is the build, the totals
+    and carriers are :func:`uk_input_mass_totals` and
+    :func:`uk_input_mass_carriers` of the build's export frame at its own
+    solved weights (:func:`~.cut_reference.uk_input_mass_reference_payload`). The file stays
+    beside the cut's reference: its totals are licensed-data aggregates.
     """
 
     path = Path(source)
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
         raise ValueError(f"{path}: input-mass reference must be a JSON object.")
-    if payload.get("schema_version") != 1:
+    if payload.get("schema_version") != UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION:
         raise ValueError(
-            f"{path}: input-mass reference schema_version must be 1, got "
-            f"{payload.get('schema_version')!r}."
+            f"{path}: input-mass reference schema_version must be "
+            f"{UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION}, got "
+            f"{payload.get('schema_version')!r}; the enhanced-FRS totals retired "
+            "with microcosm#1095, so write the reference from the line's current "
+            "build (tools/resolve_uk_reference.py)."
+        )
+    if payload.get("kind") != UK_INPUT_MASS_REFERENCE_KIND:
+        raise ValueError(
+            f"{path}: input-mass reference kind must be {UK_INPUT_MASS_REFERENCE_KIND!r}."
         )
     identity = payload.get("identity")
     if not isinstance(identity, Mapping):
         raise ValueError(f"{path}: input-mass reference needs an 'identity' object.")
     totals = payload.get("totals")
-    if not isinstance(totals, Mapping):
-        raise ValueError(f"{path}: input-mass reference needs a 'totals' object.")
-    reference = UKInputMassReference(
+    carriers = payload.get("carriers")
+    if not isinstance(totals, Mapping) or not isinstance(carriers, Mapping):
+        raise ValueError(
+            f"{path}: input-mass reference needs 'totals' and 'carriers' objects."
+        )
+    label = payload.get("label")
+    if not isinstance(label, str) or label.count("@") != 1:
+        raise ValueError(
+            f"{path}: input-mass reference label must be <release>@<build>."
+        )
+    if label.split("@", 1)[1] != identity.get("revision"):
+        raise ValueError(
+            f"{path}: input-mass reference label {label!r} does not name the "
+            f"build its identity records ({identity.get('revision')!r})."
+        )
+    since_baseline = payload.get("since_baseline")
+    if since_baseline is not None:
+        ratios = (
+            since_baseline.get("ratios")
+            if isinstance(since_baseline, Mapping)
+            else None
+        )
+        baseline = (
+            since_baseline.get("baseline")
+            if isinstance(since_baseline, Mapping)
+            else None
+        )
+        left = (
+            since_baseline.get("left") if isinstance(since_baseline, Mapping) else None
+        )
+        if (
+            not isinstance(baseline, str)
+            or baseline.count("@") != 1
+            or not isinstance(ratios, Mapping)
+            or not all(_is_ratio(value) for value in ratios.values())
+            or not _left_chain_ok(left, ratios)
+        ):
+            raise ValueError(
+                f"{path}: since_baseline names its baseline <release>@<build>, "
+                "a finite, non-negative ratio per column, and the columns that "
+                "left the chain, each with its reason, last ratio and last build."
+            )
+        since_baseline = {
+            "baseline": baseline,
+            "ratios": {str(name): float(value) for name, value in ratios.items()},
+            "left": {
+                str(name): {
+                    "reason": str(entry["reason"]),
+                    "last_ratio": float(entry["last_ratio"]),
+                    "last_build": str(entry["last_build"]),
+                }
+                for name, entry in left.items()
+            },
+        }
+    return UKInputMassReference(
         totals=dict(totals),
         filename=str(identity.get("filename", "")),
         revision=str(identity.get("revision", "")),
         sha256=str(identity.get("sha256", "")),
         vintage=str(identity.get("vintage", "")),
-    )
-    observed_digest = _input_mass_reference_evidence_sha256(reference)
-    for descriptor in UK_INPUT_MASS_REFERENCE_REGISTRY.values():
-        if (
-            reference.identity == descriptor.identity
-            and observed_digest == descriptor.totals_sha256
-        ):
-            return reference
-    known = sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)
-    raise ValueError(
-        f"{path}: input-mass reference sidecar did not match any reviewed "
-        f"reference {known}; observed identity {reference.identity} with "
-        f"canonical evidence sha256 {observed_digest}."
+        label=label,
+        carriers=dict(carriers),
+        since_baseline=since_baseline,
     )
 
 
@@ -804,8 +972,27 @@ class UKInputMassReference:
     revision: str
     sha256: str
     vintage: str
+    label: str | None = None
+    carriers: Mapping[str, int] | None = None
+    #: The reference's own change since a fixed baseline, which the gate
+    #: continues: ``{"baseline": "<release>@<build>", "ratios": {column:
+    #: total / baseline total}, "left": {column: {"reason", "last_ratio",
+    #: "last_build"}}}`` (the review of microcosm#1574).
+    since_baseline: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
+        if self.carriers is not None:
+            carriers: dict[str, int] = {}
+            for name, count in self.carriers.items():
+                if type(count) is not int or count < 0:
+                    raise ValueError(
+                        "UK input-mass reference carriers must be non-negative "
+                        f"integers; got {name!r} -> {count!r}."
+                    )
+                carriers[str(name)] = count
+            object.__setattr__(
+                self, "carriers", MappingProxyType(dict(sorted(carriers.items())))
+            )
         if not isinstance(self.totals, Mapping) or not self.totals:
             raise ValueError(
                 "UK input-mass reference totals must be a non-empty mapping."
@@ -866,12 +1053,6 @@ def _input_mass_reference_evidence_sha256(
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _validate_input_mass_reference(reference: UKInputMassReference) -> None:
-    _validate_input_mass_reference_for_descriptor(
-        reference, _UK_INPUT_MASS_REFERENCE_DESCRIPTOR
-    )
-
-
 def _validate_input_mass_reference_for_descriptor(
     reference: UKInputMassReference,
     descriptor: UKInputMassReferenceDescriptor,
@@ -883,8 +1064,7 @@ def _validate_input_mass_reference_for_descriptor(
         raise ValueError(
             "UK input-mass reference identity must match the reviewed "
             f"{descriptor.name}; expected {expected_identity}, got "
-            f"{reference.identity}. Known references: "
-            f"{sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)}."
+            f"{reference.identity}."
         )
     observed_digest = _input_mass_reference_evidence_sha256(reference)
     if observed_digest != descriptor.totals_sha256:
@@ -901,18 +1081,29 @@ class UKInputMassParityPolicy:
 
     There are deliberately no defaults: the US tolerances (0.5 relative, a
     $1e9 USD floor over a 337k-record pool) are calibrated to US incidents
-    and dollar scales. UK values must come from the #609 measurement pass
-    over the certified compact, the pinned eFRS incumbent, and the staging
-    candidate, and be recorded with their derivation when committed.
+    and dollar scales. UK values are measured between consecutive certified
+    builds of a line, the current build being the reference (microcosm#1095),
+    and are recorded with their derivation when committed.
     """
 
     relative_tolerance: float
     minimum_reference_total: float
+    #: The largest share of its reference total a column's total may lose
+    #: (microcosm#1095): with a symmetric tolerance above one, the drift test
+    #: alone fails no drop short of zero.
+    maximum_relative_drop: float
     reviewed_exclusions: Mapping[str, UKReviewedExclusion] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         tolerance = float(self.relative_tolerance)
         floor = float(self.minimum_reference_total)
+        drop = float(self.maximum_relative_drop)
+        if not math.isfinite(drop) or not 0.0 <= drop <= 1.0:
+            raise ValueError(
+                "UK input-mass maximum_relative_drop must be a share in [0, 1], "
+                f"got {self.maximum_relative_drop!r}."
+            )
+        object.__setattr__(self, "maximum_relative_drop", drop)
         if not math.isfinite(tolerance) or tolerance < 0.0:
             raise ValueError(
                 "UK input-mass relative_tolerance must be finite and "
@@ -939,74 +1130,7 @@ class UKInputMassParityPolicy:
         return {
             "relative_tolerance": self.relative_tolerance,
             "minimum_reference_total": self.minimum_reference_total,
-            "reviewed_exclusions": {
-                name: record.policy_payload()
-                for name, record in sorted(self.reviewed_exclusions.items())
-            },
-        }
-
-
-@dataclass(frozen=True)
-class UKQRFTailConcentrationPolicy:
-    """Reviewed thresholds and exclusion register for QRF tail concentration.
-
-    No committed defaults, for the same reason as
-    :class:`UKInputMassParityPolicy`: the US ``top_k=100`` /
-    ``max_top_share=0.75`` / ``min_nonzero_records=500`` numbers are
-    calibrated to the #462 incident on the CPS spine. The UK boundaries must
-    be measured on the staging pool before they are written down.
-    """
-
-    top_k: int
-    max_top_share: float
-    min_nonzero_records: int
-    reviewed_exclusions: Mapping[str, UKReviewedExclusion] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        if isinstance(self.top_k, bool) or not isinstance(self.top_k, int):
-            raise ValueError(
-                f"UK QRF tail top_k must be an integer, got {self.top_k!r}."
-            )
-        if self.top_k < 1:
-            raise ValueError(
-                f"UK QRF tail top_k must be at least 1, got {self.top_k!r}."
-            )
-        share = float(self.max_top_share)
-        if not math.isfinite(share) or not 0.0 < share < 1.0:
-            raise ValueError(
-                f"UK QRF tail max_top_share must be in (0, 1), got "
-                f"{self.max_top_share!r}."
-            )
-        if isinstance(self.min_nonzero_records, bool) or not isinstance(
-            self.min_nonzero_records, int
-        ):
-            raise ValueError(
-                "UK QRF tail min_nonzero_records must be an integer, got "
-                f"{self.min_nonzero_records!r}."
-            )
-        if self.min_nonzero_records <= self.top_k:
-            raise ValueError(
-                "UK QRF tail min_nonzero_records must exceed top_k so the tail "
-                f"is a strict subset of the carriers, got "
-                f"min_nonzero_records={self.min_nonzero_records!r} with "
-                f"top_k={self.top_k!r}."
-            )
-        object.__setattr__(self, "max_top_share", share)
-        object.__setattr__(
-            self,
-            "reviewed_exclusions",
-            MappingProxyType(
-                coerce_reviewed_exclusions(
-                    self.reviewed_exclusions, label="UK QRF tail"
-                )
-            ),
-        )
-
-    def policy_payload(self) -> dict[str, object]:
-        return {
-            "top_k": self.top_k,
-            "max_top_share": self.max_top_share,
-            "min_nonzero_records": self.min_nonzero_records,
+            "maximum_relative_drop": self.maximum_relative_drop,
             "reviewed_exclusions": {
                 name: record.policy_payload()
                 for name, record in sorted(self.reviewed_exclusions.items())
@@ -1036,6 +1160,203 @@ def uk_input_mass_totals(
     return totals
 
 
+def uk_input_mass_carriers(
+    frame: Frame,
+    *,
+    columns: Iterable[str] | None = None,
+) -> dict[str, int]:
+    """Distinct source households carrying each column :func:`uk_input_mass_totals` sums.
+
+    A column's carriers are the distinct ``household_source_id`` values among
+    rows of positive weight whose value is nonzero (a boolean: ``True``),
+    counted as the stage receipts count support
+    (:func:`~microcosm.build.uk_runtime.receipt_counts.distinct_count`):
+    support copies and clones repeat their source household, so they count
+    once. A person or benefit unit row counts its household's source. A
+    figure resting on fewer than ``UK_DISCLOSURE_FLOOR`` carriers is withheld
+    from what a report prints (microcosm#1095).
+    """
+
+    from microcosm.build.uk_runtime.receipt_counts import (
+        distinct_count,
+        source_household_ids,
+    )
+
+    schema = frame.schema
+    household = frame.table("household")
+    household_sources = pd.Series(
+        source_household_ids(household, stage="input-mass carriers"),
+        index=household[schema.id_column("household")].to_numpy(),
+    )
+    person = frame.table("person")
+    person_sources = household_sources.reindex(
+        person[schema.membership_column("household")].to_numpy()
+    ).to_numpy()
+    benunit_sources = None
+    if "benunit" in frame.entities:
+        first_member = (
+            pd.DataFrame(
+                {
+                    "benunit": person[schema.membership_column("benunit")].to_numpy(),
+                    "source": person_sources,
+                }
+            )
+            .drop_duplicates("benunit")
+            .set_index("benunit")["source"]
+        )
+        benunit_sources = first_member.reindex(
+            frame.table("benunit")[schema.id_column("benunit")].to_numpy()
+        ).to_numpy()
+    sources_by_entity = {
+        "household": household_sources.to_numpy(),
+        "person": person_sources,
+        "benunit": benunit_sources,
+    }
+    structural = {schema.person_id_column, *PERSON_REFERENCE_COLUMNS}
+    for group in schema.group_entities:
+        structural.add(schema.id_column(group))
+        structural.add(schema.membership_column(group))
+    requested = None if columns is None else {str(name) for name in columns}
+    carriers: dict[str, int] = {}
+    for entity in frame.entities:
+        sources = sources_by_entity.get(entity)
+        if sources is None:
+            continue
+        table = frame.table(entity)
+        weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
+        for column in table.columns:
+            if column in structural or column in UK_EXPORTED_WEIGHT_COLUMNS:
+                continue
+            if requested is not None and column not in requested:
+                continue
+            values = table[column]
+            if pd.api.types.is_bool_dtype(values):
+                nonzero = values.fillna(False).to_numpy(dtype=bool)
+            elif pd.api.types.is_numeric_dtype(values):
+                numeric = pd.to_numeric(values, errors="coerce").fillna(0.0)
+                nonzero = numeric.to_numpy(dtype=np.float64) != 0.0
+            else:
+                continue
+            carriers[column] = distinct_count(sources, nonzero, weights)
+    return carriers
+
+
+def _thin_columns(
+    candidate_carriers: Mapping[str, int] | None,
+    reference_carriers: Mapping[str, int] | None,
+) -> frozenset[str]:
+    """Columns one or two source households carry on either side."""
+
+    from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR
+
+    if candidate_carriers is None or reference_carriers is None:
+        return frozenset()
+    return frozenset(
+        column
+        for column in set(candidate_carriers) | set(reference_carriers)
+        if any(
+            0 < count < UK_DISCLOSURE_FLOOR
+            for count in (
+                candidate_carriers.get(column),
+                reference_carriers.get(column),
+            )
+            if count is not None
+        )
+    )
+
+
+def _excess_drops(
+    candidate_totals: Mapping[str, float],
+    reference_totals: Mapping[str, float],
+    *,
+    maximum_relative_drop: float,
+    minimum_reference_total: float,
+) -> dict[str, float]:
+    """Columns whose total fell by more than the reviewed share of the reference's.
+
+    Drift is the shared gate's, signed: ``(candidate - reference) /
+    |reference|``. A column absent from the candidate or at exactly zero is
+    the shared gate's failure already, and a reference total at or below the
+    floor is skipped as the shared gate skips it.
+    """
+
+    drops: dict[str, float] = {}
+    for column, reference_total in reference_totals.items():
+        reference_total = float(reference_total)
+        if abs(reference_total) <= minimum_reference_total:
+            continue
+        if column not in candidate_totals:
+            continue
+        candidate_total = float(candidate_totals[column])
+        if candidate_total == 0.0:
+            continue
+        drift = (candidate_total - reference_total) / abs(reference_total)
+        if drift < -maximum_relative_drop:
+            drops[str(column)] = drift
+    return drops
+
+
+def _since_baseline(
+    candidate_totals: Mapping[str, float],
+    reference: UKInputMassReference,
+    thin: frozenset[str],
+) -> dict[str, Any] | None:
+    """Continue the reference's change since the baseline, or None without one.
+
+    A column leaves the chain where its ratio cannot be continued: absent on
+    a side, a zero reference total, or one or two source households on a
+    side (its figures are withheld). It stays listed, with the reason and
+    the last ratio the chain recorded for it, as of the reference, and the
+    reference's own list carries forward (round 2 of the review of
+    microcosm#1574): a column driven down and then dropped, or carried to
+    zero under a reviewed exclusion, does not vanish from the record. The
+    last ratio is one the reference's own certification already recorded,
+    so the list adds no figure.
+    """
+
+    chain = reference.since_baseline
+    if not chain:
+        return None
+    ratios: dict[str, float] = {}
+    left: dict[str, dict[str, Any]] = {
+        column: dict(entry) for column, entry in chain["left"].items()
+    }
+    for column, ratio in chain["ratios"].items():
+        reference_total = reference.totals.get(column)
+        candidate_total = candidate_totals.get(column)
+        if reference_total is None or candidate_total is None:
+            reason = "absent"
+        elif float(reference_total) == 0.0:
+            reason = "zero_reference_total"
+        elif column in thin:
+            reason = "thin"
+        else:
+            ratios[column] = (
+                float(ratio) * float(candidate_total) / float(reference_total)
+            )
+            continue
+        left[column] = {
+            "reason": reason,
+            "last_ratio": float(ratio),
+            "last_build": reference.label,
+        }
+    return {
+        "baseline": chain["baseline"],
+        "ratios": dict(sorted(ratios.items())),
+        "left": dict(sorted(left.items())),
+    }
+
+
+def _withheld_failure(message: str, thin: frozenset[str]) -> str:
+    column = message.split(":", 1)[0]
+    if column not in thin:
+        return message
+    return (
+        f"{column}: its mass check failed on a column one or two source "
+        "households carry on one side; the figures are withheld."
+    )
+
+
 def uk_input_mass_parity_gate(
     candidate_totals: Mapping[str, float],
     reference: UKInputMassReference,
@@ -1044,8 +1365,9 @@ def uk_input_mass_parity_gate(
     policy: UKInputMassParityPolicy,
     candidate_name: str = "uk_release_candidate",
     now: date | None = None,
+    candidate_carriers: Mapping[str, int] | None = None,
 ) -> GateResult:
-    """Require persisted UK input mass to survive against a frozen reference.
+    """Require persisted UK input mass to survive against the reference.
 
     Wraps :func:`microcosm.build.gates.input_mass_parity_gate` verbatim — a
     zero candidate total fails at any tolerance (the #278 signature),
@@ -1055,6 +1377,17 @@ def uk_input_mass_parity_gate(
     within tolerance is stale and **fails**; an exclusion outside the audited
     surface (absent from the reference, or below the reference floor) is
     dormant and reported.
+
+    Given both sides' carriers (``candidate_carriers`` and the reference's
+    own), a column one or two source households carry on either side is still
+    checked, but its figures never reach the report: its failure reads by
+    name, and it leaves ``worst_drifts`` for ``withheld_thin_columns``
+    (UKDS disclosure control, microcosm#1095).
+
+    The shared gate's tolerance is symmetric, so above one it fails no drop
+    short of zero; ``policy.maximum_relative_drop`` bounds how much of its
+    reference total a column may lose (microcosm#1095). A reviewed exclusion
+    covers both checks, and is stale only if the column passes both.
     """
 
     if not isinstance(reference, UKInputMassReference):
@@ -1078,6 +1411,15 @@ def uk_input_mass_parity_gate(
         minimum_reference_total=policy.minimum_reference_total,
         reviewed_exclusions=exclusions,
     )
+    all_drops = _excess_drops(
+        candidate_totals,
+        reference.totals,
+        maximum_relative_drop=policy.maximum_relative_drop,
+        minimum_reference_total=policy.minimum_reference_total,
+    )
+    drops = {
+        column: drift for column, drift in all_drops.items() if column not in exclusions
+    }
 
     stale: list[str] = []
     dormant: list[str] = []
@@ -1098,10 +1440,22 @@ def uk_input_mass_parity_gate(
             relative_tolerance=policy.relative_tolerance,
             minimum_reference_total=policy.minimum_reference_total,
         )
-        if probe.passed:
+        # Stale only if the column passes the drop limit too.
+        if probe.passed and column not in all_drops:
             stale.append(column)
 
-    failures = list(base.failures)
+    thin = _thin_columns(candidate_carriers, reference.carriers)
+    since_baseline = _since_baseline(candidate_totals, reference, thin)
+    failures = [_withheld_failure(message, thin) for message in base.failures]
+    for column, drift in sorted(drops.items()):
+        failures.append(
+            _withheld_failure(
+                f"{column}: {candidate_name} total fell by {-drift:.6g} of the "
+                f"reference's, beyond the reviewed maximum drop "
+                f"{policy.maximum_relative_drop:.6g}.",
+                thin,
+            )
+        )
     if stale:
         failures.append(
             "Stale reviewed input-mass exclusions — the column is within "
@@ -1121,6 +1475,20 @@ def uk_input_mass_parity_gate(
         failures=tuple(failures),
         details={
             **dict(base.details),
+            "worst_drifts": {
+                name: drift
+                for name, drift in dict(base.details["worst_drifts"]).items()
+                if name not in thin
+            },
+            "withheld_thin_columns": sorted(
+                thin & (set(reference.totals) | set(candidate_totals))
+            ),
+            "maximum_relative_drop": policy.maximum_relative_drop,
+            # Names only: a column's drift is in worst_drifts unless it is thin.
+            "excess_drops": sorted(drops),
+            # Each column's total as a ratio of the fixed baseline's, the
+            # reference's ratio times this comparison's: a record, no verdict.
+            **({"since_baseline": since_baseline} if since_baseline else {}),
             "stale_exclusions": stale,
             "dormant_exclusions": dormant,
             "expired_exclusions": expired,
@@ -1129,6 +1497,7 @@ def uk_input_mass_parity_gate(
             "reference": descriptor.name,
             "reference_scope_note": descriptor.scope_note,
             "reference_identity": reference.identity,
+            "reference_label": reference.label,
         },
     )
 
@@ -1138,15 +1507,21 @@ def uk_qrf_tail_concentration_columns(
     *,
     output_columns: Iterable[str] | None = None,
 ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], dict[str, object]]:
-    """Assemble the tail-concentration evidence for the declared QRF surface.
+    """Assemble per-column weighted evidence for the declared QRF surface.
 
+    No release gate reads it since microcosm#1276 removed the tail gate; the
+    weighted-integrity baselines tool and the #1276 redesign measure on it.
     The surface defaults to every output declared by a
-    ``fit_weighted_qrf_stage*`` operation in the HMRC source manifest.
+    ``fit_weighted_qrf_stage*`` operation in the HMRC source manifest, less the
+    report columns ``spi_benefit_coherence`` replaces on every SPI-channel row
+    (microcosm#1100, read from that stage's declaration): after it those
+    columns hold only FRS respondents' own reports, no forest draw, so the
+    #462 broadcast cannot occur in them. They are listed in the surface as
+    ``superseded_by_spi_benefit_coherence``.
     Unlike the US wrapper, there is **no sparsity filter**: on the UK staging
     pool the SPI channel is a large fraction of all persons, so a
-    nonzero-share cutoff would silently skip the gate exactly where the risk
-    lives (#609). Every declared, present, numeric output is checked;
-    ``min_nonzero_records`` in the policy remains the sole thinness guard.
+    nonzero-share cutoff would silently skip exactly the columns where the
+    risk lives (#609). Every declared, present, numeric output is returned.
     """
 
     if output_columns is None:
@@ -1155,11 +1530,16 @@ def uk_qrf_tail_concentration_columns(
         # at import time.
         from microcosm.build.uk_runtime.hmrc_source_contract import (
             uk_hmrc_weighted_qrf_output_columns,
+            uk_spi_coherence_superseded_columns,
         )
 
-        declared = uk_hmrc_weighted_qrf_output_columns()
+        superseded_columns = set(uk_spi_coherence_superseded_columns())
+        all_declared = uk_hmrc_weighted_qrf_output_columns()
+        declared = tuple(c for c in all_declared if c not in superseded_columns)
+        superseded = [c for c in all_declared if c in superseded_columns]
     else:
         declared = tuple(str(name) for name in output_columns)
+        superseded = []
     if not declared:
         raise ValueError("UK QRF tail-concentration surface must be non-empty.")
 
@@ -1196,116 +1576,6 @@ def uk_qrf_tail_concentration_columns(
         "absent_columns": absent,
         "non_numeric_columns": non_numeric,
         "density_filter": "none: every declared output is checked (#609)",
+        "superseded_by_spi_benefit_coherence": superseded,
     }
     return values, weights, surface
-
-
-def uk_qrf_tail_concentration_gate(
-    column_values: Mapping[str, Iterable[float]],
-    column_weights: Mapping[str, Iterable[float]],
-    *,
-    policy: UKQRFTailConcentrationPolicy,
-    surface: Mapping[str, object] | None = None,
-    now: date | None = None,
-) -> GateResult:
-    """No declared UK QRF output hides its mass in a handful of records.
-
-    Wraps :func:`microcosm.build.gates.tail_concentration_gate` — which
-    already enforces the universal exclusion discipline (stale entries fail,
-    dormant entries are reported) — under the UK gate name, and records the
-    manifest-derived surface metadata alongside the shared details.
-    """
-
-    if not isinstance(policy, UKQRFTailConcentrationPolicy):
-        raise TypeError("policy must be UKQRFTailConcentrationPolicy.")
-    evaluated_on = exclusion_evaluation_date(now)
-    records = dict(policy.reviewed_exclusions)
-    projected, expired, premature = _reviewed_exclusion_reasons(
-        records, now=evaluated_on
-    )
-    base = tail_concentration_gate(
-        column_values,
-        column_weights,
-        top_k=policy.top_k,
-        max_top_share=policy.max_top_share,
-        min_nonzero_records=policy.min_nonzero_records,
-        reviewed_exclusions=projected,
-    )
-    details = dict(base.details)
-    details["expired_exclusions"] = expired
-    details["premature_exclusions"] = premature
-    details["exclusions_evaluated_on"] = evaluated_on.isoformat()
-    failures = list(base.failures)
-    if expired:
-        failures.append(_expired_exclusion_failure(records, expired, family="QRF-tail"))
-    if premature:
-        failures.append(
-            _premature_exclusion_failure(records, premature, family="QRF-tail")
-        )
-    if surface is not None:
-        details["surface"] = dict(surface)
-        failures.extend(
-            f"{column}: declared QRF output is absent from the person table."
-            for column in surface.get("absent_columns", ())
-        )
-        failures.extend(
-            f"{column}: declared QRF output is not numeric in the person table."
-            for column in surface.get("non_numeric_columns", ())
-        )
-        declared_count = surface.get("declared_qrf_outputs")
-        classified = {
-            field: surface.get(field)
-            for field in (
-                "checked_columns",
-                "absent_columns",
-                "non_numeric_columns",
-            )
-        }
-        if (
-            isinstance(declared_count, bool)
-            or not isinstance(declared_count, int)
-            or declared_count <= 0
-            or any(
-                not isinstance(names, list)
-                or any(not isinstance(name, str) or not name for name in names)
-                for names in classified.values()
-            )
-        ):
-            failures.append(
-                "QRF surface must declare a positive output count and three "
-                "lists of non-empty column names."
-            )
-        else:
-            checked = set(classified["checked_columns"])
-            absent = set(classified["absent_columns"])
-            non_numeric = set(classified["non_numeric_columns"])
-            all_lists = [
-                *classified["checked_columns"],
-                *classified["absent_columns"],
-                *classified["non_numeric_columns"],
-            ]
-            accounted = checked | absent | non_numeric
-            gate_accounted = set(details["top_share"]) | set(details["thin_columns"])
-            if (
-                len(all_lists) != len(accounted)
-                or declared_count != len(accounted)
-                or set(details["top_share"]) & set(details["thin_columns"])
-                or accounted != gate_accounted
-                or checked != gate_accounted - absent - non_numeric
-            ):
-                failures.append(
-                    "QRF surface declarations must reconcile exactly across "
-                    "declared, checked, absent, nonnumeric, checked-tail, and "
-                    "thin outputs."
-                )
-    if details["columns_checked"] == 0:
-        failures.append(
-            "No declared QRF output had enough weighted carriers for the "
-            "tail-concentration check."
-        )
-    return GateResult(
-        name=UK_QRF_TAIL_CONCENTRATION_GATE_NAME,
-        passed=not failures,
-        failures=tuple(failures),
-        details=details,
-    )

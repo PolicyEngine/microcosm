@@ -1,0 +1,38 @@
+{
+ "issue": "PolicyEngine/microcosm#1164",
+ "measured": {
+  "stage_runs_spine": {
+   "name": "uk_frs_spine_2024_25.h5 (K25 spine of 2026-10-10, policyengine-uk 2.122.2, before #1145's property_components stage)",
+   "sha256": "828ef253c8e9a1631ced7c99602bbafdadc271dbc109412c94fdc0690fc6fee9",
+   "households": "about 64,000"
+  },
+  "engine": "policyengine-uk 2.123.0 on policyengine-core 3.32.19"
+ },
+ "stage_run_trees": {
+  "stage_dev_run.control-2023-24-final.json": "#1200's head (a50ffba5e, carrying #1145 and #1198), the branch base, on LCFS 2023-24 (SN 9468)",
+  "stage_dev_run.treatment-2024-25-final.json": "this branch, on LCFS 2024-25 (SN 9603, 2nd edition)",
+  "nts_lcfs_chain_run.control.json": "#1200's head: nts_bus_travel then lcfs_consumption",
+  "nts_lcfs_chain_run.treatment.json": "this branch: nts_bus_travel then lcfs_consumption",
+  "etb_vat_dev_run.control.json": "#1200's head: etb_vat on the ETB 2023 donor year",
+  "etb_vat_dev_run.treatment.json": "this branch: etb_vat on the ETB 2023 donor year"
+ },
+ "not_committed": [
+  "household dumps (*.households.parquet): unit records",
+  "the diagnostic runs behind the band and ceiling decisions: their aggregates are in README.md",
+  "exact donor extremes, remainder minima and the donor-floor negative mass; counts are rounded (nearest 10 under 1,000, nearest 100 above) and counts of rows picked out by an extreme value banded (\"<10\", \"10-49\", \"50-99\", then nearest 100), see scripts/sanitize_outputs.py"
+ ],
+ "files_sha256": {
+  "README.md": "b8811ad76e43d7131cbcdb813bc3373aa89163135e9845954a808b29f37f5fb2",
+  "outputs/etb_vat_dev_run.control.json": "1fd454cfa008c4f01f528b362d7b3fce7b38e0599b78706fcb06375203052a8e",
+  "outputs/etb_vat_dev_run.treatment.json": "17e48b71cc5f1772032a0b92be2fd722254a40fed43422e69b1800a6d44dd225",
+  "outputs/nts_lcfs_chain_run.control.json": "6258ca0e2a55d6c6f00a195a020a93ae3c041f20bcc26af03624b2b8b90f9936",
+  "outputs/nts_lcfs_chain_run.treatment.json": "2a8deba45f4980e317f1b625473b32badcfad6090583344baf99e7c1536d035c",
+  "outputs/stage_dev_run.control-2023-24-final.json": "79c083d79959d5ff16edbc2fcf35cdb773fc878fbeef110fde700bb3a36837a2",
+  "outputs/stage_dev_run.treatment-2024-25-final.json": "023bffed3ca1670a4b4588b8de84d110413c910f192d33d673ad40b9501a465d",
+  "scripts/etb_vat_dev_run.py": "d60cd53ef7aa21db52d337eae30862639bbf834eebf294d25b1e1c4de5a75ac7",
+  "scripts/nts_lcfs_chain_run.py": "7cf93989e17dbce174f49f1a179561b4492f5cf1e1c519e46ac20a048651843b",
+  "scripts/run_stage_dev_at.sh": "0f804d24243e9f71e97f108337db02e19211c5540dc518260d7852b28310bf79",
+  "scripts/sanitize_outputs.py": "42c51d5a5b5202939ff0b5ca8d31af659d5579ee09bb475d7e7637a247d54542",
+  "scripts/stage_dev_run.py": "f383e25fc260b47209d63ec9a8f561f77c99898579befc3cf663101528b6c0e0"
+ }
+}

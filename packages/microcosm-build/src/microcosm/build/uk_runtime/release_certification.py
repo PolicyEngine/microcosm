@@ -47,6 +47,7 @@ from microcosm.build.gates import FitWeightRecord
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import (
     UK_CALIBRATION_GATE_SCOPE,
+    UK_LOCAL_DIAGNOSTIC_GATE_SCOPE,
     UK_LOCAL_GATE_SCOPE,
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
@@ -60,6 +61,10 @@ from microcosm.build.uk_runtime.cgt_projection import (
     uk_cgt_projection_read_from_engine,
 )
 from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
+from microcosm.data.gate_signing_keys import (
+    GateSigningKeyError,
+    require_registered_gate_signing_key,
+)
 
 __all__ = [
     "UK_RELEASE_CERTIFICATION_KIND",
@@ -74,10 +79,15 @@ __all__ = [
     "uk_release_parity_evidence",
 ]
 
-UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
+#: Schema 2 (microcosm#1095) names the reference the cut was compared with,
+#: the current national build, and reads a head-to-head receipt with no
+#: verdict; schema 1 compared with the enhanced FRS under a strict rule.
+UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 2
 UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 UK_RELEASE_CUT_POSTURE = "release_cut"
-UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(UK_LOCAL_GATE_SCOPE)
+UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(UK_LOCAL_GATE_SCOPE) | frozenset(
+    UK_LOCAL_DIAGNOSTIC_GATE_SCOPE
+)
 
 #: Each certification part's declared scope, phases, and manifest policy
 #: suffix. The suffixes are load-bearing: they are what the producers bake
@@ -154,8 +164,8 @@ def uk_release_cut_scope_exclusions() -> dict[str, str]:
             )
         elif entry.id in UK_CERTIFICATION_EXCLUDED_GATE_IDS:
             exclusions[entry.id] = (
-                "local-candidate gate; excluded from national certification "
-                "until microcosm#146."
+                "local-candidate gate; certified on the local line, not the "
+                "national one (microcosm#146 shipped the local variant)."
             )
         else:  # pragma: no cover - closed-world classification is import-enforced
             raise RuntimeError(
@@ -222,12 +232,13 @@ def uk_release_parity_evidence(
     *,
     diagnostics_targets: Sequence[Mapping[str, Any]],
     reference_registry: Any,
-    parity_reference: Any,
 ) -> SimpleNamespace:
     """The parity-trio evidence over persisted inputs, sides never aliased.
 
-    Candidate columns come from the staged frame; reference columns from the
-    frozen parity instrument's declared input entities. Candidate targets
+    Candidate columns come from the staged frame; the export-surface gate
+    reads the reference's columns from the cut's reference surface itself
+    (the ``reference_surface`` artifact, microcosm#1095), where until then
+    they came from the frozen enhanced-FRS instrument. Candidate targets
     come from the solve's realized diagnostics rows; reference targets from
     the independently recompiled (and exclusion-pruned) register at
     ``name@period`` grain — the same two-source rule the retired June
@@ -243,19 +254,47 @@ def uk_release_parity_evidence(
                 "grain; the reference side is keyed name@period, so a "
                 "bare-name row would silently fall out of the comparison."
             )
+        metadata = row.get("metadata")
+        if isinstance(metadata, Mapping) and metadata.get("model_figures_withheld"):
+            # A build from before María's ruling of 2026-10-26, which dropped
+            # the withholding, left this row's figures blank; the fit gate
+            # judges every row, so the run cannot be certified here.
+            raise UKReleaseCertificationError(
+                f"diagnostics target {name!r} withholds its model figures; "
+                "rebuild the run to certify it."
+            )
         target_relative_errors[name] = float(row["relative_error"])
     return SimpleNamespace(
         candidate_columns=uk_export_candidate_columns(frame),
-        reference_columns={
-            f"{entity}.{name}"
-            for name, entity in parity_reference.input_entities.items()
-        },
         candidate_targets=set(target_relative_errors),
         reference_targets={
             f"{spec.name}@{spec.period}" for spec in reference_registry.specs
         },
         target_relative_errors=target_relative_errors,
     )
+
+
+def _unsupported_by_period(
+    unsupported: Mapping[object, Sequence[Mapping[str, object]]],
+    registries: Mapping[object, Any],
+    scope: str,
+) -> dict[object, tuple[Mapping[str, object], ...]]:
+    """One entry for each compiled period, or refuse.
+
+    The caller keeps the compile's report for every period it compiled. A
+    period with a registry and no report means the report was dropped, which
+    would let the parity gate read an unresolved reference as a plain fixture
+    row.
+    """
+
+    missing = sorted(str(period) for period in registries if period not in unsupported)
+    if missing:
+        raise ValueError(
+            f"UK release-cut {scope} compile reported no unsupported-reference "
+            f"list for period(s) {missing}; pass an empty list where every "
+            "reference resolved."
+        )
+    return {period: tuple(unsupported[period]) for period in registries}
 
 
 def run_uk_release_cut_battery(
@@ -268,9 +307,12 @@ def run_uk_release_cut_battery(
     build_stage_names: Sequence[str],
     ledger_registries: Mapping[object, Any],
     local_ledger_registries: Mapping[object, Any],
+    ledger_unsupported: Mapping[object, Sequence[Mapping[str, object]]],
+    local_ledger_unsupported: Mapping[object, Sequence[Mapping[str, object]]],
     parity_evidence: Any,
     fit_weight_records: tuple[FitWeightRecord, ...] | None,
     input_mass_reference: Mapping[str, Any],
+    reference_surface: Any,
     exclusions_evaluated_on: date,
     gate_registry: Mapping[str, Any] | None = None,
     spine_frame: Any | None = None,
@@ -280,16 +322,28 @@ def run_uk_release_cut_battery(
     ``spine_frame`` is the frame the spine build produced, the evidence the
     input-coverage gate's family build-state half reads (typed importance
     weights and each stage's mass receipt); the calibrated candidate is the
-    evidence for everything else.
+    evidence for everything else. ``reference_surface`` is the cut's
+    reference build's surface, whose carried inputs the coverage gate
+    requires (microcosm#1095).
 
     Always release-candidate strict: this battery exists to certify a cut,
     so an ``evidence_absent`` gap blocks rather than being tolerated, and a
     blocked phase persists its report and raises before any composition.
     The local-surface compile gates run here too: the certification is the
     declared owner of the whole national scope, so the caller supplies both
-    the national and the local compiled registries.
+    the national and the local compiled registries. Beside each it supplies
+    the compile's unsupported references by period (empty where every
+    reference resolved): the compile-parity gates need them to tell a
+    reference that did not resolve from a fixture row with no counterpart.
+    The battery refuses to run on a policyengine-uk other than the pinned one
+    (microcosm#1095), since its coverage engine is the installed one.
     """
 
+    from microcosm.build.uk_runtime.hmrc_uprating import (
+        assert_installed_engine_is_pinned,
+    )
+
+    assert_installed_engine_is_pinned()
     battery = GateBatteryRun(
         uk_national_gate_manifest(),
         release_id=release_id,
@@ -303,6 +357,12 @@ def run_uk_release_cut_battery(
         "build_stage_names": tuple(str(name) for name in build_stage_names),
         "uk_ledger_compiled_registries": dict(ledger_registries),
         "uk_ledger_compiled_local_registries": dict(local_ledger_registries),
+        "uk_ledger_compile_unsupported": _unsupported_by_period(
+            ledger_unsupported, ledger_registries, "national"
+        ),
+        "uk_ledger_compile_local_unsupported": _unsupported_by_period(
+            local_ledger_unsupported, local_ledger_registries, "local"
+        ),
     }
     battery.run_phase("preflight", EvidenceContext(artifacts=preflight_artifacts))
     battery.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT)
@@ -318,6 +378,8 @@ def run_uk_release_cut_battery(
         "parity_evidence": parity_evidence,
         "aggregate_admin": admin_totals,
         "input_mass_reference": input_mass_reference,
+        "reference_surface": reference_surface,
+        "release_line": "national",
     }
     if fit_weight_records is not None:
         terminal_artifacts["fit_weight_records"] = fit_weight_records
@@ -343,6 +405,61 @@ def run_uk_release_cut_battery(
 # ---------------------------------------------------------------------------
 
 
+def _since_baseline(release_cut: Mapping[str, Any]) -> dict[str, Any]:
+    """The release cut's change since the baseline, from its two gates.
+
+    The input-mass gate continues each column's ratio to the baseline's
+    total and lists the columns that have left the chain; the coverage gate
+    names the baseline's inputs this build no longer carries. Both continue
+    the reference's own record, so the next cut reads it from this
+    certification without loading any baseline. A chain whose baseline is
+    not the national line's origin has restarted, and the certification
+    says so (``restarted_from``; round 2 of the review of microcosm#1574).
+    """
+
+    from microcosm.build.uk_runtime.cut_reference import (
+        UK_NATIONAL_SINCE_BASELINE_ORIGIN,
+    )
+    from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
+
+    gates = release_cut.get("gates") or {}
+
+    def block(gate_id: str) -> Mapping[str, Any] | None:
+        details = (gates.get(gate_id) or {}).get("details") or {}
+        value = details.get("since_baseline")
+        return value if isinstance(value, Mapping) else None
+
+    mass = block("uk_input_mass_parity")
+    coverage = block("uk_release_input_coverage")
+    if mass is None or coverage is None or not isinstance(mass.get("left"), Mapping):
+        raise UKReleaseCertificationError(
+            "The release-cut report records no change since the baseline: the "
+            "cut's reference evidence predates it, so write it again (the "
+            "reference step of tools/run_uk_cut.py)."
+        )
+    baseline = mass.get("baseline")
+    if baseline != coverage.get("baseline") or not str(baseline).startswith(
+        f"{UK_NATIONAL_RELEASE_ID}@"
+    ):
+        raise UKReleaseCertificationError(
+            "The release-cut report's input-mass and coverage gates must chain "
+            f"from one national baseline; they name {baseline!r} and "
+            f"{coverage.get('baseline')!r}."
+        )
+    return {
+        "baseline": str(baseline),
+        "restarted_from": (
+            None
+            if baseline == UK_NATIONAL_SINCE_BASELINE_ORIGIN
+            else UK_NATIONAL_SINCE_BASELINE_ORIGIN
+        ),
+        "input_mass_ratios": dict(sorted(mass["ratios"].items())),
+        "input_mass_left": dict(sorted(mass["left"].items())),
+        "baseline_inputs": sorted(coverage["inputs"]),
+        "inputs_dropped": sorted(coverage["dropped"]),
+    }
+
+
 def compose_uk_release_certification(
     *,
     release_id: str,
@@ -356,6 +473,7 @@ def compose_uk_release_certification(
     spine_sidecar: Mapping[str, Any],
     build_record: Mapping[str, Any],
     score_receipt_path: Path,
+    reference_record: Mapping[str, Any],
     exclusions_evaluated_on: date,
     certification_path: Path,
     reviewed_unresolvable_measures: Mapping[str, Any] | None = None,
@@ -367,9 +485,30 @@ def compose_uk_release_certification(
     ``UK_SHARED_GATE_IDS``, full phase coverage, verified signatures, the
     committed spec's scoped digests, green release-blocking verdicts, and a
     closed identity join from the spine report through the sidecar, the
-    build record, the diagnostics digest, and the candidate bytes.
+    build record, the diagnostics digest, and the candidate bytes, and a
+    head-to-head receipt that measured this candidate against the cut's own
+    reference (``reference_record``, the current national build the cut
+    recorded when it fetched it).
     """
 
+    from microcosm.build.uk_runtime.cut_reference import UKCutReference
+    from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
+
+    reference = UKCutReference.from_record(reference_record)
+    if reference.release != UK_NATIONAL_RELEASE_ID:
+        raise UKReleaseCertificationError(
+            f"A national certification compares with the national line; the "
+            f"reference record names {reference.label}."
+        )
+    # After a promotion, re-resolving would name the candidate itself, and a
+    # comparison with itself passes every gate (the review of microcosm#1574).
+    if reference.sha256 == candidate_sha256 or reference.build == build_record.get(
+        "build_id"
+    ):
+        raise UKReleaseCertificationError(
+            f"The cut's reference {reference.label} is the candidate itself; a "
+            "cut cannot be certified against its own build."
+        )
     parts_raw = {
         "spine": _load_part(spine_report_path),
         "calibration_seam": _load_part(seam_report_path),
@@ -433,6 +572,7 @@ def compose_uk_release_certification(
     _verify_score_receipt(
         score_receipt,
         candidate_sha256=candidate_sha256,
+        reference=reference,
         reviewed_unresolvable_measures=reviewed_unresolvable_measures,
         evaluated_on=exclusions_evaluated_on,
     )
@@ -453,6 +593,21 @@ def compose_uk_release_certification(
         # The spine whose stage receipts the release cut measured: bound to
         # the parent the calibration recorded, never an operator's choice.
         "parent_spine": {"sha256": spine_sha256},
+        # What the cut was compared with: the current national build when
+        # the cut fetched its inputs (microcosm#1095).
+        "reference": {
+            "release": reference.release,
+            "build": reference.build,
+            "filename": reference.filename,
+            "sha256": reference.sha256,
+            "built_with_model_package": dict(reference.built_with_model_package),
+            # The line's current build, or a listed build the operator pinned
+            # for a line with none (the review of microcosm#1574).
+            "selection": reference.selection,
+        },
+        # The change since a fixed baseline, chained across cuts so a slow
+        # drift shows: a record, with no verdict (the review of microcosm#1574).
+        "since_baseline": _since_baseline(parts_raw["release_cut"][0]),
         "parts": part_summaries,
         "spec": {
             "gates_manifest_sha256": full_digests["gates_manifest_sha256"],
@@ -530,7 +685,12 @@ def _require_signing_key() -> bytes:
         raise UKReleaseCertificationError(
             f"{env_name} must decode to exactly 32 bytes."
         )
-    return key
+    # The certifier verifies every part and signs the certification with
+    # this one key, so it must be a registered key that may still sign.
+    try:
+        return require_registered_gate_signing_key("uk", key, purpose="sign")
+    except GateSigningKeyError as exc:
+        raise UKReleaseCertificationError(f"{env_name}: {exc}") from exc
 
 
 def _verify_part(
@@ -804,14 +964,15 @@ def _verify_identity_join(
         )
 
 
-#: The verdict a certifiable score receipt must carry (candidate_score).
-UK_SCORE_RECEIPT_VERDICT_PASSED = "passed"
+#: The head-to-head receipt a certification reads (candidate_score schema 2).
+UK_SCORE_RECEIPT_SCHEMA_VERSION = 2
 
 
 def _verify_score_receipt(
     receipt: Mapping[str, Any],
     *,
     candidate_sha256: str,
+    reference: Any,
     reviewed_unresolvable_measures: Mapping[str, Any] | None = None,
     evaluated_on: date | None = None,
 ) -> None:
@@ -825,20 +986,42 @@ def _verify_score_receipt(
         raise UKReleaseCertificationError(
             "the score receipt's artifacts.candidate.sha256 is "
             f"{scored!r}, not the candidate under certification "
-            f"({candidate_sha256!r}); the rule-1 score must be measured on "
+            f"({candidate_sha256!r}); the comparison must be measured on "
             "this candidate's bytes."
         )
-    # Rule 1 (microcosm#578) is decided by the scorer on the surface both
-    # artifacts can materialize and signed into the receipt; the certifier
-    # refuses anything short of a passed verdict, so publication never runs
-    # on an unpassed evaluation. Pruned rows are reported, never a failure,
-    # but the surface must close over them.
+    # The comparison (microcosm#1095) decides nothing; the certifier requires
+    # that it was made, on this candidate, against the cut's own reference,
+    # and that its surface closes over the rows it pruned.
     evaluation = receipt.get("evaluation")
-    if not isinstance(evaluation, Mapping):
+    if (
+        not isinstance(evaluation, Mapping)
+        or evaluation.get("schema_version") != UK_SCORE_RECEIPT_SCHEMA_VERSION
+    ):
         raise UKReleaseCertificationError(
-            "the score receipt carries no evaluation block; re-score the "
-            "candidate with tools/score_uk_national_candidate.py so the "
-            "rule-1 verdict is signed run evidence."
+            "the score receipt carries no schema-2 evaluation block; re-score "
+            "the candidate against the cut's reference with "
+            "tools/score_uk_national_candidate.py."
+        )
+    scored_reference = (
+        artifacts.get("reference", {}).get("sha256")
+        if isinstance(artifacts, Mapping)
+        else None
+    )
+    recorded = receipt.get("reference")
+    named = (
+        (recorded.get("release"), recorded.get("build"), recorded.get("sha256"))
+        if isinstance(recorded, Mapping)
+        else None
+    )
+    if scored_reference != reference.sha256 or named != (
+        reference.release,
+        reference.build,
+        reference.sha256,
+    ):
+        raise UKReleaseCertificationError(
+            "the score receipt compared the candidate with another reference "
+            f"than the cut's ({reference.label}, {reference.sha256}); re-score "
+            "the candidate against the reference the cut recorded."
         )
     surface = evaluation.get("scored_surface")
     counts = (
@@ -856,26 +1039,20 @@ def _verify_score_receipt(
             "the score receipt's scored surface does not close: n_scored + "
             "n_pruned must equal n_surface with at least one scored target."
         )
-    verdict = evaluation.get("verdict")
-    if verdict != UK_SCORE_RECEIPT_VERDICT_PASSED:
-        raise UKReleaseCertificationError(
-            f"the score receipt's evaluation verdict is {verdict!r}, not "
-            f"{UK_SCORE_RECEIPT_VERDICT_PASSED!r}: rule 1 (microcosm#578) is "
-            "not met on the common surface, so the cut cannot be certified."
-        )
-    # Every pruned measure must stand on the committed reviewed register:
-    # the scorer's inference is re-checked here against the register of
-    # record, so a receipt scored under another register cannot certify.
-    pruned = receipt.get("incumbent_unresolvable_pruned")
+    # Every pruned measure must stand on the committed reviewed register,
+    # under the cut's own reference: the scorer's inference is re-checked
+    # here against the register of record, so a receipt scored under another
+    # register, or another reference's entries, cannot certify.
+    pruned = receipt.get("reference_unresolvable_pruned")
     measures = pruned.get("measures", []) if isinstance(pruned, Mapping) else []
     if measures:
         from microcosm.build.uk_runtime.candidate_score import (
-            load_uk_incumbent_unresolvable_measures,
-            uk_incumbent_unresolvable_register_digest,
+            load_uk_reference_unresolvable_measures,
+            uk_reference_unresolvable_register_digest,
         )
 
         reviewed = (
-            load_uk_incumbent_unresolvable_measures()
+            load_uk_reference_unresolvable_measures(reference_label=reference.label)
             if reviewed_unresolvable_measures is None
             else reviewed_unresolvable_measures
         )
@@ -883,24 +1060,21 @@ def _verify_score_receipt(
         if unlisted:
             raise UKReleaseCertificationError(
                 "the score receipt pruned targets through measure(s) not on the "
-                f"reviewed incumbent-unresolvable register: {unlisted}; pruning "
-                "from both arms stands only on a signed entry, so the cut "
-                "cannot be certified on this receipt."
+                "reviewed reference-unresolvable register for "
+                f"{reference.label}: {unlisted}; pruning from both arms stands "
+                "only on a signed entry, so the cut cannot be certified on this "
+                "receipt."
             )
-        # The receipt names the register it was scored under; against the
-        # committed register of record that digest must be the committed
-        # one, so a receipt scored under another register cannot certify.
         if reviewed_unresolvable_measures is None:
-            named = (
-                pruned.get("reviewed_register", {}).get("sha256")
-                if isinstance(pruned.get("reviewed_register"), Mapping)
-                else None
+            register = pruned.get("reviewed_register")
+            named_digest = (
+                register.get("sha256") if isinstance(register, Mapping) else None
             )
-            committed = uk_incumbent_unresolvable_register_digest()["sha256"]
-            if named != committed:
+            committed = uk_reference_unresolvable_register_digest()["sha256"]
+            if named_digest != committed:
                 raise UKReleaseCertificationError(
-                    "the score receipt was scored under incumbent-unresolvable "
-                    f"register {named!r}, not the committed register "
+                    "the score receipt was scored under reference-unresolvable "
+                    f"register {named_digest!r}, not the committed register "
                     f"({committed}); re-score the candidate on the register of "
                     "record."
                 )
@@ -921,7 +1095,7 @@ def _verify_score_receipt(
             if out_of_window:
                 raise UKReleaseCertificationError(
                     "the score receipt pruned targets through reviewed "
-                    "incumbent-unresolvable entries outside their window on "
+                    "reference-unresolvable entries outside their window on "
                     f"{evaluated_on.isoformat()}: {out_of_window}; renew the "
                     "adjudication or re-score the candidate."
                 )
@@ -930,21 +1104,13 @@ def _verify_score_receipt(
 def _score_receipt_summary(receipt: Mapping[str, Any]) -> dict[str, Any]:
     evaluation = receipt["evaluation"]
     surface = evaluation["scored_surface"]
-    rule_1 = evaluation.get("rule_1")
-    losses = (
-        {
-            "candidate_full_loss": rule_1.get("candidate_full_loss"),
-            "incumbent_full_loss": rule_1.get("incumbent_full_loss"),
-        }
-        if isinstance(rule_1, Mapping)
-        else {}
-    )
     return {
-        "verdict": evaluation["verdict"],
+        "reference": evaluation["reference"],
         "n_scored": surface["n_scored"],
         "n_pruned": surface["n_pruned"],
         "n_surface": surface["n_surface"],
-        **losses,
+        **dict(evaluation["losses"]),
+        **dict(evaluation["targets"]),
     }
 
 

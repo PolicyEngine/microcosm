@@ -1,6 +1,6 @@
 {
- "feed": "consumer_facts_us_c5e5bf8.jsonl",
- "feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+ "feed": "consumer_facts_us_41b2fb2.jsonl",
+ "feed_sha256": "1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07",
  "families": {
   "bea_nipa.business_current_transfer_receipts": 1,
   "bea_nipa.defined_contribution_actual_contributions": 1,
@@ -22,6 +22,7 @@
   "bea_nipa.personal_outlays": 1,
   "bea_nipa.personal_saving": 1,
   "bea_nipa.personal_saving_rate": 1,
+  "bea_nipa.private_group_health_insurance": 3,
   "bea_nipa.proprietors_income": 1,
   "bea_nipa.rental_income_of_persons": 1,
   "bea_nipa.social_security_benefits": 1,
@@ -50,6 +51,17 @@
   "cms_nhe.esi_employer_contribution_premiums": 2,
   "cms_nhe.esi_private_employer_contribution_premiums": 2,
   "cms_nhe.medicaid_title_xix_expenditures": 1,
+  "ed_fsa.dl_by_repayment_plan": 57,
+  "ed_fsa.dl_idr_by_partial_financial_hardship": 24,
+  "ed_fsa.ed_held_ffel_by_repayment_plan": 45,
+  "ed_fsa.ed_held_ffel_idr_by_partial_financial_hardship": 12,
+  "ed_fsa.federally_managed_by_repayment_plan": 65,
+  "ed_fsa.federally_managed_idr_by_partial_financial_hardship": 24,
+  "ed_fsa.portfolio_by_age": 24,
+  "ed_fsa.portfolio_by_debt_size": 36,
+  "ed_fsa.portfolio_by_loan_type": 42,
+  "ed_fsa.portfolio_by_location": 108,
+  "ed_fsa.portfolio_summary": 24,
   "federal_reserve_z1.households_nonprofits_balance_sheet": 1,
   "hhs_acf_liheap.national_profile": 2,
   "hhs_acf_tanf.average_monthly_families": 55,
@@ -60,7 +72,7 @@
   "irs_soi.form_w2_401k_elective_deferrals": 1,
   "irs_soi.form_w2_designated_roth_401k_contributions": 1,
   "irs_soi.form_w2_social_security_tips": 6,
-  "irs_soi.historic_table_2": 5654,
+  "irs_soi.historic_table_2": 6674,
   "irs_soi.roth_ira_contributions": 2,
   "irs_soi.state_2022": 4,
   "irs_soi.table_1_1": 160,
@@ -83,5 +95,17 @@
   "usda_snap.state_average_monthly_households": 53,
   "usda_snap.state_average_monthly_persons": 106,
   "usda_snap.state_benefits": 53
+ },
+ "dimension_value_label_variants": {
+  "age": {
+   "age_20": [
+    "Age 20",
+    "Female 20 years"
+   ],
+   "age_21": [
+    "Age 21",
+    "Female 21 years"
+   ]
+  }
  }
 }

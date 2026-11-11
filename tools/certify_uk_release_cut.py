@@ -12,9 +12,12 @@ diagnostics -> candidate bytes). A candidate's shippability verdict comes
 only from the certification this driver writes.
 
 The battery always runs at release-candidate strictness: evidence_absent
-gaps block. The rule-1 score receipt is cross-pinned into the certification
-(the audit's third carried defect), so the score is signed run evidence
-rather than a null slot.
+gaps block. The head-to-head score receipt is cross-pinned into the
+certification (the audit's third carried defect), so the comparison is signed
+run evidence rather than a null slot. The certification names the reference
+the cut was compared with, the current national build the cut recorded
+(``--reference-record``, microcosm#1095), and refuses a receipt measured
+against any other.
 """
 
 from __future__ import annotations
@@ -40,27 +43,40 @@ from microcosm.build.logbook_adoption import (
     role_pins_digest,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.chronicle_feed import (
+    require_uk_chronicle_feed_row_contracts,
+)
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+from microcosm.build.uk_runtime.hmrc_uprating import assert_installed_engine_is_pinned
 from microcosm.build.uk_runtime.ledger_targets import (
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     load_uk_local_area_crosswalk,
+    uk_registry_on_calibration_line,
 )
 from microcosm.build.uk_runtime.measure_simulation import (
     apply_uk_calibration_measure_exclusions,
     load_uk_calibration_measure_exclusions,
 )
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
-from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
+from microcosm.build.uk_runtime.reference_surface import load_uk_reference_surface
 from microcosm.build.uk_runtime.release_certification import (
     compose_uk_release_certification,
     rehydrate_uk_fit_weight_records,
     run_uk_release_cut_battery,
     uk_release_parity_evidence,
 )
+from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
 )
+from microcosm.build.uk_runtime.support_floor import (
+    load_uk_support_floor_declaration,
+    narrow_uk_registry_by_support_floor,
+    uk_support_floor_from_payload,
+)
+from microcosm.build.uk_runtime.weight_year import uk_solve_year_frame
 from microcosm.build.uk_runtime.weighted_integrity import (
     exclusion_evaluation_date,
     load_uk_input_mass_reference,
@@ -69,7 +85,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _PIPELINE = "uk-frs-release-certification"
-_LEDGER_COMPILE_PARITY_PERIODS = (2023, 2025)
+_LEDGER_COMPILE_PARITY_PERIODS = (2025,)
 _LOCAL_COMPILE_PARITY_PERIOD = 2025
 
 
@@ -82,6 +98,8 @@ def _ledger_facts_size(path: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    # The engine freeze, before either H5 is hashed (microcosm#1095).
+    assert_installed_engine_is_pinned()
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     code_pin = git_code_pin(_REPOSITORY)
@@ -247,40 +265,80 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         expected_facts_sha256=args.ledger_facts_sha256,
         expected_manifest_sha256=args.ledger_manifest_sha256,
     )
+    # The rows' row contracts: the committed pin's on the committed feed, and
+    # declared ones on any other.
+    require_uk_chronicle_feed_row_contracts(
+        artifact.fact_schema_versions, facts_sha256=artifact.facts_sha256
+    )
     ledger_registries = {}
+    # The compile's own report of the references that did not resolve at each
+    # parity period travels with the registry: the parity gate needs it to
+    # reproduce the ledger_absent rows the signed resources carry. Unlike the
+    # full build, which refuses an unresolved calibration-year reference, this
+    # producer keeps the partial registry and leaves the verdict to the gates.
+    ledger_unsupported = {}
+    # Microcosm-derived facts compile beside the feed: the high-value homes
+    # local cells (microcosm#1240) and region rows (microcosm#1301), and DESNZ's
+    # energy split onto constituencies (microcosm#1095).
+    facts = (*artifact.facts, *uk_derived_fact_rows())
     for period in _LEDGER_COMPILE_PARITY_PERIODS:
-        compilation = compile_uk_target_registry(artifact.facts, target_period=period)
+        compilation = compile_uk_target_registry(facts, target_period=period)
         ledger_registries[period] = compilation.registry
+        ledger_unsupported[period] = compilation.unsupported
     local_compilation = compile_uk_local_target_registry(
-        artifact.facts,
+        facts,
         target_period=_LOCAL_COMPILE_PARITY_PERIOD,
         crosswalk=load_uk_local_area_crosswalk(),
     )
     local_ledger_registries = {_LOCAL_COMPILE_PARITY_PERIOD: local_compilation.registry}
+    local_ledger_unsupported = {
+        _LOCAL_COMPILE_PARITY_PERIOD: local_compilation.unsupported
+    }
     calibration_year = load_uk_frs_release().calibration_year
     if calibration_year in ledger_registries:
         reference_compiled = ledger_registries[calibration_year]
     else:
         reference_compiled = compile_uk_target_registry(
-            artifact.facts, target_period=calibration_year
+            facts, target_period=calibration_year
         ).registry
+    # The calibration reference is the national line's surface: the rows that
+    # bind on the local line only leave it as they leave the national solve
+    # (calibration_lines, microcosm#1301); compile parity keeps them.
+    reference_compiled, _line_receipt = uk_registry_on_calibration_line(
+        reference_compiled, line="national"
+    )
     evaluated_on = exclusion_evaluation_date(None)
     exclusions = load_uk_calibration_measure_exclusions()
     reference_registry, _receipt = apply_uk_calibration_measure_exclusions(
         reference_compiled, exclusions, now=evaluated_on
     )
+    # The support floor drops rows on the candidate's spine (microcosm#1095
+    # U3). The certifier cannot recompute support, so it reads the drops the
+    # run recorded and checks them against the declared floor.
+    floor_declaration = load_uk_support_floor_declaration()
+    reference_registry = narrow_uk_registry_by_support_floor(
+        reference_registry,
+        _nested(diagnostics, "build", "measure_exclusions") or {},
+        None
+        if floor_declaration is None
+        else uk_support_floor_from_payload(floor_declaration),
+    )
     append_phase(state, "registries_compiled")
 
     frame, _provenance = load_uk_national_frame(args.candidate_h5)
+    # A release carries its weights at the dataset's year (microcosm#796 A19).
+    # The gates stand on the solved weights, which policyengine-uk's own
+    # projection to the calibration year gives back.
+    frame = uk_solve_year_frame(frame, solve_year=calibration_year)
     # The spine frame is the evidence for the stage families' build state
     # (importance weights, mass receipts); the candidate is calibrated.
     spine_frame, _spine_provenance = load_uk_national_frame(args.spine_h5)
     engine = PolicyEngineUKCoverageEngine()
+    reference_surface = _reference_surface(args)
     parity_evidence = uk_release_parity_evidence(
         frame,
         diagnostics_targets=diagnostics["targets"],
         reference_registry=reference_registry,
-        parity_reference=load_efrs_parity_reference(),
     )
     report = run_uk_release_cut_battery(
         frame,
@@ -291,9 +349,12 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         build_stage_names=sidecar["stages"],
         ledger_registries=ledger_registries,
         local_ledger_registries=local_ledger_registries,
+        ledger_unsupported=ledger_unsupported,
+        local_ledger_unsupported=local_ledger_unsupported,
         parity_evidence=parity_evidence,
         fit_weight_records=rehydrate_uk_fit_weight_records(sidecar),
-        input_mass_reference=load_uk_input_mass_reference(args.input_mass_reference),
+        input_mass_reference=_input_mass_reference(args),
+        reference_surface=reference_surface,
         exclusions_evaluated_on=evaluated_on,
         spine_frame=spine_frame,
     )
@@ -316,6 +377,7 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         spine_sidecar=sidecar,
         build_record=build_record,
         score_receipt_path=args.score_receipt,
+        reference_record=json.loads(args.reference_record.read_text()),
         exclusions_evaluated_on=evaluated_on,
         certification_path=args.certification_json,
     )
@@ -331,6 +393,62 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
             name: part["statuses"] for name, part in certification["parts"].items()
         },
     }
+
+
+def _national_reference_record(args: argparse.Namespace) -> dict:
+    """The cut's reference record, refused unless it names a national build.
+
+    The certifier certifies the national line, so its reference is the
+    national line's (the review of microcosm#1574): a dense build's files
+    agree with a dense record, so the line itself is checked here.
+    """
+
+    reference = json.loads(args.reference_record.read_text())
+    if reference.get("release") != UK_NATIONAL_RELEASE_ID:
+        raise SystemExit(
+            f"error: the reference record names {reference.get('release')}, not "
+            f"{UK_NATIONAL_RELEASE_ID}; the certifier compares a national cut with "
+            "the national line's current build."
+        )
+    return reference
+
+
+def _input_mass_reference(args: argparse.Namespace):
+    """The cut's input-mass reference, refused unless it is the cut's reference.
+
+    The score and the input-mass gate compare with one build (microcosm#1095):
+    the reference record names it, and the input-mass file must too.
+    """
+
+    reference = _national_reference_record(args)
+    loaded = load_uk_input_mass_reference(args.input_mass_reference)
+    label = f"{reference.get('release')}@{reference.get('build')}"
+    if loaded.label != label or loaded.sha256 != reference.get("sha256"):
+        raise SystemExit(
+            f"error: the input-mass reference names {loaded.label} "
+            f"({loaded.sha256}), not the cut's reference {label}; write it from "
+            "the cut's reference (tools/run_uk_cut.py's reference step)."
+        )
+    return loaded
+
+
+def _reference_surface(args: argparse.Namespace):
+    """The cut's reference surface, refused unless it is the cut's reference.
+
+    The export-surface and input-coverage gates compare with the build the
+    score and the input-mass gate compare with (microcosm#1095).
+    """
+
+    reference = _national_reference_record(args)
+    loaded = load_uk_reference_surface(args.reference_surface)
+    label = f"{reference.get('release')}@{reference.get('build')}"
+    if loaded.label != label or loaded.sha256 != reference.get("sha256"):
+        raise SystemExit(
+            f"error: the reference surface names {loaded.label} "
+            f"({loaded.sha256}), not the cut's reference {label}; write it from "
+            "the cut's reference (tools/run_uk_cut.py's reference step)."
+        )
+    return loaded
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -351,7 +469,19 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--ledger-facts-sha256", required=True, type=_sha256)
     parser.add_argument("--ledger-manifest-sha256", required=True, type=_sha256)
     parser.add_argument("--input-mass-reference", required=True, type=Path)
+    parser.add_argument(
+        "--reference-surface",
+        required=True,
+        type=Path,
+        help="The export surface and carried inputs of the cut's reference.",
+    )
     parser.add_argument("--score-receipt", required=True, type=Path)
+    parser.add_argument(
+        "--reference-record",
+        required=True,
+        type=Path,
+        help="The cut's record of the reference it was compared with.",
+    )
     parser.add_argument("--release-id", required=True)
     parser.add_argument("--release-cut-gate-json", type=Path)
     parser.add_argument("--certification-json", type=Path)
@@ -373,6 +503,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--release-cut-gate-json": args.release_cut_gate_json,
         "--certification-json": args.certification_json,
         "--score-receipt": args.score_receipt,
+        "--reference-record": args.reference_record,
+        "--reference-surface": args.reference_surface,
     }
     resolved: dict[Path, str] = {}
     for flag, path in distinct.items():

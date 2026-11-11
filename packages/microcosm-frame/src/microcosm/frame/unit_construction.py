@@ -1,4 +1,10 @@
-"""Benefit units built from concept relationship pointers.
+"""Declared unit partitions built from concept relationship pointers.
+
+``MultiUnitRule`` dispatches each declaration to its registered membership
+constructor. NZ benefit units and tax assessment units share partition
+validation, household nesting, stable physical ids, lineage and inherited
+household weights. Tax units consume an explicit eligibility column; they
+never infer legal status or place children with their parents for tax relief.
 
 A transported concept frame (:mod:`microcosm.frame.concepts`) has persons and
 households only. A target country's rules assess many programs on a smaller
@@ -18,18 +24,18 @@ country's RuleSpec where the RuleSpec encodes them and otherwise from the
 country's spec data, with their citations. Given the rule:
 
 1. A person is a *candidate child* when their age is at most the rule's
-   ``max_age``, they have no co-resident partner, no co-resident person names
-   them as a parent, and, when the rule declares a financial-independence
-   test, they do not meet it. A partnered person and a parent are never
-   dependent children, which keeps partners together and parents with their
-   own children.
+   ``max_age``, they have no co-resident partner, and they do not meet the
+   declared parent-independence or financial-independence test. The parent
+   test can declare a minimum age: younger parents remain candidates and
+   their children follow them into their caregiver's unit.
 2. A candidate child with a co-resident parent is a *dependent child* of
    that parent's unit. A candidate child with none who is not the household's
    reference person is placed by the rule's ``unparented_child`` policy: in
    the unit that contains the household's reference person (the caregiver
    the pointers can name), in a unit of their own, or refused. A reference
-   person is never their own caregiver, so a candidate child who is the
-   reference person and has no co-resident parent heads their own unit.
+   person is never their own caregiver. Earlier declarations let a candidate
+   reference person without a parent head a unit; a strict reference rule
+   keeps them dependent and refuses placement with any dependent reference.
 3. Every person who is not a dependent child heads a unit with their
    co-resident partner, if any. These are the units' adults: every unit has
    one or two.
@@ -66,11 +72,14 @@ conversion rather than wrapped to a negative id.
 
 from __future__ import annotations
 
+import json
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from numbers import Integral
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -81,6 +90,7 @@ from microcosm.frame.concepts import (
     HOUSEHOLD_ID_COLUMN,
     PERSON_HOUSEHOLD_ID_COLUMN,
     PERSON_ID_COLUMN,
+    SOURCE_HOUSEHOLD_ID_COLUMN,
     _exceeds_int64,
     _parsing,
     _record_fields,
@@ -88,13 +98,23 @@ from microcosm.frame.concepts import (
 )
 
 __all__ = [
+    "prepare_roster_counts",
     "BENEFIT_UNIT_RULE_FORMAT",
+    "MULTI_UNIT_RULE_FORMAT",
+    "TAX_UNIT_RULE_FORMAT",
+    "MultiUnitRule",
+    "TaxUnitRule",
+    "UnitDeclaration",
+    "build_declared_units",
+    "declared_unit_attributes",
+    "reciprocal_partner_rows",
     "BenefitUnitRule",
     "DependentChildRule",
     "FinancialIndependenceTest",
     "SplitParentsPolicy",
     "UnparentedChildPlacement",
     "benefit_unit_attributes",
+    "benefit_unit_diagnostics",
     "benefit_unit_membership",
     "benefit_unit_roles",
     "build_benefit_units",
@@ -103,6 +123,8 @@ __all__ = [
 
 #: The serialized rule format :meth:`BenefitUnitRule.to_dict` writes.
 BENEFIT_UNIT_RULE_FORMAT = "microcosm.benefit_unit_rule.v1"
+MULTI_UNIT_RULE_FORMAT = "microcosm.multi_unit_rule.v1"
+TAX_UNIT_RULE_FORMAT = "microcosm.tax_unit_rule.v1"
 
 _PERSON_ID = PERSON_ID_COLUMN
 _PERSON_HOUSEHOLD_ID = PERSON_HOUSEHOLD_ID_COLUMN
@@ -119,8 +141,11 @@ _ID_COLUMNS = {
 class UnparentedChildPlacement(StrEnum):
     """Where a candidate child with no co-resident parent goes.
 
-    A candidate child who is the household's reference person heads their
-    own unit whatever the placement: they cannot be their own caregiver.
+    A reference person is never their own caregiver. Under earlier rules a
+    candidate child who is the household's reference person heads their own
+    unit whatever the placement; a strict reference rule
+    (``refuse_dependent_reference_person``) keeps them dependent and refuses
+    a parentless child whose reference person is a dependent child.
     """
 
     #: Into the unit that contains the household's reference person.
@@ -178,10 +203,14 @@ class DependentChildRule:
         max_age: The oldest age, in completed years, a dependent child can be.
         financial_independence: The test that takes a candidate out of
             dependency, or ``None`` when the rule declares none.
+        parent_independence_min_age: Parents at or above this age anchor
+            units; younger parents can remain dependent. ``None`` makes
+            every parent independent, preserving earlier declarations.
     """
 
     max_age: int
     financial_independence: FinancialIndependenceTest | None
+    parent_independence_min_age: int | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.max_age, bool) or not isinstance(self.max_age, int):
@@ -195,10 +224,48 @@ class DependentChildRule:
             raise ValueError(
                 "A financial-independence age above max_age can never apply."
             )
+        minimum = self.parent_independence_min_age
+        if minimum is not None and (
+            isinstance(minimum, bool)
+            or not isinstance(minimum, int)
+            or not 0 <= minimum <= self.max_age
+        ):
+            raise ValueError("A parent-independence age must lie on [0, max_age].")
+
+
+class _UnitColumns:
+    """Shared physical columns for every declared partition."""
+
+    entity: str
+
+    @property
+    def id_column(self) -> str:
+        """The unit table's id column."""
+        return f"{self.entity}_id"
+
+    @property
+    def household_column(self) -> str:
+        """The unit table's column naming the household the unit nests in."""
+        return f"{self.entity}_household_id"
+
+    @property
+    def source_household_column(self) -> str:
+        """Original donor lineage, distinct from every other entity column."""
+        return f"{self.entity}_{SOURCE_HOUSEHOLD_ID_COLUMN}"
+
+    @property
+    def head_column(self) -> str:
+        """The unit table's column naming the unit's head."""
+        return f"{self.entity}_head_person_id"
+
+    @property
+    def membership_column(self) -> str:
+        """The person table's column naming each person's unit."""
+        return f"person_{self.entity}_id"
 
 
 @dataclass(frozen=True, kw_only=True)
-class BenefitUnitRule:
+class BenefitUnitRule(_UnitColumns):
     """How a country groups persons into benefit units.
 
     Attributes:
@@ -211,6 +278,8 @@ class BenefitUnitRule:
             goes.
         split_parents: What happens to a child whose co-resident parents are
             in different units.
+        refuse_dependent_reference_person: Refuse parentless child placement
+            with a reference person who is dependent, including themselves.
         provenance: Where each value comes from (statute, RuleSpec rule or
             spec data, with citations). Carried verbatim for review; it does
             not change any unit.
@@ -221,6 +290,7 @@ class BenefitUnitRule:
     unparented_child: UnparentedChildPlacement
     split_parents: SplitParentsPolicy
     provenance: Mapping[str, str]
+    refuse_dependent_reference_person: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.entity, str) or not _ENTITY_NAME.match(self.entity):
@@ -241,6 +311,8 @@ class BenefitUnitRule:
         ):
             raise ValueError("A unit rule's provenance maps text to non-empty text.")
         object.__setattr__(self, "provenance", dict(self.provenance))
+        if not isinstance(self.refuse_dependent_reference_person, bool):
+            raise ValueError("Dependent-reference refusal must be a boolean.")
 
     def __hash__(self) -> int:
         return hash(
@@ -249,29 +321,10 @@ class BenefitUnitRule:
                 self.dependent_child,
                 self.unparented_child,
                 self.split_parents,
+                self.refuse_dependent_reference_person,
                 tuple(sorted(self.provenance.items())),
             )
         )
-
-    @property
-    def id_column(self) -> str:
-        """The unit table's id column."""
-        return f"{self.entity}_id"
-
-    @property
-    def household_column(self) -> str:
-        """The unit table's column naming the household the unit nests in."""
-        return f"{self.entity}_household_id"
-
-    @property
-    def head_column(self) -> str:
-        """The unit table's column naming the unit's head."""
-        return f"{self.entity}_head_person_id"
-
-    @property
-    def membership_column(self) -> str:
-        """The person table's column naming each person's unit."""
-        return f"person_{self.entity}_id"
 
     def to_dict(self) -> dict[str, object]:
         """A JSON-ready form that :meth:`from_dict` reads back unchanged."""
@@ -281,6 +334,7 @@ class BenefitUnitRule:
             "entity": self.entity,
             "dependent_child": {
                 "max_age": self.dependent_child.max_age,
+                "parent_independence_min_age": self.dependent_child.parent_independence_min_age,
                 "financial_independence": None
                 if test is None
                 else {
@@ -290,6 +344,7 @@ class BenefitUnitRule:
             },
             "unparented_child": self.unparented_child.value,
             "split_parents": self.split_parents.value,
+            "refuse_dependent_reference_person": self.refuse_dependent_reference_person,
             "provenance": dict(self.provenance),
         }
 
@@ -313,6 +368,7 @@ class BenefitUnitRule:
                     "split_parents",
                     "provenance",
                 ),
+                optional=("refuse_dependent_reference_person",),
             )
             if fields.pop("format") != BENEFIT_UNIT_RULE_FORMAT:
                 raise ValueError(
@@ -323,6 +379,7 @@ class BenefitUnitRule:
                 fields["dependent_child"],
                 "dependent child rule",
                 required=("max_age", "financial_independence"),
+                optional=("parent_independence_min_age",),
             )
             raw_test = child["financial_independence"]
             test = None
@@ -334,7 +391,9 @@ class BenefitUnitRule:
                 )
                 test = FinancialIndependenceTest(**test_fields)
             fields["dependent_child"] = DependentChildRule(
-                max_age=child["max_age"], financial_independence=test
+                max_age=child["max_age"],
+                financial_independence=test,
+                parent_independence_min_age=child.get("parent_independence_min_age"),
             )
             for name in ("entity", "unparented_child", "split_parents"):
                 if not isinstance(fields[name], str):
@@ -344,6 +403,58 @@ class BenefitUnitRule:
                     "A benefit unit rule's 'provenance' must be an object."
                 )
             return cls(**fields)
+
+    @classmethod
+    def from_spec(cls, data: Mapping[str, object]) -> BenefitUnitRule:
+        """Read a serialized rule or a country spec's cited unit declaration.
+
+        The country declaration uses an exclusive age limit and retains its
+        citations and disclosures alongside the executable policy fields.
+        """
+        with _parsing("benefit unit spec"):
+            if not isinstance(data, Mapping):
+                raise ValueError("A benefit unit spec must be an object.")
+            if "format" in data:
+                return cls.from_dict(data)
+            child = data["dependent_child"]
+            limit = child["age_limit_years"]
+            if isinstance(limit, bool) or not isinstance(limit, int):
+                raise ValueError("A dependent-child age limit must be an integer.")
+            if child["age_limit_inclusive"] is not False:
+                raise ValueError("A country spec must declare an exclusive age limit.")
+            if child["partnered_person_is_dependent_child"] is not False:
+                raise ValueError("Unit construction requires partners to be adults.")
+            raw_test = child.get("financial_independence")
+            test = None
+            if raw_test is not None:
+                if raw_test["hours_concept"] != "fact:person.usual_weekly_hours":
+                    raise ValueError(
+                        "Unsupported financial-independence hours concept."
+                    )
+                test = FinancialIndependenceTest(
+                    min_age=raw_test["min_age"],
+                    min_usual_weekly_hours=raw_test["min_usual_weekly_hours"],
+                )
+            placement = data["child_without_coresident_parent"]
+            central = placement["central"]
+            if central == "household_reference_person_unit":
+                central = UnparentedChildPlacement.REFERENCE_PERSON_UNIT
+            return cls(
+                entity=data["entity"],
+                dependent_child=DependentChildRule(
+                    max_age=limit - 1,
+                    financial_independence=test,
+                    parent_independence_min_age=child["parent_independence_min_age"],
+                ),
+                unparented_child=central,
+                split_parents=data["split_parents"],
+                refuse_dependent_reference_person=placement[
+                    "refuse_dependent_reference_person"
+                ],
+                provenance={
+                    "spec": json.dumps(dict(data), sort_keys=True, ensure_ascii=False)
+                },
+            )
 
 
 def build_benefit_units(
@@ -367,6 +478,8 @@ def build_benefit_units(
         ``<entity>_household_id`` and ``<entity>_head_person_id`` (all
         ``int64``); and each person's unit id (``int64``), aligned to
         ``person``'s rows and index and named ``person_<entity>_id``.
+        When the household table carries original source lineage, the unit
+        table also carries ``<entity>_source_household_id`` unchanged.
 
     Raises:
         ValueError: If a needed column is missing, the frame breaks a
@@ -380,21 +493,295 @@ def build_benefit_units(
     rows = _Pointers.read(person, household, rule)
     dependent = _dependents(rows, rule)
     head = _heads(rows, dependent, rule)
-    ids = rows.ids
+    return _build_partition(person, household, rule, rows, head)
+
+
+@dataclass(frozen=True, kw_only=True)
+class TaxUnitRule(_UnitColumns):
+    """Assessment membership from an explicitly supplied eligibility result.
+
+    Eligibility is a non-null boolean person column. Two reciprocal partners
+    form a pair only when both are eligible. Every other person, children
+    included, gets an individual assessment unit; dependant relief is a
+    separate association. A is the smaller person id (the ``head`` role),
+    B is their ``partner``. No income or implicit legal-status test is read.
+    """
+
+    entity: str
+    pairing_eligibility_column: str
+    provenance: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.entity, str) or not _ENTITY_NAME.fullmatch(self.entity):
+            raise ValueError("A tax-unit entity must be snake_case.")
+        if self.entity in ("person", "household"):
+            raise ValueError(f"Units cannot be named {self.entity!r}.")
+        column = self.pairing_eligibility_column
+        if not isinstance(column, str) or not _ENTITY_NAME.fullmatch(column):
+            raise ValueError(
+                "A tax-unit pairing eligibility column must be snake_case."
+            )
+        if not isinstance(self.provenance, Mapping) or not all(
+            isinstance(key, str) and isinstance(value, str) and key and value
+            for key, value in self.provenance.items()
+        ):
+            raise ValueError(
+                "A tax-unit rule's provenance maps text to non-empty text."
+            )
+        object.__setattr__(self, "provenance", MappingProxyType(dict(self.provenance)))
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "format": TAX_UNIT_RULE_FORMAT,
+            "entity": self.entity,
+            "pairing_eligibility_column": self.pairing_eligibility_column,
+            "provenance": dict(self.provenance),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> TaxUnitRule:
+        with _parsing("tax unit rule"):
+            fields = _record_fields(
+                data,
+                "tax unit rule",
+                required=(
+                    "format",
+                    "entity",
+                    "pairing_eligibility_column",
+                    "provenance",
+                ),
+            )
+            if fields.pop("format") != TAX_UNIT_RULE_FORMAT:
+                raise ValueError(
+                    f"A tax unit rule must declare format {TAX_UNIT_RULE_FORMAT!r}."
+                )
+            return cls(**fields)
+
+
+@dataclass(frozen=True, kw_only=True)
+class UnitDeclaration:
+    """A registered membership kind and its cited construction rule."""
+
+    kind: str
+    rule: BenefitUnitRule | TaxUnitRule
+
+    def __post_init__(self) -> None:
+        registration = (
+            _UNIT_KINDS.get(self.kind) if isinstance(self.kind, str) else None
+        )
+        if registration is None:
+            raise ValueError(f"Unknown unit kind {self.kind!r}.")
+        if not isinstance(self.rule, registration[0]):
+            raise ValueError(
+                f"Unit kind {self.kind!r} requires {registration[0].__name__}."
+            )
+
+    @property
+    def entity(self) -> str:
+        return self.rule.entity
+
+    def to_dict(self) -> dict[str, object]:
+        return {"kind": self.kind, "rule": self.rule.to_dict()}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> UnitDeclaration:
+        fields = _record_fields(data, "unit declaration", required=("kind", "rule"))
+        kind = fields["kind"]
+        registration = _UNIT_KINDS.get(kind) if isinstance(kind, str) else None
+        if registration is None:
+            raise ValueError(f"Unknown unit kind {kind!r}.")
+        return cls(kind=kind, rule=registration[0].from_dict(fields["rule"]))
+
+
+@dataclass(frozen=True, kw_only=True)
+class MultiUnitRule:
+    """Versioned ordered declarations shared by CREATE, CLI and registry."""
+
+    units: tuple[UnitDeclaration, ...]
+
+    def __post_init__(self) -> None:
+        if isinstance(self.units, str | bytes) or not isinstance(self.units, Sequence):
+            raise ValueError("Declared units must be a non-empty list.")
+        units = tuple(self.units)
+        if not units or not all(isinstance(item, UnitDeclaration) for item in units):
+            raise ValueError(
+                "Declared units must be a non-empty list of UnitDeclaration values."
+            )
+        entities = [item.entity for item in units]
+        if len(entities) != len(set(entities)):
+            raise ValueError("Declared units repeat an entity.")
+        object.__setattr__(self, "units", units)
+
+    @classmethod
+    def from_benefit_unit(cls, rule: BenefitUnitRule) -> MultiUnitRule:
+        return cls(units=(UnitDeclaration(kind="benefit_unit", rule=rule),))
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "format": MULTI_UNIT_RULE_FORMAT,
+            "units": [item.to_dict() for item in self.units],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> MultiUnitRule:
+        with _parsing("multi unit rule"):
+            fields = _record_fields(
+                data, "multi unit rule", required=("format", "units")
+            )
+            if fields["format"] != MULTI_UNIT_RULE_FORMAT:
+                raise ValueError(
+                    f"Declared units must declare format {MULTI_UNIT_RULE_FORMAT!r}."
+                )
+            units = fields["units"]
+            if not isinstance(units, list):
+                raise ValueError("Declared units must be a list.")
+            return cls(units=tuple(UnitDeclaration.from_dict(item) for item in units))
+
+    @classmethod
+    def from_spec(cls, data: Mapping[str, object]) -> MultiUnitRule:
+        """Read the versioned country unit-declaration resource."""
+        return cls.from_dict(data)
+
+    def entity_schema(self):
+        """The physical partition schema and shared household nesting."""
+        from microcosm.frame.schema import EntitySchema
+
+        entities = tuple(item.entity for item in self.units)
+        return (
+            EntitySchema(group_entities=("household", *entities)),
+            MappingProxyType(dict.fromkeys(entities, "household")),
+        )
+
+
+def _benefit_unit_heads(
+    rows: _Pointers, person: pd.DataFrame, rule: BenefitUnitRule
+) -> np.ndarray:
+    return _heads(rows, _dependents(rows, rule), rule)
+
+
+def _tax_unit_heads(
+    rows: _Pointers, person: pd.DataFrame, rule: TaxUnitRule
+) -> np.ndarray:
+    column = rule.pairing_eligibility_column
+    if column not in person:
+        raise ValueError(f"Building tax units needs eligibility column {column!r}.")
+    eligibility = person[column]
+    if not pd.api.types.is_bool_dtype(eligibility.dtype) or eligibility.isna().any():
+        raise ValueError("Tax-unit pairing eligibility must hold non-null booleans.")
+    eligible = eligibility.to_numpy(dtype=bool)
+    own = np.arange(len(rows.ids))
+    other = np.maximum(rows.partner, 0)
+    paired = (rows.partner >= 0) & eligible & eligible[other]
+    return np.where(paired & (rows.ids[other] < rows.ids), other, own)
+
+
+# Registration owns parsing and membership dispatch. All physical construction,
+# validation, roles, lineage and weight semantics are shared below.
+_UNIT_KINDS: Mapping[str, tuple[type, Callable]] = MappingProxyType(
+    {
+        "benefit_unit": (BenefitUnitRule, _benefit_unit_heads),
+        "tax_unit": (TaxUnitRule, _tax_unit_heads),
+    }
+)
+
+
+def build_declared_units(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    declaration: MultiUnitRule,
+) -> dict[str, GroupMembership]:
+    """Construct each declared partition without adding unit weight columns."""
+    if not isinstance(declaration, MultiUnitRule):
+        raise TypeError("build_declared_units requires a MultiUnitRule.")
+    result = {}
+    for item in declaration.units:
+        rows = _Pointers.read(person, household, item.rule)
+        head = _UNIT_KINDS[item.kind][1](rows, person, item.rule)
+        units, membership = _build_partition(person, household, item.rule, rows, head)
+        result[item.entity] = benefit_unit_membership(
+            person, units, membership, item.rule
+        )
+    return result
+
+
+def declared_unit_attributes(
+    person: pd.DataFrame,
+    units: pd.DataFrame,
+    membership: pd.Series,
+    declaration: UnitDeclaration,
+) -> pd.DataFrame:
+    """Composition attributes from the shared head/partner/child role contract."""
+    return benefit_unit_attributes(person, units, membership, declaration.rule)
+
+
+def _build_partition(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    rule: BenefitUnitRule | TaxUnitRule,
+    rows: _Pointers,
+    head: np.ndarray,
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Materialize and validate the one physical partition contract."""
+    if (
+        head.shape != (len(person),)
+        or head.dtype.kind not in "iu"
+        or ((head < 0).any() or (head >= len(person)).any())
+    ):
+        raise ValueError(
+            "A declared partition must assign exactly one head to every person."
+        )
+    if not np.array_equal(rows.household_ids[head], rows.household_ids):
+        raise ValueError("A declared unit must nest inside one household.")
     head_rows = np.unique(head)
-    order = np.argsort(ids[head_rows], kind="stable")
-    head_rows = head_rows[order]
-    family = pd.DataFrame(
+    if not np.array_equal(head[head_rows], head_rows):
+        raise ValueError("A declared unit head must belong to its own unit.")
+    head_rows = head_rows[np.argsort(rows.ids[head_rows], kind="stable")]
+    units = pd.DataFrame(
         {
-            rule.id_column: ids[head_rows],
+            rule.id_column: rows.ids[head_rows],
             rule.household_column: rows.household_ids[head_rows],
-            rule.head_column: ids[head_rows],
+            rule.head_column: rows.ids[head_rows],
         }
     )
+    if SOURCE_HOUSEHOLD_ID_COLUMN in household:
+        lineage = household.set_index(_HOUSEHOLD_ID)[SOURCE_HOUSEHOLD_ID_COLUMN]
+        units[rule.source_household_column] = units[rule.household_column].map(lineage)
     membership = pd.Series(
-        ids[head], index=person.index, name=rule.membership_column, dtype=np.int64
+        rows.ids[head], index=person.index, name=rule.membership_column, dtype=np.int64
     )
-    return family, membership
+    return units, membership
+
+
+def reciprocal_partner_rows(
+    person: pd.DataFrame, household: pd.DataFrame
+) -> np.ndarray:
+    """Resolve reciprocal co-resident partner pointers, refusing invalid ones.
+
+    Row positions use -1 for absence, leaving every integer person id valid.
+    Both NZ and tax-unit construction use this one pointer implementation.
+    """
+    columns = [_PERSON_ID, _PERSON_HOUSEHOLD_ID, "partner_person_id"]
+    missing = [name for name in columns if name not in person]
+    if missing:
+        raise ValueError(f"Partner pointers need columns {missing}.")
+    subset = {
+        "person": person.loc[:, columns],
+        "household": household.loc[:, [_HOUSEHOLD_ID, "reference_person_id"]],
+    }
+    violations = validate_concept_tables(subset)
+    if violations:
+        detail = "; ".join(
+            f"{item.column} {item.code}: {item.message}" for item in violations
+        )
+        raise ValueError(f"Partner pointers refuse an invalid concept frame: {detail}")
+    ids = _int64_ids(person[_PERSON_ID], f"person.{_PERSON_ID}")
+    pointers = person["partner_person_id"]
+    present = pointers.notna().to_numpy()
+    rows = np.full(len(person), -1, dtype=np.int64)
+    rows[present] = pd.Index(ids).get_indexer(
+        _int64_ids(pointers[present], "person.partner_person_id")
+    )
+    return rows
 
 
 def benefit_unit_roles(
@@ -487,10 +874,11 @@ def benefit_unit_attributes(
     n_members = np.bincount(unit_rows, minlength=n_units).astype(np.int64)
     n_adults = np.bincount(unit_rows[is_adult], minlength=n_units).astype(np.int64)
     n_children = n_members - n_adults
-    ages = person["age"].to_numpy(dtype=np.float64)
     youngest = np.full(n_units, np.inf)
     child_rows = np.flatnonzero(~is_adult)
-    np.minimum.at(youngest, unit_rows[child_rows], ages[child_rows])
+    if len(child_rows):
+        ages = person["age"].to_numpy(dtype=np.float64)
+        np.minimum.at(youngest, unit_rows[child_rows], ages[child_rows])
     youngest_age = pd.array(
         [None if math.isinf(value) else int(value) for value in youngest],
         dtype="Int64",
@@ -514,6 +902,46 @@ def benefit_unit_attributes(
             "youngest_dependent_child_age": youngest_age,
         }
     )
+
+
+def benefit_unit_diagnostics(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    family: pd.DataFrame,
+    membership: pd.Series,
+    rule: BenefitUnitRule,
+) -> dict[str, int]:
+    """Unweighted counts of the unit rule's observed placement branches.
+
+    Employment counts persons excluded by the hours limb who otherwise
+    qualify as candidate children. Parent counts partition parents under the
+    child age limit at the declared parent-independence age. Co-parent counts
+    distinct households; reference placements count dependent children.
+    """
+    rows = _Pointers.read(person, household, rule)
+    dependent = (
+        benefit_unit_roles(person, family, membership, rule).to_numpy()
+        == UnitRole.DEPENDENT_CHILD.value
+    )
+    minimum = rule.dependent_child.parent_independence_min_age
+    young_parent = _parents(rows) & (rows.age <= rule.dependent_child.max_age)
+    independent_parent = young_parent & ~dependent
+    if minimum is not None:
+        independent_parent &= rows.age >= minimum
+    both = dependent & (rows.parent_1 >= 0) & (rows.parent_2 >= 0)
+    first, second = rows.parent_1[both], rows.parent_2[both]
+    nonpartners = rows.partner[first] != second
+    return {
+        "hours_independent_children": int(
+            (_candidate_children(rows, rule) & _hours_independent(rows, rule)).sum()
+        ),
+        "independent_teen_parents": int(independent_parent.sum()),
+        "dependent_teen_parents": int((young_parent & dependent).sum()),
+        "non_partnered_coparent_households": int(
+            len(np.unique(rows.household_ids[both][nonpartners]))
+        ),
+        "children_with_reference_person": int((dependent & (rows.parent_1 < 0)).sum()),
+    }
 
 
 def units_per_household(
@@ -561,10 +989,16 @@ class _Pointers:
         cls,
         person: pd.DataFrame,
         household: pd.DataFrame,
-        rule: BenefitUnitRule,
+        rule: BenefitUnitRule | TaxUnitRule,
     ) -> _Pointers:
-        test = rule.dependent_child.financial_independence
-        person_columns = [_PERSON_ID, _PERSON_HOUSEHOLD_ID, "age", *_POINTERS]
+        benefit = isinstance(rule, BenefitUnitRule)
+        test = rule.dependent_child.financial_independence if benefit else None
+        person_columns = [_PERSON_ID, _PERSON_HOUSEHOLD_ID, "partner_person_id"]
+        person_columns += [
+            name
+            for name in ("age", "parent_1_person_id", "parent_2_person_id")
+            if benefit or name in person
+        ]
         if test is not None:
             person_columns.append("usual_weekly_hours")
         missing = [name for name in person_columns if name not in person.columns]
@@ -585,7 +1019,7 @@ class _Pointers:
             f"{entity}.{column}"
             for entity, columns in _ID_COLUMNS.items()
             for column in columns
-            if _exceeds_int64(subset[entity][column])
+            if column in subset[entity] and _exceeds_int64(subset[entity][column])
         ]
         if wide:
             raise ValueError(
@@ -604,6 +1038,8 @@ class _Pointers:
         index = pd.Index(ids)
 
         def rows(table: pd.DataFrame, entity: str, column: str) -> np.ndarray:
+            if column not in table:
+                return np.full(len(table), -1, dtype=np.int64)
             values = table[column]
             present = values.notna().to_numpy()
             found = np.full(len(values), -1, dtype=np.int64)
@@ -623,38 +1059,60 @@ class _Pointers:
         return cls(
             ids=ids,
             household_ids=household_ids,
-            age=person["age"].to_numpy(dtype=np.float64),
+            age=person["age"].to_numpy(dtype=np.float64)
+            if "age" in person
+            else np.zeros(len(person)),
             hours=None
             if test is None
             else person["usual_weekly_hours"].to_numpy(dtype=np.float64),
-            partner=rows(person, "person", "partner_person_id"),
+            partner=reciprocal_partner_rows(person, household),
             parent_1=rows(person, "person", "parent_1_person_id"),
             parent_2=rows(person, "person", "parent_2_person_id"),
             reference=reference_by_household[household_rows],
         )
 
 
+def _parents(rows: _Pointers) -> np.ndarray:
+    """Persons named as a parent by a co-resident person."""
+    named = np.concatenate(
+        [rows.parent_1[rows.parent_1 >= 0], rows.parent_2[rows.parent_2 >= 0]]
+    )
+    return np.bincount(named, minlength=len(rows.ids)) > 0
+
+
+def _candidate_children(rows: _Pointers, rule: BenefitUnitRule) -> np.ndarray:
+    """Age, partnership and parenthood limbs before the employment test."""
+    child_rule = rule.dependent_child
+    minimum = child_rule.parent_independence_min_age
+    independent_parent = _parents(rows)
+    if minimum is not None:
+        independent_parent &= rows.age >= minimum
+    return (rows.age <= child_rule.max_age) & (rows.partner < 0) & ~independent_parent
+
+
+def _hours_independent(rows: _Pointers, rule: BenefitUnitRule) -> np.ndarray:
+    test = rule.dependent_child.financial_independence
+    if test is None:
+        return np.zeros(len(rows.ids), dtype=bool)
+    assert rows.hours is not None
+    return (rows.age >= test.min_age) & (rows.hours >= test.min_usual_weekly_hours)
+
+
 def _dependents(rows: _Pointers, rule: BenefitUnitRule) -> np.ndarray:
     """Which persons are dependent children under ``rule``."""
 
     n = len(rows.ids)
-    named = np.concatenate(
-        [rows.parent_1[rows.parent_1 >= 0], rows.parent_2[rows.parent_2 >= 0]]
-    )
-    is_parent = np.bincount(named, minlength=n) > 0
-    child_rule = rule.dependent_child
-    candidate = (rows.age <= child_rule.max_age) & (rows.partner < 0) & ~is_parent
-    test = child_rule.financial_independence
-    if test is not None:
-        assert rows.hours is not None
-        candidate &= ~(
-            (rows.age >= test.min_age) & (rows.hours >= test.min_usual_weekly_hours)
-        )
+    candidate = _candidate_children(rows, rule)
+    candidate &= ~_hours_independent(rows, rule)
     has_parent = rows.parent_1 >= 0
     is_reference = rows.reference == np.arange(n)
-    # A candidate with no co-resident parent who is the reference person
-    # heads their own unit; every other unparented candidate needs placing.
-    unparented = candidate & ~has_parent & ~is_reference
+    # Earlier rules let a parentless reference candidate anchor a unit.
+    # A strict reference rule keeps them dependent and refuses self-placement.
+    unparented = (
+        candidate
+        & ~has_parent
+        & (~is_reference | rule.refuse_dependent_reference_person)
+    )
     placement = rule.unparented_child
     if placement is UnparentedChildPlacement.REFUSE and unparented.any():
         raise ValueError(
@@ -691,8 +1149,27 @@ def _heads(rows: _Pointers, dependent: np.ndarray, rule: BenefitUnitRule) -> np.
     )
     head[adult] = np.where(mine_first, own, other)[adult]
 
-    # A parent is never a candidate child, so every parent's head is known.
+    # A younger parent can be dependent: resolve caregiver chains until they
+    # reach an adult's unit, so that parent's child joins the same unit.
     with_parent = dependent & (rows.parent_1 >= 0)
+    unparented = dependent & ~with_parent
+    if (
+        rule.refuse_dependent_reference_person
+        and dependent[rows.reference[unparented]].any()
+    ):
+        raise ValueError(
+            "The unit rule refuses a parentless child whose reference person "
+            "is a dependent child."
+        )
+    caregiver = np.where(with_parent, rows.parent_1, rows.reference)
+    pending = dependent.copy()
+    while pending.any():
+        resolved = pending & (head[caregiver] >= 0)
+        if not resolved.any():
+            raise ValueError("Dependent caregiver pointers do not reach an adult.")
+        head[resolved] = head[caregiver[resolved]]
+        pending[resolved] = False
+
     first = head[rows.parent_1[with_parent]]
     second_rows = rows.parent_2[with_parent]
     second = np.where(second_rows >= 0, head[np.maximum(second_rows, 0)], first)
@@ -702,13 +1179,6 @@ def _heads(rows: _Pointers, dependent: np.ndarray, rule: BenefitUnitRule) -> np.
             f"{int(split.sum())} dependent child(ren) have co-resident parents "
             "in different units; the unit rule refuses the ambiguity."
         )
-    head[with_parent] = first
-
-    # Unparented dependent children join the unit of the household's
-    # reference person, who is an adult or a dependent child with a parent,
-    # so their head is already known.
-    unparented = dependent & (rows.parent_1 < 0)
-    head[unparented] = head[rows.reference[unparented]]
     if (head < 0).any():  # pragma: no cover - construction guarantees it
         raise AssertionError("A person was left without a benefit unit.")
     return head
@@ -742,3 +1212,76 @@ def _int64_ids(values: pd.Series, label: str) -> np.ndarray:
             "int64, which cannot represent them."
         )
     return values.to_numpy(dtype=np.int64)
+
+
+def _roster_identity(value: object) -> tuple[type, object]:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (str, Integral))
+        or isinstance(value, str)
+        and not value
+    ):
+        raise ValueError(
+            "Calibration membership identities must be strings or integers."
+        )
+    return (str, value) if isinstance(value, str) else (int, int(value))
+
+
+def prepare_roster_counts(
+    tables: dict[str, pd.DataFrame], entries: object, required: Mapping[str, object]
+) -> dict[str, set[str]]:
+    """Validate and prepare declared roster counts on independent caller tables."""
+    if not isinstance(entries, (list, tuple)):
+        raise ValueError("Calibration roster_counts must be a list.")
+    derived: dict[str, set[str]] = {}
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            raise ValueError("Calibration roster count must be an object.")
+        entity, members, name = (
+            entry.get("entity"),
+            entry.get("member_entity"),
+            entry.get("name"),
+        )
+        group_id, member_id, membership = (
+            entry.get("entity_id"),
+            entry.get("member_id"),
+            entry.get("membership"),
+        )
+        if (
+            entity not in required
+            or members not in required
+            or not isinstance(name, str)
+            or not name
+            or name.endswith("_id")
+            or name in required[entity]
+            or name in derived.get(entity, ())
+            or group_id not in required[entity]
+            or member_id not in required[members]
+            or membership not in required[members]
+            or not isinstance(entry.get("representation"), str)
+            or not entry["representation"]
+        ):
+            raise ValueError(
+                "Calibration roster count needs declared identities and representation."
+            )
+        groups = [
+            _roster_identity(value) for value in tables[entity][group_id].tolist()
+        ]
+        identities = [
+            _roster_identity(value) for value in tables[members][member_id].tolist()
+        ]
+        if len(set(groups)) != len(groups) or len(set(identities)) != len(identities):
+            raise ValueError(
+                "Calibration roster contains duplicate membership identities."
+            )
+        counts = dict.fromkeys(groups, 0)
+        for value in tables[members][membership].tolist():
+            key = _roster_identity(value)
+            if key not in counts:
+                raise ValueError("Calibration roster contains orphan membership.")
+            counts[key] += 1
+        if any(count == 0 for count in counts.values()):
+            raise ValueError("Calibration roster contains empty households or groups.")
+        tables[entity][name] = [counts[key] for key in groups]
+        derived.setdefault(entity, set()).add(name)
+    return derived

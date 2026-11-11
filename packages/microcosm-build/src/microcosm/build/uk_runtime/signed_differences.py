@@ -8,9 +8,9 @@ that cannot align, a net-new column — is recorded here with its class, the
 surface it shows up on, evidence, and who adjudicated it.
 
 This register sits **above** the per-gate exclusion registers, and does not
-replace them.  ``input_mass_reviewed_exclusions.json``,
-``qrf_tail_reviewed_exclusions.json`` and ``degenerate_reviewed_exclusions.json``
-keep their own roles: they suppress a specific gate for a specific column, they
+replace them.  ``input_mass_reviewed_exclusions.json`` and
+``degenerate_reviewed_exclusions.json`` keep their own roles: they suppress a
+specific gate for a specific column, they
 are scoped per reference, and they **expire** so that a suppression cannot
 outlive its reason.  A signed difference is the opposite kind of object — a
 permanent adjudicated fact about how the two artifacts differ — so entries here

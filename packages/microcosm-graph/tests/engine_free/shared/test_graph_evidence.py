@@ -636,3 +636,83 @@ def test_malformed_composite_metadata_is_refused(fresh, composite):
     contract["operations"]["survey"]["composite"] = composite
     with pytest.raises(ValueError, match="composite"):
         orrery_document(fresh.compiled, extensions={PRESENTATION_EXTENSION: contract})
+
+
+def test_item_heavy_native_evidence_is_read_hashed_and_copied(fresh, tmp_path):
+    """A real spine manifest holds over a million small JSON items in 13 MB."""
+    from microcosm.graph.evidence import read_bytes, read_json
+    from microcosm.graph.presentation import PRESENTATION_EXTENSION
+
+    heavy = tmp_path / "manifest.json"
+    heavy.write_bytes(json.dumps({"receipts": [[0, 1]] * 1_500_000}).encode())
+    assert heavy.stat().st_size < 32 * 1024 * 1024
+    value, payload = read_json(heavy)
+    assert len(value["receipts"]) == 1_500_000
+    assert sha256(payload) == sha256(read_bytes(heavy))
+    record = {
+        "graph_declaration": {"path": str(heavy), "sha256": sha256(payload)},
+        "graph_manifest": {"path": str(heavy), "sha256": sha256(payload)},
+    }
+    refs, missing = checkpoint_references(record, base=tmp_path)
+    assert len(refs) == 2 and missing is None
+    contract = presentation(fresh.compiled)
+    contract["scope"]["boundaries"] = [
+        {"operation": "survey", "kind": "checkpoint", "upstream": refs}
+    ]
+    saved = save_graph_schema(fresh.compiled, tmp_path / "out", presentation=contract)
+    copied = json.loads(saved.read_bytes())["extensions"][PRESENTATION_EXTENSION]
+    url = copied["scope"]["boundaries"][0]["upstream"][0]["url"]
+    assert (saved.parent / url).read_bytes() == payload
+
+
+def test_item_heavy_manifest_round_trips_through_run_evidence(fresh, tmp_path):
+    """The second #1187 failure: save, load and publish an item-heavy manifest."""
+    from dataclasses import replace
+
+    name, receipt = next(iter(fresh.manifest.nodes.items()))
+    heavy_manifest = replace(
+        fresh.manifest,
+        nodes={
+            **fresh.manifest.nodes,
+            name: replace(receipt, receipt={"receipts": [[0, 1]] * 1_500_000}),
+        },
+    )
+    index = save_run_evidence(
+        fresh.compiled,
+        heavy_manifest,
+        store=fresh.store,
+        directory=tmp_path / "attempt-1",
+        attempt_id="attempt-1",
+        phase="numerical",
+    )
+    written = next((tmp_path / "attempt-1").rglob("manifest.json"))
+    assert written.stat().st_size > 10 * 1024 * 1024
+    runs = load_run_evidence(index, store=fresh.store)
+    assert len(runs[0].manifest.nodes[name].receipt["receipts"]) == 1_500_000
+    published = publish_run_evidence(index, tmp_path / "out")
+    entry = json.loads(published.read_bytes())["runs"][0]
+    copied = published.parent / entry["manifest"]["path"]
+    assert copied.read_bytes() == written.read_bytes()
+    republished = load_run_evidence(published, store=fresh.store)
+    assert (
+        republished[0].manifest.nodes[name].receipt["receipts"][0]
+        == runs[0].manifest.nodes[name].receipt["receipts"][0]
+    )
+
+
+@pytest.mark.parametrize(
+    "text, message",
+    [
+        ("[NaN]", "finite"),
+        ("[1e400]", "finite"),
+        ("[" * 70 + "]" * 70, "nesting"),
+        ('{"a": 1, "a": 2}', "duplicate"),
+    ],
+)
+def test_native_evidence_reader_refuses_malformed_json(tmp_path, text, message):
+    from microcosm.graph.evidence import read_json
+
+    path = tmp_path / "bad.json"
+    path.write_text(text)
+    with pytest.raises(ValueError, match=message):
+        read_json(path)

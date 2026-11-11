@@ -21,12 +21,14 @@ from microcosm.build.uk_runtime import (
     UKReleaseInputCoverageManifest,
     assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
+    load_efrs_engine_derived_exclusions,
     load_efrs_parity_known_gaps,
     load_efrs_parity_reference,
     load_uk_release_input_coverage_manifest,
     uk_release_input_coverage_gate,
 )
 from microcosm.frame import EntitySchema, Frame, MassChangeRecord, WeightKind, Weights
+from test_support.microcosm_build.uk_cut_reference import reference_surface
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -70,10 +72,14 @@ def _weighted_person_frame(
     weight_kind: WeightKind = WeightKind.DESIGN,
     mass_log: tuple[MassChangeRecord, ...] = (),
     time_period: str | None = None,
+    source_ids: np.ndarray | None = None,
 ) -> Frame:
     weights = np.asarray(household_weights, dtype=float)
     n = len(weights)
     ids = np.arange(1, n + 1, dtype="int64")
+    household = pd.DataFrame({"household_id": ids})
+    if source_ids is not None:
+        household["household_source_id"] = np.asarray(source_ids)
     person = pd.DataFrame(
         {
             "person_id": ids,
@@ -86,7 +92,7 @@ def _weighted_person_frame(
         {
             "person": person,
             "benunit": pd.DataFrame({"benunit_id": ids}),
-            "household": pd.DataFrame({"household_id": ids}),
+            "household": household,
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(values=weights, kind=weight_kind)},
@@ -118,6 +124,11 @@ class _StubEngine:
 
     def variable_entities(self, names) -> dict[str, str]:
         return {name: self._entities[name] for name in names if name in self._entities}
+
+
+#: A reference that carries no input: the test's manifest declares the
+#: required inputs itself, as every test did before microcosm#1095.
+NO_REFERENCE_INPUTS = reference_surface(export_columns=("person.age",))
 
 
 def _manifest(

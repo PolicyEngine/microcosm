@@ -1,0 +1,6 @@
+person matched 907863 changed ['health_insurance_premiums_without_medicare_part_b', 'non_sch_d_capital_gains', 'roth_401k_contributions_desired', 'roth_ira_contributions_desired', 'self_employed_pension_contributions_desired', 'social_security_dependents', 'social_security_disability', 'social_security_retirement', 'social_security_survivors', 'traditional_401k_contributions_desired', 'traditional_ira_contributions_desired', 'weeks_unemployed']
+tax_unit matched 467432 changed []
+spm_unit matched 367306 changed ['spm_unit_energy_subsidy', 'spm_unit_pre_subsidy_childcare_expenses']
+household matched 352932 changed ['household_weight']
+family matched 394058 changed []
+marital_unit matched 722569 changed []
