@@ -136,6 +136,8 @@ TARGETS = (
     "getattr_constant",
     "getattr_cycle_a",
     "getattr_cycle_b",
+    "getattr_effect",
+    "getattr_effect_from",
     "getattr_hidden_all",
     "getattr_import_cycle",
     "getattr_import_cycle_from",
@@ -149,22 +151,34 @@ TARGETS = (
     "getattr_maybe_global_del",
     "getattr_maybe_optional",
     "getattr_maybe_star_all",
+    "getattr_maybe_star_all_class",
+    "getattr_maybe_star_all_getter",
+    "getattr_maybe_star_all_getter_import",
+    "getattr_maybe_star_all_getter_match",
+    "getattr_maybe_star_all_global",
+    "getattr_maybe_star_all_import",
+    "getattr_maybe_star_all_match",
     "getattr_maybe_star_del",
     "getattr_maybe_star_private",
     "getattr_maybe_target",
     "getattr_maybe_typing",
     "getattr_maybe_walrus",
     "getattr_maybe_with",
+    "getattr_maybe_with_later",
+    "getattr_maybe_with_tuple",
     "getattr_named",
     "getattr_outside_del",
     "getattr_path",
     "getattr_renamed",
     "getattr_self",
+    "getattr_self_del",
     "getattr_settled",
     "getattr_star_lazy",
     "getattr_star_noall",
+    "getattr_star_partial",
     "getattr_sub_attribute",
     "getattr_submodule",
+    "getattr_sure",
     "global",
     "global_read_class",
     "global_read_first",
@@ -243,6 +257,7 @@ TARGETS = (
     "star_clique",
     "star_diamond",
     "star_lazy",
+    "star_maybe_diamond",
     "store_hidden",
     "subclass",
     "subscript",
@@ -256,6 +271,7 @@ TARGETS = (
     "walrus_module",
     "with_class",
     "with_module",
+    "with_skipped",
     "with_store",
     "with_target",
 )
@@ -275,7 +291,10 @@ TARGETS = (
 #: calls for a name the module binds that code reads as an attribute
 #: (r_getattr_bound), and t_getattr_settled behind one that the walk counts
 #: only while the lookup of the name waits on a cycle that hasn't settled
-#: (r_getattr_settled).
+#: (r_getattr_settled), and t_getattr_sure behind one that Python never
+#: calls for names the module binds for sure through a tuple, a list, a
+#: starred target or a ``with`` statement's first target, or deletes only
+#: as a function's own local (r_getattr_sure).
 DECOYS = frozenset(
     {
         "ann_module",
@@ -283,6 +302,7 @@ DECOYS = frozenset(
         "getattr_bound",
         "getattr_self",
         "getattr_settled",
+        "getattr_sure",
         "shadowed",
         "with_module",
     }
@@ -1074,8 +1094,11 @@ SOURCES: dict[str, str] = {
             def run(self):
                 return self.source.X
         """,
-    # A with statement and an annotated assignment at the body's top level
-    # bind for sure, so a read after either reads only the class's binding.
+    # A with statement's first target, a plain name, and an annotated
+    # assignment at the body's top level bind for sure, so a read after
+    # either reads only the class's binding. A later item's target can stay
+    # unbound: Fails's __enter__ raises inside suppress's context, so a read
+    # after it reads the module's binding.
     "with_ctx": """
         class Ctx:
             def __init__(self, value):
@@ -1096,6 +1119,31 @@ SOURCES: dict[str, str] = {
 
         class Kernel:
             with Ctx(t_with_class) as SOURCE:
+                pass
+            source = SOURCE
+
+            def run(self):
+                return self.source.X
+        """,
+    "with_fails": """
+        class Fails:
+            def __enter__(self):
+                raise OSError
+
+            def __exit__(self, *exc):
+                return False
+        """,
+    "r_with_skipped_class": """
+        from contextlib import suppress
+
+        from microcosm.walkcases import t_with_skipped
+        from microcosm.walkcases.with_fails import Fails
+
+        SOURCE = t_with_skipped
+
+
+        class Kernel:
+            with suppress(OSError), Fails() as SOURCE:
                 pass
             source = SOURCE
 
@@ -2589,6 +2637,55 @@ SOURCES: dict[str, str] = {
         def run():
             return None
         """,
+    # An attribute read and a from-import that a package's __getattr__
+    # answers, in a statement that binds a name: each runs at import, and
+    # nothing reads the name.
+    "gfx.__init__": """
+        def __getattr__(attr):
+            if attr == "lazy":
+                from microcosm.walkcases import t_getattr_effect
+
+                return t_getattr_effect.X
+            raise AttributeError(attr)
+        """,
+    "gfx_m": """
+        from microcosm.walkcases import gfx
+
+        _X = gfx.lazy
+
+
+        def go():
+            return 1
+        """,
+    "r_getattr_effect": """
+        from microcosm.walkcases.gfx_m import go
+
+
+        def run():
+            return go()
+        """,
+    "gfxf.__init__": """
+        def __getattr__(attr):
+            if attr == "lazy":
+                from microcosm.walkcases import t_getattr_effect_from
+
+                return t_getattr_effect_from.X
+            raise AttributeError(attr)
+        """,
+    "gfxf_m": """
+        from microcosm.walkcases.gfxf import lazy  # noqa: F401
+
+
+        def go():
+            return 1
+        """,
+    "r_getattr_effect_from": """
+        from microcosm.walkcases.gfxf_m import go
+
+
+        def run():
+            return go()
+        """,
     # A class nested in a class body binds SOURCE, which it declares global,
     # to one of its own names. The walk reads that name at module level.
     "r_nested_global_value": """
@@ -2859,6 +2956,40 @@ SOURCES["r_star_clique"] = """
 
     def run():
         return len([t_star_clique.X])
+    """
+# The star diamond again, with a bottom level that binds the name only in a
+# branch that never runs. The top module's __getattr__ answers for it, and the
+# walk asks of each module whether it binds the name for sure, which turns on
+# every module below it.
+SOURCES.update(
+    {
+        f"maybe_{level}_{side}": (
+            "if False:\n    name = 1\n"
+            if level == _DEPTH - 1
+            else f"from {PACKAGE}.maybe_{level + 1}_a import *\n"
+            f"from {PACKAGE}.maybe_{level + 1}_b import *\n"
+        )
+        for level in range(_DEPTH)
+        for side in "ab"
+    }
+)
+SOURCES["maybe_top"] = """
+    from microcosm.walkcases import t_star_maybe_diamond
+    from microcosm.walkcases.maybe_0_a import *
+    from microcosm.walkcases.maybe_0_b import *
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_star_maybe_diamond.X
+        raise AttributeError(attr)
+    """
+SOURCES["r_star_maybe_diamond"] = """
+    from microcosm.walkcases.maybe_top import name
+
+
+    def run():
+        return name
     """
 # Constants in a diamond: each of a level's two names both of the next.
 SOURCES["r_alias_diamond"] = (
@@ -3571,13 +3702,18 @@ SOURCES["r_getattr_star_lazy"] = """
 # maybe: in a branch that never runs, in an import for type checkers, in a try
 # whose import fails, before a del (at module level, or in a function that
 # declares the name global), before an except clause that names it, or through
-# a star import that a del or an __all__ can undo. A star import brings in
-# no name that starts with an underscore from a module without __all__. A
-# walrus inside a subscript of a target can be skipped, in a plain, annotated
-# or augmented assignment or a with statement, and a comprehension's name
-# there binds in the comprehension, not the module. A package's
-# __getattr__ answers for a sub module that nothing has imported, read as an
-# attribute.
+# a star import that a del or an __all__ can undo. The star import's source
+# can name __all__ in a function that declares it global, import it, bind it
+# in a match capture, define it as a class, or answer for it in a
+# __getattr__ that it defines, imports or binds in a match capture. A star
+# import brings in no name that starts with an underscore from a module
+# without __all__. A walrus inside a subscript of a
+# target can be skipped, in a plain, annotated or augmented assignment or a
+# with statement, and a comprehension's name there binds in the
+# comprehension, not the module. A with statement's later item, or a tuple
+# that it unpacks into, can raise inside a context that suppresses the
+# error, and the name stays unbound. A package's __getattr__ answers for a
+# sub module that nothing has imported, read as an attribute.
 SOURCES["gmb_branch"] = """
     from microcosm.walkcases import t_getattr_maybe_branch
 
@@ -3792,6 +3928,125 @@ SOURCES["gmb_augmented"] = """
             return t_getattr_maybe_augmented.X
         raise AttributeError(attr)
     """
+SOURCES["gmb_no_names"] = """
+    __all__ = []
+    """
+SOURCES["gmb_star_all_global_src"] = """
+    name = 1
+
+
+    def _hide():
+        global __all__
+        from microcosm.walkcases.gmb_no_names import __all__
+
+
+    _hide()
+    """
+SOURCES["gmb_star_all_import_src"] = """
+    from microcosm.walkcases.gmb_no_names import __all__
+
+    name = 1
+    """
+SOURCES["gmb_star_all_match_src"] = """
+    match []:
+        case __all__:
+            pass
+
+    name = 1
+    """
+SOURCES["gmb_star_all_getter_src"] = """
+    name = 1
+
+
+    def __getattr__(attr):
+        if attr == "__all__":
+            return []
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_answers"] = """
+    def answer(attr):
+        if attr == "__all__":
+            return []
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_star_all_getter_import_src"] = """
+    from microcosm.walkcases.gmb_answers import answer as __getattr__  # noqa: F401
+
+    name = 1
+    """
+SOURCES["gmb_star_all_getter_match_src"] = """
+    from microcosm.walkcases.gmb_answers import answer
+
+    match answer:
+        case __getattr__:
+            pass
+
+    name = 1
+    """
+SOURCES["gmb_star_all_class_src"] = """
+    class _Empty(type):
+        def __getitem__(cls, index):
+            raise IndexError(index)
+
+
+    class __all__(metaclass=_Empty):
+        pass
+
+
+    name = 1
+    """
+SOURCES.update(
+    {
+        f"gmb_star_all_{source}": f"""
+        from microcosm.walkcases import t_getattr_maybe_star_all_{source}
+        from microcosm.walkcases.gmb_star_all_{source}_src import *
+
+
+        def __getattr__(attr):
+            if attr == "name":
+                return t_getattr_maybe_star_all_{source}.X
+            raise AttributeError(attr)
+        """
+        for source in (
+            "global",
+            "import",
+            "match",
+            "getter",
+            "getter_import",
+            "getter_match",
+            "class",
+        )
+    }
+)
+SOURCES["gmb_with_later"] = """
+    from contextlib import suppress
+
+    from microcosm.walkcases import t_getattr_maybe_with_later
+    from microcosm.walkcases.with_fails import Fails
+
+    with suppress(OSError), Fails() as name:
+        pass
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_with_later.X
+        raise AttributeError(attr)
+    """
+SOURCES["gmb_with_tuple"] = """
+    from contextlib import suppress
+
+    from microcosm.walkcases import t_getattr_maybe_with_tuple
+
+    with suppress(TypeError) as (name, other):
+        pass
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_maybe_with_tuple.X
+        raise AttributeError(attr)
+    """
 SOURCES.update(
     {
         f"r_getattr_maybe_{form}": f"""
@@ -3815,9 +4070,54 @@ SOURCES.update(
             "with",
             "annotated",
             "augmented",
+            "star_all_global",
+            "star_all_import",
+            "star_all_match",
+            "star_all_getter",
+            "star_all_getter_import",
+            "star_all_getter_match",
+            "star_all_class",
+            "with_later",
+            "with_tuple",
         )
     }
 )
+# Python never calls gsure's __getattr__ for these names, which it binds for
+# sure: through a tuple, a list and a starred target, a with statement's
+# first target, and a name that a function deletes as its own local.
+SOURCES["gsure"] = """
+    from contextlib import nullcontext
+
+    from microcosm.walkcases import t_getattr_sure
+
+    pair, other = 1, 2
+    [listed] = [1]
+    *rest, last = 1, 2
+    kept = 1
+    with nullcontext(1) as held:
+        pass
+
+
+    def _drop():
+        kept = 2
+        del kept
+
+
+    _drop()
+
+
+    def __getattr__(attr):
+        if attr in ("pair", "listed", "rest", "kept", "held"):
+            return t_getattr_sure.X
+        raise AttributeError(attr)
+    """
+SOURCES["r_getattr_sure"] = """
+    from microcosm.walkcases.gsure import held, kept, listed, pair, rest
+
+
+    def run():
+        return pair, listed, rest, kept, held
+    """
 SOURCES["gsa.__init__"] = """
     def __getattr__(attr):
         if attr == "sub":
@@ -3912,6 +4212,54 @@ SOURCES["gha_m"] = """
     """
 SOURCES["r_getattr_hidden_all"] = """
     from microcosm.walkcases.gha_m import name
+
+
+    def run():
+        return name
+    """
+# A star import reads its source part-built: the run imports gsp_src first,
+# which imports gsp_m before it binds name, so gsp_m's star import brings
+# nothing in.
+SOURCES["gsp_src"] = """
+    from microcosm.walkcases import gsp_m  # noqa: F401
+
+    name = 1
+    """
+SOURCES["gsp_m"] = """
+    from microcosm.walkcases import t_getattr_star_partial
+    from microcosm.walkcases.gsp_src import *
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_star_partial.X
+        raise AttributeError(attr)
+    """
+SOURCES["r_getattr_star_partial"] = """
+    from microcosm.walkcases import gsp_src  # noqa: F401
+    from microcosm.walkcases.gsp_m import name
+
+
+    def run():
+        return name
+    """
+# A module deletes its own name as an attribute of itself.
+SOURCES["gsd_m"] = """
+    import sys
+
+    from microcosm.walkcases import t_getattr_self_del
+
+    name = 1
+    del sys.modules[__name__].name
+
+
+    def __getattr__(attr):
+        if attr == "name":
+            return t_getattr_self_del.X
+        raise AttributeError(attr)
+    """
+SOURCES["r_getattr_self_del"] = """
+    from microcosm.walkcases.gsd_m import name
 
 
     def run():
@@ -4150,6 +4498,20 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_getattr_maybe_annotated", "run"): {"getattr_maybe_annotated"},
     ("r_getattr_maybe_augmented", "run"): {"getattr_maybe_augmented"},
     ("r_getattr_maybe_star_private", "run"): {"getattr_maybe_star_private"},
+    ("r_getattr_maybe_star_all_global", "run"): {"getattr_maybe_star_all_global"},
+    ("r_getattr_maybe_star_all_import", "run"): {"getattr_maybe_star_all_import"},
+    ("r_getattr_maybe_star_all_match", "run"): {"getattr_maybe_star_all_match"},
+    ("r_getattr_maybe_star_all_getter", "run"): {"getattr_maybe_star_all_getter"},
+    ("r_getattr_maybe_star_all_getter_import", "run"): {
+        "getattr_maybe_star_all_getter_import"
+    },
+    ("r_getattr_maybe_star_all_getter_match", "run"): {
+        "getattr_maybe_star_all_getter_match"
+    },
+    ("r_getattr_maybe_star_all_class", "run"): {"getattr_maybe_star_all_class"},
+    ("r_getattr_maybe_with_later", "run"): {"getattr_maybe_with_later"},
+    ("r_getattr_maybe_with_tuple", "run"): {"getattr_maybe_with_tuple"},
+    ("r_getattr_sure", "run"): set(),
     ("r_getattr_sub_attribute", "run"): {"getattr_sub_attribute"},
     ("r_getattr_submodule", "run"): {"getattr_submodule"},
     ("r_class_global", "Kernel.run"): {
@@ -4189,6 +4551,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_except_class", "Kernel.run"): {"except_class", "except_module"},
     ("r_walrus_class", "Kernel.run"): {"walrus_class", "walrus_module"},
     ("r_with_class", "Kernel.run"): {"with_class"},
+    ("r_with_skipped_class", "Kernel.run"): {"with_skipped"},
     ("r_ann_class", "Kernel.run"): {"ann_class"},
     # Aliases
     ("r_alias", "run"): {"alias"},
@@ -4310,6 +4673,7 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     # Cost
     ("r_star_diamond", "run"): {"star_diamond"},
     ("r_star_clique", "run"): {"star_clique"},
+    ("r_star_maybe_diamond", "run"): {"star_maybe_diamond"},
     ("r_alias_diamond", "run"): {"alias_diamond"},
     ("r_alias_modules", "run"): {"alias_modules"},
     ("r_match_diamond", "run"): {"match_diamond"},
@@ -4353,6 +4717,10 @@ ROOTS: dict[tuple[str, str], set[str]] = {
     ("r_getattr_path", "run"): set(),
     ("r_getattr_star_noall", "run"): set(),
     ("r_getattr_star_lazy", "run"): set(),
+    ("r_getattr_star_partial", "run"): set(),
+    ("r_getattr_self_del", "run"): set(),
+    ("r_getattr_effect", "run"): set(),
+    ("r_getattr_effect_from", "run"): set(),
 }
 
 #: Targets a root's walk reaches that its run doesn't read. The walk reaches
@@ -4389,6 +4757,10 @@ BLIND: dict[tuple[str, str], set[str]] = {
     ("r_registry_decorator", "run"): {"registry_decorator"},
     # An operator inside a statement that binds a name: X += 1 runs at import.
     ("r_aug_module_effect", "run"): {"aug_module_effect"},
+    # An attribute read and a from-import that a module's __getattr__ answers,
+    # in a statement that binds a name: each runs at import.
+    ("r_getattr_effect", "run"): {"getattr_effect"},
+    ("r_getattr_effect_from", "run"): {"getattr_effect_from"},
     # In a class nested in a class body, the value bound to a global name, and
     # the bases of a nested class the walk runs whole: it reads their names at
     # module level.
@@ -4412,7 +4784,8 @@ BLIND: dict[tuple[str, str], set[str]] = {
     # A module's __getattr__ that Python calls outside a cycle of lookups: for
     # a name the module's top level binds for sure, when Python reads the
     # module part-built (through an import cycle, or a function the module
-    # calls while it runs); for a name another module deletes; for a name a
+    # calls while it runs) or reads a star import's source part-built; for a
+    # name a module, itself included, deletes as an attribute; for a name a
     # star import leaves out through an __all__ that another module sets; for
     # __all__, which a star import asks a module that doesn't define it for;
     # for each name that a star import's __all__ lists and the module doesn't
@@ -4427,6 +4800,8 @@ BLIND: dict[tuple[str, str], set[str]] = {
     ("r_getattr_path", "run"): {"getattr_path"},
     ("r_getattr_star_noall", "run"): {"getattr_star_noall"},
     ("r_getattr_star_lazy", "run"): {"getattr_star_lazy"},
+    ("r_getattr_star_partial", "run"): {"getattr_star_partial"},
+    ("r_getattr_self_del", "run"): {"getattr_self_del"},
 }
 
 

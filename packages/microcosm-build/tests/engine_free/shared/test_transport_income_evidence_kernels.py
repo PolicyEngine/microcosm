@@ -2061,17 +2061,27 @@ def test_property_composing_roots_loses_no_target(walk_case_tree, picked) -> Non
 
 
 _Lookup = tuple[object, ...]
+#: A run after a lookup's first: the logged cycle whose pass was under way
+#: (None outside one), the lookup, and how many items the run added to what
+#: the lookup held.
+_Rerun = tuple[int | None, _Lookup, int]
 
 
-def _counted(monkeypatch) -> tuple[Counter[_Lookup], set[_Lookup]]:
+def _counted(monkeypatch) -> tuple[Counter[_Lookup], set[_Lookup], list[_Rerun]]:
     # Counts each lookup's runs, its first and each pass's, and records each
     # lookup that a lookup met before it settled: one that had begun to run
-    # and that the memo didn't hold yet. Both come from the calls, not from
-    # the walk's own pass log, and each walk starts with both cleared. It
-    # also checks that each lookup hands back each item once.
+    # and that the memo didn't hold yet. For each run after a lookup's first,
+    # it records which cycle's pass was under way and how many items the run
+    # added to what the lookup held, as _cycle counts them. All three come
+    # from the calls, not from the walk's own pass log, and each walk starts
+    # with them cleared. It also checks that each lookup hands back each item
+    # once.
     settled = static_reach._Walk._settled
+    cycle = static_reach._Walk._cycle
     runs: Counter[_Lookup] = Counter()
     met: set[_Lookup] = set()
+    reran: list[_Rerun] = []
+    under_way: list[int] = []
 
     def counted(self, key, compute, cut=()):
         if runs[key] and key not in self._done:
@@ -2079,30 +2089,57 @@ def _counted(monkeypatch) -> tuple[Counter[_Lookup], set[_Lookup]]:
 
         def counting():
             runs[key] += 1
-            return compute()
+            if runs[key] == 1:
+                return compute()
+            found = list(compute())
+            held = self._cuts[key]
+            added = len(dict.fromkeys([*held, *found])) - len(held)
+            reran.append((under_way[-1] if under_way else None, key, added))
+            return found
 
         found = settled(self, key, counting, cut)
         assert len(found) == len(set(found)), key
         return found
 
+    def cycling(self, members, start):
+        # _cycle logs its passes at the index the log's length gives now.
+        under_way.append(len(self.cycles))
+        try:
+            cycle(self, members, start)
+        finally:
+            under_way.pop()
+
     monkeypatch.setattr(static_reach._Walk, "_settled", counted)
-    return runs, met
+    monkeypatch.setattr(static_reach._Walk, "_cycle", cycling)
+    return runs, met, reran
 
 
 def _check_runs(walk, counted, label) -> None:
     # Every lookup the walk began settled. Each pass over a cycle ran each of
-    # its lookups once and added items or lookups but the last, which added
-    # nothing. Each logged cycle's lookups met each other before they
-    # settled: there were more than one, or the one met itself. No two logged
-    # cycles ran the same lookups, since a cycle runs its passes once and
-    # then settles or joins a larger one. And each lookup ran once, and once
-    # more for each pass that ran it, so the log accounts for every rerun and
-    # logs only what a cycle needs.
-    runs, met = counted
+    # its lookups once, in the order the log gives, and no other lookup of
+    # that cycle while it was under way. Each pass added items or lookups but
+    # the last, which added nothing: the test counts what each run added to
+    # what its lookup held and the lookups that joined the cycle, so a log
+    # that claims more or less than a pass added fails. Each logged cycle's
+    # lookups met each other before they settled: there were more than one,
+    # or the one met itself. No two logged cycles ran the same lookups, since
+    # a cycle runs its passes once and then settles or joins a larger one.
+    # And each lookup ran once, and once more for each pass that ran it, so
+    # the log accounts for every rerun and logs only what a cycle needs.
+    runs, met, reran = counted
     assert runs, label
     assert not walk._began and not walk._open, label
+    assert all(at is not None for at, _, _ in reran), label
     logged = set()
-    for passes in walk.cycles:
+    for index, passes in enumerate(walk.cycles):
+        mine = [(key, added) for at, key, added in reran if at == index]
+        assert len(mine) == sum(len(ran) for ran, _ in passes), (label, passes)
+        for number, (ran, added) in enumerate(passes):
+            part, mine = mine[: len(ran)], mine[len(ran) :]
+            assert tuple(key for key, _ in part) == ran, (label, passes)
+            following = passes[number + 1][0] if number + 1 < len(passes) else ran
+            joined = len(following) - len(ran)
+            assert added == joined + sum(grown for _, grown in part), (label, passes)
         assert all(added for _, added in passes[:-1]), (label, passes)
         assert passes[-1][1] == 0, (label, passes)
         assert all(len(set(ran)) == len(ran) for ran, _ in passes), (label, passes)
@@ -2230,14 +2267,16 @@ def test_each_lookup_in_a_random_tree_settles_on_what_a_fresh_walk_finds(
 
 
 #: Cost roots on which a walk that ran each lookup afresh wherever it met it
-#: would make more than 300,000 lookups: each diamond doubles its paths at
-#: each of its 22 levels, and the clique's grow factorially with its size.
-#: The budget holds for these roots, not for every cycle: a cycle that
-#: gathers one module a pass, X = Y.sub and Y = X over N modules that each
-#: bind sub to the next, takes N + 3 passes, and 18,125 lookups at N = 100.
-#: Nested cycles cost more where a pass of each meets the one around it:
-#: each then stays open and runs again in every pass of each cycle around
-#: it, and K such cycles make 9,916 lookups at K = 10 and 43,026 at K = 20.
+#: would make more than 300,000 calls: each diamond doubles its paths at each
+#: of its 22 levels, and the clique's grow factorially with its size. On
+#: r_star_maybe_diamond, so would a walk that asked afresh along each path of
+#: star imports whether a module binds a name for sure. The budget holds for
+#: these roots, not for every cycle: a cycle that gathers one module a pass,
+#: X = Y.sub and Y = X over N modules that each bind sub to the next, takes
+#: N + 3 passes, and 23,785 calls at N = 100. Nested cycles cost more where a
+#: pass of each meets the one around it: each then stays open and runs again
+#: in every pass of each cycle around it, and on one build of that shape, K
+#: such cycles make 12,080 calls at K = 10 and 53,750 at K = 20.
 _COST_ROOTS = [
     ("r_alias_diamond", "run"),
     ("r_alias_modules", "run"),
@@ -2245,6 +2284,7 @@ _COST_ROOTS = [
     ("r_match_diamond", "run"),
     ("r_star_clique", "run"),
     ("r_star_diamond", "run"),
+    ("r_star_maybe_diamond", "run"),
 ]
 _LOOKUP_BUDGET = 10_000
 
@@ -2255,10 +2295,12 @@ _LOOKUP_BUDGET = 10_000
 def test_the_walk_makes_few_lookups_on_the_cost_roots(
     walk_case_tree, monkeypatch, module, qualname
 ) -> None:
-    # Each lookup method counts every call, the memo's answers too, so a
-    # lookup that skips _settled, or keys it more finely than what it looks
-    # up, fails here at the budget instead of hanging. With the memo, the
-    # most any of these walks makes is about an eighth of the budget.
+    # Each lookup method counts every call, the memo's answers too, and so
+    # does each question whether a module binds a name for sure. So a lookup
+    # that skips _settled, or keys it more finely than what it looks up, or a
+    # question that walks each path of star imports, fails here at the budget
+    # instead of hanging. With the memo, the most any of these walks makes,
+    # on r_star_maybe_diamond, is under half the budget.
     _, paths = walk_case_tree
     calls = 0
 
@@ -2271,7 +2313,7 @@ def test_the_walk_makes_few_lookups_on_the_cost_roots(
 
         return counted
 
-    for name in ("resolve", "exported", "aliased", "match_args"):
+    for name in ("resolve", "exported", "aliased", "match_args", "_binds_for_sure"):
         method = getattr(static_reach._Walk, name)
         monkeypatch.setattr(static_reach._Walk, name, counting(method))
     walk = static_reach._Walk(paths, ())

@@ -23,23 +23,27 @@ What the walk follows from a root, a function or a method with its class:
   of an ``except`` clause that names it, can undo one, in the module's
   scope or through ``global``. The walk counts a star import as binding a
   public name for sure only when the other module binds it for sure and
-  nowhere names ``__all__``. It counts an assignment as binding for sure
-  only the names its target spells out: a walrus inside a subscript or an
-  attribute can sit in a branch that doesn't run, and a comprehension's
-  name there binds in the comprehension. A package holds a sub module's
-  name only once something imports the sub module. Every form of
-  assignment binds: a ``for`` or ``with`` target stands for what the loop
-  iterates or the statement enters, a ``match`` capture for the subject,
-  and a walrus target for its value. A name that a class body declares
-  ``global`` binds at module level, whether or not the walk reaches the
-  class.
+  nowhere names ``__all__`` or ``__getattr__``, which can answer for
+  ``__all__``. It counts an assignment as binding for sure only the names
+  its target spells out: a walrus inside a subscript or an attribute can
+  sit in a branch that doesn't run, and a comprehension's name there binds
+  in the comprehension. It counts a ``with`` statement as binding for sure
+  only its first item's target, and only a plain name: an error as a later
+  item enters, or as a tuple or a list unpacks, arises inside a context
+  that can suppress it. A package holds a sub module's name only once
+  something imports the sub module. Every form of assignment binds: a
+  ``for`` or ``with`` target stands for what the loop iterates or the
+  statement enters, a ``match`` capture for the subject, and a walrus
+  target for its value. A name that a class body declares ``global`` binds
+  at module level, whether or not the walk reaches the class.
 - Scopes. Each scope binds only its own names, as Python scopes them. A
   comprehension, lambda or nested function keeps its names to itself, a class
   body's names stay out of its methods, and ``global`` and ``nonlocal`` send a
   name outward. A class body reads a name it binds from its own namespace
   only once a statement at the body's top level has bound it. Before that,
-  when only a branch, a loop, a bare annotation or a walrus inside a
-  subscript or an attribute binds it, or when a ``del`` or the end of an
+  when only a branch, a loop, a bare annotation, a walrus inside a
+  subscript or an attribute, or a ``with`` target other than the first
+  item's plain name binds it, or when a ``del`` or the end of an
   ``except`` clause can undo it, Python can read the module's binding, so
   the walk follows that one too. An augmented assignment (``X += 1``)
   reads its target before it binds it, so a class body's ``X += 1`` reads
@@ -137,11 +141,16 @@ What it can't see:
   lookups: for a name the module's top level binds for sure, when Python
   reads the module part-built (the module imports another, or calls a
   function while it runs, that runs ``from module import name`` before the
-  module binds the name); for a name that another module deletes
-  (``del module.name``) or that the module removes without ``del``
-  (``delattr``, ``globals()``); for a name that a star import leaves out
-  through an ``__all__`` the walk can't see (one that another module sets,
-  one set through ``globals()``, or one a star import brings in); for
+  module binds the name) or reads a star import's source part-built (the
+  source imports the module before it binds the name, so the star import
+  doesn't bring the name in); for a name that a module, itself included,
+  deletes as an attribute (``del module.name``,
+  ``del sys.modules[__name__].name``) or that the module removes without
+  ``del`` (``delattr``, ``globals()``); for a name that a star import
+  leaves out through an ``__all__`` the walk can't see (one that another
+  module sets, that ``globals()`` sets or that a star import brings in, or
+  one that a ``__getattr__`` the module gets in one of those ways answers
+  for); for
   ``__all__``, which a star import asks a module that doesn't define it
   for; for each name that a star import's ``__all__`` lists and the module
   doesn't bind; and for ``__path__``, which a ``from`` import asks a module
@@ -152,9 +161,11 @@ What it can't see:
   name in place, in a way "Changes by name" lists, in a module the walk has
   read. A change inside a function or a lambda that the statement calls
   doesn't count (``(lambda: _TABLE.update(...))()``);
-- the side effects of a call or an operator inside a statement that binds a
-  name or tests a value (``_X = _setup()``, ``_X += 1``, ``assert _setup()``),
-  unless the walk reaches that statement another way;
+- the side effects of a call, an operator, or an attribute read or a
+  ``from`` import that a module's ``__getattr__`` answers, in a statement
+  that binds a name or tests a value (``_X = _setup()``, ``_X += 1``,
+  ``assert _setup()``, ``_X = pkg.lazy``), unless the walk reaches that
+  statement another way;
 - the import-time code of a class or function the walk doesn't reach: its
   decorators, default values, class bases and class attributes, unless a
   statement in the class body changes a reached name in place;
@@ -235,6 +246,10 @@ _COMPOUND = (
     ast.TryStar,
 )
 _FROM_MODULE: tuple[Binding, ...] = (("module",),)
+#: The names through which a star import's source can hand it an
+#: ``__all__``: the name itself, and a module ``__getattr__`` that answers
+#: for it.
+_ALL_NAMES = frozenset({"__all__", "__getattr__"})
 
 
 def is_implicit(member: str) -> bool:
@@ -561,10 +576,12 @@ class _Module:
             for bound, binding in _bindings(self, statement).items()
             if bound == "*"
         )
-        #: Whether the module names ``__all__`` anywhere, so that it may
-        #: define one: a name in any scope, or a ``global`` declaration.
-        self.names_all = "__all__" in declared or any(
-            isinstance(node, ast.Name) and node.id == "__all__"
+        #: Whether the module names ``__all__`` or ``__getattr__`` anywhere,
+        #: so that it may hand a star import an ``__all__``: a name in any
+        #: scope, a ``def`` or a ``class``, or a ``global`` declaration.
+        self.names_all = not _ALL_NAMES.isdisjoint(declared) or any(
+            (isinstance(node, ast.Name) and node.id in _ALL_NAMES)
+            or (isinstance(node, _DEFS) and node.name in _ALL_NAMES)
             for node in ast.walk(tree)
         )
         self.imports = dict(imports)
@@ -735,12 +752,13 @@ def _binds(node: ast.stmt) -> set[str]:
     if isinstance(node, ast.AnnAssign | ast.AugAssign) and node.value is not None:
         return set(_stored_here(node.target))
     if isinstance(node, ast.With | ast.AsyncWith):
-        return {
-            name
-            for item in node.items
-            if item.optional_vars is not None
-            for name in _stored_here(item.optional_vars)
-        }
+        # The first item's target alone, and only a plain name. A later item's
+        # __enter__ runs inside the earlier items' contexts, and unpacking
+        # into a tuple or a list runs inside the item's own, so an error there
+        # that a context suppresses ends the statement with the name unbound
+        # (``with suppress(OSError), open(path) as name``).
+        target = node.items[0].optional_vars
+        return {target.id} if isinstance(target, ast.Name) else set()
     return set()
 
 
@@ -1252,15 +1270,20 @@ class _Walk:
             return [(target, "module", None)] if self.is_module(target) else []
         return self.exported(target, attribute)
 
-    def _binds_for_sure(self, module: str, name: str, seen: tuple[str, ...]) -> bool:
+    def _binds_for_sure(self, module: str, name: str, seen: set[str]) -> bool:
         """Whether ``module``'s top level binds ``name`` whenever it runs.
 
         A top-level statement that binds the name whenever it runs to its end
         (:func:`_binds`) binds it for sure, unless a ``del`` or an ``except``
         clause can unbind it (:attr:`_Module.deleted`). So does a top-level
         star import of a public name from a module that binds it for sure and
-        nowhere names ``__all__``, unless the importer can unbind the name.
-        ``seen`` holds the modules whose star imports led here.
+        nowhere names ``__all__`` or ``__getattr__``, unless the importer can
+        unbind the name.
+        ``seen`` holds the modules that this question has passed through.
+        Below ``module``, each test reads only the module and the name, so
+        the answer turns on which modules the star imports reach and not on
+        the chain that reaches them, and the question visits each module
+        once.
         """
 
         found = self.module(module)
@@ -1268,18 +1291,16 @@ class _Walk:
             return False
         if seen and (
             found.names_all
-            or "__all__" in found.constants
-            or "__all__" in found.imports
+            or not _ALL_NAMES.isdisjoint(found.constants)
+            or not _ALL_NAMES.isdisjoint(found.imports)
         ):
             return False
+        seen.add(module)
         if name in found.sure:
             return True
         if name.startswith("_") or name in found.deleted:
             return False
-        return any(
-            self._binds_for_sure(star, name, (*seen, module))
-            for star in found.sure_stars
-        )
+        return any(self._binds_for_sure(star, name, seen) for star in found.sure_stars)
 
     def exported(self, module: str, name: str) -> list[Item]:
         """What ``module.name`` can be, read from outside ``module``."""
@@ -1295,7 +1316,7 @@ class _Walk:
         if (
             items
             and ("resolve", module, name) in self._done
-            and self._binds_for_sure(module, name, ())
+            and self._binds_for_sure(module, name, set())
         ):
             # Bound for sure. A lookup that hasn't settled waits on a cycle,
             # where Python can read the module part-built, before it binds
