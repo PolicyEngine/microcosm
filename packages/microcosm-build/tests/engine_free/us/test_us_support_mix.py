@@ -56,7 +56,7 @@ from microcosm.build.us_runtime.support_mix import (  # noqa: E402
 YEARS = {2022: 56_839, 2023: 56_251, 2024: 55_762}
 
 
-def test_hash_uniform_matches_the_release_primitive() -> None:
+def test_hash_uniform_follows_its_formula_and_refuses_empty_inputs() -> None:
     digest = hashlib.sha256(b"salt\x1fkey").digest()
     assert hash_uniform("key", salt="salt") == int.from_bytes(digest[:8], "big") / 2**64
     with pytest.raises(ValueError):

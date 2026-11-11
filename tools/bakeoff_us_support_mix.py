@@ -478,6 +478,25 @@ def _write_shard(path: Path, tables: dict[str, pd.DataFrame], weights: np.ndarra
     tmp.replace(path)
 
 
+#: The stored SPM role column the engine reads when a staging carries it.
+SPM_ROLE_COLUMN = "is_spm_independent_minor_role"
+
+
+def _spm_role_formula(person: pd.DataFrame) -> np.ndarray:
+    """``is_household_head | is_household_spouse``, the role's formula.
+
+    Either column alone still classifies its members; with neither, 15-17-year-old
+    heads and spouses would silently count as minors, so the rule refuses.
+    """
+    role_columns = [c for c in ("is_household_head", "is_household_spouse") if c in person]
+    if not role_columns:
+        raise ValueError("person table has neither is_household_head nor is_household_spouse")
+    role = np.zeros(len(person), dtype=bool)
+    for column in role_columns:
+        role |= pd.Series(person[column]).fillna(False).astype(bool).to_numpy()
+    return role
+
+
 def spm_zero_adult_households(tables: dict[str, pd.DataFrame]) -> np.ndarray:
     """Households with an SPM unit the pinned engine has no adult for.
 
@@ -505,25 +524,6 @@ def spm_zero_adult_households(tables: dict[str, pd.DataFrame]) -> np.ndarray:
     empty_units = unit_adults.index[unit_adults.to_numpy() == 0]
     flagged = person.loc[person["person_spm_unit_id"].isin(empty_units), "person_household_id"]
     return np.isin(hh["household_id"].to_numpy(), flagged.to_numpy())
-
-
-#: The stored SPM role column the engine reads when a staging carries it.
-SPM_ROLE_COLUMN = "is_spm_independent_minor_role"
-
-
-def _spm_role_formula(person: pd.DataFrame) -> np.ndarray:
-    """``is_household_head | is_household_spouse``, the role's formula.
-
-    Either column alone still classifies its members; with neither, 15-17-year-old
-    heads and spouses would silently count as minors, so the rule refuses.
-    """
-    role_columns = [c for c in ("is_household_head", "is_household_spouse") if c in person]
-    if not role_columns:
-        raise ValueError("person table has neither is_household_head nor is_household_spouse")
-    role = np.zeros(len(person), dtype=bool)
-    for column in role_columns:
-        role |= pd.Series(person[column]).fillna(False).astype(bool).to_numpy()
-    return role
 
 
 def _row_index_columns(tables: dict[str, pd.DataFrame], source: str) -> pd.DataFrame:

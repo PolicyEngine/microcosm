@@ -81,8 +81,8 @@ fixed concept-budget weights. Per-dimension columns show the trade-offs.
   0.078 and 0.141). Three years win at 300k, where each has three draws:
   clearly on state error (0.119 against 0.112) and tax items (0.137 against
   0.103), and just beyond draw noise on program receipt (0.288 against 0.237).
-  We choose three years on that, on the national evidence below, and because
-  the local file shares the national file's CPS support.
+  We choose three years on the 300k result, on the national evidence below,
+  and because the local file shares the national file's CPS support.
 
 - **More CPS years improve CPS-native measures and cost ACS-native ones.**
   Within a budget, each CPS year displaces ACS households. In the national file
@@ -169,9 +169,10 @@ arms; `holdout_by_dimension_level.csv` reports them.
 calibrations, the mean capped error on held-out Census PEP state age bands
 rises from 0.066 at the starting weights to 0.168 after calibration (0.131 to
 0.193). The design weights already carry Census age controls, and calibration
-moves away from them. The tables report the age column but rank no arm on it.
-It does separate arms (national arms 0.151 to 0.184, draw SD 0.005), but we
-have not yet found why calibration worsens it (see Follow-ups).
+moves away from them. The tables report the age column but rank no arm on
+it until we find why calibration raises age error (see Follow-ups). Across the
+national arms that error runs from 0.151 to 0.184, against a three-year draw SD
+of 0.005.
 
 **We report SPM poverty but neither calibrate to it nor gate on it.** In the
 national product the SPM rate comes to 12.8% for the three-year CPS file, 12.2%
@@ -201,9 +202,8 @@ scored 22 arms before scoring covered every level; for those, `arms.csv`
 carries the solve peak from the grid log and no wall time (`runtime_restored`
 names the log line). The concept-part receipts under `materialize/` lack the
 source-h5, concept-spec and null-fill-summary digests that `materialize`
-writes. On 2026-09-30 their numerical fields matched the run's own copies, to
-which we had added those digests from `shard.json`, `concept_specs.pkl` and the
-`partcheck` below (`*_note` fields).
+writes. On 2026-09-30 their numerical fields matched the run's own copies,
+which carried those digests in `*_note` fields we added by hand.
 
 ## Design
 
@@ -432,8 +432,9 @@ homeownership jumps 1.9 points (64.5% to 66.4%) and falls back the next year,
 and the sample has 11.5% fewer households than the year before (60,460
 against 68,345).
 
-A housing unit appears in at most two adjacent files, so 2022–2024 has 130,294 distinct units in 168,852 households (77.2%), and
-2020–2024 would have 211,834 in 290,850 (72.8%).
+A housing unit appears in at most two adjacent files, so 2022–2024 has 130,294
+distinct units in 168,852 households (77.2%), and 2020–2024 would have 211,834
+in 290,850 (72.8%).
 
 ## Caveats
 
@@ -469,12 +470,12 @@ A housing unit appears in at most two adjacent files, so 2022–2024 has 130,294
   arm's receipt counts as current only while every input the arm reads stays
   the same: the targets, truth and epoch count, and, for each source it draws
   on, the row index, the concept parts, the concept specs and the measure list.
-- A rerun on current main also meets what changed after `bda72cb02`. Main's
-  `compile_us_fiscal_target_registry` has changed, so the same feed can compile
-  a different target set, and `compile` accepts only feed `b8543739` until the
-  tool's `FEED_SHA256` pin moves. The ACS staging has to pass main's null rules
-  (`fill_reviewed_nulls` in `tools/build_us_acs_local_release.py`), and the
-  release tool needs microcosm-emitter-interface 0.14.0 or later.
+- On main as of `3f46d5958`, `compile_us_fiscal_target_registry` can compile a
+  different target set from the same feed, and `compile` accepts only feed
+  `b8543739` until the tool's `FEED_SHA256` pin moves. A rerun there also needs
+  an ACS staging that passes main's null rules (`fill_reviewed_nulls` in
+  `tools/build_us_acs_local_release.py`) and microcosm-emitter-interface 0.14.0
+  or later for the release tool.
 - Add five-year arms (2020–2024 or 2021–2025) once those years have Route A
   enrichment.
 - When `microcosm.build.us_runtime.target_split` merges, swap it in and
