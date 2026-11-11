@@ -19,16 +19,16 @@ schema version 2 adds `liquid_financial_assets`, the first stock concept, for
 New Zealand's Accommodation Supplement cash-asset test. Only the Axiom New
 Zealand mapping binds it, as a `Family` binding that `encode_groups` executes
 on built benefit units; the other three mappings list it as unmapped with a
-reason. A scale, sum, scaled sum, share or fraction now computes from annual
-flows only (invariant 11), so none of them can rescale the stock, add it to a
-year's income, or split it. A product now multiplies one usual rate by one
-annual flow counted in weeks, and every annual flow has period `year` (both
-also invariant 11).
+reason. A scale, sum, scaled sum, signed part, share or fraction now computes
+from annual flows only (invariant 11), so none of them can rescale the stock,
+add it to a year's income, or split it.
 **Amended 2026-10-10:** schema version 3 adds original
 `household.source_household_id` lineage for donor support diagnostics. The
 reader scopes explicit raw household identifiers by source year and carries
 the same key across support clones and their benefit units. Rules mappings
 leave this provenance concept unmapped.
+**Amended 2026-11-11:** a product multiplies one usual rate by one annual flow
+counted in weeks, and every annual flow has period `year` (both invariant 11).
 
 ## Context
 
@@ -155,8 +155,9 @@ binds engine inputs to concepts. Each binding states:
   positivity test, sum, a sum then a fixed scale, product, allocation to the
   reference person, a predicate, a relationship role, a co-resident child
   count, a take-up threshold, or a test of a built unit's composition. A scale,
-  sum, scaled sum, share or fraction computes from annual flows only, and a
-  product multiplies one usual rate by one annual flow counted in weeks;
+  sum, scaled sum, signed part, share or fraction computes from annual flows
+  only, and a product multiplies one usual rate by one annual flow counted in
+  weeks;
 - the relation, in the same vocabulary;
 - the evidence, quoting the engine's own definition or how builds populate the
   input.
@@ -323,7 +324,7 @@ These hold for every input and are tested (Hypothesis properties unless noted):
     wrongly typed field is named. So do unit rules, state bindings and input
     closures.
 11. **Arithmetic reads annual flows, and a product multiplies a usual rate by
-    weeks.** A scale, sum, scaled sum, share or fraction binding
+    weeks.** A scale, sum, scaled sum, signed part, share or fraction binding
     computes only from concepts whose declared temporal basis is
     `annual_flow`: every concept in its `concepts`. A stock such as
     `liquid_financial_assets` has no weekly value and cannot be added to a
@@ -348,10 +349,11 @@ These hold for every input and are tested (Hypothesis properties unless noted):
     year's weeks of activity, so only a number of weeks multiplies it to a
     year's total. The one committed product is policyengine-uk's hours input,
     usual weekly hours times weeks worked. The rule refuses a product of any
-    number of concepts but two, and one that reads a stock or a persistent draw,
-    two usual rates, two annual flows, a usual rate that is not a float, or an
-    annual flow that is not a number of weeks, such as a year's income. A
-    refusal of two concepts names only operands at fault. A Hypothesis property
+    number of concepts but two, and one that reads a concept of any other basis
+    (a stock or a persistent draw, for example), two usual rates, two annual
+    flows, a usual rate that is not a float, or an annual flow that is not a
+    number of weeks, such as a year's income. The rule leaves the usual rate's
+    unit unchecked. A refusal of two concepts names only operands at fault. A Hypothesis property
     swaps either operand of the committed product for any other concept and redeclares
     its basis, and, for a numeric quantity that is neither an amount nor a
     pointer, its dtype and unit. In either order, the binding validates exactly

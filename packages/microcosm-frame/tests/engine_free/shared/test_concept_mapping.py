@@ -1554,8 +1554,8 @@ class TestArithmeticReadsAnnualFlows:
     cleared it from ``unmapped``, and found that both ``Scale(1/52)`` and
     ``Sum(interest_income, liquid_financial_assets)`` validated. A stock has
     no weekly value and cannot be added to a year's income, so every scale,
-    sum, scaled sum, share or fraction binding checks the declared temporal
-    basis of each concept it computes from. The household reference person
+    sum, scaled sum, signed part, share or fraction binding checks the declared
+    temporal basis of each concept it computes from. The household reference person
     that a binding allocated to the reference unit also reads, to place its
     value, is not an operand.
 
