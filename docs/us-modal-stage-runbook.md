@@ -533,6 +533,16 @@ one stage of a run at a time, because two concurrent stages would race on the
 same state directory. The attempt ledger enforces this, best effort (see
 "Preemption and restarts").
 
+For `us-acs-local-release`, run package at the commit calibrate ran at.
+Calibrate records the code that wrote the calibrated H5 in
+`consumer_export.json`: it reads the commit when the stage starts, reads it
+again just before it writes the H5, and refuses to write if the commit or
+the tree's dirty state changed in between. The build's ID names the
+packaging code, so package refuses to give a build an ID that names any
+other commit (microcosm#1263). A commit landing between the two stages means
+re-running calibrate, qa and finalize at the new commit, or packaging at the
+old one.
+
 For a gated or private Hub input, set `MICROCOSM_MODAL_HF_SECRET` to the name
 of a Modal secret that holds `HF_TOKEN`, for example `huggingface-token` in
 the `policyengine` workspace. Otherwise no secret is attached. Only the
