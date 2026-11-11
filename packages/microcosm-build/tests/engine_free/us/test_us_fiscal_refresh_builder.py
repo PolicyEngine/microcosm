@@ -6875,8 +6875,8 @@ def _run_green_register_release(
         "kind": "diagnostics",
         "path": population_path.name,
         "repo_id": builder.REPO_ID,
-        "revision": release_id,
         "sha256": hashlib.sha256(population_path.read_bytes()).hexdigest(),
+        "role": "us_population_structure_holdout",
     }
     if not skipped_smoke:
         smoke = json.loads((release_dir / "reform_coverage_smoke.json").read_text())
