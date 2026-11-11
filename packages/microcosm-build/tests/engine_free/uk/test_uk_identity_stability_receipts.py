@@ -3145,6 +3145,15 @@ _STACKING_MAP_EXCEPTIONS = {
         "declares only the incidence clone's flag, which it pairs on, and "
         "creates no rows"
     ),
+    "geographic_expand": (
+        "declares no flag: its clones carry a clone index, and every receipted "
+        "stage ran on all of them. They copy only the values of the stages "
+        "before it, frs_spine to frs_education_grant_split, "
+        "frs_hmrc_spine_leaves and frs_annual_income_spells, and no E4 to E9 "
+        "receipt recomputes a draw of those; E4 recomputes frs_take_up, "
+        "frs_person_draws, frs_household_draws and frs_brma, which run on "
+        "every clone (microcosm#931)"
+    ),
 }
 
 
@@ -3185,3 +3194,14 @@ def test_the_stacking_map_names_every_structural_stage_flag() -> None:
         operation.get("clone_flag_column")
         for operation in stages["cgt_incidence_anchor"]["operations"]
     } - {None} == {"household_is_capital_gains_clone"}
+    assert declared["geographic_expand"] == []
+    names = [stage["stage"] for stage in tool._source_stage_roster()]
+    assert names.index("geographic_expand") < min(
+        names.index(stage)
+        for stage in (
+            "frs_take_up",
+            "frs_person_draws",
+            "frs_household_draws",
+            "frs_brma",
+        )
+    )

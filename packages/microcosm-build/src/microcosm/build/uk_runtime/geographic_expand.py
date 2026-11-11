@@ -1,7 +1,7 @@
 """The UK spine's geographic clones: K copies of every FRS household (microcosm#931).
 
 The clone-first spine gives every FRS household ``K`` geographic clones before
-any copy step runs. Each clone carries an equal share of its household's
+any other copy step runs. Each clone carries an equal share of its household's
 design weight, so a later stage can give each clone an area of its own while
 together they stand for the survey household once. This module is that step,
 G1 of the clone-first plan: :class:`UKGeographicExpandStageTransform` and the
@@ -29,16 +29,18 @@ The UK wrapper adds what the core does not do:
 
 - It refuses a frame that already carries a clone index, a source column or
   any of the UK copy lineage's columns, since the step runs once, before any
-  copy. It also refuses weights on any entity but the household: the core
-  splits every weighted entity, and the UK weights households only. And it
-  refuses id and membership columns that are not int64, the dtype the
+  other copy step. It also refuses weights on any entity but the household:
+  the core splits every weighted entity, and the UK weights households only.
+  And it refuses id and membership columns that are not int64, the dtype the
   copy-id table mints, at every clone count, so every clone count takes the
   same frames.
 - Before the core runs, it writes each household's ``source_year`` (the
-  frame's time period, as the SPI support channel reads it) and
-  ``source_household_key`` (``f"{source_year}:{source_household_id}"``, the
-  values that stage writes, as Python strings in an object column) on the
-  frame's own rows, so every clone carries its household's.
+  frame's time period) and ``source_household_key``
+  (``f"{source_year}:{source_household_id}"``, as Python strings in an object
+  column) on the frame's own rows, so every clone carries its household's:
+  the values the SPI support channel wrote before this stage took the
+  columns over, as it still does on a household table without the clone
+  index.
 - It validates the clones as a UK national frame.
 
 Every refusal gives counts, entities, columns, dtypes and declared constants
@@ -47,7 +49,12 @@ only, never an id, a weight or another value of a row. The evidence gives
 rounded through ``receipt_counts``, and the weight split and kind; no row
 count, id or weight.
 
-No stage runs this step yet, so it moves no output and no node key.
+The spine's ``geographic_expand`` stage runs this step, after
+``frs_annual_income_spells`` and before ``geographic_identity``. Its
+declared operation, ``expand_geographic_clones``, must be the reviewed one
+(:func:`geographic_expand_operation_parameters`), which names no clone
+count: ``K`` is a parameter of the stage's graph node, so it enters the keys
+of that node and every later one, never the stage's contract.
 """
 
 from __future__ import annotations
@@ -64,7 +71,13 @@ from microcosm.build.clone_expansion import (
 )
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime import copy_id_table
-from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
+from microcosm.build.uk_runtime.geographic_clones import (
+    SOURCE_HOUSEHOLD_KEY_COLUMN,
+    SOURCE_YEAR_COLUMN,
+    UK_GEOGRAPHIC_SOURCE_COLUMNS,
+    ladder_clone_index_column,
+)
 from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
 from microcosm.build.uk_runtime.national_frame import (
     UK_NATIONAL_SCHEMA,
@@ -82,7 +95,11 @@ from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
 __all__ = [
     "GEOGRAPHIC_CLONE_LIMIT",
     "GEOGRAPHIC_COPY_ID_FIELD",
+    "GEOGRAPHIC_EXPAND_CONSERVATION",
+    "GEOGRAPHIC_EXPAND_ID_REMAPPING",
     "GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON",
+    "GEOGRAPHIC_EXPAND_OPERATION_KIND",
+    "GEOGRAPHIC_EXPAND_ORDER",
     "GEOGRAPHIC_EXPAND_STAGE_NAME",
     "GEOGRAPHIC_EXPAND_WEIGHT_SPLIT",
     "SOURCE_HOUSEHOLD_KEY_COLUMN",
@@ -93,6 +110,7 @@ __all__ = [
     "UKGeographicExpandResult",
     "UKGeographicExpandStageTransform",
     "expand_uk_geographic_clones",
+    "geographic_expand_operation_parameters",
     "mint_geographic_clone_ids",
     "require_room_for_geographic_clones",
 ]
@@ -103,17 +121,10 @@ GEOGRAPHIC_COPY_ID_FIELD = "geographic_support"
 #: The most clones the field numbers: clone ordinals run below it. Exported
 #: so the spine and its graph can read the limit from here.
 GEOGRAPHIC_CLONE_LIMIT = copy_id_table.ordinal_bound(GEOGRAPHIC_COPY_ID_FIELD)
-#: The household's survey year, which the step writes on every household.
-SOURCE_YEAR_COLUMN = "source_year"
-#: ``f"{source_year}:{source_household_id}"``, which the step writes on every
-#: household.
-SOURCE_HOUSEHOLD_KEY_COLUMN = "source_household_key"
-#: The source columns the step writes, which a frame entering it must lack.
-UK_GEOGRAPHIC_SOURCE_COLUMNS = (
-    SOURCE_HOUSEHOLD_ID_COLUMN,
-    SOURCE_YEAR_COLUMN,
-    SOURCE_HOUSEHOLD_KEY_COLUMN,
-)
+# The source columns the step writes (UK_GEOGRAPHIC_SOURCE_COLUMNS, with
+# SOURCE_YEAR_COLUMN and SOURCE_HOUSEHOLD_KEY_COLUMN) are named in the
+# geographic_clones leaf, which the stages that read them hash without this
+# module, and re-exported here.
 #: Every column the step adds: each table's clone index, then the household's
 #: source columns.
 UK_GEOGRAPHIC_EXPAND_OUTPUT_COLUMNS = (
@@ -128,6 +139,19 @@ GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON = (
 )
 #: How the clones share a household's weight: each takes an equal share.
 GEOGRAPHIC_EXPAND_WEIGHT_SPLIT = "equal"
+#: The operation the stage declares, and the declaration's words for the
+#: clones' order and for the household total, which the 1/K split keeps to
+#: rounding (microcosm#931).
+GEOGRAPHIC_EXPAND_OPERATION_KIND = "expand_geographic_clones"
+GEOGRAPHIC_EXPAND_ORDER = "clone_major"
+GEOGRAPHIC_EXPAND_CONSERVATION = "household_total_to_rounding"
+#: How the declaration numbers the clones' ids: the copy-id table's field and
+#: its radix, ``10**9``.
+GEOGRAPHIC_EXPAND_ID_REMAPPING = (
+    f"copy-id table field {GEOGRAPHIC_COPY_ID_FIELD}; clone k takes every entity "
+    "id + k x the field's radix "
+    f"(10**{len(str(copy_id_table.radix(GEOGRAPHIC_COPY_ID_FIELD))) - 1})"
+)
 
 
 def mint_geographic_clone_ids(ids: np.ndarray, k: int) -> np.ndarray:
@@ -163,10 +187,36 @@ UK_GEOGRAPHIC_CLONES = CloneDeclaration(
     source_id_columns={"household": SOURCE_HOUSEHOLD_ID_COLUMN},
 )
 #: The columns a frame entering the step must lack: what the step writes, and
-#: every copy step's columns, since the step runs before any copy.
+#: every copy step's columns, since the step runs before any other copy step.
 _RESERVED_COLUMNS = tuple(
     dict.fromkeys((*UK_GEOGRAPHIC_EXPAND_OUTPUT_COLUMNS, *UK_COPY_LINEAGE.copy_columns))
 )
+
+
+def geographic_expand_operation_parameters() -> tuple[
+    tuple[str, dict[str, object]], ...
+]:
+    """The reviewed operation the stage must declare verbatim: what
+    :data:`UK_GEOGRAPHIC_CLONES` and the UK wrapper do, and no clone count."""
+
+    return (
+        (
+            GEOGRAPHIC_EXPAND_OPERATION_KIND,
+            {
+                "entity": "household",
+                "clone_index_columns": dict(UK_GEOGRAPHIC_CLONES.clone_index_columns),
+                "ordinal_bound": GEOGRAPHIC_CLONE_LIMIT,
+                "id_remapping": GEOGRAPHIC_EXPAND_ID_REMAPPING,
+                "order": GEOGRAPHIC_EXPAND_ORDER,
+                "weight_split": GEOGRAPHIC_EXPAND_WEIGHT_SPLIT,
+                "weight_kind_out": WeightKind.DESIGN.value,
+                "source_columns": list(UK_GEOGRAPHIC_SOURCE_COLUMNS),
+                "conservation": GEOGRAPHIC_EXPAND_CONSERVATION,
+                "declared_factor": 1.0,
+                "reason": GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON,
+            },
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -210,8 +260,10 @@ def _clone_count(clones: object) -> int:
 
 
 def _assert_geographic_expand_stage(stage: SourceStageSpec) -> None:
-    """The stage a transform runs as: the step's name, household grain, and
-    exactly the step's columns as outputs, with no rewrites."""
+    """The stage a transform runs as: the step's name, household grain,
+    exactly the step's columns as outputs with no rewrites, the reviewed
+    operation (:func:`geographic_expand_operation_parameters`) and no
+    artifact."""
 
     if not isinstance(stage, SourceStageSpec):
         raise TypeError("The geographic expansion runs as a SourceStageSpec stage.")
@@ -232,6 +284,12 @@ def _assert_geographic_expand_stage(stage: SourceStageSpec) -> None:
             "source columns; the stage must declare outputs "
             f"{UK_GEOGRAPHIC_EXPAND_OUTPUT_COLUMNS} and no rewrites, got "
             f"{tuple(stage.outputs)} / {tuple(stage.rewrites)}."
+        )
+    _assert_closed_world_operations(stage, geographic_expand_operation_parameters())
+    if tuple(stage.artifacts):
+        raise ValueError(
+            "The geographic expansion reads no artifact; the stage must declare "
+            f"none, got {len(stage.artifacts)}."
         )
 
 
@@ -273,13 +331,14 @@ def _refuse_carried_lineage(frame: Frame) -> None:
     found = [column for column in _RESERVED_COLUMNS if column in carried]
     if found:
         raise ValueError(
-            "The geographic expansion clones a frame once, before any copy "
-            f"step; the frame already carries {found}."
+            "The geographic expansion clones a frame once, before any other "
+            f"copy step; the frame already carries {found}."
         )
 
 
 def _source_year(frame: Frame) -> int:
-    """The frame's time period as a year, as the SPI support channel reads it."""
+    """The frame's time period as a year: the source year the SPI support
+    channel wrote before this stage took the column over."""
 
     try:
         return int(uk_time_period(frame))
@@ -295,10 +354,11 @@ def _with_source_year_and_key(frame: Frame, source_year: int) -> Frame:
     ``source_household_key``, before any clone exists.
 
     The key is written as Python strings in an object column whatever pandas
-    infers for text: the dtype the SPI support channel's own write gives with
-    string inference off, as in the legacy plan, so that plan's object-string
-    columns stay what they were. The graph casts the column to its declared
-    string dtype.
+    infers for text: the dtype the SPI support channel's own write gave before
+    this stage took the column over, as it still does on a household table
+    without the clone index, with string inference off, as in the legacy
+    plan, so that plan's object-string columns stay what they were. The graph
+    casts the column to its declared string dtype.
     """
 
     household = frame.table("household").copy()

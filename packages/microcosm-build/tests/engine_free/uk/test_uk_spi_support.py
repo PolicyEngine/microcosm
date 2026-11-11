@@ -1018,11 +1018,15 @@ def _share_frames(n_households: int, *, seed: int = 0):
 
 
 def _cloned_share_tables(n_households: int, *, n_clones: int):
-    """The share frames as ``n_clones`` geographic clones, clone-major."""
+    """The share frames as ``n_clones`` geographic clones, clone-major, as
+    geographic_expand writes them: each clone's ids, clone indices and source
+    columns (microcosm#931)."""
 
+    from microcosm.build.uk_runtime.geographic_expand import (
+        expand_uk_geographic_clones,
+    )
     from microcosm.build.uk_runtime.national_frame import uk_national_frame
     from microcosm.frame import engine_tables
-    from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
 
     person, benunit, household = _share_frames(n_households)
     frame = uk_national_frame(
@@ -1032,7 +1036,7 @@ def _cloned_share_tables(n_households: int, *, n_clones: int):
         time_period="2024",
         weight_kind=WeightKind.DESIGN,
     )
-    tables = engine_tables(clone_first_frame(frame, n_clones))
+    tables = engine_tables(expand_uk_geographic_clones(frame, clones=n_clones).frame)
     return tables["person"], tables["benunit"], tables["household"]
 
 
@@ -1356,11 +1360,10 @@ def test_one_indexed_clone_allocates_bit_for_bit_as_no_index() -> None:
         "state_pension_age": 66,
     }
     plain = build_uk_spi_support_channel(person, benunit, household, **arguments)
+    # One clone as geographic_expand writes it: the frame's own ids and
+    # weights, clone index 0 and the households' source columns.
     indexed = build_uk_spi_support_channel(
-        person,
-        benunit,
-        household.assign(household_clone_index=np.zeros(len(household), "int64")),
-        **arguments,
+        *_cloned_share_tables(400, n_clones=1), **arguments
     )
 
     assert indexed.spi_household_ids == plain.spi_household_ids
@@ -1496,4 +1499,93 @@ def test_the_derived_clone_stratum_is_not_a_declared_stratum() -> None:
             household.assign(**{column: 0}),
             expected_spi_households=8,
             strata_columns=("region", column),
+        )
+
+
+_SOURCE_COLUMNS = ["source_household_id", "source_year", "source_household_key"]
+
+
+def test_the_channel_keeps_the_source_columns_geographic_expand_wrote() -> None:
+    # geographic_expand writes every household's source columns before the
+    # channel runs, so the channel keeps them and each copy carries its root's:
+    # every clone's copies count the survey household (microcosm#931).
+    person, benunit, household = _cloned_share_tables(12, n_clones=3)
+    result = create_uk_spi_support_tables(
+        person=person,
+        benunit=benunit,
+        household=household,
+        expected_spi_households=None,
+        source_year=2024,
+    )
+    out = result.household
+    base = out[support_channel_column("household")].eq(BASE_FRS_SUPPORT_CHANNEL)
+
+    pd.testing.assert_frame_equal(
+        out.loc[base, _SOURCE_COLUMNS].reset_index(drop=True),
+        household[_SOURCE_COLUMNS].reset_index(drop=True),
+    )
+    copies = out.loc[~base]
+    roots = household.set_index("household_id")[_SOURCE_COLUMNS]
+    pd.testing.assert_frame_equal(
+        copies[_SOURCE_COLUMNS].reset_index(drop=True),
+        roots.loc[copies[support_source_id_column("household")]].reset_index(drop=True),
+    )
+    # Every clone's copy of a household names the household's clone-0 id.
+    assert copies["source_household_id"].nunique() == 12
+    assert set(copies["source_household_id"]) == set(
+        household.loc[household["household_clone_index"].eq(0), "household_id"]
+    )
+
+
+@pytest.mark.parametrize(
+    "dropped",
+    [
+        ("source_household_id",),
+        ("source_year",),
+        ("source_household_key",),
+        ("source_year", "source_household_key"),
+        tuple(_SOURCE_COLUMNS),
+    ],
+)
+def test_a_clone_indexed_table_without_its_source_columns_is_refused(
+    dropped: tuple[str, ...],
+) -> None:
+    # A clone's own ids are not its source, so on a household table carrying
+    # the geographic clone index the channel defaults no source column; it
+    # names the missing columns and no count, id or value (microcosm#931).
+    person, benunit, household = _cloned_share_tables(4, n_clones=2)
+    with pytest.raises(ValueError) as caught:
+        create_uk_spi_support_tables(
+            person=person,
+            benunit=benunit,
+            household=household.drop(columns=list(dropped)),
+            expected_spi_households=None,
+            source_year=2024,
+        )
+    missing = [column for column in _SOURCE_COLUMNS if column in dropped]
+    assert str(caught.value) == (
+        "The SPI support channel's households carry 'household_clone_index' but "
+        f"not {missing}: on the clone-first spine geographic_expand writes every "
+        "household's source columns, and the stage never takes a clone's own ids "
+        "for its source (microcosm#931)."
+    )
+    assert not any(
+        character.isdigit()
+        for character in str(caught.value).replace("microcosm#931", "")
+    )
+
+    # Without the clone index the channel still defaults them: each household
+    # is its own source.
+    plain = create_uk_spi_support_tables(
+        person=person,
+        benunit=benunit,
+        household=household.drop(columns=[*dropped, "household_clone_index"]),
+        expected_spi_households=None,
+        source_year=2024,
+    ).household
+    assert set(_SOURCE_COLUMNS) <= set(plain.columns)
+    if "source_household_id" in dropped:
+        base = plain[support_channel_column("household")].eq(BASE_FRS_SUPPORT_CHANNEL)
+        assert plain.loc[base, "source_household_id"].tolist() == (
+            plain.loc[base, "household_id"].tolist()
         )

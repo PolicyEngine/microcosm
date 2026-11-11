@@ -78,15 +78,19 @@ def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
         manifest=manifest, store=store, stages=stages, frame=final
     )
 
+    from microcosm.build.uk_runtime.frs_spine import FRS_AREA_CONDITIONING_COLUMNS
+
     assert [record.stage for record in records] == [stage.stage for stage in stages]
     by_stage = {record.stage: record for record in records}
     for stage in stages:
-        # A declared rewrite is recorded beside the outputs (microcosm#721).
+        # A declared rewrite is recorded beside the outputs (microcosm#721);
+        # the root's area-conditioning carriers get no share (microcosm#931).
         assert set(by_stage[stage.stage].nonzero_share) == {
             *stage.outputs,
             *stage.rewrites,
-        }, stage.stage
+        } - set(FRS_AREA_CONDITIONING_COLUMNS), stage.stage
         assert by_stage[stage.stage].rewrote == stage.rewrites, stage.stage
+    assert set(FRS_AREA_CONDITIONING_COLUMNS) <= set(by_stage["frs_spine"].produced)
     root_shares = by_stage["frs_spine"].nonzero_share
     for column in (
         "person_id",

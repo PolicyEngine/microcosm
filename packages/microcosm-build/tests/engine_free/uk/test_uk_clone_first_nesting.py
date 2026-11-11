@@ -3,10 +3,9 @@
 Invented households go through the real geographic expansion (G1,
 ``geographic_expand``), then the SPI support channel (stage 16), the SPI income
 band donors (stage 17) and the CGT support split (stage 42), each run by its
-stage transform under the packaged stage declaration. G1's stage is a stand-in
-until the spine declares it. The frame runs at K = 1, 2, 3, 7 and 15
-geographic clones; it is small, so K = 15 takes well under a second. Each K is
-held to K = 1:
+stage transform under the packaged stage declaration, G1's included. The
+frame runs at K = 1, 2, 3, 7 and 15 geographic clones; it is small, so K = 15
+takes well under a second. Each K is held to K = 1:
 
 - **Reported first:** stage 17's mass scale at K = 1 and at each K. Clone 0's
   stage-17 weights nest on K = 1's only while the scale is the one a one-clone
@@ -41,6 +40,14 @@ held to K = 1:
     copy counts.
 - **The stand-in:** G1's output is ``clone_first_frame``'s on the stand-in's
   columns, ids and weights, so the tests written on the stand-in hold for G1.
+- **The draws behind the clones:** frs_take_up, frs_person_draws and
+  frs_household_draws run on every clone, after G1. On the stand-in at K = 3,
+  each take-up flag's population support and the apprentice draw's
+  population and eligible supports are K = 1's, since the stages count
+  support in true source households. Shares, and counts that follow a draw
+  (the apprentices flagged, how many values a flag takes), are left out, and
+  the extended hours are certain, so the under-two usage population follows
+  no draw.
 
 Invented values only. Assertion messages give K, stages, counts and booleans,
 never a weight or an id.
@@ -61,7 +68,12 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.uk_runtime import cgt_support, spi_band_donors, spi_support
+from microcosm.build.uk_runtime import (
+    cgt_support,
+    frs_person_draws,
+    spi_band_donors,
+    spi_support,
+)
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_INVESTABLE_WEALTH_COLUMNS,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
@@ -75,6 +87,11 @@ from microcosm.build.uk_runtime.cgt_support import (
     UKCGTSupportSplitStageTransform,
     cgt_support_income_band,
 )
+from microcosm.build.uk_runtime.frs_household_draws import (
+    UKFRSHouseholdDrawsStageTransform,
+)
+from microcosm.build.uk_runtime.frs_person_draws import UKFRSPersonDrawsStageTransform
+from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.geographic_expand import (
     GEOGRAPHIC_EXPAND_STAGE_NAME,
@@ -85,6 +102,10 @@ from microcosm.build.uk_runtime.geographic_expand import (
 from microcosm.build.uk_runtime.national_frame import (
     UK_NATIONAL_SCHEMA,
     uk_national_frame,
+)
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_BELOW_TEN_BAND,
+    support_band,
 )
 from microcosm.build.uk_runtime.spi_band_donors import (
     HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
@@ -123,6 +144,7 @@ from test_support.microcosm_build.uk_clone_first_frames import (
     base_id_tables,
     clone_first_frame,
 )
+from test_support.microcosm_build.uk_frs_stochastic import _POLICY, _Contract
 
 G1 = GEOGRAPHIC_EXPAND_STAGE_NAME
 SPI = UK_SPI_SUPPORT_STAGE_NAME
@@ -280,20 +302,6 @@ def _age_model() -> SPIDonorAgeModel:
     )
 
 
-def _g1_stage() -> SourceStageSpec:
-    """A stand-in stage for G1: no stage declares it until the spine wires it."""
-
-    return SourceStageSpec(
-        stage=G1,
-        survey="Invented test stage",
-        source="Invented test stage",
-        grain="household",
-        artifacts=(),
-        operations=(),
-        outputs=UK_GEOGRAPHIC_EXPAND_OUTPUT_COLUMNS,
-    )
-
-
 def _packaged_stage(name: str) -> SourceStageSpec:
     spec = load_country_spec("uk")
     assert spec.sources is not None
@@ -341,7 +349,7 @@ def _recording(function: Callable, calls: list[np.ndarray]) -> Callable:
 
 def _run(base: Frame, clones: int, handed: Mapping[str, list[np.ndarray]]) -> _Run:
     transforms = {
-        G1: UKGeographicExpandStageTransform(_g1_stage(), clones=clones),
+        G1: UKGeographicExpandStageTransform(_packaged_stage(G1), clones=clones),
         SPI: UKSPISupportChannelStageTransform(
             stage=_packaged_stage(SPI),
             sample_fraction=_SAMPLE_FRACTION,
@@ -1070,3 +1078,167 @@ def test_rule_b_puts_the_correction_on_a_copy_at_seven_and_thirteen_clones(
     assert int(last[CGT_SUPPORT_COPY_INDEX_COLUMN]) == 126
     # About an ulp of the total off w / n: below 1e-12 of the copy's weight.
     assert abs(weights[-1] - values[-1]) < 1e-12 * values[-1]
+
+
+# --- the draws behind the clones ----------------------------------------------------
+#
+# frs_take_up, frs_person_draws and frs_household_draws run on every clone,
+# after G1, and count their receipts' support before the copies, in true
+# source households (microcosm#931). Invented households: four families, each
+# with a claimant in work, a child under two and a child of three in their
+# unit, and an employee of an apprentice's age in a unit of their own; and
+# four pensioners living alone. Half are in Scotland.
+
+_DRAW_FAMILIES = 4
+_DRAW_PENSIONERS = 4
+#: Receipt fields that are not counts: the flags' shares, and how many values
+#: a flag takes, which grows where clones draw apart on their own ids.
+_DRAW_SHARE_FIELDS = frozenset({"target", "weighted_share", "distinct_values"})
+
+
+class _CertainHoursContract(_Contract):
+    """test_support's take-up contract with the extended hours certain.
+
+    The under-two usage flag's population is the children under two in units
+    drawn to claim the extended hours. Each clone draws its own claimants, on
+    its own ids, so below a rate of one that population, and its support,
+    grows with K; at one it is every such child on every clone."""
+
+    rates = {**_Contract.rates, "extended_childcare": 1.0}
+
+
+def _draws_frame() -> Frame:
+    people: list[dict[str, object]] = []
+    units: list[dict[str, object]] = []
+    households: list[dict[str, object]] = []
+    for sernum in range(1, _DRAW_FAMILIES + _DRAW_PENSIONERS + 1):
+        households.append(
+            {
+                "household_id": sernum,
+                "region": "SCOTLAND" if sernum % 2 else "LONDON",
+                "household_weight": 300.0 + 40.0 * sernum,
+            }
+        )
+        # (unit, age, employment status, UC claimant or partner)
+        if sernum <= _DRAW_FAMILIES:
+            members = (
+                (1, 38, "FT_EMPLOYED", True),
+                (1, 1, "CHILD", False),
+                (1, 3, "CHILD", False),
+                (2, 22, "FT_EMPLOYED", True),
+            )
+        else:
+            members = ((1, 70, "RETIRED", True),)
+        units.extend(
+            {"benunit_id": sernum * 100 + unit, "is_married": False}
+            for unit in sorted({member[0] for member in members})
+        )
+        for position, (unit, age, status, claimant) in enumerate(members, start=1):
+            people.append(
+                {
+                    "person_id": sernum * 1000 + position,
+                    "person_benunit_id": sernum * 100 + unit,
+                    "person_household_id": sernum,
+                    "age": age,
+                    "employment_status": status,
+                    "months_since_last_birthday": 6.0,
+                    "is_uc_claimant": claimant,
+                    "child_benefit_reported": 0,
+                    "pension_credit_reported": 0,
+                    "universal_credit_reported": 0,
+                }
+            )
+    return uk_national_frame(
+        person=pd.DataFrame(people),
+        benunit=pd.DataFrame(units),
+        household=pd.DataFrame(households),
+        time_period=_PERIOD,
+    )
+
+
+def _draw_counts(frame: Frame) -> dict[str, dict[str, object]]:
+    """frs_take_up, frs_person_draws and frs_household_draws on ``frame``, in
+    spine order, under their packaged declarations, and the count fields of
+    their receipts: each take-up flag's population support, with its nesting
+    count or why it is unmeasured, and the apprentice draw's population and
+    eligible supports. The flags' shares and the apprentices' masses and
+    flagged support are left out: the anchored residual and the apprentice
+    walk pool over the clones, whose draws are keyed on their own ids."""
+
+    contract = _CertainHoursContract()
+    transforms = (
+        UKFRSTakeUpStageTransform(
+            contract=contract,
+            stage=_packaged_stage("frs_take_up"),
+            population_policy=_POLICY,
+        ),
+        UKFRSPersonDrawsStageTransform(
+            contract=contract, stage=_packaged_stage("frs_person_draws")
+        ),
+        UKFRSHouseholdDrawsStageTransform(
+            contract=contract, stage=_packaged_stage("frs_household_draws")
+        ),
+    )
+    counts: dict[str, dict[str, object]] = {}
+    for transform in transforms:
+        frame = transform(frame)
+        evidence = transform.checkpoint_metadata()["evidence"]
+        counts[evidence["stage"]] = {
+            "flags": [
+                {
+                    key: value
+                    for key, value in row.items()
+                    if key not in _DRAW_SHARE_FIELDS
+                }
+                for row in evidence["take_up_signal"]["flags"]
+            ]
+        }
+        if "apprentice_receipt" in evidence:
+            receipt = evidence["apprentice_receipt"]
+            counts[evidence["stage"]]["apprentices"] = {
+                key: receipt[key] for key in ("population_support", "eligible_support")
+            }
+    return counts
+
+
+def test_the_draws_count_in_source_households_on_every_clone(monkeypatch) -> None:
+    # The apprentices' relief reads an installed engine; their counts do not.
+    monkeypatch.setattr(frs_person_draws, "_installed_uk_system", lambda: None)
+    base = _draws_frame()
+    one = _draw_counts(clone_first_frame(base, 1))
+    three = clone_first_frame(base, 3)
+    assert _draw_counts(three) == one
+
+    # Not vacuous: every household flag rests on the eight households, which
+    # reads "3-9", and so do the apprentices, while three clones' rows would
+    # read another band.
+    households = len(base.table("household"))
+    assert {
+        row["population_support"] for row in one["frs_household_draws"]["flags"]
+    } == {UK_BELOW_TEN_BAND}
+    assert one["frs_person_draws"]["apprentices"] == {
+        "population_support": UK_BELOW_TEN_BAND,
+        "eligible_support": UK_BELOW_TEN_BAND,
+    }
+    assert support_band(3 * households) != UK_BELOW_TEN_BAND
+    # Without the lineage, as a node not given it would read the frame, the
+    # draws count each clone as a household of its own.
+    lineage = [SOURCE_HOUSEHOLD_ID_COLUMN, ladder_clone_index_column("household")]
+    rows = Frame(
+        {
+            entity: (
+                three.table(entity).drop(columns=lineage)
+                if entity == "household"
+                else three.table(entity)
+            )
+            for entity in three.entities
+        },
+        three.schema,
+        {"household": three.weights_for("household")},
+        three.strata,
+        metadata=three.metadata,
+    )
+    assert {
+        row["population_support"]
+        for row in _draw_counts(rows)["frs_household_draws"]["flags"]
+    } == {support_band(3 * households)}

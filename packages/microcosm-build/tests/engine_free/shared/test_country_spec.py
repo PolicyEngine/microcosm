@@ -1256,9 +1256,8 @@ class TestUKCountryPackage:
         # microcosm#1490 spi_employment_shell after it and aps_occupation next;
         # microcosm#1095 (P1) pip_points just before trading_allowance_receipts;
         # microcosm#1095 (Y1) uc_limited_capability just before uc_take_up;
-        # microcosm#1095 uc_new_claimant_draw last, after
-        # trading_allowance_receipts; B1 of microcosm#1710 uc_housing_costs_claim
-        # after uc_limited_capability.
+        # microcosm#931 geographic_expand and geographic_identity after
+        # frs_annual_income_spells, before frs_take_up.
         assert len(spec.sources.stages) == 58
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages

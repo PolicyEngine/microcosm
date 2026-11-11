@@ -238,9 +238,12 @@ def test_the_sidecar_records_batches_only_for_a_final_frame_that_batches(
         assert spine_build._rules_engine_record(engine, frame) == provenance
         assert _sidecar(engine, frame)["rules_engine"] == provenance
     batched = _BatchingEngine(dict(_BATCHES))
+    # Beside the batches, microdf's version (microcosm#931); _install reads
+    # every package at one version.
     assert spine_build._rules_engine_record(batched, frame) == {
         **provenance,
         "engine_batches": _BATCHES,
+        "microdf_python": VERSION,
     }
     assert _sidecar(batched, frame)["rules_engine"]["engine_batches"] == _BATCHES
     # The record is asked of the final frame the sidecar describes.
@@ -293,9 +296,50 @@ def test_a_resumed_spine_records_the_batches_a_fresh_run_does(
             "pass": SPINE_BATCHED_PASS.name,
             "declaration_sha256": UK_ENGINE_POPULATION.sha256,
         },
+        "microdf_python": VERSION,
     }
     assert _sidecar(fresh, frame)["rules_engine"] == expected
     assert _sidecar(ran, frame)["rules_engine"] == expected
-    # One clone, or no clone index (a national spine), records no batches.
+    # One clone, or no clone index (a national spine), records no batches,
+    # and no microdf version.
     for final in (_final_frame((0,)), _final_frame()):
-        assert "engine_batches" not in _sidecar(fresh, final)["rules_engine"]
+        record = _sidecar(fresh, final)["rules_engine"]
+        assert "engine_batches" not in record
+        assert "microdf_python" not in record
+
+
+def test_microdf_is_recorded_beside_the_batches_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Where the engine computes the frame clone by clone, private-school
+    # attendance stores microdf's rank, so the sidecar records microdf's
+    # version beside the batches, and "not-installed" when it is absent, as
+    # the graph binds it (microcosm#931). The engine identity is unchanged.
+    versions = {"policyengine-uk": VERSION, "microdf-python": "1.3.0"}
+
+    def version(package: str) -> str:
+        if package not in versions:
+            raise spine_build.metadata.PackageNotFoundError(package)
+        return versions[package]
+
+    monkeypatch.setattr(spine_build.metadata, "version", version)
+    monkeypatch.setattr(
+        spine_build.metadata, "distribution", lambda package: _Distribution(None)
+    )
+    frame = _final_frame()
+    batched = _BatchingEngine(dict(_BATCHES))
+    provenance = spine_build._rules_engine_provenance()
+
+    assert spine_build._rules_engine_record(batched, frame) == {
+        **provenance,
+        "engine_batches": _BATCHES,
+        "microdf_python": "1.3.0",
+    }
+    assert spine_build._rules_engine_record(_BatchingEngine(None), frame) == provenance
+    del versions["microdf-python"]
+    assert spine_build._rules_engine_record(batched, frame)["microdf_python"] == (
+        "not-installed"
+    )
+    assert _identity(spine_build._rules_engine_provenance()) == _identity(
+        {"package": "policyengine-uk", "version": VERSION}
+    )

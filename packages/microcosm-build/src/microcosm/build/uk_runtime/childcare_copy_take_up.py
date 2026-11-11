@@ -1,7 +1,8 @@
 """Re-draw the childcare take-up of support and CGT copies on their own units.
 
 ``frs_take_up`` draws the childcare flags and the extended-hours usage keyed on
-each FRS benefit unit before any copy exists, so every copy the later stages
+each FRS benefit unit, each geographic clone's on its own ids
+(microcosm#931), before any other copy exists, so every copy the later stages
 make (the SPI support channel and its income-band donors, the high-value home
 support, the CGT support split, the CGT incidence clone and the residential
 arms) inherits its host's draws. A small cell of hosts then fixes the take-up
@@ -22,8 +23,10 @@ copy the structural id ``source id + k × offset`` with an offset above every
 id in the frame, so a copy's id is unique and differs from every native id:
 the copy's streams are independent of its host's, and a rebuild of the same
 frame draws the same values. Native benefit units keep their ``frs_take_up``
-draws untouched. Anchored flags (Child Benefit, Pension Credit, Universal
-Credit) and ``would_claim_uc_childcare`` are left as they are.
+draws untouched, every geographic clone's included, since a geographic
+clone is not a copy here (``without_geographic_branch``). Anchored flags
+(Child Benefit, Pension Credit, Universal Credit) and
+``would_claim_uc_childcare`` are left as they are.
 
 A copy is a benefit unit whose household carries a non-empty clone path
 (``uk_household_clone_paths``: the SPI support channel, the CGT support split,

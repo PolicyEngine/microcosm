@@ -23,6 +23,7 @@ from microcosm.build.uk_runtime.cgt_support import (
     HOUSEHOLD_IS_CGT_SUPPORT_COPY,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.geographic_expand import expand_uk_geographic_clones
 from microcosm.build.uk_runtime.high_value_home_support import (
     HIGH_VALUE_SUPPORT_COPIES_COLUMN,
     split_high_value_support_households,
@@ -86,7 +87,6 @@ from microcosm.frame import WeightKind, engine_tables
 from test_support.microcosm_build.uk_clone_first_frames import (
     IdTables,
     assert_copy_ids_follow_lineage,
-    clone_first_frame,
     copy_households,
 )
 from test_support.paths import paths_for
@@ -266,10 +266,12 @@ def _clone_first_support_frame(
 ):
     """``_support_frame``'s households as geographic clones before stage 16.
 
-    Clone ``k`` repeats every row at ``id + k x 10**9`` and an equal share of
-    its household's weight (``clone_first_frame``), and the SPI support
-    channel then copies each clone's households, as the clone-first spine will
-    (microcosm#931). ``tables`` replaces the raw tables ``options`` build.
+    The spine's geographic expansion (``geographic_expand``) repeats every
+    row as clone ``k`` at ``id + k x 10**9`` and an equal share of its
+    household's weight, with the household's source columns, which the SPI
+    support channel reads, and the channel then copies each clone's
+    households, as the clone-first spine does (microcosm#931). ``tables``
+    replaces the raw tables ``options`` build.
     """
 
     person, benunit, household = (
@@ -282,7 +284,7 @@ def _clone_first_support_frame(
         time_period="2024",
         weight_kind=WeightKind.DESIGN,
     )
-    cloned = engine_tables(clone_first_frame(raw, n_clones))
+    cloned = engine_tables(expand_uk_geographic_clones(raw, clones=n_clones).frame)
     return _spi_support_frame(
         cloned["person"],
         cloned["benunit"],

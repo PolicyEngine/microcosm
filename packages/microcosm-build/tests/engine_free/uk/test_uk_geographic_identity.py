@@ -2,10 +2,14 @@
 
 G1b keys every household of the geographic expansion's frame by its source,
 FRS vintage, true source and copy path, as the dense line's
-``uk.full.identity`` keys it. These tests hold clone 0's key, and clone k's,
-to the dense identity kernel itself on the same households, and check the
-clone path, uniqueness, nesting across K, the dtype, the vintage read from
-frs_release.json, the evidence and every refusal. Invented frames only; no
+``uk.full.identity`` keys it. The spine's ``geographic_identity`` stage runs
+it, under its packaged declaration, which every transform here is built from.
+These tests hold clone 0's key, and clone k's, to the dense identity kernel
+itself on the same households, and check the clone path, uniqueness, nesting
+across K, the dtype, the vintage read from frs_release.json, the evidence and
+every refusal, a declaration other than the reviewed one's included. On the
+spine's graph they check what the stage's node reads and writes, and that
+frs_release.json's bytes are in its stage contract. Invented frames only; no
 refusal prints a key, an id or a year of a row.
 """
 
@@ -19,25 +23,32 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
 from microcosm.build.uk_runtime.atomic_area_support import IDENTITY_COLUMN
 from microcosm.build.uk_runtime.atomic_household_identity import household_draw_key
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.geographic_expand import (
+    GEOGRAPHIC_EXPAND_STAGE_NAME,
     SOURCE_HOUSEHOLD_KEY_COLUMN,
     SOURCE_YEAR_COLUMN,
     expand_uk_geographic_clones,
 )
 from microcosm.build.uk_runtime.geographic_identity import (
+    FRS_RELEASE_ARTIFACT_ROLE,
+    FRS_RELEASE_RESOURCE,
     GEOGRAPHIC_IDENTITY_INPUTS,
+    GEOGRAPHIC_IDENTITY_OPERATION_KIND,
     GEOGRAPHIC_IDENTITY_SOURCE,
     GEOGRAPHIC_IDENTITY_STAGE_NAME,
     UK_GEOGRAPHIC_IDENTITY_OUTPUT_COLUMNS,
     UKGeographicIdentityStageTransform,
     frs_vintages_by_source_year,
+    geographic_identity_operation_parameters,
     key_uk_households_by_clone_path,
 )
+from microcosm.build.uk_runtime.graph import uk_spine_graph
 from microcosm.build.uk_runtime.graph_population import (
     UKGeographyIdentityKernel,
     append_uk_population_nodes,
@@ -47,6 +58,7 @@ from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.receipt_counts import rounded_count
 from microcosm.frame import Frame
 from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
+from microcosm.graph import StructuralDelta
 from microcosm.graph.population import dtype_for_token
 from test_support.microcosm_build.uk_clone_first_frames import base_id_tables
 
@@ -108,19 +120,13 @@ def _with_household(frame: Frame, household: pd.DataFrame) -> Frame:
 
 
 def _stage(**overrides: object) -> SourceStageSpec:
-    """A stand-in stage for G1b: no stage declares it until the spine wires it."""
+    """G1b's packaged stage declaration, with ``overrides`` replacing fields."""
 
-    fields: dict[str, object] = {
-        "stage": GEOGRAPHIC_IDENTITY_STAGE_NAME,
-        "survey": "Invented test stage",
-        "source": "Invented test stage",
-        "grain": "household",
-        "artifacts": (),
-        "operations": (),
-        "outputs": UK_GEOGRAPHIC_IDENTITY_OUTPUT_COLUMNS,
-    }
-    fields.update(overrides)
-    return SourceStageSpec(**fields)
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    return replace(
+        spec.sources.stage_map()[GEOGRAPHIC_IDENTITY_STAGE_NAME], **overrides
+    )
 
 
 def _dense_keys(household: pd.DataFrame) -> list[str]:
@@ -316,6 +322,47 @@ def test_the_transform_runs_the_step_and_records_its_evidence() -> None:
     assert transform.output_columns() == (IDENTITY_COLUMN,)
 
 
+# --- the spine's stage --------------------------------------------------------------
+
+
+def test_the_stage_s_node_reads_g1_s_lineage_and_writes_the_key() -> None:
+    graph = uk_spine_graph()
+    node = graph.node(GEOGRAPHIC_IDENTITY_STAGE_NAME)
+    assert node.kernel == f"uk.stage.{GEOGRAPHIC_IDENTITY_STAGE_NAME}@1"
+    assert node.structural is StructuralDelta.NONE
+    read = {(item.entity, column) for item in node.inputs for column in item.columns}
+    assert {("household", column) for column in GEOGRAPHIC_IDENTITY_INPUTS} <= read
+    assert [(cell.entity, cell.column, cell.dtype) for cell in node.outputs] == [
+        ("household", IDENTITY_COLUMN, "string")
+    ]
+    assert UK_GEOGRAPHIC_IDENTITY_OUTPUT_COLUMNS == (IDENTITY_COLUMN,)
+    # The key follows the clones, before any stage that copies households.
+    order = [item.id for item in graph.nodes]
+    assert order.index(GEOGRAPHIC_EXPAND_STAGE_NAME) < order.index(
+        GEOGRAPHIC_IDENTITY_STAGE_NAME
+    )
+
+
+def test_the_frs_release_s_bytes_are_in_the_stage_s_contract() -> None:
+    """The release pins the vintage each key names, so a release of other
+    bytes re-keys the stage through its contract, and the clones, which read
+    no resource, keep theirs."""
+
+    spec = load_country_spec("uk")
+    moved = replace(
+        spec,
+        resource_hashes={**spec.resource_hashes, FRS_RELEASE_RESOURCE: "0" * 64},
+    )
+    assert spec.resource_hashes[FRS_RELEASE_RESOURCE] != "0" * 64
+    graphs = (uk_spine_graph(spec), uk_spine_graph(moved))
+    identity, clones = (
+        [graph.node(name).params["stage_contract_sha256"] for graph in graphs]
+        for name in (GEOGRAPHIC_IDENTITY_STAGE_NAME, GEOGRAPHIC_EXPAND_STAGE_NAME)
+    )
+    assert identity[0] != identity[1]
+    assert clones[0] == clones[1]
+
+
 # --- refusals ---------------------------------------------------------------------
 
 
@@ -407,3 +454,73 @@ def test_a_stage_that_is_not_g1b_s_is_refused(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         UKGeographicIdentityStageTransform(_stage(**overrides))
+
+
+def _reviewed_operation(**changes: object) -> SourceOperationSpec:
+    """The reviewed operation, with ``changes`` to its parameters."""
+
+    ((kind, parameters),) = geographic_identity_operation_parameters()
+    return SourceOperationSpec(kind, {**parameters, **changes})
+
+
+@pytest.mark.parametrize(
+    ("operations", "message"),
+    [
+        (
+            (_reviewed_operation(source="lcfs"),),
+            r"declaration drifted from the reviewed mapping on parameter\(s\) "
+            r"\['source'\]",
+        ),
+        (
+            (_reviewed_operation(vintage_resource="vintages.yaml"),),
+            r"\['vintage_resource'\]",
+        ),
+        ((_reviewed_operation(clones=3),), r"\['clones'\]"),
+        ((), "operation order drifted"),
+        (
+            (SourceOperationSpec("derive", {}),),
+            f"expected \\('{GEOGRAPHIC_IDENTITY_OPERATION_KIND}',\\)",
+        ),
+    ],
+)
+def test_a_declaration_other_than_the_reviewed_operation_is_refused(
+    operations: tuple[SourceOperationSpec, ...], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        UKGeographicIdentityStageTransform(_stage(operations=operations))
+
+
+def _release_artifact(**changes: object) -> dict[str, object]:
+    (artifact,) = _stage().artifacts
+    return {**artifact, **changes}
+
+
+@pytest.mark.parametrize(
+    ("artifacts", "message"),
+    [
+        ((), r"got 0 artifact\(s\), 0 of them that one"),
+        (
+            (_release_artifact(runtime_sha256_required=False),),
+            r"got 1 artifact\(s\), 0 of them that one",
+        ),
+        (
+            (_release_artifact(resource="frs_release_2023.json"),),
+            r"got 1 artifact\(s\), 0 of them that one",
+        ),
+        (
+            (_release_artifact(role="count_resource"),),
+            r"got 1 artifact\(s\), 0 of them that one",
+        ),
+        (
+            (_release_artifact(), _release_artifact(role="count_resource")),
+            r"got 2 artifact\(s\), 1 of them that one",
+        ),
+    ],
+)
+def test_a_stage_without_the_frs_release_as_its_one_artifact_is_refused(
+    artifacts: tuple[dict[str, object], ...], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message) as error:
+        UKGeographicIdentityStageTransform(_stage(artifacts=artifacts))
+    assert repr(FRS_RELEASE_ARTIFACT_ROLE) in str(error.value)
+    assert repr(FRS_RELEASE_RESOURCE) in str(error.value)
