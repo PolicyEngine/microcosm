@@ -535,8 +535,11 @@ same state directory. The attempt ledger enforces this, best effort (see
 
 For `us-acs-local-release`, run package at the commit calibrate ran at.
 Calibrate records the code that wrote the calibrated H5 in
-`consumer_export.json`, and package refuses to name a release after any
-other commit (microcosm#1263). A commit landing between the two means
+`consumer_export.json`: it reads the commit when the stage starts, reads it
+again just before it writes the H5, and refuses to write if the commit or
+the tree's dirty state changed in between. The build's ID names the
+packaging code, so package refuses to give a build an ID that names any
+other commit (microcosm#1263). A commit landing between the two stages means
 re-running calibrate, qa and finalize at the new commit, or packaging at the
 old one.
 
