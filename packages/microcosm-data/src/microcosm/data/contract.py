@@ -40,15 +40,17 @@ import json
 import math
 import os
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
+from types import MappingProxyType
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
 from microcosm.data.denied_pools import denied_pool_publication_for
+from microcosm.data.gate_signing_keys import unregistered_gate_signing_key_problem
 from microcosm.data.stored_inputs import is_model_named
 from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_FIT_REQUIREMENTS as _US_CRITICAL_TARGET_FIT_REQUIREMENTS,
@@ -61,6 +63,7 @@ from microcosm.data.us_critical_targets import (
 )
 from microcosm.diagnostics import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
     UK_DIAGNOSTICS_SCHEMA_VERSION,
     UK_MODEL_FIGURE_FIELDS,
@@ -72,15 +75,25 @@ from microcosm.diagnostics import (
 )
 
 __all__ = [
+    "BUILD_MANIFEST_FILE_ROLE",
+    "CALIBRATION_DIAGNOSTICS_FILE_ROLE",
+    "CALIBRATION_WEIGHTS_FILE_ROLE",
+    "CHECKSUMS_FILE",
+    "CHECKSUMS_FILE_ROLE",
     "COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS",
+    "DATASET_FILE_ROLE",
     "EVIDENCE_RELEASE_ID_SEGMENT",
     "EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION",
     "LOCAL_AREA_REQUIRED_RELEASE_FILES",
     "NATIONAL_DEFAULT_DATASET_ROLE",
     "NON_DEFAULT_LOCAL_AREA_DATASET_ROLE",
+    "PROPOSED_US_RELEASES",
     "PUBLISHER_CLAIM_BASIS",
+    "RELEASE_MANIFEST_FILE_ROLE",
     "RELEASE_MANIFEST_SCHEMA_VERSION",
+    "RELEASE_ROLES",
     "REQUIRED_RELEASE_FILES",
+    "RETIRED_BUILD_FIELDS",
     "US_FISCAL_STORED_INPUTS_STAGE",
     "US_LOCAL_AREA_SPM_MEASUREMENT_STAGE",
     "US_LOCAL_AREA_STORED_INPUTS_STAGE",
@@ -93,6 +106,8 @@ __all__ = [
     "ReleaseContractError",
     "compatibility_claim_declarer_error",
     "line_for_release_id",
+    "publishes_to_build_folder",
+    "release_artifact_role",
     "release_dataset_role",
     "required_release_files",
     "stored_input_evidence_manifest_block",
@@ -161,6 +176,92 @@ REQUIRED_RELEASE_FILES = (
 NATIONAL_DEFAULT_DATASET_ROLE = "national_default"
 NON_DEFAULT_LOCAL_AREA_DATASET_ROLE = "non_default_local_area"
 
+# --- The build-folder layout (hand-over step H2c) --------------------------
+# A release that publishes each build into its own folder,
+# ``releases/<release>/<build>/``, through the emitter's ``publish_release``
+# call. The repository's ``releases.json`` is the only record of each
+# release's builds and which one is current. Both manifests name the release
+# and the build as two strings; the release manifest records the build's
+# ``built_at`` and built-with packages at the top level and each file's
+# ``role``, and pins no revision, since nothing is tagged.
+
+#: Each release's role in ``releases.json``, from its manifest's
+#: ``dataset_role``. A release keeps the role it was first published with.
+RELEASE_ROLES: Mapping[str, str] = MappingProxyType(
+    {
+        NATIONAL_DEFAULT_DATASET_ROLE: "national",
+        NON_DEFAULT_LOCAL_AREA_DATASET_ROLE: "local_area",
+    }
+)
+#: The roles of a build folder's own files. The emitter interface names the
+#: same strings (``microcosm_emitter_interface.publication`` and ``.bundles``);
+#: this package supports Python versions the interface does not, so it
+#: repeats them, and a build-shard test holds the two equal.
+RELEASE_MANIFEST_FILE_ROLE = "release_manifest"
+BUILD_MANIFEST_FILE_ROLE = "build_manifest"
+CHECKSUMS_FILE_ROLE = "checksums"
+DATASET_FILE_ROLE = "dataset"
+CALIBRATION_DIAGNOSTICS_FILE_ROLE = "calibration_diagnostics"
+CALIBRATION_WEIGHTS_FILE_ROLE = "calibration_weights"
+#: A build folder's checksum ledger, published when the release directory
+#: carries one (the local-area contracts require it).
+CHECKSUMS_FILE = "sha256sums.txt"
+#: The fields that named the build before the build-folder layout. The build
+#: is the calibration attempt ID, so ``attempt_id`` is ``build``; there is no
+#: tag, so no ``cut_tag``; and ``build_id`` held the release's name.
+RETIRED_BUILD_FIELDS = ("build_id", "attempt_id", "cut_tag")
+#: The emitter interface's identifier rule for a release or build name.
+_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_ROLE_IDENTIFIER_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+
+
+#: The stable releases proposed for US builds, with each one's role in
+#: ``releases.json``: in the one ``policyengine/populace-us`` repository, the
+#: national release (the repository's default) and the local-area release,
+#: whose builds keep their IDs and the file name
+#: ``populace_us_2024_acs_local.h5``. They are proposals the US data builder
+#: has not agreed yet, so nothing reads them: :func:`publishes_to_build_folder`
+#: names no US release, and every US release keeps tags and ``latest.json``.
+#: Once they are agreed, that function names them, the US builders write the
+#: build-folder manifests under them and the registry's US entries name them.
+PROPOSED_US_RELEASES: Mapping[str, str] = MappingProxyType(
+    {
+        "populace-us-2024-national": "national",
+        "populace-us-2024-local": "local_area",
+    }
+)
+
+
+def publishes_to_build_folder(release_id: str) -> bool:
+    """Whether builds of ``release_id`` publish into their own build folders.
+
+    This is the one place that says which releases use the build-folder
+    layout: the UK national, dense and local-area releases. Every US release
+    keeps the tagged layout and ``latest.json`` until the stable releases US
+    builds publish under (:data:`PROPOSED_US_RELEASES`) are agreed with the
+    US data builder; this function then names them too, and their builders
+    write the same manifests.
+    """
+    return (
+        release_id in {_UK_NATIONAL_RELEASE_ID, _UK_DENSE_RELEASE_ID}
+        or _UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(release_id) is not None
+    )
+
+
+def release_artifact_role(key: str, kind: object) -> str:
+    """The role a build folder's manifest records for one artifact.
+
+    The microdata is ``dataset`` and the calibration weights are
+    ``calibration_weights``; every other artifact's role is its key, so the
+    calibration diagnostics keep ``calibration_diagnostics``.
+    """
+    if kind == "microdata":
+        return DATASET_FILE_ROLE
+    if kind == "calibration":
+        return CALIBRATION_WEIGHTS_FILE_ROLE
+    return key
+
+
 #: Files a non-default local-area release directory must carry. The source
 #: coverage entry matches :data:`US_SOURCE_COVERAGE_DIAGNOSTICS_FILE`.
 LOCAL_AREA_REQUIRED_RELEASE_FILES = (
@@ -226,6 +327,29 @@ US_SPM_UNIVERSE_SCOPING_MODEL_VERSIONS: frozenset[str] = frozenset()
 _SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
 )
+#: Schema 8 (labels on every row; releases published before schema 9) and
+#: schema 9 (labels in ``hierarchy_catalogs``; what the writer publishes).
+#: Both carry the calibration hierarchy and are validated by the shared
+#: models, so every check of a current document accepts either.
+_HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
+    HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+)
+_HIERARCHY_SCHEMA_VERSIONS_TEXT = " or ".join(
+    str(version)
+    for version in sorted(_HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS)
+)
+
+
+def _is_hierarchy_diagnostics_version(value: object) -> bool:
+    """Whether a declared diagnostics version is schema 8 or 9 (exact integers)."""
+
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and value in _HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+    )
+
+
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -302,25 +426,19 @@ _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
 # armed. Held in lockstep with the committed spec by the build-shard sync
 # tests. The QRF tail-concentration gate and its pins were removed in
 # microcosm#1276.
-_UK_INPUT_MASS_RELATIVE_TOLERANCE = 4.521811483823806
+_UK_INPUT_MASS_RELATIVE_TOLERANCE = 5.9984285545209834
 _UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL = 0.0
-# Independent publication pin for the active reviewed reference source. The data
-# shard cannot import the build shard, so keep this in lockstep with
-# uk/gates.json reference_registry["efrs-post-calibration"].identity.
-_UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
-_UK_INPUT_MASS_REFERENCE_IDENTITY = {
-    "filename": "enhanced_frs_2024_25.h5",
-    "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-    "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
-    "vintage": "2024_25",
-}
-# Independent publication pin for the canonical
-# {"reference": {"identity": ..., "totals": ...}} evidence emitted from the
-# reviewed 131-column enhanced-FRS reference. The totals remain uncommitted
-# under the UKDS EUL; keep this in lockstep with
-# UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 in the build shard.
-_UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c"
+# The share of its reference total a column may lose (microcosm#1095).
+_UK_INPUT_MASS_MAXIMUM_RELATIVE_DROP = 0.9
+# The reference kind the spec names (microcosm#1095): the current build of the
+# cut's own line. The report records which build that was; the data shard
+# cannot import the build shard, so keep this in lockstep with uk/gates.json.
+_UK_INPUT_MASS_ACTIVE_REFERENCE = "current_build"
+_UK_INPUT_MASS_REFERENCE_IDENTITY_FIELDS = frozenset(
+    {"filename", "revision", "sha256", "vintage"}
+)
+_UK_CUT_REFERENCE_RELEASES = frozenset(
+    {"microcosm-uk-2024-25-national", "microcosm-uk-2024-25-dense"}
 )
 _UK_TERMINAL_GATE_DETAIL_FIELDS = {
     "uk_release_input_coverage": frozenset(
@@ -410,6 +528,8 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "reference_name",
             "relative_tolerance",
             "minimum_reference_total",
+            "maximum_relative_drop",
+            "excess_drops",
             "columns_checked",
             "columns_below_reference_floor",
             "candidate_only_columns",
@@ -451,13 +571,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "40e24836c45468ccb50b025dcd05603dc4d8af37ef546fa3bc6d4ea9152f707e"
+    "9cd311cb488a3050d1c15ab7d96c14cd899f2bdb1f0f0da2a8e36252290cf99b"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "7d9a294b0c17dd545beb88fcf3d1e596a4c36dd4aa8a7821b6fe767de3beb85f"
+    "f30e991b5c81ca2a55b451e4d340028790648cb9d760f25a9ae9e1cdb9414276"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "0b82c7d90eb4400bb333a4f477509c9570221ecfd5afde13f08de4c8689b6db9"
+    "80267b3772f143ee31a4674c3d13fd273c255449b23ac298ef3c67ef210296b5"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -482,6 +602,8 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_council_tax_band_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
+    "uk_soc2020_major_group_enum_domain": "enum_domain",
+    "uk_soc2020_sub_major_group_enum_domain": "enum_domain",
     "uk_council_tax_band_domain_terminal": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
@@ -529,6 +651,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "stage_health",
         "transferred",
     ),
+    "uk_stage_hmrc_spi_income_spine_hourly_pay": ("stage_health", "transferred"),
     "uk_stage_spi_benefit_coherence": ("stage_health", "transferred"),
     "uk_stage_uc_take_up": ("stage_health", "transferred"),
     "uk_stage_pension_credit_take_up": ("stage_health", "transferred"),
@@ -562,6 +685,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_isa_subscriptions_invariants": ("stage_health", "transferred"),
     "uk_stage_isa_subscriptions": ("stage_health", "transferred"),
     "uk_stage_company_cars_invariants": ("stage_health", "transferred"),
+    "uk_stage_spi_employment_shell_fit": ("stage_health", "transferred"),
+    "uk_stage_aps_occupation_fit": ("stage_health", "transferred"),
     "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
@@ -591,6 +716,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_council_tax_band_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
+    "uk_soc2020_major_group_enum_domain": ("enum_domain", "terminal"),
+    "uk_soc2020_sub_major_group_enum_domain": ("enum_domain", "terminal"),
     "uk_council_tax_band_domain_terminal": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
@@ -655,6 +782,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_frs_annual_income_spells",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
+        "uk_stage_hmrc_spi_income_spine_hourly_pay",
         "uk_stage_spi_benefit_coherence",
         "uk_stage_uc_take_up",
         "uk_stage_pension_credit_take_up",
@@ -676,6 +804,8 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_isa_subscriptions_invariants",
         "uk_stage_isa_subscriptions",
         "uk_stage_company_cars_invariants",
+        "uk_stage_spi_employment_shell_fit",
+        "uk_stage_aps_occupation_fit",
         "uk_stage_frs_take_up_signal",
         "uk_stage_frs_person_draws_take_up_signal",
         "uk_stage_frs_household_draws_take_up_signal",
@@ -685,19 +815,16 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_cgt_projection_entrants",
     }
 )
-# The input-mass binding's evidence payload wraps the reviewed reference
-# digest as {"reference_evidence_sha256": ...} before the executor's
-# canonical hash; this pins the wrapped digest so the entry's evidence line
-# still binds the enhanced-FRS incumbent totals.
-_UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
-)
+# The input-mass binding's evidence payload digests the reference build's
+# own totals (microcosm#1095), so it differs from cut to cut and is not pinned:
+# the entry's details name the build, and its evidence line binds that build's
+# totals.
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
 # is a vintage pin that moves with every reviewed register edit (the same
 # tripwire as the policy digest).
 _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
+    "a6ebc171cadf45b691a2b83632bc1f87f3116ad31aebf073e3786ce90ecc0307"
 )
 
 
@@ -725,7 +852,13 @@ _UK_LOCAL_LINE_RELEASE_ID_RE = re.compile(
 
 
 def line_for_release_id(release_id: str) -> str | None:
-    """Return the promotable UK publication line for ``release_id``."""
+    """Return the ``<line>`` name of the ``latest-<line>.json`` pointer file.
+
+    Each such pointer file named the current build of one UK release before
+    those releases published into build folders: ``national`` for the national
+    release and ``local-k<N>`` for a local-area one. Only the pointer reader
+    still needs it.
+    """
     if release_id == _UK_NATIONAL_RELEASE_ID:
         return "national"
     match = _UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(release_id)
@@ -737,12 +870,13 @@ def line_for_release_id(release_id: str) -> str | None:
 def dataset_role_for_line(line: str) -> str:
     """The one dataset role a publication line may carry.
 
-    The national line publishes national-default releases; every local-area
-    line publishes non-default local-area releases. The publisher refuses a
-    line promotion whose manifest declares another role, and the loader
-    refuses a manifest that reached a line pointer with the wrong role, so a
-    local-area release can never ride the national pointer (or the reverse)
-    on the strength of its release id alone.
+    The national line carries national-default releases; every local-area
+    line carries non-default local-area releases. The loader refuses a
+    manifest that reached a ``latest-<line>.json`` pointer with the wrong
+    role, so a local-area release can never ride the national pointer (or
+    the reverse) on the strength of its release id alone. Nothing writes
+    those pointers any more; the loader still follows them in a repository
+    that has no ``releases.json``.
     """
     if line == "national":
         return NATIONAL_DEFAULT_DATASET_ROLE
@@ -751,15 +885,12 @@ def dataset_role_for_line(line: str) -> str:
     raise ValueError(f"{line!r} is not a publication line.")
 
 
-# The dense joint national + local line (microcosm#762 A18, ruling
-# 2026-09-03): the same constant-id approach, published on the inspect lane
-# under the non-default local-area role. Mirrored from
+# The dense joint national + local release (microcosm#762 A18, ruling
+# 2026-09-03): the same constant-id approach, published as a non-default
+# local-area release, each build into its own folder. Mirrored from
 # microcosm.build.uk_runtime.release_identity.UK_DENSE_RELEASE_ID; lockstep-
 # tested in test_gate_battery_contract_pins.py.
 _UK_DENSE_RELEASE_ID = "microcosm-uk-2024-25-dense"
-_UK_DENSE_CUT_TAG_RE = re.compile(
-    re.escape(_UK_DENSE_RELEASE_ID) + r"-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}"
-)
 #: The dense line's published microdata filename; mirrors
 #: ``tools/assemble_uk_dense_release_dir.py::_DATASET_FILENAME`` (lockstep test
 #: in the build shard's contract-pin suite).
@@ -834,10 +965,11 @@ _UK_DENSE_SIGNED_EXCLUSION_GATES = (
     "uk_local_target_fit",
     "uk_input_mass_parity",
 )
-# The per-cut tag grammar the assembler mints from the calibration attempt id
-# (tools/assemble_uk_release_dir.py). The contract validates the same shape so
-# a hand-edited or stale revision cannot claim a cut the attempt chain never
-# produced.
+# The per-build tag shape UK national and local-area builds were tagged with
+# before the switch: the release, then the calibration attempt's time and
+# digest. The pointer-file reader and writer in microcosm.data.release check a
+# latest-<line>.json revision against it, so a hand-edited or stale pointer
+# cannot name a tag outside the release's builds.
 _UK_NATIONAL_REVISION_SUFFIX_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
 
 
@@ -859,9 +991,119 @@ _UK_CERTIFICATION_PART_EVIDENCE_FILES: Mapping[str, str] = {
     "calibration_seam": "terminal_gates.json",
     "release_cut": "release_cut_gates.json",
 }
-_UK_CERTIFICATION_SCORE_RECEIPT_FILE = "score_vs_enhanced_frs.json"
-_UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 1
+#: The head-to-head receipt against the cut's reference, the current
+#: national build (microcosm#1095); certification schema 1 named
+#: ``score_vs_enhanced_frs.json``, a strict score against the enhanced FRS.
+#: Only new builds are validated (the assemblers call this contract), at the
+#: spec they are assembled under, so schema 1 has no path here.
+_UK_CERTIFICATION_SCORE_RECEIPT_FILE = "score_vs_reference.json"
+_UK_RELEASE_CERTIFICATION_SCHEMA_VERSION = 2
+_UK_CERTIFICATION_REFERENCE_FIELDS = frozenset(
+    {"release", "build", "filename", "sha256", "built_with_model_package", "selection"}
+)
+#: How a cut chose its reference: the national line's current build, or a
+#: listed build pinned for a line with none (microcosm#1095).
+_UK_CERTIFICATION_REFERENCE_SELECTIONS = frozenset({"current", "pinned"})
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
+_UK_CERTIFICATION_SINCE_BASELINE_FIELDS = frozenset(
+    {
+        "baseline",
+        "restarted_from",
+        "input_mass_ratios",
+        "input_mass_left",
+        "baseline_inputs",
+        "inputs_dropped",
+    }
+)
+#: Mirrors of microcosm-build's ``UK_NATIONAL_SINCE_BASELINE_ORIGIN`` (where
+#: the national record of change since the baseline starts; a chain that
+#: starts elsewhere has restarted) and ``UK_SINCE_BASELINE_LEFT_REASONS``
+#: (why a column leaves that record), from round 2 of the review of
+#: microcosm#1574.
+_UK_NATIONAL_SINCE_BASELINE_ORIGIN = (
+    f"{_UK_NATIONAL_RELEASE_ID}@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+)
+_UK_SINCE_BASELINE_LEFT_REASONS = ("absent", "zero_reference_total", "thin")
+
+
+def _check_uk_certification_since_baseline(
+    since: object, *, file: str, failures: list[str]
+) -> None:
+    """The certification's record of change since a fixed national baseline."""
+
+    if not isinstance(since, Mapping) or set(since) != (
+        _UK_CERTIFICATION_SINCE_BASELINE_FIELDS
+    ):
+        failures.append(
+            f"{file} since_baseline must record exactly "
+            f"{sorted(_UK_CERTIFICATION_SINCE_BASELINE_FIELDS)}."
+        )
+        return
+    baseline = since.get("baseline")
+    ratios = since.get("input_mass_ratios")
+    left = since.get("input_mass_left")
+    inputs = since.get("baseline_inputs")
+    dropped = since.get("inputs_dropped")
+    names_ok = all(
+        isinstance(names, list)
+        and all(isinstance(name, str) and name for name in names)
+        for names in (inputs, dropped)
+    )
+
+    def national_build(label: object) -> bool:
+        return (
+            isinstance(label, str)
+            and label.startswith(f"{_UK_NATIONAL_RELEASE_ID}@")
+            and label != f"{_UK_NATIONAL_RELEASE_ID}@"
+        )
+
+    def ratio(value: object) -> bool:
+        return (
+            isinstance(value, int | float)
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+            and float(value) >= 0.0
+        )
+
+    if (
+        not national_build(baseline)
+        or not isinstance(ratios, Mapping)
+        or not all(ratio(value) for value in ratios.values())
+        or not isinstance(left, Mapping)
+        or not all(
+            isinstance(entry, Mapping)
+            and set(entry) == {"reason", "last_ratio", "last_build"}
+            and entry["reason"] in _UK_SINCE_BASELINE_LEFT_REASONS
+            and ratio(entry["last_ratio"])
+            and national_build(entry["last_build"])
+            and column not in ratios
+            for column, entry in left.items()
+        )
+        or not names_ok
+        or not set(dropped) <= set(inputs)
+    ):
+        failures.append(
+            f"{file} since_baseline must name a national baseline build, a "
+            "finite non-negative ratio per column, each column that left the "
+            "chain with its reason, last ratio and last national build, and "
+            "the baseline's inputs with those this build no longer carries."
+        )
+        return
+    # A chain that starts anywhere but the line's origin has restarted, and
+    # says so (round 2 of the review of microcosm#1574).
+    expected = (
+        None
+        if baseline == _UK_NATIONAL_SINCE_BASELINE_ORIGIN
+        else _UK_NATIONAL_SINCE_BASELINE_ORIGIN
+    )
+    if since.get("restarted_from") != expected:
+        failures.append(
+            f"{file} since_baseline must record restarted_from {expected!r}: "
+            f"the national chain starts at {_UK_NATIONAL_SINCE_BASELINE_ORIGIN}, "
+            "and one that starts at another build has restarted."
+        )
+
+
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
 _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
     {
@@ -909,10 +1151,13 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_high_value_home_support_mass",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_hmrc_spi_income_spine_hourly_pay",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_isa_subscriptions",
             "uk_stage_isa_subscriptions_invariants",
             "uk_stage_company_cars_invariants",
+            "uk_stage_spi_employment_shell_fit",
+            "uk_stage_aps_occupation_fit",
             "uk_stage_lcfs_consumption_basis",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
@@ -968,6 +1213,8 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_release_input_coverage",
             "uk_release_input_coverage_manifest_current",
             "uk_student_loan_plan_enum_domain",
+            "uk_soc2020_major_group_enum_domain",
+            "uk_soc2020_sub_major_group_enum_domain",
             "uk_council_tax_band_domain_terminal",
             "uk_support",
             "uk_take_up_signal",
@@ -979,10 +1226,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "4f59118f648d48c04aff3a28def11c472318b2dae368513a69467138799bd613"
+            "c552c77c2e6b0ca23323996820d9a2f53833fa0377eef4c607bc5fde32e939cf"
         ),
         "policy_sha256": (
-            "33e851f78f1dc1fde7969c6d875ea2d85b9ea41a39551680ad5a59b369b60f44"
+            "0a2635b7b22034ee1fa9b6574bc259805397171b367f4c7941509648704bf1bb"
         ),
     },
     "calibration_seam": {
@@ -995,10 +1242,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "97a16c72db2c97d224a7e6e26f4afcad6eec4ed581b337bdb68fe9df4dbea82d"
+            "ec65cc4e465293f7ec6838e2bb6baa7cdd1e239db0aefb40abc0b663b927471d"
         ),
         "policy_sha256": (
-            "9961e4d3417e7812fb2248bd757fa057c2c3e08643dd4cc058da4713aae57057"
+            "47183e92f6acff807240aa9fff121a18650e336ff877f5507caf88611c0014d4"
         ),
     },
 }
@@ -1012,6 +1259,10 @@ _UK_CERTIFICATION_REQUIRED_FIELDS = frozenset(
         # The spine whose stage receipts the release cut measured, bound by
         # the certifier to the parent the calibration recorded.
         "parent_spine",
+        # The current national build the cut was compared with.
+        "reference",
+        # The change since a fixed baseline, chained across cuts.
+        "since_baseline",
         "parts",
         "spec",
         "doctrine",
@@ -1123,15 +1374,39 @@ def _uk_release_key_from_env(env_var: str, failures: list[str]) -> bytes | None:
 
 
 def _uk_terminal_verification_key(failures: list[str]) -> bytes | None:
-    """The legacy aggregator's trust root (schema-3 reports)."""
+    """The legacy aggregator's trust root (schema-3 reports).
 
-    return _uk_release_key_from_env(_UK_TERMINAL_GATE_SIGNING_KEY_ENV, failures)
+    Bound to the same committed registry as schema 4: no schema-3 report is
+    published (every UK terminal report on the Hub is schema 4), so a
+    legacy report verifies only under a registered key.
+    """
+
+    key = _uk_release_key_from_env(_UK_TERMINAL_GATE_SIGNING_KEY_ENV, failures)
+    if key is None:
+        return None
+    problem = unregistered_gate_signing_key_problem("uk", key, purpose="verify")
+    if problem is not None:
+        failures.append(f"{_UK_TERMINAL_GATE_SIGNING_KEY_ENV}: {problem}")
+        return None
+    return key
 
 
 def _uk_gate_battery_verification_key(failures: list[str]) -> bytes | None:
-    """The shared executor's trust root (schema-4 reports)."""
+    """The shared executor's trust root (schema-4 reports).
 
-    return _uk_release_key_from_env(_UK_GATE_BATTERY_SIGNING_KEY_ENV, failures)
+    The key in the environment must also be registered (active or retired)
+    in ``microcosm.data.gate_signing_keys``: without that, any key that
+    signed a report would verify it.
+    """
+
+    key = _uk_release_key_from_env(_UK_GATE_BATTERY_SIGNING_KEY_ENV, failures)
+    if key is None:
+        return None
+    problem = unregistered_gate_signing_key_problem("uk", key, purpose="verify")
+    if problem is not None:
+        failures.append(f"{_UK_GATE_BATTERY_SIGNING_KEY_ENV}: {problem}")
+        return None
+    return key
 
 
 def _reject_json_constant(token: str) -> None:
@@ -1209,19 +1484,171 @@ def _check_base_pool_not_denied(manifest: Mapping, failures: list[str]) -> None:
         )
 
 
+def _check_build_folder_identity(
+    manifest: Mapping, release_id: str, *, filename: str, failures: list[str]
+) -> None:
+    """A build-folder manifest names its release and its build, and only so.
+
+    The release is the release directory's name, and the build is a name the
+    emitter accepts for a folder. The fields that named the build before the
+    layout (:data:`RETIRED_BUILD_FIELDS`) must be gone.
+    """
+    release = manifest.get("release")
+    if release != release_id:
+        failures.append(
+            f"{filename} 'release' is {release!r} but the release directory is "
+            f"named {release_id!r}."
+        )
+    build = manifest.get("build")
+    if not isinstance(build, str) or _SAFE_IDENTIFIER_RE.fullmatch(build) is None:
+        failures.append(
+            f"{filename} 'build' must be the build's name, matching "
+            f"{_SAFE_IDENTIFIER_RE.pattern}; got {build!r}."
+        )
+    for field in RETIRED_BUILD_FIELDS:
+        if field in manifest:
+            failures.append(
+                f"{filename} carries {field!r}; a build-folder manifest names "
+                "its build only as 'build', and the build has no tag."
+            )
+
+
+def _check_build_folder_builds_agree(
+    build_manifest: Mapping | None,
+    release_manifest: Mapping | None,
+    failures: list[str],
+) -> None:
+    """Both manifests of a build folder name the same build."""
+    if build_manifest is None or release_manifest is None:
+        return
+    builds = (build_manifest.get("build"), release_manifest.get("build"))
+    if all(isinstance(build, str) for build in builds) and builds[0] != builds[1]:
+        failures.append(
+            "build_manifest.json and release_manifest.json name different "
+            f"builds ({builds[0]!r} and {builds[1]!r})."
+        )
+
+
+def _is_bare_file_name(path: str) -> bool:
+    return bool(path) and path not in {".", ".."} and not set(path) & {"/", "\\"}
+
+
+def _check_build_folder_release_details(
+    manifest: Mapping,
+    release_id: str,
+    failures: list[str],
+    *,
+    compatible_packages: bool = True,
+) -> None:
+    """``built_at`` and the built-with packages, at the manifest's top level.
+
+    With ``compatible_packages`` the compatibility lists must also include
+    the built-with versions, as the national contract has always required.
+    The local-area contract never checked them, and still does not.
+    """
+    built_at = manifest.get("built_at")
+    if not isinstance(built_at, str) or not built_at:
+        failures.append(
+            "release_manifest.json 'built_at' must be the time the build was made."
+        )
+    built_with_core_package = manifest.get("built_with_core_package")
+    built_with_model_package = manifest.get("built_with_model_package")
+    model_package = _expected_model_package(release_id)
+    _check_release_manifest_package(
+        built_with_core_package,
+        field="built_with_core_package",
+        expected_name="policyengine-core",
+        failures=failures,
+    )
+    _check_release_manifest_package(
+        built_with_model_package,
+        field="built_with_model_package",
+        expected_name=model_package,
+        failures=failures,
+    )
+    if not compatible_packages:
+        return
+    _check_compatible_package_entries(
+        manifest.get("compatible_core_packages"),
+        field="compatible_core_packages",
+        expected_name="policyengine-core",
+        built_with_package=built_with_core_package,
+        built_with_field="built_with_core_package",
+        failures=failures,
+    )
+    _check_compatible_package_entries(
+        manifest.get("compatible_model_packages"),
+        field="compatible_model_packages",
+        expected_name=model_package,
+        built_with_package=built_with_model_package,
+        built_with_field="built_with_model_package",
+        failures=failures,
+    )
+
+
+def _check_build_folder_artifacts(artifacts: Mapping, failures: list[str]) -> None:
+    """Each file of a build folder: its role, a bare name and no revision."""
+    for key, entry in artifacts.items():
+        if not isinstance(entry, Mapping):
+            failures.append(
+                f"release_manifest.json artifact {key!r} must be an object."
+            )
+            continue
+        for field in ("kind", "path", "repo_id", "sha256", "role"):
+            if not entry.get(field):
+                failures.append(
+                    f"release_manifest.json artifact {key!r} is missing {field!r}."
+                )
+        if "revision" in entry:
+            failures.append(
+                f"release_manifest.json artifact {key!r} pins revision "
+                f"{entry['revision']!r}; a build folder's files are found through "
+                "releases.json, and the build has no tag."
+            )
+        path = entry.get("path")
+        if isinstance(path, str) and path and not _is_bare_file_name(path):
+            failures.append(
+                f"release_manifest.json artifact {key!r} path {path!r} must be a "
+                "bare file name in the build's folder."
+            )
+        role = entry.get("role")
+        expected_role = release_artifact_role(str(key), entry.get("kind"))
+        if role and role != expected_role:
+            failures.append(
+                f"release_manifest.json artifact {key!r} role is {role!r}, not "
+                f"{expected_role!r}."
+            )
+        if isinstance(role, str) and _ROLE_IDENTIFIER_RE.fullmatch(role) is None:
+            failures.append(
+                f"release_manifest.json artifact {key!r} role {role!r} must match "
+                f"{_ROLE_IDENTIFIER_RE.pattern}."
+            )
+        _check_sha256_field(
+            filename="release_manifest.json",
+            owner=f"artifact {key!r}.sha256",
+            value=entry.get("sha256"),
+            failures=failures,
+        )
+
+
 def _check_build_manifest(
     manifest: Mapping, release_id: str, failures: list[str]
 ) -> None:
     _check_base_pool_not_denied(manifest, failures)
-    build_id = manifest.get("build_id")
-    if not build_id:
-        failures.append("build_manifest.json is missing 'build_id'.")
-    elif build_id != release_id:
-        failures.append(
-            f"build_manifest.json 'build_id' is {build_id!r} but the release "
-            f"directory is named {release_id!r}; the directory name IS the "
-            f"build id."
+    if publishes_to_build_folder(release_id):
+        _check_build_folder_identity(
+            manifest, release_id, filename="build_manifest.json", failures=failures
         )
+    else:
+        build_id = manifest.get("build_id")
+        if not build_id:
+            failures.append("build_manifest.json is missing 'build_id'.")
+        elif build_id != release_id:
+            failures.append(
+                f"build_manifest.json 'build_id' is {build_id!r} but the release "
+                f"directory is named {release_id!r}; the directory name IS the "
+                f"build id."
+            )
     code = manifest.get("code")
     if not isinstance(code, Mapping):
         failures.append(
@@ -1418,8 +1845,14 @@ def _check_release_manifest(
             f"this library publishes version "
             f"{expected_schema_version!r}."
         )
+    build_folder = publishes_to_build_folder(release_id)
     build = manifest.get("build")
-    if not isinstance(build, Mapping) or not build.get("build_id"):
+    if build_folder:
+        _check_build_folder_identity(
+            manifest, release_id, filename="release_manifest.json", failures=failures
+        )
+        _check_build_folder_release_details(manifest, release_id, failures)
+    elif not isinstance(build, Mapping) or not build.get("build_id"):
         failures.append("release_manifest.json is missing 'build.build_id'.")
     elif build["build_id"] != release_id:
         failures.append(
@@ -1428,7 +1861,7 @@ def _check_release_manifest(
             f"{release_id!r}."
         )
     _check_uk_release_identity(manifest, release_id, failures)
-    if isinstance(build, Mapping):
+    if not build_folder and isinstance(build, Mapping):
         built_with_core_package = build.get("built_with_core_package")
         built_with_model_package = build.get("built_with_model_package")
         _check_release_manifest_package(
@@ -1479,8 +1912,11 @@ def _check_release_manifest(
         failures.append(
             "release_manifest.json must declare a non-empty 'artifacts' mapping."
         )
+    elif build_folder:
+        _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
+        _check_build_folder_artifacts(artifacts, failures)
+        _check_default_dataset_artifact(default_datasets, artifacts, failures)
     else:
-        line_cut_tag_re = _uk_line_cut_tag_re(release_id)
         _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
         for key, entry in artifacts.items():
             if not isinstance(entry, Mapping):
@@ -1494,14 +1930,8 @@ def _check_release_manifest(
                         f"release_manifest.json artifact {key!r} is missing {field!r}."
                     )
             revision = entry.get("revision")
-            revision_matches_release = (
-                revision == release_id
-                or (annual_revision is not None and revision == annual_revision)
-                or (
-                    line_cut_tag_re is not None
-                    and isinstance(revision, str)
-                    and line_cut_tag_re.fullmatch(revision) is not None
-                )
+            revision_matches_release = revision == release_id or (
+                annual_revision is not None and revision == annual_revision
             )
             # A present-but-non-string revision must fail here rather than
             # slide past the isinstance guard: publish collects only string
@@ -1510,15 +1940,9 @@ def _check_release_manifest(
             if revision and (
                 not isinstance(revision, str) or not revision_matches_release
             ):
-                expected = (
-                    f"the release id {release_id!r} or a "
-                    f"'{release_id}-<YYYYMMDDTHHMMSSZ>-<uuid8>' per-cut tag"
-                    if line_cut_tag_re is not None
-                    else f"the release id {release_id!r}"
-                )
                 failures.append(
                     f"release_manifest.json artifact {key!r} revision is "
-                    f"{revision!r}, expected {expected}."
+                    f"{revision!r}, expected the release id {release_id!r}."
                 )
             if isinstance(entry, Mapping):
                 _check_sha256_field(
@@ -1572,24 +1996,32 @@ def _check_release_manifest(
                     "release_manifest.json terminal gate report artifact "
                     "must have kind 'diagnostics'."
                 )
-        if isinstance(default_datasets, Mapping):
-            national = default_datasets.get("national")
-            if isinstance(national, str) and national not in artifacts:
-                failures.append(
-                    "release_manifest.json 'default_datasets.national' "
-                    f"points to {national!r}, which is not an artifact key."
-                )
-            elif isinstance(national, str):
-                default_artifact = artifacts.get(national)
-                if (
-                    isinstance(default_artifact, Mapping)
-                    and default_artifact.get("kind") != "microdata"
-                ):
-                    failures.append(
-                        "release_manifest.json 'default_datasets.national' "
-                        f"points to artifact {national!r}, whose kind is "
-                        f"{default_artifact.get('kind')!r}, not 'microdata'."
-                    )
+        _check_default_dataset_artifact(default_datasets, artifacts, failures)
+
+
+def _check_default_dataset_artifact(
+    default_datasets: object, artifacts: Mapping, failures: list[str]
+) -> None:
+    """``default_datasets.national`` names a microdata artifact."""
+    if not isinstance(default_datasets, Mapping):
+        return
+    national = default_datasets.get("national")
+    if isinstance(national, str) and national not in artifacts:
+        failures.append(
+            "release_manifest.json 'default_datasets.national' "
+            f"points to {national!r}, which is not an artifact key."
+        )
+    elif isinstance(national, str):
+        default_artifact = artifacts.get(national)
+        if (
+            isinstance(default_artifact, Mapping)
+            and default_artifact.get("kind") != "microdata"
+        ):
+            failures.append(
+                "release_manifest.json 'default_datasets.national' "
+                f"points to artifact {national!r}, whose kind is "
+                f"{default_artifact.get('kind')!r}, not 'microdata'."
+            )
 
 
 def _calibration_diagnostics_required(manifest: object) -> bool:
@@ -1631,10 +2063,10 @@ def _check_calibration_diagnostics_declaration(
         return
     status = declaration.get("status")
     if status == "available":
-        if declaration.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+        if not _is_hierarchy_diagnostics_version(declaration.get("schema_version")):
             failures.append(
                 "release_manifest.json available calibration diagnostics must "
-                f"declare schema_version {CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+                f"declare schema_version {_HIERARCHY_SCHEMA_VERSIONS_TEXT}."
             )
         _check_sha256_field(
             filename="release_manifest.json",
@@ -1660,12 +2092,13 @@ def _check_calibration_diagnostics_declaration(
                 )
         return
     if status == "failed":
-        if declaration.get("expected_schema_version") != (
-            CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+        if not _is_hierarchy_diagnostics_version(
+            declaration.get("expected_schema_version")
         ):
             failures.append(
                 "release_manifest.json failed calibration diagnostics must "
-                "declare the current expected_schema_version."
+                "declare the current expected_schema_version "
+                f"({_HIERARCHY_SCHEMA_VERSIONS_TEXT})."
             )
         for field in ("error_code", "message"):
             if not isinstance(declaration.get(field), str) or not declaration[field]:
@@ -1883,6 +2316,7 @@ def _check_compatible_package_entries(
     expected_name: str | None,
     built_with_package: object,
     failures: list[str],
+    built_with_field: str | None = None,
 ) -> None:
     if expected_name is None:
         return
@@ -1953,7 +2387,7 @@ def _check_compatible_package_entries(
     try:
         version = Version(built_version)
     except InvalidVersion:
-        built_field = (
+        built_field = built_with_field or (
             "build.built_with_core_package"
             if field == "compatible_core_packages"
             else "build.built_with_model_package"
@@ -1974,7 +2408,8 @@ def _check_compatible_package_entries(
 def _expected_model_package(release_id: str) -> str | None:
     if release_id.startswith("populace-us-"):
         return "policyengine-us"
-    if release_id == _UK_NATIONAL_RELEASE_ID:
+    if release_id.startswith("microcosm-uk-"):
+        # The national, dense and local-area releases.
         return "policyengine-uk"
     if release_id.startswith("populace-uk-"):
         return "policyengine-uk"
@@ -2064,6 +2499,30 @@ def _check_uk_terminal_gate_links(
                 "build_manifest.json and release_manifest.json terminal gate "
                 "report sha256 values must match."
             )
+
+
+def _uk_input_mass_reference_named(identity: object, label: object) -> bool:
+    """Whether an input-mass report names the UK build it compared with."""
+
+    if not isinstance(identity, Mapping) or set(identity) != set(
+        _UK_INPUT_MASS_REFERENCE_IDENTITY_FIELDS
+    ):
+        return False
+    if not isinstance(label, str) or label.count("@") != 1:
+        return False
+    release, build = label.split("@", 1)
+    sha256 = identity.get("sha256")
+    return (
+        release in _UK_CUT_REFERENCE_RELEASES
+        and bool(build)
+        and identity.get("revision") == build
+        and isinstance(sha256, str)
+        and _SHA256_RE.fullmatch(sha256) is not None
+        and all(
+            isinstance(identity.get(field), str) and identity.get(field)
+            for field in ("filename", "vintage")
+        )
+    )
 
 
 def _uk_terminal_observable_matches(observed: object, expected: object) -> bool:
@@ -2301,12 +2760,14 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
                 "reference_scope_note must be a non-empty string."
             )
-        identity = input_mass.get("reference_identity")
-        if identity != _UK_INPUT_MASS_REFERENCE_IDENTITY:
+        if not _uk_input_mass_reference_named(
+            input_mass.get("reference_identity"), input_mass.get("reference_label")
+        ):
             failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
-                "reference_identity must match the active reviewed "
-                f"efrs-post-calibration reference {_UK_INPUT_MASS_REFERENCE_IDENTITY}."
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details must "
+                "name the reference build it compared with: reference_label "
+                "<release>@<build> of a UK line, and reference_identity with that "
+                "build's file name and sha256."
             )
         if not _uk_terminal_observable_matches(
             input_mass.get("relative_tolerance"),
@@ -2325,6 +2786,20 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
                 "minimum_reference_total must equal the committed spec value "
                 f"{_UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL}."
+            )
+        if not _uk_terminal_observable_matches(
+            input_mass.get("maximum_relative_drop"),
+            _UK_INPUT_MASS_MAXIMUM_RELATIVE_DROP,
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                "maximum_relative_drop must equal the committed spec value "
+                f"{_UK_INPUT_MASS_MAXIMUM_RELATIVE_DROP}."
+            )
+        if input_mass.get("excess_drops") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
+                "requires details.excess_drops to be an empty list."
             )
         if input_mass.get("stale_exclusions") != []:
             failures.append(
@@ -2613,15 +3088,6 @@ def _check_uk_terminal_gate_report(
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.evidence_sha256 "
                 "must exactly match build_manifest.json terminal_gate_evidence."
-            )
-        if (
-            "input_mass_parity" in build_evidence
-            and evidence.get("input_mass_parity")
-            != _UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
-        ):
-            failures.append(
-                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity evidence "
-                "digest must bind the reviewed enhanced-FRS incumbent totals."
             )
         diagnostic_weights: Mapping | None = None
         if calibration_diagnostics is not None:
@@ -2995,15 +3461,6 @@ def _check_uk_gate_battery_report(
             failures=failures,
         )
     if (
-        "uk_input_mass_parity" in evidence
-        and evidence.get("uk_input_mass_parity")
-        != _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
-    ):
-        failures.append(
-            f"{file} uk_input_mass_parity evidence digest must bind the "
-            "reviewed enhanced-FRS incumbent totals."
-        )
-    if (
         "uk_degenerate_release_surface" in evidence
         and evidence.get("uk_degenerate_release_surface")
         != _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
@@ -3171,6 +3628,39 @@ def _check_uk_release_certification(
             f"{file} release_id {certification.get('release_id')!r} does not "
             f"match the release under validation ({release_id!r})."
         )
+    reference = certification.get("reference")
+    if (
+        not isinstance(reference, Mapping)
+        or set(reference) != _UK_CERTIFICATION_REFERENCE_FIELDS
+    ):
+        failures.append(
+            f"{file} reference must name the build the cut was compared with: "
+            f"exactly {sorted(_UK_CERTIFICATION_REFERENCE_FIELDS)}."
+        )
+    else:
+        package = reference.get("built_with_model_package")
+        if (
+            reference.get("release") != _UK_NATIONAL_RELEASE_ID
+            or not isinstance(reference.get("build"), str)
+            or not reference.get("build")
+            or not isinstance(reference.get("filename"), str)
+            or not reference.get("filename")
+            or not isinstance(reference.get("sha256"), str)
+            or not _SHA256_RE.fullmatch(reference.get("sha256"))
+            or not isinstance(package, Mapping)
+            or set(package) != {"name", "version"}
+            or package.get("name") != "policyengine-uk"
+            or not isinstance(package.get("version"), str)
+            or reference.get("selection") not in _UK_CERTIFICATION_REFERENCE_SELECTIONS
+        ):
+            failures.append(
+                f"{file} reference must be a build of {_UK_NATIONAL_RELEASE_ID} "
+                "with its file name, sha256 digest, built-with policyengine-uk "
+                "version and selection (current or pinned)."
+            )
+    _check_uk_certification_since_baseline(
+        certification.get("since_baseline"), file=file, failures=failures
+    )
     parent_spine = certification.get("parent_spine")
     parent_sha = (
         parent_spine.get("sha256") if isinstance(parent_spine, Mapping) else None
@@ -3411,9 +3901,7 @@ def _check_calibration_diagnostics(
     """
 
     schema_version = diagnostics.get("schema_version")
-    if not grandfathered_uk_june and schema_version == (
-        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-    ):
+    if not grandfathered_uk_june and _is_hierarchy_diagnostics_version(schema_version):
         try:
             parse_calibration_diagnostics(diagnostics)
         except ValidationError as error:
@@ -4467,7 +4955,15 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     build_manifest_path = release_dir / "build_manifest.json"
     if build_manifest_path.is_file():
         build_manifest = _load_json(build_manifest_path, failures)
-        if build_manifest is not None:
+        if build_manifest is not None and publishes_to_build_folder(release_id):
+            _check_build_folder_identity(
+                build_manifest,
+                release_id,
+                filename="build_manifest.json",
+                failures=failures,
+            )
+            _check_build_folder_builds_agree(build_manifest, release_manifest, failures)
+        elif build_manifest is not None:
             build_id = build_manifest.get("build_id")
             if build_id != release_id:
                 failures.append(
@@ -4513,10 +5009,10 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
                 )
             else:
                 _check_local_area_calibration_diagnostics(diagnostics, failures)
-            if (
-                _is_uk_exact_k_release_id(release_id)
-                and diagnostics.get("schema_version")
-                != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            if _is_uk_exact_k_release_id(
+                release_id
+            ) and not _is_hierarchy_diagnostics_version(
+                diagnostics.get("schema_version")
             ):
                 _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
@@ -4577,7 +5073,8 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     opt-in diagnostics (microcosm#1301): the coverage says whether each ran,
     the incumbent files ship all together or not at all, and the manifest's
     reviewed limitations must say what the release does not claim.
-    Artifacts pin to the release id or to one of its immutable per-cut tags.
+    Its builds publish into their own folders, so the manifests name the
+    build (the calibration attempt) and its artifacts pin no revision.
     Per-area support figures ship (María's ruling of 2026-10-26 dropped their
     withholding, microcosm#1301), so the line returns no warnings.
     """
@@ -4594,15 +5091,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
         release_dir, release_manifest or {}, failures
     )
     if release_manifest is not None:
-        _check_local_area_release_manifest(
-            release_manifest,
-            release_id,
-            failures,
-            revision_ok=lambda revision: (
-                revision == release_id
-                or _UK_DENSE_CUT_TAG_RE.fullmatch(revision) is not None
-            ),
-        )
+        _check_local_area_release_manifest(release_manifest, release_id, failures)
         namespace = release_manifest.get("namespace")
         if namespace != _UK_DENSE_NAMESPACE:
             failures.append(
@@ -4610,6 +5099,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
                 f"{_UK_DENSE_NAMESPACE!r}, got {namespace!r}."
             )
     build_manifest_path = release_dir / "build_manifest.json"
+    # The build is the calibration attempt the signed report is bound to.
     attempt_id: str | None = None
     if build_manifest_path.is_file():
         build_manifest = _load_json(build_manifest_path, failures)
@@ -4619,20 +5109,16 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
                 failures.append(
                     "build_manifest.json code.git_dirty must be false for release."
                 )
-            candidate_attempt = build_manifest.get("attempt_id")
-            if isinstance(candidate_attempt, str) and candidate_attempt:
-                attempt_id = candidate_attempt
-            else:
-                failures.append(
-                    "build_manifest.json must carry the calibration 'attempt_id' "
-                    "the signed gate report is bound to."
-                )
-        if build_manifest is not None and build_manifest.get("build_id") != release_id:
-            failures.append(
-                "build_manifest.json 'build_id' is "
-                f"{build_manifest.get('build_id')!r} but the release directory "
-                f"is named {release_id!r}."
+            _check_build_folder_identity(
+                build_manifest,
+                release_id,
+                filename="build_manifest.json",
+                failures=failures,
             )
+            _check_build_folder_builds_agree(build_manifest, release_manifest, failures)
+            build = build_manifest.get("build")
+            if isinstance(build, str) and build:
+                attempt_id = build
     gate_path = release_dir / "gate_summary.json"
     if gate_path.is_file():
         gate_summary = _load_json(gate_path, failures)
@@ -4642,9 +5128,7 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> list[s
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
-            if diagnostics.get("schema_version") == (
-                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-            ):
+            if _is_hierarchy_diagnostics_version(diagnostics.get("schema_version")):
                 _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
     report: Mapping | None = None
@@ -5398,8 +5882,6 @@ def _check_local_area_release_manifest(
     manifest: Mapping,
     release_id: str,
     failures: list[str],
-    *,
-    revision_ok: Callable[[str], bool] | None = None,
 ) -> None:
     schema_version = manifest.get("schema_version")
     if schema_version != RELEASE_MANIFEST_SCHEMA_VERSION:
@@ -5407,8 +5889,16 @@ def _check_local_area_release_manifest(
             f"release_manifest.json 'schema_version' is {schema_version!r}; "
             f"this library publishes version {RELEASE_MANIFEST_SCHEMA_VERSION}."
         )
+    build_folder = publishes_to_build_folder(release_id)
     build = manifest.get("build")
-    if not isinstance(build, Mapping) or not build.get("build_id"):
+    if build_folder:
+        _check_build_folder_identity(
+            manifest, release_id, filename="release_manifest.json", failures=failures
+        )
+        _check_build_folder_release_details(
+            manifest, release_id, failures, compatible_packages=False
+        )
+    elif not isinstance(build, Mapping) or not build.get("build_id"):
         failures.append("release_manifest.json is missing 'build.build_id'.")
     elif build["build_id"] != release_id:
         failures.append(
@@ -5468,6 +5958,9 @@ def _check_local_area_release_manifest(
             "release_manifest.json must declare exactly one microdata "
             f"artifact; found {sorted(microdata)!r}."
         )
+    if build_folder:
+        _check_build_folder_artifacts(artifacts, failures)
+        return
     for name, entry in artifacts.items():
         if not isinstance(entry, Mapping):
             failures.append(
@@ -5480,11 +5973,7 @@ def _check_local_area_release_manifest(
                     f"release_manifest.json artifact {name!r} is missing {field!r}."
                 )
         revision = entry.get("revision")
-        pinned = (
-            revision == release_id
-            if revision_ok is None
-            else bool(revision_ok(str(revision)))
-        )
+        pinned = revision == release_id
         if revision is not None and not pinned:
             failures.append(
                 f"release_manifest.json artifact {name!r} revision "
@@ -6487,7 +6976,7 @@ def _check_uk_candidate_restated_losses(
 def _check_local_area_calibration_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
-    if diagnostics.get("schema_version") == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+    if _is_hierarchy_diagnostics_version(diagnostics.get("schema_version")):
         target_surface = diagnostics.get("target_surface")
         n_targets = (
             target_surface.get("n_targets")
@@ -6640,7 +7129,10 @@ def validate_release_dir(
 
     The directory name is the build id (``populace-us-2024-<sha>-<date>``)
     and both manifests must agree with the directory about which build this
-    is. Which checks apply is keyed off ``release_manifest.json``'s
+    is. A release that publishes each build into its own folder
+    (:func:`publishes_to_build_folder`) is named by the directory instead,
+    and both manifests name it and the build in the build-folder layout.
+    Which checks apply is keyed off ``release_manifest.json``'s
     ``dataset_role`` (microcosm#398):
 
     - ``national_default`` (or absent — every pre-role release): the full
@@ -6841,9 +7333,9 @@ def validate_release_dir(
             if (
                 _is_uk_exact_k_release_id(release_id)
                 or release_id == _UK_NATIONAL_RELEASE_ID
-            ) and diagnostics.get(
-                "schema_version"
-            ) != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+            ) and not _is_hierarchy_diagnostics_version(
+                diagnostics.get("schema_version")
+            ):
                 _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_exact_k_diagnostics_identity(
@@ -6939,6 +7431,8 @@ def validate_release_dir(
                 failures,
             )
 
+    if publishes_to_build_folder(release_id):
+        _check_build_folder_builds_agree(build_manifest, release_manifest, failures)
     _check_cross_manifest_consistency(
         build_manifest,
         release_manifest,
@@ -7962,8 +8456,8 @@ def _check_uk_dense_surface_files(
         )
         original_diagnostics = loaded["source_calibration_diagnostics.json"]
         if shipped_diagnostics:
-            if original_diagnostics.get("schema_version") == (
-                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            if _is_hierarchy_diagnostics_version(
+                original_diagnostics.get("schema_version")
             ):
                 shipped_sha256 = _sha256(release_dir / "calibration_diagnostics.json")
                 if shipped_sha256 != identity["candidate_diagnostics_sha256"]:
@@ -7993,7 +8487,7 @@ def _check_uk_dense_surface_files(
                         "calibration_diagnostics.json changed original evaluated "
                         "diagnostic values."
                     )
-        if build and report and report.get("release_id") != build.get("attempt_id"):
+        if build and report and report.get("release_id") != build.get("build"):
             failures.append(
                 "the signed gate report is not bound to the released attempt."
             )

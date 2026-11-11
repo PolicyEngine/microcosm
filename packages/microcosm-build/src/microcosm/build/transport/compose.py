@@ -50,7 +50,8 @@ from its binding, including for extension nodes.
 Composition refuses an extension whose nodes change any skeleton node's
 compiled predecessors (for example a new member of a calibration base
 version). Explicit ``package_inputs`` may add extension artifacts to the final
-receipt; every other skeleton predecessor set remains fixed.
+receipt, and explicit ``gate_inputs`` may add extension evidence to a skeleton
+gate battery; every other skeleton predecessor set remains fixed.
 
 Composition reads no donor, no facts and no engine, and writes nothing.
 Activation checks selected resource paths, non-null selected roots and encoding
@@ -133,6 +134,12 @@ from .evidence_contract import (
     WEIGHTS_AUDIT_REF,
     WEIGHTS_AUDIT_TYPE,
     binding_relation_inputs,
+    binding_view_entities,
+)
+from .income_evidence_kernels import (
+    INCOME_IDENTITY_REF,
+    NATIVE_BAND_REPORT_REF,
+    OMISSION_REGISTER_REF,
 )
 from .money_kernels import (
     MONEY_ANNUAL_TRANSFERS_REF,
@@ -140,7 +147,7 @@ from .money_kernels import (
     MONEY_NORMALIZE_REF,
 )
 from .reference_selection import selection_resources, validate_exemptions
-from .registry import binding_relation_dependencies
+from .registry import binding_relation_dependencies, binding_view_dependencies
 from .target_kernels import TARGET_COMPILATION_KERNELS
 from .unit_declarations import (
     CREATE_REFS,
@@ -208,6 +215,9 @@ SKELETON_KERNELS = CREATE_REFS | frozenset(
         WEIGHTS_AUDIT_REF,
         DONOR_RANGES_REF,
         SUPPORT_BOUNDS_REF,
+        INCOME_IDENTITY_REF,
+        OMISSION_REGISTER_REF,
+        NATIVE_BAND_REPORT_REF,
         "export.prepare@1",
         "export.readback@1",
         "transport.package@1",
@@ -621,7 +631,9 @@ def measurement_proofs(
     columns. "Upstream" is ancestry in the declared
     graph under the S5 guard's rule (:func:`_declared_calibration_predecessors`);
     composition then checks the same producers against the compiled graph's
-    exact predecessors (:func:`_check_measurement_proofs`). Returns the
+    exact predecessors (:func:`_check_measurement_proofs`). A calibration node
+    that a transport extension adds has no row here, so that check proves its
+    producer from the compiled graph under the same two rules. Returns the
     proofs by measurement id and, for each measurement without one, the
     reason it stays parked.
     """
@@ -714,20 +726,32 @@ def measurement_proofs(
 
 
 def _check_measurement_proofs(
-    spec: Mapping[str, object], graph: Graph, compiled: CompiledGraph
+    spec: Mapping[str, object],
+    graph: Graph,
+    compiled: CompiledGraph,
+    *,
+    extension_nodes: Iterable[str] = (),
 ) -> None:
-    """Refuse a declared proof the compiled graph's ancestry contradicts.
+    """Refuse a composed graph whose calibration ancestry breaks a proof.
 
     For each proved measurement and each calibration node of the composed
     graph, the compiled ancestors of that node must hold exactly one node
-    whose params declare the measurement, and it must be the proof's
-    producer for that node. That producer must also be the only compiled
+    whose params declare the measurement. For a node of the declared graph,
+    it must be the proof's producer for that node. The declaration never
+    names a calibration node that a transport extension adds
+    (``extension_nodes``), so for one of those the compiled graph proves the
+    producer under R2C-1's rule: the one declarer must output each of the
+    proof's columns. Either way, the producer must also be the only compiled
     ancestor whose outputs or EXPAND cells hold each of the proof's columns
-    (R2C-15).
+    (R2C-15). It returns at once when the declaration proves no measurement.
+    Otherwise, as the declared check does, it also refuses a node whose
+    ``measurement_id`` is neither ``None`` nor a nonempty string. Composition
+    runs this check on the skeleton and again on the extended graph.
     """
     proofs, _ = measurement_proofs(spec)
     if not proofs:
         return
+    extension_nodes = frozenset(extension_nodes)
     roots = {node.id for node in graph.nodes if node.kernel.startswith("calibrate.")}
     endpoint = transport_endpoints(spec).get("calibration")
     if isinstance(endpoint, str):
@@ -737,25 +761,63 @@ def _check_measurement_proofs(
         for node in graph.nodes
         if isinstance(node.params, Mapping) and MEASUREMENT_PARAM in node.params
     }
+    malformed = sorted(
+        name
+        for name, value in declared.items()
+        if value is not None and not _is_text(value)
+    )
+    if malformed:
+        raise ValueError(
+            f"Composition refuses: nodes {malformed} declare a measurement_id "
+            "that is not a string."
+        )
     by_id = {node.id: node for node in graph.nodes}
     _, expand_cells = _precalibration_expansions(graph)
     for binding, proof in sorted(proofs.items()):
         named = sorted(name for name, value in declared.items() if value == binding)
+        columns = [tuple(name.split(".", 1)) for name in proof["columns"]]
         for root in sorted(roots):
             closure = _ancestor_closure(compiled.predecessors, {root})
             found = [name for name in named if name in closure]
-            if found != [proof["producers"].get(root)]:
-                raise ValueError(
+            if root in extension_nodes:
+                prefix = (
+                    f"Measurement {binding!r}: the composed graph proves no "
+                    f"producer for extension calibration node {root!r}; "
+                )
+                if len(found) != 1:
+                    raise ValueError(
+                        prefix + _measurement_refusal(binding, root, found, named) + "."
+                    )
+                (producer,) = found
+                outputs = {
+                    (output.entity, output.column) for output in by_id[producer].outputs
+                }
+                missing = [
+                    f"{entity}.{column}"
+                    for entity, column in columns
+                    if (entity, column) not in outputs
+                ]
+                if missing:
+                    raise ValueError(
+                        prefix + f"its one declarer {producer!r} does not write "
+                        f"{missing}."
+                    )
+            else:
+                prefix = (
                     f"Measurement {binding!r}: the compiled graph contradicts "
                     "the declared proof; "
-                    + _measurement_refusal(binding, root, found, named)
-                    + f", and the declaration proved {proof['producers'].get(root)!r}."
                 )
-            columns = [tuple(name.split(".", 1)) for name in proof["columns"]]
+                producer = proof["producers"].get(root)
+                if found != [producer]:
+                    raise ValueError(
+                        prefix
+                        + _measurement_refusal(binding, root, found, named)
+                        + f", and the declaration proved {producer!r}."
+                    )
             refusal = _second_writer_refusal(
                 binding,
                 root,
-                proof["producers"][root],
+                producer,
                 {
                     (entity, column): sorted(
                         name
@@ -770,10 +832,7 @@ def _check_measurement_proofs(
                 },
             )
             if refusal is not None:
-                raise ValueError(
-                    f"Measurement {binding!r}: the compiled graph contradicts "
-                    f"the declared proof; {refusal}."
-                )
+                raise ValueError(prefix + f"{refusal}.")
 
 
 def reference_profile_view(
@@ -1007,6 +1066,15 @@ def _reference_activation_gaps(
 _HOLDOUT_REFERENCES = "holdout_references"
 
 
+def _is_holdout(row: object) -> bool:
+    """Whether a ``holdout_references`` row holds out its measure.
+
+    Activation's guard and the stage guard both read holdouts through this.
+    """
+
+    return isinstance(row, Mapping) and _is_text(row.get("measure"))
+
+
 def _holdout_separation_gaps(
     documents: Iterable[tuple[str, Mapping]],
 ) -> Iterator[str]:
@@ -1015,20 +1083,31 @@ def _holdout_separation_gaps(
     A holdout row tests the calibrated model against a fact it never saw, so
     no other reference document may carry a row with the same ``measure``,
     whatever its entity. Only rows of ``holdout_references`` count as
-    holdouts; a spec without that document has nothing to guard.
+    holdouts; a spec without that document has nothing to guard. A holdout
+    row that is not an object with a text measure is a gap itself, since
+    neither guard can hold it out.
     """
 
     documents = tuple(documents)
     holdouts: dict[str, list[Mapping]] = {}
+    seen = set()
     for resource, document in documents:
         if resource != _HOLDOUT_REFERENCES:
             continue
-        for row in document.get("target_references", ()):
-            if isinstance(row, Mapping) and _is_text(row.get("measure")):
+        for index, row in enumerate(document.get("target_references", ())):
+            if _is_holdout(row):
                 holdouts.setdefault(row["measure"], []).append(row)
+                continue
+            name = row.get("name", "?") if isinstance(row, Mapping) else "?"
+            gap = (
+                f"holdout separation: {resource}.target_references[{index}] "
+                f"({name}) is not an object with a text measure"
+            )
+            if gap not in seen:
+                seen.add(gap)
+                yield gap
     if not holdouts:
         return
-    seen = set()
     for resource, document in documents:
         if resource == _HOLDOUT_REFERENCES:
             continue
@@ -2130,6 +2209,23 @@ def _check_structural_columns(spec: Mapping[str, object]) -> None:
         )
 
 
+def _check_view_bindings_have_a_closure(spec: Mapping[str, object]) -> None:
+    """Every binding that declares views needs the spec's input closure."""
+
+    if _has_resource(spec, _CLOSURE_RESOURCE):
+        return
+    named = sorted(
+        binding
+        for binding, row in _binding_modules(spec).items()
+        if binding_view_entities(row)
+    )
+    if named:
+        raise ValueError(
+            f"Rules bindings {named} declare views, but the spec has no "
+            f"{_CLOSURE_RESOURCE!r} resource to close their inputs."
+        )
+
+
 def _check_structural_rows_written(spec: Mapping[str, object], graph: Graph) -> None:
     """Every declared ``structural_columns`` row names a column the graph writes.
 
@@ -2204,6 +2300,41 @@ def _source_codecs(spec: Mapping[str, object]) -> dict[str, object]:
     return out
 
 
+def _closure_defaults(spec: Mapping[str, object]) -> dict[tuple, str]:
+    """(frame entity, input) -> the closure entry of each defaulted root.
+
+    A defaulted root on a binding-local view's logical entity is a person
+    column, because the view reads the person table; every other entity
+    maps through ``entity_names``.
+    """
+    defaults: dict[tuple, str] = {}
+    if not (
+        _has_resource(spec, _CLOSURE_RESOURCE)
+        and _has_resource(spec, _BINDINGS_RESOURCE)
+    ):
+        return defaults
+    names = transport_resource(spec, _BINDINGS_RESOURCE).get("entity_names", {})
+    to_frame = {engine: frame for frame, engine in names.items()}
+    view_entities = {
+        (row.get("rulespec_path"), entity)
+        for row in _binding_modules(spec).values()
+        for entity in binding_view_entities(row)
+    }
+    person = _person_entity(spec) if view_entities else None
+    for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ()):
+        if isinstance(entry, Mapping) and entry.get("class") == "defaulted":
+            frame_entity = (
+                person
+                if (entry.get("rulespec_path"), entry.get("entity")) in view_entities
+                else to_frame.get(entry.get("entity"))
+            )
+            defaults[(frame_entity, entry.get("input"))] = (
+                f"{entry.get('rulespec_path')} {entry.get('entity')}."
+                f"{entry.get('input')}"
+            )
+    return defaults
+
+
 def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
     """Every column the support gate covers, classed by its producer in lineage.
 
@@ -2251,19 +2382,7 @@ def _support_roster(spec: Mapping[str, object]) -> dict[str, object]:
                 _raw_transport_resource(spec, MONEY_NORMALIZATION_RESOURCE)
             )
         )
-    defaults: dict[tuple, str] = {}
-    if _has_resource(spec, _CLOSURE_RESOURCE) and _has_resource(
-        spec, _BINDINGS_RESOURCE
-    ):
-        names = transport_resource(spec, _BINDINGS_RESOURCE).get("entity_names", {})
-        to_frame = {engine: frame for frame, engine in names.items()}
-        for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ()):
-            if isinstance(entry, Mapping) and entry.get("class") == "defaulted":
-                frame_entity = to_frame.get(entry.get("entity"))
-                defaults[(frame_entity, entry.get("input"))] = (
-                    f"{entry.get('rulespec_path')} {entry.get('entity')}."
-                    f"{entry.get('input')}"
-                )
+    defaults = _closure_defaults(spec)
     reserved = []
     for row in rows:
         for item in _sequence(
@@ -2440,13 +2559,13 @@ def _person_entity(spec: Mapping[str, object]) -> str:
 
 
 def _check_closure_relation_slices(spec: Mapping[str, object], graph: Graph) -> None:
-    """A closure producer's person slice carries every declared relation column.
+    """A closure producer's person slice carries every relation and view column.
 
     A ``Slice`` delivers only the columns it names, and
     ``transport.input_closure@1`` reads each relation input's physical
     ``column`` and declared ``role_column`` on the person entity. A slice that
     omits one would report a ``gap`` the frame does not have, so composition
-    refuses it by name.
+    refuses it by name. Each binding-local view's selector is required too.
     """
 
     nodes = [node for node in graph.nodes if node.kernel == INPUT_CLOSURE_REF]
@@ -2467,6 +2586,15 @@ def _check_closure_relation_slices(spec: Mapping[str, object], graph: Graph) -> 
                 for item in binding_relation_inputs(row)
                 for column in (item.column, item.role_column)
                 if column is not None
+            }
+            | {
+                view["selector"]["column"]
+                for row in (rows if isinstance(rows, list) else ())
+                if isinstance(row, Mapping) and isinstance(row.get("views"), list)
+                for view in row["views"]
+                if isinstance(view, Mapping)
+                and isinstance(view.get("selector"), Mapping)
+                and isinstance(view["selector"].get("column"), str)
             }
         )
         if not required:
@@ -2992,7 +3120,13 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
         if _has_resource(spec, "holdout_references")
         else ()
     )
-    holdout_columns = {(row["entity"], row["measure"]) for row in holdout}
+    # Activation's guard reports each row this skips.
+    holdout = [row for row in holdout if _is_holdout(row)]
+    holdout_columns = {
+        (row["entity"], row["measure"])
+        for row in holdout
+        if _is_text(row.get("entity"))
+    }
     # A stage output measures a holdout's concept on any entity.
     holdout_measures = {row["measure"]: row for row in holdout}
     holdout_modules = {
@@ -3105,7 +3239,7 @@ def _precalibration_stages(spec: Mapping[str, object]) -> dict[str, Mapping]:
                     "precalibration_stages output is a holdout measure: stage "
                     f"{identifier!r} output ({entity}, {column}) measures the "
                     f"concept of holdout_references.{holdout_row.get('name', '?')} "
-                    f"({holdout_row['entity']}, {holdout_row['measure']})."
+                    f"({holdout_row.get('entity', '?')}, {holdout_row['measure']})."
                 )
         if stage["rulespec_path"] in holdout_modules:
             raise ValueError("precalibration_stages module produces a holdout measure.")
@@ -4146,11 +4280,21 @@ def transport_rules_node(
 
 
 def _require_relation_inputs(spec, binding_id, inputs) -> None:
+    """A rules node slices its binding's relation and view dependencies whole.
+
+    A view binding needs the spec's input closure. Its node must also slice,
+    on the person entity, every input the reviewed closure encodes (other
+    than through a graph node) or defaults on the view's logical entity: the
+    engine would otherwise run the view without a column the closure says the
+    frame carries.
+    """
     document = transport_resource(spec, "axiom_rules_bindings")
     bindings = [
         row for row in document.get("bindings", ()) if row.get("id") == binding_id
     ]
-    if len(bindings) != 1 or "relations" not in bindings[0]:
+    if len(bindings) != 1 or (
+        "relations" not in bindings[0] and "views" not in bindings[0]
+    ):
         return
     declaration = _versioned_create_units(spec)
     if declaration is None:
@@ -4158,13 +4302,55 @@ def _require_relation_inputs(spec, binding_id, inputs) -> None:
             CREATE_V1_REF, transport_resource(spec, "benefit_unit_rule")
         )
     schema = declaration.entity_schema()[0]
-    dependencies = binding_relation_dependencies(
-        bindings[0], schema=schema, entity_names=document["entity_names"]
-    )
+    dependencies = {
+        *binding_relation_dependencies(
+            bindings[0], schema=schema, entity_names=document["entity_names"]
+        ),
+        *binding_view_dependencies(
+            bindings[0], schema=schema, entity_names=document["entity_names"]
+        ),
+    }
     missing = missing_relation_inputs(dependencies, inputs, schema)
     if missing:
         raise ValueError(
             f"Rules binding {binding_id!r} needs whole-table relation inputs {missing}."
+        )
+    logical = binding_view_entities(bindings[0])
+    if not logical:
+        return
+    if not _has_resource(spec, _CLOSURE_RESOURCE):
+        raise ValueError(
+            f"Rules binding {binding_id!r} runs views on {sorted(logical)}, but "
+            f"the spec has no {_CLOSURE_RESOURCE!r} resource to close their inputs."
+        )
+    path = bindings[0].get("rulespec_path")
+    closed = sorted(
+        {
+            entry.get("input")
+            for entry in transport_resource(spec, _CLOSURE_RESOURCE).get("entries", ())
+            if isinstance(entry, Mapping)
+            and entry.get("rulespec_path") == path
+            and entry.get("entity") in logical
+            and (
+                entry.get("class") == "defaulted"
+                or (
+                    entry.get("class") == "encoded"
+                    and entry.get("encoded_by") != "graph_node"
+                )
+            )
+        }
+    )
+    sliced = {
+        column
+        for item in inputs
+        if item.entity == schema.person_entity
+        for column in item.columns
+    }
+    absent = [name for name in closed if name not in sliced]
+    if absent:
+        raise ValueError(
+            f"Rules binding {binding_id!r} runs views on {sorted(logical)} whose "
+            f"closed inputs {absent} its {schema.person_entity!r} slice omits."
         )
 
 
@@ -4412,6 +4598,7 @@ def compose_transport_graph(
     validate_transport_activation(spec)
     _check_unreached_requests(spec, config.engine_refs)
     _check_structural_columns(spec)
+    _check_view_bindings_have_a_closure(spec)
     from .entitlement import transport_extensions
 
     config = replace(config, extensions=transport_extensions(spec, config.extensions))
@@ -4537,6 +4724,9 @@ def compose_transport_graph(
     extended = compile_graph(graph)
     _check_extension_checkpoints(spec, config, graph, extended)
     validate_transport_calibration_ancestry(spec, graph=graph, config=config)
+    _check_measurement_proofs(
+        spec, graph, extended, extension_nodes=(node.id for node in additional)
+    )
     # Money ownership is checked after each graph pass of the ancestry guard.
     _check_single_money_normalization(spec, graph, extended)
     _check_money_bridge_owners(graph, extended)

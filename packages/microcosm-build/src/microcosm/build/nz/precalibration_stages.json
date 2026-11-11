@@ -79,6 +79,31 @@
         }
       ],
       "citation": "https://github.com/TheAxiomFoundation/rulespec-nz/blob/8dc2507d5f10a0467c285fed54d018ee37246798/nz/statutes/income_tax/schedule_1/individual_income_tax.yaml (SHA-256 5ff8e7bf645b85e3d59d612e3c6eb70e09090fb13b40d49c3c5f8a4202e0b82a); https://www.workandincome.govt.nz/products/benefit-rates/benefit-rates-april-2026.html. Each gross-up inverts annualised Schedule 1 before credits over 52 weeks independently of other income and recovers authoritative annual cents."
+    },
+    {
+      "id": "nz.precal.nz_super",
+      "rules_binding": "nz_super",
+      "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+      "outputs": [
+        {
+          "entity": "person",
+          "column": "entitled_to_new_zealand_superannuation",
+          "purpose": "classification"
+        },
+        {
+          "entity": "person",
+          "column": "nz_super_weekly_amount_before_tax",
+          "purpose": "calibration_measure"
+        }
+      ],
+      "derived_outputs": [
+        {
+          "entity": "person",
+          "column": "nz_super_weekly_amount_before_tax_cents",
+          "purpose": "calibration_measure"
+        }
+      ],
+      "citation": "https://github.com/TheAxiomFoundation/rulespec-nz/blob/8dc2507d5f10a0467c285fed54d018ee37246798/nz/statutes/new_zealand_superannuation/core.yaml (SHA-256 d8ea0d15d97081031dcba242e66704c800bcf295e19d73bd173c56bd92d497b4). The NZS stage supplies eligibility for the receipt layer and the before-tax weekly amount; its cents node rounds that amount half-even, and the annual-transfers node feeds it to the stand-in income measure."
     }
   ]
 }

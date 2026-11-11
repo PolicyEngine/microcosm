@@ -87,6 +87,7 @@ from microcosm.graph import (
     Slice,
 )
 from microcosm.graph.canonical import canonical_json
+from test_support.microcosm_build.money_normalization import graph_declaration
 from test_support.microcosm_build.transport_composed import make_composed_fixture
 from test_support.paths import paths_for
 
@@ -125,6 +126,48 @@ LEAF_ADDED_MODULES = frozenset(
         "microcosm.graph.serialize",
         "microcosm.graph.store",
         "microcosm.graph.weight_update",
+    ]
+)
+#: Modules the bindings reach without the leaf that base 25c8cc14 did not
+#: have. Since #1342, ``microcosm.calibrate.diagnostics`` imports
+#: ``microcosm.calibrate.hierarchy_labels`` and the ``microcosm.diagnostics``
+#: package imports ``microcosm.diagnostics.catalogs``. ``gate_bindings``
+#: imports ``microcosm.calibrate.solve``, whose package ``__init__`` imports
+#: both ``microcosm.calibrate.diagnostics`` and ``microcosm.diagnostics``.
+BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
+    [
+        "microcosm.calibrate.hierarchy_labels",
+        "microcosm.diagnostics.catalogs",
+        # microcosm#1490: microcosm.fit exports its categorical classifier,
+        # held-out scores and keyed donors, so a binding that imports the
+        # package reaches them.
+        "microcosm.fit.categorical",
+        "microcosm.fit.donors",
+        "microcosm.fit.held_out",
+        # microcosm#1074: us_runtime.fiscal_targets imports the FSA student
+        # loan targets.
+        "microcosm.build.us_runtime.fsa_student_loan_targets",
+        # microcosm#1405: the gate battery refuses a signing key the committed
+        # registry does not let sign, so it imports
+        # microcosm.data.gate_signing_keys, and with it the microcosm.data
+        # package, whose __init__ imports contract, loader, registry and
+        # release, and through them the rest.
+        "microcosm.data",
+        "microcosm.data.annual_projections",
+        "microcosm.data.compatibility_recertification",
+        "microcosm.data.contract",
+        "microcosm.data.denied_pools",
+        "microcosm.data.gate_signing_keys",
+        "microcosm.data.h5_boolean_append",
+        "microcosm.data.h5_enrichment",
+        "microcosm.data.loader",
+        "microcosm.data.registry",
+        "microcosm.data.release",
+        "microcosm.data.releases_record",
+        "microcosm.data.slack",
+        "microcosm.data.source_enrichment",
+        "microcosm.data.stored_inputs",
+        "microcosm.data.us_critical_targets",
     ]
 )
 BATTERY = "toy.gates.terminal"
@@ -527,11 +570,18 @@ class TestImplementationHashes:
         # At base 25c8cc14 the battery's binding identity held 197 modules;
         # w4 adds the leaf and exactly the modules it imports that the
         # bindings did not already reach (the graph package among them).
+        # microcosm#1073 adds us_runtime.scf_education_debt, which the
+        # us_runtime package imports, so the base now holds 198.
+        # Modules the bindings later reach without the leaf are listed in
+        # BINDING_MODULES_ADDED_AFTER_BASE.
         modules = set()
         for name, binding in TRANSPORT_GATE_REGISTRY.items():
             _, digests = binding_identity.describe(binding, path=name)
             modules |= set(digests)
-        assert len(modules) == 197 + len(LEAF_ADDED_MODULES)
+        assert len(modules) == (
+            198 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
+        )
+        assert BINDING_MODULES_ADDED_AFTER_BASE <= modules
         assert LEAF_ADDED_MODULES <= modules
         assert LEAF_ADDED_MODULES <= set(
             binding_identity.source_closure([evidence_contract.__name__])
@@ -807,7 +857,7 @@ class TestClosurePartition:
         assert counts == {
             "main_benefits_entitlement": {**zero, "encoded": 13, "defaulted": 47},
             "main_benefits_rates": {**zero, "encoded": 13, "defaulted": 15},
-            "nz_super": {**zero, "encoded": 2, "defaulted": 11},
+            "nz_super": {**zero, "encoded": 3, "defaulted": 10},
             "accommodation_supplement": {
                 **zero,
                 "encoded": 17,
@@ -926,12 +976,41 @@ class TestClosurePartition:
         )
         assert not evidence_contract.module_declares_imports(b"rules:\n  imports: 1\n")
 
-    def test_a_binding_local_view_is_refused_with_the_reserved_message(self) -> None:
-        _, bindings, *_ = _nz()
+    def test_a_binding_local_view_partitions_its_logical_entity_roots(self) -> None:
+        closure, bindings, surface, mapping = _nz()
+        base = _nz_partition()
         bindings = copy.deepcopy(bindings)
-        bindings["bindings"][0]["views"] = [{"name": "child"}]
-        with pytest.raises(ValueError, match="reserved for binding-local views"):
-            _nz_partition(bindings=bindings)
+        row = bindings["bindings"][0]
+        row["views"] = [
+            {
+                "logical_entity": "Child",
+                "selector": {"column": "is_child"},
+                "outside": {},
+            }
+        ]
+        rows = bindings["bindings"]
+        roots = {
+            r["id"]: dict(surface.modules[r["rulespec_path"]].inputs) for r in rows
+        }
+        roots[row["id"]]["Child"] = ("child_age",)
+        result = closure_partition(
+            closure,
+            mapping,
+            rows,
+            roots,
+            module_sha256={
+                r["id"]: surface.modules[r["rulespec_path"]].sha256 for r in rows
+            },
+            module_imports={},
+            mapped_entities=bindings["entity_names"].values(),
+        )
+        # The view binding's Child root is live (an unclosed gap here); every
+        # other row partitions as without the view.
+        assert result["modules"][0]["gap"] == sorted(
+            [*base["modules"][0]["gap"], "Child.child_age"]
+        )
+        assert result["modules"][0]["unmapped_entity"] == []
+        assert result["modules"][1:] == base["modules"][1:]
 
     def test_be_multi_entity_modules_keep_every_root_on_its_entity(self) -> None:
         surface = load_axiom_input_surface(BE_SURFACE)
@@ -2731,26 +2810,24 @@ class TestSupportRoster:
         for row in roster:
             counts[row["class"]] = counts.get(row["class"], 0) + 1
         assert counts == {
-            "closure_default": 93,
-            "derived": 307,
-            "normalized": 10,
+            "closure_default": 92,
+            "derived": 323,
+            "normalized": 11,
             "copied": 3,
-            "pending": 1,
+            "quantile_mapped": 2,
             "structural": 6,
         }
+        classes = {(row["entity"], row["column"]): row["class"] for row in roster}
+        assert classes["household", "rent"] == "quantile_mapped"
+        assert classes["person", "liquid_financial_assets"] == "normalized"
         derived = [row for row in roster if row["class"] == "derived"]
-        pending = {
-            "household.rent",
-            "person.employment_income",
-            "person.liquid_financial_assets",
-        }
         for row in derived:
             missing = {
                 f"{s['entity']}.{s['column']}"
                 for s in row["sources"]
                 if s["class"] not in compose.SUPPORT_COVERED
             }
-            assert missing == pending, row["column"]
+            assert not missing, row["column"]
             assert "walked per node" in row["reason"]
 
     def test_a_closure_default_is_classed_closure_default(self, nz_spec) -> None:
@@ -2924,6 +3001,205 @@ class TestExternalSources:
             "source.rulespec_nz (uncovered)" in line
             for line in outcome.result.failures
         ), outcome.result.failures
+
+
+def _money_battery_spec(*inputs, nodes=()):
+    """CREATE, ``nodes`` and a battery over ``inputs``, with the toy money routes.
+
+    CREATE is structural and owns no column, so a money column has an owner only
+    if ``nodes`` adds one.
+    """
+
+    return {
+        "country": "xx",
+        "resources": {
+            "money_normalization": graph_declaration(),
+            "transport_graph": {
+                "schema_version": 1,
+                "country": "xx",
+                "sources": [],
+                "nodes": [
+                    {
+                        "id": "x.open",
+                        "kernel": "transport.create@1",
+                        "structural": "create",
+                    },
+                    *nodes,
+                    {
+                        "id": "x.gates",
+                        "kernel": "gates.battery@1",
+                        "inputs": [
+                            {"entity": entity, "columns": [column]}
+                            for entity, column in inputs
+                        ],
+                    },
+                ],
+            },
+        },
+    }
+
+
+def _derived_person_column(column, entity, read):
+    """A node that owns ``person.<column>`` and reads ``<entity>.<read>``."""
+
+    return {
+        "id": f"x.{column}",
+        "kernel": "toy.derive@1",
+        "inputs": [{"entity": entity, "columns": [read]}],
+        "outputs": [{"entity": "person", "column": column, "dtype": "float64"}],
+    }
+
+
+_RENT_SHARE = _derived_person_column("rent_share", "household", "rent")
+_RENT_SHARE_HALF = _derived_person_column("rent_share_half", "person", "rent_share")
+_MIX = {
+    "id": "x.mix",
+    "kernel": "toy.derive@1",
+    "inputs": [
+        {"entity": "person", "columns": ["age", "dividend_income"]},
+        {"entity": "household", "columns": ["rent"]},
+    ],
+    "outputs": [{"entity": "person", "column": "mix", "dtype": "float64"}],
+}
+_MIX_HALF = _derived_person_column("mix_half", "person", "mix")
+
+
+def _support_gate_on(roster):
+    """The support gate on the toy frames, with ``roster``'s rows added to the toy roster.
+
+    The toy roster alone passes this gate, so each failure comes from ``roster``.
+    """
+
+    donor, terminal = _donor_and_terminal()
+    ranges, bounds, rn, bn = _run_support(
+        _toy_roster(more=roster["columns"]), donor, terminal
+    )
+    return _support_outcome(
+        ranges,
+        bounds,
+        rn,
+        bn,
+        terminal,
+        structural=[("household", "source_household_id")],
+    )
+
+
+class TestMoneyAwaitingItsProducer:
+    @pytest.mark.parametrize(
+        ("entity", "column", "reason"),
+        (
+            ("person", "interest_income", "awaits its declared producer"),
+            ("household", "rent", "awaits toy rent bands"),
+            ("person", "dividend_income", "awaits a donor that carries it"),
+        ),
+        ids=("normalized", "quantile_mapped", "pending"),
+    )
+    def test_a_money_column_no_node_produces_is_pending(
+        self, entity, column, reason
+    ) -> None:
+        # With no owner after CREATE, the money route decides the class.
+        # Without it, a money concept would read as copied from the donor.
+        spec = _money_battery_spec((entity, column))
+        (row,) = compose._support_roster(spec)["columns"]
+        assert row["class"] == "pending"
+        assert row["reason"] == reason
+
+    def test_a_donor_concept_without_a_money_route_is_copied(self) -> None:
+        spec = _money_battery_spec(("person", "age"))
+        (row,) = compose._support_roster(spec)["columns"]
+        assert row["class"] == "copied"
+
+    @pytest.mark.parametrize(
+        ("column", "nodes"),
+        (
+            ("rent_share", (_RENT_SHARE,)),
+            ("rent_share_half", (_RENT_SHARE, _RENT_SHARE_HALF)),
+        ),
+        ids=("direct", "through-a-derived-row"),
+    )
+    def test_a_derived_row_fails_the_gate_on_the_pending_source_it_reads(
+        self, column, nodes
+    ) -> None:
+        # The walk flattens a derived input into that input's own sources,
+        # so the pending source reaches the row at any depth.
+        spec = _money_battery_spec(("person", column), nodes=nodes)
+        roster = compose._support_roster(spec)
+        (row,) = roster["columns"]
+        assert row["class"] == "derived"
+        assert row["sources"] == [
+            {
+                "entity": "household",
+                "column": "rent",
+                "class": "pending",
+                "reason": "awaits toy rent bands",
+            }
+        ]
+        outcome = _support_gate_on(roster)
+        assert outcome.status is GateStatus.FAILED
+        (line,) = outcome.result.failures
+        assert line.startswith(
+            f"person.{column} (derived): sources without coverage: "
+            "household.rent (pending). "
+        )
+
+    def test_a_derived_row_on_a_copied_source_passes_the_gate(self) -> None:
+        # The control for the test above: the same gate passes a derived row
+        # whose one source the donor covers.
+        node = _derived_person_column("age_share", "person", "age")
+        roster = compose._support_roster(
+            _money_battery_spec(("person", "age_share"), nodes=(node,))
+        )
+        (row,) = roster["columns"]
+        assert row["sources"] == [
+            {"entity": "person", "column": "age", "class": "copied"}
+        ]
+        outcome = _support_gate_on(roster)
+        assert outcome.status is GateStatus.PASSED, outcome.result.failures
+
+    @pytest.mark.parametrize(
+        ("column", "nodes"),
+        (
+            ("mix", (_MIX,)),
+            ("mix_half", (_MIX, _MIX_HALF)),
+        ),
+        ids=("direct", "through-a-derived-row"),
+    )
+    def test_a_derived_row_lists_each_column_of_each_input_its_owner_reads(
+        self, column, nodes
+    ) -> None:
+        # Every input of the owner, and every column of each, reaches the row.
+        # Through a derived input, every one of that input's own sources does,
+        # and the gate names each pending source.
+        roster = compose._support_roster(
+            _money_battery_spec(("person", column), nodes=nodes)
+        )
+        (row,) = roster["columns"]
+        assert row["sources"] == [
+            {
+                "entity": "household",
+                "column": "rent",
+                "class": "pending",
+                "reason": "awaits toy rent bands",
+            },
+            {"entity": "person", "column": "age", "class": "copied"},
+            {
+                "entity": "person",
+                "column": "dividend_income",
+                "class": "pending",
+                "reason": "awaits a donor that carries it",
+            },
+        ]
+        (line,) = _support_gate_on(roster).result.failures
+        assert line.startswith(
+            f"person.{column} (derived): sources without coverage: "
+            "household.rent (pending), person.dividend_income (pending). "
+        )
+
+    def test_the_roster_and_the_gate_agree_on_the_covered_classes(self) -> None:
+        # compose and gate_bindings each hold this set; the gate reads its own.
+        from microcosm.build.transport.gate_bindings import _SUPPORT_COVERED
+
+        assert compose.SUPPORT_COVERED == _SUPPORT_COVERED
 
 
 class TestDeclaredStructuralRows:

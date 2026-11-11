@@ -335,6 +335,14 @@
         }
       ],
       "params": {
+        "engine_ref": {
+          "binding": "nz_super",
+          "field": "engine_ref"
+        },
+        "period": {
+          "binding": "nz_super",
+          "field": "period"
+        },
         "declaration": "{\"columns\":[{\"output_column\":\"nz_super_weekly_amount_before_tax_cents\",\"quantum\":\"0.01\",\"rounding\":\"half_even\",\"source_column\":\"nz_super_weekly_amount_before_tax\",\"source_tax_basis\":\"before_tax\"}],\"entity\":\"person\"}"
       }
     },

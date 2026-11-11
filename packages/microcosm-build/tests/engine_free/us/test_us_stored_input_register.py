@@ -31,7 +31,8 @@ def test_every_register_entry_is_a_named_producer_column():
     base-spine tag of every US entity, the pooled-source provenance columns,
     microunit's two tax-unit construction columns, the PUF capital-gains tail
     provenance columns, the ACS-native acs_ amounts and acs_pums's puma_geoid
-    alias."""
+    alias, plus the two pending engine-input families: the parent ids and the
+    federal student loan inputs."""
 
     support = {
         column(entity)
@@ -63,9 +64,10 @@ def test_every_register_entry_is_a_named_producer_column():
         | {"puma_geoid"}
         | {COUNTY_FIPS_2023_COLUMN}
         | set(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS)
+        | set(US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS)
     )
     assert len(_ACS_NATIVE_AMOUNTS) == 6
-    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1 + 2 + 1
+    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1 + 2 + 1 + 4
 
 
 def test_every_register_reason_names_where_its_column_comes_from():
@@ -98,6 +100,10 @@ def test_every_register_reason_names_where_its_column_comes_from():
         **{
             column: "US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS"
             for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+        },
+        **{
+            column: "US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS"
+            for column in US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS
         },
     }
     for column, owner in expected_owner.items():

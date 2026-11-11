@@ -2146,6 +2146,189 @@ def test_builder_exact_k_parser_enforces_charter_and_explicit_seed(capsys) -> No
     assert parsed.no_staging is True
 
 
+def test_scf_education_debt_stage_is_opt_in_and_follows_auto_loans() -> None:
+    """microcosm#1073: the 2025 SCF stage runs only when asked, after auto loans.
+
+    The pinned engine does not define the four federal student loan inputs
+    yet, so a default release must not fetch the 2025 SCF or carry them.
+    """
+
+    builder = _load_builder_module()
+    base_argv = ["--ledger-facts", "facts.jsonl", "--out", "release"]
+    parsed = builder._parse_args(base_argv)
+    assert parsed.scf_education_debt is False
+    assert parsed.scf_2025_summary_extract is None
+    assert parsed.scf_2025_full_extract is None
+
+    parsed = builder._parse_args(
+        [
+            *base_argv,
+            "--scf-education-debt",
+            "--scf-2025-summary-extract",
+            "rscfp2025.dta",
+            "--scf-2025-full-extract",
+            "p25i6.dta",
+        ]
+    )
+    assert parsed.scf_education_debt is True
+    assert parsed.scf_2025_summary_extract == Path("rscfp2025.dta")
+    assert parsed.scf_2025_full_extract == Path("p25i6.dta")
+
+    source = inspect.getsource(builder._main)
+    gate = source.index("if args.scf_education_debt:")
+    assert source.index("with_us_scf_auto_loan_inputs(") < gate
+    assert gate < source.index("_with_scf_education_debt_stage(")
+    assert source.index("join_acs_release_predictors(") < gate
+
+
+def test_scf_education_debt_stage_runs_its_gate_and_writes_its_fit(
+    tmp_path, monkeypatch
+) -> None:
+    builder = _load_builder_module()
+    calls: list[str] = []
+    frame = object()
+
+    monkeypatch.setattr(
+        builder,
+        "load_scf_2025_education_debt_donor",
+        lambda summary, full: calls.append(f"load:{summary}:{full}") or "donor",
+    )
+
+    def fake_with_inputs(base_frame, *, seed, time_period, scf_education_debt_donor):
+        assert base_frame is frame
+        assert scf_education_debt_donor == "donor"
+        calls.append(f"impute:{seed}:{time_period}")
+        return base_frame
+
+    monkeypatch.setattr(builder, "with_us_scf_education_debt_inputs", fake_with_inputs)
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_signal_gate",
+        lambda base_frame: builder.GateResult(
+            name="scf_education_debt_signal", passed=True
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_fit_table",
+        lambda base_frame: {"households": {"share_with_federal_education_debt": 0.2}},
+    )
+    args = SimpleNamespace(
+        seed=7,
+        scf_2025_summary_extract=Path("rscfp2025.dta"),
+        scf_2025_full_extract=Path("p25i6.dta"),
+    )
+    fit_path = tmp_path / "artifacts" / "us_scf_education_debt_fit.json"
+    assert (
+        builder._with_scf_education_debt_stage(
+            frame, args=args, telemetry=None, fit_path=fit_path
+        )
+        is frame
+    )
+    assert calls == [
+        f"load:{Path('rscfp2025.dta')}:{Path('p25i6.dta')}",
+        f"impute:7:{builder.PERIOD}",
+    ]
+    payload = json.loads(fit_path.read_text(encoding="utf-8"))
+    assert payload["weights"] == "pre_calibration_household_weights"
+    assert payload["fit"]["households"]["share_with_federal_education_debt"] == 0.2
+
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_signal_gate",
+        lambda base_frame: builder.GateResult(
+            name="scf_education_debt_signal",
+            passed=False,
+            failures=("constant column",),
+        ),
+    )
+    with pytest.raises(RuntimeError, match="SCF education-debt signal failed"):
+        builder._with_scf_education_debt_stage(
+            frame, args=args, telemetry=None, fit_path=None
+        )
+
+
+def test_scf_education_debt_fit_is_written_at_calibrated_weights_before_scoring(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1074: a --scf-education-debt build tabulates the stage's fit
+    on the frame it exports, at the weights it ships, before any scoring."""
+    import ast
+
+    builder = _load_builder_module()
+    frame = object()
+    seen: list[object] = []
+    fit = {"households": {"share_with_federal_education_debt": 0.3}}
+    monkeypatch.setattr(
+        builder,
+        "us_scf_education_debt_fit_table",
+        lambda base_frame: seen.append(base_frame) or fit,
+    )
+    name = builder.US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME
+    path = tmp_path / "artifacts" / name
+    builder._write_us_scf_education_debt_fit(
+        path, frame, weights="calibrated_household_weights"
+    )
+    assert seen == [frame]
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        "schema_version": 1,
+        "weights": "calibrated_household_weights",
+        "fit": fit,
+    }
+    assert name != builder.US_SCF_EDUCATION_DEBT_FIT_FILENAME
+
+    # The write is a statement of _main's own body, under the flag alone,
+    # after the export frame takes the calibrated weights and before the
+    # post-export scoring plan. The syntax tree tells a call from a comment.
+    tree = ast.parse(Path(builder.__file__).read_text(encoding="utf-8"))
+    main = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+
+    def calls(node: ast.AST, function: str) -> list[ast.Call]:
+        return [
+            call
+            for call in ast.walk(node)
+            if isinstance(call, ast.Call) and getattr(call.func, "id", "") == function
+        ]
+
+    def position(predicate) -> int:
+        (index,) = [i for i, stmt in enumerate(main.body) if predicate(stmt)]
+        return index
+
+    write = position(lambda stmt: calls(stmt, "_write_us_scf_education_debt_fit"))
+    statement = main.body[write]
+    assert isinstance(statement, ast.If)
+    assert ast.unparse(statement.test) == "args.scf_education_debt"
+    (call,) = calls(statement, "_write_us_scf_education_debt_fit")
+    assert [ast.unparse(arg) for arg in call.args] == [
+        "artifact_root / US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME",
+        "export_frame",
+    ]
+    assert {kw.arg: ast.unparse(kw.value) for kw in call.keywords} == {
+        "weights": "'calibrated_household_weights'"
+    }
+    export = position(
+        lambda stmt: (
+            calls(stmt, "_with_calibrated_weights")
+            and calls(stmt, "_with_l0_refit_weights")
+        )
+    )
+    scoring = position(lambda stmt: calls(stmt, "_record_post_export_scoring_plan"))
+    # test_us_post_export_scoring executes the export and cleanup statements
+    # on their own, without args, so the write follows the ladder cleanup.
+    cleanup = position(
+        lambda stmt: (
+            isinstance(stmt, ast.If)
+            and ast.unparse(stmt.test)
+            == "isinstance(ladder_outcome, ExactKLadderCalibration)"
+        )
+    )
+    assert export < cleanup < write < scoring
+
+
 def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
     builder = _load_builder_module()
 
@@ -4087,7 +4270,7 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
 
     Adding a concept to ``RESTATED_LEDGER_FILTER_CONCEPTS`` without a rule
     would raise at compile time on the first spec carrying it; this pins the
-    three rules that exist instead.
+    four rules that exist instead.
     """
 
     builder = _load_builder_module()
@@ -4096,7 +4279,12 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
         "agi_band",
         "eitc_child_count",
         "age_band",
+        "student_loan_balance_band",
     }
+    # The FSA debt-size band (microcosm#1074) reads the person's federal balance.
+    assert builder._restated_ledger_filter_concept(
+        "ledger_filter_federal_student_loan_balance_lower_bound"
+    ) == ("federal_student_loan_balance", "lower")
     assert builder._restated_ledger_filter_concept(_RESTATED_AGE_UPPER) == (
         "age",
         "upper",
@@ -6048,25 +6236,22 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     written = _write_release_diagnostics_with_nan_final_loss(small_frame, tmp_path)
 
     diagnostics = json.loads(written.read_text())
-    assert diagnostics["schema_version"] == 8
+    # Published as schema 9: the labels sit in catalogs, the row refers to them.
+    assert diagnostics["schema_version"] == 9
     assert diagnostics["targets"][0]["source"] == "fixture"
     assert diagnostics["targets"][0]["hierarchy"] == {
-        "provider": {
-            "id": "irs_soi",
-            "label": "IRS Statistics of Income",
-        },
-        "category": {
-            "id": "irs_soi.income",
-            "label": "Income",
-            "provider_id": "irs_soi",
-        },
-        "geography": {
-            "id": "0400000US06",
-            "label": "California",
-            "level": "state",
-        },
+        "category_id": "irs_soi.income",
+        "geography_id": "0400000US06",
         "dimensions": [],
         "target": {"id": "income", "label": "Income"},
+    }
+    assert diagnostics["hierarchy_catalogs"] == {
+        "providers": [{"id": "irs_soi", "label": "IRS Statistics of Income"}],
+        "categories": [
+            {"id": "irs_soi.income", "label": "Income", "provider_id": "irs_soi"}
+        ],
+        "geographies": [{"id": "0400000US06", "label": "California", "level": "state"}],
+        "dimensions": [],
     }
     assert diagnostics["final_loss"] is None
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
@@ -6351,7 +6536,10 @@ def _run_green_register_release(
             self.dataset_sha256 = builder._sha256(self.dataset_path)
             captured["scorer_opened_on"] = self.dataset_path
 
-        def open_consumer(self, name, baseline_plan):
+        def open_consumer(self, name, baseline_plan, planned_reform_passes=None):
+            captured.setdefault("planned_reform_passes", {})[name] = (
+                planned_reform_passes
+            )
             record = {"dataset_sha256": self.dataset_sha256, "consumer": name}
             simulate = self.dataset_path
             if name == "ssi_social_security_holdout":
@@ -6427,6 +6615,19 @@ def _run_green_register_release(
             captured["scorer_closed"] = True
 
     monkeypatch.setattr(builder, "_HouseholdBatchedPostExportScorer", WrittenH5Scorer)
+    read_population_structure = builder.population_structure_holdout_from_h5
+
+    def population_structure_from_h5(dataset_path, **kwargs):
+        # Records whether the scorer had already freed its batch frames.
+        captured["population_structure_read"] = (
+            Path(dataset_path),
+            captured.get("scorer_closed", False),
+        )
+        return read_population_structure(dataset_path, **kwargs)
+
+    monkeypatch.setattr(
+        builder, "population_structure_holdout_from_h5", population_structure_from_h5
+    )
 
     def fake_smoke(*, simulate, period):
         # The pre-export plan dry-runs the smoke on a recording seam first;
@@ -6490,6 +6691,12 @@ def _run_green_register_release(
         assert not (release_dir / "reform_coverage_smoke.json").exists()
     else:
         assert captured["smoke_scored"] == captured["written_dataset"]
+        # _main hands the smoke its plan's reform pass count (#1556). This
+        # test's smoke gate asks no reformed simulation for a key, so the dry
+        # run counted none; a consumer opened without a count gets None.
+        assert captured["planned_reform_passes"]["reform_coverage_smoke"] == 0
+    # The holdouts score no reform, so _main gives them no count.
+    assert captured["planned_reform_passes"]["ssi_social_security_holdout"] is None
     assert captured["scorer_opened_on"] == captured["written_dataset"]
     assert captured["holdout_scored"] == captured["written_dataset"]
     assert captured["scorer_closed"] is True
@@ -6519,6 +6726,18 @@ def _run_green_register_release(
     assert part_b["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 69.90)
     assert part_d["weighted_payers"] == 2
     assert part_d["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 12.90)
+    # The population-structure holdout reads the written H5 only after the
+    # scorer closes. The harness H5 holds placeholder bytes, so the step
+    # records the report as unavailable and the release still publishes it.
+    assert captured["population_structure_read"] == (
+        captured["written_dataset"],
+        True,
+    )
+    population_path = release_dir / "us_population_structure_holdout.json"
+    population = json.loads(population_path.read_text())
+    assert population["status"] == "unavailable"
+    assert population["release_id"] == release_id
+    assert population["enforced"] is False
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     if not skipped_smoke:
@@ -6564,6 +6783,13 @@ def _run_green_register_release(
             "revision": release_id,
             "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
         }
+    assert artifacts["us_population_structure_holdout"] == {
+        "kind": "diagnostics",
+        "path": population_path.name,
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": hashlib.sha256(population_path.read_bytes()).hexdigest(),
+    }
     if not skipped_smoke:
         smoke = json.loads((release_dir / "reform_coverage_smoke.json").read_text())
         assert smoke["reform_coverage_smoke"]["passed"] is True
@@ -7316,6 +7542,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             facts=({"fact": 1},),
             facts_sha256="facts-sha",
             manifest_sha256=None,
+            fact_schema_versions=(),
             provenance=lambda: {
                 "path_name": "facts.jsonl",
                 "fact_row_count": 1,
@@ -9252,6 +9479,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["diagnostics"]["base_population_gate"].details["mass_repair"]
         == repair_payload
     )
+    # The SIPP/SCF blend audit rides on the SCF-wealth gate's summary; the
+    # writer records the gate the stage returned (microcosm#1216).
+    scf_wealth_signal = captured["diagnostics"]["scf_wealth_signal"]
+    assert scf_wealth_signal["details"] == {"checked": True}
+    assert scf_wealth_signal["scope"] == "blend_stage_frame"
+    assert scf_wealth_signal["blend_household_ids"]["count"] > 0
     assert captured["diagnostics"]["support_value_repairs"] == {
         "social_security_components": ss_repair_payload,
         "non_sch_d_capital_gains": cgd_repair_payload,
@@ -12775,6 +13008,102 @@ def test_build_manifests_selects_medicare_irmaa_holdout_for_publication(
     assert failures == []
 
 
+@pytest.mark.parametrize("readable", (True, False), ids=("available", "unavailable"))
+def test_build_manifests_selects_population_structure_holdout_for_publication(
+    monkeypatch, tmp_path, readable
+) -> None:
+    """The population-structure holdout reads the written H5 without an
+    engine; an unreadable file reports unavailable and never refuses."""
+    from microcosm.build.us_runtime.population_structure_holdout import (
+        SOCIAL_SECURITY_COMPONENTS,
+    )
+    from microcosm.data.contract import (
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    dataset_path = tmp_path / "written" / builder.DATASET_FILENAME
+    dataset_path.parent.mkdir()
+    if readable:
+        person = pd.DataFrame(
+            {
+                "person_household_id": [1, 1, 2],
+                "person_marital_unit_id": [10, 10, 20],
+                "age": [70.0, 68.0, 80.0],
+                "is_female": [False, True, True],
+                "A_MARITL": [1, 1, 4],
+                **{name: [0.0, 0.0, 0.0] for name in SOCIAL_SECURITY_COMPONENTS},
+            }
+        )
+        person["social_security_retirement"] = [20_000.0, 0.0, 0.0]
+        person["social_security_survivors"] = [0.0, 0.0, 15_000.0]
+        with pd.HDFStore(dataset_path, "w") as store:
+            store["person"] = person
+            store["household"] = pd.DataFrame(
+                {"household_id": [1, 2], "household_weight": [2.0, 3.0]}
+            )
+    else:
+        dataset_path.write_bytes(b"not an h5")
+    builder._write_population_structure_holdout(
+        release_dir=release_dir, dataset_path=dataset_path, release_id=release_id
+    )
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root)
+    )
+
+    filename = "us_population_structure_holdout.json"
+    holdout_path = release_dir / filename
+    holdout = json.loads(holdout_path.read_text())
+    assert holdout["status"] == ("available" if readable else "unavailable")
+    assert holdout["release_id"] == release_id
+    assert holdout["enforced"] is False
+    assert holdout["used_for_calibration"] is False
+    if readable:
+        assert holdout["living_alone_65_plus"]["share"] == pytest.approx(3 / 7)
+        structure = holdout["social_security_component_structure"]
+        assert structure["records_with_multiple_components"] == 0
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert manifest["artifacts"]["us_population_structure_holdout"] == {
+        "kind": "diagnostics",
+        "path": filename,
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": hashlib.sha256(holdout_path.read_bytes()).hexdigest(),
+    }
+    assert filename in _release_manifest_release_artifacts(release_dir)
+    failures: list[str] = []
+    _check_release_manifest(manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, manifest, failures)
+    assert failures == []
+
+
+def test_population_structure_holdout_records_an_unwritable_measurement(
+    monkeypatch, tmp_path
+) -> None:
+    """A measurement strict JSON cannot hold becomes an unavailable report,
+    never a release refusal."""
+    builder = _load_builder_module()
+
+    def overflowing(dataset_path, **kwargs):
+        return {"status": "available", "weighted_people_65_plus": float("inf")}
+
+    monkeypatch.setattr(builder, "population_structure_holdout_from_h5", overflowing)
+    builder._write_population_structure_holdout(
+        release_dir=tmp_path, dataset_path=tmp_path / "release.h5", release_id="r1"
+    )
+    payload = json.loads(
+        (tmp_path / "us_population_structure_holdout.json").read_text()
+    )
+    assert payload["status"] == "unavailable"
+    assert payload["release_id"] == "r1"
+    assert payload["error"].startswith("ValueError: Out of range float values")
+
+
 def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     monkeypatch, tmp_path
 ) -> None:
@@ -13061,6 +13390,165 @@ def test_release_calibration_diagnostics_record_calibration_runtime(
     assert builds[0]["calibration_runtime"] == runtime
     assert builds[0]["release_gates"]["passed"] is False
     assert "calibration_runtime" not in builds[1]
+
+
+def _asset_blend_gate_record(builder):
+    audit = {
+        "schema_version": 1,
+        "seed": np.int64(0),
+        "time_period": 2024,
+        "scf_probability": 0.5,
+        "household_count": np.int64(3),
+        "scf_household_count": 2,
+        "sipp_household_count": 1,
+        "scf_household_share": np.float64(2 / 3),
+        "scf_selected_bank_median": float("nan"),
+        "sipp_selected_bank_median": np.float64(1_200.0),
+    }
+    gate = builder.GateResult(
+        name="scf_wealth_signal",
+        passed=True,
+        details={
+            "financial_asset_blend": audit,
+            "bank_account_assets_nonzero_share": np.float64(0.42),
+            "net_worth_nonzero_share_band": (0.7, 0.99),
+            "missing": None,
+            "is_blended": np.bool_(True),
+        },
+    )
+    return builder._scf_wealth_gate_record(gate, [3, 1, 2])
+
+
+def test_asset_blend_gate_record_is_strict_json_and_pins_the_id_set() -> None:
+    """microcosm#1216: the blend audit lives in DataFrame.attrs and the H5
+    writer drops it. The record keeps it, scoped to the blend-stage frame,
+    with the household id set the seeded draw depends on, and survives the
+    strict diagnostics schema."""
+    from pydantic import JsonValue, TypeAdapter
+
+    builder = _load_builder_module()
+    record = _asset_blend_gate_record(builder)
+
+    TypeAdapter(dict[str, JsonValue]).validate_python(record, strict=True)
+    json.dumps(record, allow_nan=False)
+    assert record["passed"] is True
+    assert record["failures"] == []
+    assert record["scope"] == "blend_stage_frame"
+    ids = np.array([1, 2, 3], dtype="<i8")
+    assert record["blend_household_ids"] == {
+        "count": 3,
+        "sha256": hashlib.sha256(ids.tobytes()).hexdigest(),
+        "encoding": "sorted unique household_id, little-endian int64",
+    }
+    blend = record["details"]["financial_asset_blend"]
+    assert blend["seed"] == 0 and type(blend["seed"]) is int
+    assert blend["scf_household_count"] + blend["sipp_household_count"] == 3
+    assert blend["scf_selected_bank_median"] is None
+    assert blend["sipp_selected_bank_median"] == 1_200.0
+    assert type(blend["scf_household_share"]) is float
+    assert record["details"]["is_blended"] is True
+    assert record["details"]["net_worth_nonzero_share_band"] == [0.7, 0.99]
+    # Order and repeats do not change the pinned id set.
+    shuffled = builder._scf_wealth_gate_record(
+        builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
+        np.array([2, 1, 3, 1]),
+    )
+    assert shuffled["blend_household_ids"] == record["blend_household_ids"]
+
+    def blend_ids(household_ids):
+        return builder._scf_wealth_gate_record(
+            builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
+            household_ids,
+        )["blend_household_ids"]
+
+    # Fractional ids keep their values: distinct sets never share a digest.
+    fractional = blend_ids([1.2, 1.1])
+    assert fractional == {
+        "count": 2,
+        "sha256": hashlib.sha256(
+            np.array([1.1, 1.2], dtype="<f8").tobytes()
+        ).hexdigest(),
+        "encoding": "sorted unique household_id, little-endian float64",
+    }
+    subset = blend_ids([1.2])
+    assert subset["count"] == 1
+    assert subset["sha256"] != fractional["sha256"]
+    # Integral floats record as int64, down to the int64 floor.
+    assert blend_ids([3.0, 1.0, 2.0]) == record["blend_household_ids"]
+    assert blend_ids([float(-(2**63))]) == blend_ids([-(2**63)])
+    assert blend_ids([-(2**63)])["encoding"].endswith("int64")
+    assert blend_ids(np.array([5, 3], dtype=np.uint64)) == blend_ids([3, 5])
+    assert blend_ids([]) == {
+        "count": 0,
+        "sha256": hashlib.sha256(b"").hexdigest(),
+        "encoding": "sorted unique household_id, little-endian int64",
+    }
+    # No encoding holds these without collisions, so they are refused.
+    with pytest.raises(TypeError):
+        blend_ids([True, False])
+    with pytest.raises(TypeError):
+        blend_ids([1 + 1j])
+    with pytest.raises(ValueError):
+        blend_ids(np.array([2**63 + 5], dtype=np.uint64))
+
+
+def test_release_calibration_diagnostics_record_the_asset_blend_audit(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    builds: list[dict] = []
+    monkeypatch.setattr(
+        builder,
+        "write_calibration_diagnostics",
+        lambda result, path, *, target_registry, build, target_surface: builds.append(
+            build
+        ),
+    )
+    gate = SimpleNamespace(passed=True, failures=(), details={})
+    kwargs = dict(
+        result=SimpleNamespace(),
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
+        release_dir=tmp_path,
+        registry=TargetRegistry((), country="us"),
+        base_dataset_sha256="base-sha",
+        compilation={"dropped_target_names": []},
+        target_profile_gate=gate,
+        health_input_gate=None,
+        base_population_gate=None,
+        support_value_repairs={},
+        audit_export_targets=False,
+        gate_failures=[],
+    )
+    record = _asset_blend_gate_record(builder)
+
+    builder._write_release_calibration_diagnostics(scf_wealth_signal=record, **kwargs)
+    builder._write_release_calibration_diagnostics(**kwargs)
+
+    assert builds[0]["scf_wealth_signal"] == record
+    assert builds[1]["scf_wealth_signal"] is None
+
+
+def test_build_manifest_gates_carry_the_asset_blend_audit(
+    monkeypatch, tmp_path
+) -> None:
+    """The manifest is written for every release, so the audit cannot be lost
+    the way a failed diagnostics write would lose it."""
+    from microcosm.data.contract import _check_build_manifest
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    record = _asset_blend_gate_record(builder)
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+        scf_wealth_signal=record,
+    )
+    manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert manifest["gates"]["scf_wealth_signal"] == record
+    failures: list[str] = []
+    _check_build_manifest(manifest, release_id, failures)
+    assert failures == []
 
 
 def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
@@ -17232,6 +17720,54 @@ def test_committed_feed_pin_is_waived_only_by_the_flag() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("facts_sha256", "rows", "message"),
+    [
+        ("a" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+        ("a" * 64, ("chronicle.consumer_fact.v5",), "consumer_fact_schema_versions"),
+        ("a" * 64, (), "consumer_fact_schema_versions"),
+        ("f" * 64, ("chronicle.consumer_fact.v6",), "['chronicle.consumer_fact.v6']"),
+    ],
+    ids=["undeclared", "not_in_the_pin", "unstamped", "undeclared_unpinned_feed"],
+)
+def test_feed_row_contract_check_refuses_rows_the_pin_or_epoch_lacks(
+    facts_sha256, rows, message
+) -> None:
+    """The release build holds the rows' row contracts, not only the pin's list.
+
+    On the committed feed (its facts digest) the rows must carry exactly the
+    pin's list, which a re-pin types by hand; a feed admitted by
+    ``--allow-unpinned-feed`` is held only to the declared row contracts.
+    """
+    builder = _load_builder_module()
+    check = getattr(builder, "_check_us_ledger_feed_row_contracts", None)
+    assert callable(check)
+    bare = _feed_pin(bare=True)
+    assert bare.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
+    check(("chronicle.consumer_fact.v3",), facts_sha256="a" * 64, pin=bare)
+    check(("chronicle.consumer_fact.v5",), facts_sha256="f" * 64, pin=bare)
+
+    with pytest.raises(ValueError) as refusal:
+        check(rows, facts_sha256=facts_sha256, pin=bare)
+
+    assert message in str(refusal.value)
+
+
+def test_main_checks_the_feed_row_contracts_before_compiling_targets() -> None:
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    call = (
+        "_check_us_ledger_feed_row_contracts(\n"
+        "        ledger_artifact.fact_schema_versions,"
+    )
+    assert call in source
+    assert source.count("_check_us_ledger_feed_row_contracts(") == 1
+    pinned = source.index("_check_committed_us_ledger_feed_pin(")
+    checked = source.index(call)
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert pinned < checked < compiled
+
+
 def _minimal_pin_argv() -> list[str]:
     return [
         "--base-h5",
@@ -18191,3 +18727,51 @@ def test_esi_premium_signal_evidence_keeps_a_waived_failure_on_the_record() -> N
         "failures": ["ESI premiums: 100 employer premium(s) outside employed ..."],
     }
     assert builder._esi_premiums_signal_evidence(None) == {"evaluated": False}
+
+
+def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    monkeypatch, tmp_path
+) -> None:
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the build's first call raises.
+
+    The build starts its emitter right after reading its arguments, so with
+    the real adapter (not the shared fixture's in-memory one) it stops before
+    its first check, download or write.
+    """
+
+    from microcosm.build import telemetry_emitter
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+    output = tmp_path / "out"
+    monkeypatch.setattr(
+        builder,
+        "_parse_args",
+        lambda argv: SimpleNamespace(
+            staging_run_id="observed-run",
+            release_id="release-id",
+            dry_run_gates_report=None,
+            out=output,
+        ),
+    )
+
+    def went_on(*args, **kwargs):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's next steps after starting its emitter.
+    monkeypatch.setattr(builder._ReleaseDryRun, "start", went_on)
+    monkeypatch.setattr(builder, "_git_dirty", went_on)
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        builder.main([])
+
+    assert raised.value.reason == "command_not_found"
+    assert builder._ACTIVE_EMITTER is None
+    assert not output.exists()

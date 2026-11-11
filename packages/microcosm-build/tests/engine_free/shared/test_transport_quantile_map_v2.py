@@ -670,8 +670,30 @@ def test_v2_is_registered_beside_v1() -> None:
     )
 
 
-def _spec_with_map(kernel):
+def _spec_without_central_wage_producer():
+    """The packaged NZ spec minus its nz.central producer of employment_income.
+
+    G8-r2c E packages nz.earnings.map there (R2C-19), so the kernel under test
+    must stand alone in nz.central.
+    """
     spec = copy.deepcopy(compose.load_transport_spec("nz"))
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    rows[:] = [
+        row
+        for row in rows
+        if not (
+            row.get("population") == "nz.central"
+            and any(
+                (output["entity"], output["column"]) == ("person", "employment_income")
+                for output in row.get("outputs", ())
+            )
+        )
+    ]
+    return spec
+
+
+def _spec_with_map(kernel):
+    spec = _spec_without_central_wage_producer()
     spec["resources"]["transport_graph"]["nodes"].append(
         {
             "id": "toy.wage.map",
@@ -704,7 +726,10 @@ def test_composition_accepts_v2_as_the_quantile_mapped_money_producer() -> None:
     def central_readers(gaps):
         return [gap for gap in gaps if "'nz.encode.person'" in gap]
 
-    assert central_readers(wage_gaps(compose.load_transport_spec("nz")))
+    # The packaged spec maps central wages; without that producer the
+    # central encode's wage read is a gap again.
+    assert central_readers(wage_gaps(compose.load_transport_spec("nz"))) == []
+    assert central_readers(wage_gaps(_spec_without_central_wage_producer()))
     for kernel in (QUANTILE_MAP_V2_REF, "transport.quantile_map@1"):
         gaps = wage_gaps(_spec_with_map(kernel))
         assert central_readers(gaps) == []

@@ -84,6 +84,7 @@ def _patch_target_inputs(monkeypatch, registry):
         facts=None,
         facts_sha256="1" * 64,
         manifest_sha256="2" * 64,
+        fact_schema_versions=("chronicle.consumer_fact.v4",),
         provenance=lambda: {
             "facts_sha256": "1" * 64,
             "manifest_sha256": "2" * 64,
@@ -97,7 +98,9 @@ def _patch_target_inputs(monkeypatch, registry):
         full_targets,
         "require_committed_uk_chronicle_feed_pin",
         lambda facts_sha256, **kwargs: SimpleNamespace(
-            to_dict=lambda: {"facts_sha256": "1" * 64, "manifest_sha256": "2" * 64}
+            facts_sha256="1" * 64,
+            consumer_fact_schema_versions=("chronicle.consumer_fact.v4",),
+            to_dict=lambda: {"facts_sha256": "1" * 64, "manifest_sha256": "2" * 64},
         ),
     )
     monkeypatch.setattr(

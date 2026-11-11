@@ -42,6 +42,11 @@ from microcosm.data.release import (
     publish_release,
 )
 from microcosm.data.stored_inputs import register_sha256
+from test_support.microcosm_data.build_folders import (
+    UK_NATIONAL_BUILD,
+    to_build_folder_layout,
+)
+from test_support.microcosm_data.hub_errors import missing_on_hub
 
 
 @pytest.fixture(autouse=True)
@@ -526,7 +531,9 @@ class FakeHub:
         try:
             content = self._commits[commit][filename]
         except KeyError as exc:
-            raise FileNotFoundError(f"{filename}@{ref}") from exc
+            raise missing_on_hub(
+                repo_id, filename, ref, message=f"{filename}@{ref}"
+            ) from exc
         local = self._download_dir / ref / filename
         local.parent.mkdir(parents=True, exist_ok=True)
         local.write_bytes(content)
@@ -776,6 +783,32 @@ def _as_uk_national_line_release(release_dir: Path) -> Path:
     }
     manifest_path.write_text(json.dumps(manifest))
     return national
+
+
+def _as_uk_national_build_folder_release(release_dir: Path) -> Path:
+    """Retarget the publisher fixture to the UK national release.
+
+    The national release publishes each build into its own folder, so the
+    manifests name the release and ``UK_NATIONAL_BUILD`` in that layout, and
+    every artifact lives in the UK repository.
+    """
+    national = release_dir.with_name(UK_NATIONAL_RELEASE_ID)
+    release_dir.rename(national)
+
+    certification_path = national / "release_certification.json"
+    certification_path.write_text("{}")
+    manifest_path = national / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for artifact in manifest["artifacts"].values():
+        artifact["repo_id"] = "policyengine/populace-uk-private"
+    manifest["artifacts"]["release_certification"] = {
+        "kind": "diagnostics",
+        "path": certification_path.name,
+        "repo_id": "policyengine/populace-uk-private",
+        "sha256": _sha256(certification_path),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+    return to_build_folder_layout(national, build=UK_NATIONAL_BUILD)
 
 
 @pytest.fixture

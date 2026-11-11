@@ -583,6 +583,11 @@ class UKPropertyBandKernel(_PopulationKernel):
         mix = property_localisation.load_band_mix(
             Path(context.sources[property_localisation.BAND_MIX_SOURCE]).read_bytes()
         )
+        scotland_mix = property_localisation.load_scotland_band_mix(
+            Path(
+                context.sources[property_localisation.SCOTLAND_BAND_MIX_SOURCE]
+            ).read_bytes()
+        )
         band_dtype = household["council_tax_band"].dtype
         tenure = household["tenure_type"].to_numpy()
         new_band, receipt = property_localisation.localise_bands(
@@ -591,13 +596,22 @@ class UKPropertyBandKernel(_PopulationKernel):
             band=household["council_tax_band"].to_numpy(),
             tenure_type=tenure,
             mix=mix,
+            scotland_mix=scotland_mix,
+            local_authority_code=household["local_authority_code"].to_numpy(),
         )
         lsoa = household["lsoa_code"].to_numpy().astype(str)
-        rewritten = (
-            np.char.startswith(lsoa, "E") | np.char.startswith(lsoa, "W")
-        ) & property_localisation.owner_mask(tenure)
+        area = household["local_authority_code"].to_numpy().astype(str)
+        owner = property_localisation.owner_mask(tenure)
+        england_wales = np.char.startswith(lsoa, "E") | np.char.startswith(lsoa, "W")
+        scotland = np.char.startswith(area, "S12") & ~england_wales
+        # Each mix is monotone within its area: an LSOA in England and Wales,
+        # a council area in Scotland.
         violations = property_localisation.monotone_violations(
-            u[rewritten], new_band[rewritten], lsoa[rewritten]
+            u[england_wales & owner],
+            new_band[england_wales & owner],
+            lsoa[england_wales & owner],
+        ) + property_localisation.monotone_violations(
+            u[scotland & owner], new_band[scotland & owner], area[scotland & owner]
         )
         if violations:
             raise ValueError("Property band draws are not monotone in the uniform.")
@@ -612,6 +626,7 @@ class UKPropertyBandKernel(_PopulationKernel):
                 **receipt,
                 "monotone_violations": violations,
                 "band_mix_sha256": mix.source_sha256,
+                "scotland_band_mix_facts_sha256": scotland_mix.source_sha256,
             },
         )
 
@@ -1402,7 +1417,7 @@ def _property_localisation_nodes(
             raise ValueError(
                 f"Property localisation needs the household column {column!r} on the pool."
             )
-    for column in ("constituency_code", "lsoa_code"):
+    for column in ("constituency_code", "lsoa_code", "local_authority_code"):
         if ("household", column) not in cells:
             raise ValueError(
                 f"Property localisation runs after geography derives {column!r}."
@@ -1475,7 +1490,16 @@ def _property_localisation_nodes(
         inputs=(
             Slice(
                 "household",
-                tuple(sorted({*_PROPERTY_BAND_COLUMNS, "lsoa_code", "tenure_type"})),
+                tuple(
+                    sorted(
+                        {
+                            *_PROPERTY_BAND_COLUMNS,
+                            "local_authority_code",
+                            "lsoa_code",
+                            "tenure_type",
+                        }
+                    )
+                ),
             ),
         ),
         outputs=(
@@ -1486,12 +1510,19 @@ def _property_localisation_nodes(
                 rewrite=True,
             ),
         ),
-        sources=(property_localisation.BAND_MIX_SOURCE,),
+        sources=(
+            property_localisation.BAND_MIX_SOURCE,
+            property_localisation.SCOTLAND_BAND_MIX_SOURCE,
+        ),
         params={**common, "method": property_localisation.METHOD_VERSION},
         artifact_inputs=(
             ArtifactInput("quantiles", value.id, "quantiles", PROPERTY_QUANTILE_TYPE),
         ),
-        description="Draw each England-and-Wales clone's council-tax band from its LSOA's VOA mix at the same uniform.",
+        description=(
+            "Draw each England-and-Wales owner clone's council-tax band from its "
+            "LSOA's VOA mix, and each Scottish owner clone's from its council "
+            "area's CTAXBASE mix, at the same uniform."
+        ),
     )
     sources = (
         SourceRef(
@@ -1503,6 +1534,12 @@ def _property_localisation_nodes(
             property_localisation.BAND_MIX_SOURCE,
             "raw-bytes-v1",
             "Per-LSOA cumulative VOA council-tax band shares.",
+        ),
+        SourceRef(
+            property_localisation.SCOTLAND_BAND_MIX_SOURCE,
+            "raw-bytes-v1",
+            "Per-council-area chargeable dwellings by council-tax band "
+            "(Scottish Government CTAXBASE), vendored from Chronicle.",
         ),
     )
     return (value, band), sources

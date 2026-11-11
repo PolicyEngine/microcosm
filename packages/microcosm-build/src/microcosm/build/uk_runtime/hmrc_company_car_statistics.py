@@ -6,9 +6,11 @@ on a company car in 2024-25, provisionally, by the car's CO2 emissions band
 Class 1A NICs on the car and fuel benefits (Table 1), and recipients and taxable
 value by range of total income (Tables 3A and 3B) and by region (Table 4). They
 publish no list price and no electric range, and Tables 2A and 2C are margins: no
-table crosses CO2 with fuel. The stage draws fuel and CO2 to the two margins; the
-rest is measured against, never bound (María's ruling of 28 October 2026 for the
-ISA facts, applied here: binding the cells a stage draws to would be circular).
+table crosses CO2 with fuel. The stage draws fuel and CO2 to the two margins from
+the vendored rows, which the weight solve never reads. The national calibration
+binds Table 1's car recipients and taxable value and Table 2C's recipients by fuel
+from the Chronicle feed (María's ruling of 3 November 2026), and the rest is
+measured against.
 
 The rows come from the Chronicle package ``hmrc-benefits-in-kind-july-2026``
 (PolicyEngine/chronicle#399, for PolicyEngine/uk-autumn-budget-dashboard-2026#316)
@@ -20,6 +22,7 @@ persons and pounds, and emits no fact for a cell HMRC marks as suppressed, so a
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from importlib.resources import files
@@ -31,6 +34,12 @@ from microcosm.build.uk_runtime.ledger_fact_vendoring import (
 )
 
 HMRC_COMPANY_CAR_STATISTICS_RESOURCE = "hmrc_benefits_in_kind_facts.json"
+#: The engine's company car benefit dated by its name to the year the engine
+#: prices it in (``company_car_benefit_2024``). Table 1's taxable value is
+#: 2024-25's, and the calibration year's appropriate percentages are a point
+#: higher, so the national row reads the benefit in the tax year the table
+#: counts, as the CGT rows read their gains (``cgt_2024_gains``).
+HMRC_COMPANY_CAR_DATED_BENEFIT = re.compile(r"^company_car_benefit_(20[0-9]{2})$")
 HMRC_COMPANY_CAR_STATISTICS_ARTIFACT_ROLE = "benefits_in_kind_facts"
 #: The tax year the stage reads (2024-25, provisional in the July 2026 release),
 #: the build's period.
@@ -363,9 +372,17 @@ def _check_published_identities(statistics: HMRCCompanyCarStatistics) -> None:
         )
 
 
+def company_car_dated_benefit_year(variable: str) -> int | None:
+    """The year a dated company car benefit is computed at, else None."""
+
+    match = HMRC_COMPANY_CAR_DATED_BENEFIT.fullmatch(variable)
+    return int(match[1]) if match else None
+
+
 __all__ = [
     "HMRC_CO2_BANDS",
     "HMRC_CO2_BAND_IDS",
+    "HMRC_COMPANY_CAR_DATED_BENEFIT",
     "HMRC_COMPANY_CAR_RECORD_SETS",
     "HMRC_COMPANY_CAR_STATISTICS_ARTIFACT_ROLE",
     "HMRC_COMPANY_CAR_STATISTICS_RESOURCE",
@@ -377,5 +394,6 @@ __all__ = [
     "HMRCCompanyCarStatisticsError",
     "check_company_car_statistics_declaration",
     "co2_band_bounds",
+    "company_car_dated_benefit_year",
     "load_hmrc_company_car_statistics",
 ]

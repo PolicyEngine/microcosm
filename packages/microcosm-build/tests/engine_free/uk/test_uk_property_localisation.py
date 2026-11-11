@@ -286,6 +286,92 @@ def test_localise_bands_is_monotone_in_the_uniform_and_skips_scotland() -> None:
     assert receipt["band_mix_after"]["I"] == 0
 
 
+def _scotland_mix() -> pl.BandMix:
+    return pl.load_scotland_band_mix(
+        json.dumps(toy_property_resources()["scotland_band_mix"]).encode()
+    )
+
+
+def test_scotland_band_mix_needs_every_band_of_every_council_area() -> None:
+    resource = toy_property_resources()["scotland_band_mix"]
+    mix = pl.load_scotland_band_mix(json.dumps(resource).encode())
+    # Scotland's bands run A to H, so band I adds nothing.
+    assert all(values[-2] == values[-1] == 1.0 for values in mix.cumulative.values())
+    assert mix.as_at == pl.SCOTLAND_BAND_PERIOD
+    short = {**resource, "rows": resource["rows"][1:]}
+    with pytest.raises(ValueError, match="lacks bands"):
+        pl.load_scotland_band_mix(json.dumps(short).encode())
+    with pytest.raises(ValueError, match="not the vendored CTAXBASE facts"):
+        pl.load_scotland_band_mix(json.dumps({**resource, "kind": "other"}).encode())
+    # Only the September 2025 rows are read.
+    stale = {
+        **resource,
+        "rows": [
+            {**row, "period": {"type": "month", "value": "2024-09"}}
+            for row in resource["rows"]
+        ],
+    }
+    with pytest.raises(ValueError, match="no council areas"):
+        pl.load_scotland_band_mix(json.dumps(stale).encode())
+
+
+def test_localise_bands_draws_scottish_owners_from_their_council_area() -> None:
+    """With the CTAXBASE mix a Scottish owner draws its band from its council
+    area's shares at its uniform; a Scottish renter and Northern Ireland keep
+    theirs (microcosm#1095 B12)."""
+    mix, scotland = _mix(), _scotland_mix()
+    lsoa = next(iter(mix.cumulative))
+    area = next(iter(scotland.cumulative))
+    u = np.array([0.0, 0.124, 0.126, 0.999, 0.6, 0.6, 0.3])
+    codes = np.array(["S01000001"] * 5 + ["N00000001", lsoa])
+    areas = np.array([area] * 5 + ["N09000001", "E06000001"])
+    band = np.array(["D"] * 7)
+    tenure = np.array(
+        ["OWNED_OUTRIGHT"] * 4 + ["RENT_PRIVATELY"] + ["OWNED_OUTRIGHT"] * 2
+    )
+    new_band, receipt = pl.localise_bands(
+        u=u,
+        lsoa_code=codes,
+        band=band,
+        tenure_type=tenure,
+        mix=mix,
+        scotland_mix=scotland,
+        local_authority_code=areas,
+    )
+    # The toy council area splits A to H in eighths, so no owner reads I.
+    assert list(new_band[:4]) == ["A", "A", "B", "H"]
+    assert new_band[4] == "D" and new_band[5] == "D"
+    # England and Wales draw as before.
+    assert new_band[6] == "C"
+    scottish = receipt["scotland"]
+    assert scottish["rows_rewritten"] == 4 and scottish["rows_untouched_renters"] == 1
+    assert scottish["council_areas"] == 1 and scottish["band_mix_after"]["I"] == 0
+    assert scottish["as_at"] == "2025-09"
+    # Scotland's owners leave the untouched count; the renter and
+    # Northern Ireland stay in it.
+    assert receipt["rows_untouched_outside_england_wales"] == 2
+    assert pl.monotone_violations(u[:4], new_band[:4], areas[:4]) == 0
+    with pytest.raises(ValueError, match="No Scottish band mix"):
+        pl.localise_bands(
+            u=u,
+            lsoa_code=codes,
+            band=band,
+            tenure_type=tenure,
+            mix=mix,
+            scotland_mix=scotland,
+            local_authority_code=np.where(areas == area, "S12999999", areas),
+        )
+    with pytest.raises(ValueError, match="council areas"):
+        pl.localise_bands(
+            u=u,
+            lsoa_code=codes,
+            band=band,
+            tenure_type=tenure,
+            mix=mix,
+            scotland_mix=scotland,
+        )
+
+
 # ----------------------------------------------------------------------------
 # Lineage
 

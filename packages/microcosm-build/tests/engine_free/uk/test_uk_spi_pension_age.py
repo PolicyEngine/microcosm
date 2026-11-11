@@ -271,11 +271,13 @@ def test_band_resample_without_age_pooling_keeps_the_legacy_pools() -> None:
     assert receipt["bands"][0]["age_matched_carriers"] == 0
 
 
-def test_stage1_queries_sit_at_the_middle_of_the_year_of_age() -> None:
+def test_stage1_queries_carry_the_spi_age_band() -> None:
+    # The forests read the SPI AGERANGE band of the whole-year age, not an
+    # age (uk-data#628): 24 is in 16-24 (1), 66 in 65-74 (6), 75 in 75+ (7).
     person = pd.DataFrame(
         {
             "person_household_id": [1, 1, 2],
-            "age": [65, 66, 74],
+            "age": [24, 66, 75],
             "gender": ["MALE", "FEMALE", "MALE"],
             # The bridge predictors read the row's own leaves (microcosm#840).
             "employment_income": [20_000.0, 0.0, 0.0],
@@ -291,34 +293,39 @@ def test_stage1_queries_sit_at_the_middle_of_the_year_of_age() -> None:
         person, household, state_pension_age=66
     )
 
-    assert predictors["age"].tolist() == [65.5, 66.5, 74.5]
+    assert predictors[spi_income.SPI_STAGE1_AGE_BAND_COLUMN].tolist() == [1.0, 6.0, 7.0]
+    assert "age" not in predictors.columns
     assert predictors["region"].tolist() == ["LONDON", "LONDON", "WALES"]
     assert list(predictors.columns) == list(spi_income.SPI_STAGE1_PREDICTOR_COLUMNS)
     assert predictors["main_source"].tolist() == ["pay", "pension", "pension"]
     assert predictors["at_or_over_spa"].tolist() == [0.0, 1.0, 1.0]
 
 
-def test_whole_year_frame_ages_draw_state_pension_from_their_own_year() -> None:
-    # Donors carry a fractional age and State Pension from 66.0. A frame
-    # person aged 66 queried at the whole year sits on the forest's split at
-    # that birthday; at the middle of the year every 66-year-old draws from
-    # the donors who have reached State Pension age (microcosm#1069).
+def test_the_band_and_state_pension_flag_split_state_pension_inside_a_band() -> None:
+    # The forests no longer see an age inside the 65-74 band (uk-data#628),
+    # so the State Pension split there is at_or_over_spa's: a 65-year-old
+    # draws from the band's donors below State Pension age, and 66- and
+    # 67-year-olds from those who have reached it (microcosm#1069).
     from microcosm.frame import WeightKind
 
     rng = np.random.default_rng(0)
     count = 4_000
     ages = rng.integers(60, 75, size=count) + rng.random(count)
+    at_or_over_spa = (ages >= 66.0).astype(float)
     donor = pd.DataFrame(
         {
-            "age": ages,
+            spi_income.SPI_STAGE1_AGE_BAND_COLUMN: spi_income._spi_agerange_codes(
+                np.floor(ages)
+            ).astype(float),
             "gender": np.where(rng.random(count) < 0.5, "MALE", "FEMALE"),
             "region": "LONDON",
+            "at_or_over_spa": at_or_over_spa,
         }
     )
     targets = pd.DataFrame(
         {
             spi_income.SPI_HMRC_STATE_PENSION_INCOME_COLUMN: np.where(
-                ages >= 66.0, 9_000.0 + 1_500.0 * rng.random(count), 0.0
+                at_or_over_spa > 0, 9_000.0 + 1_500.0 * rng.random(count), 0.0
             ),
             "employment_income": np.where(ages < 66.0, 25_000.0, 4_000.0)
             * rng.random(count),
@@ -332,10 +339,13 @@ def test_whole_year_frame_ages_draw_state_pension_from_their_own_year() -> None:
         }
     )
     household = pd.DataFrame({"household_id": [1], "region": ["LONDON"]})
-    # The age rule alone is under test, so the query carries the donor's three
-    # predictors at the middle of the year of age, without the bridge.
     query = spi_income._person_predictors(person, household, income_predictors=())
-    query["age"] = np.floor(query["age"].to_numpy(dtype=float)) + 0.5
+    query[spi_income.SPI_STAGE1_AGE_BAND_COLUMN] = spi_income._spi_agerange_codes(
+        query["age"].to_numpy(dtype=float)
+    ).astype(float)
+    query["at_or_over_spa"] = (query["age"].to_numpy(dtype=float) >= 66.0).astype(float)
+    query = query[list(donor.columns)]
+    assert set(query[spi_income.SPI_STAGE1_AGE_BAND_COLUMN]) == {6.0}
     encoded_donor, encoded_query = spi_income._encode_predictor_pair(donor, query)
     frame = spi_income._person_fit_frame(
         predictors=encoded_donor,

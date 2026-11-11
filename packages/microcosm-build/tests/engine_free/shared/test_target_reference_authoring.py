@@ -426,6 +426,67 @@ def test_generate_uk_local_target_references_cli_refuses_incomplete_contract(
     assert not membership_path.exists()
 
 
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "tools/generate_uk_local_target_references.py",
+        "tools/generate_uk_target_references.py",
+    ],
+)
+def test_uk_reference_generators_refuse_rows_on_an_undeclared_row_contract(
+    tmp_path: Path, tool: str
+) -> None:
+    """The generators read a subset of the pinned feed and check its rows.
+
+    Every row's ``schema_version`` must be a row contract that
+    ``microcosm.build.chronicle_epoch`` declares and the committed UK pin
+    lists; the refusal comes before any reference is authored or written.
+    """
+    repo = _TEST_PATHS.repository
+    contract_path = tmp_path / "contract.json"
+    facts_path = tmp_path / "facts.jsonl"
+    output_path = tmp_path / "references.json"
+    membership_path = tmp_path / "membership.json"
+    contract_path.write_text(json.dumps(_single_age_contract()), encoding="utf-8")
+    facts_path.write_text(
+        "\n".join(
+            json.dumps({**row, "schema_version": "chronicle.consumer_fact.v6"})
+            for row in (
+                _area_fact("ons", "population", 10.0, area_id="A1", fact_key="a1-0"),
+                _area_fact("ons", "population", 20.0, area_id="A1", fact_key="a1-1"),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    arguments = [
+        sys.executable,
+        tool,
+        "--contract",
+        str(contract_path),
+        "--ledger-facts",
+        str(facts_path),
+        "--output",
+        str(output_path),
+        "--membership-report",
+        str(membership_path),
+    ]
+    if "local" in tool:
+        crosswalk_path = tmp_path / "crosswalk.json"
+        crosswalk_path.write_text(json.dumps({"levels": {}}), encoding="utf-8")
+        arguments += ["--crosswalk", str(crosswalk_path)]
+
+    result = subprocess.run(
+        arguments, cwd=repo, text=True, capture_output=True, check=False
+    )
+
+    assert result.returncode != 0
+    assert "['chronicle.consumer_fact.v6']" in result.stderr
+    assert "microcosm.build.chronicle_epoch" in result.stderr
+    assert not output_path.exists()
+    assert not membership_path.exists()
+
+
 def _candidate(report: dict, target_id: str, area_id: str) -> dict:
     candidates = report["targets"][target_id]["geography_levels"]["constituency"][
         "candidates"

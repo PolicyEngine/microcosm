@@ -26,6 +26,7 @@ as policyengine-core does. Invariants:
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import math
 from pathlib import Path
@@ -970,3 +971,35 @@ def test_a_release_without_single_record_measurements_compares_none(
         "columns_compared": 1,
         "single_record_columns_compared": 0,
     }
+
+
+def test_the_timed_scorer_passes_every_scoring_argument_on(
+    probe_tool, builder, tmp_path, monkeypatch
+) -> None:
+    """The probe times each pass, and the release scorer gets what it was sent,
+    including a reform pass's outer counter (microcosm#1556)."""
+    from microcosm_emitter_interface.telemetry import OuterProgress
+
+    received: list[dict[str, object]] = []
+
+    def score(self, keys, *, label, reform_system=None, outer=None):
+        received.append({"label": label, "outer": outer})
+        return {}
+
+    monkeypatch.setattr(builder._HouseholdBatchedPostExportScorer, "_score", score)
+    passes = tmp_path / "passes.jsonl"
+    timed = probe_tool._timed_scorer_class(builder, passes, probe_tool.StageClock(None))
+    parameters = inspect.signature(timed._score).parameters
+    assert "outer" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    monkeypatch.setattr(timed, "n_batches", 3, raising=False)
+    scorer = object.__new__(timed)
+    counter = OuterProgress(2, 5, "reform_pass")
+    scorer._score(
+        ("fixture key",), label="fixture reform", reform_system=object(), outer=counter
+    )
+    assert received == [{"label": "fixture reform", "outer": counter}]
+    row = json.loads(passes.read_text())
+    assert (row["label"], row["reform"], row["batches"]) == ("fixture reform", True, 3)

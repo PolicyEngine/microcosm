@@ -1,11 +1,11 @@
 {
- "compiled_count": 1418,
+ "compiled_count": 1697,
  "counts_by_kind": {
-  "calibration_drift": 566,
-  "fixture_only": 42,
-  "ledger_only": 823
+  "calibration_drift": 564,
+  "fixture_only": 44,
+  "ledger_only": 1104
  },
- "difference_count": 1431,
+ "difference_count": 1712,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -166,14 +166,28 @@
    "kind": "fixture_only",
    "name": "ons.population.female_15_19",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year 15_19 sex band is split into ages 15, 16-17 and 18-19, because a fit to the band left the ages inside it free to drift. The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year 15_19 sex band is split, into ages 15, 16-17 and 18-19 by that ruling and into the single years 15 to 19 by Y5 of the November event-data plan (approved by María on 2026-11-06), because a fit to the band left the ages inside it free to drift. The five rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
+  },
+  {
+   "fixture_value": 2033478.0,
+   "kind": "fixture_only",
+   "name": "ons.population.female_20_24",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): the five-year 20_24 sex band is split into the single years 20 to 24, because the single ages inside the fitted band drifted from ONS around the ages at which the young people and work review's measures change (21, 22 and 25). The five rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
   },
   {
    "fixture_value": 2149930.0,
    "kind": "fixture_only",
    "name": "ons.population.male_15_19",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year 15_19 sex band is split into ages 15, 16-17 and 18-19, because a fit to the band left the ages inside it free to drift. The three rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): the five-year 15_19 sex band is split, into ages 15, 16-17 and 18-19 by that ruling and into the single years 15 to 19 by Y5 of the November event-data plan (approved by María on 2026-11-06), because a fit to the band left the ages inside it free to drift. The five rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
+  },
+  {
+   "fixture_value": 2136737.0,
+   "kind": "fixture_only",
+   "name": "ons.population.male_20_24",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): the five-year 20_24 sex band is split into the single years 20 to 24, because the single ages inside the fitted band drifted from ONS around the ages at which the young people and work review's measures change (21, 22 and 25). The five rows partition this row's population and read the same ONS mid-year estimate by single year of age, so they sum to it. No single current row has this definition, so the frozen fixture's row is fixture-only on the current surface."
   },
   {
    "fixture_value": 82000.0,
@@ -737,6 +751,664 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 165128.75,
+   "name": "dwp.pip.cases_east_midlands_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15460.0,
+   "name": "dwp.pip.cases_east_midlands_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136988.75,
+   "name": "dwp.pip.cases_east_midlands_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 177650.0,
+   "name": "dwp.pip.cases_east_midlands_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 47511.75,
+   "name": "dwp.pip.cases_east_midlands_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 92414.75,
+   "name": "dwp.pip.cases_east_midlands_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 170988.75,
+   "name": "dwp.pip.cases_east_of_england_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14423.75,
+   "name": "dwp.pip.cases_east_of_england_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 146411.75,
+   "name": "dwp.pip.cases_east_of_england_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 166776.0,
+   "name": "dwp.pip.cases_east_of_england_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 69254.75,
+   "name": "dwp.pip.cases_east_of_england_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 95795.0,
+   "name": "dwp.pip.cases_east_of_england_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3490214.25,
+   "name": "dwp.pip.cases_england",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 181800.0,
+   "name": "dwp.pip.cases_england_aged_16_to_19",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 202349.5,
+   "name": "dwp.pip.cases_england_aged_20_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 196997.5,
+   "name": "dwp.pip.cases_england_aged_25_to_29",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 222042.25,
+   "name": "dwp.pip.cases_england_aged_30_to_34",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 248251.5,
+   "name": "dwp.pip.cases_england_aged_35_to_39",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 262599.5,
+   "name": "dwp.pip.cases_england_aged_40_to_44",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 270020.75,
+   "name": "dwp.pip.cases_england_aged_45_to_49",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 343020.75,
+   "name": "dwp.pip.cases_england_aged_50_to_54",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 425461.75,
+   "name": "dwp.pip.cases_england_aged_55_to_59",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 475625.75,
+   "name": "dwp.pip.cases_england_aged_60_to_64",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 395530.5,
+   "name": "dwp.pip.cases_england_aged_65_to_69",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 199125.0,
+   "name": "dwp.pip.cases_england_aged_70_to_74",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 67391.25,
+   "name": "dwp.pip.cases_england_aged_75_and_over",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1823860.5,
+   "name": "dwp.pip.cases_england_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 144486.75,
+   "name": "dwp.pip.cases_england_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1521596.25,
+   "name": "dwp.pip.cases_england_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1772561.75,
+   "name": "dwp.pip.cases_england_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 705472.25,
+   "name": "dwp.pip.cases_england_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1011906.25,
+   "name": "dwp.pip.cases_england_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 240339.25,
+   "name": "dwp.pip.cases_london_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15032.25,
+   "name": "dwp.pip.cases_london_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 193466.75,
+   "name": "dwp.pip.cases_london_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 222332.5,
+   "name": "dwp.pip.cases_london_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 104702.5,
+   "name": "dwp.pip.cases_london_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 121805.5,
+   "name": "dwp.pip.cases_london_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 126445.25,
+   "name": "dwp.pip.cases_north_east_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9630.25,
+   "name": "dwp.pip.cases_north_east_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 107983.0,
+   "name": "dwp.pip.cases_north_east_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 116531.25,
+   "name": "dwp.pip.cases_north_east_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 54430.0,
+   "name": "dwp.pip.cases_north_east_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 73099.0,
+   "name": "dwp.pip.cases_north_east_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 310037.0,
+   "name": "dwp.pip.cases_north_west_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22476.0,
+   "name": "dwp.pip.cases_north_west_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 265405.25,
+   "name": "dwp.pip.cases_north_west_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 291581.25,
+   "name": "dwp.pip.cases_north_west_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 127927.75,
+   "name": "dwp.pip.cases_north_west_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 178406.0,
+   "name": "dwp.pip.cases_north_west_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 229595.75,
+   "name": "dwp.pip.cases_south_east_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18222.75,
+   "name": "dwp.pip.cases_south_east_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 185335.0,
+   "name": "dwp.pip.cases_south_east_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 215238.75,
+   "name": "dwp.pip.cases_south_east_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 92183.25,
+   "name": "dwp.pip.cases_south_east_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 125730.0,
+   "name": "dwp.pip.cases_south_east_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 171489.0,
+   "name": "dwp.pip.cases_south_west_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12983.0,
+   "name": "dwp.pip.cases_south_west_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136125.25,
+   "name": "dwp.pip.cases_south_west_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 161057.0,
+   "name": "dwp.pip.cases_south_west_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 67894.5,
+   "name": "dwp.pip.cases_south_west_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 91645.0,
+   "name": "dwp.pip.cases_south_west_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 281007.75,
+   "name": "dwp.pip.cases_wales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10026.0,
+   "name": "dwp.pip.cases_wales_aged_16_to_19",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13329.25,
+   "name": "dwp.pip.cases_wales_aged_20_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14728.0,
+   "name": "dwp.pip.cases_wales_aged_25_to_29",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17144.5,
+   "name": "dwp.pip.cases_wales_aged_30_to_34",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19438.0,
+   "name": "dwp.pip.cases_wales_aged_35_to_39",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20118.0,
+   "name": "dwp.pip.cases_wales_aged_40_to_44",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20384.0,
+   "name": "dwp.pip.cases_wales_aged_45_to_49",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26755.25,
+   "name": "dwp.pip.cases_wales_aged_50_to_54",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 34274.0,
+   "name": "dwp.pip.cases_wales_aged_55_to_59",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40608.5,
+   "name": "dwp.pip.cases_wales_aged_60_to_64",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 35969.75,
+   "name": "dwp.pip.cases_wales_aged_65_to_69",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20931.75,
+   "name": "dwp.pip.cases_wales_aged_70_to_74",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7299.25,
+   "name": "dwp.pip.cases_wales_aged_75_and_over",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 147586.0,
+   "name": "dwp.pip.cases_wales_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11876.75,
+   "name": "dwp.pip.cases_wales_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 121530.75,
+   "name": "dwp.pip.cases_wales_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 159375.25,
+   "name": "dwp.pip.cases_wales_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40469.5,
+   "name": "dwp.pip.cases_wales_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 81147.75,
+   "name": "dwp.pip.cases_wales_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 207791.0,
+   "name": "dwp.pip.cases_west_midlands_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20030.75,
+   "name": "dwp.pip.cases_west_midlands_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 173617.75,
+   "name": "dwp.pip.cases_west_midlands_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 227121.5,
+   "name": "dwp.pip.cases_west_midlands_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 58672.0,
+   "name": "dwp.pip.cases_west_midlands_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 115644.75,
+   "name": "dwp.pip.cases_west_midlands_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 202045.75,
+   "name": "dwp.pip.cases_yorkshire_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16229.0,
+   "name": "dwp.pip.cases_yorkshire_daily_living_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 176263.75,
+   "name": "dwp.pip.cases_yorkshire_daily_living_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 194275.75,
+   "name": "dwp.pip.cases_yorkshire_mobility_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 82894.0,
+   "name": "dwp.pip.cases_yorkshire_mobility_nil",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 117369.75,
+   "name": "dwp.pip.cases_yorkshire_mobility_standard",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 138623908111.01526,
    "name": "dwp.state_pension.amount",
    "period": 2025,
@@ -1185,6 +1857,27 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 386617.5,
+   "name": "dwp.uc.people_aged_16_to_21",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 762585.25,
+   "name": "dwp.uc.people_aged_16_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 375967.75,
+   "name": "dwp.uc.people_aged_22_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 597920.0,
    "name": "dwp.uc.two_child_limit.children_affected",
    "period": 2025,
@@ -1292,6 +1985,41 @@
    "kind": "ledger_only",
    "ledger_value": 104200000000.0,
    "name": "dwp.workplace_pension.employer_contributions",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 60000.0,
+   "name": "hmrc.benefits_in_kind.company_car_fuel.diesel_including_hybrids",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 465000.0,
+   "name": "hmrc.benefits_in_kind.company_car_fuel.fully_electric",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 390000.0,
+   "name": "hmrc.benefits_in_kind.company_car_fuel.petrol_including_hybrids",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 920000.0,
+   "name": "hmrc.benefits_in_kind.company_car_recipients",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3070000000.0,
+   "name": "hmrc.benefits_in_kind.company_car_taxable_value",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -1885,6 +2613,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 310000.0,
+   "name": "hmrc.child_benefit.hicbc_liable_taxpayers",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 360000000.0,
+   "name": "hmrc.child_benefit.hicbc_revenue",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 15500.0,
    "name": "hmrc.itl.additional_rate_taxpayers@E12000001",
    "period": 2025,
@@ -2473,6 +3215,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 1349596177.814707,
+   "name": "hmrc.pris.expenses.scotland",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2950280016.618197,
+   "name": "hmrc.pris.rental_income.scotland",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 1800000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
    "period": 2025,
@@ -2489,6 +3245,20 @@
    "kind": "ledger_only",
    "ledger_value": 5500000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19402730017.279205,
+   "name": "hmrc.scottish_income_tax.nsnd_outturn",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3036400.0,
+   "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -5868,6 +6638,1119 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 943415.518223629,
+   "name": "ons.neet.people_aged_16_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 118200.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 334300.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 251100.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 227100.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 276000.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 326400.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 395700.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 426000.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 235700.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 111900.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 232800.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136300.0,
+   "name": "ons.occupation.administrative_and_secretarial_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 168800.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 496100.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 358600.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 353300.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 411500.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 471800.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 810900.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 737500.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 423200.0,
+   "name": "ons.occupation.associate_professional_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 92000.0,
+   "name": "ons.occupation.associate_professional_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 403400.0,
+   "name": "ons.occupation.associate_professional_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 225900.0,
+   "name": "ons.occupation.associate_professional_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 114800.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 330100.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 234900.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 207800.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 263700.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 264100.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 352000.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 393700.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 235500.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 86900.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 268000.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 142300.0,
+   "name": "ons.occupation.caring_leisure_and_other_service_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 113000.0,
+   "name": "ons.occupation.elementary_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 330000.0,
+   "name": "ons.occupation.elementary_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 295500.0,
+   "name": "ons.occupation.elementary_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 261000.0,
+   "name": "ons.occupation.elementary_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 293900.0,
+   "name": "ons.occupation.elementary_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 268300.0,
+   "name": "ons.occupation.elementary_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 299000.0,
+   "name": "ons.occupation.elementary_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 377200.0,
+   "name": "ons.occupation.elementary_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 267600.0,
+   "name": "ons.occupation.elementary_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 79600.0,
+   "name": "ons.occupation.elementary_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 270500.0,
+   "name": "ons.occupation.elementary_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 143200.0,
+   "name": "ons.occupation.elementary_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1807200.0,
+   "name": "ons.occupation.female_administrative",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1180100.0,
+   "name": "ons.occupation.female_business_and_public_service_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1318500.0,
+   "name": "ons.occupation.female_business_media_and_public_service_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1861000.0,
+   "name": "ons.occupation.female_caring_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 972700.0,
+   "name": "ons.occupation.female_corporate_managers_and_directors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 354000.0,
+   "name": "ons.occupation.female_culture_media_and_sports",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 277500.0,
+   "name": "ons.occupation.female_customer_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1345800.0,
+   "name": "ons.occupation.female_elementary_administration_and_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 91100.0,
+   "name": "ons.occupation.female_elementary_trades_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 629200.0,
+   "name": "ons.occupation.female_health_and_social_care_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1281200.0,
+   "name": "ons.occupation.female_health_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 398800.0,
+   "name": "ons.occupation.female_leisure_travel_and_related_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 466100.0,
+   "name": "ons.occupation.female_other_managers_and_proprietors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 149200.0,
+   "name": "ons.occupation.female_process_plant_and_machine_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 120100.0,
+   "name": "ons.occupation.female_protective_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 853800.0,
+   "name": "ons.occupation.female_sales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 155900.0,
+   "name": "ons.occupation.female_science_engineering_and_technology_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 679600.0,
+   "name": "ons.occupation.female_science_research_engineering_and_technology_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 428200.0,
+   "name": "ons.occupation.female_secretarial_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 60200.0,
+   "name": "ons.occupation.female_skilled_agricultural_and_related_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23400.0,
+   "name": "ons.occupation.female_skilled_construction_and_building_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 35300.0,
+   "name": "ons.occupation.female_skilled_metal_electrical_and_electronic_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1155900.0,
+   "name": "ons.occupation.female_teaching_and_other_educational_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 215700.0,
+   "name": "ons.occupation.female_textiles_printing_and_other_skilled_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 77400.0,
+   "name": "ons.occupation.female_transport_and_mobile_machine_drivers_and_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 791600.0,
+   "name": "ons.occupation.male_administrative",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1227600.0,
+   "name": "ons.occupation.male_business_and_public_service_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1505100.0,
+   "name": "ons.occupation.male_business_media_and_public_service_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 430400.0,
+   "name": "ons.occupation.male_caring_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1647200.0,
+   "name": "ons.occupation.male_corporate_managers_and_directors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 419300.0,
+   "name": "ons.occupation.male_culture_media_and_sports",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 170300.0,
+   "name": "ons.occupation.male_customer_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1267000.0,
+   "name": "ons.occupation.male_elementary_administration_and_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 295000.0,
+   "name": "ons.occupation.male_elementary_trades_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 136700.0,
+   "name": "ons.occupation.male_health_and_social_care_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 452100.0,
+   "name": "ons.occupation.male_health_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 180400.0,
+   "name": "ons.occupation.male_leisure_travel_and_related_personal_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 723900.0,
+   "name": "ons.occupation.male_other_managers_and_proprietors",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 526900.0,
+   "name": "ons.occupation.male_process_plant_and_machine_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 295500.0,
+   "name": "ons.occupation.male_protective_service",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 603600.0,
+   "name": "ons.occupation.male_sales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 434700.0,
+   "name": "ons.occupation.male_science_engineering_and_technology_associate_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1978200.0,
+   "name": "ons.occupation.male_science_research_engineering_and_technology_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 44600.0,
+   "name": "ons.occupation.male_secretarial_and_related",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 274200.0,
+   "name": "ons.occupation.male_skilled_agricultural_and_related_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 893000.0,
+   "name": "ons.occupation.male_skilled_construction_and_building_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 901400.0,
+   "name": "ons.occupation.male_skilled_metal_electrical_and_electronic_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 594700.0,
+   "name": "ons.occupation.male_teaching_and_other_educational_professionals",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 368500.0,
+   "name": "ons.occupation.male_textiles_printing_and_other_skilled_trades",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1093900.0,
+   "name": "ons.occupation.male_transport_and_mobile_machine_drivers_and_operatives",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 107500.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 342900.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 254900.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 247700.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 278100.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 413400.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 732600.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 620600.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 339200.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 81100.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 247500.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 144400.0,
+   "name": "ons.occupation.managers_directors_and_senior_officials_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 85900.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 201800.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 179300.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 165600.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 193800.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 188200.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 171400.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 216300.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 154600.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 59100.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 141400.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 90000.0,
+   "name": "ons.occupation.process_plant_and_machine_operatives_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 290200.0,
+   "name": "ons.occupation.professional_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 963500.0,
+   "name": "ons.occupation.professional_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 651200.0,
+   "name": "ons.occupation.professional_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 532400.0,
+   "name": "ons.occupation.professional_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 699800.0,
+   "name": "ons.occupation.professional_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 816100.0,
+   "name": "ons.occupation.professional_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1655600.0,
+   "name": "ons.occupation.professional_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1309100.0,
+   "name": "ons.occupation.professional_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 755200.0,
+   "name": "ons.occupation.professional_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 227400.0,
+   "name": "ons.occupation.professional_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 722700.0,
+   "name": "ons.occupation.professional_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 342000.0,
+   "name": "ons.occupation.professional_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 79300.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 205200.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 154000.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 155300.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 168600.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 168200.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 209500.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 263000.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 164000.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 75800.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 172800.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 89500.0,
+   "name": "ons.occupation.sales_and_customer_service_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 124000.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 298100.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 231300.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 214200.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 240900.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 271300.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 232000.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 393300.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 275500.0,
+   "name": "ons.occupation.skilled_trades_by_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 103000.0,
+   "name": "ons.occupation.skilled_trades_by_region@N92000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 240200.0,
+   "name": "ons.occupation.skilled_trades_by_region@S92000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 147800.0,
+   "name": "ons.occupation.skilled_trades_by_region@W92000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 658357.0,
    "name": "ons.population.age_0",
    "period": 2025,
@@ -5969,21 +7852,70 @@
    "ledger_value": 408119.0,
    "name": "ons.population.female_15",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 812522.0,
-   "name": "ons.population.female_16_17",
+   "ledger_value": 404224.0,
+   "name": "ons.population.female_16",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 781458.0,
-   "name": "ons.population.female_18_19",
+   "ledger_value": 408298.0,
+   "name": "ons.population.female_17",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 391816.0,
+   "name": "ons.population.female_18",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 389642.0,
+   "name": "ons.population.female_19",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 394268.0,
+   "name": "ons.population.female_20",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 396247.0,
+   "name": "ons.population.female_21",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 405384.0,
+   "name": "ons.population.female_22",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 418166.0,
+   "name": "ons.population.female_23",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 422699.0,
+   "name": "ons.population.female_24",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
@@ -5997,21 +7929,70 @@
    "ledger_value": 427529.0,
    "name": "ons.population.male_15",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 856296.0,
-   "name": "ons.population.male_16_17",
+   "ledger_value": 425827.0,
+   "name": "ons.population.male_16",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 823183.0,
-   "name": "ons.population.male_18_19",
+   "ledger_value": 430469.0,
+   "name": "ons.population.male_17",
    "period": 2025,
-   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563): one of the three rows (ages 15, 16-17 and 18-19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 413685.0,
+   "name": "ons.population.male_18",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 409498.0,
+   "name": "ons.population.male_19",
+   "period": 2025,
+   "reason": "microcosm#1095 (María's ruling of 2026-10-13; uk-data#563; single years since Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 15 to 19) that partition the incumbent five-year 15_19 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 415442.0,
+   "name": "ons.population.male_20",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 419104.0,
+   "name": "ons.population.male_21",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 423728.0,
+   "name": "ons.population.male_22",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 432421.0,
+   "name": "ons.population.male_23",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 436367.0,
+   "name": "ons.population.male_24",
+   "period": 2025,
+   "reason": "microcosm#1095 (Y5 of the November event-data plan, approved by María on 2026-11-06): one of the five rows (the single years 20 to 24) that partition the incumbent five-year 20_24 sex band, bound so the fit holds the age mix inside the band. The incumbent binds only the band, so this row has no fixture counterpart."
   },
   {
    "kind": "ledger_only",
@@ -10143,14 +12124,6 @@
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },
   {
-   "fixture_value": 2033478.0,
-   "kind": "calibration_drift",
-   "ledger_value": 2036764.0,
-   "name": "ons.population.female_20_24",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
    "fixture_value": 2258028.0,
    "kind": "calibration_drift",
    "ledger_value": 2269669.0,
@@ -10275,14 +12248,6 @@
    "kind": "calibration_drift",
    "ledger_value": 2115846.0,
    "name": "ons.population.male_10_14",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 2136737.0,
-   "kind": "calibration_drift",
-   "ledger_value": 2127062.0,
-   "name": "ons.population.male_20_24",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },

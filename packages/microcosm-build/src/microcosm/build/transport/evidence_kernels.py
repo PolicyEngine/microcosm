@@ -321,8 +321,10 @@ def engine_root_inputs(
     list. The engine keeps relation inputs apart from ``root_inputs``, and
     ``variables()`` adds them on the manifest's ``root_entity``, so each of
     the binding's declared relation inputs joins that entity's roots here.
-    An injected adapter (engine-free fixtures) reports one flat list, which
-    this places on the binding's declared engine entity.
+    Each binding-local view's roots join under its logical entity
+    (``Child``), read through ``view_root_inputs()``. An injected adapter
+    (engine-free fixtures) reports one flat list, which this places on the
+    binding's declared engine entity; it refuses a binding with views.
     """
 
     if isinstance(engine, AxiomEngine):
@@ -339,7 +341,15 @@ def engine_root_inputs(
                     f"on {relation.root_entity!r}, which entity_names does not map."
                 )
             found.setdefault(engine_entity, set()).add(relation.input)
+        if "views" in binding:
+            for logical_entity, names in engine.view_root_inputs().items():
+                found.setdefault(logical_entity, set()).update(names)
         return {entity: tuple(sorted(names)) for entity, names in found.items()}
+    if "views" in binding:
+        raise TypeError(
+            f"rules binding {binding.get('id')!r} declares views, which only an "
+            "AxiomEngine runs."
+        )
     return {str(binding["engine_entity"]): tuple(sorted(engine.variables()))}
 
 
