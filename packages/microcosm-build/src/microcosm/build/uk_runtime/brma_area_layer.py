@@ -10,11 +10,13 @@ authority and constituency.
 every 2022 output area of Scotland in one BRMA, by population-weighted
 centroid in the published BRMA polygons (Scotland corrected by Rent Service
 Scotland's postcode lookup); ``tools/build_uk_brma_area_layer.py`` rebuilds
-it from Chronicle's raw registrations. The post-geography node
-``uk.full.geography.brma`` reads a placed household's BRMA off its assigned
-area, as its local authority and constituency are read. Northern Ireland has
-no open BRMA geography and keeps the spine's draw. The national line has no
-areas and keeps the spine's draw everywhere.
+it from Chronicle's raw registrations. The clone-first spine's BRMA stage
+(``spine_geography.UKAreaBRMAStageTransform``, G4 of microcosm#931) reads each
+Great Britain household's BRMA off the area the spine draws it, as its local
+authority and constituency are read. Northern Ireland has no open BRMA
+geography: its households keep the BRMA ``frs_brma`` draws from the census
+counts within their region, keyed on each benefit unit. A spine without areas
+keeps that regional draw everywhere.
 
 Everything here is pure and depends on the standard library, numpy and
 pandas only, so the build tool can load this module by path.
