@@ -1140,8 +1140,9 @@ def _geographic_clone_indices(household: pd.DataFrame) -> np.ndarray | None:
     every household the index of its geographic clone in
     ``household_clone_index``, and its copies keep their root's; a household
     table without the column is one clone. Refuses a non-integer column,
-    a household without an index and a negative index, each by count or
-    dtype, never by id or value.
+    a household without an index and a negative index, each in a fixed
+    sentence naming the column (and, for a column that is not integer, its
+    dtype): never a count, an id or a value.
     """
 
     column = SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN
@@ -1155,18 +1156,16 @@ def _geographic_clone_indices(household: pd.DataFrame) -> np.ndarray | None:
             "SPI income band donors seat each geographic clone on an integer "
             f"{column!r} column; it has dtype {values.dtype}."
         )
-    unindexed = int(values.isna().sum())
-    if unindexed:
+    if bool(values.isna().any()):
         raise ValueError(
-            f"{unindexed} household row(s) carry no {column!r}; SPI income band "
-            "donors seat each geographic clone."
+            f"A household row carries no {column!r}; SPI income band donors seat "
+            "each geographic clone."
         )
     indices = values.to_numpy(dtype=np.int64)
-    negative = int((indices < 0).sum())
-    if negative:
+    if bool((indices < 0).any()):
         raise ValueError(
-            f"{negative} household row(s) carry a negative {column!r}; SPI income "
-            "band donors seat each geographic clone."
+            f"A household row carries a negative {column!r}; SPI income band "
+            "donors seat each geographic clone."
         )
     return indices
 
@@ -1176,18 +1175,18 @@ def _geographic_clone_count(indices: np.ndarray | None) -> int:
 
     Every clone from 0 to ``K - 1`` must carry a household: each one seats
     the band's seats, so a missing clone would leave its share of the
-    published mass unseated. The refusal counts the missing indices.
+    published mass unseated. The refusal is a fixed sentence naming the
+    column, with no count.
     """
 
     if indices is None or not indices.size:
         return 1
     clone_count = int(indices.max()) + 1
-    absent = clone_count - int(np.unique(indices).size)
-    if absent:
+    if int(np.unique(indices).size) != clone_count:
         raise ValueError(
-            f"{absent} of the {clone_count} geographic clone indices from 0 to the "
-            "largest are carried by no household; SPI income band donors seat "
-            "clones 0 to K - 1."
+            f"A {SPI_GEOGRAPHIC_CLONE_INDEX_COLUMN!r} value from 0 to the largest is "
+            "carried by no household; SPI income band donors seat clones 0 to "
+            "K - 1."
         )
     return clone_count
 

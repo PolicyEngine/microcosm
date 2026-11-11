@@ -27,3 +27,8 @@ tools/route_a/route_a.env
 # file holds licensed-data review values and is never committed
 PRIVATE_review.csv
 signoff-draft/
+
+# Spine stage profiles (--stage-profile-dir, microcosm#931): a record keeps the
+# message of a failure its node raised, so profiles stay private
+stage_profile.json
+.stage_profile.json.lock
