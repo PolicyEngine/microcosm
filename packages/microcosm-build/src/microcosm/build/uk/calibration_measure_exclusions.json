@@ -1296,6 +1296,24 @@
       "adjudication": "María's call of 2026-11-08 on the plan for the November event data (PR2, item Y3): measure ONS's NEET people aged 16 to 24 as the mean of the four quarters inside calendar 2025, a new quarterly window rule, and hold the row out of the solve.",
       "approved_on": "2026-11-09",
       "expires_on": "2027-02-09"
+    },
+    {
+      "name": "ons.paye_rti.employees_aged_0_to_17",
+      "reason": "Diagnostic, not a weight question: PAYE RTI's payrolled employees by age monitor the employee base of the employer NICs relief for employees under 21, whose 2024-25 outturn the build matches within 4 percent at 2024-25 rules (B1 of the November event-data plan's PR3, microcosm#1095). The model counts anyone with employment income in the year against a monthly average, so the rows read high by job turnover and are not bound as they stand.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (for María's signature).",
+      "approved_on": "2026-11-11",
+      "expires_on": "2027-02-11"
+    },
+    {
+      "name": "ons.paye_rti.employees_aged_18_to_24",
+      "reason": "Diagnostic, not a weight question: PAYE RTI's payrolled employees by age monitor the employee base of the employer NICs relief for employees under 21, whose 2024-25 outturn the build matches within 4 percent at 2024-25 rules (B1 of the November event-data plan's PR3, microcosm#1095). The model counts anyone with employment income in the year against a monthly average, so the rows read high by job turnover and are not bound as they stand.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (for María's signature).",
+      "approved_on": "2026-11-11",
+      "expires_on": "2027-02-11"
     }
   ]
 }
