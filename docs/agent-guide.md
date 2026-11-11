@@ -218,6 +218,9 @@ Every workflow job sets `timeout-minutes` (at least 1.5 times its slowest
 observed successful run) so a hung job releases its runner from the
 organization's shared pool; raise a job's cap when its suite legitimately
 grows past it.
+Every workflow job runs on `ubuntu-24.04`, and the workflow sets
+`UV_MANAGED_PYTHON=1`, so uv downloads its own Python and never takes the
+image's. Move every job to a newer image in one pull request.
 
 `load_country_spec("<code>")` loads each packaged country spec once per
 process and hands every caller the same immutable object; a `Path` argument is

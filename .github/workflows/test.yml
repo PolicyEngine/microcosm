@@ -15,6 +15,11 @@ env:
   OMP_NUM_THREADS: "1"
   OPENBLAS_NUM_THREADS: "1"
   MKL_NUM_THREADS: "1"
+  # uv takes a runner image's own Python when it holds no managed one, and an
+  # image's Python can trail the patch release a test needs. On 2026-11-10 an
+  # ubuntu-26.04 runner gave an engine-free leg its Python 3.14.4, where the
+  # head-to-head scorer's worker recycling needs 3.14.7.
+  UV_MANAGED_PYTHON: "1"
 
 # GitHub runs an explicit `shell: bash` as `bash -eo pipefail`, and a step
 # with no shell as `bash -e`, where a pipe hides the exit status of the command
@@ -30,12 +35,16 @@ defaults:
 # for engine-uk (45) and integration-uk (8), and for each shorter job at least
 # 5 minutes and at least twice its slowest run.
 
+# Every job names its runner image. `ubuntu-latest` is whichever image GitHub
+# assigns: on 2026-11-10 it gave one engine-free job ubuntu-26.04 and another
+# ubuntu-24.04. Move every job to a newer image in one change.
+
 jobs:
   select-countries:
     permissions:
       contents: read
       pull-requests: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       run_us: ${{ steps.plan.outputs.run_us }}
@@ -49,7 +58,7 @@ jobs:
         run: python3 tools/ci_test_plan.py select-countries
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +77,7 @@ jobs:
         run: uv run --no-sync ruff check .
 
   engine-free:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 165
     strategy:
       fail-fast: false
@@ -92,7 +101,7 @@ jobs:
   engine-us:
     needs: select-countries
     if: needs['select-countries'].outputs.run_us == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 110
     strategy:
       fail-fast: false
@@ -123,7 +132,7 @@ jobs:
   engine-uk:
     needs: select-countries
     if: needs['select-countries'].outputs.run_uk == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -144,7 +153,7 @@ jobs:
     if: needs['select-countries'].outputs.run_uk == 'true'
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -161,7 +170,7 @@ jobs:
   wheels:
     # Editable installs can hide missing package directories and namespace
     # mistakes. Build each wheel once and compare its contents with source.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -178,7 +187,7 @@ jobs:
     # a loopback stand-in. It needs no secrets.
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -212,7 +221,7 @@ jobs:
       - installed-emitter
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
