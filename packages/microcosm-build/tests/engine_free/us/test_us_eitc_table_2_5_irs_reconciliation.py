@@ -463,9 +463,15 @@ def test_uniform_growth_keeps_each_split_s_bins_summing_to_its_total_row(
 ) -> None:
     """When every AGI group's EITC grows by one factor, each split's 28
     compiled AGI bins add to its compiled total row within twice the source's
-    rounding allowance (10 returns or $10,000) times the factor. The compile
-    scales the total rows by the ratio of all bins to all total rows, so each
-    split's gap adds its share of the gap summed over splits to its own."""
+    rounding allowance (10 returns or $10,000) times the factor.
+
+    The compile scales each total row by the filing-season bins' sum over the
+    four total rows' sum, here the factor times all Table 2.5 bins over all
+    total rows. Each split's compiled gap then equals the factor times its
+    source gap (bins less total row), less its total row's share of the gap
+    summed over the four splits. On this fixture every gap stays within one
+    allowance.
+    """
 
     factor = growth / 100
     values: dict[tuple[str, str], float] = {}
