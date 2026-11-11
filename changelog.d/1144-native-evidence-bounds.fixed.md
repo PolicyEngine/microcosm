@@ -1,0 +1,1 @@
+Bound native evidence files by bytes and nesting depth instead of the compiler-schema item budget, and hash checkpoint and published evidence files without parsing them, so a licensed spine manifest (over a million JSON items in 13 MB) no longer refuses the dense build's checkpoint links or the export of its own evidence.

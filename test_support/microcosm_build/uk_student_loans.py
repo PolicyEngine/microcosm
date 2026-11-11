@@ -19,7 +19,10 @@ from microcosm.build.uk_runtime.student_loans import (
     STUDENT_LOAN_SEED,
     _assert_student_loans_stage_parameters,
     _walk_top_up,
+    allocate_balance_to_borrowers,
     assign_student_loan_plans,
+    course_start_year,
+    has_reported_student_loan,
     load_slc_liable_stocks,
 )
 
@@ -41,27 +44,51 @@ def _frame(
     education=None,
     weights=None,
     household_columns=None,
+    current_education=None,
+    reports_outstanding=None,
+    age_left=None,
+    balances=None,
+    households=None,
 ):
+    """One person per household unless ``households`` names each person's
+    household; ``regions`` and ``weights`` are then per household, in order."""
+
     n = len(ages)
     ids = np.arange(1, n + 1, dtype="int64")
-    regions = regions or ["LONDON"] * n
+    person_households = ids if households is None else np.asarray(households)
+    household_ids = pd.unique(person_households)
+    regions = regions or ["LONDON"] * len(household_ids)
     education = education or ["TERTIARY"] * n
+    # No leaving age dates a course at 18, the rule before microcosm#868.
+    current_education = current_education or ["NOT_IN_EDUCATION"] * n
+    reports_outstanding = reports_outstanding or [False] * n
+    age_left = age_left or [0] * n
     return uk_national_frame(
         person=pd.DataFrame(
             {
                 "person_id": ids,
-                "person_benunit_id": ids,
-                "person_household_id": ids,
+                "person_benunit_id": person_households,
+                "person_household_id": person_households,
                 "age": ages,
                 "student_loan_repayments": repayments,
                 "highest_education": education,
+                "current_education": current_education,
+                "reports_outstanding_student_loan": reports_outstanding,
+                "age_left_full_time_education": np.asarray(age_left, dtype="int64"),
+                "student_loan_balance": (
+                    np.zeros(n) if balances is None else np.asarray(balances, float)
+                ),
             }
         ),
-        benunit=pd.DataFrame({"benunit_id": ids}),
+        benunit=pd.DataFrame({"benunit_id": household_ids}),
         household=pd.DataFrame(
-            {"household_id": ids, "region": regions, **(household_columns or {})}
+            {
+                "household_id": household_ids,
+                "region": regions,
+                **(household_columns or {}),
+            }
         ),
-        household_weights=np.ones(n) if weights is None else weights,
+        household_weights=(np.ones(len(household_ids)) if weights is None else weights),
         time_period="2024",
     )
 

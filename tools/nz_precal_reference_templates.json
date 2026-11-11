@@ -1,0 +1,56 @@
+{
+  "target_references": [
+    {
+      "name": "mbie_bond_rents_by_territorial_authority",
+      "ledger_selector": {
+        "source_name": "mbie_tenancy_bond_rents",
+        "source_measure_id": "rent_distribution_by_ta_bedrooms_dwelling_type",
+        "geography_level": "territorial_authority"
+      },
+      "entity": "household",
+      "measure": "rent",
+      "period": null,
+      "family": "housing_costs",
+      "metadata": {
+        "activation_status": "requires_rent_band_frequencies",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Ministry of Business, Innovation and Employment",
+        "target_role": "pre_calibration",
+        "reference_set": "precal",
+        "method_card_row": "MC8",
+        "precal_use": "rent_quantile_map_bands",
+        "contract_target_id": "mbie_bond_rents_by_territorial_authority",
+        "parking_reason": "MBIE medians, quartiles and bond counts do not supply rent-band frequencies by territorial authority, bedrooms and dwelling type."
+      },
+      "notes": "MBIE medians, quartiles and bond counts do not supply rent-band frequencies by territorial authority, bedrooms and dwelling type.",
+      "filter": "rent_band_indicator"
+    },
+    {
+      "name": "stats_nz_household_financial_net_worth_distribution",
+      "ledger_selector": {
+        "source_name": "stats_nz_household_net_worth",
+        "source_measure_id": "household_financial_assets_distribution",
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "liquid_financial_assets",
+      "period": null,
+      "family": "wealth",
+      "metadata": {
+        "activation_status": "requires_all_household_liquid_asset_histogram",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Stats NZ",
+        "target_role": "pre_calibration",
+        "reference_set": "precal",
+        "method_card_row": "MC10",
+        "precal_use": "liquid_assets_quantile_map_bands",
+        "contract_target_id": "stats_nz_household_financial_net_worth_distribution",
+        "parking_reason": "Nonzero-holder summaries do not supply an all-household liquid-financial-asset histogram."
+      },
+      "notes": "Nonzero-holder summaries do not supply an all-household liquid-financial-asset histogram.",
+      "filter": "financial_asset_band_indicator"
+    }
+  ]
+}

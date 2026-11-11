@@ -18,6 +18,7 @@ import pytest
 from hypothesis import HealthCheck, Phase, example, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
 from microcosm.build.transport.takeup_kernels import (
     BANDS_TYPE,
     CELL_DIAGNOSTICS_TYPE,
@@ -47,6 +48,7 @@ from microcosm.graph import (
 )
 from microcosm.graph import kernel as graph_kernel
 from microcosm.graph.canonical import canonical_json
+from test_support.microcosm_build.chronicle_feed import write_pinned_artifact
 from test_support.microcosm_build.transport_graph import (
     COUNTRY,
     ENTITIES,
@@ -63,6 +65,17 @@ _KEY = "a" * 64
 _FACT_NAMES = ("annual_support", "recipient_units")
 _FACTOR = 52
 _PHASES = tuple(phase for phase in Phase if phase != Phase.explain)
+
+
+def test_gap_enforces_full_feed_pin(tmp_path):
+    rows = [json.loads(line) for line in _facts(tmp_path).read_text().splitlines()]
+    facts, pin = write_pinned_artifact(tmp_path / "artifact", rows)
+    node = _gap_node(chronicle_feed_pin=canonical_text(pin))
+    TAKEUP_GAP.run(_context(node, frame=_frame(), facts=facts))
+    manifest_path = facts / "manifest.json"
+    manifest_path.write_bytes(manifest_path.read_bytes() + b"\n")
+    with pytest.raises(ChronicleFeedPinMismatchError, match="manifest_sha256"):
+        TAKEUP_GAP.run(_context(node, frame=_frame(), facts=facts))
 
 
 def _frame(values=None, weights=None) -> Frame:

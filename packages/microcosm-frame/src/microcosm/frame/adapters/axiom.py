@@ -25,7 +25,18 @@ the frame declares kernel entities (``person``, ``household``). The adapter
 maps between them via ``entity_names`` (frame name -> engine name, default:
 capitalize). Engine entities outside the mapping (rulespec-be also defines
 ``Child``, ``Vehicle``, ...) are invisible to the kernel: their variables
-resolve and materialize only once a frame entity is mapped to them.
+resolve and materialize only once a frame entity is mapped to them, or a
+binding-local view (:class:`AxiomView`) runs one over selected person rows.
+
+Binding-local views
+-------------------
+A view names an unmapped engine entity (its logical entity), one bool person
+column (its selector) and an outside value per output. The adapter gathers
+the selected person rows in table order, runs the module's program on the
+logical entity over them, and scatters the outputs back through the same
+mask; every unselected row holds the outside value. View outputs resolve to
+the person entity, and the selector joins the person entity's whole-table
+dependencies (:meth:`AxiomEngine.relation_dependencies`).
 
 RuleSpec authority roots
 ------------------------
@@ -122,6 +133,8 @@ __all__ = [
     "AxiomEngine",
     "AxiomEntityTableDataset",
     "AxiomPeriod",
+    "AxiomRelation",
+    "AxiomView",
     "BE_SCHEMA",
     "NZ_NESTING",
     "NZ_SCHEMA",
@@ -194,6 +207,192 @@ _ENGINE_REF_SCHEMA = "microcosm.frame.axiom-engine-ref/1"
 # A full git object name (SHA-1 or SHA-256 repositories), lowercase.
 _GIT_COMMIT = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+@dataclass(frozen=True)
+class AxiomRelation:
+    """An explicit binary relation from a partition to its person members.
+
+    ``arguments`` records the source declaration's engine entity tuple; slots
+    and ``key`` must agree with the compiled dense program. Related columns
+    are named explicitly so they also form graph input dependencies. No rows
+    or data-derived batches are retained in this declaration.
+    """
+
+    predicate: str
+    key: str
+    current_slot: int
+    related_slot: int
+    arguments: tuple[str, str]
+    root_entity: str
+    related_entity: str
+    membership_column: str
+    related_inputs: Mapping[str, str]
+    cardinality: str
+    period: str
+    role_column: str | None = None
+    roles: tuple[str, ...] | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "predicate",
+            "key",
+            "root_entity",
+            "related_entity",
+            "membership_column",
+            "period",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"Relation {name} must be a non-empty string.")
+        if (
+            type(self.current_slot) is not int
+            or type(self.related_slot) is not int
+            or {self.current_slot, self.related_slot} != {0, 1}
+        ):
+            raise ValueError(
+                "Relation slots must be distinct binary coordinates 0 and 1."
+            )
+        if isinstance(self.arguments, str | bytes) or not isinstance(
+            self.arguments, Sequence
+        ):
+            raise ValueError(
+                "Relation arguments must be a sequence of two engine entity names."
+            )
+        arguments = tuple(self.arguments)
+        if len(arguments) != 2 or any(
+            not isinstance(x, str) or not x for x in arguments
+        ):
+            raise ValueError("Relation arguments must contain two engine entity names.")
+        object.__setattr__(self, "arguments", arguments)
+        expected = f"{self.predicate}:{self.current_slot}:{self.related_slot}"
+        if self.key != expected:
+            raise ValueError(
+                f"Relation key must agree with predicate and slots: {expected!r}."
+            )
+        if self.cardinality not in ("one", "many"):
+            raise ValueError("Relation cardinality must be 'one' or 'many'.")
+        if not isinstance(self.related_inputs, Mapping) or any(
+            not isinstance(k, str) or not k or not isinstance(v, str) or not v
+            for k, v in self.related_inputs.items()
+        ):
+            raise ValueError(
+                "Relation related_inputs must map engine names to physical columns."
+            )
+        object.__setattr__(
+            self, "related_inputs", MappingProxyType(dict(self.related_inputs))
+        )
+        if (self.role_column is None) != (self.roles is None):
+            raise ValueError(
+                "Relation role_column and roles must be supplied together."
+            )
+        if self.roles is not None:
+            if isinstance(self.roles, str | bytes) or not isinstance(
+                self.roles, Sequence
+            ):
+                raise ValueError("Relation roles must be a sequence of role names.")
+            roles = tuple(self.roles)
+            if (
+                not isinstance(self.role_column, str)
+                or not self.role_column
+                or not roles
+                or any(not isinstance(x, str) or not x for x in roles)
+                or len(set(roles)) != len(roles)
+            ):
+                raise ValueError(
+                    "Relation roles must be unique non-empty strings and name a role_column."
+                )
+            object.__setattr__(self, "roles", roles)
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the JSON declaration, preserving absent role selection."""
+        result: dict[str, object] = {
+            "predicate": self.predicate,
+            "key": self.key,
+            "current_slot": self.current_slot,
+            "related_slot": self.related_slot,
+            "arguments": list(self.arguments),
+            "root_entity": self.root_entity,
+            "related_entity": self.related_entity,
+            "membership_column": self.membership_column,
+            "related_inputs": dict(sorted(self.related_inputs.items())),
+            "cardinality": self.cardinality,
+            "period": self.period,
+        }
+        if self.role_column is not None:
+            result["role_column"] = self.role_column
+            result["roles"] = list(self.roles)
+        return result
+
+    def input_dependencies(self, schema: EntitySchema) -> tuple[tuple[str, str], ...]:
+        """The physical identity, membership, selector and input columns."""
+        related = self.related_entity
+        dependencies = {
+            (self.root_entity, schema.entity_id_column(self.root_entity)),
+            (related, schema.entity_id_column(related)),
+            (related, self.membership_column),
+            *((related, column) for column in self.related_inputs.values()),
+        }
+        if self.role_column is not None:
+            dependencies.add((related, self.role_column))
+        return tuple(sorted(dependencies))
+
+
+@dataclass(frozen=True, eq=False)
+class AxiomView:
+    """A binding-local view: one logical engine entity over selected persons.
+
+    The engine entity ``logical_entity`` (rulespec-be's ``Child``) has no
+    frame table. The adapter gathers the person rows whose bool ``selector``
+    column holds true, in table order, runs the module's program on
+    ``logical_entity`` over them, and writes one value to every person row:
+    the program's output on a selected row and the declared ``outside``
+    value on every other row. ``outside`` maps each output on the logical
+    entity to that value; no output has an implicit fill. A view's root
+    inputs read the person columns of the same names. No rows or batches are
+    retained in this declaration.
+    """
+
+    logical_entity: str
+    selector: str
+    outside: Mapping[str, bool | int | float]
+
+    def __post_init__(self) -> None:
+        for name in ("logical_entity", "selector"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"View {name} must be a non-empty string.")
+        if not isinstance(self.outside, Mapping) or not self.outside:
+            raise ValueError(
+                "View outside must map each output to its value outside the view."
+            )
+        for name, value in self.outside.items():
+            if not isinstance(name, str) or not name:
+                raise ValueError("View outside keys must be non-empty output names.")
+            if not isinstance(value, bool | int | float) or (
+                isinstance(value, float) and not np.isfinite(value)
+            ):
+                raise ValueError(
+                    f"View outside value for {name!r} must be a finite bool, "
+                    "integer or decimal number."
+                )
+        object.__setattr__(self, "outside", MappingProxyType(dict(self.outside)))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, AxiomView):
+            return NotImplemented
+        return canonical_json(self.to_dict()) == canonical_json(other.to_dict())
+
+    def __hash__(self) -> int:
+        return hash(canonical_json(self.to_dict()))
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the JSON declaration."""
+        return {
+            "logical_entity": self.logical_entity,
+            "selector": {"column": self.selector},
+            "outside": dict(sorted(self.outside.items())),
+        }
 
 
 @dataclass(frozen=True)
@@ -306,6 +505,15 @@ class AxiomEngine:
         output_dtypes: ``"native"`` (default) returns the dense surface's
             arrays unchanged; ``"graph"`` casts them to graph-ownable dtypes
             and refuses text and date outputs (see the module docstring).
+        relations: Optional explicit partition relations
+            (:class:`AxiomRelation`).
+        views: Optional binding-local views (:class:`AxiomView`), at most one
+            per logical entity. Each logical entity must be an engine entity
+            no frame entity maps to, and a view's outputs resolve to the
+            person entity. Views need ``output_dtypes="graph"`` (each outside
+            value casts through the graph dtype of its output) and exclude
+            ``relations``. Absent views leave every call and the engine
+            reference as they were without the field.
 
     The compiled dense programs (one per engine entity) and the module's
     variable metadata are loaded lazily and cached; constructing the adapter
@@ -325,6 +533,8 @@ class AxiomEngine:
         periods: Mapping[int | str, AxiomPeriod] | None = None,
         nesting: Mapping[str, str] | None = None,
         output_dtypes: str = "native",
+        relations: Sequence[AxiomRelation] | None = None,
+        views: Sequence[AxiomView] | None = None,
     ) -> None:
         if arithmetic not in ("decimal", "f64"):
             raise ValueError(
@@ -372,13 +582,123 @@ class AxiomEngine:
         self._frame_entity_by_engine = {
             engine: frame for frame, engine in self._entity_names.items()
         }
+        self._relations = None if relations is None else tuple(relations)
+        if self._relations is not None:
+            keys: set[tuple[str, str]] = set()
+            for relation in self._relations:
+                if not isinstance(relation, AxiomRelation):
+                    raise TypeError(
+                        "relations must contain AxiomRelation declarations."
+                    )
+                key = (relation.root_entity, relation.key)
+                if key in keys:
+                    raise ValueError(f"Duplicate relation declaration {key!r}.")
+                keys.add(key)
+                if (
+                    relation.root_entity not in schema.group_entities
+                    or relation.related_entity != schema.person_entity
+                    or relation.membership_column
+                    != schema.membership_column(relation.root_entity)
+                ):
+                    raise ValueError(
+                        "Relations require a declared partition's person membership column."
+                    )
+                if relation.arguments[relation.current_slot] != self._entity_names.get(
+                    relation.root_entity
+                ) or relation.arguments[
+                    relation.related_slot
+                ] != self._entity_names.get(relation.related_entity):
+                    raise ValueError(
+                        "Relation argument slots disagree with the entity mapping."
+                    )
+                if self._periods is not None and relation.period not in self._periods:
+                    raise ValueError(
+                        f"Relation period {relation.period!r} is not declared."
+                    )
+        self._views = None if views is None else tuple(views)
+        if self._views is not None:
+            self._validate_views(schema)
         self._programs: dict[str, Any] = {}
+        # View programs compile per logical entity under their own key, apart
+        # from the frame-entity programs above.
+        self._view_programs: dict[str, Any] = {}
         self._metadata: dict[str, Any] | None = None
         # Set by axiom_engine_ref: the RuleSpec tree digest this adapter's
         # reference names, and the file its module path resolved to. Every
         # later compile re-checks both.
         self._pinned_tree_sha256: str | None = None
         self._pinned_module: Path | None = None
+
+    def _validate_views(self, schema: EntitySchema) -> None:
+        """Refuse a view declaration the adapter cannot execute.
+
+        Raises:
+            TypeError: If an entry is not an :class:`AxiomView`.
+            ValueError: If the sequence is empty, a logical entity names a
+                mapped engine entity or repeats, a selector names a structural
+                column or a view output, views accompany relations, or the
+                adapter does not cast to graph dtypes.
+        """
+        if not self._views:
+            raise ValueError("views must be None or name at least one view.")
+        if self._relations is not None:
+            raise ValueError("A binding declares views or relations, not both.")
+        if self._output_dtypes != "graph":
+            raise ValueError(
+                "Views require output_dtypes='graph': each outside value casts "
+                "through its output's graph dtype."
+            )
+        if not all(isinstance(view, AxiomView) for view in self._views):
+            raise TypeError("views must contain AxiomView declarations.")
+        structural = {schema.person_id_column} | {
+            schema.membership_column(group) for group in schema.group_entities
+        }
+        outputs = {name for view in self._views for name in view.outside}
+        logical: set[str] = set()
+        for view in self._views:
+            if view.logical_entity in self._frame_entity_by_engine:
+                raise ValueError(
+                    f"View logical entity {view.logical_entity!r} names an engine "
+                    "entity a frame entity maps to; a view runs only an unmapped "
+                    "engine entity."
+                )
+            if view.logical_entity in logical:
+                raise ValueError(
+                    f"Two views declare logical entity {view.logical_entity!r}."
+                )
+            logical.add(view.logical_entity)
+            if view.selector in structural:
+                raise ValueError(
+                    f"View selector {view.selector!r} names a structural column."
+                )
+            if view.selector in outputs:
+                raise ValueError(
+                    f"View selector {view.selector!r} names a view output."
+                )
+
+    def _view_for(self, engine_entity: str) -> AxiomView | None:
+        """The view whose logical entity is ``engine_entity``, if any."""
+        for view in self._views or ():
+            if view.logical_entity == engine_entity:
+                return view
+        return None
+
+    def view_root_inputs(self) -> dict[str, tuple[str, ...]]:
+        """Logical engine entity -> the root inputs its view's program reads.
+
+        Each name reads the person column of the same name. An adapter with
+        no views returns an empty mapping.
+
+        Raises:
+            ImportError: If ``axiom_rules_engine`` is not installed.
+            ValueError: If a view's logical entity has no derived rules.
+        """
+        return {
+            view.logical_entity: tuple(
+                sorted(self._view_program(view.logical_entity).root_inputs)
+            )
+            for view in self._views or ()
+        }
 
     # ------------------------------------------------------------------
     # Variable metadata
@@ -410,6 +730,9 @@ class AxiomEngine:
             raise ValueError(f"Unknown Axiom variable {name!r}.")
         item = derived[name]
         frame_entity = self._frame_entity_by_engine.get(item.entity)
+        if frame_entity is None and self._view_for(item.entity) is not None:
+            # A view writes one value to every person row.
+            frame_entity = self._schema.person_entity
         if frame_entity is None:
             raise ValueError(
                 f"Variable {name!r} lives on engine entity {item.entity!r}, "
@@ -457,8 +780,8 @@ class AxiomEngine:
     def variables(self) -> list[str]:
         """Return the input variables the engine accepts on a dataset.
 
-        The union of the dense root inputs across every mapped engine
-        entity, sorted. Computed (derived) outputs are not included.
+        The union of root and declared related inputs across every mapped
+        engine entity, sorted. Computed outputs are not included.
 
         Raises:
             ImportError: If ``axiom_rules_engine`` is not installed.
@@ -468,7 +791,195 @@ class AxiomEngine:
             program = self._program(frame_entity, missing_ok=True)
             if program is not None:
                 names.update(program.root_inputs)
+                if self._relations is not None:
+                    self.assert_declared_relations(frame_entity)
+                    for relation in self._relations:
+                        if relation.root_entity == frame_entity:
+                            names.update(relation.related_inputs)
+        for inputs in self.view_root_inputs().values():
+            names.update(inputs)
         return sorted(names)
+
+    def relation_dependencies(self, entity: str) -> tuple[tuple[str, str], ...]:
+        """Physical columns required to construct this root's relation batches.
+
+        A view's selector joins the person entity's dependencies: the view
+        gathers the rows it selects from the whole person table, so a node
+        must slice the selector over every row. A view's root inputs do not
+        join: the engine refuses a required input the slice lacks.
+        """
+        dependencies: set[tuple[str, str]] = set()
+        for relation in self._relations or ():
+            if relation.root_entity != entity:
+                continue
+            dependencies.update(relation.input_dependencies(self._schema))
+        if entity == self._schema.person_entity:
+            dependencies.update((entity, view.selector) for view in self._views or ())
+        return tuple(sorted(dependencies))
+
+    def validate_input_override(self, entity: str, column: str) -> None:
+        """Refuse unread view selectors and related inputs without a source mapping.
+
+        A view selector chooses batch rows. A selector that a program also
+        reads as a root input is an engine input: an override changes that
+        input and, through the column it writes, the rows each view selects.
+        Bridges refuse an override of any other selector as outside the
+        engine's inputs; this check names the selector instead. Bridges write
+        physical table columns after checking logical engine inputs. An
+        aliased relation input needs both names resolved together, and only
+        the related entity's table feeds a batch. Accepting either override
+        would silently leave the source intact.
+        """
+        if (
+            entity == self._schema.person_entity
+            and any(view.selector == column for view in self._views or ())
+            and column not in self.variables()
+        ):
+            raise ValueError(
+                f"Input overrides cannot change view selector {column!r}, which "
+                "no program reads as an input."
+            )
+        if not self._relations:
+            return
+        program = self._program(entity, missing_ok=True)
+        root_inputs = () if program is None else program.root_inputs
+        for relation in self._relations:
+            for name, physical in relation.related_inputs.items():
+                if column not in (name, physical):
+                    continue
+                if entity != relation.related_entity:
+                    if column not in root_inputs:
+                        raise ValueError(
+                            f"Related Axiom input {column!r} belongs to "
+                            f"{relation.related_entity!r}, not {entity!r}."
+                        )
+                elif name != physical:
+                    raise NotImplementedError(
+                        "Input overrides of aliased related Axiom inputs are not supported."
+                    )
+
+    def assert_declared_relations(self, entity: str) -> None:
+        """Validate manifests against compiled slots, input union and source tuple."""
+        program = self._program(entity)
+        manifests = {
+            item.key: item
+            for item in self._relations or ()
+            if item.root_entity == entity
+        }
+        compiled: dict[str, set[str]] = {}
+        for item in program.relations:
+            manifest = manifests.get(item.key)
+            if manifest is None:
+                raise NotImplementedError(
+                    f"Module {self._module_label()} declares dense relations "
+                    f"{[relation.name for relation in program.relations]} on entity {entity!r}; "
+                    "an explicit relation declaration is required."
+                )
+            if (
+                item.name != manifest.predicate
+                or item.current_slot != manifest.current_slot
+                or item.related_slot != manifest.related_slot
+            ):
+                raise ValueError(
+                    f"Compiled relation slots disagree with manifest {manifest.key!r}."
+                )
+            compiled.setdefault(item.key, set()).update(item.related_inputs)
+        if set(manifests) != set(compiled):
+            raise ValueError(
+                f"Relation declarations do not match compiled keys on {entity!r}."
+            )
+        for key, inputs in compiled.items():
+            manifest = manifests[key]
+            if set(manifest.related_inputs) != inputs:
+                raise ValueError(
+                    f"Relation {key!r} related inputs disagree with compiled input union."
+                )
+            arguments = _source_relation_arguments(
+                self._module, self._rulespec_roots, manifest.predicate
+            )
+            if arguments != manifest.arguments:
+                raise ValueError(
+                    f"Relation {key!r} source arguments {arguments!r} disagree with manifest."
+                )
+
+    def _relation_batches(
+        self, bundle: Frame, entity: str, period: object
+    ) -> dict[str, Any]:
+        """Gather identity-ordered related rows following the native dense contract."""
+        from axiom_rules_engine.dense import DenseRelationBatch
+
+        batches: dict[str, Any] = {}
+        root = bundle.table(entity)
+        root_ids = root[self._schema.entity_id_column(entity)].to_numpy()
+        for relation in self._relations or ():
+            if relation.root_entity != entity:
+                continue
+            if self._materialization_period(
+                relation.period
+            ) != self._materialization_period(period):
+                raise ValueError(
+                    f"Relation {relation.key!r} does not cover the requested period."
+                )
+            table = bundle.table(relation.related_entity)
+            required = {
+                relation.membership_column,
+                self._schema.entity_id_column(relation.related_entity),
+                *relation.related_inputs.values(),
+            }
+            if relation.role_column is not None:
+                required.add(relation.role_column)
+            missing = sorted(required - set(table.columns))
+            if missing:
+                raise ValueError(
+                    f"Relation {relation.key!r} is missing related columns {missing}."
+                )
+            selected = table
+            if relation.role_column is not None:
+                selected = selected.loc[
+                    selected[relation.role_column].isin(relation.roles)
+                ]
+            if not selected[relation.membership_column].isin(root_ids).all():
+                raise ValueError(
+                    f"Relation {relation.key!r} contains dangling membership identities."
+                )
+            identity = self._schema.entity_id_column(relation.related_entity)
+            if selected[identity].isna().any() or selected[identity].duplicated().any():
+                raise ValueError(
+                    f"Relation {relation.key!r} requires unique non-null related identities."
+                )
+            # Physical identity orders the rows, never input values, so
+            # equal-valued people remain separate targets.
+            selected = selected.sort_values(identity, kind="stable")
+            positions_by_root: dict[object, list[int]] = {}
+            for position, root_id in enumerate(
+                selected[relation.membership_column].to_numpy()
+            ):
+                positions_by_root.setdefault(root_id, []).append(position)
+            rows: list[int] = []
+            offsets = [0]
+            for root_id in root_ids:
+                positions = positions_by_root.get(root_id, [])
+                if relation.cardinality == "one" and len(positions) != 1:
+                    raise ValueError(
+                        f"Relation {relation.key!r} requires exactly one related identity per root."
+                    )
+                rows.extend(positions)
+                offsets.append(len(rows))
+            # Mapping two engine inputs to one physical column is valid.
+            gathered = _batch_from_table(
+                selected.iloc[rows],
+                tuple(dict.fromkeys(relation.related_inputs.values())),
+            )
+            inputs = {
+                name: gathered[column]
+                for name, column in relation.related_inputs.items()
+            }
+            batches[relation.key] = DenseRelationBatch(
+                np.asarray(offsets, dtype=np.int64),
+                inputs,
+                related_row_count=len(rows),
+            )
+        return batches
 
     def entity_schema(self) -> EntitySchema:
         """Return the frame entity schema (no engine import required)."""
@@ -552,17 +1063,23 @@ class AxiomEngine:
                 input, a graph-typed output is text, date, or not losslessly
                 castable, or a computed array's length does not match its
                 entity table.
-            NotImplementedError: If the compiled module declares relations
-                (cross-entity aggregation batches; not yet wired — the BE
-                pilot slice declares none).
+            NotImplementedError: If a compiled relation has no explicit
+                validated binding declaration.
         """
         self._require_schema(bundle)
         start, end, period_kind = self._materialization_period(period)
 
+        # Group requested names by execution root: a frame entity's program,
+        # or a view's program on its logical entity.
         by_entity: dict[str, list[str]] = {}
+        by_view: dict[str, list[str]] = {}
         for name in variables:
             metadata = self.variable_metadata(name)
-            by_entity.setdefault(metadata.entity, []).append(name)
+            view = self._view_for(self._derived_metadata()[name].entity)
+            if view is not None:
+                by_view.setdefault(view.logical_entity, []).append(name)
+            else:
+                by_entity.setdefault(metadata.entity, []).append(name)
         engine_dtypes: dict[str, str] = {}
         if self._output_dtypes == "graph":
             derived = self._derived_metadata()
@@ -581,24 +1098,27 @@ class AxiomEngine:
         results: dict[str, np.ndarray] = {}
         for frame_entity, names in by_entity.items():
             program = self._program(frame_entity)
-            if program.relations:
-                raise NotImplementedError(
-                    f"Module {self._module.name!r} declares dense relations "
-                    f"{[item.name for item in program.relations]}; relation "
-                    "batches from frame membership are not wired yet."
-                )
+            if program.relations or self._relations:
+                self.assert_declared_relations(frame_entity)
             table = bundle.table(frame_entity)
             inputs = _batch_from_table(table, program.root_inputs)
             execute = (
                 program.execute_f64 if self._arithmetic == "f64" else program.execute
             )
-            outputs = execute(
+            arguments: dict[str, Any] = dict(
                 period_kind=period_kind,
                 start=start,
                 end=end,
                 inputs=inputs,
                 outputs=list(names),
-            )["outputs"]
+            )
+            # Omit the keyword entirely for legacy bindings, preserving the
+            # existing execution call as well as its engine reference.
+            if program.relations:
+                arguments["relations"] = self._relation_batches(
+                    bundle, frame_entity, period
+                )
+            outputs = execute(**arguments)["outputs"]
             expected = bundle.n(frame_entity)
             for name in names:
                 values = np.asarray(outputs[name])
@@ -611,6 +1131,101 @@ class AxiomEngine:
                 if self._output_dtypes == "graph":
                     values = _graph_output(name, engine_dtypes[name], values)
                 results[name] = values
+        for logical_entity, names in by_view.items():
+            view = self._view_for(logical_entity)
+            results.update(
+                self._materialize_view(
+                    bundle,
+                    view,
+                    names,
+                    engine_dtypes,
+                    dict(period_kind=period_kind, start=start, end=end),
+                )
+            )
+        return results
+
+    def _view_selection(self, table: pd.DataFrame, view: AxiomView) -> np.ndarray:
+        """The boolean mask of the person rows ``view`` selects.
+
+        Raises:
+            ValueError: If the person table lacks the selector, or the selector
+                is not a bool column or holds a null.
+        """
+        if view.selector not in table.columns:
+            raise ValueError(
+                f"View {view.logical_entity!r} selector {view.selector!r} is not "
+                f"a column of the {self._schema.person_entity!r} table."
+            )
+        column = table[view.selector]
+        if column.dtype.kind != "b":
+            raise ValueError(
+                f"View {view.logical_entity!r} selector {view.selector!r} has "
+                f"dtype {column.dtype}; a selector must be a bool column."
+            )
+        if column.isna().any():
+            raise ValueError(
+                f"View {view.logical_entity!r} selector {view.selector!r} holds a "
+                "null; a null selects neither way."
+            )
+        return column.to_numpy(dtype=bool)
+
+    def _materialize_view(
+        self,
+        bundle: Frame,
+        view: AxiomView,
+        names: Sequence[str],
+        engine_dtypes: Mapping[str, str],
+        bounds: Mapping[str, str],
+    ) -> dict[str, np.ndarray]:
+        """Run ``view``'s program on the rows it selects; fill every other row.
+
+        Gather and scatter apply one boolean mask to one person table, so the
+        engine sees the selected rows in table order and each output lands on
+        the row it came from. An empty selection makes no engine call.
+
+        Raises:
+            ValueError: As :meth:`_view_selection`; if an output has no outside
+                value, an outside value does not cast losslessly to the
+                output's graph dtype, or the engine's array length differs
+                from the selected count.
+        """
+        table = bundle.table(self._schema.person_entity)
+        mask = self._view_selection(table, view)
+        n = len(table)
+        selected = int(mask.sum())
+        missing = sorted(set(names) - set(view.outside))
+        if missing:
+            raise ValueError(
+                f"View {view.logical_entity!r} declares no outside value for {missing}."
+            )
+        results = {
+            name: _outside_values(name, engine_dtypes[name], view.outside[name], n)
+            for name in names
+        }
+        if not selected:
+            return results
+        program = self._view_program(view.logical_entity)
+        execute = program.execute_f64 if self._arithmetic == "f64" else program.execute
+        outputs = execute(
+            **bounds,
+            inputs=_batch_from_table(table.loc[mask], program.root_inputs),
+            outputs=list(names),
+        )["outputs"]
+        for name in names:
+            values = np.asarray(outputs[name])
+            if values.shape != (selected,):
+                raise ValueError(
+                    f"Materialized view variable {name!r} has shape "
+                    f"{values.shape} but view {view.logical_entity!r} selects "
+                    f"{selected} row(s)."
+                )
+            out = results[name]
+            out[mask] = _graph_output(name, engine_dtypes[name], values)
+            if out.shape != (n,):
+                raise ValueError(
+                    f"Scattered view variable {name!r} has shape {out.shape} but "
+                    f"entity {self._schema.person_entity!r} has {n} row(s)."
+                )
         return results
 
     def _materialization_period(
@@ -815,6 +1430,60 @@ class AxiomEngine:
             self._metadata = {item.name: item for item in program.derived_metadata}
         return program
 
+    def _view_program(self, logical_entity: str) -> Any:
+        """The compiled dense program of the view on ``logical_entity``.
+
+        Cached per logical entity, apart from the frame-entity programs. Like
+        :meth:`_program`, it re-checks the pinned RuleSpec tree before it
+        compiles, and it refuses a program with dense relations: a view
+        gathers no related rows. Its derived metadata joins the module's.
+
+        Raises:
+            ImportError: If ``axiom_rules_engine`` is not installed.
+            ValueError: If no view declares ``logical_entity``, the module has
+                no derived rules on it, or the pinned tree moved.
+            NotImplementedError: If the program declares relations.
+        """
+        if self._view_for(logical_entity) is None:
+            raise ValueError(f"No view declares logical entity {logical_entity!r}.")
+        if logical_entity in self._view_programs:
+            return self._view_programs[logical_entity]
+        if self._pinned_tree_sha256 is not None:
+            self._require_pinned_tree()
+        engine = self._import_engine()
+        try:
+            program = engine.CompiledDenseProgram.from_file(
+                self._module,
+                rulespec_roots=self._rulespec_roots,
+                entity=logical_entity,
+            )
+        except ValueError as exc:
+            missing_entity = (
+                "dense compilation could not find derived outputs for entity "
+                f"`{logical_entity}`"
+            )
+            if str(exc) != missing_entity:
+                raise
+            raise ValueError(
+                f"Module {self._module.name!r} has no derived rules on the view's "
+                f"logical entity {logical_entity!r}."
+            ) from None
+        relations = list(program.relations)
+        if relations:
+            raise NotImplementedError(
+                f"Module {self._module_label()} declares dense relations "
+                f"{[item.name for item in relations]} on view entity "
+                f"{logical_entity!r}; a view gathers no related rows."
+            )
+        self._view_programs[logical_entity] = program
+        metadata = {item.name: item for item in program.derived_metadata}
+        if self._metadata is None:
+            self._metadata = metadata
+        else:
+            for name, item in metadata.items():
+                self._metadata.setdefault(name, item)
+        return program
+
     def _require_pinned_tree(self) -> None:
         """Refuse to compile when the root no longer holds the referenced bytes.
 
@@ -829,8 +1498,8 @@ class AxiomEngine:
 
         Raises:
             ValueError: If the module path resolves to another file, the root
-                holds a symbolic link, or its digest moved since the
-                reference.
+                holds a symbolic link, its digest moved since the reference,
+                or a file under it is removed while it is hashed.
         """
         module = self._module.resolve()
         if module != self._pinned_module:
@@ -850,11 +1519,20 @@ class AxiomEngine:
             )
 
     def _derived_metadata(self) -> dict[str, Any]:
-        """Name -> authoring metadata for every derived rule in the module."""
-        if self._metadata is None:
-            for frame_entity in self._schema.entities:
-                if self._program(frame_entity, missing_ok=True) is not None:
-                    break
+        """Name -> authoring metadata for every derived rule in the module.
+
+        With views, each view's program also contributes its metadata, so a
+        module whose only program is a view's still has metadata.
+        """
+        if self._metadata is None or (
+            self._views is not None and len(self._view_programs) < len(self._views)
+        ):
+            if self._metadata is None:
+                for frame_entity in self._schema.entities:
+                    if self._program(frame_entity, missing_ok=True) is not None:
+                        break
+            for view in self._views or ():
+                self._view_program(view.logical_entity)
             if self._metadata is None:
                 raise ValueError(
                     f"Module {self._module.name!r} has no derived rules on "
@@ -1130,7 +1808,9 @@ def rulespec_tree_digest(root: str | Path) -> tuple[str, int]:
         ``(sha256 hex digest, total bytes of the hashed files)``.
 
     Raises:
-        ValueError: If ``root`` is not a directory.
+        ValueError: If ``root`` is not a directory, or a file listed under it
+            is removed before it is read: a tree that changes while it is
+            hashed has no digest to name.
     """
     path = Path(root)
     if not path.is_dir():
@@ -1140,7 +1820,17 @@ def rulespec_tree_digest(root: str | Path) -> tuple[str, int]:
     files = sorted(candidate for candidate in path.rglob("*") if candidate.is_file())
     for candidate in files:
         relative = candidate.relative_to(path).as_posix().encode("utf-8")
-        content = candidate.read_bytes()
+        try:
+            content = candidate.read_bytes()
+        except FileNotFoundError as exc:
+            raise ValueError(
+                f"RuleSpec root {path} changed while it was being hashed: "
+                f"{relative.decode('utf-8')} was listed and then removed. Hash "
+                "the tree once nothing is writing to it. If the root is a git "
+                "checkout, a git process still working in it can do this (its "
+                "background maintenance holds a lock file under .git); wait "
+                "for it to finish, or reference a git archive export instead."
+            ) from exc
         digest.update(len(relative).to_bytes(8, "little"))
         digest.update(relative)
         digest.update(len(content).to_bytes(8, "little"))
@@ -1205,7 +1895,12 @@ def axiom_engine_ref(
     reference specific to one clone: two clones or worktrees of one commit
     (a worktree's ``.git`` file names an absolute path) and an export of that
     commit all give different references, and any later git operation in the
-    checkout moves it. Prefer the export.
+    checkout moves it. That includes the maintenance git starts in the
+    background after a commit: until it finishes, its lock file under ``.git``
+    is part of the tree. A reference taken then is refused if the lock is
+    removed between the digest's listing and its read; otherwise it names a
+    tree that holds the lock, and the adapter's next compile or reference
+    refuses the root once the lock is gone. Prefer the export.
 
     The first call pins the adapter to the tree digest it names and to the
     file its module path resolves to: it refuses an adapter that has already
@@ -1236,7 +1931,8 @@ def axiom_engine_ref(
             points at); a git checkout root is not its repository's top
             level, is dirty, contains a submodule, has a file flagged
             skip-worktree or assume-unchanged, holds bytes its commit does
-            not, or is at another commit; or the adapter compiled before its
+            not, or is at another commit; a file under the root is removed
+            while the tree is hashed; or the adapter compiled before its
             first reference, or its root or module moved after it.
     """
     if not isinstance(engine, AxiomEngine):
@@ -1275,7 +1971,7 @@ def axiom_engine_ref(
         _require_clean_checkout(resolved_root, rulespec_commit)
     tree_sha256, tree_bytes = rulespec_tree_digest(resolved_root)
     if engine._pinned_tree_sha256 is None:
-        if engine._programs:
+        if engine._programs or engine._view_programs:
             raise ValueError(
                 "axiom_engine_ref must name the adapter's RuleSpec tree before "
                 "the adapter compiles: it has already compiled programs from "
@@ -1323,7 +2019,80 @@ def axiom_engine_ref(
         "periods": periods,
         "nesting": dict(sorted(engine._nesting.items())),
     }
+    if engine._relations is not None:
+        document["relations"] = [item.to_dict() for item in engine._relations]
+    # Absent views add no key, so every reference without them is unchanged.
+    if engine._views is not None:
+        document["views"] = [item.to_dict() for item in engine._views]
     return canonical_json(document).decode("utf-8")
+
+
+def _source_relation_arguments(
+    module: Path, roots: Sequence[Path], predicate: str
+) -> tuple[str, ...] | None:
+    """Read the authored data-relation tuple along the module's import graph.
+
+    PyYAML is a dependency of Axiom itself and is imported only for opt-in
+    relation bindings. Compiled slot coordinates alone cannot establish what
+    entity the author's tuple places at each coordinate.
+    """
+    import yaml
+
+    seen: set[Path] = set()
+    pending = [module]
+    found: set[tuple[str, ...]] = set()
+    canonical_roots = tuple(root.resolve() for root in roots)
+    while pending:
+        path = pending.pop().resolve()
+        if path in seen:
+            continue
+        seen.add(path)
+        if not any(path.is_relative_to(root) for root in canonical_roots):
+            raise ValueError("Relation declaration import escapes the RuleSpec roots.")
+        document = yaml.safe_load(path.read_text()) or {}
+        for rule in document.get("rules", ()):
+            declaration = rule.get("data_relation")
+            if rule.get("kind") == "data_relation" and isinstance(declaration, Mapping):
+                name = declaration.get("predicate", rule.get("name"))
+                qualified = {
+                    f"{relative.parts[0]}:{relative.with_suffix('').relative_to(relative.parts[0]).as_posix()}#relation.{rule['name']}"
+                    for root in canonical_roots
+                    if path.is_relative_to(root)
+                    for relative in (path.relative_to(root),)
+                    if len(relative.parts) > 1
+                }
+                if name == predicate or predicate in qualified:
+                    if declaration.get("arity") != 2:
+                        raise ValueError(
+                            f"Relation {predicate!r} source must be binary."
+                        )
+                    found.add(tuple(declaration.get("arguments", ())))
+        for reference in document.get("imports", ()):
+            if not isinstance(reference, str):
+                raise ValueError(
+                    "Relation declaration imports must name RuleSpec modules."
+                )
+            target = reference.split("#", 1)[0]
+            if ":" in target:
+                country, relative = target.split(":", 1)
+                candidates = [
+                    root / country / f"{relative}.yaml" for root in canonical_roots
+                ]
+            else:
+                candidates = [path.parent / target]
+                if not Path(target).suffix:
+                    candidates = [
+                        candidate.with_suffix(".yaml") for candidate in candidates
+                    ]
+            existing = [candidate for candidate in candidates if candidate.is_file()]
+            if len(existing) != 1:
+                raise ValueError(
+                    f"Relation declaration import {reference!r} is missing or ambiguous."
+                )
+            pending.extend(existing)
+    if len(found) > 1:
+        raise ValueError(f"Relation {predicate!r} has conflicting source declarations.")
+    return next(iter(found), None)
 
 
 def assert_no_relations(engine: AxiomEngine, entity: str) -> None:
@@ -1335,7 +2104,9 @@ def assert_no_relations(engine: AxiomEngine, entity: str) -> None:
 
     Args:
         engine: The adapter to check.
-        entity: The frame entity the node materializes (``"family"``).
+        entity: The frame entity the node materializes (``"family"``), or
+            the logical engine entity of one of the adapter's views
+            (``"Child"``), whose own program is then checked.
 
     Raises:
         TypeError: If ``engine`` is not an :class:`AxiomEngine`.
@@ -1346,6 +2117,9 @@ def assert_no_relations(engine: AxiomEngine, entity: str) -> None:
     """
     if not isinstance(engine, AxiomEngine):
         raise TypeError(f"{engine!r} is not an AxiomEngine.")
+    if engine._view_for(entity) is not None:
+        engine._view_program(entity)
+        return
     relations = list(engine._program(entity).relations)
     if relations:
         raise NotImplementedError(
@@ -1528,6 +2302,52 @@ def _graph_output(name: str, engine_dtype: str, values: np.ndarray) -> np.ndarra
         f"Output {name!r} ({engine_dtype}) arrived as numpy dtype {values.dtype}, "
         "which does not cast to a graph column without loss."
     )
+
+
+def _outside_values(
+    name: str, engine_dtype: str, value: object, count: int
+) -> np.ndarray:
+    """``count`` copies of a view's outside value, in its output's graph dtype.
+
+    The value takes the numpy kind the engine returns for ``engine_dtype``
+    (bool, int64 or float64) and passes through :func:`_graph_output`, so a
+    judgment code must be -1, 0 or 1. An integer stands for a decimal only
+    when float64 holds it exactly.
+
+    Raises:
+        ValueError: If the value does not cast losslessly to the graph dtype.
+    """
+    refused = ValueError(
+        f"View outside value {value!r} for {name!r} does not cast losslessly to "
+        f"its {engine_dtype!r} output."
+    )
+    if engine_dtype == "bool":
+        if not isinstance(value, bool | np.bool_):
+            raise refused
+        array = np.full(max(count, 1), bool(value), dtype=np.bool_)
+    elif engine_dtype in ("integer", "judgment"):
+        if isinstance(value, bool | np.bool_) or not isinstance(
+            value, int | np.integer
+        ):
+            raise refused
+        if not np.iinfo(np.int64).min <= int(value) <= np.iinfo(np.int64).max:
+            raise refused
+        array = np.full(max(count, 1), int(value), dtype=np.int64)
+    elif engine_dtype == "decimal":
+        if isinstance(value, bool | np.bool_) or not isinstance(
+            value, int | float | np.integer | np.floating
+        ):
+            raise refused
+        cast = float(value)
+        if not np.isfinite(cast) or (
+            isinstance(value, int | np.integer) and int(cast) != int(value)
+        ):
+            raise refused
+        array = np.full(max(count, 1), cast, dtype=np.float64)
+    else:
+        raise refused
+    # One element even for an empty table, so the cast always checks it.
+    return _graph_output(name, engine_dtype, array)[:count].copy()
 
 
 def _refuse_symlinks(root: Path) -> None:

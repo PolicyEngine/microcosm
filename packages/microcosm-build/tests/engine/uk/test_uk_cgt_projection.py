@@ -20,11 +20,12 @@ def test_engine_projection_matches_the_published_growth_path() -> None:
     assert projection.engine.startswith("policyengine-uk==")
     assert uk_cgt_projection_read_from_engine(projection.engine)
     assert set(projection.exempt_amount_by_year.values()) == {3_000.0}
+    # The OBR's October 2026 path (policyengine-uk 2.164.1, microcosm#1415).
     assert list(projection.yoy_growth_by_year.values()) == pytest.approx(
-        [0.0438, 0.0292, 0.0323, 0.0310, 0.0296, 0.0315], abs=5e-4
+        [0.0462, 0.04, 0.031, 0.0344, 0.036, 0.0343], abs=5e-4
     )
     assert projection.cumulative_gains_factor_by_year["2030"] == pytest.approx(
-        1.2143, abs=5e-4
+        1.2434, abs=5e-4
     )
     pinned = manifest_entry().parameters
     for year, rate in projection.yoy_growth_by_year.items():
@@ -32,6 +33,8 @@ def test_engine_projection_matches_the_published_growth_path() -> None:
             float(pinned["expected_yoy_growth_by_year"][year]),
             abs=float(pinned["maximum_growth_drift"]),
         )
-    # Beyond the pinned horizon the engine repeats the 2030 rate.
+    # The path runs one year past the pinned horizon, to 2031, and later years
+    # repeat the 2031 rate.
     beyond = uk_cgt_projection(2024, 2033)
-    assert beyond.yoy_growth_by_year["2033"] == projection.yoy_growth_by_year["2030"]
+    assert beyond.yoy_growth_by_year["2031"] != projection.yoy_growth_by_year["2030"]
+    assert beyond.yoy_growth_by_year["2033"] == beyond.yoy_growth_by_year["2031"]

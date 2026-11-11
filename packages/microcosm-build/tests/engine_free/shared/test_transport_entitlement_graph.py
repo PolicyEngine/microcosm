@@ -21,6 +21,7 @@ from microcosm.build.transport.compose import (
     compose_transport_graph,
     validate_transport_activation,
 )
+from microcosm.build.transport.entitlement import _gate_evidence, entitlement_extension
 from microcosm.build.transport.takeup_kernels import (
     decode_bands,
     decode_cell_diagnostics,
@@ -343,9 +344,13 @@ def test_cell_support_target_malformed_lists_are_refused_by_name(tmp_path, malfo
     if malformed == "string":
         spec = _with_cell_target(fixture, **overrides)
         _cell_support_contract(spec)["required_cells"] = cells[0]
+        # A string contract list is itself malformed, so the contract's shape
+        # check refuses it before the two copies are compared.
+        expected = "non-empty list of non-empty strings"
     else:
         spec = _with_cell_target(fixture, **overrides)
-    with pytest.raises(ValueError, match="the two must agree"):
+        expected = "the two must agree"
+    with pytest.raises(ValueError, match=expected):
         fixture.reprepare(spec).graph()
 
 
@@ -364,6 +369,62 @@ def _cell_support_contract(spec):
     return next(
         g for g in spec["resources"]["gates"]["gates"] if g["gate"] == "cell_support"
     )["parameters"]
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "minimum_cell_ess",
+        "maximum_contribution_cv",
+        "maximum_single_donor_dollar_share",
+        "target_minimum_cell_ess",
+        "target_maximum_single_donor_dollar_share",
+        "required_cells",
+        "required_scenarios",
+        "aggregation_column",
+        "required_weight_kind",
+        "required_weight_entity",
+    ],
+)
+def test_cell_support_contract_omitting_a_key_is_refused_by_name(tmp_path, key):
+    fixture = _cell_support_fixture(tmp_path)
+    spec = copy.deepcopy(fixture.spec)
+    del _cell_support_contract(spec)[key]
+    with pytest.raises(ValueError, match=f"omits .*'{key}'"):
+        fixture.reprepare(spec).graph()
+
+
+@pytest.mark.parametrize("malformed", ["mappings", "mixed", "empty", "string", "blank"])
+@pytest.mark.parametrize("key", ["required_cells", "required_scenarios"])
+def test_cell_support_contract_malformed_lists_are_refused_by_name(
+    tmp_path, key, malformed
+):
+    fixture = _cell_support_fixture(tmp_path)
+    spec = copy.deepcopy(fixture.spec)
+    contract = _cell_support_contract(spec)
+    values = list(contract[key])
+    contract[key] = {
+        "mappings": [{"name": value} for value in values],
+        "mixed": [*values, 1],
+        "empty": [],
+        "string": values[0],
+        "blank": [*values, ""],
+    }[malformed]
+    with pytest.raises(ValueError, match="non-empty list of non-empty strings"):
+        fixture.reprepare(spec).graph()
+
+
+def test_matching_mapping_lists_on_both_gates_are_refused_by_name(tmp_path):
+    # Round 3 review of #1202: matching mapping lists passed the drift guard
+    # and then raised a bare TypeError at the set comparison.
+    fixture = _cell_support_fixture(tmp_path)
+    cells = [
+        {"name": c} for c in _cell_support_contract(fixture.spec)["required_cells"]
+    ]
+    spec = _with_cell_target(fixture, required_cells=cells)
+    _cell_support_contract(spec)["required_cells"] = copy.deepcopy(cells)
+    with pytest.raises(ValueError, match="non-empty list of non-empty strings"):
+        fixture.reprepare(spec).graph()
 
 
 @pytest.mark.parametrize("absence", ["diagnostics", "scenario", "lineage"])
@@ -809,6 +870,115 @@ def test_automatic_extension_installation_and_package_edge_restrictions(tmp_path
     rows.append(consumer)
     with pytest.raises(ValueError, match="terminal skeleton package node"):
         compose_transport_graph(spec, fixture.config)
+
+
+def _with_gate_evidence(fixture, rows):
+    spec = copy.deepcopy(fixture.spec)
+    spec["resources"]["entitlement_graph"]["gate_evidence"] = rows
+    return fixture.reprepare(spec)
+
+
+def _batteries(graph, phase):
+    return {
+        node.id
+        for node in graph.nodes
+        if node.kernel == "gates.battery@1" and node.params.get("phase") == phase
+    }
+
+
+def test_gate_evidence_wires_each_named_gap_to_its_phase_batteries_only(tmp_path):
+    fixture = make_entitlement_fixture(tmp_path / "fixture")
+    before = {node.id: node for node in fixture.graph().nodes}
+    graph = _with_gate_evidence(
+        fixture,
+        [
+            {"name": "scenario_v1", "scenario": "V1", "phase": "terminal"},
+            {"name": "scenario_s0", "scenario": "S0", "phase": "terminal"},
+        ],
+    ).graph()
+    after = {node.id: node for node in graph.nodes}
+    terminal = _batteries(graph, "terminal")
+    assert terminal
+    assert set(after) == set(before)
+    # Only the terminal batteries change, and each keeps its own edges first.
+    assert {name for name in before if before[name] != after[name]} == terminal
+    for name in terminal:
+        inputs = after[name].artifact_inputs
+        kept = len(before[name].artifact_inputs)
+        assert inputs[:kept] == before[name].artifact_inputs
+        assert [
+            (edge.name, edge.producer, edge.artifact) for edge in inputs[kept:]
+        ] == [
+            ("scenario_v1", "nz.v.V1.gap", "gap"),
+            ("scenario_s0", "nz.scn.S0.gap", "gap"),
+        ]
+    compile_graph(graph)
+
+
+def test_no_gate_evidence_leaves_the_graph_unchanged(tmp_path):
+    fixture = make_entitlement_fixture(tmp_path / "fixture", variants=False)
+    assert "gate_evidence" not in fixture.spec["resources"]["entitlement_graph"]
+    empty = _with_gate_evidence(fixture, [])
+    assert graph_to_json(empty.graph()) == graph_to_json(fixture.graph())
+
+
+def test_gate_evidence_without_rows_reads_no_other_resource():
+    """Only declared rows need the graph's batteries, so only they read it."""
+    spec = {"country": "xx", "resources": {}}
+    assert _gate_evidence(spec, {}, {}) == []
+    assert _gate_evidence(spec, {"gate_evidence": []}, {}) == []
+    row = {"name": "scenario_v1", "scenario": "V1", "phase": "terminal"}
+    with pytest.raises(ValueError, match="missing resource transport_graph"):
+        _gate_evidence(spec, {"gate_evidence": [row]}, {"V1": "nz.v.V1.gap"})
+
+
+@pytest.mark.parametrize(
+    ("rows", "match"),
+    [
+        ([{"name": "x", "scenario": "V9", "phase": "terminal"}], "doesn't run"),
+        (
+            [{"name": "x", "scenario": "V1", "phase": "terminal"}] * 2,
+            "declared twice",
+        ),
+        (
+            [
+                {"name": "x", "scenario": "V1", "phase": "terminal"},
+                {"name": "x", "scenario": "V2", "phase": "terminal"},
+            ],
+            "declared twice",
+        ),
+        ([{"name": "x", "scenario": "V1", "phase": "release"}], "phase 'release'"),
+        (
+            [{"name": "graph_evidence", "scenario": "V1", "phase": "terminal"}],
+            "the battery's reserved alias",
+        ),
+        ([{"name": "x", "scenario": "V1"}], "exactly a nonempty name"),
+        ([{"name": "", "scenario": "V1", "phase": "terminal"}], "nonempty name"),
+        ([{"name": "x", "scenario": 1, "phase": "terminal"}], "nonempty name"),
+        (
+            [{"name": "x", "scenario": "V1", "phase": "terminal", "artifact": "gap"}],
+            "exactly a nonempty name",
+        ),
+    ],
+)
+def test_gate_evidence_rows_refuse_by_name(tmp_path, rows, match):
+    fixture = make_entitlement_fixture(tmp_path / "fixture")
+    spec = copy.deepcopy(fixture.spec)
+    spec["resources"]["entitlement_graph"]["gate_evidence"] = rows
+    with pytest.raises(ValueError, match=match):
+        entitlement_extension(spec)
+
+
+def test_gate_evidence_may_not_reuse_a_battery_alias(tmp_path):
+    fixture = make_entitlement_fixture(tmp_path / "fixture")
+    graph = fixture.graph()
+    (battery, *_) = sorted(_batteries(graph, "terminal"))
+    taken = graph.node(battery).artifact_inputs[0].name
+    changed = _with_gate_evidence(
+        fixture, [{"name": taken, "scenario": "V1", "phase": "terminal"}]
+    )
+    with pytest.raises(ValueError, match="new and distinct"):
+        changed.graph()
 
 
 @pytest.mark.parametrize("template", ["scenario_nodes", "variant_nodes"])

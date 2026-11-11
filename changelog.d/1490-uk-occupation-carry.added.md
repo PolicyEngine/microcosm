@@ -1,0 +1,3 @@
+The UK spine now carries the FRS's own occupation as policyengine-uk's `soc2020_major_group` (microcosm#1490). `frs_employment` reads the adult table's `SOC2020` code, which gives the SOC 2020 major group as 1000-9000, and maps it to the engine's `SOC2020MajorGroup` names, held once in `occupation_constants`. The FRS asks the employment questions of everyone who has ever worked, so the group is the main job's, or the last job's for an adult not in work; child-table people are `NONE`, and an adult with a blank or unknown code refuses the build.
+
+The column is on the export allow-list, and a terminal gate, `uk_soc2020_major_group_enum_domain`, keeps it inside the engine's enum. The engine has the enum from policyengine-uk 2.173.0.

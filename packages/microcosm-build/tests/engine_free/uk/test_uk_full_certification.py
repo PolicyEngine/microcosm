@@ -145,10 +145,12 @@ def _rewrite(artifacts, name, mutate):
     artifacts[name] = (key, canonical_json(document))
 
 
-def _scores(artifacts, monkeypatch, *, k=None):
-    def validate(payload, failures, *, expected_identity):
+def _scores(artifacts, monkeypatch, *, k=None, limit_failures=()):
+    def validate(payload, failures, *, expected_identity, enforce_limits):
+        assert enforce_limits is False
         if payload.get("identity") != expected_identity:
             failures.append("scorecard candidate identity mismatch")
+        return {"passed": not limit_failures, "limit_failures": list(limit_failures)}
 
     monkeypatch.setattr(
         "microcosm.data.contract._check_uk_incumbent_surface_evaluation", validate
@@ -187,11 +189,16 @@ def _scores(artifacts, monkeypatch, *, k=None):
     return sources
 
 
-def test_complete_graph_retains_explicit_missing_native_evidence():
+def test_complete_graph_records_an_unrequested_native_scorecard():
+    """The scorecards are opt-in diagnostics (microcosm#1301): their absence
+    is recorded, and readiness does not wait on them."""
     report = runtime.compose_uk_full_certification_readiness(_fixture())
-    assert report["comparisons"]["native_scorecard"]["status"] == "evidence_absent"
+    assert report["comparisons"]["native_scorecard"] == {
+        "status": "not_requested",
+        "failures": [],
+    }
     assert report["comparisons"]["matched_size_scorecard"]["status"] == "not_required"
-    assert not report["ready_for_external_review"]
+    assert report["ready_for_external_review"]
     assert not report["release_authorized"]
     assert set(report["gate_coverage"]["declared"]) == {
         entry.id for entry in load_country_spec("uk").gates.gates
@@ -248,17 +255,62 @@ def test_actual_surface_validator_refuses_old_score_summary():
     )
 
 
-def test_exact_size_requires_its_own_bound_comparison(monkeypatch):
+def test_exact_size_records_an_unrequested_matched_comparison(monkeypatch):
     artifacts = _fixture(k=5)
     sources = _scores(artifacts, monkeypatch, k=5)
     sources.pop("matched_size_scorecard")
     report = runtime.compose_uk_full_certification_readiness(
         artifacts, comparison_sources=sources
     )
-    assert (
-        report["comparisons"]["matched_size_scorecard"]["status"] == "evidence_absent"
+    assert report["comparisons"]["matched_size_scorecard"]["status"] == "not_requested"
+    assert report["ready_for_external_review"]
+
+
+def test_a_scorecard_missing_only_its_limits_is_a_recorded_diagnostic(monkeypatch):
+    artifacts = _fixture()
+    sources = _scores(artifacts, monkeypatch, limit_failures=("synthetic limit miss",))
+    report = runtime.compose_uk_full_certification_readiness(
+        artifacts, comparison_sources=sources
     )
+    native = report["comparisons"]["native_scorecard"]
+    assert native["status"] == "diagnostic_failed"
+    assert native["limit_failures"] == ["synthetic limit miss"]
+    assert native["failures"] == []
+    assert report["ready_for_external_review"]
+
+
+def test_a_skipped_holdout_claims_nothing_and_does_not_block_readiness():
+    artifacts = _fixture()
+    _rewrite(
+        artifacts,
+        "holdout",
+        lambda document: document.clear() or document.update(skipped=True),
+    )
+    report = runtime.compose_uk_full_certification_readiness(artifacts)
+    assert report["ready_for_external_review"]
+    assert report["readiness_failures"] == []
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda document: document.__setitem__("n_folds", 4),
+        lambda document: document.__setitem__("mean_holdout_loss", float("nan")),
+        lambda document: document.pop("worst_holdout_loss"),
+    ],
+    ids=["four-folds", "nan-mean", "no-worst"],
+)
+def test_a_malformed_measured_holdout_is_a_readiness_failure(mutate):
+    artifacts = _fixture()
+    key, payload = artifacts["holdout"]
+    document = json.loads(payload)
+    mutate(document)
+    artifacts["holdout"] = (key, json.dumps(document, allow_nan=True).encode())
+    report = runtime.compose_uk_full_certification_readiness(artifacts)
     assert not report["ready_for_external_review"]
+    assert report["readiness_failures"] == [
+        "The measured five-fold local holdout is incomplete."
+    ]
 
 
 def test_bound_spine_provenance_replaces_raw_spine_reports():

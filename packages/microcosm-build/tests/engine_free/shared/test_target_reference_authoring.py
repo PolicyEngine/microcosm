@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from microcosm.build.target_reference_authoring import (
     author_target_references,
     target_references_resource,
 )
+from microcosm.calibrate import TargetRegistry
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -368,14 +370,21 @@ def test_generate_uk_local_target_references_cli_refuses_incomplete_contract(
     # The council-tax country masks refuse a local-authority roster that does
     # not carry the declared 32 Scottish, 11 Northern Irish, 22 Welsh, and
     # 296 English authorities
-    # (covered by test_council_tax_country_masks_refuse_roster_count_drift).
-    # This test is about the *contract* refusal, so give it a roster those
-    # masks accept and let the missing target id be what fails.
+    # (covered by test_council_tax_country_masks_refuse_roster_count_drift),
+    # and the high-value homes constituency deferral one that does not carry
+    # the 575 England and Wales seats (microcosm#1301, covered in
+    # test_uk_high_value_homes_local_cells.py). This test is about the
+    # *contract* refusal, so give it a roster those masks accept and let the
+    # missing target id be what fails.
     crosswalk_path.write_text(
         json.dumps(
             {
                 "levels": {
-                    "constituency": {"area_ids": ["A1"]},
+                    "constituency": {
+                        "area_ids": ["A1"]
+                        + [f"E14{index:06d}" for index in range(543)]
+                        + [f"W07{index:06d}" for index in range(32)]
+                    },
                     "local_authority": {
                         "area_ids": [f"S{index:08d}" for index in range(32)]
                         + [f"N{index:08d}" for index in range(11)]
@@ -413,6 +422,67 @@ def test_generate_uk_local_target_references_cli_refuses_incomplete_contract(
     assert result.returncode != 0
     assert "dwp.uc.households_by_area" in result.stderr
     assert "absent from the local contract" in result.stderr
+    assert not output_path.exists()
+    assert not membership_path.exists()
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "tools/generate_uk_local_target_references.py",
+        "tools/generate_uk_target_references.py",
+    ],
+)
+def test_uk_reference_generators_refuse_rows_on_an_undeclared_row_contract(
+    tmp_path: Path, tool: str
+) -> None:
+    """The generators read a subset of the pinned feed and check its rows.
+
+    Every row's ``schema_version`` must be a row contract that
+    ``microcosm.build.chronicle_epoch`` declares and the committed UK pin
+    lists; the refusal comes before any reference is authored or written.
+    """
+    repo = _TEST_PATHS.repository
+    contract_path = tmp_path / "contract.json"
+    facts_path = tmp_path / "facts.jsonl"
+    output_path = tmp_path / "references.json"
+    membership_path = tmp_path / "membership.json"
+    contract_path.write_text(json.dumps(_single_age_contract()), encoding="utf-8")
+    facts_path.write_text(
+        "\n".join(
+            json.dumps({**row, "schema_version": "chronicle.consumer_fact.v6"})
+            for row in (
+                _area_fact("ons", "population", 10.0, area_id="A1", fact_key="a1-0"),
+                _area_fact("ons", "population", 20.0, area_id="A1", fact_key="a1-1"),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    arguments = [
+        sys.executable,
+        tool,
+        "--contract",
+        str(contract_path),
+        "--ledger-facts",
+        str(facts_path),
+        "--output",
+        str(output_path),
+        "--membership-report",
+        str(membership_path),
+    ]
+    if "local" in tool:
+        crosswalk_path = tmp_path / "crosswalk.json"
+        crosswalk_path.write_text(json.dumps({"levels": {}}), encoding="utf-8")
+        arguments += ["--crosswalk", str(crosswalk_path)]
+
+    result = subprocess.run(
+        arguments, cwd=repo, text=True, capture_output=True, check=False
+    )
+
+    assert result.returncode != 0
+    assert "['chronicle.consumer_fact.v6']" in result.stderr
+    assert "microcosm.build.chronicle_epoch" in result.stderr
     assert not output_path.exists()
     assert not membership_path.exists()
 
@@ -696,6 +766,39 @@ def test_author_target_references_fans_out_over_a_geography_roster() -> None:
         ("region", "E12000001", "active", 20.0),
         ("country", "W92000004", "active", 30.0),
     ]
+
+
+def test_a_row_level_signed_exclusion_takes_out_one_geography_cell() -> None:
+    """Keyed on ``geography_id``, a row-level sign-out takes one cell out of a
+    geography fan-out (the high-value homes region rows below the local
+    small-cell floor, microcosm#1301) and leaves the other cells active."""
+    config = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={"ons.age.0_10_by_region": _REGION_TIER_CELLS},
+        geography_fanout_metadata=_tier_metadata,
+        signed_row_exclusions_by_target_id={
+            "ons.age.0_10_by_region": {
+                ("geography_id", '"E12000001"'): "below the floor",
+                ("geography_id", '"W92000004"'): "below the floor",
+            }
+        },
+        source_fact_feed="synthetic",
+    )
+    authored = author_target_references(_two_level_contract(), _tier_facts(), config)
+    assert [row["name"] for row in authored.references] == [
+        "ons.age.0_10_by_region@E12000007"
+    ]
+    target = authored.membership_report["targets"]["ons.age.0_10_by_region"]
+    assert target["status"] == "active"
+    assert [(entry["name"], entry["status"]) for entry in target["candidates"]] == [
+        ("ons.age.0_10_by_region@E12000007", "active"),
+        ("ons.age.0_10_by_region@E12000001", "signed_excluded"),
+        ("ons.age.0_10_by_region@W92000004", "signed_excluded"),
+    ]
+    assert target["candidates"][1]["signed_row"] == {
+        "dimension": "geography_id",
+        "value": "E12000001",
+    }
 
 
 def test_geography_fanout_refuses_an_absent_roster_cell() -> None:
@@ -1117,3 +1220,181 @@ def test_native_groupby_pin_takes_the_lower_edge_of_a_two_edged_band() -> None:
         "hmrc.total_income_band",
         pinned_dimension_names=frozenset({"total_income_lower_bound"}),
     ) == ("total_income_upper_bound", 50_000)
+
+
+def _uprated_age_inputs() -> tuple[dict, list[dict]]:
+    contract = _single_age_contract()
+    contract["targets"][0]["uprating_index"] = "synthetic.growth"
+    facts = [
+        _area_fact("ons", "population", 10.0, area_id="A1", fact_key="a1-age-0"),
+        _area_fact("ons", "population", 30.0, area_id="A2", fact_key="a2-age-0"),
+    ]
+    for fact in facts:
+        fact["period"]["value"] = 2024
+    return contract, facts
+
+
+def _times_one_point_one(reference, registry: TargetRegistry) -> TargetRegistry:
+    return TargetRegistry(
+        [
+            replace(
+                spec,
+                value=spec.value * 1.1,
+                metadata={**spec.metadata, "uprating_factor": "1.1"},
+            )
+            for spec in registry.specs
+        ],
+        country=registry.country,
+    )
+
+
+def test_an_area_target_declaring_an_index_is_uprated_at_authoring() -> None:
+    contract, facts = _uprated_age_inputs()
+    config = replace(
+        _area_config(areas=("A1", "A2")),
+        uprating_appliers={"synthetic.growth": _times_one_point_one},
+    )
+
+    authored = author_area_target_references(contract, facts, config)
+
+    assert [ref["uprating_index"] for ref in authored.references] == [
+        "synthetic.growth",
+        "synthetic.growth",
+    ]
+    candidate = _candidate(authored.membership_report, "ons.age.0_10", "A1")
+    assert candidate["resolved_value"] == pytest.approx(11.0)
+    assert authored.membership_report["uprating_holds"][0] == {
+        "name": "ons.age.0_10@A1",
+        "target_id": "ons.age.0_10",
+        "geography_level": "constituency",
+        "geography_id": "A1",
+        "from": "2024",
+        "to": "2025",
+        "index": "synthetic.growth",
+        "factor": "1.1",
+        "value_before_uprating": "10.0",
+    }
+
+
+def test_an_area_index_without_an_applier_is_refused() -> None:
+    contract, facts = _uprated_age_inputs()
+
+    with pytest.raises(ValueError, match="supplies no applier"):
+        author_area_target_references(contract, facts, _area_config(areas=("A1", "A2")))
+
+
+def test_a_list_source_name_prefilters_to_its_sources_in_feed_order() -> None:
+    # A family whose published and derived facts sit under two sources
+    # (microcosm#1095) scans both, in the feed's order, and nothing else.
+    from microcosm.build import target_reference_authoring as authoring
+
+    facts = (
+        {"source": {"source_name": "desnz"}, "id": 1},
+        {"source": {"source_name": "ons"}, "id": 2},
+        {"source": {"source_name": "microcosm"}, "id": 3},
+        {"observed_measure": {"source_name": "desnz"}, "id": 4},
+    )
+    buckets = authoring._facts_by_source(facts)
+    listed = {"ledger_selector": {"source_name": ["microcosm", "desnz"]}}
+    assert [
+        fact["id"] for fact in authoring._source_prefilter(facts, buckets, listed)
+    ] == [1, 3, 4]
+    single = {"ledger_selector": {"source_name": "desnz"}}
+    assert [
+        fact["id"] for fact in authoring._source_prefilter(facts, buckets, single)
+    ] == [1, 4]
+
+
+def test_a_declared_value_must_be_finite_and_non_negative() -> None:
+    # A no-network area's zero (microcosm#1095); a negative or NaN value would
+    # move its leg's control.
+    deferral = AreaSignedDeferral(
+        target_id="t",
+        geography_level="local_authority",
+        reason_id="r",
+        rationale="no network",
+        area_ids=("A",),
+        declared_value=0.0,
+    )
+    assert deferral.declared_value == 0.0
+    for value in (-1.0, float("nan")):
+        with pytest.raises(ValueError, match="declared_value"):
+            AreaSignedDeferral(
+                target_id="t",
+                geography_level="local_authority",
+                reason_id="r",
+                rationale="no network",
+                area_ids=("A",),
+                declared_value=value,
+            )
+
+
+def test_a_geography_pin_cannot_override_the_selector_s_declared_geography() -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.target_reference_authoring import _target_selector
+
+    config = SimpleNamespace(selector_pins_by_target_id={})
+    target = {
+        "target_id": "x.total",
+        "ledger_selector": {"source_name": "x", "geography_id": "W92000004"},
+    }
+    agreeing = {"geography_level": "country", "geography_id": "W92000004"}
+    assert _target_selector(target, agreeing, config) == {
+        "source_name": "x",
+        "geography_id": "W92000004",
+        "geography_level": "country",
+    }
+    with pytest.raises(ValueError, match="declared geography wins"):
+        _target_selector(
+            target, {"geography_level": "country", "geography_id": "K03000001"}, config
+        )
+
+
+@pytest.mark.parametrize(("period", "observed"), [(2025, "2026-01"), (2026, "2027-01")])
+def test_authored_observation_period_moves_with_the_authored_period(
+    period, observed
+) -> None:
+    """A contract's observation period is written for a base period, and a row
+    authored at another period keeps the offset, as restamp_reference_period
+    does (the re-review of microcosm#1422)."""
+    from microcosm.build.target_reference_authoring import (
+        _authored_observation_period,
+    )
+
+    target = {"observation_period": "2026-01"}
+    config = TargetReferenceAuthoringConfig(
+        target_period=period, observation_period_base=2025
+    )
+    assert _authored_observation_period(target, {}, config) == observed
+    # Without a declared base the period is copied as written.
+    plain = TargetReferenceAuthoringConfig(target_period=period)
+    assert _authored_observation_period(target, {}, plain) == "2026-01"
+
+
+def test_authored_observation_period_reads_it_as_the_row_s_policy_does() -> None:
+    """Under an exact fiscal-year match "2011-12" is a fiscal year, so authoring
+    a year later moves both ends, as the restamp does (the fourth review of
+    microcosm#1422). The default latest_not_after cutoff reads it untyped, as
+    December 2011, so without a selector type it moves as a month, and under
+    a fiscal-year one, which reads it otherwise, it refuses. So does an
+    untyped exact match, which reads it either way (the fifth review)."""
+    from microcosm.build.target_reference_authoring import (
+        _authored_observation_period,
+    )
+
+    config = TargetReferenceAuthoringConfig(
+        target_period=2026, observation_period_base=2025
+    )
+    fiscal = {"period_type": "fiscal_year"}
+    exact = {"observation_period": "2011-12", "period_match_policy": "exact"}
+    assert _authored_observation_period(exact, fiscal, config) == "2012-13"
+    default = {"observation_period": "2011-12"}
+    assert _authored_observation_period(default, {}, config) == "2012-12"
+    with pytest.raises(ValueError, match="reads it otherwise"):
+        _authored_observation_period(default, fiscal, config)
+    with pytest.raises(ValueError, match="as a month or as an annual range"):
+        _authored_observation_period(exact, {}, config)
+    # Under the default policy a fiscal-year selector's January cutoff moves.
+    january = {"observation_period": "2026-01"}
+    assert _authored_observation_period(january, fiscal, config) == "2027-01"

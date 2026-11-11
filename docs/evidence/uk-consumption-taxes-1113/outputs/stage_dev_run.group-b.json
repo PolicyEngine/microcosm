@@ -440,6 +440,6 @@
   }
  },
  "seconds": 65.9,
- "spine": "/Users/mariajuaristi/Desktop/PolicyEngine/data/ukds/acceptance/1095-uk-data-ports-2/arm-head-r3/spine/spine-head-r3.h5",
+ "spine": "spine-head-r3.h5",
  "support_clip_remainders": {}
 }

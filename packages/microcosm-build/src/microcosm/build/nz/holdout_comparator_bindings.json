@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "central": {
+    "schema_version": 1,
+    "required_inputs": {
+      "family": [
+        "accommodation_supplement_rounded_weekly_payment",
+        "accommodation_supplement_non_rate_entitlement_requirements",
+        "receipt_group"
+      ]
+    },
+    "input_domains": {
+      "family": {
+        "accommodation_supplement_rounded_weekly_payment": {
+          "kind": "nonnegative_number"
+        },
+        "accommodation_supplement_non_rate_entitlement_requirements": {
+          "values": [
+            -1,
+            0,
+            1
+          ]
+        },
+        "receipt_group": {
+          "values": [
+            "superannuitant",
+            "beneficiary",
+            "other"
+          ]
+        }
+      }
+    },
+    "columns": [
+      {
+        "entity": "family",
+        "name": "accommodation_supplement_positive_payment_indicator",
+        "predicates": [
+          {
+            "column": "accommodation_supplement_rounded_weekly_payment",
+            "operator": "gt",
+            "value": 0
+          },
+          {
+            "column": "accommodation_supplement_non_rate_entitlement_requirements",
+            "operator": "eq",
+            "value": 1
+          },
+          {
+            "column": "receipt_group",
+            "operator": "in",
+            "value": [
+              "beneficiary",
+              "other"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "s5": {
+    "schema_version": 1,
+    "required_inputs": {
+      "family": [
+        "accommodation_supplement_rounded_weekly_payment",
+        "accommodation_supplement_non_rate_entitlement_requirements"
+      ]
+    },
+    "input_domains": {
+      "family": {
+        "accommodation_supplement_rounded_weekly_payment": {
+          "kind": "nonnegative_number"
+        },
+        "accommodation_supplement_non_rate_entitlement_requirements": {
+          "values": [
+            -1,
+            0,
+            1
+          ]
+        }
+      }
+    },
+    "columns": [
+      {
+        "entity": "family",
+        "name": "accommodation_supplement_positive_payment_indicator",
+        "predicates": [
+          {
+            "column": "accommodation_supplement_rounded_weekly_payment",
+            "operator": "gt",
+            "value": 0
+          },
+          {
+            "column": "accommodation_supplement_non_rate_entitlement_requirements",
+            "operator": "eq",
+            "value": 1
+          }
+        ]
+      }
+    ]
+  }
+}

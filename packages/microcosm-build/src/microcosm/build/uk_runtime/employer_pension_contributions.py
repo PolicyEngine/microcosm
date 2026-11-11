@@ -18,6 +18,14 @@ open top band is read as 20% to 30%; the largest defined-benefit employer rates
 sit just under 30%), and the contribution is that rate times the person's
 employment income. Salary sacrifice stays its own column; ASHE and DWP count it
 as an employer contribution, so the bound DWP employer total adds it back.
+
+The defined-benefit or defined-contribution draw is not written to
+policyengine-uk's defined_benefit_pension_share (2.142.0). The engine counts a
+defined-benefit arrangement's pension input as its contributions times
+gov.simulation.pensions.defined_benefit_input_per_contribution, which is 1, so
+the share would change the annual allowance only for net-pay contributions at
+75 and over, which the money-purchase path leaves out. Writing it becomes
+worthwhile if that ratio moves away from 1.
 """
 
 from __future__ import annotations

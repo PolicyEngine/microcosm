@@ -608,6 +608,9 @@ class TakeupGapKernel(KernelBase):
     _optional = frozenset(
         {
             "facts_sha256",
+            "chronicle_feed_pin",
+            "reference_resolution",
+            "reference_selection",
             "annualisation_sha256",
             "source_household_column",
             "cell_support",
@@ -658,6 +661,24 @@ class TakeupGapKernel(KernelBase):
             sha256_param(context, self.ref, "annualisation_sha256")
         references = parse_reference_document(document, country=country)
         factors = canonical_document_param(context, self.ref, "annualisation_factors")
+        reference_selection = (
+            canonical_document_param(context, self.ref, "reference_selection")
+            if "reference_selection" in context.params
+            else None
+        )
+        if reference_selection is not None:
+            target_kernels.validate_exemptions(
+                document,
+                reference_selection,
+                selected={name: (context.node.id,) for name in factors},
+            )
+            exempt_names = {
+                row["name"]
+                for row in target_kernels.exemption_rows(reference_selection)
+            }
+            references = tuple(
+                ref for ref in references if ref.name not in exempt_names
+            )
         names = {reference.name for reference in references}
         if set(factors) != names:
             raise ValueError(
@@ -685,6 +706,17 @@ class TakeupGapKernel(KernelBase):
                 if "facts_sha256" in context.params
                 else None
             ),
+            feed_pin=(
+                canonical_document_param(context, self.ref, "chronicle_feed_pin")
+                if "chronicle_feed_pin" in context.params
+                else None
+            ),
+            reference_resolution=(
+                canonical_document_param(context, self.ref, "reference_resolution")
+                if "reference_resolution" in context.params
+                else None
+            ),
+            reference_selection=reference_selection,
         )
         surface = decode_target_surface(surface_payload)
         problem = target_kernels._compiled_problem(
