@@ -2148,7 +2148,7 @@
     },
     {
       "resource": "scotgov_band_d_liability_facts.json",
-      "purpose": "The Scottish Government's Band D equivalent dwellings before council tax reduction at September 2024 (CTAXBASE 2025) and average Band D council tax for 2024-25 (CTAS 2026), for each of the 32 council areas. Consumed by the FRS council tax stage, which levels the Scottish bills to the sum over the councils of their products (S2(a) of the November event-data plan, microcosm#1095).",
+      "purpose": "The Scottish Government's Band D equivalent dwellings before council tax reduction at September 2024 (CTAXBASE 2025) and average Band D council tax for 2024-25 (CTAS 2026), for each of the 32 council areas, with Scotland's chargeable dwellings (CTAXBASE 2024) and its second homes and its empty homes liable for council tax (empty more than 6 months; Second homes and empty properties in September 2025), at September 2024. Consumed by the FRS council tax stage, which levels the Scottish bills to the sum over the councils of their products (S2(a) of the November event-data plan, microcosm#1095), times Scotland's main-residence share, one less the second and empty homes over the chargeable dwellings (B11 of its PR3).",
       "consumers": [
         "uk_runtime.frs_council_tax"
       ],
@@ -2179,6 +2179,48 @@
             ]
           },
           "expected_row_count": 32
+        },
+        {
+          "label": "ctaxbase_2024_chargeable_dwellings_scotland_september_2024",
+          "selector": {
+            "source_name": "scotgov",
+            "record_set_id": [
+              "scotgov.ctaxbase2024.chargeable_dwellings.scotland"
+            ],
+            "source_concept": [
+              "scotgov.chargeable_dwellings_total"
+            ],
+            "geography_level": [
+              "country"
+            ]
+          },
+          "expected_row_count": 1
+        },
+        {
+          "label": "second_homes_scotland_september_2024",
+          "selector": {
+            "source_name": "scotgov",
+            "record_set_id": [
+              "scotgov.second_homes_empty_properties_2025.second_homes.y2024"
+            ],
+            "geography_level": [
+              "country"
+            ]
+          },
+          "expected_row_count": 1
+        },
+        {
+          "label": "empty_homes_scotland_september_2024",
+          "selector": {
+            "source_name": "scotgov",
+            "record_set_id": [
+              "scotgov.second_homes_empty_properties_2025.empty_properties.y2024"
+            ],
+            "geography_level": [
+              "country"
+            ]
+          },
+          "expected_row_count": 1
         }
       ]
     }
