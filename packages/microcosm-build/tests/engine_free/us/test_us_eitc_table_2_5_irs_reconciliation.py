@@ -42,6 +42,7 @@ percentage points because IRS rounds them to whole percents.
 from __future__ import annotations
 
 import functools
+import hashlib
 import json
 
 import pytest
@@ -461,9 +462,10 @@ def test_uniform_growth_keeps_each_split_s_bins_summing_to_its_total_row(
     growth: int,
 ) -> None:
     """When every AGI group's EITC grows by one factor, each split's 28
-    compiled AGI bins add to its compiled total row, up to the source's own
-    rounding gap between bins and total (at most 5 returns or $5,000 before
-    scaling)."""
+    compiled AGI bins add to its compiled total row within twice the source's
+    rounding allowance (10 returns or $10,000) times the factor. The compile
+    scales the total rows by the ratio of all bins to all total rows, so each
+    split's gap adds its share of the gap summed over splits to its own."""
 
     factor = growth / 100
     values: dict[tuple[str, str], float] = {}
@@ -502,9 +504,10 @@ def test_fixture_rows_are_verbatim_pinned_feed_rows() -> None:
     """On a machine that has the pinned feed (CI has none), the fixture matches
     the feed's rows for these record sets byte for byte.
 
-    This test fails after a re-pin that changes any of those rows. To refresh
-    the fixture, take the new feed's lines for the same record sets, sort them
-    by ``lineage.source_record_id`` and write one per line. Compare the old and
+    It first checks the feed's sha256 against the pin in ``chronicle_feed.json``.
+    It fails after a re-pin that changes any of those rows. To refresh the
+    fixture, take the new feed's lines for the same record sets, sort them by
+    ``lineage.source_record_id`` and write one per line. Compare the old and
     new rows field by field first, and check any changed value against the
     workbooks this module's docstring names.
     """
@@ -512,6 +515,14 @@ def test_fixture_rows_are_verbatim_pinned_feed_rows() -> None:
     feed_path = _load_repo_tool("build_us_target_parity_manifest").DEFAULT_FEED_PATH
     if not feed_path.exists():
         pytest.skip(f"pinned feed not present at {feed_path}")
+    from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+
+    pinned = load_us_chronicle_feed().facts_sha256
+    with feed_path.open("rb") as feed:
+        digest = hashlib.file_digest(feed, "sha256").hexdigest()
+    assert digest == pinned, (
+        f"{feed_path.name} has sha256 {digest}; chronicle_feed.json pins {pinned}"
+    )
     record_sets = {fact["layout"]["record_set_id"] for fact in _feed_rows()}
     with feed_path.open(encoding="utf-8") as feed:
         feed_rows = sorted(
