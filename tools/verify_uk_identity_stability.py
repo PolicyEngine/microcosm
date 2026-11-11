@@ -38,6 +38,7 @@ from microcosm.build.uk_runtime.frs_take_up import (
     aggregate_person_reported_to_benunit,
     derive_frs_take_up,
     derive_under_two_childcare_usage,
+    geographic_clone_indices,
     person_unit_flag,
     uc_age_eligible_benunits,
     uk_take_up_population_policy,
@@ -120,6 +121,12 @@ def e4_identity_receipt(
     take-up draw used (``uk_take_up_population_policy``); it is read from the
     engine when not supplied, so a hermetic caller passes one.
 
+    frs_take_up's anchored draws and frs_person_draws' apprentice walk count
+    within each geographic clone (microcosm#931), so both recomputes take each
+    row's clone as the stages read it (``geographic_clone_indices``), carried
+    by entity id onto the permuted tables; a frame without the clone index is
+    one clone.
+
     ``lha_category`` is the BRMA draw's predictor, aligned to the benefit-unit
     rows. Without it, ``engine`` materializes it on the frame the BRMA stage
     read, as far as the artifact restores it (``_brma_stage_lha_category``):
@@ -136,8 +143,9 @@ def e4_identity_receipt(
     it and, under ``rewritten_later_still_equal``, the columns the store
     still holds bitwise (a later stage may write only rows the scope drops,
     such as copies). ``is_apprentice`` is held exactly, or where it differs,
-    to its walk on the restored weights (``_apprentice_walk_holds``), since
-    those are the stage's to rounding only; the receipt names it then.
+    to its walk within each clone on the restored weights
+    (``_apprentice_walk_holds``), since those are the stage's to rounding
+    only; the receipt names it then.
     """
 
     from microcosm.build.uk_runtime.frs_person_draws import (
@@ -161,6 +169,11 @@ def e4_identity_receipt(
             strict=True,
         )
     )
+    # Each benefit unit's and person's geographic clone, by id, which a row
+    # permutation carries with each id.
+    clone_by_id = {
+        entity: _clone_index_by_id(frame, entity) for entity in ("benunit", "person")
+    }
 
     def draws(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
         """The take-up, person and household draws, keyed by entity id."""
@@ -173,6 +186,7 @@ def e4_identity_receipt(
             uc_age_eligible=uc_age_eligible_benunits(
                 person_t, benunit_t, population_policy
             ),
+            clone_index=_clones_on(clone_by_id["benunit"], benunit_t["benunit_id"]),
         )
         claiming = person_unit_flag(
             person_t,
@@ -189,6 +203,7 @@ def e4_identity_receipt(
             # Only the draws are compared, never the receipt's support
             # counts, so each row's household stands as its source.
             person_sources=own_source_households(person_t),
+            person_clone_index=_clones_on(clone_by_id["person"], person_t["person_id"]),
         )
         person_draws[UK_UNDER_TWO_USAGE_OUTPUT] = derive_under_two_childcare_usage(
             person_t, claiming=claiming, contract=contract
@@ -293,6 +308,7 @@ def e4_identity_receipt(
                     .map(weight_by_household)
                     .to_numpy(dtype=float),
                     rate=contract.rate(APPRENTICE_RATE_KEY, contract.build_year),
+                    clone_index=_clones_on(clone_by_id["person"], person["person_id"]),
                 )
             ):
                 held_to_tolerance.setdefault(entity, []).append(column)
@@ -315,13 +331,15 @@ def e4_identity_receipt(
             "not compared (rewritten_later names the stages, and "
             "rewritten_later_still_equal the columns the store still holds "
             "bitwise), and is_apprentice, which where it differs is held to "
-            "its walk on the "
+            "its walk within each geographic clone on the "
             "restored stage-time weights (they are the stage's to rounding): "
-            "the stored flags must be exactly the eligible employees whose "
-            "keyed uniform lies at or below the largest flagged one's, and "
-            "their weight must lie as near the target as the recompute's, to "
+            "in each clone the stored flags must be exactly the clone's "
+            "eligible employees whose keyed uniform lies at or below the "
+            "largest flagged one's, and their weight must lie as near the "
+            "clone's target as the recompute's, to "
             f"a relative {_APPRENTICE_WALK_RELATIVE_TOLERANCE:g} of the weight "
-            "of the people aged 21 to 24 (held_to_tolerance names it then); "
+            "of the clone's people aged 21 to 24 (held_to_tolerance names it "
+            "then); "
             "brma: bitwise, on LHA_category materialized on the frame frs_brma "
             "read as far as the artifact restores it (lha_category_scope)"
         ),
@@ -444,21 +462,24 @@ def _apprentice_walk_holds(
     *,
     person_weights: np.ndarray,
     rate: float,
+    clone_index: np.ndarray | None = None,
 ) -> bool:
     """Whether stored ``is_apprentice`` flags are the stage's walk, to rounding.
 
-    ``frs_person_draws`` flags the eligible employees aged 21 to 24 in the
-    order of their identity-keyed uniform until their weight lies nearest
-    ``rate`` times the weight of everyone aged 21 to 24
-    (``derive_is_apprentice``). ``person_weights`` are each person's household
-    weight restored to the stage's to rounding (``_frame_as_draw_stages_saw``),
-    so where two prefixes of the walk lie within rounding of the target a
+    ``frs_person_draws`` flags the eligible employees aged 21 to 24 of each
+    geographic clone (``clone_index``, aligned with ``person``; everyone in
+    one clone when not given) in the order of their identity-keyed uniform
+    until their weight lies nearest ``rate`` times the weight of the clone's
+    people aged 21 to 24 (``derive_is_apprentice``). ``person_weights`` are
+    each person's household weight restored to the stage's to rounding
+    (``_frame_as_draw_stages_saw``), so where a clone's target lies within
+    rounding of the midpoint between two consecutive prefixes of its walk a
     recompute can flag one person more or fewer than the stage did. The
-    stored flags hold where they are exactly the eligible employees whose
-    uniform lies at or below the largest flagged one's, and their weight lies
-    as near the target as the recompute's, to
-    :data:`_APPRENTICE_WALK_RELATIVE_TOLERANCE` of the weight of everyone
-    aged 21 to 24.
+    stored flags hold where, in every clone, they are exactly the clone's
+    eligible employees whose uniform lies at or below the largest flagged
+    one's, and their weight lies as near the clone's target as the
+    recompute's, to :data:`_APPRENTICE_WALK_RELATIVE_TOLERANCE` of the weight
+    of the clone's people aged 21 to 24.
     """
 
     from microcosm.build.uk_runtime.frs_person_draws import (
@@ -466,6 +487,7 @@ def _apprentice_walk_holds(
         APPRENTICE_MAX_AGE_EXCLUSIVE,
         APPRENTICE_MIN_AGE,
         APPRENTICE_OUTPUT,
+        _clone_rows,
         _draws,
         _nearest_target_threshold,
     )
@@ -483,20 +505,44 @@ def _apprentice_walk_holds(
     uniforms = _draws(person["person_id"].to_numpy(), APPRENTICE_OUTPUT)
     if (flags & ~eligible).any():
         return False
-    if flags.any() and not np.array_equal(
-        flags, eligible & (uniforms <= uniforms[flags].max())
-    ):
-        return False
-    population = float(weights[in_ages].sum())
-    target = float(rate) * population
-    threshold = _nearest_target_threshold(
-        target, draws=uniforms[eligible], weights=weights[eligible]
-    )
-    walked = float(weights[eligible & (uniforms < threshold)].sum())
-    stored = float(weights[flags].sum())
-    return abs(stored - target) <= (
-        abs(walked - target) + _APPRENTICE_WALK_RELATIVE_TOLERANCE * population
-    )
+    for rows in _clone_rows(clone_index, len(person)):
+        clone_flags = flags & rows
+        clone_eligible = eligible & rows
+        if clone_flags.any() and not np.array_equal(
+            clone_flags, clone_eligible & (uniforms <= uniforms[clone_flags].max())
+        ):
+            return False
+        population = float(weights[in_ages & rows].sum())
+        target = float(rate) * population
+        threshold = _nearest_target_threshold(
+            target, draws=uniforms[clone_eligible], weights=weights[clone_eligible]
+        )
+        walked = float(weights[clone_eligible & (uniforms < threshold)].sum())
+        stored = float(weights[clone_flags].sum())
+        if not abs(stored - target) <= (
+            abs(walked - target) + _APPRENTICE_WALK_RELATIVE_TOLERANCE * population
+        ):
+            return False
+    return True
+
+
+def _clone_index_by_id(frame, entity: str) -> pd.Series | None:
+    """Each ``entity`` row's geographic clone, by its id, as frs_take_up and
+    frs_person_draws read it (``geographic_clone_indices``), or None on a
+    frame without the clone index (one clone)."""
+
+    indices = geographic_clone_indices(frame, entity)
+    if indices is None:
+        return None
+    return pd.Series(indices, index=frame.table(entity)[f"{entity}_id"].to_numpy())
+
+
+def _clones_on(clone_by_id: pd.Series | None, ids: pd.Series) -> np.ndarray | None:
+    """``clone_by_id`` on the rows ``ids`` name, in their order, or None."""
+
+    if clone_by_id is None:
+        return None
+    return clone_by_id.loc[ids.to_numpy()].to_numpy()
 
 
 def e5_identity_receipt(
@@ -2867,11 +2913,12 @@ def main() -> int:
 
         # E4's stages drew on every geographic clone of the raw FRS rows,
         # before the SPI rows were stacked, and its take-up targets are
-        # unweighted int(rate * n_units): recompute on the survey channel
-        # only, or every target moves with the synthetic rows (the post-#717
-        # scoping rule the E5 receipt already applies), at the weights the
-        # stages read, as far as the artifact restores them. The engine runs
-        # clone by clone at the spine's clone count, as the stages' did.
+        # unweighted int(rate * n_units) within each clone: recompute on the
+        # survey channel only, or every target moves with the synthetic rows
+        # (the post-#717 scoping rule the E5 receipt already applies), at the
+        # weights the stages read, as far as the artifact restores them. The
+        # engine runs clone by clone at the spine's clone count, as the
+        # stages' did.
         population_policy = uk_take_up_population_policy(uk_time_period(frame))
         receipt = e4_identity_receipt(
             _frame_as_draw_stages_saw(
@@ -3001,9 +3048,9 @@ _BRMA_STAGE = "frs_brma"
 #: (``_frame_as_draw_stages_saw``).
 _SPI_SUPPORT_STAGE = "spi_support_channel"
 _SPI_PRIOR_MASS_OPERATION = "allocate_zero_weight_prior_mass"
-#: How far, relative to the weight of everyone aged 21 to 24, stored
-#: is_apprentice flags may lie further from the walk's target than the
-#: recompute's on the restored weights (``_apprentice_walk_holds``): the
+#: How far, relative to the weight of a clone's people aged 21 to 24, a
+#: clone's stored is_apprentice flags may lie further from its target than
+#: the recompute's on the restored weights (``_apprentice_walk_holds``): the
 #: restored weights are the stage's to a few floats per row, and to the
 #: exact-total corrections of two stages, far inside it.
 _APPRENTICE_WALK_RELATIVE_TOLERANCE = 1e-9
