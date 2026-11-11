@@ -831,7 +831,7 @@ _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
 # is a vintage pin that moves with every reviewed register edit (the same
 # tripwire as the policy digest).
 _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
+    "a6ebc171cadf45b691a2b83632bc1f87f3116ad31aebf073e3786ce90ecc0307"
 )
 
 

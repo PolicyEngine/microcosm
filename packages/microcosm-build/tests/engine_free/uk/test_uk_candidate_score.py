@@ -550,3 +550,103 @@ def test_a_gap_shared_by_both_artifacts_still_refuses_on_the_candidate(
     # was never asked, so nothing was pruned.
     assert calls[0] == (candidate, ["target_a", "target_b"])
     assert all(path == candidate for path, _ in calls)
+
+
+def _one_target_per_probe(monkeypatch, *, failing_h5: Path) -> list[str]:
+    """Fail each incumbent probe on the first measure-bound target still on the
+    surface, naming that target alone, so every target takes its own probe."""
+
+    original = candidate_score._scored_frame
+    probes: list[str] = []
+
+    def fake(
+        h5_path,
+        registry,
+        calibration_year,
+        factory,
+        *,
+        band_edge_registry=None,
+        incumbent=False,
+    ):
+        remaining = [spec for spec in registry.specs if spec.name != "target_a"]
+        if Path(h5_path) == failing_h5 and remaining:
+            spec = remaining[0]
+            probes.append(spec.name)
+            raise MeasureResolutionError(
+                f"provider does not know household.{spec.measure}",
+                receipt={
+                    "skips": [
+                        {
+                            "name": spec.name,
+                            "measure": spec.measure,
+                            "reason": f"'household.{spec.measure}'",
+                        }
+                    ]
+                },
+            )
+        return original(h5_path, registry, calibration_year, None)
+
+    monkeypatch.setattr(candidate_score, "_scored_frame", fake)
+    return probes
+
+
+def _signed_targets(measures, per_measure: int):
+    specs = [_registry().specs[0]]
+    reviewed = {}
+    for measure in measures:
+        reviewed[f"household.{measure}"] = _REVIEWED[MEASURE_B]
+        for index in range(per_measure):
+            specs.append(
+                TargetSpec(
+                    name=f"target_{measure}_{index}",
+                    entity="household",
+                    measure=measure,
+                    value=20.0,
+                    source="synthetic",
+                    family=f"family_{measure}",
+                    metadata={"contract_target_id": f"test.{measure}_{index}"},
+                )
+            )
+    return TargetRegistry(specs, country="uk"), reviewed
+
+
+def test_the_probe_bound_grows_with_the_register(monkeypatch, tmp_path):
+    """Two of the nine signed measures took two probes each on 11 November
+    2026, eleven failing probes against the fixed bound of ten this replaced.
+    Here four signed measures take three probes each: twelve, then the clean
+    probe."""
+
+    pytest.importorskip("tables")
+    _, incumbent = _twins(tmp_path)
+    probes = _one_target_per_probe(monkeypatch, failing_h5=incumbent)
+    registry, reviewed = _signed_targets(["m1", "m2", "m3", "m4"], per_measure=3)
+
+    surface, pruned = prune_incumbent_unresolvable(
+        incumbent,
+        registry,
+        2025,
+        _resolver_factory,
+        reviewed_measures=reviewed,
+        evaluated_on=date(2026, 11, 10),
+    )
+
+    assert [spec.name for spec in surface.specs] == ["target_a"]
+    assert len(probes) == 12
+    assert len(pruned) == 12
+
+
+def test_the_probe_bound_still_stops_a_runaway_measure(monkeypatch, tmp_path):
+    pytest.importorskip("tables")
+    _, incumbent = _twins(tmp_path)
+    _one_target_per_probe(monkeypatch, failing_h5=incumbent)
+    registry, reviewed = _signed_targets(["m1"], per_measure=5)
+
+    with pytest.raises(RuntimeError, match="still fails after 4 pruning rounds"):
+        prune_incumbent_unresolvable(
+            incumbent,
+            registry,
+            2025,
+            _resolver_factory,
+            reviewed_measures=reviewed,
+            evaluated_on=date(2026, 11, 10),
+        )
