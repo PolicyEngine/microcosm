@@ -76,6 +76,14 @@ from tools import ci_test_plan
             False,
         ),
         (
+            "engine_after_merge/uk/test_one.py",
+            "engine-after-merge-uk",
+            "engine-uk-after-merge",
+            "uk",
+            "policyengine_uk",
+            False,
+        ),
+        (
             "integration/uk/test_one.py",
             "integration-uk",
             "integration-uk",

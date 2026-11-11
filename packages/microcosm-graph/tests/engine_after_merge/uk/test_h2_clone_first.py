@@ -9,6 +9,9 @@ graph node, the simulations each engine call ran, the population's mass, its
 clone-index invariant and each stage's outputs as weighted shares, and keeps
 the populations the exact checks compare.
 
+Too slow for every pull request, the module runs after merge only, in the
+engine-uk-after-merge job on pushes to main.
+
 - **Every stage runs**, and at K = 4 every engine call from geographic_expand
   on runs four simulations, one per clone, in as many calls per stage as at
   one clone: no stage calls the engine per clone. private_school_attendance

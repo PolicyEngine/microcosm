@@ -181,6 +181,9 @@ of these directories below its package's `tests/` directory:
   aging, fiscal refresh, release preparation, scoring, or another complete data
   workflow. Every module in this category runs in a fresh pytest process.
 - `engine/uk/`: imports or executes the UK engine.
+- `engine_after_merge/uk/`: imports or executes the UK engine but is too slow for
+  every pull request; runs through the `engine-uk-after-merge` job on pushes to
+  main only, after merge.
 - `integration/uk/`: runs serially through the `integration-uk` job with the
   explicit `--run-integration` option.
 - `installed_emitter/shared/`: starts the separately installed

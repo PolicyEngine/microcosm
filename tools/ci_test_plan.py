@@ -65,6 +65,14 @@ TEST_GROUPS = {
     "engine-uk": TestGroup(
         ("engine", "uk"), "engine-uk", "uk", engine_module="policyengine_uk"
     ),
+    # UK engine tests too slow for every pull request: the engine-uk-after-merge
+    # job runs them on pushes to main only, after merge (microcosm#931).
+    "engine-after-merge-uk": TestGroup(
+        ("engine_after_merge", "uk"),
+        "engine-uk-after-merge",
+        "uk",
+        engine_module="policyengine_uk",
+    ),
     "integration-uk": TestGroup(
         ("integration", "uk"),
         "integration-uk",

@@ -18,12 +18,13 @@ env:
 
 # Every job sets timeout-minutes (GitHub's default is 360) so a hung test
 # frees its runner from the org's shared 60-runner pool. The engine-free and
-# engine-us caps are about 1.5x their slowest successful leg on 2026-10-07..08.
-# The engine-uk cap is about 1.6x its expected slowest leg with microcosm#931's
-# clone-first H2 test: legs took 31-46 minutes on main on 2026-11-11, and that
-# test's module runs about 2.6 times as long as the H2 parity test (10 minutes
-# in this job), so about 27 minutes more. Shorter jobs get at least 5 minutes
-# and at least twice their slowest run.
+# engine-us caps are about 1.5x their slowest successful leg on 2026-10-07..08;
+# the engine-uk cap is about twice its slowest successful leg after the
+# policyengine-uk 2.162.3 bump (29 minutes, microcosm#1400); shorter jobs get
+# at least 5 minutes and at least twice their slowest run. The
+# engine-uk-after-merge cap is about 1.6x its expected leg: microcosm#931's
+# clone-first H2 test runs about 2.6 times as long as the H2 parity test
+# (10 minutes in engine-uk), so about 27 minutes, plus the sync.
 
 jobs:
   select-countries:
@@ -120,7 +121,7 @@ jobs:
     needs: select-countries
     if: needs['select-countries'].outputs.run_uk == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -134,6 +135,26 @@ jobs:
         run: uv sync --all-packages --locked --extra uk
       - name: Run UK engine tests
         run: bash tools/run_engine_uk_tests.sh
+
+  engine-uk-after-merge:
+    # UK engine tests too slow for every pull request run on pushes to main
+    # only, after merge (microcosm#931).
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Sync workspace with the UK engine
+        run: uv sync --all-packages --locked --extra uk
+      - name: Run UK after-merge engine tests
+        run: bash tools/run_engine_uk_tests.sh engine-uk-after-merge
 
   integration-uk:
     needs: select-countries

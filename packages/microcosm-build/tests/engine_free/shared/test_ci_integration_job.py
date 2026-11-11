@@ -60,6 +60,22 @@ def test_tests_workflow_selects_every_test_environment() -> None:
     assert "reporting_groups_for_job" in engine_runner
 
 
+def test_only_the_after_merge_uk_job_waits_for_a_push_to_main() -> None:
+    """UK engine tests too slow for every pull request run after merge only."""
+    jobs = yaml.safe_load(_TEST_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+    after_merge = jobs["engine-uk-after-merge"]
+
+    assert after_merge["if"] == "github.event_name == 'push'"
+    assert "needs" not in after_merge
+    assert after_merge["steps"][-1]["run"] == (
+        "bash tools/run_engine_uk_tests.sh engine-uk-after-merge"
+    )
+    assert jobs["engine-uk"]["steps"][-1]["run"] == "bash tools/run_engine_uk_tests.sh"
+    assert [
+        name for name, job in jobs.items() if "event_name" in str(job.get("if", ""))
+    ] == ["engine-uk-after-merge"]
+
+
 def test_integration_job_is_uk_selected_and_read_only() -> None:
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
     integration = workflow.split("\n  integration-uk:\n", maxsplit=1)[1].split(
