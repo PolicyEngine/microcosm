@@ -280,8 +280,18 @@ def test_the_graph_kernel_does_not_claim_the_new_keyed_seed_source() -> None:
             lambda params: params.update(min_samples_leaf=2),
             "supports only.*1",
         ),
+        (
+            QRFKernel(SeedSource.PARAM),
+            lambda params: params.update(gate_calibration="platt"),
+            "gate_calibration 'platt'",
+        ),
     ],
-    ids=["param-needs-seed", "executor-forbids-seed", "leaf-default-only"],
+    ids=[
+        "param-needs-seed",
+        "executor-forbids-seed",
+        "leaf-default-only",
+        "known-gate-calibration",
+    ],
 )
 def test_parameter_contract_rejects_mismatches(
     kernel: QRFKernel, mutate_params, match: str
@@ -290,6 +300,27 @@ def test_parameter_contract_rejects_mismatches(
     mutate_params(params)
     with pytest.raises(ValueError, match=match):
         kernel.run(_context(params=params))
+
+
+def test_the_kernel_passes_a_cross_fitted_gate_calibration_through() -> None:
+    """``gate_calibration`` reaches the fit; only a cross-fitted node names it."""
+    table, _ = _fixture()
+    donors = np.flatnonzero(table["is_donor"].to_numpy(dtype=bool))
+    observed = table["observed_y"].to_numpy(copy=True)
+    observed[donors[::2]] = 0.0  # a zero-inflated donor target has a gate
+    table = table.assign(observed_y=observed)
+
+    plain = QRF_PARAM_KERNEL.run(_context(table=table))
+    assert "gate_calibration" not in plain.receipt
+    assert "gate_outcome" not in plain.receipt
+
+    crossed = QRF_PARAM_KERNEL.run(
+        _context(table=table, params={**PARAMS, "gate_calibration": "cross_fitted"})
+    )
+    assert crossed.receipt["gate_calibration"] == "cross_fitted"
+    model = pickle.loads(crossed.artifacts["model"])  # noqa: S301 - trusted
+    assert model.gate_outcomes() == {"y": crossed.receipt["gate_outcome"]}
+    assert crossed.receipt["gate_outcome"] != "in_sample"
 
 
 def test_masks_must_be_boolean_non_null_complements() -> None:

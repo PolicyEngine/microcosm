@@ -575,7 +575,9 @@ def bounded_redistribution(run):
                 if row["name"]
                 in [
                     "obr.income_tax@2025",
-                    "obr.ni@2025",
+                    "obr.ni_employee@2025",
+                    "obr.ni_employer@2025",
+                    "obr.ni_self_employed@2025",
                     "dwp.state_pension.amount@2025",
                     "obr.child_benefit@2025",
                 ]

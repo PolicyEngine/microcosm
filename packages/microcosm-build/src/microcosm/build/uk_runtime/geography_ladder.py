@@ -84,6 +84,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -121,7 +122,8 @@ UK_OA_LADDER_DERIVED_LAYERS = (
 #: name is either a policyengine-uk household input (``local_authority``, the
 #: enum member name resolved from ``local_authority_code``; ``region`` is
 #: pre-assigned, so it is not rewritten) or a plain ``*_code`` data column
-#: carrying an ONS GSS code.
+#: carrying an ONS GSS code. Three of them leave every single-year artifact
+#: under the consumers' names (:data:`UK_EXPORT_AREA_CODE_COLUMNS`).
 UK_GEOGRAPHY_LADDER_COLUMNS = (
     "oa_code",
     "lsoa_code",
@@ -135,6 +137,54 @@ UK_GEOGRAPHY_LADDER_COLUMNS = (
     "itl2_code",
     "itl1_code",
 )
+
+#: The three area codes consumers read under uk-data's names (microcosm#1114):
+#: policyengine.py's constituency and local-authority filters and impact
+#: outputs, the simulation API's geographic reports and the enhanced FRS all
+#: carry ``constituency_code_oa``, ``la_code_oa`` and ``region_code_oa``. The
+#: graph keeps the ladder names above everywhere in memory (gates, diagnostics,
+#: target compilation, the engine's scratch dataset); the single-year export
+#: boundary (``graph_terminal._tables`` and ``uk_release_export_frame``)
+#: renames these three and only these three, so every artifact carries one
+#: name per code and no alias. The suffix is accurate here: every code derives
+#: from the assigned output area or data zone.
+UK_EXPORT_AREA_CODE_COLUMNS: Mapping[str, str] = MappingProxyType(
+    {
+        "constituency_code": "constituency_code_oa",
+        "local_authority_code": "la_code_oa",
+        "region_code": "region_code_oa",
+    }
+)
+
+
+def export_area_code_columns(household: pd.DataFrame) -> pd.DataFrame:
+    """Rename the three area codes to their consumer names at the export boundary.
+
+    Renames only the ladder columns present, so a table without geography (the
+    national line) passes unchanged, and refuses a table that already carries
+    a consumer name: a stale ``*_oa`` column riding through would shadow the
+    ladder's own code.
+    """
+
+    stale = [
+        export
+        for export in UK_EXPORT_AREA_CODE_COLUMNS.values()
+        if export in household.columns
+    ]
+    if stale:
+        raise ValueError(
+            "household table already carries consumer area-code column(s) "
+            f"{stale!r}; the export boundary writes them from the ladder columns."
+        )
+    present = {
+        ladder: export
+        for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items()
+        if ladder in household.columns
+    }
+    if not present:
+        return household
+    return household.rename(columns=present)
+
 
 #: The nine English regions carry real ``E12`` GSS codes; Wales rides the
 #: ``W92000004`` country code in ONS lookups but the FRS-calibrated region
@@ -1209,6 +1259,7 @@ __all__ = [
     "GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR",
     "GEOGRAPHY_LADDER_VINTAGES_ATTR",
     "UK_ENGLAND_WALES_REGION_CODES",
+    "UK_EXPORT_AREA_CODE_COLUMNS",
     "UK_GEOGRAPHY_LADDER_COLUMNS",
     "UK_LONDON_REGION_CODE",
     "UK_OA_LADDER_DERIVED_LAYERS",
@@ -1221,4 +1272,5 @@ __all__ = [
     "uk_region_mix",
     "uk_geography_ladder_assignment_summary",
     "uk_geography_ladder_gate",
+    "export_area_code_columns",
 ]

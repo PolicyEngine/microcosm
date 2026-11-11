@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "factor_context_resource": "reference_aging.json",
+  "interval_resource": "reference_intervals.json",
+  "dimensions": {
+    "aging_index": {
+      "default": "central",
+      "profiles": {
+        "central": {
+          "deferred": true,
+          "notes": "Declared but not executable: ageing the A.1 stand-in band cuts to 2026 needs a shared operation that scales interval cuts by a declared annual ratio pair, and reference_aging.json holds no profile_input factor for it. The profile is deferred, so the resolver applies no transformation and the A.1 rows keep both prerequisites."
+        }
+      }
+    }
+  }
+}

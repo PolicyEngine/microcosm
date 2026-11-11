@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from io import BytesIO
 from numbers import Integral
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
@@ -171,15 +171,32 @@ def _read_target(raw: Mapping) -> Target:
     )
 
 
+def _axis_array(entity_ids: tuple[int | str, ...]) -> np.ndarray:
+    """The entity axis as one array every compiled row compares against.
+
+    Rebuilding the axis as a Python tuple from the frame on every row is
+    quadratic in practice: 22,053 local rows over a 1.6 million-household
+    pool is ~3.5e10 scalar conversions (the first K=25 UK dense build,
+    2026-10-05). One shared array and a vectorised comparison keep the guard.
+    """
+
+    if all(isinstance(value, Integral) for value in entity_ids):
+        return np.asarray(entity_ids, dtype=np.int64)
+    return np.asarray(entity_ids, dtype=object)
+
+
 @dataclass(frozen=True)
 class _CompiledRow:
     entity: str
     entity_ids: tuple[int | str, ...]
     values: sparse.csr_array
+    axis: np.ndarray | None = field(default=None, compare=False, hash=False, repr=False)
 
     def __call__(self, frame: Frame) -> np.ndarray:
         column = frame.schema.entity_id_column(self.entity)
-        if tuple(frame.table(self.entity)[column]) != self.entity_ids:
+        actual = frame.table(self.entity)[column].to_numpy()
+        axis = _axis_array(self.entity_ids) if self.axis is None else self.axis
+        if actual.shape != axis.shape or not np.array_equal(actual, axis):
             raise ValueError(
                 "Compiled contribution requires its exact ordered entity axis."
             )
@@ -204,6 +221,7 @@ class OrderedProblem:
         Contributions already include original filters and entity aggregation.
         No raw measure is recomputed; consuming a different row axis refuses.
         """
+        axis = _axis_array(self.entity_ids)
         return TargetSet(
             [
                 replace(
@@ -214,6 +232,7 @@ class OrderedProblem:
                         self.problem.weight_entity,
                         self.entity_ids,
                         self.problem.matrix[index : index + 1],
+                        axis,
                     ),
                 )
                 for index, target in enumerate(self.problem.targets)

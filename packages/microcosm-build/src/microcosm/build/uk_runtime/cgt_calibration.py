@@ -19,6 +19,7 @@ changing the declared target value.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -36,12 +37,14 @@ from microcosm.frame import EntitySchema, Frame, Weights
 
 __all__ = [
     "UK_CGT_ANNUAL_EXEMPT_AMOUNTS",
+    "UK_CGT_DATED_MEASURE",
     "UK_CGT_GAINS_AMOUNT_COLUMN",
     "UK_CGT_SOURCE_COLUMN",
     "UK_CGT_TAXPAYER_COUNT_COLUMN",
     "UKCGTTargetMaterialization",
     "materialize_uk_cgt_calibration_frame",
     "uk_cgt_annual_exempt_amount",
+    "uk_cgt_dated_measure_year",
 ]
 
 #: The persisted person-level input the measures are derived from.
@@ -49,6 +52,13 @@ UK_CGT_SOURCE_COLUMN = "capital_gains"
 
 UK_CGT_GAINS_AMOUNT_COLUMN = "uk_cgt_measure_gains_amount"
 UK_CGT_TAXPAYER_COUNT_COLUMN = "uk_cgt_measure_taxpayer_count"
+
+#: A CGT calibration measure dated by its name, such as ``cgt_2024_gains``.
+#: The measure provider computes it at the year in its name, whatever the
+#: run's calibration period, so a binding may declare that year.
+UK_CGT_DATED_MEASURE = re.compile(
+    r"^cgt_(20[0-9]{2})_(gains|tax|badr_gains|taxable_income)$"
+)
 
 #: CGT annual exempt amount by build period (tax year starting in that year).
 #:
@@ -93,6 +103,13 @@ def uk_cgt_annual_exempt_amount(time_period: int | str) -> float:
             "2022-23 to 2024-25) and must be declared explicitly. Known "
             f"periods: {sorted(UK_CGT_ANNUAL_EXEMPT_AMOUNTS)}."
         ) from None
+
+
+def uk_cgt_dated_measure_year(variable: str) -> int | None:
+    """The year a dated CGT calibration measure is computed at, else None."""
+
+    match = UK_CGT_DATED_MEASURE.fullmatch(variable)
+    return int(match[1]) if match else None
 
 
 def materialize_uk_cgt_calibration_frame(

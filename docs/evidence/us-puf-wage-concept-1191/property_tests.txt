@@ -1,0 +1,20 @@
+$ uv run pytest docs/evidence/us-puf-wage-concept-1191/scripts/test_gross_up_properties.py
+.......xx                                                                [100%]
+7 passed, 2 xfailed in 26.52s
+
+$ uv run pytest docs/evidence/us-puf-wage-concept-1191/scripts/test_gross_up_properties.py --runxfail -k today
+E       Failing test case: test_today_round_trip(
+E           wage=1.0,
+E           traditional=1.0,
+E           roth=0.0,
+E           age=0,
+E       )
+
+E       Failing test case: test_today_zero_floor_never_binds(
+E           wage=0.5,
+E           traditional=1.0,
+E           roth=0.0,
+E           age=0,
+E       )
+
+2 failed, 7 deselected in 4.30s

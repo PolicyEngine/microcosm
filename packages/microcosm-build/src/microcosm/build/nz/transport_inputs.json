@@ -1,0 +1,20 @@
+{
+  "donor": {
+    "kind": "public_microdata",
+    "format": "hdf5",
+    "vintage": "2024",
+    "locator": "populace_us_2024.h5",
+    "revision": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z",
+    "repository": {
+      "provider": "huggingface",
+      "owner": "policyengine",
+      "name_parts": [
+        "populace-us"
+      ],
+      "repo_type": "dataset"
+    },
+    "sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+    "size_bytes": 462915783,
+    "integrity_note": "The revision is the immutable release tag named by the public latest.json pointer on 2026-08-29. Execution must verify both SHA-256 and byte size before reading; main/latest fallback is forbidden."
+  }
+}

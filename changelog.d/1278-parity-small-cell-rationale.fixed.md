@@ -1,0 +1,1 @@
+In the local compile-parity receipt, a cell the incumbent carries but a signed small-cell rule defers now carries its deferral's signed rationale, which names the rule, instead of the generic taxbase reason (microcosm#1278 review).

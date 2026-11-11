@@ -40,11 +40,18 @@ def test_uk_dense_posture_mirrors_the_ruled_constants() -> None:
     assert posture.role == "dense"
     assert posture.doctrine is UK_LOCAL_SOLVE_DOCTRINE
     assert posture.clone_count == UK_LOCAL_CLONE_COUNT == 15
-    assert posture.epochs == UK_LOCAL_SOLVE_EPOCHS == 1500
+    assert posture.epochs == UK_LOCAL_SOLVE_EPOCHS == 2000
     assert posture.learning_rate == 0.15
     assert posture.seed == 42
-    assert posture.target_weight_rule == "grain_equal"
-    assert posture.allowed_target_weight_rules == ("grain_equal", "uniform")
+    assert posture.target_weight_rule == "nation_grain_family_equal_sqrt_count"
+    assert posture.allowed_target_weight_rules == (
+        "grain_equal",
+        "uniform",
+        "grain_family_equal",
+        "grain_family_equal_sqrt_count",
+        "nation_grain_family_equal",
+        "nation_grain_family_equal_sqrt_count",
+    )
     assert posture.expected_constituency_vintage == "2024_pcon"
     assert posture.gate_scope == tuple(UK_LOCAL_GATE_SCOPE)
     assert (posture.gate_posture, posture.gate_policy_suffix) == (
@@ -70,9 +77,9 @@ def test_uk_dense_posture_mirrors_the_ruled_constants() -> None:
     assert posture.doctrine_bounds() == {
         "target_loss_cap": UK_LOCAL_TARGET_LOSS_CAP,
         "max_weight_ratio": UK_LOCAL_MAX_WEIGHT_RATIO,
-        "scale_rule": "default_target_loss_scales",
-        "target_weight_rule": "grain_equal",
-        "solve_epochs": 1500,
+        "scale_rule": "default_target_loss_scales_with_family_floors",
+        "target_weight_rule": "nation_grain_family_equal_sqrt_count",
+        "solve_epochs": 2000,
         "clone_count": 15,
     }
 

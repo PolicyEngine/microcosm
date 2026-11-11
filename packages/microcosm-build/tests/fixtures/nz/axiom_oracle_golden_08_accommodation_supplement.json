@@ -1,0 +1,180 @@
+{
+ "description": "Axiom oracle golden-08: the Accommodation Supplement request the Treasury IncomeExplorer reproduction harness sent for scenario single_parent_three_children_area1_rent at weekly wages 0 (a single parent with children aged 0, 1 and 10, renting at 600 a week in area 1, no income), and the engine's response. Copied verbatim from axiom-oracles; the values are the harness's inputs and the engine's outputs, not Treasury's (Treasury's figure is in golden-outputs.json).",
+ "entity": "Family",
+ "entity_id": "single_parent_three_children_area1_rent:as:statutory:0",
+ "household": {
+  "area": 1,
+  "members": [
+   {
+    "age": null,
+    "role": "sole parent"
+   },
+   {
+    "age": 0,
+    "role": "child"
+   },
+   {
+    "age": 1,
+    "role": "child"
+   },
+   {
+    "age": 10,
+    "role": "child"
+   }
+  ],
+  "note": "From the scenario: Partnered false, Children_ages [0, 1, 10], AS_Accommodation_Costs 600, AS_Accommodation_Rent true, AS_Area 1, gross wages 0. The scenario gives no parent age; the parent receives a main benefit at wages 0 (the request sends non_beneficiary false).",
+  "receives_main_benefit": true,
+  "tenure": "rented_private",
+  "weekly_income": 0,
+  "weekly_rent": 600
+ },
+ "inputs": {
+  "accommodation_supplement_additional_resident_in_social_housing": {
+   "kind": "bool",
+   "value": false
+  },
+  "accommodation_supplement_area_let_to_nonresidents": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_base_rate_weekly_amount": {
+   "kind": "decimal",
+   "value": "673.8469230769230769230769230769230769231"
+  },
+  "accommodation_supplement_boarder": {
+   "kind": "bool",
+   "value": false
+  },
+  "accommodation_supplement_business_use_area": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_costs_are_homeownership": {
+   "kind": "bool",
+   "value": false
+  },
+  "accommodation_supplement_has_dependent_children": {
+   "kind": "bool",
+   "value": true
+  },
+  "accommodation_supplement_has_two_or_more_dependent_children": {
+   "kind": "bool",
+   "value": true
+  },
+  "accommodation_supplement_in_relationship": {
+   "kind": "bool",
+   "value": false
+  },
+  "accommodation_supplement_joint_owner_with_resident": {
+   "kind": "bool",
+   "value": false
+  },
+  "accommodation_supplement_non_beneficiary": {
+   "kind": "bool",
+   "value": false
+  },
+  "accommodation_supplement_non_beneficiary_income_cutout_weekly_amount": {
+   "kind": "decimal",
+   "value": "905.0285714285714285714285714285714285714"
+  },
+  "accommodation_supplement_owner_weekly_payment_share": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_owner_weekly_required_payments": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_owns_premises_and_not_joint_owner_with_resident": {
+   "kind": "bool",
+   "value": false
+  },
+  "accommodation_supplement_relevant_weekly_income": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_resides_in_area_1": {
+   "kind": "bool",
+   "value": true
+  },
+  "accommodation_supplement_resides_in_area_2": {
+   "kind": "bool",
+   "value": false
+  },
+  "accommodation_supplement_resides_in_area_3": {
+   "kind": "bool",
+   "value": false
+  },
+  "accommodation_supplement_self_contained_area_let_to_residents": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_social_housing_weekly_contributions_paid": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_sole_parent": {
+   "kind": "bool",
+   "value": true
+  },
+  "accommodation_supplement_total_premises_area": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_weekly_board_and_lodgings_paid": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_weekly_boarder_payments_received": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_weekly_contributions_received_from_additional_residents": {
+   "kind": "decimal",
+   "value": "0"
+  },
+  "accommodation_supplement_weekly_rent_paid": {
+   "kind": "decimal",
+   "value": "600"
+  },
+  "accommodation_supplement_weekly_rent_received_from_other_residents": {
+   "kind": "decimal",
+   "value": "0"
+  }
+ },
+ "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+ "outputs": {
+  "accommodation_supplement_rounded_weekly_payment": {
+   "kind": "decimal",
+   "value": "303"
+  },
+  "accommodation_supplement_weekly_amount_before_rounding": {
+   "kind": "decimal",
+   "value": "302.07678846153846153846153846"
+  },
+  "accommodation_supplement_weekly_qualifying_accommodation_costs": {
+   "kind": "decimal",
+   "value": "600"
+  }
+ },
+ "period": {
+  "end": "2027-03-31",
+  "period_kind": "tax_year",
+  "start": "2026-04-01"
+ },
+ "source": {
+  "commit": "6275afcdbe7590d0a56298c4916970a46ed936d0",
+  "provenance": {
+   "compiled_sha256": "b1d72c1f4840a1774aefbddc9692e22a79ced26cde6c44efb4c01fc394a15c33",
+   "engine_binary_sha256": "56fbffea1e0e32c52b6fcbddbca76223bb185b33b49368c288e0c7213b0126e1",
+   "engine_git_sha": "d59969b53430ae2fd97eb4349d44ad23ce930d85",
+   "harness": "TheAxiomFoundation/ops/nz-lane/emtr_reproduction/run.py",
+   "harness_commit": "bcf631b5",
+   "rulespec_commit": "89a7d25dc03a4d045348620283332de10b1047da"
+  },
+  "repository": "TheAxiomFoundation/axiom-oracles",
+  "request": "conformance/executable/nz-treasury-incomeexplorer/requests.json requests[8].request",
+  "response": "conformance/executable/nz-treasury-incomeexplorer/full-responses.json requests[8].response.results[0]",
+  "scenario": "treasury-emtr-snapshot-expanded.json scenarios[0] in the harness directory (TheAxiomFoundation ops nz-lane/emtr_reproduction)"
+ }
+}
