@@ -2265,3 +2265,67 @@ def test__cli__new_lineage_release_manifest_must_record_no_selection_source(
     with pytest.raises(ValueError, match="not a new lineage"):
         cli.main(argv)
     assert reached == []
+
+
+def _as_build_folder_release_manifest(path: Path, **details: object) -> dict:
+    """Rewrite a tagged release manifest the way the US builders' last step
+    does (microcosm#1570): the release and the build as strings, and the
+    build object's fields, plus ``details``, at the top level."""
+    tagged = json.loads(path.read_text())
+    build_details = {
+        key: value for key, value in tagged.pop("build").items() if key != "build_id"
+    }
+    manifest = {
+        **tagged,
+        "release": "microcosm-us-2024-national",
+        "build": "populace-us-2024-fixture",
+        **build_details,
+        **details,
+    }
+    path.write_text(json.dumps(manifest))
+    return manifest
+
+
+def test__cli__reads_a_build_folder_release_manifest_at_its_top_level(
+    tmp_path,
+) -> None:
+    """A release manifest in the build-folder layout records the build's
+    details at its top level, where ``build`` is the build's ID: the
+    base-pool receipt and the selection source are read there."""
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    _write_gate_failed_release_manifest(release_manifest)
+    tagged_base_pool = json.loads(release_manifest.read_text())["build"]["base_pool"]
+    manifest = _as_build_folder_release_manifest(
+        release_manifest, selection_source={"enabled": False}
+    )
+
+    assert cli._load_release_base_pool_receipt(release_manifest) == tagged_base_pool
+    assert cli._carried_base_pool_battery(
+        manifest["base_pool"], path=release_manifest
+    ) == cli._carried_base_pool_battery(tagged_base_pool, path=release_manifest)
+    cli._require_release_without_selection_source(release_manifest)
+
+    manifest["selection_source"] = {"mode": "frozen_support", "n_source": 57240}
+    release_manifest.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="not a new lineage"):
+        cli._require_release_without_selection_source(release_manifest)
+
+    del manifest["base_pool"]
+    release_manifest.write_text(json.dumps(manifest))
+    assert cli._load_release_base_pool_receipt(release_manifest) is None
+
+
+def test__cli__a_release_manifest_without_build_details_is_refused(
+    tmp_path,
+) -> None:
+    """Neither a build object nor a build ID: nothing says how the build
+    was made, so the release manifest is refused."""
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    release_manifest.write_text(json.dumps({"schema_version": 1}))
+
+    with pytest.raises(ValueError, match="no build details"):
+        cli._load_release_base_pool_receipt(release_manifest)
+    with pytest.raises(ValueError, match="no build details"):
+        cli._require_release_without_selection_source(release_manifest)
