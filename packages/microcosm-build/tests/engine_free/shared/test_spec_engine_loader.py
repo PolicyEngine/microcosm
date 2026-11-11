@@ -27,7 +27,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # microcosm#1136's savings bonds in scf_wealth's bond_assets target move
     # scf_wealth's attested bytes.
     assert first.spec_sha256 == (
-        "a5069dd2274d4b3f7707570d1856db7c7e7635b2e24617b1760e9c909dd069a7"
+        "c32e8ad336b48b026a3f98da5027eaf48dd97ba30628f5e19fe30d4cc00d6f55"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

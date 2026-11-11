@@ -355,7 +355,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # through the bundle's source stages.
             # microcosm#1136's savings bonds in scf_wealth's bond_assets target
             # move it too.
-            "spec_sha256": "6f55de0fd50b506c0e679b92a0ba639acd188f8cc354bfdb7a6e8e558d486cba",
+            "spec_sha256": "276728a2fcb1eaca2eba93df52bc5b1edfb4cebbcdfcf4d890e7131cb416866d",
         },
     }
 

@@ -26,7 +26,8 @@ which also reads U.S. savings bonds:
 - ``bank_account_assets`` ← SCF ``liq`` (checking, savings, money-market,
   call and prepaid-card accounts; the Fed's macro sets it to at least $1 for
   a household reporting a checking, savings, money-market or call account,
-  even at a zero balance, but not for one holding only a prepaid card).
+  even at a zero balance, while a household whose only such account is a
+  zero-balance prepaid card stays at 0).
 - ``stock_assets`` ← SCF ``stocks`` + ``nmmf`` (directly-held stock plus
   stock/non-money-market mutual funds).
 - ``bond_assets`` ← SCF ``bond`` + ``savbnd``. ``bond`` is directly held
