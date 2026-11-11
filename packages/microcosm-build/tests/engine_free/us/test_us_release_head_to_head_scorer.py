@@ -136,6 +136,13 @@ def test_spawned_workers_score_identically_to_sequential_cli(
     # Six tasks per artifact force a replacement even for two workers with K=2.
     # The single-worker recycling case also verifies K opts into spawn by itself.
     configurations = [(1, None), (3, None), (2, 1), (2, 2), (1, 2)]
+    try:
+        module._assert_worker_recycling_supported()
+    except RuntimeError:
+        # This interpreter can deadlock replacing a recycled worker, so the CLI
+        # refuses --worker-max-slices on it, as the refusal tests above check.
+        # The configurations without recycling still run.
+        configurations = [config for config in configurations if config[1] is None]
     for workers, worker_max_slices in configurations:
         prefix = tmp_path / f"workers-{workers}-max-slices-{worker_max_slices}"
         worker_log_dir = tmp_path / f"{prefix.name}-slice-logs"
