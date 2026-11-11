@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "The hold-fixed sensitivity converts the same donor columns to NZD and holds all four index families fixed at factor one. It uses the central reference-aging profile.",
+  "description": "The hold-fixed sensitivity converts the same donor columns to NZD and holds every index family fixed at factor one. It uses the central reference-aging profile.",
   "status": "The VHF scenario selects this sibling declaration in its own normalization node.",
   "from_currency": "USD",
   "to_currency": "NZD",

@@ -453,9 +453,10 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # The boundary drops the reviewed export exclusions, the internal
     # disability carriers, the salary-sacrifice pre-conversion pay carrier,
     # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
-    # in-household care hours carrier (microcosm#1418), the company car
-    # carriers (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the value
-    # the regional home values replaced (microcosm#1112) and the household ISA
+    # in-household care hours carrier (microcosm#1418), the admin UC limited
+    # capability carrier (microcosm#1095, Y1), the company car carriers
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the value the
+    # regional home values replaced (microcosm#1112) and the household ISA
     # totals policyengine-uk sums from the person balances (microcosm#1415),
     # and nothing else.
     from microcosm.build.uk_runtime.frs_disability import (
@@ -466,6 +467,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         FRS_COMPANY_CAR_CARRIER_COLUMNS,
         FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
         FRS_LANDLORD_CARRIER_COLUMN,
+        FRS_UC_LCW_STATUS_COLUMN,
     )
     from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
     from microcosm.build.uk_runtime.salary_sacrifice import (
@@ -488,6 +490,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
         | {f"person.{FRS_BONUS_CARRIER_COLUMN}"}
         | {f"person.{FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN}"}
+        | {f"person.{FRS_UC_LCW_STATUS_COLUMN}"}
         | {f"person.{column}" for column in FRS_COMPANY_CAR_CARRIER_COLUMNS}
         | {f"household.{RANK_BASIS_COLUMN}"}
         | {"household.cash_isa", "household.stocks_and_shares_isa"}

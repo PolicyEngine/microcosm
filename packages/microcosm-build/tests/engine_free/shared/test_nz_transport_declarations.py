@@ -820,6 +820,46 @@ def test_nz_packaged_graph_compiles_with_only_pins_and_money_producers():
         assert f"nz.v.{variant}.gap" in compiled.order
 
 
+def test_every_composed_battery_keeps_the_d1982_release_candidate_off():
+    """d1982: the batteries an extension branch adds keep the flag off too.
+
+    test_nz_money_normalization.py checks the packaged battery. A battery
+    that omits the flag fails here, since only an explicit ``False`` keeps
+    it off.
+    """
+    _, _, graph, _ = _nz_composed()
+    composed = {
+        node.id: node.params.get("release_candidate")
+        for node in graph.nodes
+        if node.kernel == "gates.battery@1"
+    }
+    assert "nz.gates.terminal" in composed
+    assert composed == dict.fromkeys(composed, False)
+
+
+def test_only_the_composed_standins_declare_the_measurement():
+    """R2C-1 across every branch: each calibration's one declarer is a stand-in.
+
+    The income evidence readers name the measurement under ``measurement``,
+    so the composed graph's ``measurement_id`` declarers are its
+    ``measure.combine@1`` stand-ins alone, one per calibration branch.
+    """
+    _, _, graph, _ = _nz_composed()
+    declarers = sorted(
+        node.id for node in graph.nodes if "measurement_id" in node.params
+    )
+    assert declarers == sorted(
+        node.id for node in graph.nodes if node.kernel == "measure.combine@1"
+    )
+    calibrations = [
+        node for node in graph.nodes if node.kernel.startswith("calibrate.")
+    ]
+    assert len(declarers) == len(calibrations)
+    assert {
+        node.params["measurement_id"] for node in graph.nodes if node.id in declarers
+    } == {_MEASUREMENT}
+
+
 def test_every_calibration_node_has_its_own_standin_as_the_only_writer():
     """R2C-15 on every calibration node, the variant branches' included.
 
@@ -1575,16 +1615,166 @@ def test_the_prefit_table_has_12_bands_each_with_both_companions():
     assert table["diagnostics"]["support_household_entity"] == "household"
 
 
-def test_r2c18_wires_no_placeholder_evidence_into_the_terminal_battery():
+#: Each income alias's producer and population. All three sit at nz.terminal,
+#: after the fit, so their params and kernel sources stay out of
+#: nz.calibrate's key and none of them can precede a calibration (R2C-1).
+_INCOME_EVIDENCE = {
+    "identity_receipts": ("nz.evidence.income_identity", "nz.terminal"),
+    "omission_register": ("nz.evidence.omission_register", "nz.terminal"),
+    "native_band_report": ("nz.evidence.native_bands", "nz.terminal"),
+}
+
+
+def test_the_income_evidence_readers_name_the_measurement_but_dont_declare_it():
+    """R2C-1: the stand-ins are the only nodes that declare measurement_id.
+
+    measurement_proofs counts every node upstream of a calibration that
+    declares the measurement's id and needs exactly one. The three readers
+    name the stand-in's id under ``measurement``, and the register reads
+    the problem's household weights. The readers sit two boundary filters
+    after the reweight, and only stand-ins write the three proxy columns, so
+    nz.terminal holds what nz.income.standin wrote at nz.central.
+    """
+    spec = _spec()
+    rows = spec["resources"]["transport_graph"]["nodes"]
+    declarers = [row["id"] for row in rows if "measurement_id" in row.get("params", {})]
+    assert declarers == [
+        row["id"] for row in rows if row["kernel"] == "measure.combine@1"
+    ]
+    assert declarers == ["nz.income.standin"]
+    by_id = {row["id"]: row for row in rows}
+    for producer, _ in _INCOME_EVIDENCE.values():
+        assert by_id[producer]["params"]["measurement"] == _MEASUREMENT, producer
+    register = by_id["nz.evidence.omission_register"]
+    assert register["params"]["weight_entity"] == "household"
+    assert [
+        (edge["name"], edge["producer"]) for edge in register["artifact_inputs"]
+    ] == [("problem", "nz.targets.problem")]
+    for name, base in (("nz.as", "nz.calibrate"), ("nz.terminal", "nz.as")):
+        assert (by_id[name]["kernel"], by_id[name]["base"]) == (
+            "transport.boundary@1",
+            base,
+        )
+    instantiated = _instantiated_nz_rows(spec)
+    measured = {("person", name) for name in _PROXY}
+    assert {
+        row["id"]
+        for row in instantiated
+        for output in row.get("outputs", ())
+        if (output["entity"], output["column"]) in measured
+    } == {row["id"] for row in instantiated if row["kernel"] == "measure.combine@1"}
+
+
+def test_r2c18_wires_each_income_alias_from_its_real_producer():
+    """R2C-29: every measurement_prefit alias reaches the battery from its producer.
+
+    The three income aliases come from the packaged graph's own evidence nodes,
+    each under its producer's artifact name. The three variant aliases come
+    from the entitlement extension's gap nodes, so only the composed graph
+    holds them.
+    """
+    from microcosm.graph import compile_graph
+
     rows = {row["id"]: row for row in _spec()["resources"]["transport_graph"]["nodes"]}
-    names = {edge["name"] for edge in rows["nz.gates.terminal"]["artifact_inputs"]}
-    assert not names & {
-        "native_band_report",
-        "omission_register",
-        "scenario_vsi",
-        "scenario_vex",
-        "scenario_vpt",
-        "identity_receipts",
+    edges = {
+        edge["name"]: (edge["producer"], edge["artifact"])
+        for edge in rows["nz.gates.terminal"]["artifact_inputs"]
+    }
+    for alias, (producer, population) in _INCOME_EVIDENCE.items():
+        assert edges[alias] == (producer, alias)
+        assert rows[producer]["population"] == population
+        assert [output["name"] for output in rows[producer]["artifact_outputs"]] == [
+            alias
+        ]
+    assert not edges.keys() & {"scenario_vsi", "scenario_vex", "scenario_vpt"}
+    spec, config = _nz_composition_spec_and_config()
+    graph = compose.compose_transport_graph(spec, config)
+    composed = {
+        edge.name: (edge.producer, edge.artifact)
+        for edge in graph.node("nz.gates.terminal").artifact_inputs
+    }
+    for scenario in ("VSI", "VEX", "VPT"):
+        assert composed[f"scenario_{scenario.lower()}"] == (
+            f"nz.v.{scenario}.gap",
+            "gap",
+        )
+    gates = {row["id"]: row for row in spec["resources"]["gates"]["gates"]}
+    required = gates["measurement_prefit"]["parameters"]["required_evidence"]
+    assert len(required) == 6
+    assert set(required) <= set(composed)
+    compile_graph(graph)
+
+
+def test_the_identity_receipts_name_the_kernels_identities_in_order():
+    from microcosm.build.transport.income_evidence_kernels import INCOME_IDENTITIES
+
+    spec = _spec()
+    document = spec["resources"]["income_measurements"]["identity_receipts"]
+    assert set(document) == {"description", "identities"}
+    assert [row["id"] for row in document["identities"]] == list(INCOME_IDENTITIES)
+    assert all(row["statement"] for row in document["identities"])
+    pending = " ".join(spec["resources"]["transport_graph"]["pending_outputs"])
+    assert "R2C-18" not in pending
+    assert "measurement_prefit" not in pending
+
+
+def test_the_native_band_node_reads_both_ird_tables_on_the_standin_columns():
+    spec = _spec()
+    rows = {row["id"]: row for row in spec["resources"]["transport_graph"]["nodes"]}
+    node = rows["nz.evidence.native_bands"]
+    tables = {
+        row["id"]: row for row in spec["resources"]["reference_intervals"]["tables"]
+    }
+    native = tables[node["params"]["native_table"]]
+    coarse = tables[node["params"]["coarse_table"]]
+    assert native["id"] != coarse["id"]
+    assert len(native["bands"]) == 237
+    assert len(coarse["bands"]) == 12
+    for field in ("income_column", "universe_column", "source_period", "currency"):
+        assert native[field] == coarse[field]
+    sliced = {
+        (item["entity"], column)
+        for item in node["inputs"]
+        for column in item["columns"]
+    }
+    assert sliced == {
+        ("person", native["income_column"]),
+        ("person", native["universe_column"]),
+        ("household", "source_household_id"),
+    }
+    assert node["sources"] == ["nz_chronicle_facts"]
+    assert [edge["producer"] for edge in node["artifact_inputs"]] == [
+        "nz.targets.prepare",
+        "nz.targets.problem",
+        "nz.calibrate",
+    ]
+
+
+def test_the_composed_preparation_carries_both_ird_tables_for_the_native_report():
+    """run() reads both tables from the preparation's effective intervals.
+
+    The composer hands nz.targets.prepare the effective interval document,
+    which keeps every declared table and scales the ones a profile names. The
+    native kernel ages the national table by the stand-in table's own factor,
+    so the national table must arrive unscaled and the stand-in scaled.
+    """
+    spec, config = _nz_composition_spec_and_config()
+    node = _spec()["resources"]["transport_graph"]["nodes"]
+    (native_node,) = [row for row in node if row["id"] == "nz.evidence.native_bands"]
+    graph = compose.compose_transport_graph(spec, config)
+    intervals = json.loads(graph.node("nz.targets.prepare").params["intervals"])
+    effective = {table["id"]: table for table in intervals["tables"]}
+    native = effective[native_node["params"]["native_table"]]
+    coarse = effective[native_node["params"]["coarse_table"]]
+    assert "scaling" not in native
+    assert "scaling" in coarse
+    # A binding column reads the stand-in table's bands, so the preparation
+    # embeds the effective intervals the report reads.
+    bindings = spec["resources"]["calibration_bindings"]
+    assert coarse["id"] in {
+        row["interval"]["table"]
+        for row in bindings["columns"]
+        if isinstance(row.get("interval"), dict)
     }
 
 

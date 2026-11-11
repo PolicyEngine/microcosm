@@ -4522,6 +4522,216 @@
       ]
     },
     {
+      "id": "nz.evidence.income_identity",
+      "kernel": "transport.income_identity@1",
+      "population": "nz.terminal",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "employment_income_cents",
+            "nonfarm_self_employment_income_cents",
+            "farm_self_employment_income_cents",
+            "interest_income_cents",
+            "dividend_income_cents",
+            "rental_income_cents",
+            "jobseeker_support_annual_gross_transfer_cents",
+            "sole_parent_support_annual_gross_transfer_cents",
+            "supported_living_payment_annual_gross_transfer_cents",
+            "nz_super_annual_gross_transfer_cents",
+            "ird_taxable_income_proxy_cents",
+            "ird_taxable_income_proxy_nzd",
+            "ird_taxable_income_proxy_universe_status"
+          ]
+        }
+      ],
+      "params": {
+        "measure": {
+          "resource": "income_measurements",
+          "path": [
+            "measures",
+            "central",
+            "declaration"
+          ],
+          "encoding": "json"
+        },
+        "measure_sha256": {
+          "resource": "income_measurements",
+          "path": [
+            "measures",
+            "central",
+            "declaration_sha256"
+          ],
+          "encoding": "value"
+        },
+        "measurement": "ird_taxable_income_ty2027_v1",
+        "identities": {
+          "resource": "income_measurements",
+          "path": [
+            "identity_receipts"
+          ],
+          "encoding": "json"
+        }
+      },
+      "artifact_outputs": [
+        {
+          "name": "identity_receipts",
+          "type": {
+            "name": "microcosm.transport.income-identity-receipts",
+            "schema_version": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nz.evidence.omission_register",
+      "kernel": "transport.omission_register@1",
+      "population": "nz.terminal",
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "employment_income_cents",
+            "nonfarm_self_employment_income_cents",
+            "farm_self_employment_income_cents",
+            "interest_income_cents",
+            "dividend_income_cents",
+            "rental_income_cents",
+            "jobseeker_support_annual_gross_transfer_cents",
+            "sole_parent_support_annual_gross_transfer_cents",
+            "supported_living_payment_annual_gross_transfer_cents",
+            "nz_super_annual_gross_transfer_cents",
+            "ird_taxable_income_proxy_cents"
+          ]
+        }
+      ],
+      "params": {
+        "register": {
+          "resource": "income_measurements",
+          "path": [
+            "omission_register"
+          ],
+          "encoding": "json"
+        },
+        "income_measurements_sha256": {
+          "resource": "income_measurements",
+          "path": [],
+          "encoding": "sha256"
+        },
+        "measure": {
+          "resource": "income_measurements",
+          "path": [
+            "measures",
+            "central",
+            "declaration"
+          ],
+          "encoding": "json"
+        },
+        "measure_sha256": {
+          "resource": "income_measurements",
+          "path": [
+            "measures",
+            "central",
+            "declaration_sha256"
+          ],
+          "encoding": "value"
+        },
+        "measurement": "ird_taxable_income_ty2027_v1",
+        "weight_entity": "household"
+      },
+      "artifact_inputs": [
+        {
+          "name": "problem",
+          "producer": "nz.targets.problem",
+          "artifact": "problem"
+        }
+      ],
+      "artifact_outputs": [
+        {
+          "name": "omission_register",
+          "type": {
+            "name": "microcosm.transport.omission-register",
+            "schema_version": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "nz.evidence.native_bands",
+      "kernel": "transport.native_band_report@1",
+      "population": "nz.terminal",
+      "sources": [
+        "nz_chronicle_facts"
+      ],
+      "inputs": [
+        {
+          "entity": "person",
+          "columns": [
+            "ird_taxable_income_proxy_cents",
+            "ird_taxable_income_proxy_universe_status"
+          ]
+        },
+        {
+          "entity": "household",
+          "columns": [
+            "source_household_id"
+          ]
+        }
+      ],
+      "params": {
+        "native_table": "ird_taxable_income_national_ty2024",
+        "coarse_table": "ird_taxable_income_standin_ty2024",
+        "references": {
+          "resource": "target_references",
+          "path": [],
+          "encoding": "json"
+        },
+        "diagnostic_references": {
+          "resource": "income_diagnostic_references",
+          "path": [],
+          "encoding": "json"
+        },
+        "diagnostic_references_sha256": {
+          "resource": "income_diagnostic_references",
+          "path": [],
+          "encoding": "sha256"
+        },
+        "chronicle_feed_pin": {
+          "resource": "chronicle_feed",
+          "path": [],
+          "encoding": "json"
+        },
+        "weight_entity": "household",
+        "measurement": "ird_taxable_income_ty2027_v1"
+      },
+      "artifact_inputs": [
+        {
+          "name": "preparation",
+          "producer": "nz.targets.prepare",
+          "artifact": "preparation"
+        },
+        {
+          "name": "problem",
+          "producer": "nz.targets.problem",
+          "artifact": "problem"
+        },
+        {
+          "name": "solution",
+          "producer": "nz.calibrate",
+          "artifact": "solution"
+        }
+      ],
+      "artifact_outputs": [
+        {
+          "name": "native_band_report",
+          "type": {
+            "name": "microcosm.transport.native-band-report",
+            "schema_version": 1
+          }
+        }
+      ]
+    },
+    {
       "id": "nz.gates.terminal",
       "kernel": "gates.battery@1",
       "population": "nz.terminal",
@@ -4776,6 +4986,21 @@
           "name": "fit_weight_records",
           "producer": "nz.evidence.weights",
           "artifact": "fit_weight_records"
+        },
+        {
+          "name": "identity_receipts",
+          "producer": "nz.evidence.income_identity",
+          "artifact": "identity_receipts"
+        },
+        {
+          "name": "omission_register",
+          "producer": "nz.evidence.omission_register",
+          "artifact": "omission_register"
+        },
+        {
+          "name": "native_band_report",
+          "producer": "nz.evidence.native_bands",
+          "artifact": "native_band_report"
         }
       ]
     },
@@ -5049,7 +5274,6 @@
     ]
   },
   "pending_outputs": [
-    "G8-x income reconciliation evidence: the native-band report, omission-register and identity-receipt artifacts and the VSI, VEX and VPT run evidence that measurement_prefit requires (R2C-18)",
     "An all-household New Zealand liquid-asset distribution (C2): S0's asset test reads d1982's frozen donor stock, so it stays an unpublishable diagnostic beside S1",
     "The C1 rent ageing ruling: the Census 2023 rent bands hold 2023 levels"
   ]

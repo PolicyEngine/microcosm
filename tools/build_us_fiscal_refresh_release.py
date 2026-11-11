@@ -53,6 +53,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from microcosm_emitter_interface.telemetry import OuterProgress
 
 from microcosm.build.calibration_epoch_telemetry import (
     CALIBRATION_EPOCH_EVERY,
@@ -302,6 +303,11 @@ from microcosm.build.us_runtime.parity_reference import (
     ParityKnownGap,
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
+)
+from microcosm.build.us_runtime.population_structure_holdout import (
+    population_structure_holdout_from_h5,
+    population_structure_holdout_unavailable,
+    write_population_structure_holdout,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
@@ -4822,25 +4828,41 @@ class _RecordingPostExportSimulation:
         return _PostExportValues(np.zeros(0), np.zeros(0))
 
 
+def _record_post_export_requests(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[tuple[PostExportKey, ...], int]:
+    """Learn a consumer's baseline keys and reform pass count from recorders.
+
+    No engine is constructed: ``simulate(None)`` returns a recorder that
+    logs every baseline request, and each ``simulate(reform)`` a recorder of
+    its own. The consumers ask for the same keys whatever values they get
+    back, and the served baseline refuses any key this dry run did not see,
+    so a value-dependent request cannot slip past the plan.
+
+    When the consumer runs for real, each key a reformed simulation is first
+    asked for is one batched pass (``_BatchedPostExportReform``), so the pass
+    count is the distinct keys asked of each reformed simulation, summed.
+    Progress reporting alone uses it: a consumer that runs more passes than
+    counted reports no outer counter on the extra ones.
+    """
+    keys: dict[PostExportKey, None] = {}
+    reform_keys: list[dict[PostExportKey, None]] = []
+
+    def simulate(reform):
+        if reform is None:
+            return _RecordingPostExportSimulation(keys)
+        reform_keys.append({})
+        return _RecordingPostExportSimulation(reform_keys[-1])
+
+    consumer(simulate)
+    return _ascending_period_plan(keys), sum(len(asked) for asked in reform_keys)
+
+
 def _record_post_export_baseline_plan(
     consumer: Callable[[Callable[[Any], Any]], object],
 ) -> tuple[PostExportKey, ...]:
-    """Learn a consumer's baseline keys by running it against recorders.
-
-    No engine is constructed: ``simulate(None)`` returns a recorder that
-    logs every request, ``simulate(reform)`` a recorder that logs nothing
-    (reforms are scored key by key when the consumer runs for real). The
-    consumers ask for the same keys whatever values they get back, and the
-    served baseline refuses any key this dry run did not see, so a
-    value-dependent request cannot slip past the plan.
-    """
-    keys: dict[PostExportKey, None] = {}
-
-    def simulate(reform):
-        return _RecordingPostExportSimulation(keys if reform is None else None)
-
-    consumer(simulate)
-    return _ascending_period_plan(keys)
+    """Learn a consumer's baseline keys (``_record_post_export_requests``)."""
+    return _record_post_export_requests(consumer)[0]
 
 
 class _AscendingPeriodEngine:
@@ -5006,6 +5028,7 @@ class _PostExportScoringPlan:
         n_households: int,
         maximum_batch_size: int | None,
         baseline_plans: Mapping[str, tuple[PostExportKey, ...]],
+        reform_passes: Mapping[str, int] | None = None,
         error: str | None = None,
     ) -> None:
         self.n_households = int(n_households)
@@ -5013,6 +5036,7 @@ class _PostExportScoringPlan:
         self.baseline_plans = {
             consumer: tuple(plan) for consumer, plan in baseline_plans.items()
         }
+        self.reform_passes = dict(reform_passes or {})
         self.error = error
 
     @property
@@ -5031,6 +5055,16 @@ class _PostExportScoringPlan:
                 f"{self.error}"
             )
         return self.baseline_plans[consumer]
+
+    def planned_reform_passes(self, consumer: str) -> int | None:
+        """The reform passes the dry run counted for ``consumer``, if any.
+
+        Progress reporting reads it as each pass's outer counter; the record
+        of the plan leaves it out, so the diagnostics keep their shape.
+        """
+        if self.error is not None:
+            return None
+        return self.reform_passes.get(consumer)
 
     def terminal_failures(self) -> list[str]:
         """The plan's own failure, as a line of the batched terminal raise."""
@@ -5064,13 +5098,15 @@ def _post_export_scoring_plan(
     maximum_microsim_batch_size: int | None,
     consumers: Mapping[str, Callable[[Callable[[Any], Any]], object]],
 ) -> _PostExportScoringPlan:
+    requests = {
+        name: _record_post_export_requests(consumer)
+        for name, consumer in consumers.items()
+    }
     return _PostExportScoringPlan(
         n_households=int(n_households),
         maximum_batch_size=maximum_microsim_batch_size,
-        baseline_plans={
-            name: _record_post_export_baseline_plan(consumer)
-            for name, consumer in consumers.items()
-        },
+        baseline_plans={name: plan for name, (plan, _) in requests.items()},
+        reform_passes={name: passes for name, (_, passes) in requests.items()},
     )
 
 
@@ -5236,10 +5272,22 @@ class _HouseholdBatchedPostExportScorer:
         self.consumer_records: dict[str, dict[str, object]] = {}
 
     def open_consumer(
-        self, name: str, baseline_plan: Sequence[PostExportKey]
+        self,
+        name: str,
+        baseline_plan: Sequence[PostExportKey],
+        planned_reform_passes: int | None = None,
     ) -> _PostExportConsumer:
-        """Score ``baseline_plan`` now; return the consumer's simulate seam."""
-        return _PostExportConsumer(self, name, tuple(baseline_plan))
+        """Score ``baseline_plan`` now; return the consumer's simulate seam.
+
+        With ``planned_reform_passes``, each reform pass reports its number of
+        that count as its progress's outer counter.
+        """
+        return _PostExportConsumer(
+            self,
+            name,
+            tuple(baseline_plan),
+            planned_reform_passes=planned_reform_passes,
+        )
 
     def finish_consumer(self, scoring: _PostExportConsumer) -> dict[str, object]:
         """Record a consumer that has finished scoring and return its record."""
@@ -5344,8 +5392,13 @@ class _HouseholdBatchedPostExportScorer:
         *,
         label: str,
         reform_system=None,
+        outer: OuterProgress | None = None,
     ) -> dict[PostExportKey, _PostExportValues]:
-        """One batch-outer pass: one engine per batch scores every key."""
+        """One batch-outer pass: one engine per batch scores every key.
+
+        ``outer`` is the pass's place among its consumer's passes, sent with
+        each batch's progress.
+        """
         batches = self._batches()
         batched = len(batches) > 1
         watched = _post_export_watched_variables(
@@ -5365,6 +5418,7 @@ class _HouseholdBatchedPostExportScorer:
             stage_id="post_export_scoring",
             unit="scoring_batch",
             total=len(batches),
+            outer=outer,
         )
         for batch, batch_frame in enumerate(batches, start=1):
             with _automatic_gc_suspended():
@@ -5444,6 +5498,8 @@ class _PostExportConsumer:
         scorer: _HouseholdBatchedPostExportScorer,
         name: str,
         baseline_plan: tuple[PostExportKey, ...],
+        *,
+        planned_reform_passes: int | None = None,
     ) -> None:
         ordered = _ascending_period_plan(baseline_plan)
         if ordered != baseline_plan:
@@ -5456,6 +5512,7 @@ class _PostExportConsumer:
         self.baseline_plan = baseline_plan
         self.baseline_passes = 1 if baseline_plan else 0
         self.reform_passes = 0
+        self.planned_reform_passes = planned_reform_passes
         self.reform_systems = 0
         self._baseline = (
             scorer._score(baseline_plan, label=f"{name} baseline plan")
@@ -5500,7 +5557,15 @@ class _PostExportConsumer:
             reform_system, key, label=label
         )
         self.reform_passes += 1
-        scored = self._scorer._score((key,), label=label, reform_system=reform_system)
+        planned = self.planned_reform_passes
+        outer = (
+            OuterProgress(self.reform_passes, planned, "reform_pass")
+            if planned is not None and self.reform_passes <= planned
+            else None
+        )
+        scored = self._scorer._score(
+            (key,), label=label, reform_system=reform_system, outer=outer
+        )
         return scored[key]
 
 
@@ -10531,13 +10596,15 @@ def _score_post_export_consumer(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None,
     baseline_plan: Sequence[PostExportKey] | None,
     maximum_microsim_batch_size: int | None,
+    planned_reform_passes: int | None = None,
 ):
     """Run one post-export consumer through the household-batched scorer.
 
     ``_main`` passes the scorer it opened on the written H5 and the plan it
-    recorded in the calibration diagnostics. A direct caller may pass neither:
-    the scorer is then opened (and closed) here, and the plan is recorded by
-    the same engine-free dry run.
+    recorded in the calibration diagnostics, with the plan's reform pass
+    count for progress reporting. A direct caller may pass neither: the
+    scorer is then opened (and closed) here, and the plan and the count are
+    recorded by the same engine-free dry run.
     """
     scorer = post_export_scorer
     if scorer is None:
@@ -10546,12 +10613,13 @@ def _score_post_export_consumer(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
     try:
-        plan = (
-            _record_post_export_baseline_plan(consumer)
-            if baseline_plan is None
-            else tuple(baseline_plan)
+        if baseline_plan is None:
+            plan, planned_reform_passes = _record_post_export_requests(consumer)
+        else:
+            plan = tuple(baseline_plan)
+        scoring = scorer.open_consumer(
+            name, plan, planned_reform_passes=planned_reform_passes
         )
-        scoring = scorer.open_consumer(name, plan)
         output = consumer(scoring.simulate)
         record = scorer.finish_consumer(scoring)
         print(
@@ -10579,6 +10647,7 @@ def _write_reform_validation(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
     baseline_plan: Sequence[PostExportKey] | None = None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    planned_reform_passes: int | None = None,
 ) -> None:
     """Emit reform_validation.json: microcosm budget effects vs JCT scores.
 
@@ -10615,6 +10684,7 @@ def _write_reform_validation(
             post_export_scorer=post_export_scorer,
             baseline_plan=baseline_plan,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            planned_reform_passes=planned_reform_passes,
         )
     write_reform_validation(payload, release_dir / "reform_validation.json")
 
@@ -10709,6 +10779,37 @@ def _write_medicare_irmaa_holdout(
     write_medicare_irmaa_holdout(
         payload, release_dir / "us_medicare_irmaa_holdout.json"
     )
+
+
+def _write_population_structure_holdout(
+    *, release_dir: Path, dataset_path: Path, release_id: str
+) -> None:
+    """Report held-out population structure without refusing the release.
+
+    It reads marital status and living arrangement of people 65+, and Social
+    Security beneficiary counts, from the written H5 without an engine. The
+    target surface holds none of these margins, so a release can meet every
+    target while missing them (microcosm#880).
+    """
+    path = release_dir / "us_population_structure_holdout.json"
+    try:
+        # Serializing inside the try keeps a measurement that strict JSON
+        # cannot hold observational as well.
+        write_population_structure_holdout(
+            population_structure_holdout_from_h5(
+                dataset_path, period=PERIOD, release_id=release_id
+            ),
+            path,
+        )
+    except Exception as error:
+        # Observational, like the SSI holdout: an unavailable measurement must
+        # not add a release refusal.
+        write_population_structure_holdout(
+            population_structure_holdout_unavailable(
+                error, period=PERIOD, release_id=release_id
+            ),
+            path,
+        )
 
 
 def _build_manifests(
@@ -11339,6 +11440,18 @@ def _build_manifests(
             ),
             **(
                 {
+                    "us_population_structure_holdout": _artifact_entry(
+                        "us_population_structure_holdout.json",
+                        _sha256(release_dir / "us_population_structure_holdout.json"),
+                        kind="diagnostics",
+                        revision=release_id,
+                    )
+                }
+                if (release_dir / "us_population_structure_holdout.json").exists()
+                else {}
+            ),
+            **(
+                {
                     "reform_validation": _artifact_entry(
                         "reform_validation.json",
                         _sha256(release_dir / "reform_validation.json"),
@@ -11939,17 +12052,29 @@ _ACTIVE_PROGRESS: _BuildProgress | None = None
 class _WorkCounter:
     """Report completed independent work units through the emitter service."""
 
-    def __init__(self, *, stage_id: str, unit: str, total: int) -> None:
+    def __init__(
+        self,
+        *,
+        stage_id: str,
+        unit: str,
+        total: int,
+        outer: OuterProgress | None = None,
+    ) -> None:
         self.stage_id = stage_id
         self.unit = unit
         self.total = max(0, int(total))
         self.done = 0
         self.started = time.monotonic()
+        # The counter one level above, such as the reform pass these batches
+        # belong to; sent with every report when set.
+        self.outer = outer
 
     def advance(self, units: int = 1, **details: object) -> None:
         self.done = min(self.total, self.done + max(0, int(units)))
         if _ACTIVE_EMITTER is None:
             return
+        if self.outer is not None:
+            details["outer"] = self.outer
         _ACTIVE_EMITTER.progress(
             self.stage_id,
             done=self.done,
@@ -16475,6 +16600,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         smoke_scoring = post_export_scorer.open_consumer(
             "reform_coverage_smoke",
             post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_coverage_smoke"
+            ),
         )
         reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
             simulate=smoke_scoring.simulate,
@@ -16568,6 +16696,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 if args.skip_out_of_sample_reforms
                 else post_export_scoring_plan.baseline_plan("reform_validation")
             ),
+            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                "reform_validation"
+            ),
         )
         if telemetry is not None:
             telemetry.attach_artifact(
@@ -16628,6 +16759,21 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
     scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
     post_export_scorer = None
+    # Reads the written H5 without an engine, after the scorer frees its
+    # batch frames, so it adds no memory on top of them.
+    if telemetry is not None:
+        telemetry.stage(
+            "population_structure_holdout",
+            message="Writing held-out population-structure checks.",
+        )
+    _write_population_structure_holdout(
+        release_dir=release_dir, dataset_path=dataset_path, release_id=release_id
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_population_structure_holdout",
+            release_dir / "us_population_structure_holdout.json",
+        )
 
     if telemetry is not None:
         telemetry.stage(

@@ -19398,9 +19398,9 @@
         "method_card_row": "MC8",
         "precal_use": "rent_quantile_map_bands",
         "contract_target_id": "mbie_bond_rents_by_territorial_authority",
-        "parking_reason": "G8-d1 supplies a Census rent-band replacement and must resolve C1 rent ageing; that replacement does not activate this MBIE P2 row. MBIE activation needs rent-band frequencies that medians, quartiles and bond counts cannot supply; G8-y owns the closing step."
+        "parking_reason": "G8-d1 supplies a Census rent-band replacement at Census 2023 levels. The C1 rent ageing ruling stays open: under the hub's B6 ruling (2026-11-08, stated in #1547), C1 blocks publication but not a run. That replacement does not activate this MBIE P2 row. MBIE activation needs rent-band frequencies that medians, quartiles and bond counts cannot supply; G8-y owns the closing step."
       },
-      "notes": "G8-d1 supplies a Census rent-band replacement and must resolve C1 rent ageing; that replacement does not activate this MBIE P2 row. MBIE activation needs rent-band frequencies that medians, quartiles and bond counts cannot supply; G8-y owns the closing step.",
+      "notes": "G8-d1 supplies a Census rent-band replacement at Census 2023 levels. The C1 rent ageing ruling stays open: under the hub's B6 ruling (2026-11-08, stated in #1547), C1 blocks publication but not a run. That replacement does not activate this MBIE P2 row. MBIE activation needs rent-band frequencies that medians, quartiles and bond counts cannot supply; G8-y owns the closing step.",
       "filter": "rent_band_indicator"
     },
     {

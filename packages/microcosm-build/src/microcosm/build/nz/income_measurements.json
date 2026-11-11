@@ -108,6 +108,27 @@
       "declaration_sha256": "317f2cf0fad594d7e17894ef8b40b4d5ea3e8685a998d0e4dcf0dce2016f5a28"
     }
   },
+  "identity_receipts": {
+    "description": "R2C-29: the exact identities transport.income_identity@1 checks on every record of the central measure in each run, in Python integers with its own arithmetic. It refuses at the first record where one fails and names the identity and the record. It also reports each add-back column's total, which follows from component_sum and carries no identity of its own.",
+    "identities": [
+      {
+        "id": "component_sum",
+        "statement": "On each record with every component present, the measure equals the sum of each component times its sign plus each add-back column's max(0, -signed value). A record with any null component carries a null measure."
+      },
+      {
+        "id": "unit_rule",
+        "statement": "Each resolved record's unit equals max(floor, measure) / scale as the correctly rounded float64, bit for bit. A record with any null component carries a NaN unit."
+      },
+      {
+        "id": "universe_partition",
+        "statement": "A record's universe status reads unresolved when any component is null, included when the measure exceeds zero and excluded otherwise."
+      },
+      {
+        "id": "int64_range",
+        "statement": "Each resolved record's exact component sum fits in a signed 64-bit integer."
+      }
+    ]
+  },
   "omission_register": {
     "description": "Items IRD taxable income contains that the stand-in omits. A size appears only where a repo resource or a cited public source gives one; design 80's percentages are the proposal's claims and carry no source here, so every size reads unknown. Unknown is not zero.",
     "items": [

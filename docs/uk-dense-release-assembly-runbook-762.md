@@ -38,7 +38,7 @@ the gates stood on. See [Optional diagnostics](#optional-diagnostics-microcosm13
   bytes), which the publication command's release-contract check also reads.
 - For publication: `HF_TOKEN` (or `HUGGINGFACE_TOKEN`, or a token saved by
   `hf auth login`) with write access to `policyengine/populace-uk-private`,
-  and the separately installed `microcosm-emitter` 0.13.0 or later, which the
+  and the separately installed `microcosm-emitter` 0.14.0 or later, which the
   publication command starts as its child process and which uses the token it
   inherits. These come from your shell: the command does not read
   `tools/release.env`, so if you keep the values there, `source

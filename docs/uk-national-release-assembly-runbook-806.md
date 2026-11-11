@@ -21,7 +21,7 @@ Before starting, export:
   copied certification.
 - `HF_TOKEN` (or `HUGGINGFACE_TOKEN`, or a token saved by `hf auth login`),
   with write access to `policyengine/populace-uk-private`. The publication
-  command starts the separately installed `microcosm-emitter` (0.13.0 or
+  command starts the separately installed `microcosm-emitter` (0.14.0 or
   later) as its child process, and the emitter uses the token it inherits.
 
 These come from your shell: the publication command does not read
