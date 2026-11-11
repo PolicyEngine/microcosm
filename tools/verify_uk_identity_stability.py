@@ -561,11 +561,14 @@ def e7_identity_receipt(
     """Receipt E7 deterministic layers under row permutation by entity id.
 
     Covered: the support-channel labelling the SPI stack introduces — each
-    entity's channel and clone index, the composite source key, and the
-    propagation of a household's channel down to its persons and benefit
-    units. These are pure functions of the synthetic flag and the entity ids,
-    so they are bitwise both under permutation and against the store, and they
-    are the layer E7 actually contributes to the artifact.
+    entity's channel and clone index, and the propagation of a household's
+    channel down to its persons and benefit units — and the composite source
+    key. These are pure functions of the synthetic flag, the entity ids and
+    each household's source year and source id, so they are bitwise both
+    under permutation and against the store. The labelling is the layer E7
+    actually contributes to the artifact; the source key, which E7 wrote
+    before, is written by the clone-first spine's ``geographic_expand`` stage
+    (microcosm#931), and the receipt still checks it.
 
     Not covered here, and deliberately so:
 

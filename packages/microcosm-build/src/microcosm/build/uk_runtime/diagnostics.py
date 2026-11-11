@@ -533,7 +533,9 @@ UK_RESIDENTIAL_ARM_FLAG_COLUMN = "household_is_cgt_residential_clone"
 
 
 def uk_support_family_geographic_clone_column() -> str:
-    """The household geographic clone-index column ``uk.full.expand`` writes."""
+    """The household geographic clone-index column: the spine's
+    ``geographic_expand`` stage writes it (microcosm#931), and ``uk.full.expand``
+    on a spine built before that stage."""
 
     from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 

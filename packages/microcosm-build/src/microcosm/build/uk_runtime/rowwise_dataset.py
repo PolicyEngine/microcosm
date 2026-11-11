@@ -22,9 +22,11 @@ from microcosm.build.gates import GateResult
 # lineage read the clone index columns' names through household_lineage and
 # hash that small module, not this one, and the full build's population and
 # export kernels hash it beside this one. Kept importable from here for this
-# module's other callers.
+# module's other callers. The households' source columns, which the
+# clone-first spine's geographic_expand writes, are named there too.
 from microcosm.build.uk_runtime.geographic_clones import (
     ARTIFACT_CLONE_INDEX_COLUMN,
+    UK_GEOGRAPHIC_SOURCE_COLUMNS,
     ladder_clone_index_column,
 )
 from microcosm.build.uk_runtime.geography_ladder import (
@@ -112,9 +114,12 @@ def refuse_dense_clone_id_overflow(
     a production national spine does, leaves no int64 room for a second
     clone. This refuses wherever the dense offset would overflow int64; one
     clone, and any spine whose ids leave room (one without copy rows, say),
-    expand as before. Dense builds with more than one clone of such a spine
-    wait for the clone-first spine, which mints the geographic clones at its
-    start (#931 group (c)). The message names no id.
+    expand as before, as long as the spine carries no geographic clone index.
+    Dense builds with more than one clone of such a spine wait for the
+    clone-first spine, which mints the geographic clones at its start and
+    which the dense line takes from #931 group (c); until then the dense
+    expansion refuses a spine carrying geographic_expand's clone index, at
+    any clone count, before it reaches this check. The message names no id.
     """
 
     if type(n_clones) is not int or n_clones <= 1:
@@ -132,7 +137,8 @@ def refuse_dense_clone_id_overflow(
             "multiples of 10**18, and every dense clone is offset above the "
             "spine's largest id. Dense builds with more than one clone of such a "
             "spine wait for the clone-first spine of microcosm#931, which mints "
-            "the geographic clones at its start; n_clones=1 still expands."
+            "the geographic clones at its start; n_clones=1 still expands a "
+            "spine that carries no geographic clone index."
         )
 
 
@@ -413,8 +419,10 @@ def expand_uk_geographic_pool(
     # lineage) is replaced, exactly as the pre-Frame clone overwrote the
     # column in place — dropped here so the per-entity in-memory names
     # cannot collide with it at the writer's rename. The reserved
-    # {entity}_clone_index names have no legitimate producer and fail
-    # closed rather than being silently overwritten.
+    # {entity}_clone_index names fail closed rather than being silently
+    # overwritten: their one other producer is the clone-first spine's
+    # geographic_expand (microcosm#931), whose spine carries its geographic
+    # clones already and which the dense line takes only from #931 group (c).
     tables = {
         "person": person_frame,
         "benunit": benunit_frame,
@@ -425,7 +433,11 @@ def expand_uk_geographic_pool(
         if reserved in table.columns:
             raise ValueError(
                 f"input {entity} table already carries the reserved in-memory "
-                f"clone column {reserved!r}; the ladder clone owns that name."
+                f"clone column {reserved!r}; the ladder clone owns that name. A "
+                "clone-first spine, whose geographic_expand stage writes it, "
+                "carries its geographic clones already, and the dense line "
+                "builds on such a spine only from microcosm#931 group (c), at "
+                "any n_clones."
             )
         if ARTIFACT_CLONE_INDEX_COLUMN in table.columns:
             table.drop(columns=[ARTIFACT_CLONE_INDEX_COLUMN], inplace=True)
@@ -772,9 +784,32 @@ def _attach_source_lineage(
     *,
     source_year: int | None,
 ) -> pd.DataFrame:
-    """Default the immediate-layer lineage columns the crosswalk route adds."""
+    """Default the immediate-layer lineage columns the crosswalk route adds.
+
+    Only on a household table without the geographic clone index: on the
+    clone-first spine, geographic_expand writes every household's source
+    columns and a clone's own ids are not its source, so a table carrying
+    the index must carry all three and is refused, by column name alone, if
+    it lacks any (microcosm#931). The reserved-column refusal before it
+    already refuses every such table, so this refusal is a second guard.
+    """
 
     frame = household
+    clone_index = ladder_clone_index_column("household")
+    if clone_index in frame.columns:
+        missing = [
+            column
+            for column in UK_GEOGRAPHIC_SOURCE_COLUMNS
+            if column not in frame.columns
+        ]
+        if missing:
+            raise ValueError(
+                f"The household table carries {clone_index!r} but not {missing}: "
+                "on the clone-first spine geographic_expand writes every "
+                "household's source columns, and the dense line never takes a "
+                "clone's own ids for its source (microcosm#931)."
+            )
+        return frame
     if "source_household_id" not in frame.columns:
         frame["source_household_id"] = frame["household_id"]
     if "source_year" not in frame.columns and source_year is not None:

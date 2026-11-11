@@ -1102,6 +1102,7 @@ class UKNationalGateKernel(_NationalKernel):
             donor_uprating,
             etb_services,
             gate_scopes,
+            geographic_clones,
             graph_population,
             graph_targets,
             national_frame,
@@ -1119,7 +1120,10 @@ class UKNationalGateKernel(_NationalKernel):
         # manifest's effective sample size (calibrate.solve), the admin
         # totals' derived anchors (etb_services), the CGT projection
         # (cgt_projection, donor_uprating) and the canonical encoding of its
-        # artifacts (microcosm#931).
+        # artifacts (microcosm#931). Its support-family fold reads the
+        # geographic clone index columns the national frame carries from a
+        # clone-first spine, by the names geographic_clones gives them
+        # (diagnostics.uk_support_family_geographic_clone_column).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -1134,6 +1138,7 @@ class UKNationalGateKernel(_NationalKernel):
                         # The input-mass gate's source-household counts.
                         receipt_counts,
                         diagnostics,
+                        geographic_clones,
                         support_floor_rules,
                         gates,
                         calibrate_artifacts,

@@ -10,6 +10,7 @@
     "household": {
       "accommodation_type": "string",
       "council_tax_band": "string",
+      "council_tax_band_observed": "bool",
       "council_tax_rebate": "float64",
       "council_tax_reported": "float64",
       "council_tax_single_adult_raw": "int64",
@@ -17,6 +18,7 @@
       "external_child_payments": "float64",
       "household_id": "int64",
       "housing_service_charges": "float64",
+      "imd_decile": "int64",
       "mortgage_capital_repayment": "float64",
       "mortgage_interest_repayment": "float64",
       "num_bedrooms": "int64",

@@ -34,8 +34,9 @@ any clone's region allows. Clone 0's weights and funding factors are a
 one-clone spine's (its weights over the clone count) only while that scale is
 the one a one-clone spine takes: one at both, or bound by a region of clone 0.
 Where another clone's region binds, every clone's donors, clone 0's included,
-take the lower scale. A spine without the column is one clone, as every spine
-is today: ``uk.full.expand`` writes the index after the spine.
+take the lower scale. The spine's ``geographic_expand`` stage writes the column
+before this stage runs, 0 on every household of a one-clone spine; a household
+table without it is one clone.
 """
 
 from __future__ import annotations
@@ -155,15 +156,15 @@ SPI_INCOME_BAND_DONOR_COUNT_RULE = (
     "maximum_donor_weight))"
 )
 SPI_INCOME_BAND_DONOR_WEIGHT_RULE = (
-    "published band taxpayers / (geographic clone count x band donor count), "
-    "equal within a band"
+    "published band taxpayers / (geographic clone count x one clone's band donor "
+    "count), equal within a band"
 )
 SPI_INCOME_BAND_DONOR_DRAW = (
     "weighted_without_replacement_identity_keyed within each geographic clone "
-    "(one before uk.full.expand): Efraimidis-Spirakis keys log(u) / "
-    "(household weight x propensity) on stable_identity_uniforms(person_id, "
-    "seed, salt:band); the largest keys are seated, one carrier per household, "
-    "the highest band first"
+    "(a spine without household_clone_index is one clone): Efraimidis-Spirakis "
+    "keys log(u) / (household weight x propensity) on "
+    "stable_identity_uniforms(person_id, seed, salt:band); the largest keys are "
+    "seated, one carrier per household, the highest band first"
 )
 SPI_INCOME_BAND_DONOR_FUNDING = (
     "stratum reallocation per geographic clone: every incumbent household of "
@@ -997,10 +998,10 @@ def _funding_strata(household: pd.DataFrame) -> pd.Series:
 def _geographic_clone_indices(household: pd.DataFrame) -> np.ndarray | None:
     """Each household's geographic clone index, or None without the column.
 
-    The clone-first spine (microcosm#931) gives every household the index of
-    its geographic clone in ``household_clone_index``, and its copies keep
-    their root's; a household table without the column, as on every spine
-    before ``uk.full.expand``, is one clone. Refuses a non-integer column,
+    The clone-first spine's ``geographic_expand`` stage (microcosm#931) gives
+    every household the index of its geographic clone in
+    ``household_clone_index``, and its copies keep their root's; a household
+    table without the column is one clone. Refuses a non-integer column,
     a household without an index and a negative index, each by count or
     dtype, never by id or value.
     """

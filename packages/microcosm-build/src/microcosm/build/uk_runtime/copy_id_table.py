@@ -18,8 +18,9 @@ a copy in this field") and its radix:
   reads one FRS release today, so nothing mints it; raw FRS ids
   (``household_id`` the sernum, ``benunit_id`` sernum x 100 + b,
   ``person_id`` sernum x 1000 + p) must stay below its radix.
-- ``geographic_support``: the geographic clones the clone-first spine will
-  mint at its start (K at most 100). Nothing mints it yet.
+- ``geographic_support``: the geographic clones the spine's
+  ``geographic_expand`` stage mints before any other copy layer runs (K at
+  most 100).
 - ``spi_support_channel``: the SPI support copy (ordinal 1, stage 16) and the
   income band donor (ordinal 2, stage 17).
 - ``high_value_support``: the high-value home copies (stage 26).
