@@ -234,8 +234,9 @@ def on_dollar_grid(
     regular records deviate by at most 2 (the audit receipt's
     ``dividends.recovery_max_ulps``). A quarter dollar at 1e13 is refused.
     Values at or above 2**52, a chosen domain limit far above any PUF amount
-    (the donor's largest is $125.5M), are refused; near that limit the
-    allowance itself approaches half a dollar.
+    (the donor's largest is $125.5M), are refused. From 2**48 (about 2.8e14)
+    the allowance is at least half a dollar, so any value there passes the
+    grid check; just below 2**52 it is at least $4.
     """
 
     magnitude = np.maximum(np.abs(grid), 1.0)

@@ -439,9 +439,9 @@ def test_dividends_off_the_dollar_grid_are_refused():
 )
 def test_large_off_grid_dividends_are_refused(value):
     """Invariant 10: these off-grid values exceed the roundoff allowance and
-    are refused, and 2**53 is past the chosen 2**52 domain limit. Near that
-    limit the allowance grows to about half a dollar, so the grid is a check
-    on rounding, not on every half-dollar at every size."""
+    are refused, and 2**53 is past the chosen 2**52 domain limit. From 2**48
+    (about 2.8e14) the allowance is at least half a dollar, so the grid is a
+    check on rounding, not on every half-dollar at every size."""
 
     with pytest.raises(RebaseError):
         recover_source_dividends(
