@@ -1,8 +1,9 @@
 """The shared clone expansion core under the UK's declarations (microcosm#931).
 
-With the copy-id table's ``geographic_support`` field, the ladder's
-clone-index columns and household design weights, the core must give what the
-clone-first stand-in gives (``clone_first_frame`` in
+Under G1's declaration (``geographic_expand.UK_GEOGRAPHIC_CLONES``: the
+copy-id table's ``geographic_support`` field, the ladder's clone-index columns
+and household design weights), the core must give what the clone-first
+stand-in gives (``clone_first_frame`` in
 test_support/microcosm_build/uk_clone_first_frames.py, written without the
 core): bit for bit on the five id columns, the household clone index, the
 source household id and the weights, at K = 1, 2, 3, 7 and 15. Invented
@@ -15,19 +16,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.clone_expansion import (
-    CloneDeclaration,
-    CloneIdRule,
-    expand_clones,
-)
+from microcosm.build.clone_expansion import expand_clones
 from microcosm.build.uk_runtime import copy_id_table
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+from microcosm.build.uk_runtime.geographic_expand import (
+    GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON,
+    UK_GEOGRAPHIC_CLONES,
+)
 from microcosm.build.uk_runtime.national_frame import (
     UK_NATIONAL_SCHEMA,
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
 from test_support.microcosm_build.uk_clone_first_frames import (
@@ -35,32 +36,9 @@ from test_support.microcosm_build.uk_clone_first_frames import (
     with_last_household_moved,
 )
 
+#: The copy-id field the stand-in mints in, stated here apart from G1's
+#: declaration, so the stand-in comparison checks G1 mints in it.
 _FIELD = "geographic_support"
-_REASON = "Geographic clones split each household's weight equally; mass is conserved."
-
-
-def _mint_geographic_clone(ids: np.ndarray, k: int) -> np.ndarray:
-    return copy_id_table.mint(ids, _FIELD, k)
-
-
-def _require_room_for_geographic_clones(ids: np.ndarray, what: str) -> None:
-    copy_id_table.require_below(ids, _FIELD, what=what)
-
-
-UK_GEOGRAPHIC_CLONES = CloneDeclaration(
-    ids=CloneIdRule(
-        bound=copy_id_table.ordinal_bound(_FIELD),
-        mint=_mint_geographic_clone,
-        require_below=_require_room_for_geographic_clones,
-    ),
-    clone_index_columns={
-        entity: ladder_clone_index_column(entity)
-        for entity in UK_NATIONAL_SCHEMA.entities
-    },
-    weight_kinds=frozenset({WeightKind.DESIGN}),
-    reason=_REASON,
-    source_id_columns={"household": SOURCE_HOUSEHOLD_ID_COLUMN},
-)
 _ID_COLUMNS = {
     "person": ("person_id", "person_household_id", "person_benunit_id"),
     "benunit": ("benunit_id",),
@@ -197,7 +175,9 @@ def test_the_mass_record_is_the_same_at_every_clone_count() -> None:
         (expanded.mass_log[-1].entity, expanded.mass_log[-1].declared_factor)
         for expanded in records
     } == {("household", 1.0)}
-    assert {expanded.mass_log[-1].reason for expanded in records} == {_REASON}
+    assert {expanded.mass_log[-1].reason for expanded in records} == {
+        GEOGRAPHIC_EXPAND_MASS_CHANGE_REASON
+    }
 
 
 def test_a_python_string_column_stays_python_strings_in_every_clone() -> None:

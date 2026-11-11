@@ -14,6 +14,7 @@ from microcosm.build.source_manifest import SourceOperationSpec
 from microcosm.build.uk_runtime import salary_sacrifice
 from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
 from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.salary_sacrifice import (
     BONUS_SACRIFICE_OUTPUT,
@@ -28,9 +29,14 @@ from microcosm.build.uk_runtime.salary_sacrifice import (
     _assert_salary_sacrifice_stage_parameters,
     bonus_sacrifice_excess,
     convert_bonuses_to_bonus_sacrifice,
+    draw_spi_bonuses,
     impute_salary_sacrifice,
     load_bonus_sacrifice_anchor,
     load_salary_sacrifice_anchor,
+)
+from test_support.microcosm_build.uk_clone_first_frames import (
+    GEOGRAPHIC_RADIX,
+    clone_first_frame,
 )
 from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 
@@ -778,8 +784,6 @@ def test_a_bonus_is_sacrificed_whole_up_to_half_the_pay() -> None:
 
 
 def _spi_draw(**kwargs):
-    from microcosm.build.uk_runtime.salary_sacrifice import draw_spi_bonuses
-
     n_donors = 25
     defaults = dict(
         # 25 FRS donors at 100,000 with a tenth of pay as bonus, then two
@@ -967,3 +971,191 @@ def test_geographic_clones_train_each_respondent_once_at_their_whole_weight(
     impute_salary_sacrifice(with_geographic_clones(frame))
     alone, cloned = _FakeQRF.training_frames
     pd.testing.assert_frame_equal(cloned, alone)
+
+
+#: Invented donors for the per-clone bonus draws: 24 base-FRS adults paid at
+#: each of two levels, so two pay cells of 24 donor households each, with
+#: bonus shares of pay from 0.05 up in steps of 0.004.
+_DONOR_PAY = np.repeat([60_000.0, 150_000.0], 24)
+_DONOR_SHARES = 0.05 + 0.004 * np.arange(len(_DONOR_PAY))
+#: Five SPI-channel adults: two in each pay cell and one without pay.
+_SPI_PAY = np.asarray([80_000.0, 90_000.0, 300_000.0, 400_000.0, 0.0])
+#: How far each later clone's donor shares sit above clone 0's, so that every
+#: clone's shares are its own.
+_CLONE_SHARE_STEP = 0.0013
+
+
+def _clone_draw_inputs(n_clones: int) -> dict[str, np.ndarray]:
+    """The SPI bonus draw's inputs at ``n_clones`` geographic clones.
+
+    Clone-major, as the clone-first spine orders them: clone ``k`` repeats
+    the one-clone rows with ids up ``k x 10**9``, the same source
+    households, ``1 / n_clones`` of each weight and donor shares
+    ``k x _CLONE_SHARE_STEP`` higher. Clone 0 is the one-clone draw's rows
+    at ``w / n_clones``.
+    """
+
+    n_donors, n_spi = len(_DONOR_PAY), len(_SPI_PAY)
+    ids = np.arange(1, n_donors + n_spi + 1, dtype=np.int64)
+    rows = np.arange(len(ids))
+    weights = 1.0 + 0.5 * (ids % 4)
+
+    def clone(k: int) -> dict[str, np.ndarray]:
+        return {
+            "bonus": np.concatenate(
+                [
+                    _DONOR_PAY * (_DONOR_SHARES + _CLONE_SHARE_STEP * k),
+                    np.full(n_spi, 99_000.0),
+                ]
+            ),
+            "employment_income": np.concatenate([_DONOR_PAY, _SPI_PAY]),
+            "weights": weights / n_clones,
+            "person_ids": ids + k * GEOGRAPHIC_RADIX,
+            "source_ids": ids,
+            "donors": rows < n_donors,
+            "spi": rows >= n_donors,
+            "clone_indices": np.full(len(ids), k, dtype=np.int64),
+        }
+
+    clones = [clone(k) for k in range(n_clones)]
+    return {name: np.concatenate([c[name] for c in clones]) for name in clones[0]}
+
+
+def _drawn_donor_rows(draw, inputs: dict[str, np.ndarray]) -> dict[int, int]:
+    """For each SPI adult with a drawn bonus, the donor row whose share it took.
+
+    Every donor share differs from every other by at least
+    ``_CLONE_SHARE_STEP``, so the nearest share names the donor.
+    """
+
+    pay = inputs["employment_income"]
+    donors = np.flatnonzero(inputs["donors"])
+    shares = np.minimum(inputs["bonus"][donors] / pay[donors], 1.0)
+    return {
+        int(row): int(donors[np.argmin(np.abs(shares - draw.bonus[row] / pay[row]))])
+        for row in np.flatnonzero(draw.recipients)
+    }
+
+
+def test_each_spi_adult_draws_a_bonus_share_from_its_own_clones_donors() -> None:
+    """Geographic clones of a spine draw SPI bonuses within each clone
+    (microcosm#931). The pay cells and the donor-source floor pool every
+    clone's donors, counted in source households, so three clones keep the
+    one-clone cells; each SPI adult takes a donor of its own clone in its
+    cell; and clone 0, whose ids are the one-clone ids, draws as one clone
+    does at a third of the weight."""
+
+    one = _clone_draw_inputs(1)
+    del one["clone_indices"]
+    alone = draw_spi_bonuses(**one)
+    # A one-clone index draws as no index, value for value.
+    indexed = draw_spi_bonuses(
+        **one, clone_indices=np.zeros(len(one["spi"]), dtype=np.int64)
+    )
+    assert indexed.bonus.tobytes() == alone.bonus.tobytes()
+    assert indexed.cells == alone.cells == 2
+
+    three = _clone_draw_inputs(3)
+    cloned = draw_spi_bonuses(**three)
+    assert cloned.cells == alone.cells
+    assert cloned.bonus[: len(alone.bonus)].tobytes() == alone.bonus.tobytes()
+    clone, pay = three["clone_indices"], three["employment_income"]
+    drawn = _drawn_donor_rows(cloned, three)
+    # Two SPI adults with pay in each cell, in each of the three clones.
+    assert len(drawn) == 12
+    for row, donor in drawn.items():
+        assert clone[donor] == clone[row]
+        assert (pay[donor] == _DONOR_PAY.min()) == (pay[row] < _DONOR_PAY.max())
+
+
+def test_a_cell_with_no_donor_in_an_spi_adults_clone_is_refused() -> None:
+    """The refusal names no count, id or value."""
+
+    inputs = _clone_draw_inputs(2)
+    # Clone 1's donors carry no weight, so its SPI adults find no donor in
+    # their cells, though clone 0's donors fill both cells' floor.
+    second_clone_donors = inputs["donors"] & (inputs["clone_indices"] == 1)
+    inputs["weights"] = np.where(second_clone_donors, 0.0, inputs["weights"])
+    with pytest.raises(
+        ValueError, match="no donor to draw in an SPI adult's"
+    ) as refused:
+        draw_spi_bonuses(**inputs)
+    assert not any(character.isdigit() for character in str(refused.value))
+
+
+def _bonus_clone_frame():
+    """The draw's invented donors and SPI adults as a one-clone stage frame.
+
+    Everyone is asked and nobody contributes to a pension, so the forest
+    predicts for no one and the salary conversion moves no pay.
+    """
+
+    pay = np.concatenate([_DONOR_PAY, _SPI_PAY])
+    n = len(pay)
+    return _frame(
+        asked=[1] * n,
+        salary_sacrifice_values=[0.0] * n,
+        employee_pension=[0.0] * n,
+        channels=["frs"] * len(_DONOR_PAY) + ["spi"] * len(_SPI_PAY),
+        weights=1.0 + 0.5 * (np.arange(1, n + 1) % 4),
+        employment_income=pay,
+        bonus=np.concatenate(
+            [_DONOR_PAY * _DONOR_SHARES, np.full(len(_SPI_PAY), 99_000.0)]
+        ),
+    )
+
+
+def test_the_stage_draws_each_clones_spi_bonuses_from_that_clone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stage reads a person's geographic clone from its household's
+    ``household_clone_index`` (microcosm#931). A one-clone index changes
+    nothing; at three clones, clone 0 sacrifices the bonuses one clone
+    sacrifices, and every SPI adult's bonus is a share of a donor in its own
+    clone."""
+
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    # Every candidate converts, and each drawn bonus is under half its pay,
+    # so an SPI adult sacrifices the bonus it drew.
+    anchor = _toy_bonus_anchor(obr_base_above_threshold=1e12)
+    frame = _bonus_clone_frame()
+    alone = impute_salary_sacrifice(frame, bonus_anchor=anchor)
+    indexed = impute_salary_sacrifice(clone_first_frame(frame, 1), bonus_anchor=anchor)
+    pd.testing.assert_frame_equal(
+        indexed.frame.table("person"), alone.frame.table("person"), check_exact=True
+    )
+    assert indexed.evidence() == alone.evidence()
+
+    three = clone_first_frame(frame, 3)
+    household = three.table("household").set_index("household_id")
+    person = three.table("person").copy()
+    members = person["person_household_id"]
+    clone = members.map(household[ladder_clone_index_column("household")]).to_numpy()
+    donors = members.map(household["household_support_channel"]).eq("frs").to_numpy()
+    pay = person["employment_income"].to_numpy()
+    # Each later clone's donors give bonus shares of their own.
+    person[BONUS_SACRIFICE_SOURCE] += np.where(
+        donors, _CLONE_SHARE_STEP * clone * pay, 0.0
+    )
+    cloned = impute_salary_sacrifice(
+        uk_national_frame(
+            person=person,
+            benunit=three.table("benunit"),
+            household=three.table("household"),
+            household_weights=three.weights_for("household").values,
+            weight_kind=three.weights_for("household").kind,
+            time_period="2024",
+        ),
+        bonus_anchor=anchor,
+    )
+    sacrificed = cloned.frame.table("person")[BONUS_SACRIFICE_OUTPUT].to_numpy()
+    one_clone = alone.frame.table("person")[BONUS_SACRIFICE_OUTPUT].to_numpy()
+    assert sacrificed[: len(one_clone)].tobytes() == one_clone.tobytes()
+    donor_rows = np.flatnonzero(donors)
+    shares = person[BONUS_SACRIFICE_SOURCE].to_numpy()[donor_rows] / pay[donor_rows]
+    takers = np.flatnonzero(~donors & (pay > 0.0))
+    assert len(takers) == 12
+    for row in takers:
+        donor = donor_rows[np.argmin(np.abs(shares - sacrificed[row] / pay[row]))]
+        assert clone[donor] == clone[row]

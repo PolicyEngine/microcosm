@@ -17,6 +17,16 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
+
+# Moved to geographic_clones (microcosm#931): the spine stages that count by
+# lineage read the clone index columns' names through household_lineage and
+# hash that small module, not this one, and the full build's population and
+# export kernels hash it beside this one. Kept importable from here for this
+# module's other callers.
+from microcosm.build.uk_runtime.geographic_clones import (
+    ARTIFACT_CLONE_INDEX_COLUMN,
+    ladder_clone_index_column,
+)
 from microcosm.build.uk_runtime.geography_ladder import (
     UK_GEOGRAPHY_LADDER_COLUMNS,
     UkOaLadder,
@@ -84,10 +94,6 @@ BENUNIT_ID_COLUMNS = ("benunit_id",)
 HOUSEHOLD_ID_COLUMNS = ("household_id",)
 UK_SINGLE_YEAR_TABLES = ("person", "benunit", "household", "time_period")
 
-#: Clone-index column name in the written artifact (one name per table —
-#: the legacy single-year schema, unchanged by the Frame carrier).
-ARTIFACT_CLONE_INDEX_COLUMN = "clone_index"
-
 _INT64_MAX = int(np.iinfo(np.int64).max)
 
 
@@ -128,17 +134,6 @@ def refuse_dense_clone_id_overflow(
             "spine wait for the clone-first spine of microcosm#931, which mints "
             "the geographic clones at its start; n_clones=1 still expands."
         )
-
-
-def ladder_clone_index_column(entity: str) -> str:
-    """The in-memory, per-entity clone-index column on the ladder frame.
-
-    Frame enforces globally unique column names across entity tables, so the
-    artifact's shared ``clone_index`` name cannot appear on all three tables
-    in memory; the writer renames these back at the export boundary.
-    """
-
-    return f"{entity}_{ARTIFACT_CLONE_INDEX_COLUMN}"
 
 
 def _refuse_preassigned_geography(

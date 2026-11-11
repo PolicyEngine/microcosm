@@ -60,7 +60,7 @@ SPI_SUPPORT_INCLUSION_SALT = "spi_support_channel:inclusion"
 #: (:func:`~microcosm.build.stochastic_assignment.binomial_share_tolerance`).
 SPI_SHARE_GATE_RULE = "binomial_share_band"
 #: The geographic clone index the clone-first spine gives every household
-#: (``rowwise_dataset.ladder_clone_index_column("household")``, the
+#: (``geographic_clones.ladder_clone_index_column("household")``, the
 #: ``geographic_support`` branch of the UK copy lineage; microcosm#931). Where
 #: the frame carries it, the prior allocation's strata split by it, so each
 #: clone keeps its own mass. It is spelled here, not imported, so a change to

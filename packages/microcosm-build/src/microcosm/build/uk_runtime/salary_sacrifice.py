@@ -30,6 +30,7 @@ from microcosm.build.uk_runtime.cgt_structure import (
     _assert_closed_world_operations,
 )
 from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -343,14 +344,28 @@ def draw_spi_bonuses(
     source_ids: np.ndarray,
     donors: np.ndarray,
     spi: np.ndarray,
+    clone_indices: np.ndarray | None = None,
 ) -> UKSpiBonusDraw:
     """Each SPI-channel adult's bonus, as a share of pay drawn from FRS adults.
 
-    ``donors`` marks the base-FRS adults (no clone, no support copy) and
-    ``spi`` the SPI-channel adults. Each SPI adult with pay takes the bonus
-    share of pay of one donor with pay in its pay cell, drawn by person weight
-    on a uniform keyed on its own ``person_id`` (``BONUS_SACRIFICE_SPI_DRAW``);
-    an SPI adult without pay has no bonus. Every other row keeps its own.
+    ``donors`` marks the base-FRS adults (no capital-gains clone, no support
+    copy) and ``spi`` the SPI-channel adults. Each SPI adult with pay takes
+    the bonus share of pay of one donor with pay in its pay cell, drawn by
+    person weight on a uniform keyed on its own ``person_id``
+    (``BONUS_SACRIFICE_SPI_DRAW``); an SPI adult without pay has no bonus.
+    Every other row keeps its own.
+
+    ``clone_indices`` gives each row's geographic clone (microcosm#931); None,
+    as on every spine today, puts every row in clone 0. The pay cells and the
+    donor-source floor pool every clone's donors, the floor counted in
+    distinct ``source_ids``. Each SPI adult draws from the donors of its own
+    clone in its cell, in id order, on the same keyed uniform. So a frame of
+    one clone draws as before, value for value. Where the clones agree on the
+    donors' pay, clone 0 of ``K``, whose ids are the one-clone ids, draws on
+    the one-clone pool at ``w / K``, up to the 1/K split's rounding, which can
+    move a pooled cell edge where a quantile falls exactly on a cumulative
+    weight share. A cell with no donor in an SPI adult's clone is refused,
+    without a count.
     """
 
     bonus = np.maximum(np.asarray(bonus, dtype=float), 0.0)
@@ -404,19 +419,49 @@ def draw_spi_bonuses(
         salt=BONUS_SACRIFICE_SPI_DRAW_SALT,
     )
     ids = np.asarray(person_ids)
+    clones = (
+        np.zeros(len(pay), dtype=np.int64)
+        if clone_indices is None
+        else np.asarray(clone_indices)
+    )
     for cell in np.unique(cells[recipients]):
-        pool = np.flatnonzero(paid_donors & (cells == cell))
-        if not len(pool):
-            raise ValueError("An SPI-channel bonus pay cell has no donor to draw.")
-        pool = pool[np.argsort(ids[pool], kind="stable")]
-        pool_cumulative = np.cumsum(weights[pool]) / weights[pool].sum()
-        takers = np.flatnonzero(recipients & (cells == cell))
-        picks = np.minimum(
-            np.searchsorted(pool_cumulative, uniforms[takers], side="right"),
-            len(pool) - 1,
-        )
-        drawn[takers] = share[pool[picks]] * pay[takers]
+        in_cell = cells == cell
+        # The cell's SPI adults in each clone draw from that clone's donors
+        # alone; with one clone, from the whole cell.
+        for clone in np.unique(clones[recipients & in_cell]):
+            members = in_cell & (clones == clone)
+            pool = np.flatnonzero(paid_donors & members)
+            if not len(pool):
+                raise ValueError(
+                    "An SPI-channel bonus pay cell has no donor to draw in an "
+                    "SPI adult's geographic clone."
+                )
+            pool = pool[np.argsort(ids[pool], kind="stable")]
+            pool_cumulative = np.cumsum(weights[pool]) / weights[pool].sum()
+            takers = np.flatnonzero(recipients & members)
+            picks = np.minimum(
+                np.searchsorted(pool_cumulative, uniforms[takers], side="right"),
+                len(pool) - 1,
+            )
+            drawn[takers] = share[pool[picks]] * pay[takers]
     return UKSpiBonusDraw(bonus=drawn, recipients=recipients, cells=len(groups))
+
+
+def _geographic_clone_indices(
+    person_households: pd.Series, households: pd.DataFrame
+) -> np.ndarray | None:
+    """Each person's geographic clone: its household's ``household_clone_index``.
+
+    ``households`` is indexed by ``household_id``. None without the column,
+    which is one clone, as every spine is today (microcosm#931). The stage's
+    geographic fold reads the column first, as the ``geographic_support``
+    branch's ordinals, and refuses one that is not a nonnegative integer.
+    """
+
+    column = ladder_clone_index_column("household")
+    if column not in households.columns:
+        return None
+    return person_households.map(households[column]).to_numpy(dtype=np.int64)
 
 
 @dataclass(frozen=True)
@@ -753,6 +798,8 @@ def impute_salary_sacrifice(
         "person",
         stage="The salary-sacrifice stage",
     )
+    # Each SPI adult draws a bonus share from its own geographic clone's
+    # donors: its household's clone index, or clone 0 without the column.
     spi_draw = draw_spi_bonuses(
         bonus=bonus_source,
         employment_income=employment_income,
@@ -763,6 +810,7 @@ def impute_salary_sacrifice(
             channels.eq("frs") & ~clones.astype(bool) & ~support_copies.astype(bool)
         ).to_numpy(),
         spi=channels.ne("frs").to_numpy(),
+        clone_indices=_geographic_clone_indices(person_households, households),
     )
     bonus = convert_bonuses_to_bonus_sacrifice(
         bonus=spi_draw.bonus,
