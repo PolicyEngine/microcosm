@@ -8,9 +8,10 @@ from microcosm.build.uk_runtime.calibration_run import (
 )
 
 
-def test_local_scope_is_the_declared_six_gate_terminal_battery() -> None:
+def test_local_scope_is_the_declared_seven_gate_terminal_battery() -> None:
     assert UK_LOCAL_GATE_SCOPE == (
         "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
         "uk_local_area_support",
         "uk_local_target_fit",
         "uk_local_per_family_fit",
@@ -40,6 +41,19 @@ def test_local_area_support_parameters_pin_both_grains_and_all_floors() -> None:
         "minimum_effective_sample_size": 50.0,
         "minimum_distinct_sources": 50,
         "exclusions_resource": "local_area_support_exclusions.json",
+    }
+
+
+def test_local_target_fit_parameters_pin_the_bound_and_its_own_register() -> None:
+    # microcosm#1301: the local cells stand on their own register, read by the
+    # gate only, never on the national target-fit register.
+    entries = {entry.id: entry for entry in load_country_spec("uk").gates.gates}
+    target_fit = entries["uk_local_target_fit"]
+    assert target_fit.gate == "target_fit"
+    assert dict(target_fit.parameters) == {
+        "surface": "local_candidate",
+        "max_abs_relative_error": 0.25,
+        "reviewed_exclusions_resource": "local_target_fit_reviewed_exclusions.json",
     }
 
 

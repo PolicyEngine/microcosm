@@ -235,7 +235,7 @@ def test_main_reports_both_artifacts_and_exits_nonzero_on_failure(
 
     assert exit_code == 1
     report = json.loads(captured.out)
-    assert report["sdc_minimum_count"] == 10
+    assert report["sdc_minimum_count"] == 3
     constructed = {
         Path(artifact["path"]).name: artifact["frame_constructed"]
         for artifact in report["artifacts"]
@@ -413,7 +413,7 @@ def test_malformed_weight_is_sanitized_and_later_artifact_is_still_audited(
     first, second = report["artifacts"]
     assert Path(first["path"]).name == malformed.name
     assert first["audit_completed"] is True
-    assert first["household_weights"]["conversion_failures"] == "< 10"
+    assert first["household_weights"]["conversion_failures"] == "< 3"
     assert first["frame_constructed"] is False
     assert first["frame_construction_failure_reason"] == (
         "Frame rejects non-numeric household weights."
@@ -442,7 +442,7 @@ def test_non_finite_weight_emits_strict_json_without_exact_total(
     assert exit_code == 1
     report = _strict_json_loads(captured.out)
     weights = report["artifacts"][0]["household_weights"]
-    assert weights["non_finite"] == "< 10"
+    assert weights["non_finite"] == "< 3"
     assert weights["total_mass"] is None
     _strict_json_loads(json_out.read_text())
     assert "Infinity" not in captured.out
@@ -504,7 +504,7 @@ def test_split_benunit_fails_preflight_even_when_frame_constructs(
     artifact = _strict_json_loads(captured.out)["artifacts"][0]
     assert artifact["frame_constructed"] is True
     assert artifact["frame_construction_failure_reason"] is None
-    assert artifact["linkage"]["split_benunits"] == "< 10"
+    assert artifact["linkage"]["split_benunits"] == "< 3"
     assert artifact["preflight_passed"] is False
     assert artifact["preflight_failure_reasons"] == [
         "Benunits span multiple households."

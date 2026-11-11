@@ -1,11 +1,12 @@
 """Canonical CLI preparation authenticates real H5 checkpoint boundaries."""
 
+import hashlib
 import json
 
 import pytest
 
 from microcosm.build.uk_runtime import full_build_cli as cli
-from microcosm.build.uk_runtime import spine_build
+from microcosm.build.uk_runtime import hmrc_uprating, spine_build
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     write_uk_national_frame,
@@ -21,7 +22,8 @@ from test_support.microcosm_build.uk_ladder_rowwise_clone import (
 
 
 @pytest.fixture
-def checkpoint_request(tmp_path, toy_ladder, monkeypatch):
+def checkpoint_argv(tmp_path, toy_ladder, monkeypatch):
+    """A dense request over a real bound checkpoint, as an argument list."""
     pytest.importorskip("tables")
     _, ladder_path = toy_ladder
     path = write_uk_national_frame(source_frame(), tmp_path / "spine.h5")
@@ -37,30 +39,39 @@ def checkpoint_request(tmp_path, toy_ladder, monkeypatch):
     monkeypatch.setattr(
         spine_build, "_rules_engine_provenance", lambda: {"version": "fixture"}
     )
-    args = cli.parse_args(
-        [
-            "--release-role",
-            "dense",
-            "--input-h5",
-            str(path),
-            "--input-sidecar",
-            str(sidecar_path),
-            "--input-spine-gates",
-            str(gates_path),
-            "--ladder",
-            str(ladder_path),
-            *support_arguments(tmp_path),
-            "--ledger-facts",
-            str(ledger),
-            "--out",
-            str(tmp_path / "out"),
-            "--n-clones",
-            "1",
-            "--epochs",
-            "8",
-        ]
+    # The engine stands in here, so its freeze check does too: the preparation
+    # runs it before reading any input (microcosm#1095).
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
     )
-    return args, sidecar_path, gates_path
+    argv = [
+        "--release-role",
+        "dense",
+        "--input-h5",
+        str(path),
+        "--input-sidecar",
+        str(sidecar_path),
+        "--input-spine-gates",
+        str(gates_path),
+        "--ladder",
+        str(ladder_path),
+        *support_arguments(tmp_path),
+        "--ledger-facts",
+        str(ledger),
+        "--out",
+        str(tmp_path / "out"),
+        "--n-clones",
+        "1",
+        "--epochs",
+        "8",
+    ]
+    return argv, sidecar_path, gates_path
+
+
+@pytest.fixture
+def checkpoint_request(checkpoint_argv):
+    argv, sidecar_path, gates_path = checkpoint_argv
+    return cli.parse_args(argv), sidecar_path, gates_path
 
 
 def support_arguments(tmp_path):
@@ -205,3 +216,153 @@ def test_prepare_release_candidate_requires_the_registered_supports(
     patch_support_register(monkeypatch, pins)
     prepared = cli.prepare_full_build(release)
     assert prepared.bindings["geography"]["support_pins"] == pins
+
+
+# ---------------------------------------------------------------------------
+# microcosm#1301: a gate-only sign-off and a later gate clock leave the solve
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def stand_in_dependency_versions(monkeypatch):
+    """Kernels hash their declared dependencies' versions; the engine-free
+    environment lacks policyengine-uk, so absent ones read as a stand-in."""
+    from importlib import metadata
+
+    installed = metadata.version
+
+    def version(distribution):
+        try:
+            return installed(distribution)
+        except metadata.PackageNotFoundError:
+            return "0+stand-in"
+
+    monkeypatch.setattr(metadata, "version", version)
+
+
+def _node_keys(prepared):
+    """Every node key of the prepared graph, over fixed source identities."""
+    from microcosm.graph.keys import node_key
+
+    compiled = compile_graph(prepared.full.graph)
+    sources = {
+        source.name: hashlib.sha256(source.name.encode()).hexdigest()
+        for source in compiled.graph.sources
+    }
+    keys: dict[str, str] = {}
+    for node_id in compiled.order:
+        kernel = prepared.kernels.get(compiled.graph.node(node_id).kernel)
+        keys[node_id] = node_key(
+            compiled,
+            node_id,
+            keys,
+            kernel.implementation_hash(),
+            sources,
+            kernel_capabilities=kernel.capabilities,
+        )
+    return compiled, keys
+
+
+def _descendants(compiled, node_id):
+    found, pending = set(), [node_id]
+    while pending:
+        current = pending.pop()
+        for successor, predecessors in compiled.predecessors.items():
+            if current in predecessors and successor not in found:
+                found.add(successor)
+                pending.append(successor)
+    return found
+
+
+def _perturbed(monkeypatch, *resources):
+    """Serve the packaged UK spec with ``resources`` edited (their hashes)."""
+    from dataclasses import replace
+    from types import MappingProxyType
+
+    from microcosm.build import country_spec
+
+    spec = country_spec.load_country_spec("uk")
+    hashes = dict(spec.resource_hashes)
+    for resource in resources:
+        hashes[resource] = hashlib.sha256(hashes[resource].encode()).hexdigest()
+    edited = replace(spec, resource_hashes=MappingProxyType(hashes))
+    monkeypatch.setattr(country_spec, "_load_packaged_country_spec", lambda _: edited)
+
+
+def test_a_gate_only_sign_off_rekeys_the_calibrated_gates_and_nothing_before(
+    checkpoint_argv, monkeypatch, stand_in_dependency_versions
+):
+    """Every node the calibrated gates depend on keeps its key when every
+    gate-only register is edited at once; the calibrated gates re-key."""
+    from microcosm.build.uk_runtime.solve_scope import UK_GATE_ONLY_RESOURCES
+
+    argv, _, _ = checkpoint_argv
+    args = cli.parse_args([*argv, "--dataset-households", "2"])
+    prepared = cli.prepare_full_build(args)
+    compiled, before = _node_keys(prepared)
+    gates = "uk.full.gates.calibrated"
+    downstream = {gates, *_descendants(compiled, gates)}
+    solve = set(compiled.order) - downstream
+    assert {
+        "uk.full.target_compilation",
+        "uk.full.problem",
+        "uk.full.gates.preflight",
+        "uk.full.dense",
+        "uk.full.size_refit",
+        "uk.full.calibrated",
+        "uk.full.holdout",
+    } <= solve
+    with monkeypatch.context() as patch:
+        _perturbed(patch, *UK_GATE_ONLY_RESOURCES)
+        _, signed = _node_keys(prepared)
+    assert {node: signed[node] for node in solve} == {
+        node: before[node] for node in solve
+    }
+    assert signed[gates] != before[gates]
+    # Control: a solve-scoped register re-keys the solve from compilation on.
+    with monkeypatch.context() as patch:
+        _perturbed(patch, "calibration_measure_exclusions.json")
+        _, edited = _node_keys(prepared)
+    for node in ("uk.full.target_compilation", "uk.full.dense", "uk.full.holdout"):
+        assert edited[node] != before[node], node
+
+
+def test_a_later_gate_clock_rekeys_only_the_calibrated_gates_and_the_export(
+    checkpoint_argv, stand_in_dependency_versions
+):
+    from datetime import date, timedelta
+
+    argv, _, _ = checkpoint_argv
+    solve = (date.today() - timedelta(days=2)).isoformat()
+    gate = date.today().isoformat()
+    first = cli.prepare_full_build(cli.parse_args([*argv, "--review-date", solve]))
+    second = cli.prepare_full_build(
+        cli.parse_args([*argv, "--review-date", solve, "--gate-review-date", gate])
+    )
+    assert (first.bindings["review_date"], first.bindings["gate_review_date"]) == (
+        solve,
+        solve,
+    )
+    assert (second.bindings["review_date"], second.bindings["gate_review_date"]) == (
+        solve,
+        gate,
+    )
+    _, before = _node_keys(first)
+    _, after = _node_keys(second)
+    assert before.keys() == after.keys()
+    assert {node for node in before if before[node] != after[node]} == {
+        "uk.full.gates.calibrated",
+        "uk.full.export.prepare",
+    }
+    calibrated = second.full.graph.node("uk.full.gates.calibrated")
+    assert calibrated.params["review_date"] == gate
+    # The problem and the rotated holdout review the local binding
+    # adjudications on the solve's date, as the target compilation reviews
+    # the measure exclusions (microcosm#1278).
+    for node in (
+        "uk.full.gates.preflight",
+        "uk.full.target_compilation",
+        "uk.full.problem",
+        "uk.full.holdout",
+    ):
+        assert second.full.graph.node(node).params["review_date"] == solve

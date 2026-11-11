@@ -89,6 +89,7 @@ __all__ = [
     "PERSON_ID_COLUMN",
     "RENTED_TENURES",
     "SEX_DOMAIN",
+    "SOURCE_HOUSEHOLD_ID_COLUMN",
     "TENURE_DOMAIN",
     "AlignmentRelation",
     "CanonicalConceptKind",
@@ -117,7 +118,7 @@ __all__ = [
 #: concept is added, removed or changes any declared field, so artifacts that
 #: pin :func:`concept_schema_sha256` can say which schema they were written
 #: against.
-CONCEPT_SCHEMA_VERSION = 2
+CONCEPT_SCHEMA_VERSION = 3
 
 #: The two entities concept content lives on. Engine group entities (tax
 #: units, benefit units, SPM units, families) are engine constructs built
@@ -133,6 +134,8 @@ CONCEPT_FRAME_SCHEMA = EntitySchema(group_entities=("household",))
 PERSON_ID_COLUMN = CONCEPT_FRAME_SCHEMA.person_id_column
 PERSON_HOUSEHOLD_ID_COLUMN = CONCEPT_FRAME_SCHEMA.membership_column("household")
 HOUSEHOLD_ID_COLUMN = CONCEPT_FRAME_SCHEMA.id_column("household")
+#: Original donor household identity; support clones carry the same key.
+SOURCE_HOUSEHOLD_ID_COLUMN = "source_household_id"
 _PERSON_ID = PERSON_ID_COLUMN
 _HOUSEHOLD_ID = HOUSEHOLD_ID_COLUMN
 _PERSON_HOUSEHOLD_ID = PERSON_HOUSEHOLD_ID_COLUMN
@@ -164,6 +167,7 @@ class Unit(StrEnum):
     CATEGORY = "category"
     BOOLEAN = "boolean"
     PERSON_ID = "person_id"
+    SOURCE_ID = "source_id"
     UNIT_INTERVAL = "unit_interval"
 
 
@@ -173,7 +177,8 @@ class TemporalBasis(StrEnum):
     ``annual_flow`` matches ``microcosm.build.monetary_targets``.
     """
 
-    #: An amount or count accumulated over the reference year.
+    #: An amount or count accumulated over the reference year. Its period is
+    #: ``year``.
     ANNUAL_FLOW = "annual_flow"
     #: The record's state at the survey reference date.
     REFERENCE_STATE = "reference_state"
@@ -520,7 +525,8 @@ class Concept:
         dtype: Kernel dtype kind: ``float``, ``int``, ``bool`` or ``str``.
         unit: The unit values are expressed in.
         period: Kernel period semantics: ``year``, ``month`` or ``point``.
-        temporal_basis: What the value measures over its period.
+        temporal_basis: What the value measures over its period. An annual
+            flow's period is ``year``.
         provenance: How values come to exist.
         transport: What transport does with the column.
         monetary: Currency and price-level handling; set exactly when the
@@ -577,6 +583,11 @@ class Concept:
         if self.period not in _PERIOD_SEMANTICS:
             raise ValueError(
                 f"Concept {self.id!r} period must be one of {_PERIOD_SEMANTICS}."
+            )
+        if self.temporal_basis is TemporalBasis.ANNUAL_FLOW and self.period != "year":
+            raise ValueError(
+                f"Concept {self.id!r}: an annual flow accumulates over the year, "
+                f"so its period is year, not {self.period}."
             )
         self._validate_unit_contract()
         self._validate_bounds()
@@ -660,6 +671,8 @@ class Concept:
             raise ValueError(
                 f"Pointer concept {self.id!r} must be an int named *_person_id."
             )
+        if self.unit is Unit.SOURCE_ID and self.dtype != "str":
+            raise ValueError(f"Source identity concept {self.id!r} must be str.")
 
     def _validate_bounds(self) -> None:
         numeric = self.dtype in ("float", "int")
@@ -1246,6 +1259,24 @@ CONCEPTS: tuple[Concept, ...] = (
         ),
         index_family=IndexFamily.OWNER_HOUSING_COSTS,
         entity="household",
+    ),
+    # --- Source lineage ---------------------------------------------------
+    Concept(
+        id=f"fact:household.{SOURCE_HOUSEHOLD_ID_COLUMN}",
+        label="Original source household identity",
+        definition=(
+            "Exact identity of the original sampled source household, scoped "
+            "by source vintage when source household identifiers are "
+            "vintage-local. All support clones retain the same identity. "
+            "Derived only from explicit source lineage, never from row order "
+            "or the support row's household id."
+        ),
+        dtype="str",
+        unit=Unit.SOURCE_ID,
+        period="point",
+        temporal_basis=TemporalBasis.PERSISTENT,
+        provenance=ProvenanceClass.DERIVED,
+        transport=TransportRule.CARRY,
     ),
 )
 

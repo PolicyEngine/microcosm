@@ -83,7 +83,7 @@ CHRONICLE_FEED = (
 
 #: Pinned schema digest. A change to any concept's declared contract moves it:
 #: bump CONCEPT_SCHEMA_VERSION when the change is deliberate, then re-pin.
-SCHEMA_SHA256 = "d824f5e97d58292d62f65ffae60bc8654408711344b638d4e3caa95d6c2e8d1e"
+SCHEMA_SHA256 = "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141"
 
 
 class TestDeclaredSchema:
@@ -214,7 +214,7 @@ class TestDeclaredSchema:
             concepts_for_entity("tax_unit")
 
     def test_schema_digest_is_pinned(self) -> None:
-        assert CONCEPT_SCHEMA_VERSION == 2
+        assert CONCEPT_SCHEMA_VERSION == 3
         assert concept_schema_sha256() == SCHEMA_SHA256
 
     def test_schema_digest_ignores_alignments(self) -> None:
@@ -244,11 +244,45 @@ class TestConceptValidation:
             ({"unit": Unit.PERSON_ID}, "int named"),
             ({"lower": 200.0}, "empty"),
             ({"transport": TransportRule.QUANTILE_MAP}, "quantile"),
+            ({"temporal_basis": TemporalBasis.ANNUAL_FLOW}, "its period is year"),
         ],
     )
     def test_bad_declarations_are_refused(self, change, message) -> None:
         with pytest.raises(ValueError, match=message):
             replace(concept("fact:person.age"), **change)
+
+    def test_an_annual_flow_has_period_year_and_nothing_else_is_tied(self) -> None:
+        # Exhaustive: every committed concept, redeclared under every basis
+        # and every period. Exactly an annual flow outside period year is
+        # refused, with the whole message. Every other basis takes any
+        # period, so the tie runs one way: usual weekly hours, a usual rate,
+        # has period year.
+        flows = [
+            item
+            for item in CONCEPTS
+            if item.temporal_basis is TemporalBasis.ANNUAL_FLOW
+        ]
+        assert len(flows) == 14
+        assert {item.period for item in flows} == {"year"}
+        assert concept("fact:person.usual_weekly_hours").period == "year"
+        for item in CONCEPTS:
+            for basis in TemporalBasis:
+                for period in ("year", "month", "point"):
+                    change = {"temporal_basis": basis, "period": period}
+                    if basis is TemporalBasis.ANNUAL_FLOW and period != "year":
+                        refusal = (
+                            f"^Concept {re.escape(repr(item.id))}: an annual flow "
+                            f"accumulates over the year, so its period is year, "
+                            f"not {period}\\.$"
+                        )
+                        with pytest.raises(ValueError, match=refusal):
+                            replace(item, **change)
+                    else:
+                        redeclared = replace(item, **change)
+                        assert (redeclared.temporal_basis, redeclared.period) == (
+                            basis,
+                            period,
+                        )
 
     def test_generated_concepts_must_carry(self) -> None:
         with pytest.raises(ValueError, match="persistence"):

@@ -1,0 +1,83 @@
+{
+  "settings": {
+    "method": "adam",
+    "mass": "free",
+    "max_weight_ratio": 10.0,
+    "epochs": 1024,
+    "learning_rate": 0.02,
+    "seed": 0
+  },
+  "result": {
+    "fit": {
+      "n_targets": 32,
+      "n_zero_valued_targets": 0,
+      "capped_mape": 0.04062102141423633,
+      "uncapped_mape": 0.04062102141423633,
+      "median_abs_rel_error": 0.001197238149017645,
+      "share_within_10pct": 0.90625,
+      "share_within_25pct": 0.96875,
+      "worst_five": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "cbo.revenue_projection.ty2024.income_by_source.wages_and_salaries.projected_amount",
+          "relative_error": 0.1407603979043663
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_1.all.return_count",
+          "relative_error": 0.11577673983676316
+        },
+        {
+          "target": "cms_medicaid.month2024_12.state_enrollment.us.total_medicaid_enrollment",
+          "relative_error": -0.004871698382781851
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.50_to_54.population",
+          "relative_error": 0.0043632253973349125
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age.under_18.recipient_count",
+          "relative_error": -1.0
+        },
+        {
+          "target": "cbo.revenue_projection.ty2024.income_by_source.wages_and_salaries.projected_amount",
+          "relative_error": 0.1407603979043663
+        },
+        {
+          "target": "irs_soi.ty2023.table_1_1.all.return_count",
+          "relative_error": 0.11577673983676316
+        },
+        {
+          "target": "cms_medicaid.month2024_12.state_enrollment.us.total_medicaid_enrollment",
+          "relative_error": -0.004871698382781851
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.50_to_54.population",
+          "relative_error": 0.0043632253973349125
+        }
+      ]
+    },
+    "weights": {
+      "n": 100,
+      "total": 179196095.359375,
+      "max_over_mean": 4.760374372495341,
+      "min_over_mean": 0.0512626918590356,
+      "top10_share": 0.3564732472093905,
+      "kish_ess": 49.33504110390702,
+      "n_above_5x_own_median": 9,
+      "n_above_10x_own_median": 0,
+      "equal_share": 1232343.8385038802,
+      "n_above_5x_equal_share": 6,
+      "n_above_10x_equal_share": 0
+    },
+    "skipped_on_subset": []
+  },
+  "runtime": {
+    "seconds": 0.13,
+    "peak_rss_gb": 3.869
+  }
+}

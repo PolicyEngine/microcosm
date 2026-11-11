@@ -131,6 +131,7 @@ def _frame():
         household=pd.DataFrame(
             {
                 "household_id": ids,
+                "source_household_id": ids,
                 "region": "LONDON",
                 "household_weight": [10.0, 10.0, 10.0, 10.0],
                 "household_is_spi_synthetic": [False, False, False, False],

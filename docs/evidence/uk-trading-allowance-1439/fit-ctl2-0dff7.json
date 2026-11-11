@@ -1,0 +1,49 @@
+{
+  "tool": "tools/measure_uk_trading_allowance_gainers.py",
+  "release": "microcosm_uk_2024_25.h5",
+  "release_sha256": "d41bd2141272c2ab5aada248f8e29156dab39d74eb542ae979f6a99fc9bf33d6",
+  "policyengine_uk": "2.174.1",
+  "period": 2028,
+  "mode": "fit",
+  "overall": {
+    "support": "30+",
+    "weighted_gainers": 3930300.0,
+    "total_gain": 1878919000.0,
+    "mean_gain": 478.0
+  },
+  "bands": [
+    {
+      "upper_inclusive": 4500.0,
+      "rate": 0.72,
+      "support": "30+",
+      "weighted_gainers": 539000.0,
+      "total_gain": 196844000.0,
+      "mean_gain": 365.0
+    },
+    {
+      "upper_inclusive": 9000.0,
+      "rate": 0.14,
+      "support": "30+",
+      "weighted_gainers": 372200.0,
+      "total_gain": 174569000.0,
+      "mean_gain": 469.0
+    },
+    {
+      "upper_inclusive": null,
+      "rate": 0.0,
+      "support": "30+",
+      "weighted_gainers": 2993000.0,
+      "total_gain": 1504134000.0,
+      "mean_gain": 503.0
+    }
+  ],
+  "fit": {
+    "target_gainers": 400000.0,
+    "target_mean_gain": 380.0,
+    "rates": [
+      0.6364,
+      0.1532
+    ],
+    "within_unit_interval": true
+  }
+}

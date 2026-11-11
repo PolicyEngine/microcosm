@@ -46,6 +46,7 @@ from microcosm.build.uk_runtime.spi_support import (
     replace_uk_spi_support_tables,
     support_channel_column,
 )
+from microcosm.fit import ConditionalUniforms
 from microcosm.frame import WeightKind
 from test_support.paths import paths_for
 
@@ -56,9 +57,67 @@ _PINNED_SPI_DONOR_PATH = _REPO_ROOT / "inputs" / "spi" / "put2223uk.tab"
 
 
 class _FakeFittedQRF:
-    def __init__(self, targets: tuple[str, ...], weight_kind: str) -> None:
+    def __init__(
+        self,
+        targets: tuple[str, ...],
+        weight_kind: str,
+        gate_calibration: str = "in_sample",
+    ) -> None:
         self.targets = targets
         self.weight_kind = weight_kind
+        self.gate_calibration = gate_calibration
+
+    def gate_outcomes(self) -> dict[str, str | None]:
+        outcome = None if self.gate_calibration == "in_sample" else "cross_fitted"
+        return dict.fromkeys(self.targets, outcome)
+
+    def regimes(self) -> dict[str, str]:
+        return dict.fromkeys(self.targets, "zero_inflated_positive")
+
+    def sign_classes(self, target: str) -> tuple[int, ...]:
+        return (0, 1)
+
+    def conditional_uniforms(
+        self,
+        frame: pd.DataFrame,
+        *,
+        sign_placement: dict[str, np.ndarray],
+        quantile_placement: dict[str, np.ndarray],
+    ) -> ConditionalUniforms:
+        """Hand the placements back: a fake reference forest locates nothing."""
+
+        missing = [target for target in self.targets if target not in frame.columns]
+        assert not missing, missing
+        return ConditionalUniforms(
+            quantiles={
+                target: np.asarray(quantile_placement[target], dtype=float)
+                for target in self.targets
+            },
+            sign_uniforms={
+                target: np.asarray(sign_placement[target], dtype=float)
+                for target in self.targets
+            },
+            degenerate=(),
+            ungated=(),
+        )
+
+    def predict_from_uniforms(
+        self,
+        predictors: pd.DataFrame,
+        *,
+        quantiles: dict[str, np.ndarray],
+        sign_uniforms: dict[str, np.ndarray],
+    ) -> pd.DataFrame:
+        """Draw as ``predict`` does; the uniforms are kept for tests to read."""
+
+        assert set(quantiles) == set(self.targets) == set(sign_uniforms)
+        self.last_uniforms = {
+            "quantiles": {k: np.asarray(v, dtype=float) for k, v in quantiles.items()},
+            "sign_uniforms": {
+                k: np.asarray(v, dtype=float) for k, v in sign_uniforms.items()
+            },
+        }
+        return self.predict(predictors)
 
     def predict(self, predictors: pd.DataFrame) -> pd.DataFrame:
         values: dict[str, np.ndarray] = {}
@@ -72,7 +131,7 @@ class _FakeFittedQRF:
                 value = 10.0
             elif target == "charitable_investment_gifts":
                 value = 2.0
-            elif target == "tax_free_savings_income":
+            elif target == "individual_savings_account_interest_income":
                 value = 5.0
             elif target == SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN:
                 value = -3.0
@@ -83,10 +142,15 @@ class _FakeFittedQRF:
 class _FakeQRF:
     fit_weight_kinds: list[str] = []
     fit_weight_values: list[np.ndarray] = []
+    #: Each fit's weight kind, gate calibration and fold groups, in fit order.
+    fit_gates: list[tuple[str, str, np.ndarray | None]] = []
 
-    def __init__(self, *, n_estimators: int, seed: int) -> None:
+    def __init__(
+        self, *, n_estimators: int, seed: int, gate_calibration: str = "in_sample"
+    ) -> None:
         assert n_estimators > 0
         assert seed >= 0
+        self.gate_calibration = gate_calibration
 
     def fit(
         self,
@@ -95,14 +159,19 @@ class _FakeQRF:
         targets: list[str],
         *,
         weights: str,
+        groups: np.ndarray | None = None,
     ) -> _FakeFittedQRF:
         assert predictors
         resolved = frame.resolve_weights("person")
         assert resolved.kind.value == weights
         assert (resolved.values > 0).all()
+        assert groups is None or len(groups) == len(resolved.values)
         self.fit_weight_kinds.append(resolved.kind.value)
         self.fit_weight_values.append(resolved.values.copy())
-        return _FakeFittedQRF(tuple(targets), resolved.kind.value)
+        self.fit_gates.append((resolved.kind.value, self.gate_calibration, groups))
+        return _FakeFittedQRF(
+            tuple(targets), resolved.kind.value, self.gate_calibration
+        )
 
 
 def _dead_support(
@@ -128,6 +197,9 @@ def _dead_support(
         "gender": ["MALE", "FEMALE", "MALE", "FEMALE"],
         # Each one-person benefit unit is its own claimant.
         "is_uc_claimant": np.ones(4, dtype=bool),
+        # The bridge predictors and the recipient income rule read these.
+        "employment_status": ["FT_EMPLOYED"] * 4,
+        "miscellaneous_income": np.zeros(4, dtype=float),
     }
     for position, column in enumerate(SPI_INCOME_IMPUTATION_COLUMNS, start=1):
         if column == drop_income_component:
@@ -153,7 +225,24 @@ def _dead_support(
             position + 4,
             dtype=float,
         )
-    person_columns["tax_free_savings_income"] = np.zeros(4, dtype=float)
+    # The root stage writes the owner-manager flags as booleans that follow its
+    # rules, and no income share without an owner (microcosm#1095).
+    owners = np.array([True, False, True, False])
+    for column, values in {
+        "stands_as_sole_owner_or_partner_of_company": owners,
+        "is_engaged_in_owned_company_trade": owners,
+        "owned_company_is_main_employment": owners,
+        "owned_company_carries_on_trade": np.array([True, False, False, False]),
+        "owned_company_carries_on_property_business": np.array(
+            [False, False, True, False]
+        ),
+        "owned_company_income_share": np.where(owners, 0.5, 0.0),
+    }.items():
+        if column in person_columns:
+            person_columns[column] = values
+    person_columns["individual_savings_account_interest_income"] = np.zeros(
+        4, dtype=float
+    )
     person = pd.DataFrame(person_columns)
     benunit = pd.DataFrame({"benunit_id": np.arange(201, 205, dtype="int64")})
     dead = create_uk_spi_support_tables(
@@ -199,6 +288,16 @@ def _write_donor(path: Path, *, drop: str | None = None) -> None:
             "OTHERINV": [5.0, 10.0, 15.0, 20.0],
             "GIFTAID": [10.0, 20.0, 30.0, 40.0],
             "GIFTINV": [1.0, 2.0, 3.0, 4.0],
+            # Restricted residential finance costs carrying the tape's 20%
+            # relief in TAX_CRED (microcosm#1106).
+            "LLIR_RESTRICT_AMT_TOT": [0.0, 0.0, 200.0, 300.0],
+            "TAX_CRED": [0.0, 0.0, 40.0, 60.0],
+            # Annex A bridge codes, consistent with the leaves above: pay is
+            # every record's main source, every record files trade pages, and
+            # the two State Pension recipients are at State Pension age.
+            "MAINSRCE": [1, 1, 1, 1],
+            "SEINC_NUM": [1, 1, 1, 1],
+            "SPA": [0, 0, 1, 1],
         }
     )
     employment = (

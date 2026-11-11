@@ -12,6 +12,42 @@ _TEST_PATHS = paths_for("microcosm-build")
 
 FIXTURE = _TEST_PATHS.tests / "fixtures" / "uk_bus05i_fy2025.json"
 BUS_PREFIX = "dft.bus_"
+#: The BUS05 finance rows; microcosm#1207's BUS01a journeys share the prefix.
+BUS_FINANCE_FAMILY = "dft_local_bus"
+BUS_JOURNEYS_FAMILY = "dft_bus_journeys"
+BUS_JOURNEY_AREAS = {
+    "london",
+    "north_east",
+    "north_west",
+    "yorkshire_and_the_humber",
+    "east_midlands",
+    "west_midlands",
+    "east_of_england",
+    "south_east",
+    "south_west",
+}
+
+
+#: The June 2026 BUS0415a release blended over policyengine-uk's model years
+#: (6 April to 5 April, each quarter-end value in force from the start of its
+#: quarter): 2024-25 is 86 days at June 2024, 92 at September, 92 at
+#: December, 90 at March 2025 and 5 at June 2025; 2025-26 is 86, 92 and 92
+#: days at June, September and December 2025 and 95 at March 2026, the last
+#: published quarter (microcosm#1331).
+_OUTSIDE_LONDON_FACTOR = (
+    210.5 * 86 + 213.6 * 92 + 214.3 * 92 + 217.95569364121366 * 95
+) / (181.6 * 86 + 185.7 * 92 + 185.9 * 92 + 206.4 * 90 + 210.5 * 5)
+# London's fares were held; DfT's unrounded March 2026 value lifts it a little.
+_LONDON_FACTOR = (196.1 * 270 + 196.10649454164795 * 95) / 365 / 196.1
+#: BUS05ai fare receipts for 2024-25: London and England outside London sum
+#: to England's, and England's receipts move as the two parts.
+_LONDON_RECEIPTS = 1_347_434_943.01459
+_OUTSIDE_LONDON_RECEIPTS = 2_069_953_713.42079
+_ENGLAND_RECEIPTS = 3_417_388_656.43538
+_ENGLAND_FACTOR = (
+    _LONDON_RECEIPTS * _LONDON_FACTOR
+    + _OUTSIDE_LONDON_RECEIPTS * _OUTSIDE_LONDON_FACTOR
+) / _ENGLAND_RECEIPTS
 
 
 def _resource(name: str) -> dict:
@@ -58,6 +94,7 @@ def test_bus_targets_are_active_or_signed_excluded_as_declared() -> None:
         row["target_id"]: row
         for row in contract["targets"]
         if row["target_id"].startswith(BUS_PREFIX)
+        and row["family"] == BUS_FINANCE_FAMILY
     }
 
     active = {
@@ -99,9 +136,11 @@ def test_bus_targets_are_active_or_signed_excluded_as_declared() -> None:
         assert set(holds[target_id]) == {"name", "from", "to"}
         (candidate,) = membership["targets"][target_id]["candidates"]
         assert "uprating" not in candidate
-    assert float(holds["dft.bus_fare_receipts.london"]["factor"]) == pytest.approx(1.0)
+    assert float(holds["dft.bus_fare_receipts.london"]["factor"]) == pytest.approx(
+        _LONDON_FACTOR
+    )
     assert float(holds["dft.bus_fare_receipts.england"]["factor"]) == pytest.approx(
-        204.125 / 193.125
+        _ENGLAND_FACTOR
     )
     # The London rows pin the publisher's region-stamped fact, not a country
     # row, and the England rows keep the country pin.
@@ -128,7 +167,11 @@ def test_london_bus_rows_resolve_the_publisher_partition() -> None:
         ("dft.bus_net_support.london", "dft.local_bus_total_estimated_net_support"),
     ):
         resolved = membership[target_id]["candidates"][0]["resolved_value"]
-        assert resolved == pytest.approx(published[(concept, "london")], abs=1.0)
+        # Fare receipts move by London's index; net support is never aligned.
+        factor = _LONDON_FACTOR if target_id.startswith("dft.bus_fare") else 1.0
+        assert resolved == pytest.approx(
+            published[(concept, "london")] * factor, abs=1.0
+        )
 
 
 def test_bus_selectors_do_not_consume_nts_or_bus0415() -> None:
@@ -136,6 +179,7 @@ def test_bus_selectors_do_not_consume_nts_or_bus0415() -> None:
         row
         for row in _resource("uk_population_targets.json")["targets"]
         if row["target_id"].startswith(BUS_PREFIX)
+        and row["family"] == BUS_FINANCE_FAMILY
     ]
     selected_concepts = {
         row["ledger_selector"].get("source_concept", "") for row in targets
@@ -261,11 +305,43 @@ def _index_facts(geography: dict, values: dict[str, float]) -> list[dict]:
     ]
 
 
-def test_quarter_end_months_follow_the_fiscal_and_calendar_windows() -> None:
-    from microcosm.build.uk_runtime.ledger_targets import _quarter_end_months
+def test_the_fiscal_year_blend_follows_the_engines_window() -> None:
+    """policyengine-uk's fiscal_year_blend (PolicyEngine/policyengine-uk#2546).
 
-    assert _quarter_end_months(2024, 4) == ("2024-06", "2024-09", "2024-12", "2025-03")
-    assert _quarter_end_months(2025, 1) == ("2025-03", "2025-06", "2025-09", "2025-12")
+    A quarter-end value is in force from the start of the quarter it closes,
+    and the model year runs from 6 April to 5 April.
+    """
+    from microcosm.build.uk_runtime.ledger_targets import (
+        uk_bus_fare_alignment_factors,
+        uk_bus_fares_index_fiscal_year_blend,
+    )
+
+    series = {
+        "2024-03": (100.0, "a"),
+        "2024-06": (100.0, "b"),
+        "2024-09": (100.0, "c"),
+        "2024-12": (100.0, "d"),
+        "2025-03": (120.0, "e"),
+        "2025-06": (120.0, "f"),
+    }
+    blend, months = uk_bus_fares_index_fiscal_year_blend(series, 2024)
+    # 6 April to 31 December 2024 at 100, then 1 January to 5 April 2025 at
+    # 120 (the June quarter's value is in force from 1 April).
+    assert blend == pytest.approx((100.0 * 270 + 120.0 * 95) / 365)
+    assert months == ("2024-06", "2024-09", "2024-12", "2025-03", "2025-06")
+    # The last published value holds after its quarter.
+    held, _ = uk_bus_fares_index_fiscal_year_blend(series, 2025)
+    assert held == pytest.approx(120.0)
+    with pytest.raises(ValueError, match="in force"):
+        uk_bus_fares_index_fiscal_year_blend({"2024-09": (100.0, "c")}, 2024)
+    with pytest.raises(ValueError, match="does not end a quarter"):
+        uk_bus_fares_index_fiscal_year_blend({"2024-05": (100.0, "x")}, 2024)
+    # On the vendored June 2026 BUS0415a release, the factors from 2024-25 to
+    # 2025-26 match the engine's index (#2546: +12.6% outside London on the
+    # April-to-March basis; London's fares held).
+    factors = uk_bus_fare_alignment_factors(2024, 2025)
+    assert round(factors["ENGLAND_OUTSIDE_LONDON"], 3) == 1.126
+    assert round(factors["LONDON"], 4) == 1.0
 
 
 def _vendored_index_rows(geography: dict, values: dict[str, float]) -> list[dict]:
@@ -285,7 +361,29 @@ def _vendored_index_rows(geography: dict, values: dict[str, float]) -> list[dict
     ]
 
 
+def _vendored_receipt_row(geography: dict, value: float) -> dict:
+    """A BUS05ai receipts row in the vendored-resource shape (2024-25)."""
+
+    return {
+        "concept": "dft.local_bus_passenger_fare_receipts",
+        "geography": geography,
+        "period": {"type": "fiscal_year", "value": 2025},
+        "period_coverage": {
+            "start_date": "2024-04-01",
+            "end_date": "2025-03-31",
+            "basis": "fiscal",
+        },
+        "value": value,
+        "source_record_id": f"probe.dft.receipts.{geography['id']}",
+    }
+
+
 def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> None:
+    """María's ruling of 2026-10-21 (microcosm#1331): the engine's window, area by area.
+
+    London's receipts move by London's series and England's as London's plus
+    England outside London's, each blended over 6 April to 5 April.
+    """
     from microcosm.build.ledger_targets import (
         LedgerTargetReference,
         compile_ledger_target_references,
@@ -296,14 +394,20 @@ def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> N
     )
 
     england = {"id": "E92000001", "level": "country", "vintage": "current"}
+    london = {"id": "E12000007", "level": "region", "vintage": "current"}
+    outside = {"id": "dft:england_outside_london", "level": "country"}
     coverage = {"start_date": "2024-04-01", "end_date": "2025-03-31", "basis": "fiscal"}
-    fare = _fare_fact(
-        "dft.local_bus_passenger_fare_receipts",
-        england,
-        {"type": "fiscal_year", "value": 2025},
-        1_000.0,
-        coverage=coverage,
-    )
+
+    def receipts(geography: dict, value: float) -> dict:
+        return _fare_fact(
+            "dft.local_bus_passenger_fare_receipts",
+            geography,
+            {"type": "fiscal_year", "value": 2025},
+            value,
+            coverage=coverage,
+        )
+
+    fare = receipts(england, 1_000.0)
     support = _fare_fact(
         "dft.local_bus_total_estimated_net_support",
         england,
@@ -311,29 +415,28 @@ def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> N
         500.0,
         coverage=coverage,
     )
-    index = _vendored_index_rows(
-        england,
-        {
-            "2024-03": 100.0,
-            "2024-06": 100.0,
-            "2024-09": 100.0,
-            "2024-12": 100.0,
-            "2025-03": 120.0,
-            "2025-06": 120.0,
-            "2025-09": 120.0,
-            "2025-12": 120.0,
-        },
+    flat = dict.fromkeys(
+        ("2024-03", "2024-06", "2024-09", "2024-12", "2025-03"), 100.0
+    ) | dict.fromkeys(("2025-06", "2025-09", "2025-12", "2026-03"), 100.0)
+    rising = dict.fromkeys(("2024-03", "2024-06", "2024-09", "2024-12"), 100.0) | (
+        dict.fromkeys(("2025-03", "2025-06", "2025-09", "2025-12", "2026-03"), 120.0)
     )
+    index = _vendored_index_rows(london, flat) + _vendored_index_rows(outside, rising)
+    split = [
+        _vendored_receipt_row(london, 400.0),
+        _vendored_receipt_row(outside, 600.0),
+    ]
 
     def reference(name: str, concept: str, **extra: object) -> LedgerTargetReference:
+        geography = extra.pop("geography", england)
         return LedgerTargetReference(
             name=name,
             ledger_selector={
                 "source_name": "dft",
                 "source_concept": concept,
                 "period_type": "fiscal_year",
-                "geography_level": "country",
-                "geography_id": "E92000001",
+                "geography_level": geography["level"],
+                "geography_id": geography["id"],
             },
             entity="household",
             measure=name,
@@ -359,25 +462,53 @@ def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> N
     assert fares.specs[0].metadata["uprating_index"] == "dft.local_bus_fares_index"
     assert fares.specs[0].value == 1_000.0
     aligned = align_dft_bus_fare_receipts_to_period(
-        fare_reference, fares, index_rows=index
+        fare_reference, fares, index_rows=index, receipt_rows=split
     )
     (spec,) = aligned.specs
-    # from-window mean = (100+100+100+120)/4 = 105; to-window mean = 120
-    assert spec.value == pytest.approx(1_000.0 * 120.0 / 105.0)
-    assert spec.metadata["uprating_index"] == "dft.local_bus_fares_index"
+    # Outside London 2024-25 blends 270 days at 100 and 95 at 120, and 2025-26
+    # is 120 throughout; London's series is flat. England's receipts are 400
+    # London and 600 outside London.
+    outside_factor = 120.0 / ((100.0 * 270 + 120.0 * 95) / 365)
+    assert outside_factor == pytest.approx(1.140625)
+    assert spec.value == pytest.approx(400.0 + 600.0 * outside_factor)
+    assert spec.metadata["uprating_factor"] == f"{spec.value / 1_000.0:.15g}"
     assert spec.metadata["uprating_index_resource"] == "dft_bus_value_anchors.json"
     assert (
-        spec.metadata["uprating_index_from_months"] == "2024-06,2024-09,2024-12,2025-03"
+        spec.metadata["uprating_index_series_geography_id"]
+        == "E12000007,dft:england_outside_london"
     )
-    assert (
-        spec.metadata["uprating_index_to_months"] == "2025-03,2025-06,2025-09,2025-12"
+    areas = json.loads(spec.metadata["uprating_index_areas"])
+    assert float(areas["E12000007"]["receipts_share"]) == pytest.approx(0.4)
+    assert float(areas["dft:england_outside_london"]["factor"]) == pytest.approx(
+        outside_factor
     )
+    assert areas["dft:england_outside_london"]["to_months"] == [
+        "2025-06",
+        "2025-09",
+        "2025-12",
+        "2026-03",
+    ]
     assert spec.metadata["ledger_value_before_alignment"] == "1000"
-    assert spec.metadata["uprating_factor"] == f"{120.0 / 105.0:.15g}"
+    assert "microcosm#1331" in spec.metadata["uprating_adjudication"]
     assert (
-        "probe.dft.local_bus_fares_index.E92000001.2025-12"
-        in (spec.metadata["uprating_index_source_record_ids"])
+        "probe.dft.local_bus_fares_index.dft:england_outside_london.2026-03"
+        in spec.metadata["uprating_index_source_record_ids"]
     )
+    # London alone moves by its own series.
+    london_reference = reference(
+        "london_fares",
+        "dft.local_bus_passenger_fare_receipts",
+        uprating_index="dft.local_bus_fares_index",
+        geography=london,
+    )
+    london_fares = compile_ledger_target_references(
+        [receipts(london, 400.0)], [london_reference], country="uk"
+    )
+    (london_spec,) = align_dft_bus_fare_receipts_to_period(
+        london_reference, london_fares, index_rows=index
+    ).specs
+    assert london_spec.value == pytest.approx(400.0)
+    assert london_spec.metadata["uprating_index_series_geography_id"] == "E12000007"
 
     supports = compile_ledger_target_references(
         [support], [support_reference], country="uk"
@@ -390,9 +521,23 @@ def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> N
     assert "uprating_factor" not in untouched.specs[0].metadata
     assert apply_declared_uk_uprating(support_reference, supports) is supports
 
-    with pytest.raises(ValueError, match="lacks quarter-end month"):
+    # The parts must add up to England, and each series must be in force.
+    with pytest.raises(ValueError, match="do not sum to England"):
         align_dft_bus_fare_receipts_to_period(
-            fare_reference, fares, index_rows=index[:-1]
+            fare_reference,
+            fares,
+            index_rows=index,
+            receipt_rows=[
+                _vendored_receipt_row(london, 400.0),
+                _vendored_receipt_row(outside, 601.0),
+            ],
+        )
+    late = _vendored_index_rows(london, flat) + _vendored_index_rows(
+        outside, {month: value for month, value in rising.items() if month > "2024-06"}
+    )
+    with pytest.raises(ValueError, match="in force"):
+        align_dft_bus_fare_receipts_to_period(
+            fare_reference, fares, index_rows=late, receipt_rows=split
         )
     # The index transports fare receipts only; declaring it on another
     # concept is a contract error, as is an index no UK applier implements.
@@ -456,7 +601,7 @@ def test_bus0415_alignment_from_the_vendored_series() -> None:
         if reference.family == "dft_local_bus"
     }
     membership = _resource("target_reference_membership.json")
-    expected_factor = {"E92000001": 204.125 / 193.125, "E12000007": 1.0}
+    expected_factor = {"E92000001": _ENGLAND_FACTOR, "E12000007": _LONDON_FACTOR}
     for name, geography_id, groupby in (
         ("dft.bus_fare_receipts.england", "E92000001", "england"),
         ("dft.bus_fare_receipts.london", "E12000007", "london"),
@@ -520,11 +665,54 @@ def test_bus0415_alignment_on_the_pinned_feed() -> None:
     )
     england = specs["dft.bus_fare_receipts.england"]
     london = specs["dft.bus_fare_receipts.london"]
-    assert float(england.metadata["uprating_factor"]) == pytest.approx(
-        204.125 / 193.125
-    )
-    assert england.value == pytest.approx(3_417_388_656.43538 * 204.125 / 193.125)
-    assert float(london.metadata["uprating_factor"]) == pytest.approx(1.0)
-    assert london.value == pytest.approx(1_347_434_943.01459)
+    assert float(england.metadata["uprating_factor"]) == pytest.approx(_ENGLAND_FACTOR)
+    assert england.value == pytest.approx(_ENGLAND_RECEIPTS * _ENGLAND_FACTOR)
+    assert float(london.metadata["uprating_factor"]) == pytest.approx(_LONDON_FACTOR)
+    assert london.value == pytest.approx(_LONDON_RECEIPTS * _LONDON_FACTOR)
     assert "uprating_factor" not in specs["dft.bus_net_support.england"].metadata
     assert "uprating_factor" not in specs["dft.bus_net_support.london"].metadata
+
+
+def _journey_rows() -> dict[str, dict]:
+    return {
+        row["target_id"]: row
+        for row in _resource("uk_population_targets.json")["targets"]
+        if row["family"] == BUS_JOURNEYS_FAMILY
+    }
+
+
+def test_bus_journey_rows_select_bus01a_by_english_region() -> None:
+    """BUS01a journeys for London and the eight other regions (#1207)."""
+
+    journeys = _journey_rows()
+    assert set(journeys) == {f"dft.bus_journeys.{area}" for area in BUS_JOURNEY_AREAS}
+    for row in journeys.values():
+        selector = row["ledger_selector"]
+        assert selector["source_concept"] == "dft.local_bus_passenger_journeys"
+        assert selector["source_measure_id"] == "passenger_journeys"
+        # BUS01c's concessionary rows share the concept and carry a journey
+        # category; BUS01a's carry none.
+        assert selector["dimensions"] == []
+        # No year is pinned in the selector: the row's uprating_index holds
+        # it at the year the stage prices from and refuses another
+        # (microcosm#1207 review round 1).
+        assert "period_value" not in selector
+        assert row["uprating_index"] == "dft.bus01.stage_pricing_year"
+        assert selector["layout_groupby_value_id"] in BUS_JOURNEY_AREAS
+    london = journeys["dft.bus_journeys.london"]["bindings"]["policyengine"]
+    assert london["value_variable"] == "bus_in_london_boardings"
+    # London's buses carry every resident's bus-in-London trips.
+    assert "filters" not in london
+    for target_id, row in journeys.items():
+        if target_id == "dft.bus_journeys.london":
+            continue
+        binding = row["bindings"]["policyengine"]
+        assert binding["value_variable"] == "other_local_bus_boardings"
+        assert [f["variable"] for f in binding["filters"]] == ["region"]
+
+
+def test_bus_journey_rows_are_active_references() -> None:
+    references = {
+        row["name"] for row in _resource("target_references.json")["target_references"]
+    }
+    assert set(_journey_rows()) <= references

@@ -126,10 +126,11 @@ Canonical artifact keys:
 | `coverage_engine`, `coverage_manifest` (optional override) | the UK national build | `release_input_coverage`, both phases |
 | `build_stage_names` | the UK national build preflight | `source_coverage` |
 | `parity_evidence` | the UK national build | `export_surface`, `target_surface`, `target_fit` |
-| `input_mass_reference` | the UK national build, when the licensed sidecar is supplied | `input_mass_parity` (UK override) |
+| `reference_surface` | the UK release cut (`--reference-surface`), and the dense build when given one | `export_surface` (the reference's exported columns), `release_input_coverage` (the inputs it carries), microcosm#1095 |
+| `input_mass_reference` | the UK release cut and the dense build: the current build's totals and carriers, from the cut's reference step | `input_mass_parity` (UK override) |
 | `reviewed_input_mass_exclusions` (optional override) | the UK national build | `input_mass_parity` (UK override) |
-| `reviewed_qrf_tail_exclusions` (optional override) | the UK national build | `tail_concentration` (UK override) |
-| `uk_area_support_summary`, `exclusions_evaluated_on` | the UK local rowwise build | `area_support` (UK binding; reviewed exclusions carry measured shortfalls and stale entries fail) |
+| `uk_area_support_summary`, `exclusions_evaluated_on` | the UK local rowwise build | `area_support` (UK binding; reviewed exclusions state the area's figures beside the floors it misses, and stale entries fail; they are gate-only and defer none of the area's cells, microcosm#1301) |
+| `local_target_diagnostics`, `exclusions_evaluated_on` | the UK local rowwise build | `per_family_fit` (the diagnostics only); `target_fit` on `surface: local_candidate` (UK binding; the local cells stand on `local_target_fit_reviewed_exclusions.json`, keyed `family/area_code/metric`, which lifts the fence only and is evaluated on the build's review date, microcosm#1301) |
 | `cgt_projection` | the UK calibration seam: read from the installed engine's growth path and exempt amounts, or stated from the manifest pins when no engine is installed (the receipt's `projection_engine` names the source, and the release certifier refuses a seam part whose fence read the pins) | `cgt_projection_entrants` (UK binding; the count is a cumulative stock by year, the bound is the vendored HMRC thin-band taxpayer count as a plausibility ceiling, and the growth path and exempt amount are pinned in the manifest and drift-checked, microcosm#970) |
 
 The UK registry
@@ -139,8 +140,9 @@ reference implementation of a country registry. Its bindings adapt the
 reviewed policy objects from the frozen declared parameters, hold
 runtime-supplied references to the spec-declared pins, declare the
 parameter vocabulary each evaluator can route (so a stray key is refused
-at arm time, not discovered mid-battery), and re-mint exactly
-two UK-flavored result names onto the shared vocabulary. Every verdict
+at arm time, not discovered mid-battery), and re-mint the
+UK-flavored result names of the legacy evaluators onto the shared
+vocabulary. Every verdict
 is computed by the existing UK gate functions — a binding adapts
 evidence; it never re-implements a comparison. The differential test
 (`tests/test_uk_battery_bindings.py`) holds the battery's verdicts equal
@@ -227,9 +229,9 @@ stretches on declaration alone:
 | | BE | UK |
 | --- | --- | --- |
 | phases | `terminal` | `preflight`, `assembled`, `transferred`, `terminal` |
-| entries | 9 | 43 (37 national-build entries plus 6 local-candidate entries) |
-| incumbent posture | none — incumbent-comparison gates deliberately not selected; external oracles replace self-parity | full — export/target parity against the pinned enhanced-FRS incumbent |
-| criticality mix | 8 blocking + 1 diagnostic | 39 blocking + 4 local diagnostics |
+| entries | 9 | 73 (64 national-build entries, 7 local-candidate entries and 2 local diagnostics) |
+| incumbent posture | none — incumbent-comparison gates deliberately not selected; external oracles replace self-parity | full — export surface, input coverage and input mass against the current build of the cut's own line (microcosm#1095; until then the pinned enhanced-FRS incumbent) |
+| criticality mix | 8 blocking + 1 diagnostic | 71 blocking + 2 local diagnostics |
 
 The differences are entirely in the two country inputs — the spec file
 and the registry — which is the point. The UK national build is the
@@ -240,7 +242,7 @@ remains spec-only.
 
 UK evaluates the declaration through four producer scopes: spine,
 calibration seam, national release cut, and local candidate. The first three
-compose the national release certification. The six local-candidate entries
+compose the national release certification. The seven local-candidate entries
 are explicitly classified as excluded from that certification until the
 local publication work in #146; they are evaluated in their own signed
 `local_candidate` report rather than silently disappearing from union
@@ -256,15 +258,21 @@ inputs — never implicit module state.** A country picks its reference on
 purpose and cannot silently inherit a mis-referenced comparison.
 
 The UK input-mass entry is the worked case. Its `parameters` declare the
-active `reference`, the closed `reference_registry` of named identities plus
-`totals_sha256` pins, the numeric thresholds, and the
-`reviewed_exclusions_resource` for the schema-3 per-reference register. The
-UK binding holds the runtime-supplied reference sidecar to the active named
-descriptor, failing closed on identity or totals-digest drift; an exclusion
-suppresses only for the active reference block. The export-surface entry declares its
-reviewed comparison registers the same way (the allowed-extra column list
-and the reviewed reference-side exclusions), with the hard-required,
-never-waivable columns remaining a code-level guard noted in the entry.
+active `reference` kind, `current_build` (microcosm#1095): the current build
+of the cut's own line, which the cut's reference step resolves from the
+Hub's `releases.json` and records, so the spec commits to the rule and the
+cut's record to the build. They also declare the numeric thresholds and the
+`reviewed_exclusions_resource` for the schema-3 per-reference register, whose
+blocks are keyed by the reference's `<release>@<build>` label; an exclusion
+suppresses only for the reference it names. The export-surface entry declares
+its reviewed comparison registers the same way (the allowed-extra column
+list, now only what the current national build does not export, and the
+reviewed reference-side exclusions), with the hard-required, never-waivable
+columns remaining a code-level guard noted in the entry. The input-coverage
+entry requires what the reference carries, less the coverage manifest's
+reviewed exclusions. Until microcosm#1095 all three compared with the pinned
+enhanced FRS, through a closed registry of named identities with
+`totals_sha256` pins.
 
 ## The onboarding checklist: every input a country supplies
 

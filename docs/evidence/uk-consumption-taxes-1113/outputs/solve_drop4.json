@@ -1,0 +1,13 @@
+{
+ "arm": "drop4",
+ "closing_loss": 0.008128118734292082,
+ "families": 24,
+ "masked": [
+  "obr.fuel_duties_cars@2025",
+  "obr.vat@2025",
+  "ons.household_electricity_expenditure@2025",
+  "ons.household_gas_expenditure@2025"
+ ],
+ "rows": 1086,
+ "seconds": 144.9
+}
