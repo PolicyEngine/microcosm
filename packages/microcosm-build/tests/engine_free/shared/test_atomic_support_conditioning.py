@@ -326,6 +326,8 @@ LADDER = (
 #: Each household input to the support column it must match.
 CONSTRAINTS = {"region": "region", "draw_decile": "decile"}
 RULE = {"input": "band", "map": {"x": "households_x", "y": "households_y"}}
+#: Two codes that share one weight column.
+SHARED_RULE = {"input": "band", "map": {"x": "households_y", "y": "households_y"}}
 NO_LEVEL = (
     "Atomic support conditioning: a household has no fallback level whose "
     "inputs are present and whose cell has sampling mass"
@@ -441,13 +443,21 @@ def test_a_household_whose_cell_has_only_households_takes_level_one():
     assert _choose(rows) == ["L1", "L1"]
 
 
-def test_a_missing_decile_falls_to_the_region_levels():
+@pytest.mark.parametrize("missing", [None, np.nan, pd.NA], ids=["None", "nan", "NA"])
+@pytest.mark.parametrize(
+    "dtype",
+    [object, "string", "str", "category"],
+    ids=["object", "string", "str", "category"],
+)
+def test_a_missing_decile_falls_to_the_region_levels(missing, dtype):
+    """A missing input reads as missing whichever way a frame holds it: None,
+    NaN or pd.NA, in object, StringDtype, pandas' str or category columns."""
     rows = _households(
-        ("north", None, "x"),  # band x has mass in the north: L2
-        ("south", None, "x"),  # but none in the south: L3
-        ("north", None, None),  # no band either: L3
-        ("north", "1", None),  # a decile and no band: L1
-    )
+        ("north", missing, "x"),  # band x has mass in the north: L2
+        ("south", missing, "x"),  # but none in the south: L3
+        ("north", missing, missing),  # no band either: L3
+        ("north", "1", missing),  # a decile and no band: L1
+    ).astype(dtype)
     assert _choose(rows) == ["L2", "L3", "L3", "L1"]
 
 
@@ -467,6 +477,61 @@ def test_a_household_no_level_takes_is_refused_naming_no_count_or_value(row):
 
 def test_without_households_the_chooser_returns_no_level():
     assert _choose(_households()) == []
+
+
+def test_two_codes_sharing_a_weight_column_both_read_it():
+    # households_y has mass only in a2 (south, 1).
+    rows = _households(("south", "1", "x"), ("south", "1", "y"), ("north", "1", "y"))
+    assert _choose(rows, weight_by=SHARED_RULE) == ["L0", "L0", "L1"]
+
+
+def test_identical_levels_take_the_first_name():
+    levels = (
+        FallbackLevel("first", ("region",), weight_by=False),
+        FallbackLevel("second", ("region",), weight_by=False),
+    )
+    assert _choose(_households(("north", "1", "x")), levels=levels) == ["first"]
+
+
+@pytest.mark.parametrize("spelled", ["nan", "None", "<NA>"])
+def test_a_missing_input_never_matches_a_code_spelled_like_missing(spelled):
+    support = _conditioned(
+        region=("north", "north"), decile=(spelled, "2"), households=(5, 0)
+    )
+    rows = _households(
+        ("north", None, None), ("north", np.nan, None), ("north", pd.NA, None)
+    )
+    levels = (
+        FallbackLevel("decile", ("region", "draw_decile"), weight_by=False),
+        FallbackLevel("region", ("region",), weight_by=False),
+    )
+    assert _choose(rows, support, weight_by=None, levels=levels) == ["region"] * 3
+
+
+def test_the_default_weight_is_the_declared_column():
+    # The south has dwellings but no households.
+    support = _conditioned(
+        region=("north", "south"),
+        decile=("1", "1"),
+        households=(4, 0),
+        dwellings=(0, 3),
+    )
+    levels = (FallbackLevel("region", ("region",), weight_by=False),)
+    rows = _households(("south", "1", None))
+    chosen = _choose(
+        rows, support, weight_by=None, default_weight="dwellings", levels=levels
+    )
+    assert chosen == ["region"]
+
+
+def test_inputs_follow_constraint_columns_not_their_own_names():
+    # The input "region" matches the support's decile column and "draw_decile"
+    # its region column: (decile 1, north) is a0, which has households.
+    swapped = {"region": "decile", "draw_decile": "region"}
+    levels = (FallbackLevel("both", ("region", "draw_decile"), weight_by=False),)
+    rows = _households(("1", "north", None))
+    chosen = _choose(rows, weight_by=None, levels=levels, constraint_columns=swapped)
+    assert chosen == ["both"]
 
 
 def test_the_vectorised_choice_equals_a_per_row_loop():
@@ -511,6 +576,9 @@ _RUNGS = tuple(
     for constraints in ((), ("region",), ("draw_decile",), ("region", "draw_decile"))
     for weighted in (True, False)
 )
+#: The rules besides RULE an invented ladder may sample by: one that maps a
+#: single code, and one whose two codes share a weight column.
+_RULES = ({"input": "band", "map": {"x": "households_y"}}, SHARED_RULE)
 
 
 @st.composite
@@ -552,15 +620,13 @@ def _invented(draw):
         },
         dtype=object,
     )
-    rule = draw(
-        st.sampled_from((None, RULE, {"input": "band", "map": {"x": "households_y"}}))
-    )
+    rule = draw(st.sampled_from((None, RULE, *_RULES)))
+    # A rung may repeat, so a tie between identical levels goes to the first.
     rungs = draw(
         st.lists(
             st.sampled_from([r for r in _RUNGS if rule is not None or not r[1]]),
             min_size=1,
             max_size=4,
-            unique=True,
         )
     )
     levels = tuple(
@@ -687,6 +753,11 @@ def test_on_invented_supports_the_draw_meets_mass_at_the_chosen_level_only(inven
         ({"default_weight": "decile"}, "default_weight must be"),
         ({"weight_by": {"input": "band", "map": {"x": "decile"}}}, "weight_by must"),
         ({"weight_by": {**RULE, "default": "households"}}, "weight_by must"),
+        # The draw would read the region for its weight at every level.
+        (
+            {"weight_by": {"input": "region", "map": {"north": "households_x"}}},
+            "must not also be a constraint input",
+        ),
         ({"levels": ()}, "nonempty sequence"),
         (
             {
@@ -716,6 +787,16 @@ def test_the_chooser_refuses_declarations_it_cannot_read(overrides, message):
 def test_the_chooser_refuses_missing_inputs_and_malformed_codes(households, message):
     with pytest.raises(ValueError, match=message):
         _choose(households)
+
+
+def test_a_repeated_input_column_is_refused_naming_no_count():
+    rows = _households(("north", "1", "x"), ("south", "1", "y"))
+    rows = pd.concat([rows, rows[["draw_decile"]]], axis=1)
+    with pytest.raises(ValueError) as refused:
+        _choose(rows)
+    assert str(refused.value) == (
+        "Atomic support conditioning: households repeat an input column"
+    )
 
 
 @pytest.mark.parametrize(
