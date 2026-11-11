@@ -3,11 +3,17 @@
 
 Three local steps; none publishes, stages or calibrates:
 
-- ``fetch-parent``: download a published parent's ``releases/<id>/`` files and
-  root artifacts at its immutable tag, and check every pinned digest.
-- ``build``: package a pending ``compatibility_recertification`` candidate. The
-  parent's H5 and every other artifact are hard-linked (copied only across
-  devices) or copied byte for byte; nothing is derived. The contract runs
+- ``fetch-parent``: download a published parent and check every pinned
+  digest: a build in a build folder (``--release`` and ``--build-id``) at
+  ``main`` from ``releases/<release>/<build>/``, or a build that keeps only
+  its tag (``--build-id``) at that tag from ``releases/<id>/`` and the root
+  artifacts it names.
+- ``build``: package a pending ``compatibility_recertification`` candidate, a
+  build of the national release (``microcosm-us-2024-national``) with the
+  given build ID. The parent's H5 (under the release's dataset file name,
+  ``microcosm_us_2024.h5``) and every other artifact are hard-linked (copied
+  only across devices) or copied byte for byte; nothing is derived. The
+  manifests are written in the build-folder layout and the contract runs
   before the directory is exposed, atomically.
 - ``score``: score the candidate's H5 under the installed policyengine-us,
   in household batches, for every metric
@@ -43,8 +49,13 @@ from pathlib import Path
 if __name__ == "__main__" and sys.pycache_prefix is None:
     sys.pycache_prefix = tempfile.mkdtemp(prefix="recertification-pycache-")
 
+from microcosm.data import (  # noqa: E402
+    build_folder_manifests,
+    contract,
+    source_enrichment,
+    stored_inputs,
+)
 from microcosm.data import compatibility_recertification as recert  # noqa: E402
-from microcosm.data import contract, source_enrichment, stored_inputs  # noqa: E402
 
 _PRODUCER_FILES = recert.PRODUCER_SOURCE_FILES
 _ROOT = Path(__file__).resolve().parents[1]
@@ -65,6 +76,7 @@ def _producer_identity() -> dict:
                 source_enrichment.__file__,
                 stored_inputs.__file__,
                 contract.__file__,
+                build_folder_manifests.__file__,
             ),
             strict=True,
         )
@@ -104,52 +116,112 @@ def _producer_identity() -> dict:
 
 
 def fetch_parent(
-    *, release_id: str, output_dir: Path, repo_id: str = recert.REPO_ID
+    *,
+    build_id: str,
+    output_dir: Path,
+    release: str | None = None,
+    repo_id: str = recert.REPO_ID,
+    api=None,
 ) -> dict:
-    """Download a published parent at its tag into ``output_dir``; verify it."""
+    """Download a published parent into ``output_dir``; verify it.
 
-    from huggingface_hub import HfApi, hf_hub_download
+    With ``release``, the parent is a build in a build folder, read at
+    ``main`` from ``releases/<release>/<build_id>/`` into
+    ``output_dir/releases/<release>/``. Without it, the parent keeps only its
+    tag and is read at that tag from ``releases/<build_id>/`` (its release
+    files) and the repository root (its root artifacts) into
+    ``output_dir/releases/<build_id>/``. Each directory is named as the
+    parent's contract needs. The H5 and the other root artifacts go to
+    ``output_dir/artifacts/``; in a build folder those are the dataset and
+    the calibration weights. ``api`` is the Hub client
+    (``huggingface_hub.HfApi()`` by default).
+    """
 
-    # Validated before anything is created, so an id cannot place directories
-    # outside output_dir (Sol r5 note).
-    if recert._PARENT_ID.fullmatch(release_id) is None:
-        raise ValueError(f"{release_id!r} is not a US release id")
+    # Validated before anything is created, so neither name can place
+    # directories outside output_dir (Sol r5 note).
+    if recert._PARENT_ID.fullmatch(build_id) is None:
+        raise ValueError(f"{build_id!r} is not a US build ID")
+    if release is not None and not recert._is_build_folder_us_release(release):
+        raise ValueError(
+            f"{release!r} is not a US release that publishes into build folders"
+        )
+    reference = (
+        {"repo_id": repo_id, "release": release, "build": build_id}
+        if release is not None
+        else {"repo_id": repo_id, "build_id": build_id, "revision": build_id}
+    )
+    location = build_folder_manifests.referenced_build(reference)
     if output_dir.exists():
         raise FileExistsError(f"{output_dir} exists; choose a new directory")
-    release_dir = output_dir / "releases" / release_id
+    if api is None:
+        from huggingface_hub import HfApi
+
+        api = HfApi()
+    release_dir = output_dir / "releases" / (release or build_id)
     artifact_root = output_dir / "artifacts"
+    downloads = output_dir / ".downloads"
     release_dir.mkdir(parents=True)
     artifact_root.mkdir()
 
     def download(path_in_repo: str, destination: Path) -> None:
-        local = hf_hub_download(
-            repo_id,
-            path_in_repo,
-            repo_type="dataset",
-            revision=release_id,
-            local_dir=destination,
+        local = Path(
+            api.hf_hub_download(
+                repo_id=repo_id,
+                filename=path_in_repo,
+                repo_type="dataset",
+                revision=location.revision,
+                local_dir=downloads,
+            )
         )
-        if not Path(local).is_file():
+        if not local.is_file():
             raise FileNotFoundError(path_in_repo)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(local, destination)
 
-    prefix = f"releases/{release_id}/"
-    for name in ("release_manifest.json", "build_manifest.json"):
-        download(prefix + name, output_dir)
-    manifest = json.loads((release_dir / "release_manifest.json").read_text())
-    # A release file is one the Hub serves under releases/<id>/ at the tag; the
-    # rest are root artifacts, as the publisher uploaded them.
-    published = {
-        Path(item.path).name
-        for item in HfApi().list_repo_tree(
-            repo_id, repo_type="dataset", revision=release_id, path_in_repo=prefix
-        )
-    }
-    for entry in manifest.get("artifacts", {}).values():
-        path = entry["path"]
-        if Path(path).name == path and path in published:
-            download(prefix + path, output_dir)
+    prefix = f"{location.folder}/"
+    try:
+        for name in ("release_manifest.json", "build_manifest.json"):
+            download(prefix + name, release_dir / name)
+        manifest = json.loads((release_dir / "release_manifest.json").read_text())
+        artifacts = dict(manifest.get("artifacts", {}))
+        for key, entry in artifacts.items():
+            path = entry["path"]
+            # Checked before the path is joined to a local directory.
+            if not recert._publishable_parent_path(path) or (
+                release is not None and Path(path).name != path
+            ):
+                raise ValueError(f"parent artifact {key!r} path {path!r} is unsafe")
+        if release is not None:
+            # Every file is in the build folder; the H5 and the calibration
+            # weights go beside the release directory, as a build keeps them.
+            for key, entry in artifacts.items():
+                role = contract.release_artifact_role(key, entry.get("kind"))
+                beside = role in {
+                    contract.DATASET_FILE_ROLE,
+                    contract.CALIBRATION_WEIGHTS_FILE_ROLE,
+                }
+                target = artifact_root if beside else release_dir
+                download(prefix + entry["path"], target / entry["path"])
         else:
-            download(path, artifact_root)
+            # A release file is one the Hub serves under releases/<id>/ at the
+            # tag; the rest are root artifacts, as the publisher uploaded them.
+            published = {
+                Path(item.path).name
+                for item in api.list_repo_tree(
+                    repo_id=repo_id,
+                    path_in_repo=prefix,
+                    repo_type="dataset",
+                    revision=location.revision,
+                )
+            }
+            for entry in artifacts.values():
+                path = entry["path"]
+                if Path(path).name == path and path in published:
+                    download(prefix + path, release_dir / path)
+                else:
+                    download(path, artifact_root / path)
+    finally:
+        shutil.rmtree(downloads, ignore_errors=True)
     return recert.describe_parent(release_dir, artifact_root)
 
 
@@ -191,34 +263,46 @@ def build_candidate(
     parent_release_dir: Path,
     parent_artifact_root: Path,
     output_dir: Path,
-    release_id: str,
+    build_id: str,
 ) -> dict:
-    """Package a pending recertification of the parent; return its report."""
+    """Package a pending recertification of the parent; return its report.
+
+    The candidate is ``output_dir/releases/<release>/``, a build of the
+    national release named ``build_id``, and ``output_dir/artifacts/``, which
+    holds the parent's root artifacts with the H5 under the release's dataset
+    file name. Its manifests are built in the tagged shape and rewritten into
+    the build-folder layout before the contract runs.
+    """
 
     parent = recert.describe_parent(parent_release_dir, parent_artifact_root)
+    parent_id = recert.parent_build_id(parent)
+    release = recert.CHILD_RELEASE
     if (
-        not release_id.startswith(recert.US_RELEASE_PREFIX)
-        or Path(release_id).name != release_id
-        or release_id == parent["build_id"]
-        or "\\" in release_id
+        not build_id.startswith(recert.US_RELEASE_PREFIX)
+        or Path(build_id).name != build_id
+        or build_id == parent_id
+        or "\\" in build_id
     ):
-        raise ValueError("Choose a new bare US release id for the recertification")
+        raise ValueError("Choose a new bare US build ID for the recertification")
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError("Output directory already exists; choose a new candidate")
     producer = _producer_identity()
     parent_manifest = json.loads(
         (parent_release_dir / "release_manifest.json").read_text()
     )
+    dataset = recert.child_dataset(parent, release)
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".recertification-", dir=output_dir.parent))
     try:
         os.chmod(staging, 0o700)
-        release_dir = staging / "releases" / release_id
+        release_dir = staging / "releases" / release
         release_dir.mkdir(parents=True, mode=0o700)
         artifact_root = staging / "artifacts"
         artifact_root.mkdir(mode=0o700)
         for path in parent["root_artifacts"]:
-            destination = artifact_root / path
+            destination = artifact_root / recert.child_artifact_path(
+                parent, release, path
+            )
             # describe_parent refuses '..'; containment is checked again here,
             # before anything is created, so no path can place a file outside
             # the staging directory (Sol r3 finding 3).
@@ -240,7 +324,7 @@ def build_candidate(
             "schema_version": recert.REPORT_SCHEMA_VERSION,
             "release_type": recert.RECERTIFICATION_RELEASE_TYPE,
             "parent": parent,
-            "dataset": parent["dataset"],
+            "dataset": dataset,
             "transformation": "none",
             "parent_contract": recert.replay_parent_contract(
                 release_dir, parent, artifact_root=artifact_root
@@ -256,14 +340,14 @@ def build_candidate(
         recert.write_json(
             release_dir / "build_manifest.json",
             {
-                "build_id": release_id,
+                "build_id": build_id,
                 "release_type": recert.RECERTIFICATION_RELEASE_TYPE,
-                "recertified_from": parent["build_id"],
+                "recertified_from": parent_id,
                 "code": producer,
-                "dataset": parent["dataset"],
+                "dataset": dataset,
                 "calibration": {
                     "mode": "inherited",
-                    "parent_build_id": parent["build_id"],
+                    "parent_build_id": parent_id,
                     "diagnostics_sha256": parent["release_files"][
                         "calibration_diagnostics.json"
                     ],
@@ -274,7 +358,7 @@ def build_candidate(
                 },
             },
         )
-        parent_build = parent_manifest["build"]
+        parent_build = recert.build_details(parent_manifest)
         manifest = {
             key: parent_manifest[key]
             for key in (
@@ -287,14 +371,18 @@ def build_candidate(
             )
             if key in parent_manifest
         }
+        manifest["default_datasets"] = {
+            **parent_manifest.get("default_datasets", {}),
+            "national": dataset["artifact"],
+        }
         manifest["release_type"] = recert.RECERTIFICATION_RELEASE_TYPE
         manifest["data_package"] = {
             "name": "microcosm-data",
             "version": metadata.version("microcosm-data"),
         }
         manifest["build"] = {
-            "build_id": release_id,
-            "recertified_from": parent["build_id"],
+            "build_id": build_id,
+            "recertified_from": parent_id,
             **{
                 key: parent_build[key]
                 for key in (
@@ -305,19 +393,19 @@ def build_candidate(
                 if key in parent_build
             },
         }
-        artifacts = {}
-        for key, entry in parent_manifest["artifacts"].items():
-            artifacts[key] = {**entry, "revision": release_id}
+        artifacts = recert.carried_artifacts(parent_manifest, parent, release)
         for key, name in recert.CHILD_ARTIFACT_KEYS.items():
-            artifacts[key] = {
-                "kind": "evidence",
-                "path": name,
-                "repo_id": recert.REPO_ID,
-                "revision": release_id,
-                "sha256": recert.sha256_file(release_dir / name),
-            }
+            artifacts[key] = recert.child_artifact_entry(
+                key,
+                name,
+                kind="evidence",
+                sha256=recert.sha256_file(release_dir / name),
+            )
         manifest["artifacts"] = artifacts
         recert.write_json(release_dir / "release_manifest.json", manifest)
+        # Release and build as strings, the build object's fields at the top
+        # level, no build_id; the release directory is named after the release.
+        build_folder_manifests.rewrite_release_dir(release_dir, build=build_id)
         for path in release_dir.iterdir():
             path.chmod(0o400)
         recert.validate_recertification_candidate(
@@ -767,14 +855,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     fetch = commands.add_parser("fetch-parent")
-    fetch.add_argument("--release-id", required=True)
+    fetch.add_argument("--build-id", required=True, help="the parent's build ID")
+    fetch.add_argument(
+        "--release",
+        help=(
+            "the release whose build folder holds the parent; omit it for a "
+            "parent that keeps only its tag"
+        ),
+    )
     fetch.add_argument("--output-dir", type=Path, required=True)
     fetch.add_argument("--repo-id", default=recert.REPO_ID)
     build = commands.add_parser("build")
     build.add_argument("--parent-release-dir", type=Path, required=True)
     build.add_argument("--parent-artifact-root", type=Path, required=True)
     build.add_argument("--output-dir", type=Path, required=True)
-    build.add_argument("--release-id", required=True)
+    build.add_argument(
+        "--build-id", required=True, help="the recertification's new build ID"
+    )
     score = commands.add_parser("score")
     score.add_argument("--release-dir", type=Path, required=True)
     score.add_argument("--artifact-root", type=Path, required=True)
@@ -798,23 +895,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "fetch-parent":
             result = fetch_parent(
-                release_id=args.release_id,
+                build_id=args.build_id,
+                release=args.release,
                 output_dir=args.output_dir,
                 repo_id=args.repo_id,
             )
             print(
-                json.dumps({"parent": result["build_id"], "dataset": result["dataset"]})
+                json.dumps(
+                    {
+                        "parent": recert.parent_build_id(result),
+                        "dataset": result["dataset"],
+                    }
+                )
             )
         elif args.command == "build":
             report = build_candidate(
                 parent_release_dir=args.parent_release_dir,
                 parent_artifact_root=args.parent_artifact_root,
                 output_dir=args.output_dir,
-                release_id=args.release_id,
+                build_id=args.build_id,
             )
             print(
                 json.dumps(
                     {
+                        "release_dir": str(
+                            args.output_dir / "releases" / recert.CHILD_RELEASE
+                        ),
                         "dataset": report["dataset"],
                         "parent_contract": report["parent_contract"]["status"],
                         "compatibility": report["compatibility"],

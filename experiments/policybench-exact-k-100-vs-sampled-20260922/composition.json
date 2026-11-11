@@ -1,0 +1,234 @@
+{
+  "employment_income_quintile_cut_points_population": [
+    0.0,
+    19992.94140625,
+    53000.0,
+    103218.6796875
+  ],
+  "columns": {
+    "household_size": "count of person rows in the household",
+    "children": "members under 18 (household_size - adults)",
+    "head_age": "age of the is_household_head member (oldest member if none flagged)",
+    "employment_income": "cbo.revenue_projection.ty2024.income_by_source.wages_and_salaries.projected_amount",
+    "receipt": {
+      "receives_snap": "usda_snap.fy2024.national_benefits.national_total.total_benefits measure > 0",
+      "receives_medicaid": "cms_medicaid.month2024_12.state_enrollment.us.total_medicaid_enrollment measure > 0",
+      "receives_ssi": "ssa_supplement.cy2024.oasdi_ssi_payments.ssi_payments.payment_amount measure > 0",
+      "eitc_positive": "irs_soi.ty2024.filing_season_week47.eitc_all_returns.earned_income_credit.total_earned_income_credit_amount measure > 0",
+      "social_security_positive": "ssa_supplement.cy2024.oasdi_ssi_payments.social_security_benefits.payment_amount measure > 0"
+    },
+    "weights": "shares are weighted by each design's own weights"
+  },
+  "designs": {
+    "full_population": {
+      "households": 75112,
+      "household_size": {
+        "1": 0.3917471469522638,
+        "2": 0.35164932107883945,
+        "3": 0.12669489540304912,
+        "4+": 0.12990863656584764
+      },
+      "children": {
+        "0": 0.7461312971640706,
+        "1": 0.1302862217042003,
+        "2+": 0.1235824811317291
+      },
+      "head_age": {
+        "<30": 0.16648209815544665,
+        "30-49": 0.3394662768831109,
+        "50-64": 0.23296343149820858,
+        "65+": 0.2610881934632339
+      },
+      "employment_income_quintile": {
+        "Q1": 0.27687861711567036,
+        "Q2": 0.12330258662988099,
+        "Q3": 0.20014146806172417,
+        "Q4": 0.19970526881291406,
+        "Q5": 0.19997205937981044
+      },
+      "receipt": {
+        "receives_snap": 0.14379154663918342,
+        "receives_medicaid": 0.2327035296112847,
+        "receives_ssi": 0.035441124051889684,
+        "eitc_positive": 0.1460409311319805,
+        "social_security_positive": 0.3394787866291643
+      },
+      "distinct_states": 51
+    },
+    "sampled_self_weighted": {
+      "households": 100,
+      "household_size": {
+        "1": 0.58,
+        "2": 0.23999999999999996,
+        "3": 0.09,
+        "4+": 0.09
+      },
+      "children": {
+        "0": 0.82,
+        "1": 0.06,
+        "2+": 0.12
+      },
+      "head_age": {
+        "<30": 0.13999999999999999,
+        "30-49": 0.30999999999999994,
+        "50-64": 0.2199999999999999,
+        "65+": 0.32999999999999996
+      },
+      "employment_income_quintile": {
+        "Q1": 0.36000000000000004,
+        "Q2": 0.14999999999999997,
+        "Q3": 0.17999999999999994,
+        "Q4": 0.18999999999999995,
+        "Q5": 0.12
+      },
+      "receipt": {
+        "receives_snap": 0.15999999999999998,
+        "receives_medicaid": 0.16999999999999996,
+        "receives_ssi": 0.049999999999999996,
+        "eitc_positive": 0.10999999999999999,
+        "social_security_positive": 0.43
+      },
+      "distinct_states": 34
+    },
+    "sampled_post_stratified_national_all": {
+      "households": 100,
+      "household_size": {
+        "1": 0.49097276128127154,
+        "2": 0.35304890233121455,
+        "3": 0.08765549386528622,
+        "4+": 0.06832284252222771
+      },
+      "children": {
+        "0": 0.850349173429885,
+        "1": 0.04797318255545964,
+        "2+": 0.10167764401465537
+      },
+      "head_age": {
+        "<30": 0.1803966358519085,
+        "30-49": 0.36963978062782965,
+        "50-64": 0.22119739843689945,
+        "65+": 0.2287661850833624
+      },
+      "employment_income_quintile": {
+        "Q1": 0.27321416273112853,
+        "Q2": 0.11227703298841685,
+        "Q3": 0.14091988725977084,
+        "Q4": 0.28241608377173166,
+        "Q5": 0.19117283324895212
+      },
+      "receipt": {
+        "receives_snap": 0.11724088024609737,
+        "receives_medicaid": 0.12142791961525295,
+        "receives_ssi": 0.030486495692463884,
+        "eitc_positive": 0.04143941356259336,
+        "social_security_positive": 0.29246743114785095
+      },
+      "distinct_states": 34
+    },
+    "sampled_post_stratified_headline": {
+      "households": 100,
+      "household_size": {
+        "1": 0.4954034843963222,
+        "2": 0.31567274254249295,
+        "3": 0.0945908092354436,
+        "4+": 0.09433296382574125
+      },
+      "children": {
+        "0": 0.7964926384295538,
+        "1": 0.10551433996730389,
+        "2+": 0.0979930216031424
+      },
+      "head_age": {
+        "<30": 0.18500745778186709,
+        "30-49": 0.28964155160564503,
+        "50-64": 0.24726667399379457,
+        "65+": 0.2780843166186933
+      },
+      "employment_income_quintile": {
+        "Q1": 0.31234138076119805,
+        "Q2": 0.15312213760487767,
+        "Q3": 0.16494631727729567,
+        "Q4": 0.20660140717179198,
+        "Q5": 0.16298875718483663
+      },
+      "receipt": {
+        "receives_snap": 0.12399608099789455,
+        "receives_medicaid": 0.21354734064067593,
+        "receives_ssi": 0.03460086313754669,
+        "eitc_positive": 0.13312531037385658,
+        "social_security_positive": 0.41225902337586884
+      },
+      "distinct_states": 34
+    },
+    "exact_k_national_all": {
+      "households": 100,
+      "household_size": {
+        "1": 0.3643550342077261,
+        "2": 0.3240910982415172,
+        "3": 0.09130051323749773,
+        "4+": 0.22025335431325888
+      },
+      "children": {
+        "0": 0.7549527774849594,
+        "1": 0.02540000896609266,
+        "2+": 0.2196472135489479
+      },
+      "head_age": {
+        "<30": 0.16835810229656512,
+        "30-49": 0.3897324953753229,
+        "50-64": 0.08940316406058127,
+        "65+": 0.35250623826753064
+      },
+      "employment_income_quintile": {
+        "Q1": 0.20917622559538157,
+        "Q2": 0.022685991796655463,
+        "Q3": 0.2603767641363221,
+        "Q4": 0.2485381341832552,
+        "Q5": 0.25922288428838575
+      },
+      "receipt": {
+        "receives_snap": 0.13654719582226124,
+        "receives_medicaid": 0.22378829703358832,
+        "receives_ssi": 0.003096769477485424,
+        "eitc_positive": 0.036886400724130256,
+        "social_security_positive": 0.15497145936126538
+      },
+      "distinct_states": 40
+    },
+    "exact_k_headline": {
+      "households": 100,
+      "household_size": {
+        "1": 0.37676362089710524,
+        "2": 0.3119597711854343,
+        "3": 0.1721394898727122,
+        "4+": 0.1391371180447483
+      },
+      "children": {
+        "0": 0.7170000954824156,
+        "1": 0.14857589953962377,
+        "2+": 0.13442400497796075
+      },
+      "head_age": {
+        "<30": 0.066610852855203,
+        "30-49": 0.48826231428603906,
+        "50-64": 0.2093545359546329,
+        "65+": 0.235772296904125
+      },
+      "employment_income_quintile": {
+        "Q1": 0.30561199858096183,
+        "Q2": 0.1494503281649938,
+        "Q3": 0.13381486531136805,
+        "Q4": 0.2127047315654238,
+        "Q5": 0.1984180763772525
+      },
+      "receipt": {
+        "receives_snap": 0.15530779604004546,
+        "receives_medicaid": 0.2568286928013084,
+        "receives_ssi": 0.009467968990365207,
+        "eitc_positive": 0.16907782350505224,
+        "social_security_positive": 0.44135715421529387
+      },
+      "distinct_states": 39
+    }
+  }
+}

@@ -164,7 +164,9 @@ def _now() -> str:
 
 def _git(*parts: str) -> str:
     return subprocess.check_output(
-        ["git", "-C", plan_lib.IMAGE_REPO_ROOT, *parts], text=True
+        ["git", "-C", plan_lib.IMAGE_REPO_ROOT, *parts],
+        text=True,
+        env=plan_lib.git_environment(os.environ),
     ).strip()
 
 
@@ -196,8 +198,10 @@ def _verify_branch(plan: plan_lib.Plan) -> dict[str, object]:
     """
 
     scratch = tempfile.mkdtemp(prefix="branch-check-")
-    # A missing or private repository must fail, not wait for a password.
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    # A missing or private repository must fail, not wait for a password,
+    # and the fetch must land in the scratch repository, not in one an
+    # inherited GIT_DIR names.
+    env = {**plan_lib.git_environment(os.environ), "GIT_TERMINAL_PROMPT": "0"}
     try:
         init, fetch, rev_parse, ancestry = plan_lib.branch_check_argvs(
             plan.repo_url, plan.branch, plan.commit, str(Path(scratch) / "repo.git")
@@ -745,7 +749,10 @@ def check_stage(plan_data: dict) -> dict:
 
     # The probe and the parser run in the environment the stage would get.
     tool_env, env_removed = plan_lib.tool_environment(
-        os.environ, plan.env, telemetry_run_id=plan_lib.telemetry_run_id(plan)
+        os.environ,
+        plan.env,
+        telemetry_run_id=plan_lib.telemetry_run_id(plan),
+        resources=plan.resources,
     )
     report["tool_env_removed"] = env_removed
     report["python_hash_seed"] = plan_lib.hash_seed_record(
@@ -972,11 +979,14 @@ def _attempt_stage(
     # 4c. The tool's environment, fixed before anything is pulled or staged:
     #     credentials and the container's PYTHONHASHSEED withheld, the Hub
     #     offline, the plan's overrides last, and the stage's telemetry run
-    #     (<plan run_id>.<stage>). An environment that would give the tool a
-    #     hash seed other than none or "0" (what Route A's local base
-    #     recorded) is refused here, cheaply.
+    #     (<plan run_id>.<stage>) and the container's resource class. An
+    #     environment that would give the tool a hash seed other than none or
+    #     "0" (what Route A's local base recorded) is refused here, cheaply.
     env, env_removed = plan_lib.tool_environment(
-        os.environ, plan.env, telemetry_run_id=plan_lib.telemetry_run_id(plan)
+        os.environ,
+        plan.env,
+        telemetry_run_id=plan_lib.telemetry_run_id(plan),
+        resources=plan.resources,
     )
     hash_seed = plan_lib.hash_seed_record(plan.tool, os.environ, env)
     seed_problem = plan_lib.hash_seed_problem(env)

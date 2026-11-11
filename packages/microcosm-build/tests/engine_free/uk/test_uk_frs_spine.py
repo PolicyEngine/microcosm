@@ -36,7 +36,8 @@ from microcosm.build.uk_runtime.birth_month import (
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_council_tax import (
-    frs_council_tax_operation_parameters,
+    frs_council_tax_operations,
+    frs_council_tax_resource_artifact,
 )
 from microcosm.build.uk_runtime.frs_relationships import (
     FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
@@ -53,6 +54,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_COMPANY_CAR_PRICE_BAND_OPEN,
     FRS_COMPANY_CAR_PRICE_BANDS,
     FRS_SPINE_TABLES,
+    FRS_UC_LCW_STATUS_COLUMN,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
@@ -66,6 +68,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     completed_months,
     frs_claimant_or_partner,
     frs_council_tax_band,
+    frs_uc_lcw_status,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
     uc_gainful_self_employment,
@@ -537,6 +540,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 1,
                 "BENAMT": 2.0,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
             {
@@ -547,6 +551,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 2,
                 "BENAMT": 3.0,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
             {
@@ -559,6 +564,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR3": 1,
                 "BENAMT": 4.0,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
             {
@@ -571,6 +577,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR3": 3,
                 "BENAMT": 5.0,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
             {
@@ -583,6 +590,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 # month, as a weekly amount.
                 "BENAMT": _BSP_STANDARD_WEEKLY,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
             {
@@ -593,6 +601,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 0,
                 "BENAMT": 7.0,
                 "UCSTART": "",
+                "UCLCW": "",
                 "UCHOUSEL": "",
             },
         ],
@@ -736,10 +745,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                     tables=("househol",),
                     operations=[
                         {"kind": "read_tables"},
-                        frs_council_tax_operation_parameters(),
+                        *frs_council_tax_operations(),
                     ],
                     outputs=("council_tax",),
                     nonnegative_outputs=("council_tax",),
+                    # S2(a) levels the Scottish bills to the vendored Band D facts.
+                    extra_artifacts=(frs_council_tax_resource_artifact(),),
                 ),
                 source_stage(
                     "frs_disability",
@@ -780,6 +791,9 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "adult_ema",
                         "child_ema",
                         "receives_benefits_in_own_right",
+                        # frs_person_draws never draws a full-time student as
+                        # an apprentice (nit 3 of #1535's review).
+                        "is_in_full_time_education",
                     ),
                     nonnegative_outputs=(
                         "adult_ema",
@@ -1113,7 +1127,11 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
             ),
         ),
         geography_spine=None,
-        resource_hashes={"brma_private_rented_households.json": "f" * 64},
+        resource_hashes={
+            "brma_private_rented_households.json": "f" * 64,
+            # S2(a): frs_council_tax levels the Scottish bills to these facts.
+            "scotgov_band_d_liability_facts.json": "f" * 64,
+        },
     )
 
 
@@ -2421,6 +2439,7 @@ def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
             "VAR2": 0,
             "BENAMT": 8.0,
             "UCSTART": "",
+            "UCLCW": "",
             "UCHOUSEL": "",
         }
     )
@@ -2990,7 +3009,10 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "sha256": hashlib.sha256(replay_bytes).hexdigest(),
     }
     assert len(sidecar["stochastic_contract_sha256"]) == 64
-    assert sidecar["resource_pins"] == {"brma_private_rented_households.json": "f" * 64}
+    assert sidecar["resource_pins"] == {
+        "brma_private_rented_households.json": "f" * 64,
+        "scotgov_band_d_liability_facts.json": "f" * 64,
+    }
     # Resolve the expected version the way the driver does, so the assertion
     # holds in the engine-hermetic lane too: the real version where
     # policyengine-uk is installed, the documented fallback where it is not.
@@ -3570,6 +3592,180 @@ def test_driver_marks_full_fixture_smoke_outputs_non_release(
     ]
     assert created[0]["details"]["sha256"] == digest
     assert rows[0].gate_verdicts["pipeline"]["artifact_sha256"] == digest
+
+
+_RECORDED_SMOKE_RUN_ID = "recorded-smoke-spine"
+
+
+def _run_recorded_smoke_spine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    checkpoint_dir: Path | None,
+) -> tuple[Path, list[tuple[str, str, dict[str, bool]]]]:
+    """Run the full-fixture smoke spine and record its stage updates in order.
+
+    Each entry names one stage update, or the graph run's return, together
+    with which of the build's files existed at that moment. A test can then
+    tell which stage was open while each file was written.
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "smoke.h5"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    checkpoint_root = (
+        checkpoint_dir
+        if checkpoint_dir is not None
+        else tmp_path / f".{output.stem}.checkpoints"
+    )
+    watched_files = {
+        "graph_manifest": checkpoint_root / "spine.graph.json",
+        "evidence_capture_timing": checkpoint_root / "evidence-capture-timing.jsonl",
+        "spine_h5": output,
+        "replay_sidecar": output.with_suffix(".hmrc_replay.json"),
+        "build_sidecar": output.with_suffix(".build.json"),
+    }
+    if checkpoint_dir is not None:
+        watched_files["checkpoint_h5"] = checkpoint_dir / "frs_spine.h5"
+    timeline: list[tuple[str, str, dict[str, bool]]] = []
+
+    def existing_files() -> dict[str, bool]:
+        return {name: path.exists() for name, path in watched_files.items()}
+
+    record_stage = tool._record_stage
+    run_graph = tool.run_graph
+
+    def recording_record_stage(staging_bundle, emitter, stage_id, status, **details):
+        timeline.append((stage_id, status, existing_files()))
+        record_stage(staging_bundle, emitter, stage_id, status, **details)
+
+    def recording_run_graph(*args, **kwargs):
+        manifest = run_graph(*args, **kwargs)
+        timeline.append(("graph", "returned", existing_files()))
+        return manifest
+
+    monkeypatch.setattr(tool, "_record_stage", recording_record_stage)
+    monkeypatch.setattr(tool, "run_graph", recording_run_graph)
+    argv = [
+        "--frs-raw-dir",
+        str(raw_dir),
+        "--spine-h5",
+        str(output),
+        "--spi-tab",
+        str(spi_tab),
+        "--hmrc-ods",
+        str(hmrc_ods),
+        "--sample-seed",
+        "41",
+        "--smoke",
+        "--staging-local-only",
+        "--staging-run-id",
+        _RECORDED_SMOKE_RUN_ID,
+        "--staging-dir",
+        str(tmp_path / "staging"),
+    ]
+    if checkpoint_dir is not None:
+        argv += ["--checkpoint-dir", str(checkpoint_dir)]
+
+    assert tool.main(argv) == 0
+    return output, timeline
+
+
+@pytest.mark.parametrize("with_checkpoint_dir", [False, True])
+def test_driver_reports_work_after_the_graph_run_inside_stages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_checkpoint_dir: bool
+) -> None:
+    """Every stretch of work after the graph run belongs to a reported stage.
+
+    The staging dashboard draws one bar segment per top-level stage, so work
+    done between two stages shows as an unexplained empty stretch.
+    """
+
+    checkpoint_dir = tmp_path / "checkpoints" if with_checkpoint_dir else None
+    _output, timeline = _run_recorded_smoke_spine(
+        tmp_path, monkeypatch, checkpoint_dir=checkpoint_dir
+    )
+
+    updates = [(stage_id, status) for stage_id, status, _files in timeline]
+    after_graph = timeline[updates.index(("graph", "returned")) :]
+    checkpoint_updates = (
+        [("checkpoint_h5_creation", "started"), ("checkpoint_h5_creation", "completed")]
+        if with_checkpoint_dir
+        else []
+    )
+    assert [(stage_id, status) for stage_id, status, _files in after_graph] == [
+        ("graph", "returned"),
+        ("graph_evidence_capture", "started"),
+        ("graph_evidence_capture", "completed"),
+        ("sampling", "completed"),
+        ("validation", "started"),
+        ("validation", "completed"),
+        ("spine_h5_creation", "started"),
+        ("spine_h5_creation", "completed"),
+        *checkpoint_updates,
+        ("sidecar_creation", "started"),
+        ("sidecar_creation", "completed"),
+    ]
+    files_at = {(stage_id, status): files for stage_id, status, files in after_graph}
+    # The graph manifest and the run evidence are written inside the
+    # evidence-capture stage, which opens as soon as the graph run returns.
+    capture_started = files_at["graph_evidence_capture", "started"]
+    capture_completed = files_at["graph_evidence_capture", "completed"]
+    assert not capture_started["graph_manifest"]
+    assert not capture_started["evidence_capture_timing"]
+    assert capture_completed["graph_manifest"]
+    assert capture_completed["evidence_capture_timing"]
+    if with_checkpoint_dir:
+        assert files_at["checkpoint_h5_creation", "started"]["spine_h5"]
+        assert not files_at["checkpoint_h5_creation", "started"]["checkpoint_h5"]
+        assert files_at["checkpoint_h5_creation", "completed"]["checkpoint_h5"]
+    # The HMRC replay sidecar is written inside sidecar_creation.
+    assert not files_at["sidecar_creation", "started"]["replay_sidecar"]
+    assert files_at["sidecar_creation", "completed"]["replay_sidecar"]
+    assert files_at["sidecar_creation", "completed"]["build_sidecar"]
+
+
+def test_driver_copies_the_finished_spine_h5_into_the_checkpoint_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The checkpoint is the output file whose digest the sidecar records."""
+
+    h5py = pytest.importorskip("h5py")
+    checkpoint_dir = tmp_path / "checkpoints"
+    output, _timeline = _run_recorded_smoke_spine(
+        tmp_path, monkeypatch, checkpoint_dir=checkpoint_dir
+    )
+
+    checkpoint = checkpoint_dir / "frs_spine.h5"
+    sidecar = json.loads(output.with_suffix(".build.json").read_text())
+    digest = sidecar["output"]["sha256"]
+    assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == digest
+    # The copy keeps the smoke marking, so a non-release frame never passes
+    # as a release checkpoint.
+    with h5py.File(checkpoint, mode="r") as file:
+        assert bool(file.attrs["populace_non_release"]) is True
+        assert file.attrs["populace_release_posture"] == "smoke"
+    bundle = validate_v2_bundle(tmp_path / "staging", _RECORDED_SMOKE_RUN_ID)
+    checkpoint_events = [
+        event
+        for event in bundle["events"]
+        if (event["stage_id"], event["status"])
+        == ("checkpoint_h5_creation", "completed")
+    ]
+    assert len(checkpoint_events) == 1
+    assert checkpoint_events[0]["details"] == {
+        "sha256": digest,
+        "size_bytes": checkpoint.stat().st_size,
+    }
 
 
 def test_driver_records_sanitized_failed_staging_lifecycle(
@@ -4466,7 +4662,7 @@ class TestAccessFundAnnual:
             access_fund_annual(frame)
 
 
-def _uc_row(sernum: int, ucstart: str) -> dict[str, object]:
+def _uc_row(sernum: int, ucstart: str, uclcw: object = "") -> dict[str, object]:
     return {
         "SERNUM": sernum,
         "BENUNIT": 1,
@@ -4475,6 +4671,7 @@ def _uc_row(sernum: int, ucstart: str) -> dict[str, object]:
         "VAR2": 0,
         "BENAMT": 1.0,
         "UCSTART": ucstart,
+        "UCLCW": uclcw,
     }
 
 
@@ -4614,6 +4811,72 @@ def _gainful_flags(tmp_path: Path, tables) -> dict[int, bool]:
     person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
     assert person["uc_is_in_gainful_self_employment"].dtype == bool
     return person.set_index("person_id")["uc_is_in_gainful_self_employment"].to_dict()
+
+
+class TestUCLimitedCapabilityCarrier:
+    """DWP's admin-linked LCW status on a linked UC claim (microcosm#1095, Y1)."""
+
+    @staticmethod
+    def _benefits(rows) -> pd.DataFrame:
+        return pd.DataFrame(
+            rows, columns=["benunit_id", "person_id", "benefit", "uclcw"]
+        )
+
+    def test_the_uc_rows_person_carries_the_claims_status(self) -> None:
+        benefits = self._benefits(
+            [
+                (101, 1001, 95, 2.0),  # LCFWRA Group, on the claimant
+                (201, 2002, 95, 0.0),  # None, on the partner's row
+                (301, 3001, 95, np.nan),  # no linked record
+                (401, 4001, 96, np.nan),  # PIP daily living, not UC
+                (501, 5001, 95, 1.0),  # LCFW Group
+            ]
+        )
+        person = pd.DataFrame({"person_id": [1001, 1002, 2001, 2002, 3001, 4001, 5001]})
+
+        assert frs_uc_lcw_status(benefits, person).tolist() == [
+            "LCWRA",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NONE",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "LCW",
+        ]
+
+    def test_the_carrier_refuses_what_it_cannot_read(self) -> None:
+        person = pd.DataFrame({"person_id": [1001, 1002]})
+        with pytest.raises(KeyError, match="uclcw"):
+            frs_uc_lcw_status(
+                pd.DataFrame(
+                    {"benunit_id": [101], "person_id": [1001], "benefit": [95]}
+                ),
+                person,
+            )
+        with pytest.raises(ValueError, match="two FRS UC rows"):
+            frs_uc_lcw_status(
+                self._benefits([(101, 1001, 95, 2.0), (101, 1002, 95, 2.0)]), person
+            )
+        with pytest.raises(ValueError, match="outside the data dictionary"):
+            frs_uc_lcw_status(self._benefits([(101, 1001, 95, 3.0)]), person)
+        with pytest.raises(ValueError, match="does not hold"):
+            frs_uc_lcw_status(self._benefits([(101, 9999, 95, 2.0)]), person)
+
+    def test_the_spine_stores_the_carrier_from_the_raw_tab(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 2))
+        tables["benefits"].append(_uc_row(2, "", ""))
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        status = person.set_index("person_id")[FRS_UC_LCW_STATUS_COLUMN].to_dict()
+        assert status[1001] == "LCWRA"
+        assert status[2001] == "NOT_LINKED"
+        assert {value for key, value in status.items() if key not in (1001,)} == {
+            "NOT_LINKED"
+        }
 
 
 class TestUCGainfulSelfEmployment:

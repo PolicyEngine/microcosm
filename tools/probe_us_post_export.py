@@ -78,7 +78,9 @@ authority only to a variance estimate that at least
 ``--min-effective-households`` households effectively carry
 (``(sum q)^2 / sum q^2`` over their variance terms).
 
-``--reference-release-dir`` (a full-size build's ``releases/<id>/``) adds each
+``--reference-release-dir`` (a full-size build's release directory: the
+builder's ``releases/<release>/`` since microcosm#1570, or an older build's
+``releases/<build id>/``) adds each
 smoke probe's full-scale effect and z-score, a row-by-row validation
 comparison, the build's target surface, its QRF register and its in-sample
 fit, and two fidelity checks: the probe's baseline plans and reform pass
@@ -97,7 +99,7 @@ Usage::
     .venv/bin/python tools/probe_us_post_export.py \\
         --export <subsample dir>/populace_us_2024.h5 --out <dir> \\
         [--sample-receipt <subsample dir>/sample_receipt.json] \\
-        [--reference-release-dir <release dir>/releases/<release id>]
+        [--reference-release-dir <build out>/releases/<release>]
 
 writes ``<dir>/probe_report.json``, ``<dir>/passes.jsonl`` and each stage's
 artifact under the release tool's file name (``reform_coverage_smoke.json``,
@@ -1533,13 +1535,17 @@ def _timed_scorer_class(builder, passes_path: Path, clock: StageClock):
     base = builder._HouseholdBatchedPostExportScorer
 
     class TimedScorer(base):
-        def _score(self, keys, *, label, reform_system=None):
+        def _score(self, keys, *, label, reform_system=None, **options):
+            # ``options`` is whatever else the release scorer takes, such as a
+            # reform pass's outer progress counter.
             sampler = clock.sampler
             before = sampler.reset() if sampler else 0
             wall = time.perf_counter()
             cpu = time.process_time()
             try:
-                return super()._score(keys, label=label, reform_system=reform_system)
+                return super()._score(
+                    keys, label=label, reform_system=reform_system, **options
+                )
             finally:
                 row = {
                     "stage": clock.current,
@@ -2988,7 +2994,8 @@ def _summary(report: Mapping[str, Any], receipt) -> dict[str, Any]:
     return summary
 
 
-#: Files of a release directory (``releases/<release id>/``) the probe reads.
+#: Files of a release directory (``releases/<release>/``, or an older build's
+#: ``releases/<build id>/``) the probe reads.
 REFERENCE_FILES = {
     "smoke": "reform_coverage_smoke.json",
     "validation": "reform_validation.json",
@@ -3004,13 +3011,18 @@ def resolve_target_surface(
     dropped: int | None,
     release_manifest: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    """The build's target surface: the flag, else the release manifest's
-    ``build.target_surface_selection``, else ``full``."""
-    selection = (
-        None
-        if release_manifest is None
-        else (release_manifest.get("build") or {}).get("target_surface_selection")
-    )
+    """The build's target surface: the flag, else the reference release
+    manifest's ``target_surface_selection``, else ``full``.
+
+    A manifest in the build-folder layout (microcosm#1570) names its build in
+    ``build`` and records the selection at its top level; one in the tagged
+    layout records it in its ``build`` object.
+    """
+    build = None if release_manifest is None else release_manifest.get("build")
+    tagged = isinstance(build, Mapping)
+    details = build if tagged else release_manifest or {}
+    selection = details.get("target_surface_selection")
+    field = "build.target_surface_selection" if tagged else "target_surface_selection"
     if flag is not None:
         return {
             "mode": flag,
@@ -3025,7 +3037,7 @@ def resolve_target_surface(
                 if dropped is not None
                 else selection.get("dropped_congressional_district_targets")
             ),
-            "source": "reference release_manifest.json build.target_surface_selection",
+            "source": f"reference release_manifest.json {field}",
         }
     return {
         "mode": "full",
@@ -3089,7 +3101,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--reference-release-dir",
         type=Path,
         default=None,
-        help="a full-size build's release directory (releases/<release id>/): "
+        help="a full-size build's release directory (releases/<release>/, or "
+        "an older build's releases/<build id>/): "
         "defaults --reference-smoke, --reference-validation, "
         "--reference-build-manifest and --calibration-diagnostics to its files",
     )

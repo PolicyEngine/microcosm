@@ -1,0 +1,15 @@
+{
+  "schema_version": 3,
+  "description": "Measures a reference build is known not to carry, scoped per reference (microcosm#1095): each key is a reference's <release>@<build>, and each entry under it, keyed entity.variable, lets a target bound through that measure be pruned from BOTH arms of the head-to-head comparison on the common surface (microcosm#823). An unlisted unresolvable measure refuses the comparison rather than pruning. Entries under a build that is no longer the cut's reference are dormant. Every entry is a complete approval receipt in the reviewed-exclusion schema, in force from approved_on through expires_on.",
+  "references": {
+    "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e": {
+      "person.trading_allowance_full_relief": {
+        "reason": "Trading allowance full-relief carrier (microcosm#1439, the trading_allowance_receipts spine stage): this build exports neither trading_allowance_claim_status nor the full-relief carrier, both new since it (microcosm#1550), and policyengine-uk 2.177.7 does not define the carrier; 5 hmrc_spi rows filter on it: self-employment income amounts and counts by total income band and by self-employment income band, and employment income counts by self-employment income band.",
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578), carried to the current-build reference by microcosm#1095: María's ruling in session, 2026-11-11, on the PR that compares UK cuts with the current build of their line, after microcosm#1572 signed the same measure on the enhanced FRS.",
+        "approved_on": "2026-11-11",
+        "expires_on": "2027-02-11"
+      }
+    }
+  }
+}

@@ -817,6 +817,7 @@ def _income_standin(resources, rows, facts, problem):
     declaration = toy_standin_declaration()
     resources["toy_income_measurements"] = {
         "schema_version": 1,
+        "measurement_id": TOY_MEASUREMENT,
         "measures": {
             "central": {
                 "declaration": declaration,
@@ -1585,15 +1586,18 @@ def _income_evidence(rows):
     tools/build_nz_transport_graph.py declares the same three nodes over
     nz.income.standin's measure, all at nz.terminal. Each reads the stand-in
     node's own declaration params and names its measurement under
-    ``measurement``, since only the stand-in declares ``measurement_id``. The
-    native-band report reads the coarse table the toy calibrates beside the
-    native table it passes through.
+    ``measurement``, since only the stand-in declares ``measurement_id``. That
+    name comes from ``toy_income_measurements``' own ``measurement_id``; the
+    stand-in keeps the literal, which R2C-1's proof reads. The native-band
+    report reads the coarse table the toy calibrates beside the native table it
+    passes through.
     """
     standin = next(row for row in rows if row["id"] == TOY_STANDIN_NODE)
+    measurement = _select("toy_income_measurements", "value", "measurement_id")
     measure = {
         "measure": standin["params"]["measure"],
         "measure_sha256": standin["params"]["measure_sha256"],
-        "measurement": standin["params"]["measurement_id"],
+        "measurement": measurement,
     }
     return [
         _node(
@@ -1635,7 +1639,10 @@ def _income_evidence(rows):
                 **measure,
                 "weight_entity": "household",
             },
-            artifact_inputs=[_edge("problem", "nz.targets.problem")],
+            artifact_inputs=[
+                _edge("problem", "nz.targets.problem"),
+                _edge("solution", "nz.calibrate"),
+            ],
             artifact_outputs=[
                 _artifact_output("omission_register", OMISSION_REGISTER_TYPE)
             ],
@@ -1664,7 +1671,7 @@ def _income_evidence(rows):
                 ),
                 "chronicle_feed_pin": _select("toy_calibration_feed_pin"),
                 "weight_entity": "household",
-                "measurement": TOY_MEASUREMENT,
+                "measurement": measurement,
             },
             artifact_inputs=[
                 _edge("preparation", "nz.calibration.prepare"),

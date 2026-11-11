@@ -118,12 +118,27 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "scotgov_band_d_liability_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "dwp_move_to_uc_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
     {
       "path": "dwp_uc_award_band_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "dwp_uc_people_by_age_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "dwp_pip_points_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -333,7 +348,7 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "incumbent_unresolvable_measures.json",
+      "path": "reference_unresolvable_measures.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
