@@ -896,10 +896,10 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     """The release surface on the pinned feed: 33,248 compiled targets after
     Medicaid substitution, 6,100 national_state targets at registry
     6775e22cc90d, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. Merging Table 2.5's misplaced
-    TY2023 three-or-more-children cells at $25,000 to $35,000 into one row
-    per measure (US_SOI_MISPLACED_ROW_MERGES) took it from 33,250 / 6,102 at
-    3aa2a0830e7d. microcosm#1343 moved the
+    other-income row and no tips return count. microcosm#1577 took it from
+    33,250 / 6,102 at 3aa2a0830e7d by merging Table 2.5's misplaced TY2023
+    three-or-more-children cells at $25,000 to $35,000 into one row per
+    measure (US_SOI_MISPLACED_ROW_MERGES). microcosm#1343 moved the
     version from 3fad14f85468 by re-pinning to a feed that gives three
     dimension values one label each (the version hashes hierarchy labels);
     microcosm#1227 moved it from e1f9906bf0e0 by doubling the eight Table
