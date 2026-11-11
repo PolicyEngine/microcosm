@@ -4665,6 +4665,9 @@ def test_the_district_ess_gate_ships_in_both_manifests(
     entry = _district_ess_limitation(release_manifest)
     assert entry["criteria_met"] is criteria_met
     assert entry["calibration_blocker"] is False
+    for manifest in (build_manifest, release_manifest):
+        recipe = shlex.split(manifest["refresh_recipe"]["release"])
+        assert ("--district-ess-gate-blocking" in recipe) is blocking
     failures: list[str] = []
     contract._check_local_area_gates(gate_summary, failures)
     assert not [f for f in failures if module.DISTRICT_ESS_GATE in f], failures

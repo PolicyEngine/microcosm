@@ -4416,7 +4416,7 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
 DISTRICT_ESS_RELATIVE_FLOOR = 0.25
 #: The absolute floor on a district's calibrated Kish ESS (0 turns it off).
 #: Those solves' smallest district ESS is 7.8-11.7 unpenalized and at least
-#: 18.6 penalized.
+#: 18.5 penalized.
 DISTRICT_ESS_FLOOR = 15.0
 DISTRICT_ESS_GATE = "district_ess_collapse"
 
@@ -4438,9 +4438,13 @@ def _district_ess(weight_summary) -> dict[str, float] | None:
     for district, ess in by_district.items():
         if isinstance(ess, bool) or not isinstance(ess, (int, float)):
             return None
-        if not np.isfinite(ess) or ess < 0:
+        try:
+            value = float(ess)
+        except OverflowError:  # a JSON integer too large for a float
             return None
-        values[str(district)] = float(ess)
+        if not np.isfinite(value) or value < 0:
+            return None
+        values[str(district)] = value
     return values
 
 
@@ -4647,6 +4651,29 @@ def _require_blocking_district_ess_gate(gate_report: dict, args) -> None:
             f"{args.district_ess_floor:g}; re-run --stage finalize with the "
             "same flags."
         )
+
+
+def district_ess_refresh_flags(gate) -> str:
+    """The recorded district ESS gate's non-default flags, for the refresh recipe."""
+
+    if not isinstance(gate, dict):
+        return ""
+    flags = ""
+    for key, flag, default in (
+        (
+            "relative_floor",
+            "--district-ess-relative-floor",
+            DISTRICT_ESS_RELATIVE_FLOOR,
+        ),
+        ("absolute_floor", "--district-ess-floor", DISTRICT_ESS_FLOOR),
+    ):
+        value = gate.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if float(value) != default:
+                flags += f" {flag} {float(value)!r}"
+    if gate.get("blocking") is True:
+        flags += " --district-ess-gate-blocking"
+    return flags
 
 
 def _local_hours_gate(frame, staging_summary: dict):
@@ -5952,6 +5979,9 @@ def do_package(args) -> dict:
             f" --county-target-loss-cap {float(county_profile['target_loss_cap'])!r}"
             f" --county-max-weight-ratio {float(county_profile['max_weight_ratio'])!r}"
         )
+    refresh_recipe["release"] += district_ess_refresh_flags(
+        (gate_report.get("gates") or {}).get(DISTRICT_ESS_GATE)
+    )
 
     build_manifest = {
         "build_id": release_id,

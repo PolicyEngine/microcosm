@@ -126,6 +126,28 @@ def test_collapsed_districts_are_listed_worst_first() -> None:
     assert _districts(gate["collapsed"]) == ["b", "a", "c"]
 
 
+def test_districts_below_the_floor_are_listed_smallest_first() -> None:
+    gate = _GATE(
+        _origin(
+            {"a": 20.0, "b": 20.0, "c": 20.0, "d": 20.0},
+            {"a": 14.0, "b": 9.0, "c": 14.0, "d": 16.0},
+        ),
+        relative_floor=0.0,
+    )
+    assert _districts(gate["below_floor"]) == ["b", "a", "c"]
+
+
+def test_ties_for_the_smallest_ess_and_ratio_go_to_the_first_district() -> None:
+    gate = _GATE(
+        _origin({"b": 40.0, "a": 80.0, "c": 20.0}, {"b": 20.0, "a": 40.0, "c": 20.0})
+    )
+    assert (gate["min_calibrated_ess"], gate["min_calibrated_ess_district"]) == (
+        20.0,
+        "b",
+    )
+    assert (gate["min_ess_ratio"], gate["min_ess_ratio_district"]) == (0.5, "a")
+
+
 def test_a_blocking_gate_passes_only_when_no_district_collapses() -> None:
     collapsed = _origin({"1": 100.0, "2": 50.0}, {"1": 10.0, "2": 40.0})
     clean = _origin({"1": 100.0, "2": 50.0}, {"1": 90.0, "2": 40.0})
@@ -185,6 +207,7 @@ def test_integer_ess_values_from_json_are_read_as_numbers() -> None:
         _origin({"1": 10.0}, {"1": "10"}),
         _origin({"1": 10.0}, {"1": True}),
         _origin({"1": 10.0}, {"1": None}),
+        _origin({"1": 10.0}, {"1": 10**400}),
         _origin([("1", 10.0)], {"1": 10.0}),
         {"design": [10.0], "calibrated": "10"},
     ],
@@ -202,6 +225,7 @@ def test_integer_ess_values_from_json_are_read_as_numbers() -> None:
         "string",
         "bool",
         "null",
+        "too-large-for-a-float",
         "list",
         "blocks-not-mappings",
     ],
@@ -336,6 +360,29 @@ def test_the_gate_is_report_only_unless_blocking_is_asked_for(tmp_path) -> None:
     assert args.district_ess_gate_blocking is True
 
 
+def test_the_refresh_recipe_names_only_non_default_gate_flags(tmp_path) -> None:
+    flags = _TOOL.district_ess_refresh_flags
+    assert flags(None) == ""
+    assert flags(_GATE(_origin({"1": 10.0}, {"1": 10.0}))) == ""
+
+    gate = _GATE(
+        _origin({"1": 10.0}, {"1": 10.0}),
+        relative_floor=0.3,
+        absolute_floor=0.0,
+        blocking=True,
+    )
+    recorded = flags(gate)
+    assert recorded == (
+        " --district-ess-relative-floor 0.3 --district-ess-floor 0.0"
+        " --district-ess-gate-blocking"
+    )
+    # The recipe's flags parse back to the recorded gate.
+    args = _parse(tmp_path, *recorded.split())
+    assert args.district_ess_relative_floor == gate["relative_floor"]
+    assert args.district_ess_floor == gate["absolute_floor"]
+    assert args.district_ess_gate_blocking is True
+
+
 @pytest.mark.parametrize(
     ("flag", "value"),
     [
@@ -386,7 +433,13 @@ def _solves(draw):
     )
     factors = draw(
         st.lists(
-            st.floats(min_value=0.0, max_value=5.0, allow_nan=False),
+            # Zero, or at least 1e-6: subnormal squares would put the two
+            # summation orders further apart than the differential test's
+            # tie band.
+            st.one_of(
+                st.just(0.0),
+                st.floats(min_value=1e-6, max_value=5.0, allow_nan=False),
+            ),
             min_size=n,
             max_size=n,
         )
