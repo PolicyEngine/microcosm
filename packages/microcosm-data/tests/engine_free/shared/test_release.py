@@ -3,6 +3,12 @@
 # ruff: noqa: F403, F405
 from huggingface_hub.errors import LocalEntryNotFoundError
 
+# The annual build-folder fixtures, which build on this module's release_dir.
+from test_support.microcosm_data.annual_projections import (  # noqa: F401
+    US_ANNUAL_RELEASE,
+    annual_build_folder,
+    national_build,
+)
 from test_support.microcosm_data.hub_errors import hub_unreachable
 from test_support.microcosm_data.release import *
 
@@ -391,15 +397,16 @@ def test_prepare_build_folder_release_publishes_the_checksum_ledger(
 def test_build_folder_identity_says_where_a_tagged_release_publishes(
     release_dir: Path,
 ) -> None:
-    """A US release publishes with tags through tools/publish_release.sh; the
-    other UK releases take no new builds once the UK repository records its
-    builds in releases.json."""
+    """A directory named after a US build ID is no release: US builds
+    publish into the US releases, and the other UK releases take no new
+    builds, once their repositories record their builds in releases.json."""
     with pytest.raises(
         ValueError, match="does not publish into build folders"
     ) as refusal:
         release_module.build_folder_identity(release_dir)
 
-    assert "tools/publish_release.sh" in str(refusal.value)
+    assert "microcosm-us-2024-national" in str(refusal.value)
+    assert "tools/publish_release.sh" not in str(refusal.value)
     assert "take no new builds" in str(refusal.value)
 
 
@@ -1508,6 +1515,131 @@ def test_latest_evidence_release_requires_the_id_segment(hub: FakeHub) -> None:
         latest_evidence_release("policyengine/populace-us", api=hub)
 
 
+#: An evidence-tier build of the US evidence release (microcosm#1570).
+US_EVIDENCE_BUILD = "populace-us-2024-0fb05b6-evidence-20261201T000000Z"
+
+
+def _seed_us_releases_record(hub: FakeHub, *, evidence_current: str | None) -> None:
+    """The US repository's releases.json after its switch, with the evidence
+    release's current build ``evidence_current``."""
+    from microcosm.data.contract import US_EVIDENCE_RELEASE_ID, US_NATIONAL_RELEASE_ID
+
+    record = {
+        "schema_version": 1,
+        "default": US_NATIONAL_RELEASE_ID,
+        "releases": {
+            US_NATIONAL_RELEASE_ID: {"role": "national", "current": None, "builds": {}},
+            US_EVIDENCE_RELEASE_ID: {
+                "role": "national",
+                "current": evidence_current,
+                "builds": {
+                    US_EVIDENCE_BUILD: {
+                        "published_at": "2026-12-01T00:00:00+00:00",
+                        "withdrawn": False,
+                    }
+                },
+            },
+        },
+    }
+    hub.seed_main_file("releases.json", json.dumps(record).encode())
+
+
+def test_latest_evidence_release_reads_the_evidence_releases_current_build(
+    hub: FakeHub,
+) -> None:
+    """Once the US repository records its builds in releases.json, the
+    evidence tier is the evidence release, and its current build takes the
+    place of latest-evidence.json (microcosm#1570)."""
+    from microcosm.data.contract import US_EVIDENCE_RELEASE_ID
+
+    _seed_us_releases_record(hub, evidence_current=US_EVIDENCE_BUILD)
+
+    pointer = latest_evidence_release("policyengine/populace-us", api=hub)
+
+    folder = f"releases/{US_EVIDENCE_RELEASE_ID}/{US_EVIDENCE_BUILD}"
+    assert pointer.release_id == US_EVIDENCE_BUILD
+    # A build folder never changes, so its files are read at main.
+    assert pointer.revision == "main"
+    assert pointer.tier == "evidence"
+    assert pointer.line is None
+    assert pointer.updated_at == "2026-12-01T00:00:00+00:00"
+    assert pointer.paths["release_manifest"] == f"{folder}/release_manifest.json"
+    assert pointer.paths["build_manifest"] == f"{folder}/build_manifest.json"
+
+
+def test_latest_evidence_release_refuses_an_evidence_release_without_a_current_build(
+    hub: FakeHub,
+) -> None:
+    _seed_us_releases_record(hub, evidence_current=None)
+
+    with pytest.raises(ValueError, match="no current build"):
+        latest_evidence_release("policyengine/populace-us", api=hub)
+
+
+@pytest.mark.parametrize("status_code", [None, 403, 503])
+def test_a_hub_that_could_not_be_asked_is_not_an_absent_file(
+    status_code: int | None,
+) -> None:
+    """LocalEntryNotFoundError is also an EntryNotFoundError and a
+    FileNotFoundError, but says nothing about the file; only the Hub's answer
+    that it is absent counts (review of #1571)."""
+    from test_support.microcosm_data import hub_errors
+
+    assert not release_module._is_absent_entry_error(
+        hub_errors.hub_unreachable("r", "f", status_code=status_code)
+    )
+    assert release_module._is_absent_entry_error(
+        hub_errors.missing_on_hub("r", "f", "main")
+    )
+
+
+def _evidence_pointer_without_releases_record(hub: FakeHub, monkeypatch) -> None:
+    """A repository before its switch, with latest-evidence.json, whose
+    releases.json the Hub cannot be asked for."""
+    from test_support.microcosm_data import hub_errors
+
+    payload = latest_evidence_pointer_payload(EVIDENCE_RELEASE_ID)
+    hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
+    download = hub.hf_hub_download
+
+    def no_releases_record(*, repo_id, filename, repo_type, revision=None):
+        if filename == "releases.json":
+            raise hub_errors.hub_unreachable(repo_id, filename, revision)
+        return download(
+            repo_id=repo_id, filename=filename, repo_type=repo_type, revision=revision
+        )
+
+    monkeypatch.setattr(hub, "hf_hub_download", no_releases_record)
+
+
+def test_latest_evidence_release_offline_reads_a_cached_pointer_before_the_switch(
+    hub: FakeHub, monkeypatch
+) -> None:
+    """Offline, a releases.json that was never cached reads as absent, as in
+    the loader, so the cached latest-evidence.json still answers (review of
+    #1571)."""
+    from huggingface_hub import constants
+
+    _evidence_pointer_without_releases_record(hub, monkeypatch)
+    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", True)
+
+    pointer = latest_evidence_release("policyengine/populace-us", api=hub)
+
+    assert pointer.release_id == EVIDENCE_RELEASE_ID
+
+
+def test_latest_evidence_release_online_refuses_when_the_hub_cannot_be_asked(
+    hub: FakeHub, monkeypatch
+) -> None:
+    from huggingface_hub import constants
+
+    _evidence_pointer_without_releases_record(hub, monkeypatch)
+    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", False)
+
+    with pytest.raises(LocalEntryNotFoundError):
+        latest_evidence_release("policyengine/populace-us", api=hub)
+
+
 def test_certified_latest_pointer_keeps_its_certified_shape(hub: FakeHub) -> None:
     """The certified pointer payload gains no tier field — its bytes are the
     pre-#506 shape, so existing consumers see no drift."""
@@ -2087,3 +2219,183 @@ def test_transient_errors_while_checking_an_existing_tag_propagate(
             artifact_root=artifact_root,
         )
     assert LATEST_POINTER_PATH not in hub._commits[hub._refs["main"]]
+
+
+def _microcosm_named_artifacts(artifact_root: Path) -> Path:
+    """The artifact root with the dataset and weights under the names new US
+    builds declare."""
+    for name in ("populace_us_2024.h5", "populace_us_2024_calibration.npz"):
+        (artifact_root / name).rename(
+            artifact_root / name.replace("populace_", "microcosm_")
+        )
+    return artifact_root
+
+
+def test_prepare_build_folder_release_lists_a_us_national_build(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    national = _as_us_national_build_folder_release(release_dir)
+    root = _microcosm_named_artifacts(artifact_root)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+
+    prepared = release_module.prepare_build_folder_release(national, artifact_root=root)
+
+    assert prepared.repository == "policyengine/populace-us"
+    assert (prepared.release, prepared.build) == (US_NATIONAL_RELEASE_ID, RELEASE_ID)
+    assert prepared.release_role == "national"
+    roles = {item.name: item.role for item in prepared.files}
+    assert roles["microcosm_us_2024.h5"] == "dataset"
+    assert roles["microcosm_us_2024_calibration.npz"] == "calibration_weights"
+
+
+def test_prepare_build_folder_release_lists_an_annual_build(
+    annual_build_folder: Path,  # noqa: F811
+    artifact_root: Path,
+) -> None:
+    """An annual build passes its contract and publishes, as a build of the
+    annual release whose role is national, the base national build's files,
+    one H5 per projected year, the candidate manifest, its acceptance report
+    and the per-year receipts."""
+    prepared = release_module.prepare_build_folder_release(
+        annual_build_folder, artifact_root=artifact_root
+    )
+
+    assert (prepared.release, prepared.build) == (
+        US_ANNUAL_RELEASE,
+        f"{RELEASE_ID}-annual-20261110T120000Z-a1b2c3d4",
+    )
+    assert prepared.release_role == "national"
+    files = {item.name: item for item in prepared.files}
+    assert files["microcosm_us_2024.h5"].role == "dataset"
+    assert files["microcosm_us_2025.h5"].role == "dataset"
+    assert files["microcosm_us_2025.h5"].path == artifact_root / "microcosm_us_2025.h5"
+    assert {
+        "annual_manifest.json",
+        "annual_acceptance.json",
+        "projection_2025.json",
+        "microcosm_us_2024_calibration.npz",
+        "calibration_diagnostics.json",
+    } <= set(files)
+
+
+def test_the_tagged_publisher_s_advice_names_every_us_release() -> None:
+    from microcosm.data.contract import US_RELEASES
+
+    for release in US_RELEASES:
+        assert release.removeprefix("microcosm-us-2024") in (
+            release_module.TAGGED_RELEASE_ADVICE
+        )
+
+
+def test_prepare_build_folder_release_refuses_a_build_of_another_role(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """An ACS local-area build declares the local-area role; the national
+    release, whose role is national, refuses it."""
+    national = _as_us_national_build_folder_release(release_dir)
+    manifest_path = national / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["dataset_role"] = "non_default_local_area"
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: []
+    )
+
+    with pytest.raises(ValueError, match="role"):
+        release_module.prepare_build_folder_release(
+            national, artifact_root=_microcosm_named_artifacts(artifact_root)
+        )
+
+
+def test_the_tagged_publisher_refuses_the_us_national_release(
+    release_dir: Path, artifact_root: Path
+) -> None:
+    national = _as_us_national_build_folder_release(release_dir)
+
+    with pytest.raises(ValueError, match="microcosm-publish-release-build"):
+        release_module.prepare_release(national, artifact_root=artifact_root)
+
+
+def test_prepare_build_folder_release_checks_an_evidence_build_with_its_contract(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """An evidence-tier build ships its failures on purpose, so the build-
+    folder publisher checks it with the evidence contract, never the
+    certified one."""
+    national = _as_us_national_build_folder_release(release_dir)
+    evidence = national.rename(national.with_name("microcosm-us-2024-evidence"))
+    for name in ("release_manifest.json", "build_manifest.json"):
+        manifest = json.loads((evidence / name).read_text())
+        manifest["release"] = "microcosm-us-2024-evidence"
+        (evidence / name).write_text(json.dumps(manifest))
+    checked = []
+    monkeypatch.setattr(
+        release_module,
+        "validate_release_dir",
+        lambda _path, **_kwargs: pytest.fail("the certified contract ran"),
+    )
+    monkeypatch.setattr(
+        release_module,
+        "validate_evidence_release_dir",
+        lambda path: checked.append(Path(path)),
+    )
+
+    prepared = release_module.prepare_build_folder_release(
+        evidence, artifact_root=_microcosm_named_artifacts(artifact_root)
+    )
+
+    assert checked == [evidence]
+    assert prepared.release == "microcosm-us-2024-evidence"
+    assert prepared.release_role == "national"
+
+
+def _with_release_type(release_dir: Path, release_type: str) -> Path:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["release_type"] = release_type
+    manifest_path.write_text(json.dumps(manifest))
+    return release_dir
+
+
+def test_prepare_build_folder_release_passes_parent_inputs_to_the_contract(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """A source enrichment's contract replays its parent's H5 and the tested
+    wheels, so the build-folder publisher passes them through."""
+    national = _with_release_type(
+        _as_us_national_build_folder_release(release_dir), "source_enrichment"
+    )
+    passed = {}
+
+    def contract(_path, **kwargs):
+        passed.update(kwargs)
+        return []
+
+    monkeypatch.setattr(release_module, "validate_release_dir", contract)
+    parent_h5 = tmp_path / "parent.h5"
+    wheel = tmp_path / "policyengine_us-2.2.1-py3-none-any.whl"
+
+    release_module.prepare_build_folder_release(
+        national,
+        artifact_root=_microcosm_named_artifacts(artifact_root),
+        parent_h5=parent_h5,
+        compatibility_wheels=(wheel,),
+    )
+
+    assert passed["parent_h5"] == parent_h5
+    assert passed["compatibility_wheels"] == (wheel,)
+
+
+def test_prepare_build_folder_release_refuses_parent_inputs_for_a_plain_build(
+    release_dir: Path, artifact_root: Path, tmp_path: Path
+) -> None:
+    national = _as_us_national_build_folder_release(release_dir)
+
+    with pytest.raises(ValueError, match="source_enrichment"):
+        release_module.prepare_build_folder_release(
+            national,
+            artifact_root=_microcosm_named_artifacts(artifact_root),
+            parent_h5=tmp_path / "parent.h5",
+        )

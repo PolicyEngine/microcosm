@@ -153,7 +153,7 @@ the local telemetry emitter service.
 
 The build manifest records what staging did: the run id, the destination, and
 how many files actually reached it, or an explicit `enabled: false` for a
-declared opt-out. `microcosm-publish-release` **refuses** a release whose build
+declared opt-out. `microcosm-publish-release-build` **refuses** a build that
 meant to stage and delivered nothing (`--allow-missing-staging` overrides); a
 declared `--no-staging` build publishes without the flag:
 
@@ -164,8 +164,9 @@ python tools/build_us_fiscal_refresh_release.py \
 ```
 
 This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
-final candidate diagnostics under `runs/<run_id>/` without updating production
-`latest.json`.
+final candidate diagnostics under `runs/<run_id>/` in the staging repository.
+Nothing is published to `policyengine/populace-us`: the build is published
+only by the commands described in [Releasing & alerts](#releasing--alerts).
 
 The UK commands (`tools/build_uk_frs_spine.py`, a shim over the package's
 `uk_runtime.spine_build`, and `microcosm-build-uk` / `tools/build_uk_full.py`,
@@ -420,19 +421,24 @@ including Hypothesis properties) run in the normal `uv run pytest` suite.
 The [native SPM role source-enrichment lane](docs/us-native-spm-role-source-enrichment.md)
 creates a new US H5 from the exact reviewed BuildP parent, preserves its original
 variables and schema-5 calibration evidence, and requires fresh country/wrapper
-compatibility checks. It has a local candidate builder and uses the regular
-publisher's contract with `--parent-h5` and `--preflight-only`. The same release
-type publishes the [reported-receipt child of the national default](docs/us-reported-receipt-source-enrichment.md)
-as a tag-only donor for the ACS local chain. It is never the `latest.json`
+compatibility checks. It has a local candidate builder, writes each candidate
+as a build of the national release, and is checked by
+`microcosm-publish-release-build` with `--parent-h5` and `--preflight-only`.
+The same release type publishes the
+[reported-receipt child of the national default](docs/us-reported-receipt-source-enrichment.md)
+as a donor for the ACS local chain, as a build of
+`microcosm-us-2024-receipt-donor`, a release that is never the repository's
 default.
 
 A [compatibility recertification](docs/us-compatibility-recertification.md)
-republishes a published US calibration release byte for byte under a new id,
+republishes a published US calibration build byte for byte as a new build of
+the national release,
 with a measured `compatible_model_packages` claim for a newer policyengine-us:
 a loader replay under the tested country, Core and calculator wheels, the engine's reviewed column
 changes, and the drift of the critical rows and headline totals between the
 built-with and tested engines. It never recalibrates. Publication refuses a
-child whose parent tag on the Hub does not serve the carried manifest bytes.
+child until the Hub serves the carried manifest bytes for its parent: from the
+parent's build folder, or from its tag for a parent that keeps only its tag.
 
 The non-default ACS local-area chain (`tools/build_us_acs_local_release.py`)
 calibrates to the SOI `state` surface by default, the 4,459-target contract of
@@ -485,64 +491,122 @@ the file without importing them, such as the collector. Its description lists th
 see the [package README](packages/microcosm-diagnostics/README.md).
 
 Publication runs on the build machine (it needs the freshly built H5), so it
-isn't a CI step. Releases use one of two layouts.
+isn't a CI step. The UK and US repositories have both switched to
+`releases.json`, so every UK and US release that takes new builds publishes
+each build into its own folder, and no release publishes with tags. The US
+side of this holds from the US repository's switch commit: Microcosm's US
+change (microcosm#1570) merges straight after that commit.
 
-**The UK national, dense and local-area releases publish each build into its
-own folder.** These releases (`microcosm.data.contract.publishes_to_build_folder`)
-hand each build to the separately installed emitter, whose release writer
-puts it in `releases/<release>/<build>/` and records it in the repository's
+**Each build is published into its own folder.** The UK national, dense and
+local-area releases and the US releases below
+(`microcosm.data.contract.publishes_to_build_folder`) hand each build to the
+separately installed emitter, whose release writer puts it in
+`releases/<release>/<build>/` and records it in the repository's
 `releases.json`, the only record of each release's builds and which one is
-current, in one commit. The build is the calibration attempt id. Both
-manifests name the release and the build as strings; the release manifest
-records `built_at`, `built_with_model_package` and `built_with_core_package`
-at its top level and each file's `role`, and pins no revision. Nothing is
-tagged and no pointer file is written:
+current, in one commit. A UK build is the calibration attempt id; a US build
+keeps its `populace-us-2024-…` build ID. Both manifests name the release and
+the build as strings; the release manifest records `built_at`,
+`built_with_model_package` and `built_with_core_package` at its top level and
+each file's `role`, and pins no revision. Nothing is tagged and no pointer
+file is written:
 
 ```bash
 uv run microcosm-publish-release-build releases/<release> \
-  --repo-id policyengine/populace-uk-private --artifact-root <candidate-dir> \
-  [--make-current]
-uv run microcosm-publish-release-build releases/<release> --promote
+  --repo-id <repository> --artifact-root <artifact-root> [--make-current]
+uv run microcosm-publish-release-build releases/<release> \
+  --repo-id <repository> --promote
 ```
 
-The first command publishes a build, and makes it current with
-`--make-current`; the second makes a published build current. A build counts
-as current only when the emitter's receipt is `published` and names it as
-`current`. The emitter changes no current build while any `latest*.json`
-pointer file exists; the UK repository's switch to `releases.json` deleted
-them, so the command lists the repository's files and refuses, before it
-starts an emitter, while one is there again. It also refuses when
-`HF_HUB_OFFLINE` or `TRANSFORMERS_OFFLINE` is set, and hands nothing over
-unless the emitter's write-access check passes. The calibration diagnostics
-dashboard posts these releases' Slack alerts from changes to `releases.json`.
-The UK assemblers print the exact commands, and the
+`<repository>` is `policyengine/populace-uk-private` or
+`policyengine/populace-us`. The first command publishes a build, and makes it
+current with `--make-current`; the second makes a published build current. A
+build counts as current only when the emitter's receipt is `published` and
+names it as `current`. The emitter changes no current build while any
+`latest*.json` pointer file exists; each repository's switch to
+`releases.json` deleted them, so the command lists the repository's files and
+refuses, before it starts an emitter, while one is there again. It also
+refuses when `HF_HUB_OFFLINE` or `TRANSFORMERS_OFFLINE` is set, and hands
+nothing over unless the emitter's write-access check passes. It waits up to
+three hours for a publication to land or be refused, which covers the
+emitter's one-hour expiry of a pending change and the upload of a US ACS
+local-area build of about 10 GB, and five minutes for a promotion.
+`--preflight-only` checks the build and lists what would be published,
+offline, and starts no emitter. The calibration diagnostics dashboard posts
+these releases' Slack alerts from changes to `releases.json`. The UK
+assemblers, the US national builder and the US ACS package stage print the
+exact commands; the UK
 [national](docs/uk-national-release-assembly-runbook-806.md) and
 [dense](docs/uk-dense-release-assembly-runbook-762.md) runbooks describe them.
 `microcosm.data.load` reads the current build of such a release from
 `releases.json`, or the listed build `build=` names.
 
-**Every US release keeps tags and `latest.json`,** until the stable releases
-US builds publish under are agreed with the US data builder. Publication
-uploads the locally built `releases/<id>/` artifacts to the Hugging Face
-dataset, tags the release, and updates `latest.json`:
+**The US releases.** `policyengine/populace-us` has five releases
+(`microcosm.data.contract.US_RELEASES`):
 
-```bash
-tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
-```
+| Release | Role in `releases.json` | Builds | Dataset file a new build declares |
+| --- | --- | --- | --- |
+| `microcosm-us-2024-national` | `national`, the repository's default | calibrated national builds, SPM source enrichments, compatibility recertifications, exact-k builds | `microcosm_us_2024.h5` |
+| `microcosm-us-2024-local` | `local_area` | ACS local-area builds | `microcosm_us_2024_acs_local.h5` |
+| `microcosm-us-2024-receipt-donor` | `national`, never the default | receipt-qualified donors | `microcosm_us_2024_receipt_qualified.h5` |
+| `microcosm-us-2024-evidence` | `national`, never the default | evidence-tier builds | `microcosm_us_2024.h5` |
+| `microcosm-us-2024-annual` | `national`, never the default | annual projections of a national build: its files, one H5 per later year and the projection receipts ([the annual guide](docs/us-annual-static-aging.md)) | the base build's dataset file, and `microcosm_us_<year>.h5` for each later year |
 
-`tools/publish_release.sh` is a thin wrapper around `microcosm-publish-release`
-(all arguments pass straight through), which refuses the releases that
-publish into build folders and any repository that has `releases.json`. The
-moment `latest.json` goes live, the publish CLI posts a release alert to the
-country's channel, `#populace-us`.
+The national builder writes a build's calibration weights as
+`microcosm_us_2024_calibration.npz`, for national and evidence-tier builds
+alike. The seven builds the switch moved into
+folders keep their `populace_us_2024…` file names. `microcosm.data.load("us")`
+accepts either dataset name for a build listed in `releases.json`
+(`DatasetSpec.build_folder_filename`), while the release contract requires the
+new name of every new build. A recertification renames only its H5: the
+calibration file it carries keeps its parent's name. Promoting a national
+build makes it the US default, the build `microcosm.data.load("us")` loads.
 
+Every US writer writes its build to `releases/<release>/` under its output
+directory, named after the release rather than the build, so each build
+needs its own output directory. It builds both manifests and then rewrites
+them into the build-folder layout with
+`microcosm.data.build_folder_manifests.rewrite_release_dir`. The national
+builder (which the exact-k launcher runs) and the ACS package stage print
+`publish_command` and `promote_command`, the two commands above for
+`policyengine/populace-us`. A source enrichment or a recertification is
+certified before it is published, so its builder prints no commands; its
+runbook gives them. For a US build, `microcosm-publish-release-build` also:
+
+- runs the release contract, which checks an ACS local-area build, a source
+  enrichment and a recertification by their own rules, or, for a build of
+  `microcosm-us-2024-evidence`, the evidence contract;
+- refuses a build whose `dataset_role` gives a different role from its
+  release's, so an ACS local-area build can't be published into the national
+  release, or a national build into the local-area one;
+- takes `--parent-h5` and `--compatibility-wheel` for a source enrichment, and
+  `--compatibility-wheel` alone for a recertification, and refuses them for
+  any other build;
+- hands a recertification to the emitter only once the Hub shows its parent
+  published with the manifest the recertification carries.
+
+A build that names another build (an SPM enrichment or a recertification its
+parent, an ACS build its donor) names a build in a folder by `repo_id`,
+`release` and `build`, with its digests and no `revision`. A tag reference
+(`revision` with `build_id` or `release_id`) stays valid for a build that keeps
+only its tag, so existing builds' references keep working.
+`microcosm.data.build_folder_manifests.referenced_build` says where either is
+read: at `main` from `releases/<release>/<build>/`, or at the tag from
+`releases/<id>/`.
+
+**No release publishes with tags.** `microcosm-publish-release` (and
+`tools/publish_release.sh`, a thin wrapper that passes every argument straight
+through) refuses every release that publishes into build folders and any
+repository that has `releases.json`, so it publishes no UK or US release.
 The UK repository's switch moved the June 2023 build, which `latest.json`
 named, into its own folder as the only and current build of release
 `populace-uk-2023`; `microcosm.data.load("uk", 2023)` reads it there, and no
 new builds publish to that release. `populace-uk-<year>-<tier>-k<N>` releases
 have no publication path in the UK repository since its switch: the emitter
-command takes only the three releases above, and the tagged publisher refuses
-a repository that has `releases.json`.
+command takes only the releases above, and the tagged publisher refuses
+a repository that has `releases.json`. A US annual-projection build publishes
+into `microcosm-us-2024-annual`, carrying its base national build's files
+([the annual guide](docs/us-annual-static-aging.md)); its base is a
+calibrated national build, not yet a source enrichment.
 
 **The switch.** `microcosm.build.build_folder_switch` moves a repository over,
 once, in two steps. Each step only reads the repository and prints, as JSON,
@@ -588,9 +652,10 @@ publishes. Each build keeps the date of its
 tagged commit as `published_at`, and each pointer file's build becomes its
 release's current build. The module's docstring describes both steps in full.
 
-The publisher uploads only the contract files, the release manifest's
-artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
-its terminal gate verdicts as manifest artifacts: `input_coverage.json`,
+`microcosm-publish-release-build` publishes only the two manifests, the
+artifacts the release manifest declares and the checksum ledger. The US
+fiscal-refresh tool therefore binds the verdicts of the checks it runs after
+writing the H5 as manifest artifacts: `input_coverage.json`,
 `input_mass_parity.json`, `qrf_tail_concentration.json`,
 `reform_coverage_smoke.json` and `stored_inputs.json`. Both manifests also
 record the per-run QRF tail register (`qrf_tail_register`), the export-mass
@@ -648,7 +713,8 @@ and an evidence release must carry each refusal line verbatim in
 release ships. No release already on the Hub carries this evidence, and none is
 exempt. Nothing re-validates a published release automatically. The two paths
 that run the contract on one again are re-certifications: a publish retry of
-its local directory, and an annual-projection cut on a national base. Every
+its local directory, and an annual build, which carries a national base's
+files into `microcosm-us-2024-annual`. Every
 published US national base already fails the unchanged calibration-diagnostics
 schema rule, and local-area releases cannot be annual bases. So publishing one
 again means rebuilding or re-packaging it, which runs the check. An
@@ -676,53 +742,49 @@ that was measured as `compatibility.claim_measurement`, and the SPM-role
 runbook says how to grade a candidate against another released version before
 declaring a range.
 
-US exact-k ladder candidates use a tag-only lane. Run
-`tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`
-recorded in `package_result.json`. That command includes `--create-tag`,
-`--no-latest`, and `--tag-only`: it uploads the immutable release and creates its
-tag without committing candidate artifacts or release copies to the production
-main branch. The launcher also forces `--no-staging`, so the build writes neither
-a production nor a staging pointer. The candidate is therefore available only
-by its explicit release id or tag until a separate promotion updates
-`latest.json`. Because Slack alerts are coupled to that production pointer
-update, tag-only publication sends no release alert. The promotion is the
-standard publish of the same release directory, without `--no-latest` and
-`--tag-only`: it reuses the existing release-id tag once the tagged
-`release_manifest.json` is byte-identical to the local one, and writes only the
-main commit that carries `latest.json` (microcosm#450). A tag that describes
-another cut refuses before any commit.
+US exact-k ladder builds are builds of the national release. Run
+`tools/build_us_exact_k_ladder_release.py`. It runs the national builder,
+which writes the build to `<out>/releases/microcosm-us-2024-national/`, and
+records in `package_result.json` the release, the build, the release
+directory, `publish_command`, `promote_command` and `promotion`, a sentence
+saying that promoting makes the build the US default. The launcher runs
+neither command (`automatic_publish: false`, `makes_current: false`), and it
+forces `--no-staging`, so the build sends no staging run files.
+`publish_command` lists the build in the national release without making it
+current; until `promote_command` makes it current, it loads only by name,
+with `microcosm.data.load("us", build="<build>")`.
 
-Evidence-tier releases (microcosm#506) are the third lane: the best available
-artifact when terminal gates failed, built with
-`tools/build_us_fiscal_refresh_release.py --evidence-release` (which records
-every gate failure with an owner issue in the release manifest's
-`known_failures` block, or refuses) and published with
+Evidence-tier builds (microcosm#506) are builds of their own release,
+`microcosm-us-2024-evidence`: the best available artifact when the release's
+validation checks failed, built with
+`tools/build_us_fiscal_refresh_release.py --evidence-release`, which records
+every failed check with an owner issue in the release manifest's
+`known_failures` block, or refuses. The builder writes the build to
+`<out>/releases/microcosm-us-2024-evidence/` and prints the same two
+commands. `microcosm-publish-release-build` checks a build of that release
+with the evidence contract, which refuses a build in the certified shape; the
+certified contract refuses the evidence shape, so an evidence build can't be
+published into the national release. The evidence release is never the
+repository's default, so `microcosm.data.load("us")` never loads its builds.
+Its current build in `releases.json` takes the place of `latest-evidence.json`.
+The US switch deleted every `latest*.json` file, so
+`microcosm.data.latest_evidence_release`, which still reads
+`latest-evidence.json`, finds no pointer in the US repository.
+
+The tagged publisher posts a Slack alert when it moves `latest.json`, and only
+when the channel's incoming-webhook URL is set (`SLACK_WEBHOOK_POPULACE_US`,
+`SLACK_WEBHOOK_POPULACE_UK`), which `tools/publish_release.sh` loads from
+`tools/release.env` and warns about when neither is set. It publishes no UK or
+US release since the two repositories' switches, so no publication reads
+either variable: the calibration diagnostics dashboard posts every UK and US
+release alert from changes to `releases.json`. `tools/release.env` still
+holds the UK release key below; create it once on the build machine:
 
 ```bash
-tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us --evidence
+cp tools/release.env.example tools/release.env   # then fill in the values
 ```
 
-The `--evidence` flag validates against the evidence release contract — a
-certified-shape release is refused under it and vice versa — tags the
-immutable release as usual, and moves only `latest-evidence.json`; the
-certified `latest.json` pointer and the pe.py certification path never see
-evidence artifacts. Each evidence publish supersedes the last, so
-`latest-evidence.json` always names the best current evidence artifact
-(consumers: `microcosm.data.latest_evidence_release`). Its Slack alert is
-labeled as an evidence-tier publish.
-
-The alert is a **no-op unless the channel's incoming-webhook URL is set**, so
-configure it once on the build machine:
-
-```bash
-cp tools/release.env.example tools/release.env   # then paste the webhook URLs
-```
-
-`tools/release.env` is gitignored; the wrapper loads it (or you can just export
-`SLACK_WEBHOOK_POPULACE_US` / `SLACK_WEBHOOK_POPULACE_UK` in your shell) and
-warns if neither is set. After that, every release published with tags and
-`latest.json` publishes with an automatic Slack alert. The releases that
-publish into build folders read neither variable.
+`tools/release.env` is gitignored.
 
 Canonical UK exact-k builds also require a stable, base64-encoded 32-byte
 release key. Source `tools/release.env` before the national build as well as

@@ -1,13 +1,18 @@
 # US compatibility recertification
 
-A `compatibility_recertification` release lets a published, certified US
-calibration release carry a measured `compatible_model_packages` claim for a
-newer policyengine-us without a rebuild. The child republishes byte for byte,
-under a new id and tag, every artifact the parent's release manifest declares
-(the H5, the calibration weights and every declared release file) and both
-parent manifests. A file the parent tag carries without a manifest entry is
-not bound by the manifest and is not carried. The child transforms no data
-and never recalibrates. What it adds is evidence about the newer engine:
+A `compatibility_recertification` build lets a published, certified US
+calibration build carry a measured `compatible_model_packages` claim for a
+newer policyengine-us without a rebuild. The child is a new build of the
+national release, `microcosm-us-2024-national`, with its own
+`populace-us-2024-…` build ID, published into its own folder,
+`releases/microcosm-us-2024-national/<build>/`. It republishes byte for byte
+every artifact the parent's release manifest declares (the H5, the calibration
+weights and every declared release file) and both parent manifests. Only the
+H5's name changes, to the national release's dataset file,
+`microcosm_us_2024.h5`; the calibration weights and every other file keep the
+parent's names. A file the parent carries without a manifest entry is not
+bound by the manifest and is not carried. The child transforms no data and
+never recalibrates. What it adds is evidence about the newer engine:
 
 - **a loader replay** under the tested country, Core and calculator wheels;
 - **the engine's column changes**: what the newer engine ignores that the
@@ -36,38 +41,64 @@ The parent is never a code constant. The child carries the parent's published
 `release_manifest.json` and `build_manifest.json` byte for byte
 (`parent_release_manifest.json`, `parent_build_manifest.json`) and records
 their SHA-256 in `compatibility_recertification.json`. That manifest pins
-every parent artifact, so it is the whole lineage. Offline, the validator:
+every parent artifact, so it is the whole lineage.
+
+The report's `parent` block names the parent in one of two forms
+(`microcosm.data.build_folder_manifests.referenced_build` says where each is
+read):
+
+- a parent in a build folder by `repo_id`, `release` and `build`, with no
+  `revision`. Its files are read at `main` from
+  `releases/<release>/<build>/`, which never changes.
+- a parent that keeps only its tag by `build_id`, `repo_id` and `revision`
+  (the tag). Its files are read at that tag from `releases/<build_id>/` and
+  the repository root.
+
+Offline, the validator:
 
 - rebuilds the parent from the carried files and requires the report's
   `parent` block to equal what they describe;
-- requires every parent artifact in the child with the parent's digest, at
-  the child's revision;
+- requires every parent artifact in the child with the parent's digest, with
+  its `role` and no `revision`, and the H5 under `microcosm_us_2024.h5`;
+- requires both of the child's manifests to name the national release and
+  the same new build;
 - replays today's release contract on the rebuilt parent (`parent_contract`).
 
-Publication adds the online anchor (`require_parent_publication`). After the
-Hub client exists, and before any branch, commit or upload, `publish_release`
-checks two things at the parent's tag:
+`microcosm-publish-release-build` adds the online anchor
+(`require_parent_publication`). After the child passes its checks, and before
+anything is handed to the emitter, it checks two things where the parent is
+read:
 
-- both parent manifests are byte for byte the carried ones;
-- each parent artifact is published exactly where the child will publish it,
-  with the pinned digest: each release file under `releases/<parent>/`, each
-  root artifact at its root path. It compares an LFS file's SHA-256, or the
-  git blob id of the carried bytes.
+- both parent manifests are byte for byte the carried ones, so a child is
+  never published before its parent;
+- each parent artifact is on the Hub with the pinned digest: in a build
+  folder, every file in that folder; at a tag, each release file under
+  `releases/<parent>/` and each root artifact at its root path. It compares an
+  LFS file's SHA-256, or the git blob id of the carried bytes. The child's H5
+  is read from the artifact root under its own name.
 
-Offline, which artifacts count as release files rests on where the files sit
-locally. This check is what stops a root artifact moved into the release
-directory from publishing at the wrong path. Each artifact must sit at exactly
-one of the two places: a parent that publishes a file at both its root and its
-release-file location is refused as ambiguous. Offline, the validator also
-replays the publisher's own upload plan on the child directory, and requires it
-to write every carried artifact to its manifest path.
+For a parent that keeps only its tag, which artifacts count as release files
+rests offline on where the files sit locally, and this check is what stops a
+root artifact moved into the release directory from being read at the wrong
+path. Each artifact must sit at exactly one of the two places: a parent that
+publishes a file at both its root and its release-file location is refused as
+ambiguous. The child has no such split: the build-folder publisher uploads
+every declared artifact into the build's folder by its bare name.
 
 Preflight stays offline. A parent artifact is refused outright when:
 
-- its key is one the child uses for its own evidence (`build_manifest`,
-  `compatibility_drift`, ...); or
+- its key is one the child uses for its own evidence (`compatibility_drift`,
+  ...), or `build_manifest` for a file that is not the parent's
+  `build_manifest.json`; or
 - its path is not one the publisher writes (anything under `releases/`, or
   not a clean relative path).
+
+A parent whose release manifest declares its own `build_manifest.json`, as
+the US SPM builds' do, is accepted: that entry is checked against the parent's
+`build_manifest.json` and not carried as an artifact, since the child carries
+those bytes as `parent_build_manifest.json`. The child does not declare its own
+build manifest either: the build-folder publisher uploads it and refuses a
+file named twice.
 
 The parent must be a US calibration release (`release_type` absent or
 `calibration`) with `dataset_role` `national_default`. A recertification of a
@@ -164,7 +195,7 @@ the source, so the proof also covers what actually ran:
   source into a fresh, empty bytecode cache (`sys.pycache_prefix`), set before
   the first Microcosm import. The tool does this at the top of its script.
   Every other entry point (`python -m microcosm.data.compatibility_recertification`,
-  `microcosm-publish-release` / `tools/publish_release.sh`) must be started with
+  `microcosm-publish-release-build`) must be started with
   `PYTHONPYCACHEPREFIX` pointing at a new empty directory. The loader replay
   and the scorer refuse a process in which any such module ran from other
   bytecode.
@@ -192,22 +223,36 @@ first, and stay out of reserved windows. Run everything from one clean,
 reviewed checkout. Publication authenticates the producer files against the
 recorded commit.
 
-1. **Fetch the parent** at its tag:
+1. **Fetch the parent.** For a parent in a build folder, `--release` names
+   its release, and the tool reads the build at `main` from
+   `releases/<release>/PARENT_ID/` into `/path/parent/releases/<release>/`:
 
    ```bash
    uv run --no-sync python tools/build_us_compatibility_recertification.py fetch-parent \
-     --release-id PARENT_ID --output-dir /path/parent
+     --release microcosm-us-2024-national --build-id PARENT_ID \
+     --output-dir /path/parent
    ```
 
-2. **Build the candidate.** Root artifacts are hard-linked; compatibility is
-   `pending`:
+   For a parent that keeps only its tag, omit `--release`: the tool reads it
+   at that tag from `releases/PARENT_ID/` and the root artifacts it names,
+   into `/path/parent/releases/PARENT_ID/`. Either way the H5 and the
+   calibration weights go to `/path/parent/artifacts/`, and every pinned
+   digest is checked.
+
+2. **Build the candidate.** Root artifacts are hard-linked, the H5 under
+   `microcosm_us_2024.h5`; compatibility is `pending`. `--build-id` is the
+   child's new build ID. The tool prints the candidate's `release_dir`,
+   `/path/candidate/releases/microcosm-us-2024-national`:
 
    ```bash
    uv run --no-sync python tools/build_us_compatibility_recertification.py build \
-     --parent-release-dir /path/parent/releases/PARENT_ID \
+     --parent-release-dir /path/parent/releases/PARENT_DIR \
      --parent-artifact-root /path/parent/artifacts \
-     --output-dir /path/candidate --release-id CHILD_ID
+     --output-dir /path/candidate --build-id CHILD_ID
    ```
+
+   `PARENT_DIR` is the directory step 1 wrote: the parent's release, or its
+   build ID for a parent that keeps only its tag.
 
 3. **Score** in two isolated environments, each with this checkout's
    `microcosm-data` installed editable. One has the parent's built-with
@@ -215,7 +260,7 @@ recorded commit.
 
    ```bash
    BASE/bin/python tools/build_us_compatibility_recertification.py score \
-     --release-dir /path/candidate/releases/CHILD_ID \
+     --release-dir /path/candidate/releases/microcosm-us-2024-national \
      --artifact-root /path/candidate/artifacts --output baseline.json
    TESTED/bin/python tools/build_us_compatibility_recertification.py score ... --output tested.json
    TESTED/bin/python tools/build_us_compatibility_recertification.py score ... \
@@ -234,9 +279,9 @@ recorded commit.
 
    ```bash
    PYTHONPYCACHEPREFIX="$(mktemp -d)" TESTED/bin/python -m microcosm.data.compatibility_recertification --certify \
-     --release-dir /path/candidate/releases/CHILD_ID \
+     --release-dir /path/candidate/releases/microcosm-us-2024-national \
      --artifact-root /path/candidate/artifacts \
-     --output-dir /path/certified/releases/CHILD_ID \
+     --output-dir /path/certified/releases/microcosm-us-2024-national \
      --compatibility-wheel policyengine_us-X.whl --compatibility-wheel policyengine_core-Y.whl \
      --compatibility-wheel spm_calculator-W.whl \
      --baseline-scores baseline.json --tested-scores tested.json \
@@ -254,24 +299,33 @@ recorded commit.
 
    Wildcards, `~=`, exclusion lists and open ranges are refused. The
    source-enrichment guards only probe bounds. It also adds the tested Core as an exact `publisher_claim` pin,
-   unless a parent entry already covers that Core. `build.built_with_*`
-   stays the parent's.
+   unless a parent entry already covers that Core. `built_with_model_package`
+   and `built_with_core_package`, at the release manifest's top level, stay
+   the parent's. The output directory must be new and keep the candidate
+   directory's name.
 
 6. **Preflight**, offline, and then **publish** on the owner's go:
 
    ```bash
-   PYTHONPYCACHEPREFIX="$(mktemp -d)" microcosm-publish-release /path/certified/releases/CHILD_ID \
+   PYTHONPYCACHEPREFIX="$(mktemp -d)" microcosm-publish-release-build \
+     /path/certified/releases/microcosm-us-2024-national \
      --repo-id policyengine/populace-us \
      --artifact-root /path/candidate/artifacts \
      --compatibility-wheel ... (the three tested wheels) \
-     --no-latest --tag-only --preflight-only
+     --preflight-only
    ```
 
-   Publication is the same command through `tools/publish_release.sh`, still
-   with a fresh `PYTHONPYCACHEPREFIX` and without `--preflight-only`. The
-   publisher refuses to point `latest.json` at a recertification child, which
-   republishes its parent's data under a wider claim: consumers reach it by
-   its release id, so it always publishes with `--no-latest --tag-only`.
+   Publication is the same command, still with a fresh `PYTHONPYCACHEPREFIX`
+   and without `--preflight-only`. It refuses until the Hub shows the parent
+   published with the manifest the child carries (see
+   [Parent identity](#parent-identity)), then hands the child to the emitter,
+   which publishes it into its own folder of the national release without
+   making it current. A recertification republishes its parent's data under a
+   wider claim, so consumers reach it by name:
+   `microcosm.data.load("us", build="CHILD_ID")`. It never becomes the
+   national release's current build, and so never the US default:
+   `--make-current`, and `--promote` later, refuse a recertification, as the
+   tagged publisher refused to point `latest.json` at one.
 
 7. **Certify the bundle downstream.** policyengine.py certifies the child on
    its publisher claim (`compatibility_basis: legacy_compatible_model_package`,
