@@ -1,0 +1,1 @@
+Add the pinned NZ selector inventory, a Census-to-ERP structural bridge with grouped owned/trust tenure and explicit region 99 national-growth proxy, prepared-column declarations and strict input preparation, independent discrepancy receipts, and d1376 2%/5% release gates. Keep unresolved Census, IRD and receipt contracts explicitly parked.

@@ -1,0 +1,1 @@
+Raise the bound on every serialized string in compiler schemas and Orrery exports to 131,072 characters so the maintained full UK gate contracts round-trip; the document, complexity, node and edge limits are unchanged.

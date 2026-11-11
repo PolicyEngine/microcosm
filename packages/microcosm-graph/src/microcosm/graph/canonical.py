@@ -12,7 +12,7 @@ from typing import Any
 
 from .decl import DESCRIPTIVE_FIELDS
 
-__all__ = ["canonical_json", "normative", "sha256_domain"]
+__all__ = ["canonical_json", "normative", "sha256", "sha256_domain"]
 
 
 def _json_value(value: object) -> object:
@@ -56,6 +56,12 @@ def canonical_json(obj: object) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+def sha256(payload: bytes) -> str:
+    """Return the lowercase hexadecimal SHA-256 digest of ``payload``."""
+
+    return hashlib.sha256(payload).hexdigest()
 
 
 def sha256_domain(domain: str, payload: bytes) -> str:

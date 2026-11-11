@@ -12,6 +12,7 @@ same final SOI Table 2.1 band ($10 million or more).
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -277,22 +278,48 @@ def _allocate_agi(
     )
 
 
-def source_year_puf_adjusted_gross_income(
-    source: str | Path | pd.DataFrame | Mapping[str, Sequence[Any]],
+@dataclass(frozen=True)
+class SourceYearPufLayout:
+    """Processed-PUF tax-unit positions recovered against the TY2015 source.
+
+    Attributes:
+        regular: The non-aggregate TY2015 source rows, in source order. They
+            occupy the first ``len(regular)`` processed tax units one for one.
+        aggregate: The four IRS disclosure aggregate rows, indexed by RECID.
+        processed_weights: Processed tax-unit weights in processed order.
+        population_scale: The single factor relating every processed regular
+            weight to its source ``S006 / 100``.
+        aggregate_population: Each aggregate row's population on the processed
+            weight scale.
+        synthetic_rows: The processed positions of each aggregate row's
+            synthetic replacement records, in the archived bucket order.
+    """
+
+    regular: pd.DataFrame
+    aggregate: pd.DataFrame
+    processed_weights: np.ndarray
+    population_scale: float
+    aggregate_population: Mapping[int, float]
+    synthetic_rows: Mapping[int, slice]
+
+
+def source_year_puf_layout(
+    frame: pd.DataFrame,
     *,
     processed_tax_unit_ids: Sequence[Any],
     processed_tax_unit_weights: Sequence[Any],
-) -> np.ndarray:
-    """Return TY2015 AGI banding values in processed-PUF tax-unit order.
+) -> SourceYearPufLayout:
+    """Align TY2015 source rows to processed-PUF tax units, failing closed.
 
-    Regular tax units carry literal IRS PUF E00100. The first three synthetic
-    disclosure buckets reproduce the archived seeded donor allocation. The
-    open Forbes-backed tail receives $100 million, its source bucket floor;
-    this is an AGI-band anchor rather than a fabricated point estimate, and all
-    such rows belong to Table 2.1's final "$10 million or more" band.
+    ``frame`` needs numeric ``RECID``, ``MARS`` and ``S006``. Regular source
+    rows must occupy the leading processed tax units in RECID order, the
+    remaining processed IDs must be the archived contiguous replacement IDs,
+    and every regular processed weight must be the source weight times one
+    population factor. The three bounded aggregate buckets keep the archived
+    record counts; the open tail takes the remainder.
     """
 
-    frame = _source_frame(source)
+    frame = frame.copy()
     source_ids = _integral_ids(frame["RECID"], label="TY2015 PUF RECID")
     frame["RECID"] = source_ids
     if set(frame.loc[frame["MARS"] == 0, "RECID"]) != set(PUF_AGGREGATE_RECIDS):
@@ -370,8 +397,52 @@ def source_year_puf_adjusted_gross_income(
         **bounded_counts,
         PUF_AGGREGATE_RECIDS[-1]: top_count,
     }
+    synthetic_rows: dict[int, slice] = {}
+    cursor = len(regular_ids)
+    for recid in PUF_AGGREGATE_RECIDS:
+        synthetic_rows[recid] = slice(cursor, cursor + counts[recid])
+        cursor += counts[recid]
+    return SourceYearPufLayout(
+        regular=regular,
+        aggregate=aggregate,
+        processed_weights=processed_weights,
+        population_scale=population_scale,
+        aggregate_population=aggregate_population,
+        synthetic_rows=synthetic_rows,
+    )
 
-    output = np.empty(len(processed_ids), dtype=np.float64)
+
+def source_year_puf_adjusted_gross_income(
+    source: str | Path | pd.DataFrame | Mapping[str, Sequence[Any]],
+    *,
+    processed_tax_unit_ids: Sequence[Any],
+    processed_tax_unit_weights: Sequence[Any],
+) -> np.ndarray:
+    """Return TY2015 AGI banding values in processed-PUF tax-unit order.
+
+    Regular tax units carry literal IRS PUF E00100. The first three synthetic
+    disclosure buckets reproduce the archived seeded donor allocation. The
+    open Forbes-backed tail receives $100 million, its source bucket floor;
+    this is an AGI-band anchor rather than a fabricated point estimate, and all
+    such rows belong to Table 2.1's final "$10 million or more" band.
+    """
+
+    frame = _source_frame(source)
+    layout = source_year_puf_layout(
+        frame,
+        processed_tax_unit_ids=processed_tax_unit_ids,
+        processed_tax_unit_weights=processed_tax_unit_weights,
+    )
+    regular = layout.regular
+    regular_ids = regular["RECID"].to_numpy(dtype=np.int64)
+    processed_weights = layout.processed_weights
+    aggregate = layout.aggregate
+    aggregate_population = layout.aggregate_population
+    counts = {
+        recid: rows.stop - rows.start for recid, rows in layout.synthetic_rows.items()
+    }
+
+    output = np.empty(len(processed_weights), dtype=np.float64)
     output[: len(regular_ids)] = regular["E00100"].to_numpy(dtype=np.float64)
     if not np.isfinite(output[: len(regular_ids)]).all():
         raise ValueError("TY2015 regular PUF E00100 must be finite.")
@@ -428,5 +499,7 @@ __all__ = [
     "PUF_SOURCE_YEAR",
     "PUF_SOURCE_YEAR_AGI_REQUIRED_COLUMNS",
     "PUF_SYNTHETIC_RECID_START",
+    "SourceYearPufLayout",
     "source_year_puf_adjusted_gross_income",
+    "source_year_puf_layout",
 ]

@@ -14,6 +14,7 @@ import pytest
 from microcosm.build import us_annual_static_aging as annual
 from microcosm.frame import US_SCHEMA, SignedScale, WeightKind, Weights
 from microcosm.frame.materialize import put_frame_table, read_frame_table
+from test_support.git_repositories import NO_BACKGROUND_MAINTENANCE
 
 
 @pytest.fixture
@@ -263,7 +264,8 @@ def test_model_provenance_requires_imported_clean_pinned_source(tmp_path, monkey
 
     def git(*args):
         return subprocess.check_output(
-            ["git", "-C", str(tmp_path), *args], text=True
+            ["git", *NO_BACKGROUND_MAINTENANCE, "-C", str(tmp_path), *args],
+            text=True,
         ).strip()
 
     git("init", "-q")

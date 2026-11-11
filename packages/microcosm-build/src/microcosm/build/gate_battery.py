@@ -62,6 +62,7 @@ from microcosm.build.gates import (
     weights_audit_gate,
 )
 from microcosm.build.trace import compute_composition_fingerprint
+from microcosm.data.gate_signing_keys import require_registered_gate_signing_key
 from microcosm.frame import Frame
 
 __all__ = [
@@ -155,7 +156,9 @@ def _signing_key(country: str) -> bytes:
         raise RuntimeError(f"{env} must be valid base64.") from exc
     if len(key) != 32:
         raise RuntimeError(f"{env} must decode to exactly 32 bytes.")
-    return key
+    # A key the committed registry does not let sign would produce reports
+    # no verifier accepts; refuse it here so the report says why.
+    return require_registered_gate_signing_key(country, key, purpose="sign")
 
 
 def _json_safe(value: object) -> object:
@@ -847,10 +850,19 @@ class GateBatteryBlockedError(RuntimeError):
     including the block itself — is on disk.
     """
 
-    def __init__(self, phase: str, failures: Sequence[str], report_path: Path) -> None:
+    def __init__(
+        self,
+        phase: str,
+        failures: Sequence[str],
+        report_path: Path,
+        *,
+        blocking_gate_ids: Sequence[str] = (),
+    ) -> None:
         self.phase = phase
         self.failures = tuple(failures)
         self.report_path = report_path
+        #: The ids of the gates that blocked (empty when the raiser did not say).
+        self.blocking_gate_ids = tuple(blocking_gate_ids)
         lines = "\n".join(f"  - {line}" for line in self.failures)
         super().__init__(
             f"Gate battery blocked at phase {phase!r} (report: {report_path}):\n{lines}"
@@ -1045,7 +1057,12 @@ class GateBatteryRun:
             for outcome in blocking:
                 if outcome.status is GateStatus.EVIDENCE_ABSENT:
                     failures.append(f"[{outcome.entry.id}] {outcome.reason}")
-            raise GateBatteryBlockedError(phase, failures, self._report_path)
+            raise GateBatteryBlockedError(
+                phase,
+                failures,
+                self._report_path,
+                blocking_gate_ids=[outcome.entry.id for outcome in blocking],
+            )
         return True
 
     # -- report assembly ----------------------------------------------------

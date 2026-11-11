@@ -95,22 +95,32 @@ def _person(**columns) -> dict[str, pd.DataFrame]:
     }
 
 
-def test_savings_interest_holds_all_interest_and_isa_interest_a_part() -> None:
-    out = MAPPING.encode(
-        _person(interest_income=[400.0]),
-        shares={"uk.isa_interest_fraction": 0.25},
-    ).tables["person"]
+def test_savings_interest_holds_all_interest_and_binds_no_isa_part() -> None:
+    # policyengine-uk 2.162.2 gives individual_savings_account_interest_income
+    # a formula, so it is no engine input to bind; the release frame writes
+    # its own tax_free_savings_income (microcosm#1095).
+    out = MAPPING.encode(_person(interest_income=[400.0])).tables["person"]
     assert out.loc[0, "savings_interest_income"] == 400.0
-    assert out.loc[0, "individual_savings_account_interest_income"] == 100.0
+    assert "individual_savings_account_interest_income" not in out
 
 
-def test_self_employment_sums_farm_and_non_farm_profit() -> None:
-    out = MAPPING.encode(
-        _person(
-            nonfarm_self_employment_income=[100.0], farm_self_employment_income=[50.0]
-        )
-    ).tables["person"]
-    assert out.loc[0, "self_employment_income"] == 150.0
+def test_self_employment_splits_the_farm_and_non_farm_sum_by_sign() -> None:
+    # policyengine-uk 2.131.0 (pe-uk#2085): the profit goes to
+    # self_employment_income and the loss to trading_loss, never both.
+    tables = {
+        "person": pd.DataFrame(
+            {
+                "person_id": [1, 2, 3],
+                "person_household_id": [1, 2, 3],
+                "nonfarm_self_employment_income": [100.0, -500.0, 300.0],
+                "farm_self_employment_income": [50.0, 200.0, -300.0],
+            }
+        ),
+        "household": pd.DataFrame({"household_id": [1, 2, 3]}),
+    }
+    out = MAPPING.encode(tables).tables["person"]
+    assert out["self_employment_income"].tolist() == [150.0, 0.0, 0.0]
+    assert out["trading_loss"].tolist() == [0.0, 300.0, 0.0]
 
 
 def test_annual_hours_are_usual_weekly_hours_times_weeks() -> None:

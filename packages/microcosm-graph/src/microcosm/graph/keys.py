@@ -162,6 +162,7 @@ def node_key(
     source_keys: Mapping[str, str],
     *,
     kernel_capabilities: Capabilities,
+    platform_identity: str | None = None,
 ) -> str:
     """Derive a node key from its declaration and resolved input identities.
 
@@ -169,6 +170,10 @@ def node_key(
     function resolves each declared column exactly as ``compile_graph`` does:
     a local owner supplies its artifact, while a carried column is supplied by
     the current structural version's frame.
+
+    ``platform_identity`` is a recorded platform for offline key validation.
+    Execution omits it and always binds the current platform. Supplying the
+    current fingerprint produces exactly the existing key.
     """
 
     node = compiled.graph.node(node_id)
@@ -251,7 +256,7 @@ def node_key(
     # its key carries the platform, so a shared store never serves another
     # platform's output. Other kernels' keys are unchanged by this.
     platform_scope = (
-        (platform_fingerprint(),)
+        (platform_fingerprint() if platform_identity is None else platform_identity,)
         if kernel_capabilities.numeric is Numeric.PLATFORM_BITWISE
         else ()
     )

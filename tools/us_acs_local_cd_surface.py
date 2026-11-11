@@ -1115,11 +1115,24 @@ def district_row_parents(
     return parents, unchecked
 
 
+#: Digits of a ladder population target's geography code, by ladder geography.
+POPULATION_TARGET_CODE_DIGITS: Mapping[str, int] = {"state": 2, "cd": 4, "county": 5}
+
+
+def population_target_name(geography: str, code: int) -> str:
+    """A ladder population target's name: ``pop_state_06``, ``pop_cd_0601``."""
+
+    digits = POPULATION_TARGET_CODE_DIGITS[geography]
+    return f"pop_{geography}_{int(code):0{digits}d}"
+
+
 def population_rows(
     households: pd.DataFrame,
     household_size: np.ndarray,
     ladder_populations: Mapping[str, Mapping[int, float]],
     geographies: Sequence[str],
+    *,
+    county_column: str = "county_fips",
 ) -> tuple[list[dict], sparse.csr_array, list[str]]:
     """Ladder population marginals as sparse rows (household size x 1[geo]).
 
@@ -1127,9 +1140,16 @@ def population_rows(
     with no supporting household is dropped and named, as before.
     """
 
+    if "county" in geographies:
+        import us_acs_local_county_surface as county_surface
+
+        return county_surface.population_rows(
+            households, household_size, ladder_populations, geographies,
+            county_column=county_column,
+        )
     column_map = {
-        "state": ("state_fips", "state", 2, GEOGRAPHY_STATE),
-        "cd": ("congressional_district_geoid", "cd", 4, GEOGRAPHY_CD),
+        "state": ("state_fips", "state", GEOGRAPHY_STATE),
+        "cd": ("congressional_district_geoid", "cd", GEOGRAPHY_CD),
     }
     size32 = np.asarray(household_size, dtype=np.float32)
     records: list[dict] = []
@@ -1138,10 +1158,10 @@ def population_rows(
     data: list[np.ndarray] = []
     dropped: list[str] = []
     for geography in geographies:
-        column, key, width, level = column_map[geography]
+        column, key, level = column_map[geography]
         codes = pd.to_numeric(households[column]).to_numpy()
         for value, population in sorted(ladder_populations[key].items()):
-            name = f"pop_{geography}_{value:0{width}d}"
+            name = population_target_name(geography, value)
             present = np.flatnonzero(codes == value)
             if not len(present):
                 dropped.append(name)
@@ -1463,7 +1483,10 @@ def score_cd_holdout(
 ) -> dict:
     """Held-out district targets: calibrated vs design vs pro-rata baseline."""
 
-    rows = holdout_rows(records)
+    rows = [
+        row for row in holdout_rows(records)
+        if records[row].get("geography_level") == GEOGRAPHY_CD
+    ]
     base = {"report_only": True, **dict(receipt or {})}
     if not rows:
         return {**base, "n_targets": 0}

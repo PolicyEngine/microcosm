@@ -30,6 +30,7 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult, input_column_coverage_gate
 from microcosm.build.uk_runtime.parity_reference import (
+    load_efrs_engine_derived_exclusions,
     load_efrs_parity_known_gaps,
     load_efrs_parity_reference,
 )
@@ -1346,6 +1347,19 @@ def assert_uk_release_input_coverage_manifest_current(
                 )
 
     known_gaps = {gap.variable: gap for gap in load_efrs_parity_known_gaps()}
+    # Engine-derived exclusions (microcosm#1106) are a separate section of the
+    # same ledger: reference inputs the engine computes from persisted inputs,
+    # which the release must therefore not persist. They are never parity debt.
+    engine_derived = {
+        gap.variable: gap for gap in load_efrs_engine_derived_exclusions()
+    }
+    both = sorted(set(known_gaps) & set(engine_derived))
+    if both:
+        failures.append(
+            "efrs_parity_known_gaps.json names column(s) both as a parity known "
+            f"gap and as an engine-derived exclusion: {both}."
+        )
+    known_gaps = {**known_gaps, **engine_derived}
     gaps_outside_surface = sorted(set(known_gaps) - surface)
     if gaps_outside_surface:
         failures.append(

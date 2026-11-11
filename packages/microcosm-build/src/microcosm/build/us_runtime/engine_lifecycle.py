@@ -29,9 +29,91 @@ kills an 8-hour run.
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+from types import ModuleType
 from typing import Any
 
-__all__ = ["release_engine_simulation"]
+__all__ = ["release_engine_simulation", "temporary_engine_variable_modules"]
+
+
+@contextmanager
+def temporary_engine_variable_modules(
+    variables_dir: str | Path | None = None,
+) -> Iterator[None]:
+    """Release Core's transient variable-module registrations after scoring.
+
+    Core's ``TaxBenefitSystem.add_variables_from_file`` registers each module
+    as ``<system id>_<path hash>_<file stem>`` in ``sys.modules`` and never
+    removes it. Rebuilding metadata/reform systems for independent slices
+    therefore retains their modules, classes, and formula globals forever.
+
+    Keep registrations available throughout the calculation (including
+    engine source inspection), then remove only this scope's registrations
+    under the US variable directory. Shared systems' pre-existing modules
+    and normal imports remain registered. Restore a pre-existing entry if
+    Core reused a dead system's id and overwrote it. No policy or simulation
+    cache, formula, or scored value is changed.
+
+    The default discovers an already imported US engine, so importing this
+    helper remains engine-free. An explicit directory supports stand-ins.
+    Use only around a completed slice whose engine objects do not escape.
+    """
+
+    def loaded_variables_dir():
+        engine = sys.modules.get("policyengine_us")
+        system_cls = getattr(engine, "CountryTaxBenefitSystem", None)
+        return getattr(system_cls, "variables_dir", None)
+
+    initial_directory = variables_dir or loaded_variables_dir()
+    directory = (
+        None if initial_directory is None else Path(initial_directory).absolute()
+    )
+
+    def registrations(directory: Path | None) -> dict[str, ModuleType]:
+        found = {}
+        for name, module in tuple(sys.modules.items()):
+            parts = name.split("_", 2)
+            if (
+                len(parts) != 3
+                or not parts[0].isdigit()
+                or not parts[1].removeprefix("-").isdigit()
+                or not isinstance(module, ModuleType)
+            ):
+                continue
+            filename = getattr(module, "__file__", None)
+            if not isinstance(filename, str):
+                continue
+            path = Path(filename).absolute()
+            if parts[2] == path.stem and (
+                directory is None or path.is_relative_to(directory)
+            ):
+                found[name] = module
+        return found
+
+    previous = registrations(directory)
+    try:
+        yield
+    finally:
+        final_directory = variables_dir or loaded_variables_dir()
+        if final_directory is not None:
+            # The first slice may import the engine lazily. Its newly built
+            # shared default system remains live for every later simulation;
+            # retain those registrations along with the entry snapshot.
+            engine = sys.modules.get("policyengine_us")
+            simulation_cls = getattr(engine, "Microsimulation", None)
+            shared_system = getattr(
+                simulation_cls, "default_tax_benefit_system_instance", None
+            )
+            shared_prefix = f"{id(shared_system)}_"
+            for name in registrations(Path(final_directory).absolute()):
+                if name in previous:
+                    sys.modules[name] = previous[name]
+                elif shared_system is None or not name.startswith(shared_prefix):
+                    del sys.modules[name]
+
 
 #: Instance attributes whose only post-mortem job is to keep big object
 #: graphs alive: the (multi-year) dataset tables, memoized short-path results,
