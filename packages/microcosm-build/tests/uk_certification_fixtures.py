@@ -42,6 +42,24 @@ def signing_key(monkeypatch):
     monkeypatch.setenv(gate_signing_key_env("uk"), TEST_KEY)
 
 
+GREEN_SINCE_BASELINE_MASS = {
+    "baseline": "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e",
+    "ratios": {"employment_income": 1.02, "dividend_income": 0.97},
+    "left": {
+        "gift_aid": {
+            "reason": "thin",
+            "last_ratio": 0.9,
+            "last_build": "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e",
+        }
+    },
+}
+GREEN_SINCE_BASELINE_COVERAGE = {
+    "baseline": GREEN_SINCE_BASELINE_MASS["baseline"],
+    "inputs": ["dividend_income", "employment_income", "gift_aid"],
+    "dropped": ["gift_aid"],
+}
+
+
 def stub_registry():
     """Return a registry that passes every declared gate over the real spec."""
 
@@ -52,6 +70,10 @@ def stub_registry():
 
     details_by_gate = {
         "cgt_projection_entrants": {"projection_engine": STUB_PROJECTION_ENGINE},
+        # The release cut's change since the baseline (the review of
+        # microcosm#1574): the certification records it from these two gates.
+        "input_mass_parity": {"since_baseline": GREEN_SINCE_BASELINE_MASS},
+        "release_input_coverage": {"since_baseline": GREEN_SINCE_BASELINE_COVERAGE},
     }
 
     def passing(name):
@@ -120,20 +142,68 @@ def sha256(path: Path) -> str:
 GREEN_PARENT_SPINE_SHA256 = "a" * 64
 
 
+#: The reference the green fixture's cut recorded (microcosm#1095).
+GREEN_REFERENCE_RECORD = {
+    "kind": "uk_cut_reference",
+    "schema_version": 1,
+    "release": "microcosm-uk-2024-25-national",
+    "build": "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e",
+    "repo_id": "policyengine/populace-uk-private",
+    "path_in_repo": (
+        "releases/microcosm-uk-2024-25-national/"
+        "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e/microcosm_uk_2024_25.h5"
+    ),
+    "filename": "microcosm_uk_2024_25.h5",
+    "sha256": "9" * 64,
+    "size_bytes": 1,
+    "built_with_model_package": {"name": "policyengine-uk", "version": "2.174.1"},
+    "built_with_core_package": {"name": "policyengine-core", "version": "3.33.3"},
+    "evidence": {
+        "key": "release_certification",
+        "filename": "release_certification.json",
+        "sha256": "8" * 64,
+    },
+    "resolved_at": "2026-11-10T12:00:00Z",
+    "selection": "current",
+}
+GREEN_REFERENCE_LABEL = (
+    f"{GREEN_REFERENCE_RECORD['release']}@{GREEN_REFERENCE_RECORD['build']}"
+)
+
+
 def green_score_receipt(candidate_sha: str) -> dict:
     """A score receipt the certifier accepts: measured on the candidate's
-    bytes, scored on a closed common surface, rule 1 passed."""
+    bytes against the cut's reference, on a closed common surface."""
 
+    targets = {
+        "candidate_lower_count": 293,
+        "reference_lower_count": 12,
+        "equal_count": 2,
+    }
     return {
         "artifacts": {
             "candidate": {"sha256": candidate_sha, "size_bytes": 15},
-            "incumbent": {"sha256": "9" * 64, "size_bytes": 1},
+            "reference": {
+                "label": GREEN_REFERENCE_LABEL,
+                "sha256": GREEN_REFERENCE_RECORD["sha256"],
+                "size_bytes": 1,
+            },
         },
         "candidate_full_loss": 0.0096,
-        "incumbent_full_loss": 0.211,
-        "candidate_target_wins": 293,
-        "incumbent_target_wins": 12,
-        "incumbent_unresolvable_pruned": {
+        "reference_full_loss": 0.0101,
+        "head_to_head": {
+            "schema_version": 1,
+            "decision": "owner_decides",
+            "no_threshold_applied": True,
+            "loss": {
+                "candidate": 0.0096,
+                "reference": 0.0101,
+                "candidate_minus_reference": 0.0096 - 0.0101,
+            },
+            "targets": {**targets, "compared": []},
+            "by_family": {},
+        },
+        "reference_unresolvable_pruned": {
             "n_pruned": 0,
             "n_scored": 307,
             "n_surface": 307,
@@ -141,24 +211,22 @@ def green_score_receipt(candidate_sha: str) -> dict:
             "measures": [],
             "families": {},
             "reviewed_register": {
-                "resource": "incumbent_unresolvable_measures.json",
+                "resource": "reference_unresolvable_measures.json",
                 "sha256": None,
+                "reference": GREEN_REFERENCE_LABEL,
                 "entries_used": {},
             },
             "note": "nothing pruned",
         },
+        "reference": dict(GREEN_REFERENCE_RECORD),
         "evaluation": {
-            "schema_version": 1,
-            "rule": "microcosm#578 rule 1 on the common surface",
+            "schema_version": 2,
+            "rule": "microcosm#1095: the candidate and the current build",
+            "reference": GREEN_REFERENCE_LABEL,
             "scored_surface": {"n_scored": 307, "n_pruned": 0, "n_surface": 307},
-            "rule_1": {
-                "passed": True,
-                "candidate_full_loss": 0.0096,
-                "incumbent_full_loss": 0.211,
-                "candidate_target_wins": 293,
-                "incumbent_target_wins": 12,
-            },
-            "verdict": "passed",
+            "losses": {"candidate_full_loss": 0.0096, "reference_full_loss": 0.0101},
+            "targets": targets,
+            "no_threshold_applied": True,
         },
     }
 
@@ -242,7 +310,7 @@ def green_certification_inputs(tmp_path: Path):
             "terminal_gate_json": {"sha256": seam_report_sha},
         },
     }
-    score_receipt = tmp_path / "score_vs_enhanced_frs.json"
+    score_receipt = tmp_path / "score_vs_reference.json"
     score_receipt.write_text(
         json.dumps(green_score_receipt(candidate_sha)), encoding="utf-8"
     )
@@ -258,6 +326,7 @@ def green_certification_inputs(tmp_path: Path):
         "spine_sidecar": sidecar,
         "build_record": build_record,
         "score_receipt_path": score_receipt,
+        "reference_record": dict(GREEN_REFERENCE_RECORD),
         "exclusions_evaluated_on": date(2026, 8, 27),
         "certification_path": tmp_path / "release_certification.json",
     }

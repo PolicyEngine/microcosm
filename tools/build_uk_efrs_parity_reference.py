@@ -116,8 +116,9 @@ def _parse_args() -> argparse.Namespace:
         metavar="PATH",
         help=(
             "Write weighted per-column totals of the artifact's effective "
-            "input surface, in the schema the input_mass_parity terminal gate "
-            "consumes (#609), and exit. This does NOT regenerate the committed "
+            "input surface, in the schema-1 shape the input_mass_parity terminal "
+            "gate consumed (#609) until microcosm#1095 moved it to the current "
+            "build of the cut's own line, and exit. This does NOT regenerate the committed "
             "coverage reference: the destination must be outside the "
             "repository, because the totals are an operational gate input "
             "derived from licensed microdata."

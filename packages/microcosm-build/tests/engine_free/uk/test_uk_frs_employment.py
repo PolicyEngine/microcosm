@@ -16,11 +16,11 @@ from microcosm.build.uk_runtime.frs_employment import (
     derive_frs_employment,
     derive_soc2020_major_group_from_frs,
 )
+from microcosm.build.uk_runtime.national_frame import UK_RELEASE_EXPORT_DROPPED_COLUMNS
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_FRS_SOC2020_MAJOR_GROUP,
     UK_SOC2020_NO_OCCUPATION,
 )
-from microcosm.build.uk_runtime.terminal_gates import UK_ALLOWED_EXTRA_EXPORT_COLUMNS
 from test_support.paths import paths_for
 
 UK_PACKAGE = (
@@ -346,6 +346,7 @@ def test_gates_check_the_occupation_domain_and_export_the_column() -> None:
     enum = by_id["uk_soc2020_major_group_enum_domain"]
     assert (enum["gate"], enum["phase"]) == ("enum_domain", "terminal")
     assert enum["parameters"]["columns"] == ["soc2020_major_group"]
-    exported = by_id["uk_export_surface"]["parameters"]["allowed_extra_columns"]
-    assert "person.soc2020_major_group" in exported
-    assert "person.soc2020_major_group" in UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+    # The column leaves with the release; the current national build exports
+    # it, so since microcosm#1095 it is part of the reference surface rather
+    # than a declared extra of the export-surface gate.
+    assert "soc2020_major_group" not in UK_RELEASE_EXPORT_DROPPED_COLUMNS["person"]
