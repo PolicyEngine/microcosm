@@ -4645,7 +4645,7 @@ def test_the_district_ess_gate_ships_in_both_manifests(
             "per_spine": {},
         },
         "consumer_export.json": {"staging_sha256": artifact_sha},
-        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+        "consumer_reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
     }
     for name, value in evidence.items():
         (args.checkpoint_dir / name).write_text(json.dumps(value))
