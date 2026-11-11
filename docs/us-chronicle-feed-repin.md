@@ -373,8 +373,13 @@ uv run python tools/build_us_target_parity_manifest.py
 ```
 
 ```bash
-uv run pytest packages/microcosm-build/tests/engine_free/shared/test_release_target_parity.py packages/microcosm-build/tests/engine_free/us/test_us_chronicle_feed.py
+uv run pytest packages/microcosm-build/tests/engine_free/shared/test_release_target_parity.py packages/microcosm-build/tests/engine_free/us/test_us_chronicle_feed.py packages/microcosm-build/tests/engine_free/us/test_us_eitc_table_2_5_irs_reconciliation.py
 ```
+
+`test_us_eitc_table_2_5_irs_reconciliation.py` runs its EITC checks in CI on a
+fixture that copies the feed's 274 Table 2.5 and filing-season EITC rows byte
+for byte. Its last test fails when a re-pin changes any of those rows, and that
+test's docstring says how to refresh the fixture.
 
 ## What moved and what did not
 

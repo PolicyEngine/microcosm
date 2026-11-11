@@ -1057,6 +1057,17 @@ class TestUsSources:
                 "docs/evidence/us-puf-wage-concept-1191/scripts/"
                 "run_archived_uprating_loop.py"
             ),
+            # The microcosm#1248 PUF donor audit names the retired data package
+            # only as the archived generator under audit: the README, a lineage
+            # label and two script docstrings cite its archived commit, and
+            # three files stub its storage module in sys.modules so byte-exact
+            # archived copies of two of its files can run. Nothing is imported
+            # or installed from it.
+            "docs/evidence/us-puf-donor-uprating/README.md",
+            "docs/evidence/us-puf-donor-uprating/proposal/rebase_reference.py",
+            "docs/evidence/us-puf-donor-uprating/proposal/test_rebase_properties.py",
+            "docs/evidence/us-puf-donor-uprating/scripts/puf_donor_factor_audit.py",
+            "docs/evidence/us-puf-donor-uprating/scripts/run_archived_uprating_loop.py",
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
         offenders: list[tuple[str, str]] = []

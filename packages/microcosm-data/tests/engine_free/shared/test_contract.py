@@ -215,7 +215,7 @@ UK_GATE_BATTERY_SPEC_FINGERPRINT = (
     "80267b3772f143ee31a4674c3d13fd273c255449b23ac298ef3c67ef210296b5"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
+    "a6ebc171cadf45b691a2b83632bc1f87f3116ad31aebf073e3786ce90ecc0307"
 )
 # The input-mass evidence digest covers the reference build's own totals, so
 # it is not pinned (microcosm#1095); a fixture value stands in.

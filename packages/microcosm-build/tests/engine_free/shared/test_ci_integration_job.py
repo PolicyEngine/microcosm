@@ -118,14 +118,19 @@ def test_every_workflow_job_caps_its_runtime() -> None:
         assert type(cap) is int and 0 < cap < 360, name
 
 
-def test_plan_verifier_sees_every_workflow_job() -> None:
-    """The plan verifier reads job names from the workflow text, so a job it
-    cannot see (a quoted key, for example) would escape its checks."""
-    workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
+def test_every_workflow_job_runs_on_one_pinned_image_with_uv_managed_python() -> None:
+    """A job's image and interpreter must not depend on which runner GitHub assigns.
 
-    assert ci_test_plan.workflow_job_names(workflow) == tuple(
-        yaml.safe_load(workflow)["jobs"]
-    )
+    ``ubuntu-latest`` moves between images, and uv takes an image's own Python
+    when it holds no managed one, so a leg can run a patch release that
+    predates a fix its tests need.
+    """
+    workflow = yaml.safe_load(_TEST_WORKFLOW.read_text(encoding="utf-8"))
+
+    assert workflow["env"]["UV_MANAGED_PYTHON"] == "1"
+    images = {name: job.get("runs-on") for name, job in workflow["jobs"].items()}
+    assert images
+    assert set(images.values()) == {"ubuntu-24.04"}, images
 
 
 def test_workflow_uses_one_country_selector_only_for_country_jobs() -> None:
