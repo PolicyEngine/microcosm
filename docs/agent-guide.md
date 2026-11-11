@@ -231,11 +231,11 @@ load, or it silently receives the spec an earlier test cached.
 
 Git exports an absolute `GIT_DIR` to the hooks, `rebase --exec` commands and
 shell aliases it runs in a linked worktree, and `GIT_DIR` outranks `-C` and the
-working directory. The root `conftest.py` therefore removes the variables git
-treats as local to one repository (`git rev-parse --local-env-vars`, less the
-two that carry `git -c` options, plus the `GIT_QUARANTINE_PATH` git gives a
-`pre-receive` hook) before any test runs (`test_support.git_isolation`), so a
-fixture's `git init` or `commit` in a temporary directory stays there. A test
+working directory. The root `conftest.py` therefore removes, before any test
+runs, the variables `git rev-parse --local-env-vars` lists as local to one
+repository, less the two that carry `git -c` options, and the
+`GIT_QUARANTINE_PATH` git gives a `pre-receive` hook
+(`test_support.git_isolation`), so a fixture's `git init` or `commit` in a temporary directory stays there. A test
 that needs one of those variables sets it itself. New code that runs git
 against a repository other than its own should not rely on that, because it
 also runs outside the suite: drop the variables from the child environment, as

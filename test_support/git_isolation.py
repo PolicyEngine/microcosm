@@ -23,7 +23,7 @@ GIT_QUARANTINE_ENV = "GIT_QUARANTINE_PATH"
 
 
 def drop_inherited_git_repository(environ: MutableMapping[str, str]) -> list[str]:
-    """Remove the variables git treats as local to one repository.
+    """Remove the variables that would send a fixture's git commands elsewhere.
 
     The variables are the ones the installed git calls repository-local
     (``git rev-parse --local-env-vars``), less GIT_CONFIG_CARRIERS, plus

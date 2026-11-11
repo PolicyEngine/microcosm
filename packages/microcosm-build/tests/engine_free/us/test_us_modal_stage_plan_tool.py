@@ -1105,7 +1105,7 @@ _INHERITED_GIT_ENVS = {
         "GIT_OBJECT_DIRECTORY": str(b["git_dir"] / "objects")
     },
     "work_tree": lambda b: {"GIT_WORK_TREE": str(b["work_tree"])},
-    # What git gives a pre-receive hook; git init refuses to run under it.
+    # What git gives a pre-receive hook; git init fails at HEAD under it.
     "pre_receive_quarantine": lambda b: {
         "GIT_QUARANTINE_PATH": str(b["git_dir"] / "objects")
     },
@@ -1173,8 +1173,7 @@ def test_every_repository_variable_git_names_is_withheld(tmp_path: Path) -> None
     assert {"GIT_DIR", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR"} <= names
     assert names - GIT_CONFIG_CARRIERS <= plan_lib.GIT_REPOSITORY_ENV
     assert not GIT_CONFIG_CARRIERS & plan_lib.GIT_REPOSITORY_ENV
-    # Git leaves the hook's quarantine out of its list; both guards add it.
-    assert GIT_QUARANTINE_ENV not in names
+    # Git 2.55 leaves the hook's quarantine out of its list; both guards add it.
     assert GIT_QUARANTINE_ENV in plan_lib.GIT_REPOSITORY_ENV
 
 

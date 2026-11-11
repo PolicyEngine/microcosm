@@ -2,8 +2,8 @@
 
 Git exports an absolute ``GIT_DIR`` to the hooks, ``rebase --exec`` commands
 and shell aliases it runs in a linked worktree. The root ``conftest.py``
-removes it, and the other variables git treats as local to one repository, before any
-test runs (``test_support.git_isolation``).
+removes it, and the other variables ``test_support.git_isolation`` names,
+before any test runs.
 """
 
 from __future__ import annotations
