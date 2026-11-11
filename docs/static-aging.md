@@ -123,18 +123,21 @@ Producer release metadata maps a dataset family to its annual artifact keys:
 ```json
 {
   "dataset_years": {
-    "populace_us_2024": {
-      "2024": "populace_us_2024",
-      "2030": "populace_us_2030",
-      "2035": "populace_us_2035"
+    "microcosm_us_2024": {
+      "2024": "microcosm_us_2024",
+      "2030": "microcosm_us_2030",
+      "2035": "microcosm_us_2035"
     }
   }
 }
 ```
 
-This example abbreviates the mapping; a release through 2035 lists every
-supported year. Each value references a normal revision- and hash-pinned
-artifact. The wrapper validates the mapping during certification, checks the
+This example abbreviates the mapping; a build through 2035 lists every
+supported year. Each value is the key of an artifact in the same release
+manifest, pinned by its SHA-256. In the US repository an annual build
+publishes into `microcosm-us-2024-annual`
+([the annual guide](us-annual-static-aging.md)). policyengine.py validates
+the mapping during certification, checks the
 file's stored year, and refuses unavailable years. Cache identities include
 the actual artifact and relevant runtime versions.
 

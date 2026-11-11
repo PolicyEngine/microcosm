@@ -3,8 +3,17 @@
 This is a narrow release builder for the Issue #40 fiscal target surface. It
 starts from an existing Microcosm US H5, materializes the current structured
 fiscal target rows, recalibrates only the household weights, writes a fresh
-PolicyEngine-US H5, and emits the release contract files required by
-``microcosm-publish-release``.
+PolicyEngine-US H5, and emits the release contract files.
+
+Each run is one build of a release in ``policyengine/populace-us``
+(microcosm#1570): a certified or exact-k build of the national release,
+``microcosm-us-2024-national``, or an evidence-tier build of the evidence
+release, ``microcosm-us-2024-evidence``. The release directory is
+``<out>/releases/<release>/``; both manifests name the release and the build
+(the ``populace-us-2024-…`` build ID) in the build-folder layout; the run
+checks the directory against its tier's release contract and prints the
+``microcosm-publish-release-build`` commands that publish the build into its
+own folder of the release and then make it the release's current build.
 """
 
 from __future__ import annotations
@@ -398,10 +407,17 @@ from microcosm.calibrate.diagnostics import (
     target_surface_payload,
     write_calibration_diagnostics,
 )
+from microcosm.data.build_folder_manifests import (
+    publication_commands,
+    rewrite_release_dir,
+)
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+    US_EVIDENCE_RELEASE_ID,
     US_FISCAL_STORED_INPUTS_STAGE,
+    US_NATIONAL_RELEASE_ID,
+    US_RELEASES,
     US_STORED_INPUTS_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
     stored_input_evidence_manifest_block,
@@ -491,8 +507,13 @@ _DRY_RUN_MARGIN_FIELDS = (
     "l0_tail_share_rise",
     "l0_tail_share_fall",
 )
-DATASET_FILENAME = "populace_us_2024.h5"
-CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
+#: The release-manifest keys and file names of the dataset and calibration
+#: weights a run writes: the names new builds of the national and evidence
+#: releases declare (microcosm#1570).
+DATASET_KEY = "microcosm_us_2024"
+DATASET_FILENAME = "microcosm_us_2024.h5"
+CALIBRATION_KEY = "microcosm_us_2024_calibration"
+CALIBRATION_FILENAME = "microcosm_us_2024_calibration.npz"
 FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
 FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME = "final_household_weights.json"
 FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME = "final_household_weight_ids.npy"
@@ -1271,8 +1292,28 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "protection lifts when the concept gains a real Ledger fact."
         ),
     )
-    parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--release-id")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help=(
+            "Output root: the H5 and calibration weights go in <out>/artifacts "
+            "and the release directory in <out>/releases/<release>, named "
+            "after the release the build belongs to (microcosm#1570). A "
+            "finished build's directory is never reused, so each build needs "
+            "its own --out."
+        ),
+    )
+    parser.add_argument(
+        "--release-id",
+        help=(
+            "The build ID (populace-us-2024-...), the name of the build's own "
+            "folder in its release: microcosm-us-2024-national, or "
+            "microcosm-us-2024-evidence with --evidence-release. Defaults to "
+            "an ID made from the base dataset's digest, the commit and the "
+            "time."
+        ),
+    )
     parser.add_argument(
         "--incumbent-diagnostics",
         type=Path,
@@ -1426,16 +1467,19 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "failure, continue to write the H5 and full manifests with the "
             "recorded failures carried verbatim in the release manifest's "
             "known_failures block (each with an owner issue), instead of "
-            "refusing to export. NOT a gate bypass: the release id carries an "
-            "'-evidence-' segment, the release manifest declares the evidence "
+            "refusing to export. It does not bypass the release checks: the build "
+            "ID carries an "
+            "'-evidence-' segment, the build belongs to the evidence release "
+            "microcosm-us-2024-evidence (never the US default), the release "
+            "manifest declares the evidence "
             "schema marker the certified contract structurally rejects, and a "
             "run whose terminal gates all pass is refused under this flag "
             "(rerun without it). Preflight and mid-build source-stage gates, "
             "artifact-integrity assertions (e.g. --audit-export-targets), and "
             "the dirty-worktree refusal still abort: the evidence tier "
             "relaxes terminal gate verdicts, never artifact auditability. "
-            "Incompatible with --exact-k (the ladder candidate lane has its "
-            "own tag-only publication contract)."
+            "Incompatible with --exact-k (an exact-k build is a build of the "
+            "national release under the certified contract)."
         ),
     )
     parser.add_argument(
@@ -1520,7 +1564,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Diagnostic only: publish the dense no-L0 calibrated frame as the "
             "default national dataset. Release builds should leave this unset "
-            "so populace_us_2024.h5 is the sparse L0+refit dataset that runs "
+            "so microcosm_us_2024.h5 is the sparse L0+refit dataset that runs "
             "on standard machines."
         ),
     )
@@ -1528,8 +1572,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--warm-start-calibration-npz",
         type=Path,
         help=(
-            "Optional populace_us_2024_calibration.npz artifact from an earlier "
-            "run on the same base frame. The builder validates that the stored "
+            "Optional calibration weights artifact from an earlier run on the "
+            "same base frame (microcosm_us_2024_calibration.npz, or "
+            "populace_us_2024_calibration.npz from a build before "
+            "microcosm#1570). The builder validates that the stored "
             "initial_household_weight vector matches the current calibration "
             "frame before using household_weight as the optimizer start."
         ),
@@ -2036,9 +2082,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             parser.error(f"{flag} must be exactly 64 lowercase hexadecimal characters.")
     if args.evidence_release and args.exact_k is not None:
         parser.error(
-            "--evidence-release is incompatible with --exact-k: ladder "
-            "candidates publish tag-only under their own contract; the "
-            "evidence tier (microcosm#506) covers the national artifact."
+            "--evidence-release is incompatible with --exact-k: an exact-k "
+            "build is a build of the national release under the certified "
+            "contract; the evidence tier (microcosm#506) covers the national "
+            "artifact."
         )
     ladder_values = (
         args.exact_k,
@@ -2484,23 +2531,55 @@ def _write_reform_income_tax_cache(
 
 
 def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
-    """Fail loud when --out/--release-id points at a certified release.
+    """Fail loud when --out points at a finished build's release directory.
 
     microcosm#568 round 3: a failed retry into a directory that already
     carries a certified release would write failed-attempt weight evidence
     beside the prior run's manifest and H5 — mixing attempts the manifest
-    knows nothing about. Release ids are immutable once certified; reruns
-    pick a new id (every launcher stamps a fresh UTC timestamp) or remove
-    the directory deliberately.
+    knows nothing about. A finished build is never changed. The directory is
+    named after the build's release (microcosm#1570), so every build of a
+    release under one --out would share it: each build needs its own --out,
+    or the directory removed deliberately.
     """
 
     manifest_path = Path(release_dir) / "release_manifest.json"
     if manifest_path.exists():
         raise RuntimeError(
             f"Release directory {release_dir} already carries a certified "
-            "release (release_manifest.json present). Choose a new "
-            "--release-id or deliberately remove the stale directory before "
+            "release (release_manifest.json present). Choose a new --out for "
+            "this build or deliberately remove the stale directory before "
             "rerunning."
+        )
+
+
+#: Files the release manifest declares whenever they exist, written only by
+#: a run that does not skip their check, with the option that skips it.
+_SKIPPABLE_CHECK_FILES = (
+    ("reform_validation.json", "skip_reform_validation", "--skip-reform-validation"),
+    ("demographics.json", "skip_demographics", "--skip-demographics"),
+)
+
+
+def _refuse_skipped_checks_left_files(release_dir: Path, args) -> None:
+    """Refuse a skipped check's file left in the release directory.
+
+    The directory is named after the build's release (microcosm#1570), so a
+    rerun into the same --out finds an earlier attempt's files, and the
+    release manifest declares these whenever they exist. A run that skips
+    the check never rewrites its file, so the earlier attempt's would be
+    published as this build's.
+    """
+
+    left = [
+        f"{name} ({option})"
+        for name, flag, option in _SKIPPABLE_CHECK_FILES
+        if getattr(args, flag, False) and (Path(release_dir) / name).exists()
+    ]
+    if left:
+        raise RuntimeError(
+            f"Release directory {release_dir} holds {', '.join(left)} from an "
+            "earlier attempt, which this run skips and so would not rewrite. "
+            "Remove those files or choose a new --out before rerunning."
         )
 
 
@@ -3257,15 +3336,16 @@ def _git_dirty() -> bool:
 
 
 def _download_base_h5() -> Path:
-    from huggingface_hub import hf_hub_download
+    """The base a run without ``--base-h5`` starts from: the US national
+    release's current build, SHA-verified by the loader (microcosm#1570).
 
-    return Path(
-        hf_hub_download(
-            repo_id=REPO_ID,
-            filename=DATASET_FILENAME,
-            repo_type="dataset",
-        )
-    )
+    It is read from ``releases.json`` once the repository has one and from
+    ``latest.json`` until then. The repository's root file stops changing at
+    the switch, since builds published into folders write no root files.
+    """
+    from microcosm.data import download
+
+    return Path(download("us", 2024))
 
 
 def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
@@ -9337,7 +9417,9 @@ def _source_coverage_aliases(
     release calibrates to them. A surface that dropped every CD-classified
     target (``target_surface_selection`` is recorded only for such surfaces)
     lists them as reviewed exclusions naming the drop, so the coverage artifact
-    agrees with ``build.target_surface_selection`` in the manifests.
+    agrees with ``target_surface_selection`` in the manifests: at the release
+    manifest's top level and in the build manifest's ``calibration`` block
+    (microcosm#1570).
     """
 
     if target_surface_selection is None:
@@ -9348,7 +9430,8 @@ def _source_coverage_aliases(
         f"{target_surface_selection['mode']} dropped all {dropped:,} "
         "congressional-district-classified targets after the target-parity and "
         "profile-coverage gates ran on the full compiled surface; see "
-        "build.target_surface_selection in the manifests."
+        "release_manifest.json target_surface_selection and "
+        "build_manifest.json calibration.target_surface_selection."
     )
     return DIRECT_ACTIVE_ALIASES, {
         alias: reason for alias in CONGRESSIONAL_DISTRICT_SOURCE_ALIASES
@@ -10347,9 +10430,10 @@ def _artifact_entry(path: str, sha: str, *, kind: str, revision: str) -> dict[st
 
 
 #: Terminal gate verdicts written into the release directory, keyed by their
-#: release-manifest artifact key. ``prepare_release`` uploads only contract
-#: files, manifest artifacts and ``--extra-file`` entries, so a verdict that is
-#: not a manifest artifact never ships — including the QRF tail register a
+#: release-manifest artifact key. A build folder holds only the manifests,
+#: their checksum ledger and the manifest's artifacts
+#: (``prepare_build_folder_release``), so a verdict that is not a manifest
+#: artifact never ships — including the QRF tail register a
 #: certified waiver rests on (route A remediation PR-3). _main() clears these
 #: before the terminal gates run, so any present at manifest time are this
 #: run's own.
@@ -10805,9 +10889,9 @@ def _build_manifests(
     medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
     staging: Mapping[str, object] | None = None,
     ledger_artifact: Mapping[str, object] | None = None,
-    dataset_key: str = "populace_us_2024",
+    dataset_key: str = DATASET_KEY,
     dataset_filename: str = DATASET_FILENAME,
-    calibration_key: str = "populace_us_2024_calibration",
+    calibration_key: str = CALIBRATION_KEY,
     calibration_filename: str = CALIBRATION_FILENAME,
     exact_k_ladder: Mapping[str, object] | None = None,
     base_pool: Mapping[str, object] | None = None,
@@ -11660,11 +11744,12 @@ def _default_release_id(
     commit: str,
     build_timestamp: datetime,
 ) -> str:
-    """The auto-generated release id for a run without --release-id.
+    """The auto-generated build ID for a run without --release-id.
 
-    Exact-k candidates carry the k segment; evidence-tier builds carry the
-    ``evidence`` segment (microcosm#506) so the tier is visible in every tag
-    and download path; certified national builds keep the historical shape.
+    Exact-k builds carry the k segment; evidence-tier builds carry the
+    ``evidence`` segment (microcosm#506) so the tier is visible in every
+    build folder's path; certified national builds keep the historical shape.
+    The release each one belongs to is :func:`_release_for_build`.
     """
     if args.exact_k is not None:
         return (
@@ -11698,7 +11783,74 @@ def _telemetry_run_id(args: argparse.Namespace, *, timestamp: datetime) -> str:
     )
 
 
+def _release_for_build(args: argparse.Namespace) -> str:
+    """The release a run's build belongs to (microcosm#1570).
+
+    Certified and exact-k builds are builds of the national release, the
+    repository's default; evidence-tier builds are builds of the evidence
+    release, which is never the default. The release directory is named
+    after it.
+    """
+    return US_EVIDENCE_RELEASE_ID if args.evidence_release else US_NATIONAL_RELEASE_ID
+
+
+def _promotion_note(release: str) -> str:
+    """What the promotion command does for a build of ``release``."""
+    if release == US_NATIONAL_RELEASE_ID:
+        return (
+            "Promoting makes this build the current build of "
+            f"{release}, the US default dataset."
+        )
+    return (
+        f"Promoting makes this build the current build of {release}, which is "
+        "never the US default; the release's current build takes the place of "
+        "the latest-evidence.json pointer file."
+    )
+
+
+def _finish_build_folder_release(
+    release_dir: Path,
+    *,
+    build: str,
+    artifact_root: Path,
+    evidence_release: bool,
+) -> dict[str, str]:
+    """Rewrite the release directory into the build-folder layout.
+
+    :func:`_build_manifests` writes both manifests in the tagged shape. This
+    names the release (the directory's name) and the build (``build``, the
+    build ID) in both, moves the build's details to the release manifest's
+    top level and drops each artifact's ``revision`` (microcosm#1570). The
+    release contract is left to ``microcosm-publish-release-build``, whose
+    preflight runs it (the evidence contract for an evidence-tier build), as
+    the tagged path left it to its publisher: a diagnostic run's output is
+    written, not refused at its end.
+
+    Returns:
+        The commands that publish the build into its own folder of the
+        release and then make it the release's current build.
+    """
+    del evidence_release  # The release is the directory's name.
+    rewrite_release_dir(release_dir, build=build)
+    return publication_commands(
+        release_dir, repo_id=REPO_ID, artifact_root=artifact_root
+    )
+
+
 def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) -> None:
+    """Check the build ID ``--release-id`` gives, or the default one.
+
+    The ID names the build, not its release, and keeps the rules it had
+    before microcosm#1570: the US prefix, and the ``-evidence-`` segment
+    exactly for evidence-tier builds.
+    """
+    if release_id in US_RELEASES:
+        raise ValueError(
+            f"{release_id!r} is a release, not a build: --release-id gives the "
+            "build ID (populace-us-2024-...), and the build is published into "
+            f"its release, {US_NATIONAL_RELEASE_ID!r} or, with "
+            f"--evidence-release, {US_EVIDENCE_RELEASE_ID!r}."
+        )
     if not release_id.startswith("populace-us-"):
         raise ValueError(
             "US fiscal refresh release ids must start with 'populace-us-' so "
@@ -11709,7 +11861,7 @@ def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) ->
             "--evidence-release ids must carry the "
             f"{EVIDENCE_RELEASE_ID_SEGMENT!r} segment (e.g. "
             "populace-us-2024-evidence-<sha>-<date>) so the tier is visible "
-            "in every tag and download path."
+            "in every build folder's path."
         )
     if not evidence_release and EVIDENCE_RELEASE_ID_SEGMENT in release_id:
         raise ValueError(
@@ -12776,18 +12928,31 @@ class _TerminalBatchProgress:
 
 def _print_build_result(
     *,
-    release_id: str,
+    build: str,
     release_dir: Path,
     artifact_root: Path,
+    publication: Mapping[str, str],
 ) -> None:
-    """Print the legacy three-key builder result without widening its API."""
+    """Print the build, where it is, and the commands that publish it.
 
+    The release is the release directory's name. ``publication`` is
+    :func:`_finish_build_folder_release`'s result: ``publish_command`` lists
+    the build in its release without making it current, and
+    ``promote_command``, run after review, makes it the release's current
+    build, as ``promotion`` says.
+    """
+
+    release = release_dir.name
     print(
         json.dumps(
             {
-                "release_id": release_id,
+                "release": release,
+                "build": build,
                 "release_dir": str(release_dir),
                 "artifact_root": str(artifact_root),
+                "publish_command": publication["publish_command"],
+                "promote_command": publication["promote_command"],
+                "promotion": _promotion_note(release),
             },
             indent=2,
         )
@@ -13121,16 +13286,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     timing: dict[str, float] = {}
 
-    if args.release_id:
-        # microcosm#568 round 4: when the id is known up front (every launcher
-        # passes one), refuse certified-dir reuse before ANY side effect —
-        # including the base download and cache writes below. The
-        # auto-generated-id path derives its id from the base digest, so its
-        # refusal necessarily runs later, but still before any output-dir
-        # creation.
-        _refuse_certified_release_dir_reuse(
-            args.out.resolve() / "releases" / args.release_id
-        )
+    # microcosm#568 round 4: refuse certified-dir reuse before ANY side
+    # effect, including the base download and cache writes below. The
+    # release directory is named after the build's release (microcosm#1570),
+    # so it is known here whether or not --release-id gives the build ID.
+    _refuse_certified_release_dir_reuse(
+        args.out.resolve() / "releases" / _release_for_build(args)
+    )
+    _refuse_skipped_checks_left_files(
+        args.out.resolve() / "releases" / _release_for_build(args), args
+    )
     pinned_incumbent_payload: dict[str, object] | None = None
     pinned_incumbent_sha256: str | None = None
     if args.exact_k is not None:
@@ -13209,18 +13374,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     _assert_us_release_id(release_id, evidence_release=args.evidence_release)
     if args.exact_k is not None:
         _assert_exact_k_release_id(release_id, args.exact_k)
-        # The immutable release id is the dataset's exact-count name. Keep the
-        # files at the registry's canonical paths so a later *manual* pointer
-        # flip remains loadable by microcosm-data.
-        dataset_key = "populace_us_2024"
-        dataset_filename = DATASET_FILENAME
-        calibration_key = "populace_us_2024_calibration"
-        calibration_filename = CALIBRATION_FILENAME
-    else:
-        dataset_key = "populace_us_2024"
-        dataset_filename = DATASET_FILENAME
-        calibration_key = "populace_us_2024_calibration"
-        calibration_filename = CALIBRATION_FILENAME
+    # Every build, exact-k builds included, writes its dataset and calibration
+    # weights under the names its release's new builds declare
+    # (microcosm#1570); the build ID carries the exact count.
+    dataset_key = DATASET_KEY
+    dataset_filename = DATASET_FILENAME
+    calibration_key = CALIBRATION_KEY
+    calibration_filename = CALIBRATION_FILENAME
     congressional_district_vintage_crosswalk = (
         load_congressional_district_vintage_crosswalk(
             args.congressional_district_vintage_crosswalk
@@ -13421,9 +13581,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     active_target_registry = TargetRegistry(target_specs, country="us")
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
-    release_dir = release_root / "releases" / release_id
+    release_dir = release_root / "releases" / _release_for_build(args)
     # Unconditional refusal BEFORE any output-directory creation: a hostile
-    # --checkpoint-root beneath releases/<id> must not mutate a certified
+    # --checkpoint-root beneath releases/<release> must not mutate a certified
     # directory before the raise (microcosm#568 round 4).
     _refuse_certified_release_dir_reuse(release_dir)
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
@@ -16906,6 +17066,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         diagnostics_outcome=diagnostics_outcome,
         scf_wealth_signal=scf_wealth_signal,
     )
+    # Both manifests name the release and this build, in the build-folder
+    # layout, before telemetry attaches them; the directory must then pass
+    # its tier's contract (microcosm#1570).
+    publication = _finish_build_folder_release(
+        release_dir,
+        build=release_id,
+        artifact_root=artifact_root,
+        evidence_release=args.evidence_release,
+    )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
         telemetry.attach_artifact(
@@ -16921,9 +17090,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         authenticated_pool_h5=authenticated_pool_h5,
     )
     _print_build_result(
-        release_id=release_id,
+        build=release_id,
         release_dir=release_dir,
         artifact_root=artifact_root,
+        publication=publication,
     )
 
 

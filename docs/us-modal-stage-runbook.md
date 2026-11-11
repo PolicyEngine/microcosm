@@ -30,10 +30,13 @@ Two files do the work:
   Staging tests are in
   `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_acs_multispine_staging.py`.
 
-Nothing here uploads to the Hugging Face Hub, touches `latest.json` or
-notifies anyone. The furthest a stage goes is `package`, which writes a
-release directory onto the runs volume. Publication stays the human step in
-`tools/publish_release.sh`.
+Nothing here uploads to the Hugging Face Hub, changes `releases.json` or
+notifies anyone. The furthest a stage goes is `package`, which writes the
+release directory `releases/microcosm-us-2024-local/` onto the runs volume.
+Publication stays a human step: the two `microcosm-publish-release-build`
+commands that the stage's `package_result.json` records, one that publishes
+the build into its folder of the local-area release and one that makes it
+that release's current build.
 
 ## How a run works
 

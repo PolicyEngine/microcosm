@@ -250,7 +250,17 @@ def _donor_release_identity(
     manifest_path: Path | None,
     base_sha256: str,
 ) -> dict[str, object] | None:
-    """Verify the donor H5 against its release manifest and pin its identity."""
+    """Verify the donor H5 against its release manifest and pin its identity.
+
+    The identity names the donor build so that
+    :func:`microcosm.data.build_folder_manifests.referenced_build` can find
+    its files (microcosm#1570). A donor whose manifest is in the build-folder
+    layout (``release`` and ``build`` as strings, no ``revision`` on its
+    artifacts) is named by ``repo_id``, ``release`` and ``build``; a donor
+    that keeps only its tag (a ``build`` object) by its ID, as
+    ``release_id``, and its ``revision``. A manifest with parts of both
+    layouts is refused.
+    """
 
     if manifest_path is None:
         return None
@@ -283,7 +293,39 @@ def _donor_release_identity(
             f"{entry.get('sha256')!r} for {name!r}. Refusing to transfer "
             "from an unverified donor."
         )
-    build = manifest.get("build") if isinstance(manifest.get("build"), dict) else {}
+    release, build = manifest.get("release"), manifest.get("build")
+    if "release" in manifest or isinstance(build, str):
+        if not (
+            isinstance(release, str) and release and isinstance(build, str) and build
+        ):
+            raise SystemExit(
+                f"Donor release manifest {manifest_path} is in neither layout: a "
+                "build-folder manifest names its release and its build as "
+                f"strings, a tagged one has a build object (release={release!r}, "
+                f"build={build!r})."
+            )
+        pinned = sorted(
+            key
+            for key, artifact in artifacts.items()
+            if isinstance(artifact, dict) and "revision" in artifact
+        )
+        if pinned:
+            raise SystemExit(
+                f"Donor release manifest {manifest_path} names release {release!r} "
+                f"and build {build!r}, but it pins revision on artifacts {pinned}; "
+                "a build folder has no tag."
+            )
+        return {
+            "manifest_path": str(manifest_path.resolve()),
+            "artifact": name,
+            "repo_id": entry.get("repo_id"),
+            "release": release,
+            "build": build,
+            "sha256": entry.get("sha256"),
+            "dataset_role": manifest.get("dataset_role"),
+            "is_default": manifest.get("is_default"),
+        }
+    build = build if isinstance(build, dict) else {}
     return {
         "manifest_path": str(manifest_path.resolve()),
         "artifact": name,

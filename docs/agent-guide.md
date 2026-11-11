@@ -348,19 +348,27 @@ no secret. Green PR checks mean the code contracts hold — they do **not**
 certify data artifacts.
 Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
-deliberate human step. A US release publishes with tags and `latest.json`
-(`tools/publish_release.sh` → `microcosm-publish-release`), checked by
-`tools/preflight_us_release_gates.py`. The UK repository's switch moved the
-June 2023 UK build into release `populace-uk-2023`, which takes no new builds,
-and `populace-uk-<year>-<tier>-k<N>` releases have no publication path there.
-The UK national, dense and
-local-area releases publish each build into its own folder through the
-emitter (`microcosm-publish-release-build`, from
+deliberate human step. The UK national, dense and local-area releases and the
+US releases (`microcosm-us-2024-national`, the US default, `-local`,
+`-receipt-donor`, `-evidence` and `-annual`) publish each build into its own folder
+through the emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's
 `releases.json`; making a published build current is a separate deliberate
-call to the same command with `--promote`. The emitter refuses that while any
-`latest*.json` pointer file exists; the UK repository's switch to
-`releases.json` deleted them. Tests hand release changes to the
+call to the same command with `--promote`. Each US builder writes its build to
+`releases/<release>/`; the national builder and the ACS package stage also
+print both commands.
+`tools/preflight_us_release_gates.py` runs the US national release checks that
+need no calibration on the base before a build, and again with the finished
+build's `--release-manifest`. The emitter changes
+no current build while any `latest*.json` pointer file exists; the UK and US
+repositories' switches to `releases.json` deleted them. The tagged publisher
+(`tools/publish_release.sh` → `microcosm-publish-release`) refuses every one of
+these releases and any repository that has `releases.json`, so no UK or US
+release publishes with tags. The UK repository's switch moved the June 2023 UK
+build into release `populace-uk-2023`, which takes no new builds, and
+`populace-uk-<year>-<tier>-k<N>` releases have no publication path there. This
+holds for the US from its repository's switch commit; Microcosm's US change
+(microcosm#1570) merges straight after it. Tests hand release changes to the
 in-memory client (`client.release_requests`), which applies them to
 `hub_files` with the interface's shared `releases.json` checks. See README
 "Releasing & alerts". Before launching a US
@@ -388,8 +396,10 @@ The versioned Route A driver is `tools/route_a/route_a.sh`; see its
 [runbook](../tools/route_a/README.md) for configuration, preserved admission
 and release gates, and the Modal-base hand-off. Its release stage enables
 staging telemetry by default, obtains the HF credential only in a runtime
-wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It runs only the
-publisher's offline `--preflight-only` check and leaves publication to Max.
+wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It looks for the
+build in `releases/microcosm-us-2024-national/`, runs only
+`microcosm-publish-release-build --preflight-only`, which checks the build
+offline, and leaves publication to Max.
 
 The US fiscal-refresh builder scores its written H5 in household batches.
 Alongside its out-of-sample reports, it writes
@@ -443,14 +453,17 @@ The US native-SPM-role source-enrichment lane is a separate release type:
 `tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact
 reviewed BuildP parent, preserving original variables and inherited schema-5
 calibration evidence. It does not run calibration or relax schema 6 for ordinary
-releases. `microcosm.data.source_enrichment` validates candidates and records
-actual native-loader compatibility in a separate bundle. The regular publisher
-requires `--parent-h5` and the four tested country/Core/wrapper/calculator wheels; `--preflight-only`
-runs the same contract and local publisher preparation (file paths, artifact
-hashes, revision/tag pins and latest-pointer eligibility), without constructing
-a Hub client or publishing. Supplying `--parent-h5` or `--compatibility-wheel`
-for a release that is not a source enrichment is an error, including preflight
-and evidence-tier requests. See
+releases. Each candidate is a build of `microcosm-us-2024-national`, written
+to `releases/microcosm-us-2024-national/` with its H5 as
+`microcosm_us_2024.h5`. `microcosm.data.source_enrichment` validates candidates
+and records actual native-loader compatibility in a separate bundle.
+`microcosm-publish-release-build` requires `--parent-h5` and the four tested
+country/Core/wrapper/calculator wheels; `--preflight-only` runs the same
+contract and lists the files it would publish, with their roles and digests,
+without starting an emitter or publishing. Supplying `--parent-h5` for a build
+that is not a source enrichment, or `--compatibility-wheel` for one that is
+neither a source enrichment nor a recertification, is an error, preflight
+included. See
 [the source-enrichment runbook](us-native-spm-role-source-enrichment.md).
 Root's canonical-model acceptance and publication authorization remain separate
 from this producer-native-input receipt. The same release type has a second
@@ -460,17 +473,22 @@ receipt qualification's child of the pinned national default
 evidence. `tools/build_us_receipt_enrichment_release.py` builds the local
 candidate, and `source_enrichment.json`'s `operation` selects the lineage. The
 contract replays the shared verifier in `microcosm.data.h5_boolean_append`
-against both H5 files. The publisher refuses to point `latest.json` at this
-child, so publish it with `--no-latest --tag-only`. See
+against both H5 files. The child is a build of its own release,
+`microcosm-us-2024-receipt-donor`, which is never the repository's default,
+with its H5 as `microcosm_us_2024_receipt_qualified.h5`; the contract refuses
+it as a build of the national release. See
 [the reported-receipt runbook](us-reported-receipt-source-enrichment.md).
 
 `compatibility_recertification` is a separate release type
 (`microcosm.data.compatibility_recertification`,
 `tools/build_us_compatibility_recertification.py`): a published US
-calibration release, republished byte for byte with a measured claim for a
-newer policyengine-us. Its parent identity is the parent's own published
-`release_manifest.json`, carried and hashed, never a code constant; the
-publisher checks the parent tag on the Hub before any upload. A change in
+calibration build, republished byte for byte as a new build of
+`microcosm-us-2024-national` with a measured claim for a newer
+policyengine-us. Its parent identity is the parent's own published
+`release_manifest.json`, carried and hashed, never a code constant;
+`microcosm-publish-release-build` checks on the Hub that the parent's build
+folder, or its tag for a parent that keeps only its tag, serves that manifest
+before it hands the child to the emitter. A change in
 what the tested engine reads or ignores must have an entry in
 `RECERTIFICATION_COLUMN_CHANGES`. It takes `--compatibility-wheel` and no
 `--parent-h5`. National parents only for now. See
@@ -486,7 +504,8 @@ stage (`tools/build_us_acs_local_release.py`). A new provenance column needs a
 register entry with its reason, bound to its producer in
 `test_us_stored_input_register.py`; a renamed engine input needs its live
 name. A new US lane that writes a release H5 must run the check where it records
-`build.built_with_model_package`, and bind the verdict into the release: the
+`built_with_model_package` (the release manifest's top level in a build
+folder), and bind the verdict into the release: the
 publisher runs no engine for a calibration release, so it requires the
 fiscal-refresh tool's `stored_inputs.json` and manifest `stored_inputs` block,
 and the ACS local-area `stored_inputs` gate, each naming the built-with engine
@@ -554,10 +573,12 @@ and writes local annual H5 files without running the base graph or publishing.
 See [the annual candidate guide](us-annual-static-aging.md). Its completion
 manifest is build evidence, not release certification.
 Optional annual release metadata invokes additional artifact, identity, and
-acceptance checks within the normal release gates. Annual cuts use one pinned
-`<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag and cannot update latest
-pointers. Qualify source-enrichment bases before adding annual metadata; use
-the candidate guide's qualification order and tag-only publication route.
+acceptance checks alongside the normal release checks. Annual builds pin every file
+to one `<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag, and a build folder
+pins no revision, so an annual build has no publication path in the US
+repository since its switch to `releases.json`: the tagged publisher refuses
+that repository. Qualify source-enrichment bases before adding annual metadata,
+in the candidate guide's qualification order.
 
 ## Concept schema and engine mappings
 

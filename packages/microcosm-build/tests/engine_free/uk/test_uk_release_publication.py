@@ -779,11 +779,17 @@ def test_the_command_refuses_a_release_that_still_publishes_with_tags(
     artifact_root: Path,  # noqa: F811
     capsys,
 ) -> None:
+    """A directory named after a US build ID is in the tagged layout; the
+    refusal names the US releases and says to name the directory after one
+    (microcosm#1570), since the tagged publisher refuses the US repository
+    after its switch."""
     with pytest.raises(SystemExit):
         release_publication.main(
             [str(release_dir), "--artifact-root", str(artifact_root)]
         )
-    assert "tools/publish_release.sh" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "microcosm-us-2024-national" in err
+    assert "named after the release" in err
 
 
 def test_the_command_says_the_other_uk_releases_take_no_new_builds(
