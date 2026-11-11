@@ -62,7 +62,9 @@ package; each is separately resumable):
                 (unit- and person-weighted; not the FNS fiscal-year
                 participation rate).
   finalize    : release-style gate report (PUMA-ladder gate, calibration
-                gate, spine-composition evidence) + the reviewed-limitations
+                gate, district ESS collapse gate -- report-only unless
+                ``--district-ess-gate-blocking`` --, spine-composition
+                evidence) + the reviewed-limitations
                 register for this lineage (inherited #507 SSI aged-band
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
@@ -84,13 +86,19 @@ package; each is separately resumable):
                 block, microcosm#1022), re-grade the packaged fill manifests
                 against the reviewed-fill consumer register (microcosm#1022),
                 then
-                assemble releases/<id>/ with the non-default local-area
-                manifest shape (dataset_role ``non_default_local_area``,
-                namespace ``buildo_acs_local``, donor identity chain, the
-                one-command refresh recipe) + sha256sums. Publication stays
-                a separate reviewed step (``microcosm-publish-release
-                <dir> --no-latest``); this tool never uploads and never
-                touches latest.json.
+                assemble releases/microcosm-us-2024-local/, a build of the
+                US local-area release in the build-folder layout
+                (microcosm#1570): the non-default local-area manifest shape
+                (dataset_role ``non_default_local_area``, namespace
+                ``buildo_acs_local``, donor identity chain, the one-command
+                refresh recipe), both manifests naming the release and the
+                build (``populace-us-2024-buildo-acs-local-<sha>-<timestamp>``),
+                the dataset ``microcosm_us_2024_acs_local.h5``, no revision
+                on any artifact, + sha256sums. Publication stays a separate
+                reviewed step: the printed ``microcosm-publish-release-build``
+                command publishes the build through the emitter without
+                making it current, and the promotion command makes it the
+                release's current build; this tool never uploads.
 
 Telemetry: after parsing its arguments the tool starts the emitter
 (``microcosm.build.program_telemetry``, pipeline ``us_acs_local_release``),
@@ -201,9 +209,15 @@ from microcosm.build.us_runtime.org_wages import (
 from microcosm.build.us_runtime.ssi_disability_criteria import (
     SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
 )
+from microcosm.data.build_folder_manifests import (
+    publication_commands,
+    rewrite_release_dir,
+)
 from microcosm.data.contract import (
     US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
+    US_LOCAL_RELEASE_ID,
+    US_RELEASE_DATASET_FILES,
     US_SPM_MEASUREMENT_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_KEY,
     us_engine_scopes_spm_universe,
@@ -221,10 +235,15 @@ import us_acs_local_county_surface as county_surface  # noqa: E402
 
 PERIOD = 2024
 RELEASE_NAMESPACE = "buildo_acs_local"
+#: Every build's ID starts with this; the build is published into a folder of
+#: the US local-area release, ``US_LOCAL_RELEASE_ID`` (microcosm#1570).
 RELEASE_ID_PREFIX = "populace-us-2024-buildo-acs-local"
-ARTIFACT_NAME = "populace_us_2024_acs_local"
-ARTIFACT_FILENAME = f"{ARTIFACT_NAME}.h5"
+#: The dataset file a build of the local-area release declares, and its key.
+ARTIFACT_FILENAME = US_RELEASE_DATASET_FILES[US_LOCAL_RELEASE_ID]
+ARTIFACT_NAME = Path(ARTIFACT_FILENAME).stem
 HF_REPO_ID = "policyengine/populace-us"
+#: The release directory the package stage writes under ``--out``.
+RELEASE_DIR_PARTS = ("releases", US_LOCAL_RELEASE_ID)
 LEGACY_STAGING_REFRESH_RECIPE = (
     "uv run tools/build_us_acs_multispine_base.py "
     "--base-h5 <next-certified-release>.h5 "
@@ -3630,7 +3649,8 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
     }
 
 
-#: Donor releases verified free of the microcosm#1178 Social Security erasure.
+#: Donor builds verified free of the microcosm#1178 Social Security erasure, by
+#: build ID (a tag donor's ``release_id``, a build-folder donor's ``build``).
 #: Before microcosm#1186 (merged 980282520), the PUF-support finalizer replaced
 #: CPS-reported Social Security with the PUF prediction, so a zero prediction
 #: erased a CPS reporter's benefit; on the national default
@@ -3638,24 +3658,35 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
 #: fix runs where a national base is built. The ACS staging takes its donor
 #: as a finished H5 and never re-runs it, so a release inherits whatever its
 #: donor carries. The register is empty: every published US national release
-#: predates #1186. Add a donor's release id only after checking its
+#: predates #1186. Add a donor's build ID only after checking its
 #: PUF-support CPS reporters keep their reported benefit; until then the
 #: release discloses the inherited erasure.
 DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE: frozenset[str] = frozenset()
 
 
+def _donor_build_id(donor_release: dict) -> str | None:
+    """The donor build's ID from either reference form (microcosm#1570).
+
+    A donor that keeps only its tag is recorded with its ID as
+    ``release_id``; a donor in a build folder with it as ``build``, beside
+    its ``release``.
+    """
+
+    return donor_release.get("release_id") or donor_release.get("build")
+
+
 def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
     """The inherited microcosm#1178 erasure, unless the donor is verified free."""
 
-    release_id = donor_release.get("release_id")
-    if release_id in DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE:
+    donor_build = _donor_build_id(donor_release)
+    if donor_build in DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE:
         return None
     return {
         "id": "social_security_cps_reporters_erased_inherited",
         "status": "reviewed_inherited_defect",
         "issue": "microcosm#1178",
         "fixed_by": "microcosm#1186 (980282520), in the national base build",
-        "donor_release": release_id,
+        "donor_release": donor_build,
         "affected_spines": ["asec_puf", "acs_2024_1yr"],
         "reason": (
             "The donor was built before microcosm#1186, so its PUF-support "
@@ -3673,7 +3704,7 @@ def _social_security_erasure_limitation(donor_release: dict) -> dict | None:
         "treatment": (
             "Refresh this artifact against the first national release built "
             "after microcosm#1186 (its refresh_recipe re-runs the chain with "
-            "that release as the donor), then add the donor's release id to "
+            "that release as the donor), then add the donor's build ID to "
             "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE once its PUF-support CPS "
             "reporters are checked."
         ),
@@ -4279,7 +4310,7 @@ def finalize_reviewed_limitations(
             "reason": (
                 "The QRF transfer donor is the certified Build O sparse "
                 "release "
-                f"({donor_release.get('release_id', 'unknown donor id')}): "
+                f"({_donor_build_id(donor_release) or 'unknown donor id'}): "
                 "the 57,240-household certified selection rather than a "
                 "dense full-row donor (buildl trained on the June dense "
                 "artifact). The conditioning set is thinner; per-fit donor "
@@ -4404,6 +4435,274 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
             "calibration_blocker": False,
         },
     ]
+
+
+#: Finalize's district ESS gate. A congressional district collapses when
+#: calibration leaves its Kish ESS below this share of its Kish ESS at the
+#: design weights. At the release's ACS share (0.5), microcosm#1078's solves
+#: (full surface and two holdout folds) leave 15-24 districts below a quarter
+#: unpenalized, and none with the chi-square design-weight penalty.
+DISTRICT_ESS_RELATIVE_FLOOR = 0.25
+#: The absolute floor on a district's calibrated Kish ESS (0 turns it off).
+#: Those solves' smallest district ESS is 7.8-11.7 unpenalized and at least
+#: 18.5 penalized.
+DISTRICT_ESS_FLOOR = 15.0
+DISTRICT_ESS_GATE = "district_ess_collapse"
+
+
+def _district_ess(weight_summary) -> dict[str, float] | None:
+    """A weight summary's per-district Kish ESS as finite, nonnegative floats.
+
+    None when the summary records none, or any value is not such a number.
+    """
+
+    by_district = (
+        weight_summary.get("effective_sample_size_by_district")
+        if isinstance(weight_summary, dict)
+        else None
+    )
+    if not isinstance(by_district, dict) or not by_district:
+        return None
+    values = {}
+    for district, ess in by_district.items():
+        if isinstance(ess, bool) or not isinstance(ess, (int, float)):
+            return None
+        try:
+            value = float(ess)
+        except OverflowError:  # a JSON integer too large for a float
+            return None
+        if not np.isfinite(value) or value < 0:
+            return None
+        values[str(district)] = value
+    return values
+
+
+def district_ess_collapse_gate(
+    weight_origin: dict | None,
+    *,
+    relative_floor: float = DISTRICT_ESS_RELATIVE_FLOOR,
+    absolute_floor: float = DISTRICT_ESS_FLOOR,
+    blocking: bool = False,
+) -> dict:
+    """The district ESS gate entry, from the calibration summary's weight origin.
+
+    Reads ``effective_sample_size_by_district`` at the design and the
+    calibrated weights. A district collapses when its calibrated Kish ESS is
+    below ``relative_floor`` times its design-weight Kish ESS, and is below
+    the floor when its calibrated Kish ESS is below ``absolute_floor``; a
+    floor of 0 turns its check off. ``criteria_met`` says whether no district
+    does either (None when the evidence is missing or malformed).
+
+    The release contract publishes only gates that pass, so a report-only
+    entry passes whatever it measured. Under ``blocking`` the entry passes
+    only when the criteria are met.
+    """
+
+    if not 0.0 <= relative_floor <= 1.0:
+        raise ValueError(f"relative_floor must be in [0, 1], got {relative_floor!r}.")
+    if not (np.isfinite(absolute_floor) and absolute_floor >= 0.0):
+        raise ValueError(
+            f"absolute_floor must be finite and >= 0, got {absolute_floor!r}."
+        )
+    origin = weight_origin if isinstance(weight_origin, dict) else {}
+    design = _district_ess(origin.get("design"))
+    calibrated = _district_ess(origin.get("calibrated"))
+    gate = {
+        "blocking": bool(blocking),
+        "report_only": not blocking,
+        "relative_floor": float(relative_floor),
+        "absolute_floor": float(absolute_floor),
+        "note": (
+            "A congressional district collapses when its calibrated Kish ESS "
+            "is below relative_floor x its design-weight Kish ESS, and is "
+            "below the floor when its calibrated Kish ESS is below "
+            "absolute_floor (0 turns a check off); from "
+            "calibration_summary.json weight_origin."
+        ),
+    }
+    failures = []
+    if design is None or calibrated is None:
+        failures.append(
+            "calibration_summary.json weight_origin records no finite, "
+            "nonnegative effective_sample_size_by_district at both the design "
+            "and the calibrated weights"
+        )
+    elif set(design) != set(calibrated):
+        failures.append(
+            "the design and calibrated per-district ESS cover different districts"
+        )
+    if failures:
+        return {
+            **gate,
+            "passed": not blocking,
+            "criteria_met": None,
+            "failures": failures,
+        }
+
+    rows = [
+        {
+            "district": district,
+            "calibrated_ess": calibrated[district],
+            "design_ess": design[district],
+            "ratio": (
+                calibrated[district] / design[district]
+                if design[district] > 0
+                else None
+            ),
+        }
+        for district in sorted(design)
+    ]
+    collapsed = sorted(
+        (
+            row
+            for row in rows
+            if row["calibrated_ess"] < relative_floor * row["design_ess"]
+        ),
+        key=lambda row: (row["ratio"], row["district"]),
+    )
+    below_floor = sorted(
+        (row for row in rows if row["calibrated_ess"] < absolute_floor),
+        key=lambda row: (row["calibrated_ess"], row["district"]),
+    )
+    smallest = min(rows, key=lambda row: (row["calibrated_ess"], row["district"]))
+    rated = [row for row in rows if row["ratio"] is not None]
+    lowest = (
+        min(rated, key=lambda row: (row["ratio"], row["district"])) if rated else None
+    )
+    criteria_met = not collapsed and not below_floor
+    return {
+        **gate,
+        "passed": criteria_met or not blocking,
+        "criteria_met": criteria_met,
+        "failures": [],
+        "n_districts": len(rows),
+        "n_collapsed": len(collapsed),
+        "n_below_floor": len(below_floor),
+        "min_calibrated_ess": smallest["calibrated_ess"],
+        "min_calibrated_ess_district": smallest["district"],
+        "min_ess_ratio": lowest["ratio"] if lowest else None,
+        "min_ess_ratio_district": lowest["district"] if lowest else None,
+        "collapsed": collapsed,
+        "below_floor": below_floor,
+    }
+
+
+def district_ess_collapse_limitation(gate: dict) -> dict:
+    """The reviewed-limitations entry stating the district ESS gate's result."""
+
+    if gate["criteria_met"] is None:
+        measured = (
+            "The district ESS gate could not be evaluated: "
+            + "; ".join(gate["failures"])
+            + "."
+        )
+    else:
+        n = gate["n_districts"]
+        checks = []
+        if gate["relative_floor"] > 0:
+            checks.append(
+                f"below {gate['relative_floor']:g} x their design-weight Kish "
+                f"ESS: {gate['n_collapsed']} of {n}"
+            )
+        if gate["absolute_floor"] > 0:
+            checks.append(
+                f"below {gate['absolute_floor']:g}: {gate['n_below_floor']} of {n}"
+            )
+        ratio = gate["min_ess_ratio"]
+        measured = (
+            (
+                "Congressional districts with a calibrated Kish ESS "
+                + "; ".join(checks)
+                + "."
+                if checks
+                else f"No district ESS check is on for the {n} districts."
+            )
+            + f" Smallest calibrated district ESS: "
+            f"{gate['min_calibrated_ess']:.1f} "
+            f"({gate['min_calibrated_ess_district']})"
+            + (
+                f"; smallest ratio to design ESS: {ratio:.3f} "
+                f"({gate['min_ess_ratio_district']})."
+                if ratio is not None
+                else "."
+            )
+        )
+    if not gate["blocking"]:
+        mode = (
+            " The gate is report-only for this build; "
+            "--district-ess-gate-blocking makes it a hard failure."
+        )
+    elif gate["passed"]:
+        mode = " The gate is blocking for this build and passed."
+    else:
+        mode = (
+            " The gate is blocking for this build and fails, so the build is "
+            "not simulation-ready."
+        )
+    return {
+        "id": "district_effective_sample_size_gate",
+        "status": "recorded_concentration",
+        "reason": measured + mode,
+        "gate": DISTRICT_ESS_GATE,
+        "criteria_met": gate["criteria_met"],
+        "n_collapsed": gate.get("n_collapsed"),
+        "n_below_floor": gate.get("n_below_floor"),
+        "relative_floor": gate["relative_floor"],
+        "absolute_floor": gate["absolute_floor"],
+        "blocking": gate["blocking"],
+        "calibration_blocker": not gate["passed"],
+    }
+
+
+def _require_blocking_district_ess_gate(gate_report: dict, args) -> None:
+    """Under ``--district-ess-gate-blocking``, refuse a report finalize did not block on.
+
+    A finalize run without the flag (or at other floors, or from before the
+    gate existed) records a gate that passes whatever it measured, so
+    packaging its report under the flag would ship what the flag refuses.
+    """
+
+    if not args.district_ess_gate_blocking:
+        return
+    gates = gate_report.get("gates")
+    gate = gates.get(DISTRICT_ESS_GATE) if isinstance(gates, dict) else None
+    if not (
+        isinstance(gate, dict)
+        and gate.get("blocking") is True
+        and gate.get("passed") is True
+        and gate.get("relative_floor") == args.district_ess_relative_floor
+        and gate.get("absolute_floor") == args.district_ess_floor
+    ):
+        raise SystemExit(
+            f"--district-ess-gate-blocking: the finalize gate report carries no "
+            f"passing blocking {DISTRICT_ESS_GATE} gate at relative floor "
+            f"{args.district_ess_relative_floor:g} and floor "
+            f"{args.district_ess_floor:g}; re-run --stage finalize with the "
+            "same flags."
+        )
+
+
+def district_ess_refresh_flags(gate) -> str:
+    """The recorded district ESS gate's non-default flags, for the refresh recipe."""
+
+    if not isinstance(gate, dict):
+        return ""
+    flags = ""
+    for key, flag, default in (
+        (
+            "relative_floor",
+            "--district-ess-relative-floor",
+            DISTRICT_ESS_RELATIVE_FLOOR,
+        ),
+        ("absolute_floor", "--district-ess-floor", DISTRICT_ESS_FLOOR),
+    ):
+        value = gate.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if float(value) != default:
+                flags += f" {flag} {float(value)!r}"
+    if gate.get("blocking") is True:
+        flags += " --district-ess-gate-blocking"
+    return flags
 
 
 def _local_hours_gate(frame, staging_summary: dict):
@@ -5151,10 +5450,18 @@ def do_finalize(args) -> None:
         "artifact_sha256": spine_qa.get("artifact_sha256"),
     }
 
+    gates[DISTRICT_ESS_GATE] = district_ess_collapse_gate(
+        diagnostics.get("weight_origin"),
+        relative_floor=args.district_ess_relative_floor,
+        absolute_floor=args.district_ess_floor,
+        blocking=args.district_ess_gate_blocking,
+    )
+
     limitations = finalize_reviewed_limitations(
         staging_summary, diagnostics, spine_qa, consumer_export=consumer_export
     )
     limitations += state_cd_reviewed_limitations(materialize_rss)
+    limitations.append(district_ess_collapse_limitation(gates[DISTRICT_ESS_GATE]))
     hard_failures = [
         name
         for name in (
@@ -5174,6 +5481,9 @@ def do_finalize(args) -> None:
         )
         if not gates[name]["passed"]
     ]
+    # Report-only unless --district-ess-gate-blocking, so it passes otherwise.
+    if not gates[DISTRICT_ESS_GATE]["passed"]:
+        hard_failures.append(DISTRICT_ESS_GATE)
     updated_summary = dict(staging_summary)
     updated_summary.update(
         {
@@ -5402,7 +5712,25 @@ def _require_spm_measurement(frame) -> dict[str, object]:
     }
 
 
+def _new_release_dir(args) -> Path:
+    """The release directory the package stage will write, which must not exist.
+
+    It is named after the release, not the build (microcosm#1570), so an
+    earlier package's directory under the same ``--out`` would mix two
+    builds' files.
+    """
+
+    release_dir = args.out.joinpath(*RELEASE_DIR_PARTS)
+    if release_dir.exists() or release_dir.is_symlink():
+        raise SystemExit(
+            f"{release_dir} already exists from an earlier package; remove it, "
+            "or package into another --out."
+        )
+    return release_dir
+
+
 def do_package(args) -> dict:
+    release_dir = _new_release_dir(args)
     diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     diagnostics_status = diagnostics.get("calibration_diagnostics")
     if not isinstance(diagnostics_status, dict) or diagnostics_status.get(
@@ -5432,6 +5760,7 @@ def do_package(args) -> dict:
     soi_mode = _require_recorded_soi_mode(materialize_rss)
     _require_full_rung(identity)
     _require_current_calibration(identity, diagnostics, stage="package")
+    _require_blocking_district_ess_gate(gate_report, args)
     calibrated_h5 = Path(args.out_h5)
     if not calibrated_h5.exists():
         raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")
@@ -5490,8 +5819,8 @@ def do_package(args) -> dict:
 
     code = _repo_code_identity(args.allow_dirty)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
-    release_dir = args.out / "releases" / release_id
+    # The build's ID; it names the build within the local-area release.
+    build_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
 
     gates = gate_report.get("gates")
     hours_gate = gates.get("hours_worked_signal") if isinstance(gates, dict) else None
@@ -5681,9 +6010,11 @@ def do_package(args) -> dict:
                 "family_multipliers"
             ),
         ),
-        "publish": (
-            "tools/publish_release.sh <release_dir> --no-latest "
-            f"--artifact-root <run> --repo-id {HF_REPO_ID}"
+        # The release recipe's --out is <run>/release, the artifact root.
+        "publish": publication_commands(
+            "<run>/release/" + "/".join(RELEASE_DIR_PARTS),
+            repo_id=HF_REPO_ID,
+            artifact_root="<run>/release",
         ),
     }
     refresh_recipe["release"] = county_surface.refresh_recipe(
@@ -5697,9 +6028,14 @@ def do_package(args) -> dict:
             f" --county-target-loss-cap {float(county_profile['target_loss_cap'])!r}"
             f" --county-max-weight-ratio {float(county_profile['max_weight_ratio'])!r}"
         )
+    refresh_recipe["release"] += district_ess_refresh_flags(
+        (gate_report.get("gates") or {}).get(DISTRICT_ESS_GATE)
+    )
 
+    # Both manifests are written in the tagged shape and rewritten into the
+    # build-folder layout below, by rewrite_release_dir.
     build_manifest = {
-        "build_id": release_id,
+        "build_id": build_id,
         "build_sha": code["sha"],
         "build_dirty": code["dirty"],
         "created_at": datetime.now(UTC).isoformat(),
@@ -5825,7 +6161,7 @@ def do_package(args) -> dict:
             "kind": kind,
             "path": path_name,
             "repo_id": HF_REPO_ID,
-            "revision": release_id,
+            "revision": build_id,
             "sha256": _sha256(local),
         }
 
@@ -5834,7 +6170,7 @@ def do_package(args) -> dict:
             "kind": "microdata",
             "path": ARTIFACT_FILENAME,
             "repo_id": HF_REPO_ID,
-            "revision": release_id,
+            "revision": build_id,
             "sha256": h5_sha,
         },
         "gate_summary": _artifact(
@@ -5854,19 +6190,27 @@ def do_package(args) -> dict:
             "diagnostics",
             release_dir / "calibration_diagnostics.json",
         )
+    # The emitter publishes a build folder's manifests, checksum ledger and
+    # declared artifacts only (microcosm#1570), so every other file written
+    # above, the evidence JSON included, is declared, as the UK dense
+    # assembler declares its evidence.
+    for name in contract_files:
+        key = Path(name).stem
+        if name != "build_manifest.json" and key not in artifacts:
+            artifacts[key] = _artifact(name, "diagnostics", release_dir / name)
 
     release_manifest = {
         "schema_version": 1,
         "data_package": {"name": "microcosm-data", "version": "0.1.0"},
-        # NON-DEFAULT: this artifact claims NO default dataset slot.
-        # Publishing it must never flip latest.json; it is discoverable by
-        # its immutable release id / tag only.
+        # NON-DEFAULT: this artifact claims NO default dataset slot. Its
+        # release is a local-area release in releases.json, never the
+        # repository's default; the build is found there by its ID.
         "default_datasets": {},
         "dataset_role": "non_default_local_area",
         "is_default": False,
         "namespace": RELEASE_NAMESPACE,
         "build": {
-            "build_id": release_id,
+            "build_id": build_id,
             "built_at": datetime.now(UTC).isoformat(),
             "built_with_core_package": {
                 "name": "policyengine-core",
@@ -5892,6 +6236,11 @@ def do_package(args) -> dict:
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
     )
+    # microcosm#1570: both manifests name the release and the build, the build's
+    # details move to the release manifest's top level, each artifact gets its
+    # role and loses its revision, and the ledger's lines for the two
+    # manifests get their new digests.
+    rewrite_release_dir(release_dir, build=build_id)
 
     artifact_root = args.out
     root_copy = artifact_root / ARTIFACT_FILENAME
@@ -5911,7 +6260,9 @@ def do_package(args) -> dict:
         )
 
     result = {
-        "release_id": release_id,
+        "release_id": US_LOCAL_RELEASE_ID,
+        "release": US_LOCAL_RELEASE_ID,
+        "build": build_id,
         "release_dir": str(release_dir),
         "artifact_root": str(artifact_root),
         "root_artifact": {
@@ -5921,9 +6272,10 @@ def do_package(args) -> dict:
         },
         "is_default": False,
         "files": sorted(path.name for path in release_dir.iterdir()),
-        "publish_command": (
-            f"tools/publish_release.sh {release_dir} --no-latest "
-            f"--artifact-root {artifact_root} --repo-id {HF_REPO_ID}"
+        # Publishing lists the build without making it current; promoting,
+        # after review, makes it the release's current build.
+        **publication_commands(
+            release_dir, repo_id=HF_REPO_ID, artifact_root=artifact_root
         ),
     }
     (args.out / "package_result.json").write_text(json.dumps(result, indent=2))
@@ -6101,7 +6453,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--out",
         type=Path,
-        help="Release root for --stage package (releases/<id>/ lands here).",
+        help=(
+            "Release root for --stage package (releases/microcosm-us-2024-local/ "
+            "and the dataset land here)."
+        ),
     )
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument(
@@ -6111,6 +6466,35 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Permit ladder population cells with no supporting household "
             "(a capped smoke shrinks the surface). Never for a release "
             "build: materialize hard-fails on dropped cells without this."
+        ),
+    )
+    parser.add_argument(
+        "--district-ess-relative-floor",
+        type=float,
+        default=DISTRICT_ESS_RELATIVE_FLOOR,
+        help=(
+            "Finalize's district ESS gate: a congressional district collapses "
+            "when its calibrated Kish ESS is below this share of its "
+            "design-weight Kish ESS (0 to 1; 0 turns the check off)."
+        ),
+    )
+    parser.add_argument(
+        "--district-ess-floor",
+        type=float,
+        default=DISTRICT_ESS_FLOOR,
+        help=(
+            "Finalize's district ESS gate: the floor on every congressional "
+            "district's calibrated Kish ESS (0 turns the check off)."
+        ),
+    )
+    parser.add_argument(
+        "--district-ess-gate-blocking",
+        action="store_true",
+        help=(
+            "Make the district ESS gate a hard failure at finalize, and make "
+            "package refuse a gate report finalize did not block on. Off by "
+            "default: the gate is recorded in gate_summary.json, the build "
+            "manifest and the reviewed limitations, and passes."
         ),
     )
     args = parser.parse_args(argv)
@@ -6136,6 +6520,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--out-h5 is required for calibrate/qa/finalize/package.")
     if "package" in stages and args.out is None:
         parser.error("--out is required for the package stage.")
+    if "package" in stages:
+        # Refused here as well as when the package stage starts, so a run of
+        # every stage stops before hours of the others.
+        earlier = args.out.joinpath(*RELEASE_DIR_PARTS)
+        if earlier.exists() or earlier.is_symlink():
+            parser.error(
+                f"{earlier} already exists from an earlier package; remove it, "
+                "or package into another --out."
+            )
     if args.out_h5 is not None and args.out_summary is None:
         args.out_summary = args.out_h5.with_suffix(".summary.json")
     if args.gate_report is None:
@@ -6151,6 +6544,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "--cd-holdout-fraction must be in "
             f"[0, {cd_surface.MAX_CD_HOLDOUT_FRACTION}]."
         )
+    if not 0.0 <= args.district_ess_relative_floor <= 1.0:
+        parser.error("--district-ess-relative-floor must be in [0, 1].")
+    if not (np.isfinite(args.district_ess_floor) and args.district_ess_floor >= 0.0):
+        parser.error("--district-ess-floor must be finite and >= 0.")
     args.stages = stages
     county_surface.validate_arguments(args, parser)
     for flag in ("county_target_loss_cap", "county_max_weight_ratio"):

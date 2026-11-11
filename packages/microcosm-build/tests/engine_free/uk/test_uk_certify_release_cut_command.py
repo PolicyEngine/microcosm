@@ -35,7 +35,9 @@ def test_certifier_pins_carry_the_byte_sizes_the_logbook_digest_requires(
         "build_record.json",
         "terminal_gates.json",
         "input_mass_reference.json",
-        "score_vs_incumbent.json",
+        "reference_surface.json",
+        "score_vs_reference.json",
+        "reference.json",
     ):
         placeholders[name] = tmp_path / name
         placeholders[name].write_text("{}")
@@ -77,8 +79,12 @@ def test_certifier_pins_carry_the_byte_sizes_the_logbook_digest_requires(
                 "2" * 64,
                 "--input-mass-reference",
                 str(placeholders["input_mass_reference.json"]),
+                "--reference-surface",
+                str(placeholders["reference_surface.json"]),
                 "--score-receipt",
-                str(placeholders["score_vs_incumbent.json"]),
+                str(placeholders["score_vs_reference.json"]),
+                "--reference-record",
+                str(placeholders["reference.json"]),
                 "--release-id",
                 "microcosm-uk-2024-25-national",
                 "--release-cut-gate-json",
@@ -146,7 +152,13 @@ def test_certifier_refuses_a_spine_that_is_not_the_candidates_recorded_parent(
     ledger = tmp_path / "ledger"
     ledger.mkdir()
     (ledger / "consumer_facts.jsonl").write_text('{"fact": 1}\n')
-    for name in ("terminal_gates.json", "input_mass_reference.json", "score.json"):
+    for name in (
+        "terminal_gates.json",
+        "input_mass_reference.json",
+        "reference_surface.json",
+        "score.json",
+        "reference.json",
+    ):
         (tmp_path / name).write_text("{}")
     monkeypatch.setattr(certify, "resolve_predecessor", lambda digest: None)
     monkeypatch.setattr(certify, "record_terminal_attempt", lambda **kwargs: None)
@@ -178,8 +190,12 @@ def test_certifier_refuses_a_spine_that_is_not_the_candidates_recorded_parent(
                 "2" * 64,
                 "--input-mass-reference",
                 str(tmp_path / "input_mass_reference.json"),
+                "--reference-surface",
+                str(tmp_path / "reference_surface.json"),
                 "--score-receipt",
                 str(tmp_path / "score.json"),
+                "--reference-record",
+                str(tmp_path / "reference.json"),
                 "--release-id",
                 "microcosm-uk-2024-25-national",
                 "--release-cut-gate-json",
@@ -188,3 +204,77 @@ def test_certifier_refuses_a_spine_that_is_not_the_candidates_recorded_parent(
                 str(tmp_path / "release_certification.json"),
             ]
         )
+
+
+def test_certifier_refuses_a_reference_surface_of_another_build(tmp_path: Path):
+    """The export-surface and coverage gates compare with the build the score
+    and the input-mass gate compare with (microcosm#1095)."""
+
+    import argparse
+
+    record = tmp_path / "reference.json"
+    record.write_text(
+        json.dumps(
+            {
+                "release": "microcosm-uk-2024-25-national",
+                "build": "build-a",
+                "sha256": "1" * 64,
+            }
+        )
+    )
+    surface = tmp_path / "reference_surface.json"
+
+    def write_surface(build: str, sha256: str) -> None:
+        surface.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "uk_reference_surface",
+                    "label": f"microcosm-uk-2024-25-national@{build}",
+                    "sha256": sha256,
+                    "minimum_nondefault_mass_share": 1e-6,
+                    "export_columns": ["person.age"],
+                    "populated_inputs": ["age"],
+                    "thin_inputs": [],
+                }
+            )
+        )
+
+    args = argparse.Namespace(reference_record=record, reference_surface=surface)
+    write_surface("build-b", "2" * 64)
+    with pytest.raises(SystemExit, match="not the cut's reference"):
+        certify._reference_surface(args)
+    write_surface("build-a", "2" * 64)
+    with pytest.raises(SystemExit, match="not the cut's reference"):
+        certify._reference_surface(args)
+    write_surface("build-a", "1" * 64)
+    assert certify._reference_surface(args).label == (
+        "microcosm-uk-2024-25-national@build-a"
+    )
+
+
+def test_certifier_refuses_a_reference_record_of_the_dense_line(tmp_path: Path):
+    """The certifier compares a national cut with the national line's current
+    build (the review of microcosm#1574)."""
+
+    import argparse
+
+    record = tmp_path / "reference.json"
+    record.write_text(
+        json.dumps(
+            {
+                "release": "microcosm-uk-2024-25-dense",
+                "build": "uk-local-candidate-x",
+                "sha256": "1" * 64,
+            }
+        )
+    )
+    args = argparse.Namespace(
+        reference_record=record,
+        reference_surface=tmp_path / "reference_surface.json",
+        input_mass_reference=tmp_path / "input_mass_reference.json",
+    )
+    with pytest.raises(SystemExit, match="national line's current build"):
+        certify._reference_surface(args)
+    with pytest.raises(SystemExit, match="national line's current build"):
+        certify._input_mass_reference(args)

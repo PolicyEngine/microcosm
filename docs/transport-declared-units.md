@@ -152,14 +152,15 @@ program, since both would read one person column. Views need
 
 A rules node slices each view's selector over the whole person table, as it
 does a relation's selector columns; composition and every rules kernel apply
-the same check. When the spec carries an input closure, composition also
-refuses a view node whose person slice omits an input that the closure encodes
-(other than through a graph node) or defaults on the logical entity, and a
-closure producer whose person slice omits a selector. The closure counts a
-view's roots as live on its logical entity and checks them against the person
-table; `unreached_roots` still excuses only roots on the binding's engine
-entity. The support roster classes a defaulted root on a view's logical entity
-as a person column.
+the same check. Composition refuses a spec that declares a view binding but
+carries no input closure, whether or not a node selects that binding. It also
+refuses a rules node on a view binding whose person slice omits an input that
+the closure encodes (other than through a graph node) or defaults on the
+logical entity, and a closure producer whose person slice omits a selector. The
+closure counts a view's roots as live on its logical entity and checks them
+against the person table; `unreached_roots` still excuses only roots on the
+binding's engine entity. The support roster classes a defaulted root on a
+view's logical entity as a person column.
 
 A binding without `views` keeps its semantics, engine reference and native
 execution call. The engine reference carries `views` only when the binding

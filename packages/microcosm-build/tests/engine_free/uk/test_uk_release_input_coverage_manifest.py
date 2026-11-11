@@ -51,9 +51,13 @@ def test_known_gap_register_records_post_candidate_restoration_separately() -> N
     # microcosm#1106: property_wealth is formula-owned in policyengine-uk, so
     # the release leaves it for the engine to derive, and so is
     # tax_free_savings_income under the additive ISA income contract
-    # (microcosm#1360). Each is a declared exclusion in its own section, never
-    # parity debt in known_gaps.
+    # (microcosm#1360), and so are the PIP categories, which policyengine-uk
+    # derives from the points the pip_points stage stores (microcosm#1095, P1).
+    # Each is a declared exclusion in its own section, never parity debt in
+    # known_gaps.
     assert set(gaps["engine_derived_exclusions"]) == {
+        "pip_dl_category",
+        "pip_m_category",
         "property_wealth",
         "tax_free_savings_income",
     }
@@ -126,38 +130,35 @@ def test_hmrc_family_period_fields_come_from_the_bytes_their_hash_names() -> Non
     assert "canonical_source_manifest" not in family
 
 
-def test_promoted_manifest_requires_the_full_reference_surface() -> None:
-    reference = _resource("efrs_parity_reference.json")
+def test_manifest_declares_the_exclusions_and_leaves_the_rest_to_the_reference() -> (
+    None
+):
+    # microcosm#1095: the required inputs are the ones the cut's reference
+    # build carries, measured at gate time; the manifest declares only the
+    # reviewed exclusions: the engine-derived totals whose persisted
+    # components the reference carries (microcosm#1106, microcosm#1360) and
+    # the PIP categories the engine derives from the points (microcosm#1095),
+    # and the gross receipts microcosm#1550 stops writing, which the current
+    # builds still carry (María's signature of 2026-11-10).
     manifest = _resource("release_input_coverage_manifest.json")
-    assert manifest["counts"] == {
-        "required": 143,
-        "reviewed_exclusion": 2,
-        "total": 145,
+    assert manifest["counts"] == {"reviewed_exclusion": 5}
+    assert set(manifest["columns"]) == {
+        "pip_dl_category",
+        "pip_m_category",
+        "property_wealth",
+        "self_employment_gross_receipts",
+        "tax_free_savings_income",
     }
-    assert set(manifest["columns"]) == set(reference["nonzero_shares"])
-    # Every reference input is required except the engine-derived totals; their
-    # persisted components stay required (microcosm#1106, microcosm#1360).
-    excluded = {
-        name: entry
-        for name, entry in manifest["columns"].items()
-        if entry != {"status": "required"}
-    }
-    assert set(excluded) == {"property_wealth", "tax_free_savings_income"}
-    for name in excluded:
-        assert excluded[name]["status"] == "reviewed_exclusion"
-    for component in (
-        "main_residence_value",
-        "other_residential_property_value",
-        "non_residential_property_value",
-        "savings_interest_income",
-    ):
-        assert manifest["columns"][component] == {"status": "required"}
+    for entry in manifest["columns"].values():
+        assert entry["status"] == "reviewed_exclusion"
+        assert entry["reason"].strip() and entry["tracking_note"].strip()
+    assert manifest["reference"]["kind"] == "current_build"
     assert manifest["restoration_evidence"] == {
         "derived_from": "efrs_parity_known_gaps.json",
         "required_columns": ["charitable_investment_gifts", "gift_aid"],
     }
     assert manifest["candidate_evidence"]["tier"] == "frs"
-    assert manifest["schema_version"] == 3
+    assert manifest["schema_version"] == 4
     assert manifest["effective_mass_coverage"] == {
         "weight_source": "household_weight",
         "minimum_nondefault_mass_share": 1e-6,
@@ -309,6 +310,37 @@ def test_manifest_generation_rejects_engine_derived_drift_and_overlap() -> None:
         )
 
 
+def test_only_the_reviewed_inputs_the_engine_derives_since_the_reference_pass() -> None:
+    # The eFRS reference's engine (2.89.0) read the PIP categories as plain
+    # inputs; policyengine-uk 2.177.7 derives them from the points. Only the
+    # reviewed list admits them past the formula-owned check, and a name on
+    # that list that is no engine-derived exclusion is refused
+    # (microcosm#1095, P1).
+    generator = _load_generator()
+    reference = _resource("efrs_parity_reference.json")
+    owned = set(reference["engine"]["formula_owned_persisted_overrides_included"])
+    assert {"pip_dl_category", "pip_m_category"}.isdisjoint(owned)
+    assert set(generator.ENGINE_DERIVED_SINCE_REFERENCE) == {
+        "pip_dl_category",
+        "pip_m_category",
+    }
+    generator.build_manifest(
+        reference=reference,
+        known_gaps_payload=_resource("efrs_parity_known_gaps.json"),
+    )
+    original = dict(generator.ENGINE_DERIVED_SINCE_REFERENCE)
+    try:
+        generator.ENGINE_DERIVED_SINCE_REFERENCE["pip_dl_points"] = "stray"
+        with pytest.raises(ValueError, match="derives since the reference"):
+            generator.build_manifest(
+                reference=reference,
+                known_gaps_payload=_resource("efrs_parity_known_gaps.json"),
+            )
+    finally:
+        generator.ENGINE_DERIVED_SINCE_REFERENCE.clear()
+        generator.ENGINE_DERIVED_SINCE_REFERENCE.update(original)
+
+
 def test_manifest_generation_rejects_candidate_entity_mismatch() -> None:
     generator = _load_generator()
     reference = _resource("efrs_parity_reference.json")
@@ -419,10 +451,17 @@ def test_engine_derived_exclusions_require_a_signature(tmp_path) -> None:
 
     committed = load_efrs_engine_derived_exclusions()
     assert [(gap.variable, gap.approved_by) for gap in committed] == [
+        ("pip_dl_category", "juaristi22"),
+        ("pip_m_category", "juaristi22"),
         ("property_wealth", "juaristi22"),
         ("tax_free_savings_income", "juaristi22"),
     ]
-    assert [gap.approved_on for gap in committed] == ["2026-10-11", "2026-10-28"]
+    assert [gap.approved_on for gap in committed] == [
+        "2026-11-09",
+        "2026-11-09",
+        "2026-10-11",
+        "2026-10-28",
+    ]
     assert all(gap.approved_by is None for gap in load_efrs_parity_known_gaps())
 
     unsigned = tmp_path / "ledger.json"
@@ -454,3 +493,21 @@ def test_engine_derived_exclusions_require_a_signature(tmp_path) -> None:
     )
     with pytest.raises(ValueError, match="ISO date"):
         load_efrs_engine_derived_exclusions(str(undated))
+
+
+def test_an_input_retired_since_the_reference_cannot_overlap_the_ledger() -> None:
+    generator = _load_generator()
+    retired = dict(generator.RETIRED_SINCE_REFERENCE_EXCLUSIONS)
+    try:
+        generator.RETIRED_SINCE_REFERENCE_EXCLUSIONS["gift_aid"] = {
+            "reason": "seeded clash",
+            "tracking_note": "seeded",
+        }
+        with pytest.raises(ValueError, match="retired since the reference"):
+            generator.build_manifest(
+                reference=_resource("efrs_parity_reference.json"),
+                known_gaps_payload=_resource("efrs_parity_known_gaps.json"),
+            )
+    finally:
+        generator.RETIRED_SINCE_REFERENCE_EXCLUSIONS.clear()
+        generator.RETIRED_SINCE_REFERENCE_EXCLUSIONS.update(retired)

@@ -332,6 +332,46 @@ def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
         builder._refuse_certified_release_dir_reuse(release_dir)
 
 
+@pytest.mark.parametrize(
+    ("leftover", "skip_flag"),
+    [
+        ("reform_validation.json", "skip_reform_validation"),
+        ("demographics.json", "skip_demographics"),
+    ],
+)
+def test_a_skipped_check_s_file_from_an_earlier_attempt_is_refused(
+    tmp_path, leftover: str, skip_flag: str
+) -> None:
+    """The release directory is named after the release (microcosm#1570), so
+    a rerun into the same --out finds an earlier attempt's files. A file the
+    manifest declares whenever it exists, but this run will not write because
+    it skips that check, would be published as the new build's: the run
+    refuses before doing anything (review of #1571)."""
+    from types import SimpleNamespace
+
+    builder = _load_builder_module()
+    release_dir = tmp_path / "releases" / "microcosm-us-2024-national"
+    release_dir.mkdir(parents=True)
+    (release_dir / leftover).write_text("{}")
+    args = SimpleNamespace(skip_reform_validation=False, skip_demographics=False)
+
+    builder._refuse_skipped_checks_left_files(release_dir, args)  # rewritten
+
+    setattr(args, skip_flag, True)
+    with pytest.raises(RuntimeError, match=leftover):
+        builder._refuse_skipped_checks_left_files(release_dir, args)
+
+
+def test_the_run_refuses_skipped_checks_left_files_before_any_side_effect() -> None:
+    """The refusal sits beside the first refusal of a certified directory,
+    which precedes every download and output directory."""
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    first_refusal = source.index("    _refuse_certified_release_dir_reuse(\n")
+    following = source[first_refusal : first_refusal + 600]
+    assert "_refuse_skipped_checks_left_files(" in following
+
+
 def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -> None:
     """microcosm#566/#567: the dense-arm fence table must cover exactly the
     normally-enforced bands, and every fence must carry the recompute
@@ -2717,28 +2757,58 @@ def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
         assert count_gate < source.index(later_write)
 
 
-def test_legacy_cli_result_is_origin_main_three_key_fixture(
+@pytest.mark.parametrize(
+    ("release", "promotion"),
+    [
+        (
+            "microcosm-us-2024-national",
+            "Promoting makes this build the current build of "
+            "microcosm-us-2024-national, the US default dataset.",
+        ),
+        (
+            "microcosm-us-2024-evidence",
+            "Promoting makes this build the current build of "
+            "microcosm-us-2024-evidence, which is never the US default; the "
+            "release's current build takes the place of the latest-evidence.json "
+            "pointer file.",
+        ),
+    ],
+)
+def test_cli_result_names_the_build_and_its_publication_commands(
     capsys,
     tmp_path: Path,
+    release: str,
+    promotion: str,
 ) -> None:
+    """The result a run prints: the release, the build, where they are, and
+    the commands that publish the build and then make it current
+    (microcosm#1570). Nothing in it is the tagged publisher's command."""
+    from microcosm.data.build_folder_manifests import publication_commands
+
     builder = _load_builder_module()
-    release_dir = tmp_path / "releases" / "fixture-release"
+    release_dir = tmp_path / "releases" / release
     artifact_root = tmp_path / "artifacts"
+    commands = publication_commands(
+        release_dir, repo_id=builder.REPO_ID, artifact_root=artifact_root
+    )
 
     returned = builder._print_build_result(
-        release_id="fixture-release",
+        build="populace-us-2024-fixture-build",
         release_dir=release_dir,
         artifact_root=artifact_root,
+        publication=commands,
     )
 
     assert returned is None
-    assert capsys.readouterr().out == (
-        "{\n"
-        '  "release_id": "fixture-release",\n'
-        f'  "release_dir": "{release_dir}",\n'
-        f'  "artifact_root": "{artifact_root}"\n'
-        "}\n"
-    )
+    assert json.loads(capsys.readouterr().out) == {
+        "release": release,
+        "build": "populace-us-2024-fixture-build",
+        "release_dir": str(release_dir),
+        "artifact_root": str(artifact_root),
+        "publish_command": commands["publish_command"],
+        "promote_command": commands["promote_command"],
+        "promotion": promotion,
+    }
     assert builder.main.__annotations__["return"] in {None, "None"}
 
 
@@ -6490,7 +6560,7 @@ def _run_green_register_release(
     )
     from microcosm.data.release import _release_manifest_release_artifacts
 
-    release_dir = out / "releases" / release_id
+    release_dir = out / "releases" / builder.US_NATIONAL_RELEASE_ID
     # The harness stubs every hash to a constant. The run's own outputs, the
     # register and the export-mass reference hash for real, so the manifests
     # can be checked against the bytes on disk.
@@ -6533,7 +6603,10 @@ def _run_green_register_release(
             self.dataset_sha256 = builder._sha256(self.dataset_path)
             captured["scorer_opened_on"] = self.dataset_path
 
-        def open_consumer(self, name, baseline_plan):
+        def open_consumer(self, name, baseline_plan, planned_reform_passes=None):
+            captured.setdefault("planned_reform_passes", {})[name] = (
+                planned_reform_passes
+            )
             record = {"dataset_sha256": self.dataset_sha256, "consumer": name}
             simulate = self.dataset_path
             if name == "ssi_social_security_holdout":
@@ -6609,6 +6682,19 @@ def _run_green_register_release(
             captured["scorer_closed"] = True
 
     monkeypatch.setattr(builder, "_HouseholdBatchedPostExportScorer", WrittenH5Scorer)
+    read_population_structure = builder.population_structure_holdout_from_h5
+
+    def population_structure_from_h5(dataset_path, **kwargs):
+        # Records whether the scorer had already freed its batch frames.
+        captured["population_structure_read"] = (
+            Path(dataset_path),
+            captured.get("scorer_closed", False),
+        )
+        return read_population_structure(dataset_path, **kwargs)
+
+    monkeypatch.setattr(
+        builder, "population_structure_holdout_from_h5", population_structure_from_h5
+    )
 
     def fake_smoke(*, simulate, period):
         # The pre-export plan dry-runs the smoke on a recording seam first;
@@ -6642,8 +6728,22 @@ def _run_green_register_release(
         )
         return
 
+    # The run leaves the release contract to the publication command's
+    # preflight, as before the build-folder layout: a diagnostic run's output
+    # is written, not refused at its end. Any call would be recorded here.
+    validated: list[tuple[Path, Path | None]] = []
+
+    def record_certified_contract(directory, *, artifact_root=None):
+        validated.append((Path(directory), artifact_root))
+        return []
+
+    from microcosm.data import contract
+
+    monkeypatch.setattr(contract, "validate_release_dir", record_certified_contract)
+
     builder.main()
 
+    assert validated == []
     assert captured["terminal_gate_events"] == [
         "input_coverage",
         "input_mass_parity",
@@ -6672,6 +6772,12 @@ def _run_green_register_release(
         assert not (release_dir / "reform_coverage_smoke.json").exists()
     else:
         assert captured["smoke_scored"] == captured["written_dataset"]
+        # _main hands the smoke its plan's reform pass count (#1556). This
+        # test's smoke gate asks no reformed simulation for a key, so the dry
+        # run counted none; a consumer opened without a count gets None.
+        assert captured["planned_reform_passes"]["reform_coverage_smoke"] == 0
+    # The holdouts score no reform, so _main gives them no count.
+    assert captured["planned_reform_passes"]["ssi_social_security_holdout"] is None
     assert captured["scorer_opened_on"] == captured["written_dataset"]
     assert captured["holdout_scored"] == captured["written_dataset"]
     assert captured["scorer_closed"] is True
@@ -6701,8 +6807,27 @@ def _run_green_register_release(
     assert part_b["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 69.90)
     assert part_d["weighted_payers"] == 2
     assert part_d["weighted_aggregate_premiums"] == pytest.approx(2 * 12 * 12.90)
+    # The population-structure holdout reads the written H5 only after the
+    # scorer closes. The harness H5 holds placeholder bytes, so the step
+    # records the report as unavailable and the release still publishes it.
+    assert captured["population_structure_read"] == (
+        captured["written_dataset"],
+        True,
+    )
+    population_path = release_dir / "us_population_structure_holdout.json"
+    population = json.loads(population_path.read_text())
+    assert population["status"] == "unavailable"
+    assert population["release_id"] == release_id
+    assert population["enforced"] is False
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    # A certified run is a build of the national release, in the build-folder
+    # layout: both manifests name the release and the build (microcosm#1570).
+    for manifest in (build_manifest, release_manifest):
+        assert manifest["release"] == builder.US_NATIONAL_RELEASE_ID
+        assert manifest["build"] == release_id
+    assert build_manifest["dataset"]["filename"] == "microcosm_us_2024.h5"
+    assert release_manifest["default_datasets"] == {"national": "microcosm_us_2024"}
     if not skipped_smoke:
         # The smoke verdict names the bytes it scored, and they are the bytes
         # the manifest pins.
@@ -6718,7 +6843,7 @@ def _run_green_register_release(
     # remediation PR-3's rule): the scorer's block, taken after every consumer
     # finished and naming the bytes the manifest pins. The observational
     # holdout is scored independently of whether the smoke was skipped.
-    for block in (build_manifest, release_manifest["build"]):
+    for block in (build_manifest, release_manifest):
         assert block["post_export_scoring"] == {
             "dataset_sha256": build_manifest["dataset"]["sha256"],
             "consumers": (
@@ -6743,9 +6868,16 @@ def _run_green_register_release(
             "kind": "diagnostics",
             "path": filename,
             "repo_id": builder.REPO_ID,
-            "revision": release_id,
             "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
+            "role": key,
         }
+    assert artifacts["us_population_structure_holdout"] == {
+        "kind": "diagnostics",
+        "path": population_path.name,
+        "repo_id": builder.REPO_ID,
+        "sha256": hashlib.sha256(population_path.read_bytes()).hexdigest(),
+        "role": "us_population_structure_holdout",
+    }
     if not skipped_smoke:
         smoke = json.loads((release_dir / "reform_coverage_smoke.json").read_text())
         assert smoke["reform_coverage_smoke"]["passed"] is True
@@ -6836,7 +6968,7 @@ def _run_green_register_release(
         "anchor_feed": {"enforced": True, "matches": True, "mismatches": []},
         "signal": {"base_frame": signal_evidence, "export_frame": signal_evidence},
     }
-    for block in (build_manifest, release_manifest["build"]):
+    for block in (build_manifest, release_manifest):
         assert block["gate_evidence"] == expected_gate_evidence
         assert block["qrf_tail_register"] == expected_register
         assert block["export_input_mass_reference"] == expected_reference
@@ -6860,8 +6992,8 @@ def _run_green_register_release(
     # The publisher contract accepts both manifests, verifies every gate
     # evidence hash against the local bytes, and uploads the files.
     failures: list[str] = []
-    _check_build_manifest(build_manifest, release_id, failures)
-    _check_release_manifest(release_manifest, release_id, failures)
+    _check_build_manifest(build_manifest, builder.US_NATIONAL_RELEASE_ID, failures)
+    _check_release_manifest(release_manifest, builder.US_NATIONAL_RELEASE_ID, failures)
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
     # Producer and publisher agree: what the tool wrote meets the stored-input
     # evidence requirement (microcosm#1034).
@@ -7345,12 +7477,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             captured["gate_evidence_on_disk_at_first_gate"] = sorted(
                 filename
                 for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values()
-                if (out / "releases" / release_id / filename).exists()
+                if (
+                    out / "releases" / builder.US_NATIONAL_RELEASE_ID / filename
+                ).exists()
             )
             captured["stale_gate_evidence_at_first_gate"] = sorted(
                 filename
                 for filename in captured["gate_evidence_on_disk_at_first_gate"]
-                if (out / "releases" / release_id / filename).read_text()
+                if (
+                    out / "releases" / builder.US_NATIONAL_RELEASE_ID / filename
+                ).read_text()
                 == '{"stale": true}'
             )
             return builder.GateResult(
@@ -9203,7 +9339,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected post-calibration gate failure.")
 
-    release_dir = out / "releases" / release_id
+    release_dir = out / "releases" / builder.US_NATIONAL_RELEASE_ID
     written_diagnostics = json.loads(
         (release_dir / "calibration_diagnostics.json").read_text()
     )
@@ -9435,6 +9571,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["diagnostics"]["base_population_gate"].details["mass_repair"]
         == repair_payload
     )
+    # The SIPP/SCF blend audit rides on the SCF-wealth gate's summary; the
+    # writer records the gate the stage returned (microcosm#1216).
+    scf_wealth_signal = captured["diagnostics"]["scf_wealth_signal"]
+    assert scf_wealth_signal["details"] == {"checked": True}
+    assert scf_wealth_signal["scope"] == "blend_stage_frame"
+    assert scf_wealth_signal["blend_household_ids"]["count"] > 0
     assert captured["diagnostics"]["support_value_repairs"] == {
         "social_security_components": ss_repair_payload,
         "non_sch_d_capital_gains": cgd_repair_payload,
@@ -12213,12 +12355,61 @@ def test_unknown_ledger_filter_metadata_fails_closed() -> None:
         raise AssertionError("Expected unknown Ledger filter metadata to fail closed.")
 
 
+def _finish_with_recorded_contract(
+    builder,
+    monkeypatch,
+    release_dir: Path,
+    *,
+    build: str,
+    artifact_root: Path,
+    evidence_release: bool = False,
+) -> tuple[dict[str, str], list[tuple[str, Path, Path | None]]]:
+    """Run the builder's last step, recording any release contract it runs.
+
+    It runs none: the publication command's preflight runs the contract, so
+    each test checks the rewritten manifests itself.
+    """
+    validated: list[tuple[str, Path, Path | None]] = []
+
+    def certified(directory, *, artifact_root=None):
+        validated.append(("certified", Path(directory), artifact_root))
+        return []
+
+    def evidence(directory):
+        validated.append(("evidence", Path(directory), None))
+
+    from microcosm.data import contract
+
+    monkeypatch.setattr(contract, "validate_release_dir", certified)
+    monkeypatch.setattr(contract, "validate_evidence_release_dir", evidence)
+    commands = builder._finish_build_folder_release(
+        release_dir,
+        build=build,
+        artifact_root=artifact_root,
+        evidence_release=evidence_release,
+    )
+    return commands, validated
+
+
 def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     monkeypatch, tmp_path
 ) -> None:
+    """The manifests a certified run writes, after its last step rewrites
+    them into the build-folder layout of the national release: both name the
+    release and the build, the build's details sit at the release
+    manifest's top level, each artifact has its role and no revision, and the
+    dataset carries the national release's file name (microcosm#1570)."""
+    from microcosm.data.build_folder_manifests import publication_commands
+    from microcosm.data.contract import (
+        US_NATIONAL_RELEASE_ID,
+        US_RELEASE_DATASET_FILES,
+        _check_build_manifest,
+        _check_release_manifest,
+    )
+
     builder = _load_builder_module()
     release_id = "populace-us-2024-abcdef1-20260615"
-    release_dir = tmp_path / "release" / release_id
+    release_dir = tmp_path / "releases" / US_NATIONAL_RELEASE_ID
     release_dir.mkdir(parents=True)
     artifact_root = tmp_path / "artifacts"
     artifact_root.mkdir()
@@ -12330,16 +12521,31 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
             "join": {"acs_source_people": 856_626},
         },
     )
+    commands, validated = _finish_with_recorded_contract(
+        builder,
+        monkeypatch,
+        release_dir,
+        build=release_id,
+        artifact_root=artifact_root,
+    )
 
+    assert validated == []
+    assert commands == publication_commands(
+        release_dir, repo_id=builder.REPO_ID, artifact_root=artifact_root
+    )
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    for document in (manifest, build_manifest):
+        assert document["release"] == US_NATIONAL_RELEASE_ID
+        assert document["build"] == release_id
+        assert "build_id" not in document
     expected_acs_join = {
         "enabled": True,
         "crosswalk": {"sha256": "c" * 64},
         "join": {"acs_source_people": 856_626},
     }
     assert build_manifest["acs_predictor_join"] == expected_acs_join
-    assert manifest["build"]["acs_predictor_join"] == expected_acs_join
+    assert manifest["acs_predictor_join"] == expected_acs_join
     assert build_manifest["gates"]["target_profile_coverage"]["passed"]
     assert (
         build_manifest["gates"]["target_profile_coverage"]["details"][
@@ -12366,8 +12572,20 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         == "rescale_household_weights_to_census_person_population"
     )
     assert manifest["data_package"] == {"name": "microcosm-data", "version": "0.1.0"}
-    assert manifest["default_datasets"] == {"national": "populace_us_2024"}
-    assert manifest["build"]["built_with_model_package"] == {
+    assert manifest["default_datasets"] == {"national": "microcosm_us_2024"}
+    assert (
+        manifest["artifacts"]["microcosm_us_2024"]["path"]
+        == (US_RELEASE_DATASET_FILES[US_NATIONAL_RELEASE_ID])
+    )
+    assert manifest["artifacts"]["microcosm_us_2024"]["role"] == "dataset"
+    assert manifest["artifacts"]["microcosm_us_2024_calibration"] == {
+        "kind": "calibration",
+        "path": "microcosm_us_2024_calibration.npz",
+        "repo_id": builder.REPO_ID,
+        "sha256": hashlib.sha256(b"npz").hexdigest(),
+        "role": "calibration_weights",
+    }
+    assert manifest["built_with_model_package"] == {
         "name": "policyengine-us",
         "version": "1.729.0",
     }
@@ -12385,16 +12603,13 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "l0_lambda_share": 0.8,
     }
     assert "area_artifacts" not in build_manifest
-    assert manifest["build"]["timing"] == {
+    assert manifest["timing"] == {
         "target_compilation_seconds": 3.0,
         "calibration_seconds": 4.0,
         "total_build_seconds": 7.0,
     }
-    assert manifest["build"]["default_dataset"] == build_manifest["dataset"]["default"]
-    assert (
-        manifest["build"]["base_population_scale"]["details"]["mass_repair"]["factor"]
-        == 5.87
-    )
+    assert manifest["default_dataset"] == build_manifest["dataset"]["default"]
+    assert manifest["base_population_scale"]["details"]["mass_repair"]["factor"] == 5.87
     assert manifest["compatible_core_packages"] == [
         {"name": "policyengine-core", "specifier": "==3.26.11"}
     ]
@@ -12408,14 +12623,20 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         "kind": "diagnostics",
         "path": "us_ssi_take_up.json",
         "repo_id": builder.REPO_ID,
-        "revision": release_id,
         "sha256": builder._sha256(ssi_diagnostics_path),
+        "role": "us_ssi_take_up",
     }
     for artifact in manifest["artifacts"].values():
         assert artifact["repo_id"] == builder.REPO_ID
-        assert artifact["revision"] == release_id
+        assert "revision" not in artifact
         assert artifact["kind"]
         assert artifact["sha256"]
+        assert artifact["role"]
+    # The release contract's own checks of both manifests accept them.
+    failures: list[str] = []
+    _check_build_manifest(build_manifest, US_NATIONAL_RELEASE_ID, failures)
+    _check_release_manifest(manifest, US_NATIONAL_RELEASE_ID, failures)
+    assert failures == []
 
 
 def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
@@ -12696,13 +12917,33 @@ def test_gate_failed_base_pool_verdict_is_carried_into_release_manifest(
 def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt(
     monkeypatch, tmp_path
 ) -> None:
+    """An exact-k build is a build of the national release: it declares the
+    national release's dataset file and keys, and its exact-count receipt
+    rides into the release manifest's top level (microcosm#1570)."""
+    from microcosm.data.contract import (
+        US_EVIDENCE_RELEASE_ID,
+        US_NATIONAL_RELEASE_ID,
+        US_RELEASE_DATASET_FILES,
+    )
+
     builder = _load_builder_module()
     release_id = "populace-us-2024-k57240-fixture"
-    dataset_key = "populace_us_2024"
-    calibration_key = "populace_us_2024_calibration"
+    dataset_key = builder.DATASET_KEY
+    calibration_key = builder.CALIBRATION_KEY
     dataset_filename = builder.DATASET_FILENAME
     calibration_filename = builder.CALIBRATION_FILENAME
-    release_dir = tmp_path / "release" / release_id
+    assert (dataset_key, dataset_filename) == (
+        "microcosm_us_2024",
+        "microcosm_us_2024.h5",
+    )
+    assert (calibration_key, calibration_filename) == (
+        "microcosm_us_2024_calibration",
+        "microcosm_us_2024_calibration.npz",
+    )
+    # The national and evidence releases' new builds declare this one file.
+    assert dataset_filename == US_RELEASE_DATASET_FILES[US_NATIONAL_RELEASE_ID]
+    assert dataset_filename == US_RELEASE_DATASET_FILES[US_EVIDENCE_RELEASE_ID]
+    release_dir = tmp_path / "releases" / US_NATIONAL_RELEASE_ID
     release_dir.mkdir(parents=True)
     artifact_root = tmp_path / "artifacts"
     artifact_root.mkdir()
@@ -12781,9 +13022,19 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
         exact_k_ladder=ladder,
         **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
     )
+    _, validated = _finish_with_recorded_contract(
+        builder,
+        monkeypatch,
+        release_dir,
+        build=release_id,
+        artifact_root=artifact_root,
+    )
 
+    assert validated == []
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert release_manifest["release"] == US_NATIONAL_RELEASE_ID
+    assert release_manifest["build"] == release_id
     assert build_manifest["exact_k_ladder"] == ladder
     assert (
         build_manifest["gates"]["exact_k_frozen_register_fit"]
@@ -12793,10 +13044,9 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
         build_manifest["gates"]["exact_k_puf_capital_gains_tail"]
         == (ladder["invariant_battery"]["puf_capital_gains_tail"])
     )
-    assert release_manifest["build"]["exact_k_ladder"] == ladder
-    assert (
-        release_manifest["build"]["exact_k_ladder"]["selection_receipt"]
-        == selection_receipt
+    assert release_manifest["exact_k_ladder"] == ladder
+    assert release_manifest["exact_k_ladder"]["selection_receipt"] == (
+        selection_receipt
     )
     assert build_manifest["dataset"]["filename"] == dataset_filename
     assert build_manifest["calibration"]["filename"] == calibration_filename
@@ -12805,6 +13055,84 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
     assert (
         release_manifest["artifacts"][calibration_key]["path"] == calibration_filename
     )
+
+
+def test_an_evidence_run_finishes_its_build_in_the_evidence_release(
+    monkeypatch, tmp_path
+) -> None:
+    """An evidence-tier build is a build of the evidence release: its last
+    step rewrites the manifests for that release, checks them against the
+    evidence contract, and gives the build-folder publication commands, so
+    no latest-evidence.json pointer file is involved (microcosm#1570)."""
+    from microcosm.data.build_folder_manifests import publication_commands
+    from microcosm.data.contract import (
+        EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+        US_EVIDENCE_RELEASE_ID,
+    )
+
+    builder = _load_builder_module()
+    build = "populace-us-2024-evidence-abcdef1-20260615"
+    release_dir = tmp_path / "releases" / US_EVIDENCE_RELEASE_ID
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    known_failures = [
+        {
+            "failure": "QRF tail concentration failed: fixture column.",
+            "owner": "PolicyEngine/microcosm#481",
+        }
+    ]
+
+    builder._build_manifests(
+        evidence_known_failures=known_failures,
+        **_minimal_manifest_kwargs(builder, build, release_dir, artifact_root),
+    )
+    commands, validated = _finish_with_recorded_contract(
+        builder,
+        monkeypatch,
+        release_dir,
+        build=build,
+        artifact_root=artifact_root,
+        evidence_release=True,
+    )
+
+    assert validated == []
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    for document in (release_manifest, build_manifest):
+        assert document["release"] == US_EVIDENCE_RELEASE_ID
+        assert document["build"] == build
+    assert release_manifest["schema_version"] == (
+        EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION
+    )
+    assert release_manifest["tier"] == "evidence"
+    assert release_manifest["known_failures"] == known_failures
+    assert release_manifest["artifacts"]["microcosm_us_2024"]["path"] == (
+        "microcosm_us_2024.h5"
+    )
+    assert commands == publication_commands(
+        release_dir, repo_id=builder.REPO_ID, artifact_root=artifact_root
+    )
+    for command in commands.values():
+        assert "microcosm-publish-release-build" in command
+        assert "latest-evidence" not in command
+        assert "--evidence" not in command
 
 
 def _gate_evidence_release_dir(builder, monkeypatch, tmp_path, *, coverage):
@@ -12956,6 +13284,102 @@ def test_build_manifests_selects_medicare_irmaa_holdout_for_publication(
     _check_release_manifest(manifest, release_id, failures)
     _check_local_artifact_hashes(release_dir, manifest, failures)
     assert failures == []
+
+
+@pytest.mark.parametrize("readable", (True, False), ids=("available", "unavailable"))
+def test_build_manifests_selects_population_structure_holdout_for_publication(
+    monkeypatch, tmp_path, readable
+) -> None:
+    """The population-structure holdout reads the written H5 without an
+    engine; an unreadable file reports unavailable and never refuses."""
+    from microcosm.build.us_runtime.population_structure_holdout import (
+        SOCIAL_SECURITY_COMPONENTS,
+    )
+    from microcosm.data.contract import (
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    dataset_path = tmp_path / "written" / builder.DATASET_FILENAME
+    dataset_path.parent.mkdir()
+    if readable:
+        person = pd.DataFrame(
+            {
+                "person_household_id": [1, 1, 2],
+                "person_marital_unit_id": [10, 10, 20],
+                "age": [70.0, 68.0, 80.0],
+                "is_female": [False, True, True],
+                "A_MARITL": [1, 1, 4],
+                **{name: [0.0, 0.0, 0.0] for name in SOCIAL_SECURITY_COMPONENTS},
+            }
+        )
+        person["social_security_retirement"] = [20_000.0, 0.0, 0.0]
+        person["social_security_survivors"] = [0.0, 0.0, 15_000.0]
+        with pd.HDFStore(dataset_path, "w") as store:
+            store["person"] = person
+            store["household"] = pd.DataFrame(
+                {"household_id": [1, 2], "household_weight": [2.0, 3.0]}
+            )
+    else:
+        dataset_path.write_bytes(b"not an h5")
+    builder._write_population_structure_holdout(
+        release_dir=release_dir, dataset_path=dataset_path, release_id=release_id
+    )
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root)
+    )
+
+    filename = "us_population_structure_holdout.json"
+    holdout_path = release_dir / filename
+    holdout = json.loads(holdout_path.read_text())
+    assert holdout["status"] == ("available" if readable else "unavailable")
+    assert holdout["release_id"] == release_id
+    assert holdout["enforced"] is False
+    assert holdout["used_for_calibration"] is False
+    if readable:
+        assert holdout["living_alone_65_plus"]["share"] == pytest.approx(3 / 7)
+        structure = holdout["social_security_component_structure"]
+        assert structure["records_with_multiple_components"] == 0
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert manifest["artifacts"]["us_population_structure_holdout"] == {
+        "kind": "diagnostics",
+        "path": filename,
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": hashlib.sha256(holdout_path.read_bytes()).hexdigest(),
+    }
+    assert filename in _release_manifest_release_artifacts(release_dir)
+    failures: list[str] = []
+    _check_release_manifest(manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, manifest, failures)
+    assert failures == []
+
+
+def test_population_structure_holdout_records_an_unwritable_measurement(
+    monkeypatch, tmp_path
+) -> None:
+    """A measurement strict JSON cannot hold becomes an unavailable report,
+    never a release refusal."""
+    builder = _load_builder_module()
+
+    def overflowing(dataset_path, **kwargs):
+        return {"status": "available", "weighted_people_65_plus": float("inf")}
+
+    monkeypatch.setattr(builder, "population_structure_holdout_from_h5", overflowing)
+    builder._write_population_structure_holdout(
+        release_dir=tmp_path, dataset_path=tmp_path / "release.h5", release_id="r1"
+    )
+    payload = json.loads(
+        (tmp_path / "us_population_structure_holdout.json").read_text()
+    )
+    assert payload["status"] == "unavailable"
+    assert payload["release_id"] == "r1"
+    assert payload["error"].startswith("ValueError: Out of range float values")
 
 
 def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
@@ -13244,6 +13668,165 @@ def test_release_calibration_diagnostics_record_calibration_runtime(
     assert builds[0]["calibration_runtime"] == runtime
     assert builds[0]["release_gates"]["passed"] is False
     assert "calibration_runtime" not in builds[1]
+
+
+def _asset_blend_gate_record(builder):
+    audit = {
+        "schema_version": 1,
+        "seed": np.int64(0),
+        "time_period": 2024,
+        "scf_probability": 0.5,
+        "household_count": np.int64(3),
+        "scf_household_count": 2,
+        "sipp_household_count": 1,
+        "scf_household_share": np.float64(2 / 3),
+        "scf_selected_bank_median": float("nan"),
+        "sipp_selected_bank_median": np.float64(1_200.0),
+    }
+    gate = builder.GateResult(
+        name="scf_wealth_signal",
+        passed=True,
+        details={
+            "financial_asset_blend": audit,
+            "bank_account_assets_nonzero_share": np.float64(0.42),
+            "net_worth_nonzero_share_band": (0.7, 0.99),
+            "missing": None,
+            "is_blended": np.bool_(True),
+        },
+    )
+    return builder._scf_wealth_gate_record(gate, [3, 1, 2])
+
+
+def test_asset_blend_gate_record_is_strict_json_and_pins_the_id_set() -> None:
+    """microcosm#1216: the blend audit lives in DataFrame.attrs and the H5
+    writer drops it. The record keeps it, scoped to the blend-stage frame,
+    with the household id set the seeded draw depends on, and survives the
+    strict diagnostics schema."""
+    from pydantic import JsonValue, TypeAdapter
+
+    builder = _load_builder_module()
+    record = _asset_blend_gate_record(builder)
+
+    TypeAdapter(dict[str, JsonValue]).validate_python(record, strict=True)
+    json.dumps(record, allow_nan=False)
+    assert record["passed"] is True
+    assert record["failures"] == []
+    assert record["scope"] == "blend_stage_frame"
+    ids = np.array([1, 2, 3], dtype="<i8")
+    assert record["blend_household_ids"] == {
+        "count": 3,
+        "sha256": hashlib.sha256(ids.tobytes()).hexdigest(),
+        "encoding": "sorted unique household_id, little-endian int64",
+    }
+    blend = record["details"]["financial_asset_blend"]
+    assert blend["seed"] == 0 and type(blend["seed"]) is int
+    assert blend["scf_household_count"] + blend["sipp_household_count"] == 3
+    assert blend["scf_selected_bank_median"] is None
+    assert blend["sipp_selected_bank_median"] == 1_200.0
+    assert type(blend["scf_household_share"]) is float
+    assert record["details"]["is_blended"] is True
+    assert record["details"]["net_worth_nonzero_share_band"] == [0.7, 0.99]
+    # Order and repeats do not change the pinned id set.
+    shuffled = builder._scf_wealth_gate_record(
+        builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
+        np.array([2, 1, 3, 1]),
+    )
+    assert shuffled["blend_household_ids"] == record["blend_household_ids"]
+
+    def blend_ids(household_ids):
+        return builder._scf_wealth_gate_record(
+            builder.GateResult(name="scf_wealth_signal", passed=True, details={}),
+            household_ids,
+        )["blend_household_ids"]
+
+    # Fractional ids keep their values: distinct sets never share a digest.
+    fractional = blend_ids([1.2, 1.1])
+    assert fractional == {
+        "count": 2,
+        "sha256": hashlib.sha256(
+            np.array([1.1, 1.2], dtype="<f8").tobytes()
+        ).hexdigest(),
+        "encoding": "sorted unique household_id, little-endian float64",
+    }
+    subset = blend_ids([1.2])
+    assert subset["count"] == 1
+    assert subset["sha256"] != fractional["sha256"]
+    # Integral floats record as int64, down to the int64 floor.
+    assert blend_ids([3.0, 1.0, 2.0]) == record["blend_household_ids"]
+    assert blend_ids([float(-(2**63))]) == blend_ids([-(2**63)])
+    assert blend_ids([-(2**63)])["encoding"].endswith("int64")
+    assert blend_ids(np.array([5, 3], dtype=np.uint64)) == blend_ids([3, 5])
+    assert blend_ids([]) == {
+        "count": 0,
+        "sha256": hashlib.sha256(b"").hexdigest(),
+        "encoding": "sorted unique household_id, little-endian int64",
+    }
+    # No encoding holds these without collisions, so they are refused.
+    with pytest.raises(TypeError):
+        blend_ids([True, False])
+    with pytest.raises(TypeError):
+        blend_ids([1 + 1j])
+    with pytest.raises(ValueError):
+        blend_ids(np.array([2**63 + 5], dtype=np.uint64))
+
+
+def test_release_calibration_diagnostics_record_the_asset_blend_audit(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    builds: list[dict] = []
+    monkeypatch.setattr(
+        builder,
+        "write_calibration_diagnostics",
+        lambda result, path, *, target_registry, build, target_surface: builds.append(
+            build
+        ),
+    )
+    gate = SimpleNamespace(passed=True, failures=(), details={})
+    kwargs = dict(
+        result=SimpleNamespace(),
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
+        release_dir=tmp_path,
+        registry=TargetRegistry((), country="us"),
+        base_dataset_sha256="base-sha",
+        compilation={"dropped_target_names": []},
+        target_profile_gate=gate,
+        health_input_gate=None,
+        base_population_gate=None,
+        support_value_repairs={},
+        audit_export_targets=False,
+        gate_failures=[],
+    )
+    record = _asset_blend_gate_record(builder)
+
+    builder._write_release_calibration_diagnostics(scf_wealth_signal=record, **kwargs)
+    builder._write_release_calibration_diagnostics(**kwargs)
+
+    assert builds[0]["scf_wealth_signal"] == record
+    assert builds[1]["scf_wealth_signal"] is None
+
+
+def test_build_manifest_gates_carry_the_asset_blend_audit(
+    monkeypatch, tmp_path
+) -> None:
+    """The manifest is written for every release, so the audit cannot be lost
+    the way a failed diagnostics write would lose it."""
+    from microcosm.data.contract import _check_build_manifest
+
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    record = _asset_blend_gate_record(builder)
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+        scf_wealth_signal=record,
+    )
+    manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert manifest["gates"]["scf_wealth_signal"] == record
+    failures: list[str] = []
+    _check_build_manifest(manifest, release_id, failures)
+    assert failures == []
 
 
 def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
@@ -14031,6 +14614,38 @@ def test_us_release_id_guard() -> None:
         assert "must start with 'populace-us-'" in str(exc)
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected non-US release id to fail.")
+
+    # --release-id names the build; a release's name is refused for it, with
+    # the reason (microcosm#1570).
+    for release in (builder.US_NATIONAL_RELEASE_ID, builder.US_EVIDENCE_RELEASE_ID):
+        with pytest.raises(ValueError, match="is a release, not a build"):
+            builder._assert_us_release_id(
+                release, evidence_release=release == builder.US_EVIDENCE_RELEASE_ID
+            )
+
+
+def test_a_run_without_base_h5_reads_the_national_release_s_current_build(
+    monkeypatch, tmp_path
+) -> None:
+    """Without --base-h5 a run starts from the US national release's current
+    build, SHA-verified by the loader: from releases.json once the repository
+    has one, from latest.json until then. The root file stops changing at the
+    switch, since builds in folders write no root files (microcosm#1570)."""
+    import microcosm.data
+
+    builder = _load_builder_module()
+    requested: list[tuple] = []
+
+    def fake_download(country, year=None, **options):
+        requested.append((country, year, options))
+        return tmp_path / "microcosm_us_2024.h5"
+
+    monkeypatch.setattr(microcosm.data, "download", fake_download)
+
+    path = builder._download_base_h5()
+
+    assert requested == [("us", 2024, {})]
+    assert path == tmp_path / "microcosm_us_2024.h5"
 
 
 class _TestEmitter:
@@ -16554,6 +17169,17 @@ def test_evidence_release_id_reserves_the_segment_for_the_tier() -> None:
         builder._assert_us_release_id(
             "populace-us-2024-evidence-abc1234-20260812T000000Z"
         )
+    # The segment names the build's tier; the tier names its release
+    # (microcosm#1570): an evidence build is a build of the evidence release,
+    # never of the national one.
+    assert (
+        builder._release_for_build(SimpleNamespace(evidence_release=True))
+        == "microcosm-us-2024-evidence"
+    )
+    assert (
+        builder._release_for_build(SimpleNamespace(evidence_release=False))
+        == "microcosm-us-2024-national"
+    )
 
 
 def test_default_release_id_carries_the_evidence_segment() -> None:
@@ -16573,13 +17199,36 @@ def test_default_release_id_carries_the_evidence_segment() -> None:
         commit="123456789abc",
         build_timestamp=stamp,
     )
+    exact_k_args = SimpleNamespace(exact_k=57_240, evidence_release=False)
+    exact_k = builder._default_release_id(
+        exact_k_args,
+        digest="abcdef0",
+        commit="123456789abc",
+        build_timestamp=stamp,
+    )
     assert certified == "populace-us-2024-abcdef0-123456789abc-20260812T010203Z"
     assert evidence == "populace-us-2024-evidence-abcdef0-123456789abc-20260812T010203Z"
+    assert exact_k == "populace-us-2024-k57240-abcdef0-123456789abc-20260812T010203Z"
     # The two ids differ ONLY by the tier segment, and each passes its own
     # tier's assertion while failing the other's.
     assert evidence.replace("-evidence-", "-") == certified
     builder._assert_us_release_id(certified)
     builder._assert_us_release_id(evidence, evidence_release=True)
+    builder._assert_exact_k_release_id(exact_k, 57_240)
+    # These are build IDs, and they keep their form after the switch
+    # (microcosm#1570): certified and exact-k builds are builds of the
+    # national release, evidence-tier builds of the evidence release.
+    assert builder._release_for_build(exact_k_args) == builder.US_NATIONAL_RELEASE_ID
+    assert (
+        builder._release_for_build(
+            SimpleNamespace(exact_k=None, evidence_release=False)
+        )
+        == builder.US_NATIONAL_RELEASE_ID
+    )
+    assert (
+        builder._release_for_build(SimpleNamespace(exact_k=None, evidence_release=True))
+        == builder.US_EVIDENCE_RELEASE_ID
+    )
 
 
 def test_evidence_known_failures_map_the_adjudicated_owner_register() -> None:
@@ -17868,7 +18517,12 @@ def test_national_state_surface_source_coverage_excludes_dropped_cd_sources() ->
         assert alias not in coverage["active_target_aliases"]
         reason = coverage["reviewed_exclusions"][alias]
         assert "--target-surface national_state dropped all 1 " in reason
-        assert "build.target_surface_selection" in reason
+        # Where the manifests record the selection in the build-folder layout
+        # (microcosm#1570): the release manifest's top level, and the build
+        # manifest's calibration block.
+        assert "build.target_surface_selection" not in reason
+        assert "release_manifest.json target_surface_selection" in reason
+        assert "build_manifest.json calibration.target_surface_selection" in reason
     population = coverage["hard_target_families"]["population_age_sex"]
     assert (
         "census-acs-s0101-congressional-district-age-2024"

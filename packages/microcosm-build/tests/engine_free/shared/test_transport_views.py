@@ -34,6 +34,7 @@ from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.concepts import CONCEPT_ENTITIES, CONCEPTS
 from microcosm.frame.input_closure import ClosureEntry, InputClosure, UndeterminedPolicy
 from microcosm.graph import Node, Owned, Slice
+from test_support.microcosm_build.transport_composed import make_composed_fixture
 from test_support.microcosm_build.transport_population import UNIT_RULE
 
 PERIOD = "2026-27"
@@ -574,6 +575,126 @@ def test_compose_leaves_graph_node_inputs_to_the_node_that_writes_them(
     compose_module._require_relation_inputs(
         _spec(document), "child_benefit", _rules_node().inputs
     )
+
+
+def test_compose_refuses_a_view_binding_in_a_spec_without_a_closure(
+    tmp_path, monkeypatch
+):
+    registry, _, document, _ = _prepared(tmp_path, monkeypatch)
+    spec = _spec(document)
+    del spec["resources"]["axiom_input_closure"]
+    with pytest.raises(ValueError, match="no 'axiom_input_closure' resource"):
+        compose_module.transport_rules_node(
+            spec, _config(registry), "child_benefit", _rules_node()
+        )
+
+
+def test_a_rules_binding_row_refuses_a_view_binding_without_a_closure(
+    tmp_path, monkeypatch
+):
+    registry, _, document, _ = _prepared(tmp_path, monkeypatch)
+    spec = _spec(document)
+    del spec["resources"]["axiom_input_closure"]
+    row = {
+        "id": "child_benefit_node",
+        "kernel": "simulate.rules_by_ref@1",
+        "rules_binding": "child_benefit",
+        "population": "create",
+        "inputs": [
+            {"entity": "person", "columns": ["is_child", "age", "child_income"]}
+        ],
+        "outputs": [
+            {"entity": "person", "column": name, "dtype": "float64"}
+            for name in CHILD_OUTPUTS
+        ],
+    }
+    with pytest.raises(ValueError, match="no 'axiom_input_closure' resource"):
+        compose_module._node(spec, row, _config(registry), {})
+
+
+_RELATION = {
+    "predicate": "toy_members",
+    "key": "toy_members:0:1",
+    "current_slot": 0,
+    "related_slot": 1,
+    "arguments": ["Family", "Person"],
+    "root_entity": "family",
+    "related_entity": "person",
+    "membership_column": "person_family_id",
+    "related_inputs": {"toy_income": "income"},
+    "cardinality": "many",
+    "period": PERIOD,
+    "role_column": "person_family_role",
+    "roles": ["head", "partner"],
+}
+
+
+@pytest.mark.parametrize(
+    ("fields", "columns"),
+    (
+        ({}, ("is_child", "age", "child_income")),
+        ({"relations": []}, ("is_child", "age", "child_income")),
+        (
+            {"entity": "family", "engine_entity": "Family", "relations": [_RELATION]},
+            ("income", "person_family_role"),
+        ),
+    ),
+    ids=("plain", "relations-only", "real-relation"),
+)
+def test_a_binding_without_views_needs_no_closure_at_compose(
+    tmp_path, monkeypatch, fields, columns
+):
+    _, _, document, _ = _prepared(tmp_path, monkeypatch)
+    document["bindings"][0].pop("views")
+    document["bindings"][0].update(fields)
+    spec = _spec(document)
+    del spec["resources"]["axiom_input_closure"]
+    compose_module._require_relation_inputs(
+        spec, "child_benefit", _rules_node(columns).inputs
+    )
+
+
+def _toy_spec_without_a_closure(tmp_path):
+    """The composed toy spec, with its closure renamed out of ``_has_resource``'s reach.
+
+    A node selects the closure, so renaming keeps activation satisfied where
+    deleting the resource wouldn't. The rename matches the quoted name only: it
+    moves the resource key and the selections that name it, and leaves the
+    document's own ``format``, so the renamed document still parses.
+    """
+
+    fixture = make_composed_fixture(tmp_path / "fixture")
+    text = json.dumps(fixture.spec).replace('"axiom_input_closure"', '"other_closure"')
+    spec = json.loads(text)
+    InputClosure.from_dict(spec["resources"]["other_closure"])
+    return spec, fixture.config
+
+
+@pytest.mark.parametrize(
+    "binding",
+    ("family_housing", "main_benefit"),
+    ids=("no-node-names-it", "a-rules-node-names-it"),
+)
+def test_composition_refuses_a_view_binding_in_a_spec_without_a_closure(
+    tmp_path, binding
+):
+    spec, config = _toy_spec_without_a_closure(tmp_path)
+    row = next(
+        row
+        for row in spec["resources"]["axiom_rules_bindings"]["bindings"]
+        if row["id"] == binding
+    )
+    row["views"] = [_view()]
+    with pytest.raises(
+        ValueError,
+        match=rf"Rules bindings \['{binding}'\] declare views, but the spec has no",
+    ):
+        compose_module.compose_transport_graph(spec, config)
+
+
+def test_composition_needs_no_closure_when_no_binding_declares_views(tmp_path):
+    spec, config = _toy_spec_without_a_closure(tmp_path)
+    assert compose_module.compose_transport_graph(spec, config).nodes
 
 
 def _closure_node(person_columns):

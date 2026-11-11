@@ -6,7 +6,11 @@ to 2024-25 adult tables carry no apprenticeship variable, and ``TRAIN2``,
 apprenticeships. policyengine-uk zero-rates employer Class 1 NICs for a
 relevant apprentice under 25 (SSCBA 1992 s.9B), and a person under 21 already
 gets the s.9A zero rate by age, so the flag changes employer NICs only at ages
-21 to 24. The stage draws it there, for employees only. Its target is r times
+21 to 24. The stage draws it there, for employees outside full-time education
+only: the FRS codes no apprentice as in full-time education (its FtEd
+question), so a full-time student, ``is_in_full_time_education`` from
+``frs_education``, is not one (Vahid's review of microcosm#1535, nit 3). Its
+target is r times
 the weighted population aged 21 to 24 at the frame's own household weights,
 where r (``apprentice_stock_19_to_24``) is DfE's England apprentices in
 learning at the start of the academic year (participation less starts) per
@@ -82,6 +86,9 @@ APPRENTICE_RATE_KEY = "apprentice_stock_19_to_24"
 APPRENTICE_MIN_AGE = 21
 APPRENTICE_MAX_AGE_EXCLUSIVE = 25
 APPRENTICE_EMPLOYEE_STATUSES = ("FT_EMPLOYED", "PT_EMPLOYED")
+#: frs_education's flag for a full-time course, which an apprentice never has:
+#: the FRS's FtEd question codes no apprentice as in full-time education.
+APPRENTICE_EXCLUDED_FLAG = "is_in_full_time_education"
 if not set(APPRENTICE_EMPLOYEE_STATUSES) <= set(
     FRS_EMPSTATI_EMPLOYMENT_STATUS.values()
 ):
@@ -270,7 +277,8 @@ def derive_is_apprentice(
     person_weights: np.ndarray | None = None,
     relief_schedule: Mapping[str, float] | None = None,
 ) -> UKApprenticeDraw:
-    """Draw ``is_apprentice`` for employees aged 21 to 24.
+    """Draw ``is_apprentice`` for employees aged 21 to 24 outside full-time
+    education.
 
     ``rate`` is apprentices per head of population at those ages, so the
     target is ``rate * W(21 to 24)``. Eligible employees are flagged in the
@@ -292,6 +300,11 @@ def derive_is_apprentice(
             f"{APPRENTICE_OUTPUT} needs employment_status from frs_employment; "
             "it would otherwise flag people who are not employees."
         )
+    if APPRENTICE_EXCLUDED_FLAG not in person.columns:
+        raise ValueError(
+            f"{APPRENTICE_OUTPUT} needs {APPRENTICE_EXCLUDED_FLAG} from "
+            "frs_education; it would otherwise flag full-time students."
+        )
     if not 0.0 <= float(rate) <= 1.0:
         raise ValueError(f"{APPRENTICE_RATE_KEY} must lie in [0, 1]; got {rate}.")
     weights = (
@@ -309,7 +322,10 @@ def derive_is_apprentice(
         .isin(APPRENTICE_EMPLOYEE_STATUSES)
         .to_numpy()
     )
-    eligible = in_ages & employee
+    full_time = person[APPRENTICE_EXCLUDED_FLAG].to_numpy(dtype=bool)
+    # The target stays r times everyone aged 21 to 24: only who can be
+    # flagged narrows.
+    eligible = in_ages & employee & ~full_time
     draws = _draws(person["person_id"].to_numpy(), APPRENTICE_OUTPUT)
     population_mass = float(weights[in_ages].sum())
     eligible_mass = float(weights[eligible].sum())
@@ -330,6 +346,7 @@ def derive_is_apprentice(
         "rate": float(rate),
         "ages": [APPRENTICE_MIN_AGE, APPRENTICE_MAX_AGE_EXCLUSIVE - 1],
         "eligible_statuses": list(APPRENTICE_EMPLOYEE_STATUSES),
+        "excluded_flag": APPRENTICE_EXCLUDED_FLAG,
         "population_mass": population_mass,
         "eligible_mass": eligible_mass,
         "target": target,

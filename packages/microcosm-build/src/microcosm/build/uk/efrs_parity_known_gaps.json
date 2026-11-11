@@ -221,7 +221,7 @@
    "housing_water_and_electricity_consumption": 0.999553238545,
    "iidb_reported": 0.001597494687,
    "income_support_reported": 0.004350394394,
-   "is_before_universal_credit_qualifying_young_person_terminal_date": 0.000478951899,
+   "is_before_universal_credit_qualifying_young_person_terminal_date": 0.999521048101,
    "is_benunit_head": 0.533965378952,
    "is_disabled_for_benefits": 0.070300252871,
    "is_enhanced_disabled_for_benefits": 0.034839037216,
@@ -388,7 +388,7 @@
    "housing_water_and_electricity_consumption": 0.999813,
    "iidb_reported": 0.004252,
    "income_support_reported": 0.002956,
-   "is_before_universal_credit_qualifying_young_person_terminal_date": 0.000847,
+   "is_before_universal_credit_qualifying_young_person_terminal_date": 0.999153,
    "is_benunit_head": 0.534941,
    "is_disabled_for_benefits": 0.070573,
    "is_enhanced_disabled_for_benefits": 0.035157,
@@ -643,6 +643,18 @@
    "tracking_note": "microcosm#1360: under the additive ISA income contract the producer stores ISA interest in individual_savings_account_interest_income, which policyengine-uk adds into tax_free_savings_income; savings_interest_income, now interest outside ISAs, stays required.",
    "approved_by": "juaristi22",
    "approved_on": "2026-10-28"
+  },
+  "pip_dl_category": {
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "tracking_note": "microcosm#1095 (P1 of the November event-data plan): policyengine-uk 2.177.7 derives pip_dl_category from pip_dl_points (8 points for the standard rate, 12 for the enhanced) where no category is supplied for the year; the pip_points stage stores the points within the stored award, and the release and calibration boundaries drop the category, which the spine keeps (María's signature of 2026-11-09).",
+   "approved_by": "juaristi22",
+   "approved_on": "2026-11-09"
+  },
+  "pip_m_category": {
+   "reason": "formula-owned in policyengine-uk and derived from persisted components; a persisted copy overrides the formula and is not uprated",
+   "tracking_note": "microcosm#1095 (P1 of the November event-data plan): policyengine-uk 2.177.7 derives pip_m_category from pip_m_points (8 points for the standard rate, 12 for the enhanced) where no category is supplied for the year; the pip_points stage stores the points within the stored award, and the release and calibration boundaries drop the category, which the spine keeps (María's signature of 2026-11-09).",
+   "approved_by": "juaristi22",
+   "approved_on": "2026-11-09"
   }
  },
  "exclusion_policy": {

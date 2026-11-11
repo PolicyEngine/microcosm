@@ -59,6 +59,7 @@
       "frs_company_car_fuel_code": "int64",
       "frs_company_car_price_band": "int64",
       "frs_company_car_private_fuel": "bool",
+      "frs_uc_lcw_status": "string",
       "gender": "string",
       "healthy_start_vouchers": "float64",
       "hours_worked": "float64",
