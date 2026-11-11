@@ -1,6 +1,15 @@
 """Tests split from packages/microcosm-build/tests/test_uk_frs_stochastic.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.stochastic_assignment import sample_categorical_from_counts
+from microcosm.build.uk_runtime.frs_brma import (
+    UK_BRMA_BENUNIT_SALT,
+    UK_BRMA_HOUSEHOLD_PICK_SALT,
+    _benunit_regions,
+    add_frs_brma,
+    draw_household_brmas,
+    load_brma_count_resource,
+)
 from microcosm.build.uk_runtime.receipt_counts import own_source_households
 from test_support.microcosm_build.uk_frs_stochastic import *
 
@@ -203,6 +212,191 @@ def test_brma_missing_cell_fails_closed() -> None:
 
     with pytest.raises(KeyError, match="missing BRMA"):
         assign_brma_by_cell(benunit, count_resource={"cells": {"LONDON": {}}}, seed=0)
+
+
+_BRMA_REGIONS = ("LONDON", "NORTHERN_IRELAND", "SCOTLAND")
+_LHA_CATEGORIES = ("A", "B", "C", "D", "E")
+
+
+def _brma_frame() -> object:
+    """Twelve invented households in three regions, with one to three
+    benefit units each and one person per benefit unit."""
+
+    households = np.arange(1, 13)
+    units = [
+        (household, household * 100 + unit)
+        for household in households.tolist()
+        for unit in range(1, 2 + household % 3)
+    ]
+    benunit_ids = [unit for _, unit in units]
+    person = pd.DataFrame(
+        {
+            "person_id": [unit * 10 + 1 for unit in benunit_ids],
+            "person_benunit_id": benunit_ids,
+            "person_household_id": [household for household, _ in units],
+            "age": [40] * len(units),
+            "is_uc_claimant": [True] * len(units),
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": households,
+            "region": [_BRMA_REGIONS[h % 3] for h in households.tolist()],
+        }
+    )
+    return uk_national_frame(
+        person=person,
+        benunit=pd.DataFrame({"benunit_id": benunit_ids}),
+        household=household,
+        household_weights=np.full(len(households), 10.0),
+        time_period="2024",
+    )
+
+
+def _brma_lha(benunit: pd.DataFrame) -> list[str]:
+    return [_LHA_CATEGORIES[int(unit) % 5] for unit in benunit["benunit_id"]]
+
+
+def test_add_frs_brma_draws_what_the_cell_draw_and_household_pick_give() -> None:
+    """The stage's values are today's: each benefit unit's cell draw under
+    salt "brma", then each household's pick under "brma:household_pick",
+    both keyed on ids with seed 0; the benefit-unit table is left as it was."""
+
+    frame = _brma_frame()
+    resource = load_brma_count_resource()
+    person, benunit = frame.table("person"), frame.table("benunit")
+    household = frame.table("household")
+    assert (UK_BRMA_BENUNIT_SALT, UK_BRMA_HOUSEHOLD_PICK_SALT) == (
+        "brma",
+        "brma:household_pick",
+    )
+    cells = benunit.assign(
+        LHA_category=_brma_lha(benunit),
+        region=_benunit_regions(person, household, benunit),
+    )
+    drawn = assign_brma_by_cell(cells, count_resource=resource, seed=0)
+    expected = collapse_benunit_brma_to_household(
+        person, cells[["benunit_id"]].assign(brma=drawn), household, seed=0
+    )
+    result = add_frs_brma(
+        frame, lha_category=_brma_lha(benunit), count_resource=resource
+    )
+    assert result.table("household")["brma"].tolist() == expected.tolist()
+    assert result.table("benunit").equals(benunit)
+    # The cell draw, written out for one benefit unit.
+    first = cells.iloc[0]
+    uniform = stable_identity_uniforms([first["benunit_id"]], seed=0, salt="brma")
+    counts = resource["cells"][first["region"]][first["LHA_category"]]
+    assert drawn[0] == sample_categorical_from_counts(uniform, counts=counts)[0]
+
+
+def test_add_frs_brma_picks_each_households_brma_as_written_out() -> None:
+    """The household pick, which sets frs_brma's live values, written out
+    without the module's pick: the uniform keyed on the household's id under
+    salt "brma:household_pick" and seed 0 picks among its benefit units'
+    cell draws in ascending benefit-unit id."""
+
+    frame = _brma_frame()
+    resource = load_brma_count_resource()
+    person, benunit = frame.table("person"), frame.table("benunit")
+    household = frame.table("household")
+    lha = _brma_lha(benunit)
+    cells = benunit.assign(
+        LHA_category=lha, region=_benunit_regions(person, household, benunit)
+    )
+    drawn = pd.Series(
+        assign_brma_by_cell(cells, count_resource=resource, seed=0),
+        index=benunit["benunit_id"].to_numpy(),
+    )
+    owner = person.drop_duplicates("person_benunit_id").set_index("person_benunit_id")[
+        "person_household_id"
+    ]
+    result = add_frs_brma(frame, lha_category=lha, count_resource=resource)
+    picked = result.table("household")["brma"].tolist()
+    choices = 0
+    for row, household_id in enumerate(household["household_id"].tolist()):
+        units = sorted(int(unit) for unit in owner.index[owner == household_id])
+        options = [str(drawn[unit]) for unit in units]
+        (uniform,) = stable_identity_uniforms(
+            [household_id], seed=0, salt="brma:household_pick"
+        )
+        expected = options[min(int(uniform * len(options)), len(options) - 1)]
+        assert picked[row] == expected
+        choices += len(set(options)) > 1
+    # The invented frame holds households whose benefit units drew BRMAs
+    # that differ, so the pick is exercised.
+    assert choices
+
+
+def test_brma_draw_of_a_household_subset_takes_the_whole_frames_draws() -> None:
+    """Every uniform is keyed on its own id alone, so a subset of the
+    households, given every benefit unit or only its own, takes the whole
+    frame's BRMAs; benefit units outside the subset are never read."""
+
+    frame = _brma_frame()
+    resource = load_brma_count_resource()
+    person, benunit = frame.table("person"), frame.table("benunit")
+    household = frame.table("household")
+    lha = _brma_lha(benunit)
+    whole = add_frs_brma(frame, lha_category=lha, count_resource=resource)
+    whole_brma = whole.table("household")["brma"].to_numpy()
+    for region in _BRMA_REGIONS:
+        rows = (household["region"] == region).to_numpy()
+        subset = household.loc[rows]
+        drawn = draw_household_brmas(
+            person, benunit, subset, lha_category=lha, count_resource=resource
+        )
+        assert drawn.tolist() == whole_brma[rows].tolist()
+        members = person.loc[person["person_household_id"].isin(subset["household_id"])]
+        own = benunit["benunit_id"].isin(members["person_benunit_id"]).to_numpy()
+        alone = draw_household_brmas(
+            members,
+            benunit.loc[own],
+            subset,
+            lha_category=[value for value, keep in zip(lha, own, strict=True) if keep],
+            count_resource=resource,
+        )
+        assert alone.tolist() == whole_brma[rows].tolist()
+        # A category no cell holds, on the other households' benefit units.
+        foreign = [value if keep else "Z" for value, keep in zip(lha, own, strict=True)]
+        assert (
+            draw_household_brmas(
+                person, benunit, subset, lha_category=foreign, count_resource=resource
+            ).tolist()
+            == whole_brma[rows].tolist()
+        )
+
+
+def test_brma_refusals_name_no_household_or_benefit_unit_id() -> None:
+    frame = _brma_frame()
+    resource = load_brma_count_resource()
+    person, benunit = frame.table("person"), frame.table("benunit")
+    household = frame.table("household")
+    lha = _brma_lha(benunit)
+    # A benefit unit whose members sit in two households.
+    split = person.copy()
+    split.loc[split.index[0], "person_household_id"] = int(
+        household["household_id"].iloc[-1]
+    )
+    split = pd.concat([split, person.iloc[[0]].assign(person_id=99_999)])
+    with pytest.raises(ValueError, match="splits a benefit unit") as refused:
+        draw_household_brmas(
+            split, benunit, household, lha_category=lha, count_resource=resource
+        )
+    assert not any(character.isdigit() for character in str(refused.value))
+    # A household without a benefit unit drawn for it.
+    with pytest.raises(ValueError, match="has no benefit unit") as refused:
+        collapse_benunit_brma_to_household(
+            person,
+            pd.DataFrame({"benunit_id": benunit["benunit_id"].iloc[:1], "brma": ["X"]}),
+            household,
+            seed=0,
+        )
+    assert not any(character.isdigit() for character in str(refused.value))
+    with pytest.raises(ValueError, match="must align"):
+        draw_household_brmas(
+            person, benunit, household, lha_category=lha[:-1], count_resource=resource
+        )
 
 
 def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> None:

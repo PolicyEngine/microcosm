@@ -30,6 +30,17 @@ from microcosm.build.atomic_support_conditioning import (
 )
 from microcosm.build.spec_engine import load_bundle
 from microcosm.build.spec_engine.compiler_ir import compile_spec
+from microcosm.build.uk_runtime.atomic_area_conditioning import (
+    BAND_INPUT_COLUMN,
+    DECILE_INPUT_COLUMN,
+    IDENTITY_COLUMN,
+    REGION_COLUMN,
+    UK_DRAW_CONSTRAINTS,
+    uk_band_weight_map,
+    uk_conditioned_assignment_definition,
+    uk_draw_levels,
+    uk_system_fallback_levels,
+)
 from microcosm.build.uk_runtime.atomic_area_support import (
     BAND_WEIGHT_COLUMNS,
     BAND_WEIGHT_SCALE,
@@ -474,3 +485,63 @@ def test_mounted_scottish_band_weights_follow_each_data_zone(provenance) -> None
         # households, so its weight is that share times households, rounded.
         share = frame["zone"].map(totals[column] / totals["households"])
         assert np.all(np.abs(frame[column] - frame["households"] * share) <= 1.0)
+
+
+def test_mounted_chooser_meets_exactly_the_committed_zero_mass_cells(
+    provenance,
+) -> None:
+    """The conditioned draw's fallback ladder (microcosm#931) on the mounted
+    supports: every combination of region, decile and band, each missing too,
+    takes the first level whose cell the committed zero-mass table does not
+    list for the weight it samples by there."""
+
+    payloads = {system: _mounted(system) for system in SYSTEMS}
+    definition = uk_conditioned_assignment_definition(payloads, seed=0)
+    supports = {system: decode_atomic_support(payloads[system]) for system in SYSTEMS}
+    matched = {UK_DRAW_CONSTRAINTS[column]: column for column in UK_DRAW_CONSTRAINTS}
+    for system in SYSTEMS:
+        support = supports[system]
+        empty = {
+            (tuple(entry["constraints"]), entry["weight"]): {
+                tuple(cell) for cell in entry["cells"]
+            }
+            for entry in provenance["supports"][system]["zero_mass_cells"]
+        }
+        bands = uk_band_weight_map(system)
+        cases = [
+            {
+                REGION_COLUMN: region,
+                DECILE_INPUT_COLUMN: decile,
+                BAND_INPUT_COLUMN: band,
+            }
+            for region in sorted(set(support.arrays["frs_region"].tolist()))
+            for decile in (*IMD_DECILES, pd.NA)
+            for band in (*bands, pd.NA)
+        ]
+        inputs = pd.DataFrame(cases, dtype=pd.StringDtype(storage="python"))
+        inputs.insert(
+            0,
+            IDENTITY_COLUMN,
+            pd.array([f"combination-{n}" for n in range(len(cases))], dtype="string"),
+        )
+        expected = []
+        for case in cases:
+            for level in uk_system_fallback_levels(system):
+                if any(pd.isna(case[column]) for column in level.constraints):
+                    continue
+                if level.weight_by and pd.isna(case[BAND_INPUT_COLUMN]):
+                    continue
+                columns = tuple(
+                    support_column
+                    for support_column, column in matched.items()
+                    if column in level.constraints
+                )
+                weight = (
+                    bands[case[BAND_INPUT_COLUMN]] if level.weight_by else "households"
+                )
+                cell = tuple(case[matched[column]] for column in columns)
+                if cell not in empty[(columns, weight)]:
+                    expected.append(level.name)
+                    break
+        levels = uk_draw_levels(inputs, definition, supports)
+        assert levels.tolist() == expected, system
