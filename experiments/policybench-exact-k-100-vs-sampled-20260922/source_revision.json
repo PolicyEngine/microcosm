@@ -10,7 +10,9 @@
     "Validate reporting revisions by reconstructing the original producer source from these exact line edits.",
     "Lead the national reading with capped MAPE, report it without the two Table 2.5 cells IRS appears to misplace, and place exact-k among the 200 post-stratified draws (microcosm#989 review r1, S1).",
     "State that most of each exact-k support comes from one Sampford boundary draw over closed gates (review r1, S2).",
-    "Say what the AGI-band count counts (review r1, N3)."
+    "Say what the AGI-band count counts (review r1, N3).",
+    "Set the Table 2.5 cell's points against each sampled design's capped-MAPE gap, summing min(error, cap) over the cell (review r2).",
+    "Report a design's capped MAPE without the cell exactly when its smallest weight exceeds every error outside its five largest, and say why (review r2)."
   ],
   "numerical_outputs_unchanged": true,
   "edits": [

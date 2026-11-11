@@ -143,11 +143,11 @@
     "underlying_workbook_checked": true,
     "underlying_source_cells_checked": true,
     "zero_semantics_verified": false,
-    "interpretation": "The feed declares numeric observations equal to zero. Available metadata does not establish whether those zeros reflect the substantive source data or an extraction/source-data issue. They must not be described as suppressed or missing on this evidence.",
+    "interpretation": "Before the 2026-11-11 workbook check: The feed declares numeric observations equal to zero. Available metadata does not establish whether those zeros reflect the substantive source data or an extraction/source-data issue. They must not be described as suppressed or missing on this evidence.",
     "deduction": "Capped-fit improvement can coexist with higher uncapped error because errors beyond the cap make equal contributions to the fitted objective. This alone does not establish more accurate EITC estimation.",
     "targets_changed_for_this_audit": false,
     "target_handling": "All targets remain unchanged across the designs in this run.",
-    "interpretation_after_workbook_check": "The 0 is IRS's published value. The workbook's own all-returns rows imply that the cell holds about 311,000 returns; see workbook_check. IRS has not confirmed this reading."
+    "interpretation_after_workbook_check": "The 0 is IRS's published value. The workbook's own all-returns rows suggest that the cell holds about 311,000 returns; see workbook_check. IRS has not confirmed this reading."
   },
   "workbook_check": {
     "checked_on": "2026-11-11",
