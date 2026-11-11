@@ -17,6 +17,7 @@ from microcosm.build.us_runtime.acs_sources import (
 )
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puf_support import support_channel_column
+from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
@@ -39,6 +40,7 @@ def _load_builder_module():
 def _frame(
     *,
     benefit_participation: bool = True,
+    spm_role: bool = True,
     spines: tuple[str, str] | None = None,
 ) -> Frame:
     person = pd.DataFrame(
@@ -51,10 +53,16 @@ def _frame(
             "person_marital_unit_id": [1, 2],
             "age": [35, 67],
             "is_female": [False, True],
+            "detailed_occupation_recode": [8, 53],
+            "detailed_industry_recode": [13, 23],
+            "major_industry_recode": [9, 15],
+            "worked_last_year": [True, False],
         }
     )
     if benefit_participation:
         person["takes_up_snap_if_eligible"] = [True, False]
+    if spm_role:
+        person[NATIVE_SPM_ROLE] = np.asarray([True, True])
     tables = {
         "person": person,
         "household": pd.DataFrame({"household_id": [1, 2], "state_fips": [6, 36]}),
@@ -76,6 +84,20 @@ def _frame(
             )
         },
     )
+
+
+def _spm_role_receipt(*, persons: int) -> dict[str, object]:
+    return {
+        "column": NATIVE_SPM_ROLE,
+        "rule": "RELSHIPP rule",
+        "partition": "household",
+        "asec_rule": "ASEC rule",
+        "persons": persons,
+        "role_true_persons": persons,
+        "independent_minor_persons": 0,
+        "housing_units_classified_only_by_role": 0,
+        "group_quarters_units_without_classified_adult": 0,
+    }
 
 
 def _manifest() -> AcsSourceManifest:
@@ -131,6 +153,8 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert args.seed == 0
     assert args.geography_seed == 0
     assert args.donor_channel == builder.ACS_DONOR_CHANNEL_AUTO
+    # microcosm#1022: the SIPP donor resolves through the canonical cache.
+    assert args.sipp_donor is None
 
     custom = builder._parse_args(
         [
@@ -164,6 +188,10 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert custom.n_estimators == 9
     assert custom.max_targets_per_fit == 3
     assert custom.donor_channel == "benefit_support"
+    local = builder._parse_args(
+        ["--base-h5", "d.h5", "--out-h5", "c.h5", "--sipp-donor", "pu2023.csv"]
+    )
+    assert local.sipp_donor == Path("pu2023.csv")
 
 
 @pytest.mark.parametrize("staging_hours_pass", [True, False])
@@ -180,6 +208,51 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     combined.table("household")["congressional_district_geoid"] = [101, 200]
     combined.table("household")["county_fips"] = ["01001", "02020"]
     combined.table("household")["TYPEHUGQ"] = [1.0, 3.0]
+    # microcosm#1380: the ACS row carries its SEMP * ADJINC / 1e6 (2,042)
+    # wholly on the SSTB leaf, as QBI reconciliation routes an SSTB owner's
+    # SEMP; the ASEC row is outside the check.
+    combined.table("person")["SEMP"] = [np.nan, 2_000.0]
+    combined.table("person")["ADJINC"] = [np.nan, 1_021_000.0]
+    combined.table("person")["self_employment_income_before_lsr"] = [5_000.0, 0.0]
+    combined.table("person")["sstb_self_employment_income_before_lsr"] = [0.0, 2_042.0]
+    combined.table("person")["farm_operations_income"] = [0.0, 0.0]
+    combined.table("person")["partnership_self_employment_net_earnings"] = [0.0, 0.0]
+    # What the ACS local immigration stage returns (microcosm#1020): the
+    # null audit, hours gate and export must all see this frame, not the
+    # unlabelled pool.
+    labelled = Frame(
+        {entity: combined.table(entity) for entity in combined.entities},
+        combined.schema,
+        {"household": combined.weights_for("household")},
+    )
+    immigration_receipt = {"issue": "microcosm#1020", "assigned_sha256": "b" * 64}
+    # What build_optional_acs_multispine records for the native ACS
+    # work/disability inputs (microcosm#1021).
+    work_disability_receipt = {
+        "issue": "microcosm#1021",
+        "is_disabled": {"source": "acs_2024_1yr_native", "imputed_rows": 0},
+        "is_blind": {"source": "acs_2024_1yr_native", "imputed_rows": 0},
+    }
+    # What build_optional_acs_multispine records for the separate ASEC-channel
+    # income transfer pass (microcosm#1022).
+    income_receipt = {"issue": "microcosm#1022", "donor_channel": "asec"}
+    # What build_optional_acs_multispine records for the native FS receipt
+    # anchor (microcosm#1022).
+    anchor_receipt = {"issue": "microcosm#1022", "snap": {"units_anchored": 1}}
+    # What the ACS local SSI disability-criteria stage returns
+    # (microcosm#1022): the null audit, hours gate and export must see it.
+    ssi_filled = Frame(
+        {entity: combined.table(entity) for entity in combined.entities},
+        combined.schema,
+        {"household": combined.weights_for("household")},
+    )
+    ssi_receipt = {
+        "issue": "microcosm#1022",
+        "column": "meets_ssi_disability_criteria",
+    }
+    sipp_path = tmp_path / "pu2023.csv"
+    sipp_training = pd.DataFrame({"age": [40.0]})
+    sipp_identity = {"path": str(sipp_path), "sha256": "5" * 64}
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -229,6 +302,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
 
     def fake_fetch(cache_dir, *, manifest):
         captured["fetch"] = (cache_dir, manifest)
+        order.append("acs_fetch")
         return source
 
     def fake_build(actual_base, actual_source, **kwargs):
@@ -238,6 +312,17 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
             fit_records=(FitWeightRecord("acs_transfer:person:benefits", "design"),),
             provenance={
                 "enabled": True,
+                "acs_group_quarters_children": {
+                    "rule": "invented rule",
+                    "authority": "invented authority",
+                    "decision": "microcosm#1263 (d1484)",
+                    "status": "interim",
+                    "flip_condition": "invented flip condition",
+                    "group_quarters_households": 1,
+                    "households_dropped": 0,
+                    "persons_dropped": 0,
+                    "household_weight_share_dropped": 0.0,
+                },
                 "deferred_inputs": ["block_geoid", "tract_geoid"],
                 "geography_ladder": {
                     "applied": True,
@@ -262,6 +347,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                         "unmodeled_recipient_rows": 0,
                     }
                 ],
+                "acs_local_work_disability": work_disability_receipt,
+                "acs_local_income_transfer": income_receipt,
+                "acs_local_receipt_anchors": anchor_receipt,
+                "spm_independence_role": _spm_role_receipt(persons=1),
             },
         )
 
@@ -273,8 +362,88 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         captured["puma_ladder_path"] = path
         return puma_ladder
 
-    def staging_hours_gate(frame, *, source_null_audit):
+    order: list[str] = []
+
+    def fake_immigration(frame, *, seed, time_period):
         assert frame is combined
+        captured["immigration"] = (seed, time_period)
+        order.append("immigration")
+        return labelled, immigration_receipt
+
+    def fake_immigration_gate(frame):
+        assert frame is labelled
+        return GateResult(
+            name="acs_local_immigration_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {}},
+        )
+
+    def fake_income_gate(frame, *, receipt):
+        assert frame is labelled
+        assert receipt is income_receipt
+        order.append("income_gate")
+        return GateResult(
+            name="acs_local_income_transfer_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {}},
+        )
+
+    def fake_sipp_load(path, *, time_period):
+        captured["sipp_load"] = (path, time_period)
+        order.append("sipp_load")
+        return sipp_training, sipp_identity
+
+    def fake_ssi_stage(frame, *, sipp_donor, donor_identity, seed):
+        assert frame is labelled
+        assert sipp_donor is sipp_training
+        assert donor_identity is sipp_identity
+        captured["ssi_seed"] = seed
+        order.append("ssi_disability")
+        return ssi_filled, ssi_receipt
+
+    def fake_ssi_gate(frame, *, receipt):
+        assert frame is ssi_filled
+        assert receipt is ssi_receipt
+        order.append("ssi_disability_gate")
+        return GateResult(
+            name="acs_local_ssi_disability_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {}},
+        )
+
+    def fake_receipt_anchor_gate(frame, *, receipt):
+        assert frame is combined
+        assert receipt is anchor_receipt
+        order.append("receipt_anchor_gate")
+        return GateResult(
+            name="acs_local_receipt_anchor_signal",
+            passed=True,
+            failures=(),
+            details={"snap": {"units_anchored": 1}},
+        )
+
+    def fake_work_disability_gate(frame, *, receipt):
+        assert frame is labelled
+        assert receipt is work_disability_receipt
+        order.append("work_disability_gate")
+        return GateResult(
+            name="acs_local_work_disability_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {}},
+        )
+
+    def fake_null_audit(frame):
+        assert frame is ssi_filled
+        captured["audited"] = True
+        order.append("null_audit")
+        return [reviewed_null]
+
+    def staging_hours_gate(frame, *, source_null_audit):
+        assert frame is ssi_filled
         assert source_null_audit == [reviewed_null]
         captured["staging_hours_gate"] = True
         return GateResult(
@@ -322,16 +491,15 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         fake_fetch,
     )
     monkeypatch.setattr(builder, "build_optional_acs_multispine", fake_build)
+    # The engine-free lane has no policyengine-us to ask whether it scopes SPM
+    # by universe; the decision itself is tested below.
+    monkeypatch.setattr(builder, "_drop_acs_group_quarters_children", lambda: True)
     monkeypatch.setattr(
         builder,
         "load_us_puma_ladder",
         fake_load_puma_ladder,
     )
-    monkeypatch.setattr(
-        builder,
-        "_engine_input_null_audit",
-        lambda frame: [reviewed_null],
-    )
+    monkeypatch.setattr(builder, "_engine_input_null_audit", fake_null_audit)
     monkeypatch.setattr(
         builder,
         "_preflight_staging_export",
@@ -339,6 +507,44 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     )
     monkeypatch.setattr(builder, "_write_dataset", fake_write)
     monkeypatch.setattr(builder, "acs_local_hours_signal_gate", staging_hours_gate)
+    monkeypatch.setattr(
+        builder,
+        "require_acs_local_immigration_donor",
+        lambda frame, *, time_period: captured.setdefault(
+            "immigration_donor", (frame, time_period)
+        ),
+    )
+    monkeypatch.setattr(builder, "with_acs_local_immigration_inputs", fake_immigration)
+    monkeypatch.setattr(
+        builder, "acs_local_immigration_signal_gate", fake_immigration_gate
+    )
+    monkeypatch.setattr(
+        builder, "acs_local_work_disability_signal_gate", fake_work_disability_gate
+    )
+    monkeypatch.setattr(
+        builder, "acs_local_receipt_anchor_signal_gate", fake_receipt_anchor_gate
+    )
+    monkeypatch.setattr(
+        builder,
+        "require_acs_local_income_donor",
+        lambda frame: captured.setdefault("income_donor", frame),
+    )
+    monkeypatch.setattr(
+        builder, "acs_local_income_transfer_signal_gate", fake_income_gate
+    )
+    monkeypatch.setattr(
+        builder,
+        "require_acs_local_ssi_disability_donor",
+        lambda frame: captured.setdefault("ssi_donor_base", frame),
+    )
+    monkeypatch.setattr(
+        builder, "fetch_sipp_2023_ssi_disability_donor", lambda: sipp_path
+    )
+    monkeypatch.setattr(builder, "load_acs_local_ssi_disability_donor", fake_sipp_load)
+    monkeypatch.setattr(
+        builder, "with_acs_local_ssi_disability_criteria", fake_ssi_stage
+    )
+    monkeypatch.setattr(builder, "acs_local_ssi_disability_signal_gate", fake_ssi_gate)
 
     arguments = [
         "--base-h5",
@@ -385,18 +591,42 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert actual_source.max_households == 7
     assert build_options.pop("puma_ladder") is puma_ladder
     assert callable(build_options.pop("hours_donor_factory"))
+    assert build_options.pop("drop_group_quarters_children") is True
     assert build_options == {
         "chunksize": 2000,
         "acs_share": 0.4,
         "target_families": transfer_plan,
         "hours_under15_policy": None,
+        "work_disability_inputs": True,
+        "income_transfer": True,
+        "native_receipt_anchors": True,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,
         "n_estimators": 32,
         "max_targets_per_fit": 8,
         "geography_seed": 19,
     }
-    assert captured["write"] == (combined, output_h5, 2024)
+    assert captured["write"] == (ssi_filled, output_h5, 2024)
+    assert captured["immigration_donor"] == (base, 2024)
+    assert captured["immigration"] == (11, 2024)
+    assert captured["audited"] is True
+    # microcosm#1021: the work/disability gate sees the labelled frame, after
+    # the immigration stage and before the input-null audit. microcosm#1022:
+    # the SIPP donor is verified before the ACS fetch, and the SSI disability
+    # stage runs after the income gate and before the input-null audit.
+    # microcosm#1022: the native FS receipt anchor's gate grades the pooled
+    # frame first, before any stage that replaces the frame.
+    assert order == [
+        "sipp_load",
+        "acs_fetch",
+        "receipt_anchor_gate",
+        "immigration",
+        "work_disability_gate",
+        "income_gate",
+        "ssi_disability",
+        "ssi_disability_gate",
+        "null_audit",
+    ]
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["artifact_kind"] == "nullable_precalibration_staging_h5"
@@ -408,6 +638,8 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "acs_group_quarters_housing_universe",
         "native_acs_source_universe_blanks",
         "sub_puma_geographic_precision",
+        "acs_spm_independence_role_household_partition",
+        "acs_group_quarters_children_outside_spm_universe",
     ]
     assert summary["reviewed_limitations"][2]["unavailable_exact_geography"] == [
         "block_geoid",
@@ -415,6 +647,54 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     ]
     assert summary["reviewed_engine_input_nulls"] == [reviewed_null]
     assert summary["local_hours_gate"]["passed"] is True
+    assert summary["acs_local_immigration"] == immigration_receipt
+    assert summary["acs_local_immigration_gate"] == {
+        "name": "acs_local_immigration_signal",
+        "passed": True,
+        "failures": [],
+        "details": {"per_spine": {}},
+    }
+    assert captured["income_donor"] is base
+    assert summary["acs_local_income_transfer"] == income_receipt
+    assert summary["acs_local_income_transfer_gate"] == {
+        "name": "acs_local_income_transfer_signal",
+        "passed": True,
+        "failures": [],
+        "details": {"per_spine": {}},
+    }
+    assert captured["ssi_donor_base"] is base
+    assert captured["sipp_load"] == (sipp_path, 2024)
+    assert captured["ssi_seed"] == 11
+    assert summary["acs_local_ssi_disability"] == ssi_receipt
+    assert summary["acs_local_ssi_disability_gate"] == {
+        "name": "acs_local_ssi_disability_signal",
+        "passed": True,
+        "failures": [],
+        "details": {"per_spine": {}},
+    }
+    assert summary["acs_local_receipt_anchors"] == anchor_receipt
+    assert summary["acs_local_receipt_anchors_gate"] == {
+        "name": "acs_local_receipt_anchor_signal",
+        "passed": True,
+        "failures": [],
+        "details": {"snap": {"units_anchored": 1}},
+    }
+    assert summary["acs_local_work_disability"] == work_disability_receipt
+    assert summary["acs_local_work_disability_gate"] == {
+        "name": "acs_local_work_disability_signal",
+        "passed": True,
+        "failures": [],
+        "details": {"per_spine": {}},
+    }
+    self_employment = summary["acs_self_employment_identity_gate"]
+    assert self_employment["name"] == "acs_self_employment_identity"
+    assert self_employment["passed"] is True
+    assert self_employment["failures"] == []
+    assert self_employment["details"]["acs_person_rows"] == 1
+    assert self_employment["details"]["semp_reported_rows"] == 1
+    assert self_employment["details"]["mismatched_rows"] == 0
+    assert self_employment["details"]["non_acs_component_rows"] == 0
+    assert self_employment["details"]["base_and_sstb_rows"] == 0
     assert "pending_engine_input_nulls" not in summary
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
     assert summary["geography_ladder"] == {
@@ -471,6 +751,257 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         },
     }
     assert summary["output"]["sha256"] == hashlib.sha256(b"combined-output").hexdigest()
+
+
+def test_immigration_stage_failures_abort_staging(monkeypatch) -> None:
+    """microcosm#1020: a failed stage or gate never reaches the null audit."""
+
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(frame=_frame())
+
+    def refusing_stage(frame, *, seed, time_period):
+        raise ValueError("3 foreign-born ACS person(s) have a blank YOEP")
+
+    monkeypatch.setattr(builder, "with_acs_local_immigration_inputs", refusing_stage)
+    with pytest.raises(SystemExit, match=r"microcosm#1020\): 3 foreign-born"):
+        builder._with_local_immigration(result, seed=0, period=2024)
+
+    labelled = _frame()
+    monkeypatch.setattr(
+        builder,
+        "with_acs_local_immigration_inputs",
+        lambda frame, *, seed, time_period: (labelled, {"issue": "microcosm#1020"}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "acs_local_immigration_signal_gate",
+        lambda frame: GateResult(
+            name="acs_local_immigration_signal",
+            passed=False,
+            failures=("acs_2024_1yr: ssn_card_type is constant 'CITIZEN'",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit, match="Local staging immigration gate failed: acs_2024_1yr"
+    ):
+        builder._with_local_immigration(result, seed=0, period=2024)
+
+    monkeypatch.setattr(
+        builder,
+        "acs_local_immigration_signal_gate",
+        lambda frame: GateResult(
+            name="acs_local_immigration_signal", passed=True, failures=()
+        ),
+    )
+    updated, entries = builder._with_local_immigration(result, seed=0, period=2024)
+    assert updated.frame is labelled
+    assert entries["acs_local_immigration"] == {"issue": "microcosm#1020"}
+    assert entries["acs_local_immigration_gate"]["passed"] is True
+
+
+def test_immigration_donor_preflight_refuses_before_transfer(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    def refusing_donor(frame, *, time_period):
+        raise ValueError("The donor lacks person column(s) ['PRCITSHP']")
+
+    monkeypatch.setattr(builder, "require_acs_local_immigration_donor", refusing_donor)
+    with pytest.raises(SystemExit, match=r"cannot seed .* \['PRCITSHP'\]"):
+        builder._require_immigration_donor(_frame(), period=2024)
+
+
+def test_work_disability_gate_failures_abort_staging(monkeypatch) -> None:
+    """microcosm#1021: no receipt, or a failed gate, never reaches the audit."""
+
+    builder = _load_builder_module()
+    without = builder.AcsMultispineResult(frame=_frame(), provenance={})
+    with pytest.raises(SystemExit, match=r"no native work/disability receipt"):
+        builder._require_local_work_disability(without)
+
+    receipt = {"issue": "microcosm#1021"}
+    result = builder.AcsMultispineResult(
+        frame=_frame(), provenance={"acs_local_work_disability": receipt}
+    )
+    monkeypatch.setattr(
+        builder,
+        "acs_local_work_disability_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_work_disability_signal",
+            passed=False,
+            failures=("acs_2024_1yr: is_disabled is constant False",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit, match="Local staging work/disability gate failed: acs_2024_1yr"
+    ):
+        builder._require_local_work_disability(result)
+
+    monkeypatch.setattr(
+        builder,
+        "acs_local_work_disability_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_work_disability_signal", passed=True, failures=()
+        ),
+    )
+    entries = builder._require_local_work_disability(result)
+    assert entries["acs_local_work_disability"] is receipt
+    assert entries["acs_local_work_disability_gate"]["passed"] is True
+
+
+def test_receipt_anchor_gate_failures_abort_staging(monkeypatch) -> None:
+    """microcosm#1022: no receipt, or a failed gate, never reaches the audit."""
+
+    builder = _load_builder_module()
+    without = builder.AcsMultispineResult(frame=_frame(), provenance={})
+    with pytest.raises(
+        SystemExit, match=r"no receipt-anchor receipt \(microcosm#1022\)"
+    ):
+        builder._require_local_receipt_anchors(without)
+
+    receipt = {"issue": "microcosm#1022"}
+    result = builder.AcsMultispineResult(
+        frame=_frame(), provenance={"acs_local_receipt_anchors": receipt}
+    )
+    monkeypatch.setattr(
+        builder,
+        "acs_local_receipt_anchor_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_receipt_anchor_signal",
+            passed=False,
+            failures=("acs_2024_1yr: 2 SPM unit(s) report SNAP receipt",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit, match="Local staging receipt-anchor gate failed: acs_2024_1yr"
+    ):
+        builder._require_local_receipt_anchors(result)
+
+    monkeypatch.setattr(
+        builder,
+        "acs_local_receipt_anchor_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_receipt_anchor_signal", passed=True, failures=()
+        ),
+    )
+    entries = builder._require_local_receipt_anchors(result)
+    assert entries["acs_local_receipt_anchors"] is receipt
+    assert entries["acs_local_receipt_anchors_gate"]["passed"] is True
+
+
+def test_ssi_disability_stage_failures_abort_staging(monkeypatch) -> None:
+    """microcosm#1022: a failed stage or gate never reaches the null audit."""
+
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(frame=_frame())
+
+    def refusing_stage(frame, *, sipp_donor, donor_identity, seed):
+        raise ValueError("1 ACS person(s) have a blank transferred disability_benefits")
+
+    monkeypatch.setattr(
+        builder, "with_acs_local_ssi_disability_criteria", refusing_stage
+    )
+    with pytest.raises(SystemExit, match=r"microcosm#1022\): 1 ACS person"):
+        builder._with_local_ssi_disability(
+            result, sipp_donor=None, donor_identity={}, seed=0
+        )
+
+    filled = _frame()
+    receipt = {"issue": "microcosm#1022"}
+    monkeypatch.setattr(
+        builder,
+        "with_acs_local_ssi_disability_criteria",
+        lambda frame, **kwargs: (filled, receipt),
+    )
+    monkeypatch.setattr(
+        builder,
+        "acs_local_ssi_disability_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_ssi_disability_signal",
+            passed=False,
+            failures=("acs_2024_1yr: meets_ssi_disability_criteria is constant",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit,
+        match="Local staging SSI disability-criteria gate failed: acs_2024_1yr",
+    ):
+        builder._with_local_ssi_disability(
+            result, sipp_donor=None, donor_identity={}, seed=0
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "acs_local_ssi_disability_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_ssi_disability_signal", passed=True, failures=()
+        ),
+    )
+    updated, entries = builder._with_local_ssi_disability(
+        result, sipp_donor=None, donor_identity={}, seed=0
+    )
+    assert updated.frame is filled
+    assert entries["acs_local_ssi_disability"] is receipt
+    assert entries["acs_local_ssi_disability_gate"]["passed"] is True
+
+
+def test_ssi_disability_donor_preflight_refuses_before_transfer(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    def refusing_donor(frame):
+        raise ValueError(
+            "The donor release lacks person column 'meets_ssi_disability_criteria'"
+        )
+
+    monkeypatch.setattr(
+        builder, "require_acs_local_ssi_disability_donor", refusing_donor
+    )
+    with pytest.raises(SystemExit, match=r"cannot anchor .* lacks person column"):
+        builder._require_ssi_disability_donor(_frame())
+
+
+def test_sipp_donor_uses_the_given_path_or_refuses_clearly(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """microcosm#1022: --sipp-donor skips the fetch; an unavailable or
+    unverifiable donor stops staging with the option to pass."""
+
+    builder = _load_builder_module()
+    calls: list[tuple[Path, int]] = []
+
+    def loader(path, *, time_period):
+        calls.append((path, time_period))
+        return "donor", {"path": str(path)}
+
+    monkeypatch.setattr(
+        builder,
+        "fetch_sipp_2023_ssi_disability_donor",
+        lambda: pytest.fail("an explicit --sipp-donor must not fetch"),
+    )
+    monkeypatch.setattr(builder, "load_acs_local_ssi_disability_donor", loader)
+    local = tmp_path / "pu2023.csv"
+    assert builder._load_ssi_disability_donor(local, period=2024) == (
+        "donor",
+        {"path": str(local)},
+    )
+    assert calls == [(local, 2024)]
+
+    def offline():
+        raise OSError("network is unreachable")
+
+    monkeypatch.setattr(builder, "fetch_sipp_2023_ssi_disability_donor", offline)
+    with pytest.raises(
+        SystemExit,
+        match=r"microcosm#1022\) is unavailable: network is unreachable Pass "
+        r"--sipp-donor",
+    ):
+        builder._load_ssi_disability_donor(None, period=2024)
+
+    def corrupt(path, *, time_period):
+        raise ValueError("SIPP 2023 SSI disability donor failed sha-256 verification")
+
+    monkeypatch.setattr(builder, "load_acs_local_ssi_disability_donor", corrupt)
+    with pytest.raises(SystemExit, match="sha-256 verification"):
+        builder._load_ssi_disability_donor(local, period=2024)
 
 
 def test_weights_audit_failure_aborts_before_export() -> None:
@@ -993,6 +1524,119 @@ def test_native_complete_hours_satisfy_coverage_without_a_fabricated_fit(
             assert coverage["modeled_hours_rows"] == modeled_rows
 
 
+_ACS_ITEMS = ["DDRS", "DEAR", "DEYE", "DOUT", "DPHY", "DREM"]
+
+
+@pytest.mark.parametrize(
+    "column, receipt_overrides, covered",
+    [
+        ("is_disabled", {}, True),
+        ("is_blind", {}, True),
+        ("is_disabled", {"missing_rows": 1}, False),
+        ("is_disabled", {"provenance": "acs_transfer"}, False),
+        ("is_disabled", {"source_columns": ["DEYE", "SSIP", "AGEP"]}, False),
+        ("is_blind", {"entity": "household"}, False),
+        ("is_blind", {"observed_rows": 2}, False),
+    ],
+    ids=[
+        "disabled-native",
+        "blind-native",
+        "partial",
+        "not-native",
+        "missing-items",
+        "wrong-entity",
+        "wrong-coverage",
+    ],
+)
+def test_native_complete_disability_satisfies_coverage_without_a_fit(
+    column, receipt_overrides, covered
+):
+    """microcosm#1021: the local lane maps is_disabled/is_blind natively on
+    every ACS row, so the null-only transfer never fits them."""
+
+    builder = _load_builder_module()
+    before = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    tables = {entity: before.table(entity).copy() for entity in before.entities}
+    tables["person"][column] = [False, True]
+    frame = Frame(
+        tables,
+        before.schema,
+        {"household": before.weights_for("household")},
+    )
+    receipt = {
+        "entity": "person",
+        "provenance": "acs_2024_1yr_native",
+        "source_columns": (
+            [*_ACS_ITEMS, "SSIP", "AGEP"]
+            if column == "is_disabled"
+            else ["DEYE", "AGEP"]
+        ),
+        "missing_rows": 0,
+        "observed_rows": 1,
+        **receipt_overrides,
+    }
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={"imputed_inputs": [], "native_inputs": {column: receipt}},
+    )
+    plan = {"person": {"model_required_boolean": (column,)}}
+    if not covered:
+        with pytest.raises(SystemExit, match=column):
+            builder._require_default_transfer_coverage(
+                result, before, target_families=plan
+            )
+        return
+    coverage = builder._require_default_transfer_coverage(
+        result, before, target_families=plan
+    )
+    assert coverage["native_registered_inputs"] == [column]
+    assert coverage["registered_inputs"] == []
+
+
+def test_native_disability_and_hours_share_the_coverage_exception() -> None:
+    builder = _load_builder_module()
+    before = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    tables = {entity: before.table(entity).copy() for entity in before.entities}
+    tables["person"]["is_disabled"] = [False, True]
+    tables["person"]["weekly_hours_worked_before_lsr"] = [40.0, 0.0]
+    frame = Frame(tables, before.schema, {"household": before.weights_for("household")})
+    native = {
+        "entity": "person",
+        "provenance": "acs_2024_1yr_native",
+        "missing_rows": 0,
+        "observed_rows": 1,
+    }
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "imputed_inputs": [],
+            "native_inputs": {
+                "is_disabled": {
+                    **native,
+                    "source_columns": [*_ACS_ITEMS, "SSIP", "AGEP"],
+                },
+                "weekly_hours_worked_before_lsr": {
+                    **native,
+                    "source_columns": ["WKHP", "AGEP", "WKL"],
+                },
+            },
+        },
+    )
+    plan = {
+        "person": {
+            "model_required_boolean": ("is_disabled",),
+            "source_operator_hours_worked": ("weekly_hours_worked_before_lsr",),
+        }
+    }
+    coverage = builder._require_default_transfer_coverage(
+        result, before, target_families=plan
+    )
+    assert coverage["native_registered_inputs"] == [
+        "is_disabled",
+        "weekly_hours_worked_before_lsr",
+    ]
+
+
 def test_reviewed_limitations_close_gq_and_sub_puma_gaps() -> None:
     builder = _load_builder_module()
     frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
@@ -1059,6 +1703,58 @@ def test_reviewed_limitations_close_gq_and_sub_puma_gaps() -> None:
     ]
     assert geography["assignment_seed"] == 29
     assert all(item["calibration_blocker"] is False for item in limitations)
+
+
+@pytest.mark.parametrize(
+    ("declares_universe", "drop"),
+    [(False, True), (True, False)],
+)
+def test_group_quarters_children_drop_exactly_while_the_engine_does_not_scope(
+    declares_universe, drop
+) -> None:
+    """d1484's flip condition, in code: the staging drops them under an engine
+    that measures every SPM unit, and keeps them under one that scopes SPM by
+    measurement universe."""
+
+    builder = _load_builder_module()
+    variables = {"age", "spm_unit_spm_threshold"}
+    if declares_universe:
+        variables.add("spm_unit_spm_universe_status")
+
+    assert builder._drop_acs_group_quarters_children(variables) is drop
+
+
+def test_the_drop_is_disclosed_as_a_reviewed_interim_limitation() -> None:
+    builder = _load_builder_module()
+    receipt = {
+        "rule": "TYPEHUGQ in {2, 3} AND age < 15",
+        "authority": "Census SEHSD-WP2020-09 pp. 6-7",
+        "decision": "microcosm#1263 (d1484)",
+        "status": "interim",
+        "flip_condition": "keep them once the engine scopes",
+        "group_quarters_households": 183_206,
+        "households_dropped": 1_946,
+        "persons_dropped": 1_946,
+        "household_weight_share_dropped": 0.00005,
+        "household_weight_dropped": 123.0,
+    }
+
+    limitation = builder._group_quarters_children_limitation(receipt)
+
+    assert limitation["id"] == "acs_group_quarters_children_outside_spm_universe"
+    assert limitation["status"] == "reviewed_interim_exclusion"
+    assert limitation["affected_spine"] == "acs_2024_1yr"
+    assert limitation["decision"] == "microcosm#1263 (d1484)"
+    assert limitation["flip_condition"] == receipt["flip_condition"]
+    assert limitation["counts"] == {
+        "group_quarters_households": 183_206,
+        "households_dropped": 1_946,
+        "persons_dropped": 1_946,
+        "household_weight_share_dropped": 0.00005,
+    }
+    assert "fiscal total" in limitation["treatment"]
+    assert limitation["calibration_blocker"] is False
+    json.dumps(limitation, allow_nan=False)
 
 
 def test_donor_release_identity_verifies_sha_and_pins_provenance(
@@ -1135,3 +1831,245 @@ def test_donor_release_identity_requires_one_microdata_artifact(
 
     with pytest.raises(SystemExit, match="exactly one microdata artifact"):
         module._donor_release_identity(manifest, "a" * 64)
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
+    ],
+)
+def test_donor_without_work_experience_fails_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+    column: str,
+) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person.drop(columns=[column], inplace=True)
+    monkeypatch.setattr(
+        builder.acs_sources, "load_acs_source_manifest", lambda path: _manifest()
+    )
+    monkeypatch.setattr(builder, "_load_base_frame", lambda path: donor)
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+    # microcosm#1020/#1022: this donor carries no immigration columns, ASEC
+    # observation role or SSI disability criteria; this test checks the
+    # work-experience preflight only.
+    monkeypatch.setattr(builder, "_require_immigration_donor", lambda *_a, **_k: None)
+    monkeypatch.setattr(builder, "_require_income_donor", lambda *_a: None)
+    monkeypatch.setattr(builder, "_require_ssi_disability_donor", lambda *_a: None)
+
+    def must_not_fetch(*_args, **_kwargs):
+        pytest.fail("source fetch must not run for an incomplete work-experience donor")
+
+    monkeypatch.setattr(builder.acs_sources, "fetch_acs_pums_sources", must_not_fetch)
+
+    with pytest.raises(SystemExit, match=f"lacks canonical work-experience.*{column}"):
+        builder.main(["--base-h5", "donor.h5", "--out-h5", "combined.h5"])
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "detailed_occupation_recode",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
+    ],
+)
+@pytest.mark.parametrize("invalid", [None, np.inf, "invalid"])
+def test_donor_work_experience_rejects_null_or_nonfinite_values(
+    column, invalid
+) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person[column] = pd.Series(
+        [donor.person[column].iloc[0], invalid], dtype=object
+    )
+
+    with pytest.raises(SystemExit, match=f"missing or nonfinite.*{column}"):
+        builder._require_donor_work_experience(donor)
+
+
+def test_complete_donor_work_experience_passes_without_changing_rows() -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    before = donor.person.copy(deep=True)
+
+    builder._require_donor_work_experience(donor)
+
+    pd.testing.assert_frame_equal(donor.person, before)
+
+
+def test_donor_without_the_spm_role_fails_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder.acs_sources, "load_acs_source_manifest", lambda path: _manifest()
+    )
+    monkeypatch.setattr(
+        builder, "_load_base_frame", lambda path: _frame(spm_role=False)
+    )
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+
+    def must_not_fetch(*_args, **_kwargs):
+        raise AssertionError("source fetch must not run for a role-free donor")
+
+    monkeypatch.setattr(builder.acs_sources, "fetch_acs_pums_sources", must_not_fetch)
+
+    with pytest.raises(SystemExit, match=f"carries no {NATIVE_SPM_ROLE}"):
+        builder.main(["--base-h5", "donor.h5", "--out-h5", "combined.h5"])
+
+
+@pytest.mark.parametrize(
+    "values,match",
+    [
+        (pd.Series([True, None], dtype=object), "null on 1 person row"),
+        (pd.Series([1, 0]), "must be Boolean"),
+    ],
+)
+def test_donor_spm_role_must_be_complete_and_boolean(values, match) -> None:
+    builder = _load_builder_module()
+    donor = _frame()
+    donor.person[NATIVE_SPM_ROLE] = values
+
+    with pytest.raises(SystemExit, match=match):
+        builder._require_donor_spm_independence_role(donor)
+
+
+def _pooled_result(builder, *, role, receipt):
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    if role is None:
+        frame.person.drop(columns=[NATIVE_SPM_ROLE], inplace=True)
+    else:
+        frame.person[NATIVE_SPM_ROLE] = role
+    provenance = {} if receipt is None else {"spm_independence_role": receipt}
+    return builder.AcsMultispineResult(frame=frame, provenance=provenance)
+
+
+def test_pooled_spm_role_passes_when_complete_boolean_and_receipted() -> None:
+    builder = _load_builder_module()
+    receipt = _spm_role_receipt(persons=1)
+
+    result = _pooled_result(builder, role=np.asarray([True, False]), receipt=receipt)
+
+    assert builder._require_pooled_spm_independence_role(result) is receipt
+
+
+@pytest.mark.parametrize(
+    "role,receipt,match",
+    [
+        (np.asarray([True, False]), None, "derived no SPM independence role"),
+        (None, _spm_role_receipt(persons=1), "lost is_spm_independent_minor_role"),
+        (
+            pd.Series([True, None], dtype=object),
+            _spm_role_receipt(persons=1),
+            r"null on 1 person row\(s\) \(by spine \{'acs_2024_1yr': 1\}\)",
+        ),
+        (pd.Series([1, 0]), _spm_role_receipt(persons=1), "must be Boolean"),
+        (
+            np.asarray([True, False]),
+            _spm_role_receipt(persons=2),
+            "receipt covers 2 person",
+        ),
+    ],
+)
+def test_pooled_spm_role_refuses_an_incomplete_or_unreceipted_role(
+    role, receipt, match
+) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit, match=match):
+        builder._require_pooled_spm_independence_role(
+            _pooled_result(builder, role=role, receipt=receipt)
+        )
+
+
+def test_engine_input_null_audit_refuses_a_declared_source_input() -> None:
+    """A null source role never enters the register, even via a stub engine."""
+
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person[NATIVE_SPM_ROLE] = pd.Series([True, None], dtype=object)
+
+    class FakeEngine:  # declares no source inputs of its own
+        def variables(self):
+            return ["age", NATIVE_SPM_ROLE]
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(
+                dtype={"age": "float", NATIVE_SPM_ROLE: "bool"}[name]
+            )
+
+    with pytest.raises(SystemExit) as exc:
+        builder._engine_input_null_audit(frame, FakeEngine())
+
+    assert f"person.{NATIVE_SPM_ROLE} (1 null rows" in str(exc.value)
+    assert "{'acs_2024_1yr': 1}" in str(exc.value)
+    assert "does not permit synthesizing a default" in str(exc.value)
+
+
+def test_engine_input_null_audit_honors_the_engine_declaration() -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person["future_source_input"] = [1.0, np.nan]
+
+    class FakeEngine:
+        def variables(self):
+            return ["future_source_input", NATIVE_SPM_ROLE]
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(dtype="float")
+
+        def _dataset_source_inputs(self):
+            return frozenset({NATIVE_SPM_ROLE, "future_source_input"})
+
+    with pytest.raises(SystemExit, match="person.future_source_input"):
+        builder._engine_input_null_audit(frame, FakeEngine())
+
+
+def test_reviewed_limitations_document_the_acs_spm_role() -> None:
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.table("household")["TYPEHUGQ"] = [np.nan, 1.0]
+    receipt = {
+        **_spm_role_receipt(persons=1),
+        "group_quarters_units_without_classified_adult": 0,
+        "housing_units_classified_only_by_role": 1,
+    }
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "geography_ladder": {"applied": True, "seed": 3},
+            "spm_independence_role": receipt,
+        },
+    )
+
+    limitation = builder._reviewed_limitations(
+        result, transfer_coverage={}, input_null_audit=[]
+    )[-1]
+
+    assert limitation["id"] == "acs_spm_independence_role_household_partition"
+    assert limitation["status"] == "reviewed_source_derivation"
+    assert limitation["affected_columns"] == {"person": [NATIVE_SPM_ROLE]}
+    assert limitation["rule"] == receipt["rule"]
+    assert limitation["counts"]["housing_units_classified_only_by_role"] == 1
+    assert limitation["validation"] == "experiments/acs-spm-role-asec-validation.md"
+    assert limitation["calibration_blocker"] is False
+
+
+def test_staging_h5_round_trips_a_complete_boolean_spm_role(tmp_path: Path) -> None:
+    pytest.importorskip("tables")  # pandas HDF backend
+    builder = _load_builder_module()
+    frame = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    frame.person[NATIVE_SPM_ROLE] = np.asarray([True, False])
+    output = tmp_path / "role-staging.h5"
+
+    builder._write_dataset(frame, output, period=2024)
+
+    stored = pd.read_hdf(output, key="person")[NATIVE_SPM_ROLE]
+    assert stored.dtype == np.dtype(bool)
+    assert stored.tolist() == [True, False]

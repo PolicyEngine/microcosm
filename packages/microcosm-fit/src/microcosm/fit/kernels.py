@@ -17,7 +17,7 @@ import pandas as pd
 import microcosm.fit.model as fit_model_module
 import microcosm.fit.qrf as qrf_module
 from microcosm.fit import fit as fit_qrf
-from microcosm.fit.qrf import DEFAULT_N_ESTIMATORS, DEFAULT_ZERO_ATOL
+from microcosm.fit.qrf import DEFAULT_N_ESTIMATORS, DEFAULT_ZERO_ATOL, GateCalibration
 from microcosm.graph import (
     ROWS_ALL,
     Capabilities,
@@ -66,6 +66,7 @@ _DONOR_MASK = "is_donor"
 _PARAMS = frozenset(
     {
         "donor_target",
+        "gate_calibration",
         "max_samples_leaf",
         "min_samples_leaf",
         "n_estimators",
@@ -88,6 +89,7 @@ class _QRFRunSpec:
     zero_atol: float
     max_samples_leaf: int | float | None
     seed: int
+    gate_calibration: str = GateCalibration.IN_SAMPLE
 
 
 class QRFKernel(KernelBase):
@@ -181,6 +183,7 @@ class QRFKernel(KernelBase):
             zero_atol=spec.zero_atol,
             max_samples_leaf=spec.max_samples_leaf,
             seed=spec.seed,
+            gate_calibration=spec.gate_calibration,
         )
         # Serialize before predict so the artifact can reproduce this first draw.
         model_bytes = pickle.dumps(fitted, protocol=pickle.HIGHEST_PROTOCOL)
@@ -221,6 +224,11 @@ class QRFKernel(KernelBase):
                 np.average(target_values, weights=donor_weights)
             ),
         }
+        if spec.gate_calibration != GateCalibration.IN_SAMPLE:
+            # Named only when asked for, so an in-sample node's receipt is the
+            # same as before the option existed.
+            receipt["gate_calibration"] = spec.gate_calibration
+            receipt["gate_outcome"] = fitted.gate_outcomes()[spec.target]
         return KernelResult(
             columns={(spec.entity, spec.target): output},
             artifacts={"model": model_bytes},
@@ -298,6 +306,18 @@ class QRFKernel(KernelBase):
                 "fit.qrf@1 max_samples_leaf must be an int, float, or None."
             )
 
+        gate_calibration = context.params.get(
+            "gate_calibration", GateCalibration.IN_SAMPLE
+        )
+        if gate_calibration not in (
+            GateCalibration.IN_SAMPLE,
+            GateCalibration.CROSS_FITTED,
+        ):
+            raise ValueError(
+                f"fit.qrf@1 gate_calibration {gate_calibration!r} is not "
+                f"{GateCalibration.IN_SAMPLE!r} or {GateCalibration.CROSS_FITTED!r}."
+            )
+
         seed = self._seed(context)
         return _QRFRunSpec(
             entity=input_slice.entity,
@@ -309,6 +329,7 @@ class QRFKernel(KernelBase):
             zero_atol=float(zero_atol),
             max_samples_leaf=max_samples_leaf,
             seed=seed,
+            gate_calibration=gate_calibration,
         )
 
     def _seed(self, context: KernelContext) -> int:

@@ -1,0 +1,33 @@
+phase: legacy
+status: >-
+  Contract-only F0 expression of the national region layer. The complete 2025
+  Stats NZ region roster and cell facts remain Chronicle inputs, and these
+  kernel ids are F0 contract vocabulary, never executable producers. In the
+  graph build each household draws one atomic territorial-authority by
+  Accommodation Supplement area unit from population-weighted support, and
+  region, territorial authority and Accommodation Supplement area derive from
+  it; this resource records only the region layer and its vintage. Region is
+  target-assigned on US donor records, never source-observed.
+assignment:
+  anchor: region
+  order: before_gap_fill
+  kernels:
+    assign: kernel:assign_nz_regions
+    validate: kernel:nz_region_geography_gate
+  draw:
+    region:
+      universe: region_nationally
+      weight: stats_nz_population
+  derive:
+  - region_code
+  assertions:
+  - assigned_region_complete
+  - geography_vintage_exact
+  ladder_source: source:nz_region_assignment_contract
+  seed: stream:geography_legacy
+  default_seed: 0
+  layer_vintages:
+    region: vintage:nz_region_2025
+  validation:
+  - region_assignment_support
+  - vintage_refusal

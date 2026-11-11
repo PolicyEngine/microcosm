@@ -30,12 +30,13 @@ def test_batched_scoring_matches_the_unbatched_path(
         assert payload == reference_payload
         assert demographics == reference_demographics
 
+
 def test_batched_engines_partition_release_and_order_their_work(
     builder, fake_reforms, tmp_path
 ) -> None:
     """(b) no construction sees more than the batch size and every pass
     partitions the pool; (c) one engine alive at a time; (d) the SPM selection
-    on every construction; (e) one reform system per reform, 41 for the
+    on every construction; (e) one reform system per reform, 42 for the
     shipped smoke; (f) one baseline pass per plan; (g) ascending periods."""
     frame = _nested_frame()
     household_ids = frame.table("household")["household_id"].tolist()
@@ -74,7 +75,7 @@ def test_batched_engines_partition_release_and_order_their_work(
     validation = consumers["reform_validation"].record()
     demographics = consumers["demographics"].record()
     probes = len(us_release_reform_coverage_probes())
-    assert smoke["reform_systems"] == smoke["reform_passes"] == probes == 41
+    assert smoke["reform_systems"] == smoke["reform_passes"] == probes == 43
     assert validation["reform_systems"] == validation["reform_passes"] > 0
     assert demographics["reform_systems"] == demographics["reform_passes"] == 0
     assert all(engine.reform is None for engine in constructions)
@@ -107,6 +108,7 @@ def test_batched_engines_partition_release_and_order_their_work(
     assert payload["out_of_sample_simulated"] is True
     assert gate.details["probes"] == probes
 
+
 def test_engine_guard_refuses_an_earlier_period(builder) -> None:
     """(g) The guard refuses a key earlier than one the engine computed."""
     calls = []
@@ -129,6 +131,7 @@ def test_engine_guard_refuses_an_earlier_period(builder) -> None:
         ("ga_income_tax", 2026, {}),
     ]
 
+
 def test_ascending_plan_is_stable_and_consumers_refuse_other_orders(
     builder, tmp_path
 ) -> None:
@@ -149,6 +152,7 @@ def test_ascending_plan_is_stable_and_consumers_refuse_other_orders(
     with pytest.raises(ValueError, match="ascending period order"):
         scorer.open_consumer("fixture", tuple(dict.fromkeys(keys)))
 
+
 def test_served_baseline_refuses_a_key_outside_its_plan(builder, tmp_path) -> None:
     log = _EngineLog()
     scorer = _scorer(builder, _nested_frame(), log, 3, tmp_path)
@@ -159,6 +163,7 @@ def test_served_baseline_refuses_a_key_outside_its_plan(builder, tmp_path) -> No
         baseline.calculate("income_tax", 2026)
     # The served baseline answered from the plan: one pass, no new engines.
     assert len(log.constructions) == scorer.n_batches
+
 
 def test_a_failing_key_still_releases_its_batch_engine(builder, tmp_path) -> None:
     """(c) The engine that raised is released before the error propagates, so
@@ -173,6 +178,7 @@ def test_a_failing_key_still_releases_its_batch_engine(builder, tmp_path) -> Non
         )
     assert len(log.constructions) == 1
     assert log.constructions[0].dataset is None
+
 
 def test_post_export_values_sum_matches_microseries_sum(builder) -> None:
     """``.sum()`` equals policyengine-core's ``MicroSeries.sum`` (NaN skipped)
@@ -190,6 +196,7 @@ def test_post_export_values_sum_matches_microseries_sum(builder) -> None:
         np.asarray(result)[0] = 9.0
     with pytest.raises(ValueError, match="one weight per value"):
         builder._PostExportValues(values, weights[:2])
+
 
 def test_a_multi_batch_pass_refuses_a_population_aggregate(builder, tmp_path) -> None:
     """A measure that reaches a formula aggregating over its whole simulation
@@ -226,6 +233,7 @@ def test_a_multi_batch_pass_refuses_a_population_aggregate(builder, tmp_path) ->
     with pytest.raises(RuntimeError, match="household_income_decile@2025"):
         scorer.open_consumer("fixture", (("household_income_decile", 2025, None),))
 
+
 def test_known_periods_include_live_branches(builder) -> None:
     def engine(known):
         return SimpleNamespace(
@@ -245,6 +253,7 @@ def test_known_periods_include_live_branches(builder) -> None:
         ("medicaid_slcsp_state_denominator", "2024"),
         ("household_income_decile", "2025"),
     }
+
 
 def test_known_period_walker_matches_a_reference_traversal(builder) -> None:
     """The shared walker returns exactly the known (variable, period) pairs of
@@ -317,6 +326,7 @@ def test_known_period_walker_matches_a_reference_traversal(builder) -> None:
 
     check()
 
+
 def test_batch_invariance_check_reads_a_value_held_only_on_baseline(
     builder,
 ) -> None:
@@ -352,6 +362,7 @@ def test_batch_invariance_check_reads_a_value_held_only_on_baseline(
             reform=False,
         )
 
+
 def test_a_reform_engine_refuses_a_baseline_branch_reader(builder, tmp_path) -> None:
     """A batch reform engine is built from the reform's system alone, so it
     has no baseline branch: a reform pass refuses a formula that reads one,
@@ -380,6 +391,7 @@ def test_a_reform_engine_refuses_a_baseline_branch_reader(builder, tmp_path) -> 
         *builder.US_POPULATION_AGGREGATE_VARIABLES,
         *builder.POST_EXPORT_BASELINE_BRANCH_READERS,
     }
+
 
 def test_a_reform_that_moves_a_behavioral_parameter_is_refused(
     builder, tmp_path
@@ -412,6 +424,7 @@ def test_a_reform_that_moves_a_behavioral_parameter_is_refused(
     )
     assert consumer.simulate(static).calculate("income_tax", 2024).sum() > 0
     assert len(log.constructions) == scorer.n_batches
+
 
 def test_recording_dry_runs_construct_no_engine(
     builder, fake_reforms, monkeypatch
@@ -450,6 +463,8 @@ def test_recording_dry_runs_construct_no_engine(
         "reform_coverage_smoke",
         "reform_validation",
         "demographics",
+        "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
     ]
     smoke_keys = {
         (probe.budget_measure, int(probe.period or builder.PERIOD), None)
@@ -458,6 +473,17 @@ def test_recording_dry_runs_construct_no_engine(
     assert set(plan.baseline_plan("reform_coverage_smoke")) == smoke_keys
     assert len(plan.baseline_plan("reform_coverage_smoke")) == len(smoke_keys)
     assert plan.baseline_plan("demographics") == (("age", builder.PERIOD, None),)
+    assert plan.baseline_plan("ssi_social_security_holdout") == (
+        ("age", builder.PERIOD, None),
+        ("ssi", builder.PERIOD, None),
+        ("social_security", builder.PERIOD, None),
+    )
+    assert plan.baseline_plan("medicare_irmaa_holdout") == (
+        ("medicare_enrolled", builder.PERIOD, None),
+        ("gross_medicare_part_b_premium_if_enrolled", builder.PERIOD, None),
+        ("base_part_b_premium", builder.PERIOD, None),
+        ("income_adjusted_part_d_premium_surcharge", builder.PERIOD, None),
+    )
     validation = plan.baseline_plan("reform_validation")
     assert ("income_tax", builder.PERIOD, None) in validation
     assert ("state_code_str", builder.PERIOD, None) in validation
@@ -476,7 +502,150 @@ def test_recording_dry_runs_construct_no_engine(
         result=_empty_calibration_result(),
         release_id="fixture",
     )
-    assert list(skipped) == ["demographics"]
+    assert list(skipped) == [
+        "demographics",
+        "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
+    ]
+
+
+def test_medicare_irmaa_holdout_is_invariant_to_household_batch_size(
+    builder, tmp_path
+) -> None:
+    frame = _nested_frame()
+    consumer = builder._medicare_irmaa_holdout_consumer
+    reference = consumer(_unbatched_simulate(frame, _EngineLog()))
+    assert reference["status"] == "available"
+    part_b, part_d = reference["parts"]
+    # The fixture's payers sit in several households, and two eligible
+    # non-enrollees carry a base premium the Part B measure must not count.
+    assert part_b["weighted_payers"] > 0
+    assert part_d["weighted_payers"] > 0
+    for batch_size in (1, 2, None):
+        log = _EngineLog()
+        scorer = _scorer(builder, frame, log, batch_size, tmp_path / str(batch_size))
+        plan = builder._record_post_export_baseline_plan(consumer)
+        scoring = scorer.open_consumer("medicare_irmaa_holdout", plan)
+        payload = consumer(scoring.simulate)
+        assert payload == reference
+        record = scorer.finish_consumer(scoring)
+        assert record["baseline_passes"] == 1
+        assert record["reform_passes"] == record["reform_systems"] == 0
+        assert len(log.constructions) == scorer.n_batches
+        scorer.close()
+
+
+def test_medicare_irmaa_holdout_measurement_error_is_report_only(
+    builder, monkeypatch, tmp_path
+) -> None:
+    def unavailable(*args, **kwargs):
+        raise ValueError("fixture unavailable")
+
+    monkeypatch.setattr(builder, "_score_post_export_consumer", unavailable)
+    builder._write_medicare_irmaa_holdout(
+        release_dir=tmp_path,
+        dataset_path=tmp_path / "fixture.h5",
+        release_id="fixture",
+    )
+    payload = json.loads((tmp_path / "us_medicare_irmaa_holdout.json").read_text())
+    assert payload["status"] == "unavailable"
+    assert payload["error"] == "ValueError: fixture unavailable"
+    assert payload["enforced"] is False
+    assert payload["used_for_calibration"] is False
+
+
+def test_medicare_irmaa_holdout_discovery_error_does_not_fail_the_plan(
+    builder, monkeypatch
+) -> None:
+    def unavailable(*args, **kwargs):
+        raise KeyError("income_adjusted_part_d_premium_surcharge")
+
+    monkeypatch.setattr(builder, "medicare_irmaa_holdout_from_sim", unavailable)
+    args = SimpleNamespace(
+        skip_reform_coverage_smoke=True,
+        skip_reform_validation=True,
+        skip_out_of_sample_reforms=True,
+        skip_demographics=True,
+        maximum_microsim_batch_size=3,
+    )
+    plan = builder._record_post_export_scoring_plan(
+        args,
+        n_households=7,
+        result=_empty_calibration_result(),
+        release_id="fixture",
+    )
+    assert plan.error is None
+    assert plan.terminal_failures() == []
+    assert plan.baseline_plan("medicare_irmaa_holdout") == ()
+    assert builder._medicare_irmaa_holdout_consumer(None)["status"] == "unavailable"
+
+
+def test_ssi_social_security_holdout_is_invariant_to_household_batch_size(
+    builder, tmp_path
+) -> None:
+    frame = _nested_frame()
+    consumer = builder._ssi_social_security_holdout_consumer
+    reference = consumer(_unbatched_simulate(frame, _EngineLog()))
+    for batch_size in (1, 2, None):
+        log = _EngineLog()
+        scorer = _scorer(builder, frame, log, batch_size, tmp_path / str(batch_size))
+        plan = builder._record_post_export_baseline_plan(consumer)
+        scoring = scorer.open_consumer("ssi_social_security_holdout", plan)
+        payload = consumer(scoring.simulate)
+        assert payload == reference
+        record = scorer.finish_consumer(scoring)
+        assert record["baseline_passes"] == 1
+        assert record["reform_passes"] == record["reform_systems"] == 0
+        assert len(log.constructions) == scorer.n_batches
+        scorer.close()
+
+
+def test_ssi_social_security_holdout_measurement_error_is_report_only(
+    builder, monkeypatch, tmp_path
+) -> None:
+    def unavailable(*args, **kwargs):
+        raise ValueError("fixture unavailable")
+
+    monkeypatch.setattr(builder, "_score_post_export_consumer", unavailable)
+    builder._write_ssi_social_security_holdout(
+        release_dir=tmp_path,
+        dataset_path=tmp_path / "fixture.h5",
+        release_id="fixture",
+    )
+    payload = json.loads((tmp_path / "us_ssi_social_security_holdout.json").read_text())
+    assert payload["status"] == "unavailable"
+    assert payload["error"] == "ValueError: fixture unavailable"
+    assert payload["enforced"] is False
+    assert payload["used_for_calibration"] is False
+
+
+def test_ssi_social_security_holdout_discovery_error_does_not_fail_the_plan(
+    builder, monkeypatch
+) -> None:
+    def unavailable(*args, **kwargs):
+        raise KeyError("social_security")
+
+    monkeypatch.setattr(builder, "ssi_social_security_holdout_from_sim", unavailable)
+    args = SimpleNamespace(
+        skip_reform_coverage_smoke=True,
+        skip_reform_validation=True,
+        skip_out_of_sample_reforms=True,
+        skip_demographics=True,
+        maximum_microsim_batch_size=3,
+    )
+    plan = builder._record_post_export_scoring_plan(
+        args,
+        n_households=7,
+        result=_empty_calibration_result(),
+        release_id="fixture",
+    )
+    assert plan.error is None
+    assert plan.terminal_failures() == []
+    assert plan.baseline_plan("ssi_social_security_holdout") == ()
+    assert (
+        builder._ssi_social_security_holdout_consumer(None)["status"] == "unavailable"
+    )
+
 
 def test_reform_validation_sweeps_only_released_engines(
     builder, fake_reforms, monkeypatch
@@ -521,6 +690,7 @@ def test_reform_validation_sweeps_only_released_engines(
         (spec,), period=2024, simulate=lambda reform: EngineLike()
     )
     assert len(collections) == 2
+
 
 def test_an_unbuildable_plan_is_recorded_and_refused_not_raised(
     builder, fake_reforms, monkeypatch, tmp_path
@@ -567,11 +737,14 @@ def test_an_unbuildable_plan_is_recorded_and_refused_not_raised(
         "reform_coverage_smoke",
         "reform_validation",
         "demographics",
+        "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
     ]
     empty = builder._PostExportScoringPlan(
         n_households=7, maximum_batch_size=3, baseline_plans={}
     )
     assert builder._open_post_export_scorer(empty, _written_h5(tmp_path)) is None
+
 
 def test_calibration_diagnostics_carry_the_post_export_plan(
     builder, monkeypatch, tmp_path
@@ -633,11 +806,18 @@ def test_calibration_diagnostics_carry_the_post_export_plan(
     builder._write_release_calibration_diagnostics(**common)
     assert "post_export_scoring" not in captured["build"]
 
+
 def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     """(i) Neither _main nor the reform-validation and demographics writers
     call default_simulate_factory or construct a Microsimulation, and _main
     feeds the smoke from the batched scorer."""
-    for name in ("_main", "_write_reform_validation", "_write_demographics"):
+    for name in (
+        "_main",
+        "_write_reform_validation",
+        "_write_demographics",
+        "_write_ssi_social_security_holdout",
+        "_write_medicare_irmaa_holdout",
+    ):
         _, tree = _function_source(builder, name)
         called = _called_names(tree)
         assert "default_simulate_factory" not in called, name
@@ -665,11 +845,14 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     (open_call,) = calls_to("_open_post_export_scorer")
     (smoke_gate_call,) = calls_to("us_reform_coverage_smoke_gate")
     assert write_call.lineno < open_call.lineno < smoke_gate_call.lineno
-    # The smoke's served baseline is its own recorded plan, and the gate reads
-    # that consumer's seam.
+    # The smoke's served baseline is its own recorded plan, with that plan's
+    # reform pass count for progress (#1556), and the gate reads that
+    # consumer's seam.
     assert [ast.unparse(call) for call in calls_to("open_consumer")] == [
         "post_export_scorer.open_consumer('reform_coverage_smoke', "
-        "post_export_scoring_plan.baseline_plan('reform_coverage_smoke'))"
+        "post_export_scoring_plan.baseline_plan('reform_coverage_smoke'), "
+        "planned_reform_passes=post_export_scoring_plan.planned_reform_passes("
+        "'reform_coverage_smoke'))"
     ]
     (smoke_call,) = calls_to("us_reform_coverage_smoke_gate")
     simulate = next(kw for kw in smoke_call.keywords if kw.arg == "simulate")
@@ -689,9 +872,16 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
         ]
         assert plan_calls == [f"post_export_scoring_plan.baseline_plan({consumer!r})"]
     (validation_call,) = calls_to("_write_reform_validation")
-    assert {kw.arg: ast.unparse(kw.value) for kw in validation_call.keywords}[
-        "simulate_out_of_sample"
-    ] == "not args.skip_out_of_sample_reforms"
+    validation_keywords = {
+        kw.arg: ast.unparse(kw.value) for kw in validation_call.keywords
+    }
+    assert (
+        validation_keywords["simulate_out_of_sample"]
+        == "not args.skip_out_of_sample_reforms"
+    )
+    assert validation_keywords["planned_reform_passes"] == (
+        "post_export_scoring_plan.planned_reform_passes('reform_validation')"
+    )
     # The manifest binds the sha of the bytes the closed scorer scored, and
     # nothing else assigns it.
     sha_assignments = [
@@ -763,6 +953,7 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     assert recorded < source.index("_write_release_calibration_diagnostics(") < joined
     assert joined < source.index("release_engine.write_dataset(")
 
+
 def test_main_opens_the_scorer_its_plan_recorded(
     builder, fake_reforms, engine_free_loader, tmp_path
 ) -> None:
@@ -821,6 +1012,7 @@ def test_main_opens_the_scorer_its_plan_recorded(
     )
     with pytest.raises(ValueError, match="post-export scoring plan was built for 8"):
         builder._open_post_export_scorer(other, path)
+
 
 def test_writers_score_through_the_shared_scorer(
     builder, fake_reforms, monkeypatch, tmp_path
@@ -917,6 +1109,7 @@ def test_writers_score_through_the_shared_scorer(
     written = json.loads((release_dir / "demographics.json").read_text())
     assert written == json.loads(json.dumps(expected, allow_nan=False))
 
+
 def test_a_direct_writer_call_opens_and_closes_its_own_scorer(
     builder, fake_reforms, engine_free_loader, monkeypatch, tmp_path
 ) -> None:
@@ -945,6 +1138,7 @@ def test_a_direct_writer_call_opens_and_closes_its_own_scorer(
     written = json.loads((release_dir / "demographics.json").read_text())
     assert written["period"] == builder.PERIOD
     assert written["total_population"] > 0
+
 
 def test_main_frees_the_target_frame_before_the_export(builder) -> None:
     """``del target_frame`` follows its last reader and precedes the export
@@ -978,6 +1172,7 @@ def test_main_frees_the_target_frame_before_the_export(builder) -> None:
     ]
     assert reads and max(reads) < deleted_at
 
+
 def test_calibration_result_holds_no_reference_to_the_target_frame() -> None:
     """The premise of ``del target_frame``: ``calibrate`` keeps no reference
     to its input frame, and ``result.frame`` shares no memory with it."""
@@ -998,6 +1193,7 @@ def test_calibration_result_holds_no_reference_to_the_target_frame() -> None:
                 frame.table(entity)[column].to_numpy(),
                 result.frame.table(entity)[column].to_numpy(),
             )
+
 
 def test_calibration_results_drop_their_frames_and_keep_everything_else(
     builder, monkeypatch
@@ -1062,6 +1258,7 @@ def test_calibration_results_drop_their_frames_and_keep_everything_else(
     double = _empty_calibration_result()
     assert builder._without_calibrated_frames(double) is double
 
+
 def test_main_drops_the_calibration_frames_before_the_export(builder) -> None:
     """Cleanup follows export construction and precedes the H5 write."""
     _, tree = _function_source(builder, "_main")
@@ -1109,6 +1306,7 @@ def test_main_drops_the_calibration_frames_before_the_export(builder) -> None:
     ]
     assert export_bindings and max(export_bindings) < later_bindings[0][0]
     assert "dataclasses.replace(ladder_outcome, result=result)" in ast.unparse(tree)
+
 
 @pytest.mark.parametrize("full_pool", [True, False])
 @pytest.mark.parametrize("exact_k", [True, False])
@@ -1208,6 +1406,7 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
     exec(compile(module, "<main export statements>", "exec"), namespace)
     assert len(writes) == 1
 
+
 def test_scored_sha_is_bound_at_load_and_checked_by_the_manifest(
     builder, tmp_path
 ) -> None:
@@ -1262,6 +1461,7 @@ def test_scored_sha_is_bound_at_load_and_checked_by_the_manifest(
     keywords = {kw.arg: ast.unparse(kw.value) for kw in manifest_call.keywords}
     assert keywords["scored_dataset_sha256"] == "scored_dataset_sha256"
 
+
 def test_writers_register_their_consumer_with_the_shared_scorer(
     builder, tmp_path
 ) -> None:
@@ -1282,6 +1482,7 @@ def test_writers_register_their_consumer_with_the_shared_scorer(
     block = builder._post_export_scoring_manifest_block(scorer)
     assert list(block["consumers"]) == ["reform_validation"]
     assert block["consumers"]["reform_validation"]["reform_passes"] == 0
+
 
 def test_scorer_refuses_a_unit_that_spans_households(builder, tmp_path) -> None:
     """(k) Frame.select does not check that group units nest in households,
@@ -1331,6 +1532,7 @@ def test_scorer_refuses_a_unit_that_spans_households(builder, tmp_path) -> None:
     with pytest.raises(ValueError, match="household weights"):
         builder._assert_post_export_batching_premises(frame, [batches[0], reweighted])
 
+
 def test_scorer_refuses_a_household_count_other_than_planned(builder, tmp_path) -> None:
     with pytest.raises(ValueError, match="built for 8"):
         builder._HouseholdBatchedPostExportScorer(
@@ -1342,12 +1544,13 @@ def test_scorer_refuses_a_household_count_other_than_planned(builder, tmp_path) 
             load_frame=lambda path, *, expected_sha256: _nested_frame(),
         )
 
+
 def test_guard_sweep_records_and_scores_shipped_reform_passes(
     builder, fake_reforms, monkeypatch, tmp_path
 ) -> None:
     sweep = _load_sweep_module()
     plans, requests, counts = sweep._record_requests(builder)
-    assert counts["smoke_probes"] == len(us_release_reform_coverage_probes()) == 41
+    assert counts["smoke_probes"] == len(us_release_reform_coverage_probes()) == 43
     specs = reform_validation_module.load_default_reform_specs(period=builder.PERIOD)
     assert counts["validation_specs"] == sum(not spec.in_sample for spec in specs) == 52
     assert (
@@ -1356,7 +1559,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
         == 12
     )
     assert counts["baseline_keys"] == {
-        "reform_coverage_smoke": 18,
+        "reform_coverage_smoke": 20,
         "reform_validation": 75,
         "demographics": 1,
     }
@@ -1391,7 +1594,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
     assert (
         len(requests)
         == counts["smoke_probes"] + counts["validation_reform_passes"]
-        == 107
+        == 109
     )
 
     frame, log = _nested_frame(), _EngineLog()
@@ -1412,6 +1615,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
     assert sum(len(record["whole_file_comparisons"]) for record in records) == 4
     assert len(log.systems) == len(requests)
     scorer.close()
+
 
 def test_guard_sweep_runs_every_chunk_and_propagates_worker_failure(tmp_path) -> None:
     import subprocess
@@ -1459,3 +1663,183 @@ def test_guard_sweep_runs_every_chunk_and_propagates_worker_failure(tmp_path) ->
 
     with pytest.raises(subprocess.CalledProcessError):
         sweep._run_workers(args, run=fail)
+
+
+# ---------------------------------------------------------------------------
+# Outer progress: each reform pass's number of its consumer's pass count
+# ---------------------------------------------------------------------------
+
+
+class _ProgressRecorder:
+    """Stands for the build's emitter: records each progress request."""
+
+    def __init__(self) -> None:
+        self.requests: list[dict[str, object]] = []
+
+    def progress(self, stage_id, *, done, total, unit=None, outer=None, **details):
+        self.requests.append(
+            {
+                "stage_id": stage_id,
+                "done": done,
+                "total": total,
+                "unit": unit,
+                "outer": outer,
+                "pass_name": details.get("pass_name"),
+            }
+        )
+
+
+def _counted_run(builder, tmp_path, monkeypatch):
+    """Run the shipped consumers as ``_main`` opens them, with pass counts."""
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path)
+    record_requests = getattr(builder, "_record_post_export_requests", None)
+    assert record_requests is not None
+    consumers: dict[str, object] = {}
+    planned: dict[str, int] = {}
+
+    def simulate_for(name, consumer):
+        plan, passes = record_requests(consumer)
+        planned[name] = passes
+        consumers[name] = scorer.open_consumer(name, plan, planned_reform_passes=passes)
+        return consumers[name].simulate
+
+    _run_consumers(builder, simulate_for)
+    return scorer, consumers, planned, recorder.requests
+
+
+def test_the_dry_run_counts_each_consumers_reform_passes(
+    builder, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    _, consumers, planned, _ = _counted_run(builder, tmp_path, monkeypatch)
+    assert planned["reform_coverage_smoke"] == len(us_release_reform_coverage_probes())
+    assert planned["reform_validation"] > 0
+    assert planned["demographics"] == 0
+    # The count is the passes the consumer then runs: one per key it asks
+    # each reform for.
+    for name, consumer in consumers.items():
+        assert consumer.record()["reform_passes"] == planned[name], name
+
+
+def test_each_reform_pass_reports_its_number_of_its_consumers_passes(
+    builder, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    scorer, _, planned, requests = _counted_run(builder, tmp_path, monkeypatch)
+    outer = [
+        (entry["outer"].done, entry["outer"].total, entry["outer"].unit)
+        for entry in requests
+        if entry["outer"] is not None
+    ]
+    expected = [
+        (number, planned[name], "reform_pass")
+        for name in ("reform_coverage_smoke", "reform_validation")
+        for number in range(1, planned[name] + 1)
+        for _batch in range(scorer.n_batches)
+    ]
+    assert outer == expected
+    # A baseline pass has no outer counter, and every request keeps the
+    # batch counter it had.
+    baseline = [
+        entry for entry in requests if str(entry["pass_name"]).endswith("baseline plan")
+    ]
+    assert baseline
+    assert all(entry["outer"] is None for entry in baseline)
+    assert all(entry["total"] == scorer.n_batches for entry in requests)
+
+
+def test_a_consumer_opened_without_a_pass_count_reports_no_outer_counter(
+    builder, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    _batched_run(builder, _nested_frame(), 3, tmp_path)
+    assert recorder.requests
+    assert all(entry["outer"] is None for entry in recorder.requests)
+
+
+def test_the_scoring_plan_holds_each_consumers_reform_pass_count(
+    builder, fake_reforms
+) -> None:
+    args = SimpleNamespace(
+        skip_reform_coverage_smoke=False,
+        skip_reform_validation=False,
+        skip_out_of_sample_reforms=False,
+        skip_demographics=False,
+    )
+    plan = builder._post_export_scoring_plan(
+        n_households=352_932,
+        maximum_microsim_batch_size=2_000,
+        consumers=builder._post_export_consumers(
+            args, result=_empty_calibration_result(), release_id="fixture"
+        ),
+    )
+    planned = getattr(plan, "planned_reform_passes", None)
+    assert planned is not None
+    assert planned("reform_coverage_smoke") == len(us_release_reform_coverage_probes())
+    assert planned("demographics") == 0
+    assert planned("reform_validation") > 0
+    # The diagnostics' record of the plan keeps its shape.
+    assert "reform_passes" not in plan.record()["consumers"]["reform_coverage_smoke"]
+
+
+def test_the_release_s_reform_validation_reports_each_pass_of_its_count(
+    builder, fake_reforms, monkeypatch, tmp_path
+) -> None:
+    """``_main`` hands the writer the plan's count beside its baseline plan."""
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path / "h5")
+    fit = _calibration_result_with_in_sample_fit(builder.PERIOD)
+    plan = builder._record_post_export_scoring_plan(
+        _plan_args(), n_households=7, result=fit, release_id="fixture-release"
+    )
+    planned = getattr(plan, "planned_reform_passes", None)
+    assert planned is not None
+    passes = planned("reform_validation")
+    assert passes > 0
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+    builder._write_reform_validation(
+        release_dir=release_dir,
+        dataset_path=scorer.dataset_path,
+        result=fit,
+        registry=TargetRegistry((), country="us"),
+        release_id="fixture-release",
+        simulate_out_of_sample=True,
+        post_export_scorer=scorer,
+        baseline_plan=plan.baseline_plan("reform_validation"),
+        planned_reform_passes=passes,
+    )
+    outer = [entry["outer"] for entry in recorder.requests if entry["outer"]]
+    assert [counter.done for counter in outer[:: scorer.n_batches]] == list(
+        range(1, passes + 1)
+    )
+    assert {(counter.total, counter.unit) for counter in outer} == {
+        (passes, "reform_pass")
+    }
+
+
+def test_a_consumer_scored_without_a_recorded_plan_counts_its_own_passes(
+    builder, fake_reforms, monkeypatch, tmp_path
+) -> None:
+    """A direct caller's dry run records the pass count with the baseline plan."""
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path)
+    payload_for = builder._reform_validation_consumer(
+        result=_empty_calibration_result(), release_id="fixture-release"
+    )
+    builder._score_post_export_consumer(
+        "reform_validation",
+        payload_for,
+        dataset_path=scorer.dataset_path,
+        post_export_scorer=scorer,
+        baseline_plan=None,
+        maximum_microsim_batch_size=3,
+    )
+    passes = scorer.consumer_records["reform_validation"]["reform_passes"]
+    outer = [entry["outer"] for entry in recorder.requests if entry["outer"]]
+    assert outer
+    assert {counter.total for counter in outer} == {passes}
+    assert outer[-1].done == passes

@@ -22,6 +22,7 @@ from test_support.git_isolation import (
     GIT_CONFIG_CARRIERS,
     drop_inherited_git_repository,
 )
+from test_support.git_repositories import NO_BACKGROUND_MAINTENANCE_ENV
 from test_support.paths import REPOSITORY_ROOT
 
 pytestmark = pytest.mark.skipif(
@@ -37,6 +38,7 @@ _GIT_ENV = {
     "GIT_AUTHOR_EMAIL": "t@example.com",
     "GIT_COMMITTER_NAME": "t",
     "GIT_COMMITTER_EMAIL": "t@example.com",
+    **NO_BACKGROUND_MAINTENANCE_ENV,
 }
 
 

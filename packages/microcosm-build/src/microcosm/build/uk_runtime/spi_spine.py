@@ -12,14 +12,25 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.employer_pension_contributions import (
+    draw_employer_pension_contributions,
+    employer_scheme_and_sector,
+    load_ashe_employer_rates,
+)
+from microcosm.build.uk_runtime.frs_annual_income import (
+    FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+)
 from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_INCPBEN_COLUMN,
     FRS_HMRC_PAY_COLUMN,
     FRS_HMRC_RETAINED_LEAF_COLUMNS,
     FRS_HMRC_UBISJA_COLUMN,
     _materialize_source_leaves,
+    _raw_source_person_ids,
     _read_raw_frs_table,
 )
+from microcosm.build.uk_runtime.frs_spine import ANNUITY_AND_TRUST_INCOME_COLUMN
+from microcosm.build.uk_runtime.frs_take_up import uk_take_up_population_policy
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
     materialize_hmrc_spi_income_band_targets,
@@ -38,6 +49,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_GATE_OUTCOMES_EVIDENCE,
+    declared_gate_calibration,
+)
 from microcosm.build.uk_runtime.release_input_coverage import (
     DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE,
 )
@@ -48,15 +63,40 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 )
 from microcosm.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
+    SPI_DONOR_AGE_DRAW_METHOD,
+    SPI_DONOR_AGE_POPULATION_PERIOD,
+    SPI_DONOR_AGE_POPULATION_RESOURCE,
     SPI_DONOR_INCOME_YEAR,
+    SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE,
+    SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES,
+    SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER,
+    SPI_EMPLOYMENT_PAY_FLOOR_WEEKS,
+    SPI_INCOME_BAND_CARRIER_KEY_COLUMN,
+    SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
+    SPI_INCOME_RECIPIENT_COLUMN,
     SPI_INCOME_UPRATING_VARIABLES,
     SPI_MINIMUM_RECIPIENT_AGE,
+    SPI_RECIPIENT_ROLE_COLUMN,
+    SPI_RECIPIENT_UNEARNED_INCOME_FLOOR_GBP,
     SPI_SOURCE_TI_FORMULA,
+    SPI_STAGE1_CATEGORICAL_PREDICTORS,
+    SPI_STAGE1_PREDICTOR_COLUMNS,
     SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     UKSPIIncomeImputationResult,
+    UKSPIStatePensionAgeGuard,
     assert_frs_hmrc_auxiliary_crosswalk_available,
     impute_uk_spi_income_support,
+    load_spi_donor_age_model,
+    load_spi_employment_pay_floor,
     verify_spi_donor_identity,
+)
+from microcosm.build.uk_runtime.spi_rank_transport import (
+    SPI_STAGE1_ANALOGUE_COLUMNS,
+    SPI_TRANSPORT_DRAW,
+    SPI_TRANSPORT_FOLDS,
+    SPI_TRANSPORT_KEY_COLUMN,
+    SPI_TRANSPORT_SALT,
+    SPI_TRANSPORT_SEED_OFFSET,
 )
 from microcosm.build.uk_runtime.spi_support import (
     DEFAULT_SPI_PRIOR_MASS_SHARE,
@@ -81,6 +121,9 @@ from microcosm.build.uk_runtime.spi_support import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.build.uk_runtime.spi_support import (
+    _spi_prior_mass_change_reason as _support_mass_change_reason,
+)
 from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
 )
@@ -93,9 +136,91 @@ UK_HMRC_SPI_SPINE_REPLAY_REPORT_KIND = "uk_hmrc_spi_income_spine_208_fact_replay
 #: The reserved band carriers' pool: the full prepared tape by published band.
 SPI_SPINE_BAND_DONOR_POOL = (
     "full prepared donor tape by published total income band (TEI + TII), "
-    "narrowed to the carrier's region where that pool holds the minimum"
+    "narrowed to the carrier's SPI age band where that pool holds the age "
+    "minimum (composites never age-match), then to the carrier's region where "
+    "that pool holds the regional minimum"
+)
+SPI_SPINE_BAND_DONOR_DRAW = (
+    "identity_keyed_inverse_cdf: stable_identity_uniforms(draw_key, seed, salt) "
+    "over the pool's cumulative FACT in tape order"
 )
 SPI_SPINE_BAND_DONOR_REGIONAL_POOL_MINIMUM = 20
+SPI_SPINE_BAND_DONOR_AGE_POOL_MINIMUM = 20
+SPI_SPINE_STATE_PENSION_AGE_SOURCE = (
+    "policyengine-uk gov.dwp.state_pension.age at the build instant"
+)
+#: Reviewed declaration of the donor age draw (microcosm#1069, WP2 c5).
+SPI_SPINE_DONOR_AGE_DRAW: Mapping[str, object] = {
+    "artifact_role": "qrf_donor",
+    "resource": SPI_DONOR_AGE_POPULATION_RESOURCE,
+    "population_period": SPI_DONOR_AGE_POPULATION_PERIOD,
+    "method": SPI_DONOR_AGE_DRAW_METHOD,
+    "state_pension_age": SPI_SPINE_STATE_PENSION_AGE_SOURCE,
+}
+#: Reviewed declaration of the State Pension age guard (ruling R8: zero with
+#: a receipt). The SPI State Pension leaf is zeroed before the stage-2 receipt
+#: bridge; imputed synthetic-channel reports after stage 2; the base
+#: channel's State Pension reports before stage 2 trains on them.
+SPI_SPINE_STATE_PENSION_AGE_GUARD: Mapping[str, object] = {
+    "spi_state_pension_leaf": SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+    "spi_channel_columns": [
+        "state_pension_reported",
+        "pension_credit_reported",
+        "winter_fuel_allowance_reported",
+    ],
+    "base_channel_columns": ["state_pension_reported"],
+    "state_pension_age": SPI_SPINE_STATE_PENSION_AGE_SOURCE,
+    "receipt": "rows, weighted people and amounts removed per column and step",
+}
+#: Reviewed declaration of the employment pay floor (spi_income's
+#: SPI_EMPLOYMENT_PAY_FLOOR_* notes give the reasons).
+SPI_SPINE_EMPLOYMENT_PAY_FLOOR: Mapping[str, object] = {
+    "column": "hmrc_spi_pay",
+    "hours_column": "hours_worked",
+    "hours_basis": (
+        "annual usual hours: the FRS adult's usual weekly hours in all jobs "
+        "(TOTHOURS) times 52, read back to weekly hours"
+    ),
+    "weeks_in_year": SPI_EMPLOYMENT_PAY_FLOOR_WEEKS,
+    "hourly_rate": (
+        f"the lower of policyengine-uk {SPI_EMPLOYMENT_PAY_FLOOR_PARAMETER} by the "
+        "twin's age, read as the engine reads the build year (30 April), and the "
+        "twin's own hourly pay (its employment income before the draw over its "
+        "annual hours)"
+    ),
+    "employee_statuses": list(SPI_EMPLOYMENT_PAY_FLOOR_EMPLOYEE_STATUSES),
+    "rows": (
+        "drawn recipients other than reserved band carriers, whose twin has no "
+        "trade (has_trade 0), an employee main job and usual hours above zero, "
+        "and whose drawn PAY is positive; FRS rows, undrawn copies and every "
+        "other leaf keep their values"
+    ),
+    "pay_basis": (
+        "tape PAY is taxable pay, net of net-pay pension contributions and "
+        "salary sacrifice; the minimum wage binds gross pay, and the engine "
+        "reads employment_income (PAY + EPB + TAXTERM) as gross pay, so PAY "
+        "alone is compared with the gross minimum and a twin at the minimum "
+        "wage who pays net-pay contributions can be lifted by up to them"
+    ),
+    "reason": (
+        "stage 1 draws annual tape pay without hours and the tape holds "
+        "part-year workers, so a twin reporting usual employee hours could "
+        "draw a year's pay below what those hours earn at the minimum wage "
+        "(uk-data#629)"
+    ),
+    "annual_income": SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE,
+    "receipt": (
+        "eligible and floored source households (rounded), weighted people, "
+        "the weighted share floored, the weighted mean uplift and the amount "
+        "added; figures on one or two source households are <3, and the "
+        "floored weight, share and amount are given only where neither the "
+        "floored nor the unfloored side rests on one or two; the hourly-pay "
+        "check gives the weighted shares of the drawn employees below the "
+        "minimum wage for their age before and after the floor, beside the FRS "
+        "employees' share, each withheld beside a side on one or two, and the "
+        "eligible rows still below their floor (banded, zero exact)"
+    ),
+}
 
 UK_FRS_HMRC_SPINE_LEAF_OUTPUT_COLUMNS = (
     *FRS_HMRC_RETAINED_LEAF_COLUMNS,
@@ -117,9 +242,12 @@ UK_SPI_SUPPORT_CHANNEL_OUTPUT_COLUMNS = (
     "source_household_key",
 )
 UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS = (
-    "other_investment_income",
     "gift_aid",
     "charitable_investment_gifts",
+    # Restricted residential finance costs: the SPI channel's tape draw; the
+    # FRS channel starts at zero and property_components imputes its
+    # landlords (microcosm#1106).
+    "property_finance_costs",
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
     SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN,
@@ -128,24 +256,34 @@ UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS = (
     SPI_HMRC_OTHER_INCOME_COLUMN,
     SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
     *SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
+    # The rows stage 1 drew, for the later stages that tell tape-concept rows
+    # from FRS-concept ones (microcosm#840).
+    SPI_INCOME_RECIPIENT_COLUMN,
 )
 UK_SPI_INCOME_SPINE_NONNEGATIVE_OUTPUT_COLUMNS = tuple(
     column
     for column in UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS
-    if column != SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN
+    if column
+    not in (
+        SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN,
+        SPI_INCOME_RECIPIENT_COLUMN,
+    )
 )
 UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "employment_income",
     "self_employment_income",
     "savings_interest_income",
     "dividend_income",
+    # The tape's OTHERINV on SPI rows; FRS rows carry their own gilt interest
+    # from frs_spine (microcosm#1418), NS&I being interest (microcosm#1428).
+    "other_investment_income",
     "private_pension_income",
     "property_income",
     "employee_pension_contributions",
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",
@@ -164,15 +302,37 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     "iidb_reported",
     "afcs_reported",
     "bsp_reported",
+    "war_widows_pension_reported",
+    "widowed_parents_allowance_reported",
     "winter_fuel_allowance_reported",
     "council_tax_benefit_reported",
     "jsa_contrib_reported",
     "jsa_income_reported",
     "esa_contrib_reported",
     "esa_income_reported",
+    # The stage-2 fill's trading loss (uk-data#528, microcosm#1095).
+    "trading_loss",
+    # The tape's losses brought forward, moved out of the profit (microcosm#1095).
+    "loss_relief",
+    "ni_class_4_losses_brought_forward",
+    # The stage-2 fill's owner-manager inputs (microcosm#1095).
+    "stands_as_sole_owner_or_partner_of_company",
+    "is_engaged_in_owned_company_trade",
+    "owned_company_is_main_employment",
+    "owned_company_carries_on_trade",
+    "owned_company_carries_on_property_business",
+    "owned_company_income_share",
     FRS_HMRC_PAY_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
     FRS_HMRC_INCPBEN_COLUMN,
+    # The annual income descriptors follow a drawn row's drawn incomes: the
+    # tape's income is the tax year's, so each share is 1, and the twin's
+    # other spells stay only where the tape drew none of that income.
+    *FRS_ANNUAL_INCOME_OUTPUT_COLUMNS,
+    # A drawn row's private pension is the tape's, which books annuity and
+    # trust payments as other income, so its descriptor of them is zero
+    # (microcosm#1428).
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
 )
 
 # Reviewed constants for every load-bearing manifest parameter the spine
@@ -182,7 +342,18 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
 # applies to every declared parameter: it needs (1) a drift assert and (2) an
 # executed-effect receipt, or an explicit absence statement. Seeded draws use
 # twin-build determinism as their executed-effect receipt.
-SPI_SPINE_STAGE1_PREDICTORS = ("age", "gender", "region")
+#: The SPI age band (uk-data#628), gender and region, then the four bridge
+#: predictors the tape and the twin derive from their own leaves (microcosm#840).
+SPI_SPINE_STAGE1_PREDICTORS = SPI_STAGE1_PREDICTOR_COLUMNS
+SPI_SPINE_STAGE1_CATEGORICAL_PREDICTORS = SPI_STAGE1_CATEGORICAL_PREDICTORS
+#: The stage-1 draw: each drawn recipient's twin is located on the FRS
+#: reference forest and the tape forest draws at those uniforms.
+SPI_SPINE_STAGE1_DRAW = SPI_TRANSPORT_DRAW
+SPI_SPINE_REFERENCE_POPULATION = (
+    "uk_frs_raw_spine_base_support_channel claimants and partners "
+    "(is_uc_claimant) aged 16 and over with taxable income under "
+    "recipient_income_rule"
+)
 SPI_SPINE_STAGE2_PREDICTORS = (
     "age",
     "gender",
@@ -195,15 +366,41 @@ SPI_SPINE_STAGE2_OUTPUT_COLUMNS = tuple(
     for column in UK_SPI_INCOME_SPINE_REWRITE_COLUMNS
     if column not in FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS
     and column
-    not in (FRS_HMRC_PAY_COLUMN, FRS_HMRC_UBISJA_COLUMN, FRS_HMRC_INCPBEN_COLUMN)
+    not in (
+        FRS_HMRC_PAY_COLUMN,
+        FRS_HMRC_UBISJA_COLUMN,
+        FRS_HMRC_INCPBEN_COLUMN,
+        # Written from the stage-1 loss draws, not drawn by stage 2.
+        "loss_relief",
+        "ni_class_4_losses_brought_forward",
+        # A stage-1 tape draw, not drawn by stage 2 (microcosm#1418).
+        "other_investment_income",
+    )
+    # Held to the drawn incomes by rule, not drawn by stage 2.
+    and column not in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS
+    and column != ANNUITY_AND_TRUST_INCOME_COLUMN
+)
+#: Both forests are queried over every SPI-channel person aged 16 and over,
+#: and the dependants' rows are discarded (uk-data#504, microcosm#1095).
+SPI_SPINE_STAGE2_TARGET_POPULATION = (
+    "spi_synthetic_support_channel claimants and partners (is_uc_claimant) "
+    "aged 16 and over"
 )
 SPI_SPINE_FRS_CHANNEL_INITIALIZATION = {
     "gift_aid": 0.0,
     "charitable_investment_gifts": 0.0,
 }
-SPI_SPINE_BASE_REDRAW_COLUMNS = ("dividend_income",)
 SPI_SPINE_SUPPORT_CHANNELS = {"base": "frs", "synthetic": SPI_SYNTHETIC_SUPPORT_CHANNEL}
 SPI_SPINE_PRECLONE_GATE_NAME = "e7_spi_synthetic_preclone"
+#: The reviewed SPI-channel prior share of households with a member at or over
+#: State Pension age, and the stratum rule the manifest declares beside it
+#: (microcosm#1069 c6). The channel's households are drawn unweighted with one
+#: weight per region, so a region-only allocation gave the channel more
+#: pension-age mass than the FRS design gives pension-age households, every
+#: adult of it on a taxpayer's income. 0.2 (ruled 2026-10-02 over the measured
+#: 0.5) keeps the low-income pensioners the benefit caseloads need in the prior.
+SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE = 0.2
+SPI_SPINE_PENSION_AGE_STRATUM = "any_member_at_or_over_state_pension_age"
 SPI_SPINE_EFFECTIVE_MASS_COLUMNS = ("gift_aid", "charitable_investment_gifts")
 
 
@@ -212,13 +409,19 @@ class UKFRSHMRCSpineLeavesResult:
     frame: Frame
     source_signal_rows: dict[str, int]
     structural_zero_columns: tuple[str, ...]
+    employer_pension_contributions: Mapping[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_FRS_HMRC_SPINE_LEAVES_STAGE_NAME,
             "source_signal_rows": dict(self.source_signal_rows),
             "structural_zero_columns": list(self.structural_zero_columns),
         }
+        if self.employer_pension_contributions is not None:
+            evidence["employer_pension_contributions"] = dict(
+                self.employer_pension_contributions
+            )
+        return evidence
 
 
 @dataclass(frozen=True)
@@ -232,7 +435,7 @@ class UKSPIIncomeSpineResult:
     post_draw_identity_rows: int
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_HMRC_SPI_INCOME_SPINE_STAGE_NAME,
             "source_vintages": {
                 "spi_donor": "2022-23",
@@ -249,9 +452,26 @@ class UKSPIIncomeSpineResult:
                 self.imputation.reviewed_absent_stage2_outputs
             ),
             "recipient_minimum_age": SPI_MINIMUM_RECIPIENT_AGE,
+            "recipient_role_column": SPI_RECIPIENT_ROLE_COLUMN,
+            "recipient_domain": self.imputation.recipient_domain,
+            "state_pension_age": self.imputation.state_pension_age,
+            "bridge_validation": self.imputation.bridge_validation,
+            "stage1_transport": self.imputation.stage1_transport,
+            "reference_training_rows": self.imputation.reference_training_rows,
             "pension_receipt_bridge": self.imputation.pension_receipt_bridge,
             "income_uprating": self.imputation.income_uprating,
             "band_donor_resample": self.imputation.band_donor_resample,
+            "donor_age_draw": self.imputation.donor_age_draw,
+            "donor_property_finance_costs": (
+                self.imputation.donor_property_finance_costs
+            ),
+            "gainful_self_employment_refresh": (
+                self.imputation.gainful_self_employment_refresh
+            ),
+            "pension_coherence": self.imputation.pension_coherence,
+            "gift_anchor": self.imputation.gift_anchor,
+            "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
+            "employment_pay_floor": self.imputation.employment_pay_floor,
             "targets": {
                 "count": len(self.source_targets.targets),
                 "classification": dict(self.replay_report.summary),
@@ -268,6 +488,9 @@ class UKSPIIncomeSpineResult:
                 "exact": True,
             },
         }
+        if self.imputation.gate_outcomes:
+            evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.imputation.gate_outcomes)
+        return evidence
 
 
 @dataclass(frozen=True)
@@ -294,7 +517,9 @@ class UKFRSHMRCSpineLeavesStageTransform:
 
     def __call__(self, frame: Frame) -> Frame:
         validate_uk_national_frame(frame)
-        artifacts = _artifact_by_table(self.stage, expected=("adult", "benefits"))
+        artifacts = _artifact_by_table(
+            self.stage, expected=("adult", "benefits", "job", "penprov")
+        )
         adult, adult_identity = _read_raw_frs_table(
             self.frs_raw_dir / str(artifacts["adult"]["locator"]),
             expected_filename="adult.tab",
@@ -307,10 +532,26 @@ class UKFRSHMRCSpineLeavesStageTransform:
             source_vintage=str(artifacts["benefits"].get("vintage", "unspecified")),
             required_columns=("sernum", "person", "benefit", "benamt", "var2"),
         )
+        penprov, penprov_identity = _read_raw_frs_table(
+            self.frs_raw_dir / str(artifacts["penprov"]["locator"]),
+            expected_filename="penprov.tab",
+            source_vintage=str(artifacts["penprov"].get("vintage", "unspecified")),
+            required_columns=("sernum", "person", "stemppen"),
+        )
+        job, job_identity = _read_raw_frs_table(
+            self.frs_raw_dir / str(artifacts["job"]["locator"]),
+            expected_filename="job.tab",
+            source_vintage=str(artifacts["job"].get("vintage", "unspecified")),
+            required_columns=("sernum", "person", "jobsect"),
+        )
         _assert_identity_matches_artifact(adult_identity.evidence(), artifacts["adult"])
         _assert_identity_matches_artifact(
             benefits_identity.evidence(), artifacts["benefits"]
         )
+        _assert_identity_matches_artifact(
+            penprov_identity.evidence(), artifacts["penprov"]
+        )
+        _assert_identity_matches_artifact(job_identity.evidence(), artifacts["job"])
         source_leaves = _materialize_source_leaves(adult, benefits)
         person = frame.table("person").copy()
         missing_ids = sorted(set(source_leaves.index) - set(person["person_id"]))
@@ -329,21 +570,33 @@ class UKFRSHMRCSpineLeavesStageTransform:
         aligned = source_leaves.reindex(person["person_id"], fill_value=0.0)
         for column in FRS_HMRC_RETAINED_LEAF_COLUMNS:
             person[column] = aligned[column].to_numpy(dtype=float)
-        if "employee_pension_contributions" not in person:
+        # Employer contributions: each member of an employer scheme draws an
+        # ASHE contribution rate for their scheme type and sector, applied to
+        # their pay (microcosm#1069 R6), replacing the incumbent's three times
+        # the employee contribution.
+        if "employment_income" not in person:
             raise ValueError(
-                "FRS HMRC spine leaves require employee_pension_contributions "
-                "to derive employer pension contributions."
+                "FRS HMRC spine leaves require employment_income to draw employer "
+                "pension contributions."
             )
-        employee = pd.to_numeric(
-            person["employee_pension_contributions"], errors="coerce"
+        pay = pd.to_numeric(person["employment_income"], errors="coerce")
+        if pay.isna().any():
+            raise ValueError("employment_income must be finite.")
+        scheme, sector = employer_scheme_and_sector(
+            person["person_id"].to_numpy(),
+            penprov.assign(
+                source_person_id=_raw_source_person_ids(penprov, label="PENPROV")
+            ),
+            job.assign(source_person_id=_raw_source_person_ids(job, label="JOB")),
         )
-        if employee.isna().any() or (employee < 0.0).any():
-            raise ValueError(
-                "employee_pension_contributions must be finite and non-negative."
-            )
-        person[EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN] = 3.0 * employee.to_numpy(
-            dtype=float
+        employer_amounts, employer_receipt = draw_employer_pension_contributions(
+            person["person_id"].to_numpy(),
+            employment_income=pay.to_numpy(dtype=float),
+            scheme=scheme,
+            sector=sector,
+            rates=load_ashe_employer_rates(),
         )
+        person[EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN] = employer_amounts
         result_frame = uk_national_frame(
             person=person,
             benunit=frame.table("benunit"),
@@ -364,6 +617,7 @@ class UKFRSHMRCSpineLeavesStageTransform:
             structural_zero_columns=tuple(
                 column for column, rows in source_signal_rows.items() if rows == 0
             ),
+            employer_pension_contributions=employer_receipt,
         )
         object.__setattr__(self, "last_result", result)
         return result.frame
@@ -386,18 +640,29 @@ class UKSPISupportChannelStageTransform:
     # by the survey-side sample fraction so the prior-mass pairing holds at
     # every rung (f100 keeps the declared count exactly).
     sample_fraction: float = 1.0
+    # The engine's State Pension age at the build instant; None reads it from
+    # policyengine-uk (tests without the engine pass it).
+    state_pension_age: int | None = None
     # Populated only by a live run; resume paths must re-run or skip evidence.
     last_result: UKSPISupportResult | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
         validate_uk_national_frame(frame)
         tables = engine_tables(frame)
-        count, share, strata, declarations = _support_stage_parameters(
-            self.stage,
-            seed=self.seed,
+        count, share, strata, declarations, pension_age_share = (
+            _support_stage_parameters(self.stage, seed=self.seed)
         )
         if self.sample_fraction != 1.0 and count is not None:
             count = max(1, int(round(count * self.sample_fraction)))
+        state_pension_age = None
+        if pension_age_share is not None:
+            state_pension_age = (
+                self.state_pension_age
+                if self.state_pension_age is not None
+                else uk_take_up_population_policy(
+                    uk_time_period(frame)
+                ).state_pension_age
+            )
         result = build_uk_spi_support_channel(
             tables["person"],
             tables["benunit"],
@@ -410,6 +675,8 @@ class UKSPISupportChannelStageTransform:
             input_weight_kind=uk_household_weight_kind(frame),
             mass_log=frame.mass_log,
             zero_weight_declarations=declarations,
+            pension_age_share=pension_age_share,
+            state_pension_age=state_pension_age,
         )
         if result.household_weight_kind is not WeightKind.IMPORTANCE:
             got = (
@@ -448,6 +715,15 @@ class UKSPISupportChannelStageTransform:
                 "stage": "spi_support_channel",
                 "spi_households": self.last_result.n_spi_households,
                 "spi_prior_mass_share": self.last_result.spi_prior_mass_share,
+                "pension_age_spi_prior_mass_share": (
+                    self.last_result.pension_age_spi_prior_mass_share
+                ),
+                "state_pension_age": self.last_result.state_pension_age,
+                "pension_age_allocation": (
+                    None
+                    if self.last_result.pension_age_allocation is None
+                    else dict(self.last_result.pension_age_allocation)
+                ),
                 "household_weight_kind": (
                     self.last_result.household_weight_kind.value
                     if self.last_result.household_weight_kind is not None
@@ -536,7 +812,6 @@ class UKSPIIncomeSpineStageTransform:
         assert_frs_hmrc_auxiliary_crosswalk_available(tables["person"])
         support = _support_result_from_frame(frame, tables)
         stage1_op = _operation(self.stage, "fit_weighted_qrf_stage1")
-        redraw_op = _operation(self.stage, "redraw_columns_from_fitted_qrf")
         resample_op = _optional_operation(self.stage, "resample_band_donor_leaves")
         band_donor_resample = (
             None
@@ -549,7 +824,42 @@ class UKSPIIncomeSpineStageTransform:
                     resample_op.parameters["regional_pool_minimum"]
                 ),
                 "seed": int(resample_op.parameters["seed"]),
+                **(
+                    {
+                        "age_pool_minimum": int(
+                            resample_op.parameters["age_pool_minimum"]
+                        )
+                    }
+                    if "age_pool_minimum" in resample_op.parameters
+                    else {}
+                ),
             }
+        )
+        age_op = _optional_operation(self.stage, "draw_spi_donor_ages_by_population")
+        guard_op = _optional_operation(
+            self.stage, "zero_pension_age_reports_below_state_pension_age"
+        )
+        donor_age_model = (
+            load_spi_donor_age_model(uk_time_period(frame))
+            if age_op is not None or guard_op is not None
+            else None
+        )
+        floor_op = _optional_operation(
+            self.stage, "floor_spi_employment_pay_at_minimum_wage"
+        )
+        employment_pay_floor = (
+            None
+            if floor_op is None
+            else load_spi_employment_pay_floor(uk_time_period(frame))
+        )
+        state_pension_age_guard = (
+            None
+            if guard_op is None or donor_age_model is None
+            else UKSPIStatePensionAgeGuard(
+                state_pension_age=donor_age_model.state_pension_age,
+                spi_channel_columns=tuple(guard_op.parameters["spi_channel_columns"]),
+                base_channel_columns=tuple(guard_op.parameters["base_channel_columns"]),
+            )
         )
         imputation = impute_uk_spi_income_support(
             support,
@@ -557,13 +867,15 @@ class UKSPIIncomeSpineStageTransform:
             seed=self.seed,
             n_estimators=self.qrf_estimators,
             donor_sample_size=self.donor_sample_size,
+            # A sampled rung or a synthetic fixture may hold too few predictor
+            # cells to cross-fit the reference; a full build never does.
+            allow_in_sample_reference=self.sampled_rung,
             build_period=uk_time_period(frame),
             verified_donor=donor_identity,
             donor_table=self.donor_table,
             initialize_frs_channel_columns=stage1_op.parameters[
                 "initialize_frs_channel_columns"
             ],
-            stage1_base_redraw_columns=redraw_op.parameters["columns"],
             rebase_income_to_build_period=stage1_op.parameters[
                 "rebase_income_to_build_period"
             ],
@@ -574,6 +886,18 @@ class UKSPIIncomeSpineStageTransform:
                 ]
             ),
             band_donor_resample=band_donor_resample,
+            donor_age_model=donor_age_model if age_op is not None else None,
+            state_pension_age_guard=state_pension_age_guard,
+            state_pension_age=(
+                None if donor_age_model is None else donor_age_model.state_pension_age
+            ),
+            employment_pay_floor=employment_pay_floor,
+            stage1_gate_calibration=declared_gate_calibration(
+                self.stage, "fit_weighted_qrf_stage1"
+            ),
+            stage2_gate_calibration=declared_gate_calibration(
+                self.stage, "fit_weighted_qrf_stage2"
+            ),
         )
         result_frame = uk_national_frame(
             person=imputation.person,
@@ -800,8 +1124,15 @@ def _build_spine_replay_report(
             for record in imputation.fit_weight_records
         },
         "donor_rows": imputation.donor_rows,
+        "reference_training_rows": imputation.reference_training_rows,
         "stage2_training_rows": imputation.stage2_training_rows,
         "spi_prediction_rows": imputation.spi_prediction_rows,
+        "stage1_draw": SPI_SPINE_STAGE1_DRAW,
+        "stage1_transport": imputation.stage1_transport,
+        "bridge_validation": imputation.bridge_validation,
+        "recipient_domain": imputation.recipient_domain,
+        "gainful_self_employment_refresh": imputation.gainful_self_employment_refresh,
+        "pension_coherence": imputation.pension_coherence,
         "post_draw_identity": {
             "formula": SPI_SOURCE_TI_FORMULA,
             "rows_checked": identity_rows,
@@ -828,7 +1159,13 @@ def _support_stage_parameters(
     stage: SourceStageSpec,
     *,
     seed: int,
-) -> tuple[int, float, tuple[str, ...], tuple[UKZeroWeightStratumDeclaration, ...]]:
+) -> tuple[
+    int,
+    float,
+    tuple[str, ...],
+    tuple[UKZeroWeightStratumDeclaration, ...],
+    float | None,
+]:
     stack = _operation(stage, "stack_zero_weight_donors")
     gate = _operation(stage, "gate_zero_weight_strata")
     allocation = _operation(stage, "allocate_zero_weight_prior_mass")
@@ -853,6 +1190,22 @@ def _support_stage_parameters(
     strata = tuple(allocation.parameters.get("strata", ()))
     if strata != ("region",):
         raise ValueError("SPI support spine allocation must use strata ['region'].")
+    pension_age_share = allocation.parameters.get("pension_age_share")
+    if pension_age_share is not None:
+        if pension_age_share != SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE:
+            raise ValueError(
+                "SPI support pension-age prior-mass share drifted from "
+                f"{SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE}."
+            )
+        if allocation.parameters.get("pension_age_stratum") != (
+            SPI_SPINE_PENSION_AGE_STRATUM
+        ):
+            raise ValueError(
+                "SPI support pension-age stratum must be "
+                f"{SPI_SPINE_PENSION_AGE_STRATUM!r}."
+            )
+    elif "pension_age_stratum" in allocation.parameters:
+        raise ValueError("SPI support pension-age stratum declared without a share.")
     declarations = _coerce_declarations(gate.parameters.get("declarations", ()))
     if len(declarations) != 1:
         raise ValueError("SPI support gate must declare exactly one pre-clone stratum.")
@@ -871,6 +1224,26 @@ def _support_stage_parameters(
         float(allocation.parameters["share"]),
         strata,
         declarations,
+        None if pension_age_share is None else float(pension_age_share),
+    )
+
+
+def uk_spi_support_mass_change_reason(stage: SourceStageSpec) -> str:
+    """The reason the declared SPI support allocation writes on its MassChangeRecord.
+
+    Read from the manifest's shares, so the readers that reconstruct or require
+    the record (the SPI income stage's graph kernel and the release-input
+    coverage manifest) carry the stratified sentence once a pension-age share is
+    declared (microcosm#1069 c6).
+    """
+
+    allocation = _operation(stage, "allocate_zero_weight_prior_mass")
+    pension_age_share = allocation.parameters.get("pension_age_share")
+    return _support_mass_change_reason(
+        float(allocation.parameters["share"]),
+        pension_age_share=(
+            None if pension_age_share is None else float(pension_age_share)
+        ),
     )
 
 
@@ -883,7 +1256,12 @@ def _assert_income_stage_parameters(
 ) -> None:
     stage1 = _operation(stage, "fit_weighted_qrf_stage1")
     stage2 = _operation(stage, "fit_weighted_qrf_stage2")
-    redraw = _operation(stage, "redraw_columns_from_fitted_qrf")
+    if _optional_operation(stage, "redraw_columns_from_fitted_qrf") is not None:
+        raise ValueError(
+            "SPI income stage must not redraw FRS-channel incomes from the SPI "
+            "forest: FRS respondents keep their reported dividends "
+            "(uk-data#498, microcosm#1095)."
+        )
     effective_mass = _operation(stage, "gate_distributional_effective_mass")
     if stage1.parameters.get("seed") != seed:
         raise ValueError("SPI income stage-1 seed drifted from the reviewed value.")
@@ -902,8 +1280,66 @@ def _assert_income_stage_parameters(
         raise ValueError("SPI income donor bootstrap must refit at uniform weight.")
     if tuple(stage1.parameters.get("predictors", ())) != SPI_SPINE_STAGE1_PREDICTORS:
         raise ValueError("SPI income stage-1 predictors drifted.")
+    if (
+        tuple(stage1.parameters.get("categorical_predictors", ()))
+        != SPI_SPINE_STAGE1_CATEGORICAL_PREDICTORS
+    ):
+        raise ValueError("SPI income stage-1 categorical predictors drifted.")
+    bridge = stage1.parameters.get("bridge_predictors")
+    if not isinstance(bridge, Mapping) or set(bridge) != set(
+        SPI_SPINE_STAGE1_PREDICTORS[3:]
+    ):
+        raise ValueError(
+            "SPI income stage-1 bridge predictors drifted from the reviewed set "
+            "(microcosm#840)."
+        )
+    rule = stage1.parameters.get("recipient_income_rule")
+    if (
+        not isinstance(rule, Mapping)
+        or rule.get("unearned_income_floor_gbp")
+        != SPI_RECIPIENT_UNEARNED_INCOME_FLOOR_GBP
+    ):
+        raise ValueError(
+            "SPI income recipient income rule drifted from the reviewed floor "
+            "(microcosm#840)."
+        )
+    if stage1.parameters.get("draw") != SPI_SPINE_STAGE1_DRAW:
+        raise ValueError("SPI income stage-1 draw drifted from the reviewed method.")
+    reference = stage1.parameters.get("reference_model")
+    if not isinstance(reference, Mapping):
+        raise ValueError("SPI income stage-1 reference model is not declared.")
+    if reference.get("seed") != seed + SPI_TRANSPORT_SEED_OFFSET:
+        raise ValueError(
+            "SPI reference forest seed drifted from the reviewed seed + 3 "
+            "derivation convention."
+        )
+    if reference.get("n_estimators") not in (None, qrf_estimators):
+        raise ValueError("SPI reference forest estimator count drifted.")
+    if reference.get("population") != SPI_SPINE_REFERENCE_POPULATION:
+        raise ValueError("SPI reference forest population drifted.")
+    if reference.get("folds") != SPI_TRANSPORT_FOLDS:
+        raise ValueError(
+            "SPI reference forest fold count drifted from the reviewed cross-fit."
+        )
+    if dict(reference.get("analogue_columns", {})) != dict(SPI_STAGE1_ANALOGUE_COLUMNS):
+        raise ValueError(
+            "SPI reference forest analogue columns drifted from the reviewed map."
+        )
+    identity = stage1.parameters.get("identity_uniforms")
+    if (
+        not isinstance(identity, Mapping)
+        or identity.get("key") != SPI_TRANSPORT_KEY_COLUMN
+        or identity.get("seed") != seed
+        or identity.get("salt") != f"{SPI_TRANSPORT_SALT}:<target>:<sign|quantile>"
+    ):
+        raise ValueError("SPI income stage-1 identity uniforms drifted.")
     if stage1.parameters.get("recipient_minimum_age") != SPI_MINIMUM_RECIPIENT_AGE:
         raise ValueError("SPI income recipient age domain drifted.")
+    if stage1.parameters.get("recipient_role_column") != SPI_RECIPIENT_ROLE_COLUMN:
+        raise ValueError(
+            "SPI income recipient role drifted: the tape's draws go to FRS "
+            "claimants and partners only (uk-data#504, microcosm#1095)."
+        )
     if stage1.parameters.get("rebase_income_to_build_period") is not True:
         raise ValueError("SPI income build-year rebasing drifted.")
     if stage1.parameters.get("donor_income_period") != SPI_DONOR_INCOME_YEAR:
@@ -920,17 +1356,13 @@ def _assert_income_stage_parameters(
         raise ValueError("SPI income FRS-channel initialization map drifted.")
     if tuple(stage2.parameters.get("predictors", ())) != SPI_SPINE_STAGE2_PREDICTORS:
         raise ValueError("SPI income stage-2 predictors drifted.")
+    if stage2.parameters.get("target_population") != SPI_SPINE_STAGE2_TARGET_POPULATION:
+        raise ValueError("SPI income stage-2 target population drifted.")
     if tuple(stage2.parameters.get("outputs", ())) != SPI_SPINE_STAGE2_OUTPUT_COLUMNS:
         raise ValueError("SPI income stage-2 outputs drifted.")
     reviewed_absent = stage2.parameters.get("reviewed_absent_outputs", {})
     if set(reviewed_absent) != set(SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS):
         raise ValueError("SPI income stage-2 reviewed-absent outputs drifted.")
-    if redraw.parameters.get("fit") != "stage1":
-        raise ValueError("SPI income base redraw must use the stage-1 fit.")
-    if redraw.parameters.get("rows") != "base_support_channel":
-        raise ValueError("SPI income base redraw must target the base support channel.")
-    if tuple(redraw.parameters.get("columns", ())) != SPI_SPINE_BASE_REDRAW_COLUMNS:
-        raise ValueError("SPI income base redraw columns drifted.")
     if (
         tuple(effective_mass.parameters.get("columns", ()))
         != SPI_SPINE_EFFECTIVE_MASS_COLUMNS
@@ -956,8 +1388,12 @@ def _assert_income_stage_parameters(
             "band_lower_bounds": list(SPI_INCOME_BAND_DONOR_LOWER_BOUNDS),
             "pool": SPI_SPINE_BAND_DONOR_POOL,
             "regional_pool_minimum": SPI_SPINE_BAND_DONOR_REGIONAL_POOL_MINIMUM,
+            "age_pool_minimum": SPI_SPINE_BAND_DONOR_AGE_POOL_MINIMUM,
             "weighting": "FACT",
             "with_replacement": True,
+            "draw": SPI_SPINE_BAND_DONOR_DRAW,
+            "draw_key": SPI_INCOME_BAND_CARRIER_KEY_COLUMN,
+            "salt": SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
             "outputs": "stage-1 outputs, uprated as the stage-1 draws",
             "seed": seed + 2,
         }
@@ -971,6 +1407,31 @@ def _assert_income_stage_parameters(
             raise ValueError(
                 "SPI income resample_band_donor_leaves declaration drifted from "
                 f"the reviewed mapping on parameter(s) {drifted}."
+            )
+    for kind, reviewed in (
+        ("draw_spi_donor_ages_by_population", SPI_SPINE_DONOR_AGE_DRAW),
+        (
+            "zero_pension_age_reports_below_state_pension_age",
+            SPI_SPINE_STATE_PENSION_AGE_GUARD,
+        ),
+        (
+            "floor_spi_employment_pay_at_minimum_wage",
+            SPI_SPINE_EMPLOYMENT_PAY_FLOOR,
+        ),
+    ):
+        operation = _optional_operation(stage, kind)
+        if operation is None:
+            continue
+        actual = dict(operation.parameters)
+        if actual != dict(reviewed):
+            drifted = sorted(
+                key
+                for key in {*actual, *reviewed}
+                if actual.get(key) != reviewed.get(key)
+            )
+            raise ValueError(
+                f"SPI income {kind} declaration drifted from the reviewed mapping "
+                f"on parameter(s) {drifted}."
             )
 
 
@@ -1054,4 +1515,5 @@ __all__ = [
     "UKSPIIncomeSpineResult",
     "UKSPIIncomeSpineStageTransform",
     "UKSPISupportChannelStageTransform",
+    "uk_spi_support_mass_change_reason",
 ]

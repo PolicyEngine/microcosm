@@ -1,0 +1,1 @@
+A target's Chronicle selector can declare the geography its fact sits at, and the declaration wins over the generator's inferred pin: a wrong inference otherwise reads as "no fact" (microcosm#1095 R8, María's ruling of 2026-10-29). The authoring refuses a pin that disagrees with a declared geography, so the two cannot drift apart.

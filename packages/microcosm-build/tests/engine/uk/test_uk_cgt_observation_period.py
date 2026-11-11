@@ -123,6 +123,12 @@ def test_derived_cgt_taxable_income_is_the_income_the_engine_stacks_gains_on():
             "gov.hmrc.income_tax.rates.uk[2].threshold": {
                 "2020-01-01.2030-12-31": 2_000_000
             },
+            # The reform only measures; from policyengine-uk 2.134.0 a
+            # retention-rate elasticity of 1 is the default realisation
+            # response (pe-uk#2419), which would move the gains it inverts.
+            "gov.simulation.capital_gains_responses.elasticity": {
+                "2020-01-01.2030-12-31": 0
+            },
         },
     )
     parameters = simulation.tax_benefit_system.parameters(f"{year}-01-01").gov.hmrc

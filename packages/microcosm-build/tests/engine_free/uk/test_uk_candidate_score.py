@@ -30,6 +30,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.weight_year import (
+    uk_dataset_year_frame,
+    uk_weight_projection_factor,
+)
 from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import WeightKind
@@ -63,7 +67,14 @@ def _registry() -> TargetRegistry:
     )
 
 
-def _write(path: Path, *, measure_a, measure_b=None) -> None:
+def _write(
+    path: Path,
+    *,
+    measure_a,
+    measure_b=None,
+    time_period: str = "2025",
+    solve_year: int | None = None,
+) -> None:
     n = 2
     person = pd.DataFrame(
         {
@@ -80,10 +91,12 @@ def _write(path: Path, *, measure_a, measure_b=None) -> None:
         person=person,
         benunit=benunit,
         household=pd.DataFrame(household),
-        time_period="2025",
+        time_period=time_period,
         weight_kind=WeightKind.CALIBRATED,
         household_weights=np.ones(n),
     )
+    if solve_year is not None:
+        frame = uk_dataset_year_frame(frame, solve_year=solve_year)
     write_uk_national_frame(frame, path)
 
 
@@ -110,12 +123,21 @@ def _intercept(monkeypatch, *, failing_h5: Path, message: str, receipt: dict):
     original = candidate_score._scored_frame
     calls: list[dict] = []
 
-    def fake(h5_path, registry, calibration_year, factory, *, band_edge_registry=None):
+    def fake(
+        h5_path,
+        registry,
+        calibration_year,
+        factory,
+        *,
+        band_edge_registry=None,
+        incumbent=False,
+    ):
         calls.append(
             {
                 "h5": Path(h5_path),
                 "targets": [spec.name for spec in registry.specs],
                 "band_edge_registry": band_edge_registry,
+                "incumbent": incumbent,
             }
         )
         if Path(h5_path) == failing_h5 and any(
@@ -210,6 +232,10 @@ def test_prunes_the_target_the_incumbent_cannot_materialize_and_scores_the_rest(
     scoring_calls = [call for call in calls if call["targets"] == ["target_a"]]
     assert scoring_calls and all(
         call["band_edge_registry"] is full for call in scoring_calls
+    )
+    # Only the incumbent may read its current income for the annual measures.
+    assert calls and all(
+        call["incumbent"] == (call["h5"] == incumbent) for call in calls
     )
     warning = pruned_warning(score)
     assert warning is not None
@@ -351,6 +377,46 @@ def test_verdict_fails_when_the_incumbent_fits_better(tmp_path):
     assert evaluation_block(score) == score["evaluation"]
 
 
+def test_each_file_is_scored_with_the_weights_the_engine_gives_it(tmp_path):
+    """microcosm#796 A19: a file is read at the scored year through the
+    engine's own projection of its household weights from the file's year."""
+    pytest.importorskip("tables")
+    released = tmp_path / "released.h5"
+    as_solved = tmp_path / "as_solved.h5"
+    # Both hit the two targets exactly at their solved weights of one. One is
+    # written at its dataset year, as a release is; the other as solved.
+    _write(
+        released,
+        measure_a=[5.0, 5.0],
+        measure_b=[10.0, 10.0],
+        time_period="2024",
+        solve_year=2025,
+    )
+    _write(as_solved, measure_a=[5.0, 5.0], measure_b=[10.0, 10.0], time_period="2024")
+    factor = uk_weight_projection_factor(2024, 2025)
+
+    score = evaluate_uk_candidate_against_incumbent(
+        candidate_h5=released,
+        incumbent_h5=as_solved,
+        candidate_sha256=_sha256_file(released),
+        incumbent_sha256=_sha256_file(as_solved),
+        target_registry=_registry(),
+        calibration_year=2025,
+    )
+
+    rule_1 = score["evaluation"]["rule_1"]
+    # The release reads back its solved weights; the as-solved file reads
+    # high on every row by the population growth of the year after its own.
+    assert rule_1["candidate_full_loss"] == pytest.approx(0.0, abs=1e-12)
+    assert rule_1["incumbent_full_loss"] == pytest.approx(factor - 1.0, rel=1e-9)
+    side = {"dataset_year": 2024, "engine_projection_factor": factor}
+    assert score["weight_year"] == {
+        "scored_year": 2025,
+        "candidate": side,
+        "incumbent": side,
+    }
+
+
 def _evaluate(candidate, incumbent, **overrides):
     kwargs = {
         "candidate_h5": candidate,
@@ -460,7 +526,15 @@ def test_a_gap_shared_by_both_artifacts_still_refuses_on_the_candidate(
     original = candidate_score._scored_frame
     calls: list[tuple[Path, list[str]]] = []
 
-    def fake(h5_path, registry, calibration_year, factory, *, band_edge_registry=None):
+    def fake(
+        h5_path,
+        registry,
+        calibration_year,
+        factory,
+        *,
+        band_edge_registry=None,
+        incumbent=False,
+    ):
         calls.append((Path(h5_path), [spec.name for spec in registry.specs]))
         if any(spec.name == "target_b" for spec in registry.specs):
             raise MeasureResolutionError(

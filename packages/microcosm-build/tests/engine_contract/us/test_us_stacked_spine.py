@@ -36,6 +36,7 @@ def test_puf_finalize_masks_earnings_allocation_to_age_15_plus() -> None:
         person_outputs=tuple(predictions.columns),
         tax_unit_outputs=(),
         absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        tail_bound_diagnostics=[],
     )
     finalized_person = finalized.table("person")
     acs = finalized_person[support_channel_column("person")].eq("acs")

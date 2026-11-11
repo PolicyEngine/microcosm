@@ -70,11 +70,47 @@ def test_area_support_reviewed_exclusion_records_measured_shortfalls() -> None:
     assert result.passed
     assert result.details["excluded_area_count"] == 1
     excluded = result.details["reviewed_exclusions"]["constituency/C1"]
-    assert excluded["rows"] == 2
-    assert excluded["ess"] == 2.0
-    assert excluded["sources"] == 2
-    assert excluded["record"] == record
-    assert len(excluded["shortfalls"]) == 3
+    # The area's measured support beside the floors it misses (María's ruling
+    # of 2026-10-26 dropped the withholding of microcosm#1301).
+    assert excluded == {
+        "shortfalls": ["rows 2 < 50", "ESS 2 < 50", "distinct sources 2 < 50"],
+        "rows": 2,
+        "ess": 2.0,
+        "sources": 2,
+        "record": record,
+    }
+
+
+def test_area_support_details_and_failures_state_the_area_figures() -> None:
+    support = pd.concat(
+        [
+            _area_support(rows=30, ess=25.5, sources=20),
+            _area_support(rows=40, ess=35.0, sources=45).assign(area_code="C2"),
+        ],
+        ignore_index=True,
+    )
+    result = area_support_gate(
+        support,
+        area_roster={"constituency": ["C1", "C2"]},
+        geography_levels=["constituency"],
+        minimum_rows=50,
+        minimum_effective_sample_size=50.0,
+        minimum_distinct_sources=50,
+        reviewed_exclusions={"constituency/C1": {"reason": "reviewed"}},
+    )
+
+    assert result.failures == (
+        "constituency/C2: rows 40 < 50, ESS 35 < 50, distinct sources 45 < 50",
+    )
+    assert result.details["by_geography_level"] == {
+        "constituency": {
+            "areas_checked": 2,
+            "areas_below_floor": 2,
+            "minimum_rows": 30,
+            "minimum_effective_sample_size": 25.5,
+            "minimum_distinct_sources": 20,
+        }
+    }
 
 
 def test_area_support_stale_and_unknown_exclusions_fail() -> None:
@@ -101,6 +137,52 @@ def test_area_support_stale_and_unknown_exclusions_fail() -> None:
     )
     assert not unknown.passed
     assert unknown.details["unknown_exclusions"] == ["constituency/X"]
+
+
+def test_area_support_below_floor_follows_the_gate_rule() -> None:
+    from microcosm.build.gates import area_support_below_floor
+
+    support = pd.concat(
+        [
+            _area_support(rows=50, ess=50.0, sources=50),
+            _area_support(rows=49, ess=60.0, sources=60).assign(area_code="C2"),
+            _area_support(rows=60, ess=49.9, sources=60).assign(area_code="C3"),
+            _area_support(rows=60, ess=60.0, sources=49).assign(area_code="C4"),
+        ],
+        ignore_index=True,
+    )
+    floors = {
+        "minimum_rows": 50,
+        "minimum_effective_sample_size": 50.0,
+        "minimum_distinct_sources": 50,
+    }
+    flags = area_support_below_floor(support, **floors)
+    assert flags.tolist() == [False, True, True, True]
+    gate = area_support_gate(
+        support,
+        area_roster={"constituency": ["C1", "C2", "C3", "C4"]},
+        geography_levels=["constituency"],
+        **floors,
+    )
+    failed = {failure.split(":")[0] for failure in gate.failures}
+    assert failed == {
+        f"constituency/{code}"
+        for code, flag in zip(support["area_code"], flags, strict=True)
+        if flag
+    }
+    # A reviewed exclusion passes the gate but leaves the area flagged.
+    excused = area_support_gate(
+        support,
+        area_roster={"constituency": ["C1", "C2", "C3", "C4"]},
+        geography_levels=["constituency"],
+        reviewed_exclusions={
+            f"constituency/{code}": {"reason": "reviewed"}
+            for code in ("C2", "C3", "C4")
+        },
+        **floors,
+    )
+    assert excused.passed
+    assert area_support_below_floor(support, **floors).tolist() == flags.tolist()
 
 
 class TestGateResultInvariants:
@@ -246,6 +328,65 @@ class TestLedgerCompileParityGate:
         assert (
             generator_result.details["signed_differences"]
             == (list_result.details["signed_differences"])
+        )
+
+    _UNRESOLVED = (
+        {"name": "hmrc.tax", "period": 2025, "reason": "no_fact_at_or_before_period"},
+    )
+    _SIGNED_ABSENT = (
+        {
+            "fixture_value": 10.0,
+            "kind": "ledger_absent",
+            "name": "hmrc.tax",
+            "period": 2025,
+            "reason": "reviewed: the pinned feed no longer carries this fact",
+        },
+    )
+
+    def test_signed_ledger_absent_row_passes_with_the_compiles_report(self) -> None:
+        # The signed resource classifies a fixture row whose reference did not
+        # resolve as ledger_absent. The gate reproduces that kind only from the
+        # compile's own report of unsupported references.
+        result = ledger_compile_parity_gate(
+            TargetRegistry((), country="uk"),
+            self._registry(10.0),
+            signed_differences=self._SIGNED_ABSENT,
+            unsupported=self._UNRESOLVED,
+        )
+
+        assert result.passed, result.failures
+        assert result.details["unsupported_reference_count"] == 1
+        assert result.details["signed_differences"][0]["live_kind"] == "ledger_absent"
+
+    def test_signed_ledger_absent_row_fails_without_the_compiles_report(self) -> None:
+        result = ledger_compile_parity_gate(
+            TargetRegistry((), country="uk"),
+            self._registry(10.0),
+            signed_differences=self._SIGNED_ABSENT,
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "signed ledger parity difference hmrc.tax[2025] changed kind: "
+            "signed='ledger_absent', live='fixture_only'.",
+        )
+
+    def test_signed_fixture_only_row_fails_once_its_reference_stops_resolving(
+        self,
+    ) -> None:
+        # The other direction: a row signed as a plain fixture-only gap whose
+        # reference the compile now reports as unresolved has changed kind.
+        result = ledger_compile_parity_gate(
+            TargetRegistry((), country="uk"),
+            self._registry(10.0),
+            signed_differences=({**self._SIGNED_ABSENT[0], "kind": "fixture_only"},),
+            unsupported=iter(self._UNRESOLVED),
+        )
+
+        assert not result.passed
+        assert result.failures == (
+            "signed ledger parity difference hmrc.tax[2025] changed kind: "
+            "signed='fixture_only', live='ledger_absent'.",
         )
 
     def test_signed_difference_new_value_at_signed_key_fails(self) -> None:
@@ -582,6 +723,7 @@ class TestAreaSupportGate:
         assert result.details["areas_checked"] == 2
         assert result.details["by_geography_level"]["constituency"] == {
             "areas_checked": 1,
+            "areas_below_floor": 0,
             "minimum_rows": 60,
             "minimum_effective_sample_size": 52.0,
             "minimum_distinct_sources": 55,
@@ -1535,6 +1677,69 @@ class TestEnumDomainGate:
 
         result = enum_domain_gate({"race": [Race.WHITE, "BLACK"]}, {"race": Race})
         assert result.passed
+
+    def test_partition_domains_restrict_each_row(self) -> None:
+        result = enum_domain_gate(
+            {"band": ["A", "I", "I", "D"]},
+            {"band": tuple("ABCDEFGHI")},
+            partitions={"band": ["north", "west", "north", "isle"]},
+            partition_domains={
+                "band": {
+                    "north": tuple("ABCDEFGH"),
+                    "west": tuple("ABCDEFGHI"),
+                    "isle": ("D",),
+                }
+            },
+        )
+        assert not result.passed
+        assert result.details["invalid_counts"] == {"band": 1}
+        assert result.details["invalid_examples"] == {"band": ["I@north"]}
+        assert result.details["partition_allowed_values"]["band"]["isle"] == ["D"]
+        assert "outside its partition's domain" in result.failures[0]
+
+    def test_a_label_without_a_domain_fails_its_rows(self) -> None:
+        result = enum_domain_gate(
+            {"band": ["A", "A"]},
+            {"band": ("A", "B")},
+            partitions={"band": ["north", "south"]},
+            partition_domains={"band": {"north": ("A", "B")}},
+        )
+        assert not result.passed
+        assert result.details["invalid_examples"] == {"band": ["A@south"]}
+
+    def test_a_partition_domain_must_lie_inside_the_enum(self) -> None:
+        with pytest.raises(ValueError, match="outside the enum domain"):
+            enum_domain_gate(
+                {"band": ["A"]},
+                {"band": ("A", "B")},
+                partitions={"band": ["north"]},
+                partition_domains={"band": {"north": ("A", "Z")}},
+            )
+
+    def test_partition_labels_must_match_the_values(self) -> None:
+        with pytest.raises(ValueError, match="1 partition labels for 2 values"):
+            enum_domain_gate(
+                {"band": ["A", "B"]},
+                {"band": ("A", "B")},
+                partitions={"band": ["north"]},
+                partition_domains={"band": {"north": ("A", "B")}},
+            )
+        with pytest.raises(ValueError, match="need the rows' partition labels"):
+            enum_domain_gate(
+                {"band": ["A"]},
+                {"band": ("A", "B")},
+                partition_domains={"band": {"north": ("A",)}},
+            )
+
+    def test_an_unpartitioned_column_reports_as_before(self) -> None:
+        result = enum_domain_gate({"band": ["A", "Z"]}, {"band": ("A", "B")})
+        assert sorted(result.details) == [
+            "allowed_values",
+            "columns_checked",
+            "invalid_counts",
+            "invalid_examples",
+        ]
+        assert "outside enum domain" in result.failures[0]
 
 
 class TestSourceCoverageGate:

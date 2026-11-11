@@ -419,6 +419,19 @@ class PolicyEngineUSVariableMetadataIndex:
             raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
         return definition.metadata
 
+    def variable_unit(self, name: str) -> str | None:
+        """Return the ``unit`` a variable's class declares, or None.
+
+        ``unit = USD`` reads as ``"currency-USD"``, as the engine stores it.
+        None means the class declares no unit. The audited generated-variable
+        snapshot records no unit, so its variables also report None.
+        """
+
+        definition = self._definitions.get(name)
+        if definition is None:
+            raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
+        return definition.unit
+
     def variables(self) -> list[str]:
         return sorted(
             name
@@ -707,6 +720,11 @@ class PolicyEngineUSEngine:
                 getattr(variable, "definition_period", "year"), "point"
             ),
         )
+
+    def variable_unit(self, name: str) -> str | None:
+        """Return the variable's ``unit``, or None when it declares none."""
+
+        return self._variable(name).unit
 
     def variables(self) -> list[str]:
         """Return the engine's input variable names (those without a formula).

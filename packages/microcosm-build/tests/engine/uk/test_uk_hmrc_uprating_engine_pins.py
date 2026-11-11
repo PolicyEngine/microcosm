@@ -13,3 +13,9 @@ def test_the_vendored_pins_match_the_installed_engine() -> None:
                 path,
                 instant,
             )
+
+
+def test_the_locked_install_passes_the_freeze() -> None:
+    # The lock's own install: its version, the files policyengine_uk imports
+    # from and their RECORD agree with the pin.
+    assert hu.assert_installed_engine_is_pinned() == hu.pinned_engine_version()

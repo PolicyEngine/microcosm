@@ -1,0 +1,1 @@
+Preserve registered Child Benefit claims for opt-out-aware UK models and restrict opt-out draws to families whose charge meets the installed payment-suppression threshold, recording any pool shortfall. Keep the original draws and payment flags for older engines, and record the export contract and evaluated threshold in stage receipts.

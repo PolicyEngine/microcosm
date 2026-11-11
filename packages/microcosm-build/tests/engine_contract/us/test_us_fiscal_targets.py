@@ -55,3 +55,29 @@ def test_m_chip_state_set_matches_engine_separate_chip_child_limits() -> None:
     reviewed_carve_outs = {"44"}
     assert no_separate_child_chip == _M_CHIP_STATE_FIPS | reviewed_carve_outs
     assert not reviewed_carve_outs & _M_CHIP_STATE_FIPS
+
+
+def test_medicare_part_b_premium_target_variable_is_enrollment_gated() -> None:
+    """The locked engine's premiums-from-enrollees variable (microcosm#1206).
+
+    The target binds ``gross_medicare_part_b_premium_if_enrolled``. Pin that it
+    exists in the locked policyengine-us as a person-level annual amount gated
+    on ``medicare_enrolled``, and that the variable it replaced is gated only
+    on eligibility, so an engine bump that moves either gate re-opens the
+    mapping review.
+    """
+    from policyengine_us import CountryTaxBenefitSystem
+
+    base_variable, family, _ = fiscal_targets.DIRECT_LEDGER_TARGETS[
+        ("cms_medicare", "actual_amount", "premiums_from_enrollees")
+    ]
+    assert family == "cms_medicare"
+    variables = CountryTaxBenefitSystem().variables
+    enrolled = variables[base_variable]
+    assert base_variable == "gross_medicare_part_b_premium_if_enrolled"
+    assert enrolled.entity.key == "person"
+    assert enrolled.definition_period == "year"
+    assert enrolled.defined_for == "medicare_enrolled"
+    assert variables["gross_medicare_part_b_premium"].defined_for == (
+        "is_medicare_eligible"
+    )
