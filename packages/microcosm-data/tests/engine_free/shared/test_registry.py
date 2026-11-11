@@ -94,6 +94,8 @@ def test_register_is_idempotent_for_the_same_spec() -> None:
         engine_module="policyengine_us.data",
         engine_class="USSingleYearDataset",
         engine_package="policyengine-us",
+        release="microcosm-us-2024-national",
+        build_folder_filename="microcosm_us_2024.h5",
     )
     # Re-registering the identical spec must not raise (re-import safety).
     assert register(same) is same
