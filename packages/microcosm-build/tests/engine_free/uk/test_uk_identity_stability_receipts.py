@@ -41,6 +41,7 @@ from microcosm.build.uk_runtime.etb_services import (
     UKETBServicesStageTransform,
     allocate_nhs_by_age_gender,
 )
+from microcosm.build.uk_runtime.frs_take_up import UKTakeUpPopulationPolicy
 from microcosm.build.uk_runtime.household_lineage import (
     HIGH_VALUE_SUPPORT_COPY_COLUMN,
     HIGH_VALUE_SUPPORT_INDEX_COLUMN,
@@ -1493,6 +1494,19 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
         assert receipt["copies"] == split.copies_created == clone_count * 259
         assert exact == clone_count * 6 - (clone_count in (7, 13))
         assert within == 0
+        # The exact recount from the re-summed fold counts the 7,620 family
+        # one copy more in each clone the comment above names, and in no
+        # other family or clone: copies_recomputed - copies.
+        assert one_receipt["copies_recomputed"] == one_receipt["copies"]
+        assert (
+            receipt["copies_recomputed"] - receipt["copies"]
+            == {
+                7: 0,
+                11: 11,
+                13: 12,
+                15: 0,
+            }[clone_count]
+        )
 
     @pytest.mark.parametrize("clone_count", [1, 3, 11])
     def test_a_count_moved_off_a_non_multiple_is_reported(
@@ -3033,6 +3047,59 @@ class TestHighValueCopiesAndRegionalHomeValues:
         assert tool.main() == (1 if tamper else 0)
         assert json.loads(output.read_text())["matches_stored_columns"] is not tamper
 
+    def test_the_reversals_follow_the_carriers_the_artifact_keeps(self) -> None:
+        from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
+
+        tool = _load_tool()
+        final = _home_values_chain(cgt=False).final
+        assert tool._reversals_applied(final, "was_wealth") == ("regional_home_values",)
+        released = _with_tables(
+            final, household=final.table("household").drop(columns=[RANK_BASIS_COLUMN])
+        )
+        assert tool._reversals_applied(released, "was_wealth") == ()
+        # A stage after both reversed stages reverses neither.
+        assert tool._reversals_applied(final, "isa_subscriptions") == ()
+
+    def test_the_entry_point_reports_the_rewrite_an_artifact_cannot_reverse(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        # An artifact without regional_home_values' rank basis, a release
+        # say, keeps that stage's values, which the scope cannot take back:
+        # the entry point passes E5 only the reversals the scope applied, so
+        # both property columns are reported as rewritten later rather than
+        # held to values the scope did not restore.
+        import json
+        import sys
+
+        from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
+
+        tool = _load_tool()
+        final = _home_values_chain(cgt=False).final
+        released = _with_tables(
+            final, household=final.table("household").drop(columns=[RANK_BASIS_COLUMN])
+        )
+        monkeypatch.setattr(tool, "load_uk_national_frame", lambda path: (released, {}))
+        output = tmp_path / "receipt.json"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "verify_uk_identity_stability.py",
+                "--input-h5",
+                str(tmp_path / "spine.h5"),
+                "--output",
+                str(output),
+                "--check",
+                "e5",
+            ],
+        )
+        assert tool.main() == 0
+        receipt = json.loads(output.read_text())
+        assert set(receipt["rewritten_later"]["household"]) == {
+            "main_residence_value",
+            "property_wealth",
+        }
+
     def test_the_reversal_restores_what_stage_27_replaced(self) -> None:
         from microcosm.build.uk_runtime.regional_home_values import RANK_BASIS_COLUMN
 
@@ -3205,3 +3272,915 @@ def test_the_stacking_map_names_every_structural_stage_flag() -> None:
             "frs_brma",
         )
     )
+
+
+# The clone count every receipt reads, the columns later stages rewrite, and
+# the frame E4's stages drew on (microcosm#931). Every frame below is
+# synthetic.
+
+
+def _sidecar(clones: int, *, split_clones: int | None = None, **extra) -> dict:
+    """A spine sidecar's clone records: the build's count and, unless
+    ``split_clones`` is None, a cgt_support_split receipt counting on it."""
+
+    sidecar: dict[str, object] = {
+        "geographic_clone_count": clones,
+        "stages": ["frs_spine", "geographic_expand"],
+        "stage_evidence": {},
+    }
+    if split_clones is not None:
+        sidecar["stages"].append("cgt_support_split")
+        sidecar["stage_evidence"]["cgt_support_split"] = {
+            "parameters": {"clone_count": split_clones}
+        }
+    sidecar.update(extra)
+    return sidecar
+
+
+class TestGeographicCloneCounts:
+    def test_the_frame_carries_its_clone_count(self) -> None:
+        tool = _load_tool()
+        assert tool.geographic_clone_counts(_frame()) == {"frame": 1}
+        _, three = _clone_first_split_then_cloned(3)
+        assert tool.geographic_clone_counts(three) == {"frame": 3}
+        assert tool.geographic_clone_counts(three, sidecar=_sidecar(3)) == {
+            "frame": 3,
+            "sidecar": 3,
+            "cgt_support_split": None,
+        }
+        assert tool.geographic_clone_counts(
+            three, sidecar=_sidecar(3, split_clones=3)
+        ) == {"frame": 3, "sidecar": 3, "cgt_support_split": 3}
+
+    @pytest.mark.parametrize(
+        ("sidecar", "message"),
+        [
+            (
+                _sidecar(1),
+                "The frame's geographic clone count and the spine sidecar's are "
+                "not one count (frame 3, sidecar 1); every receipt reads one "
+                "clone count (microcosm#931).",
+            ),
+            (
+                _sidecar(3, split_clones=1),
+                "The frame's geographic clone count, the spine sidecar's and the "
+                "one cgt_support_split counted its copies on are not one count "
+                "(frame 3, sidecar 3, cgt_support_split 1); every receipt reads "
+                "one clone count (microcosm#931).",
+            ),
+        ],
+    )
+    def test_a_count_that_differs_is_refused_by_count(
+        self, sidecar: dict, message: str
+    ) -> None:
+        tool = _load_tool()
+        _, three = _clone_first_split_then_cloned(3)
+        with pytest.raises(ValueError) as caught:
+            tool.geographic_clone_counts(three, sidecar=sidecar)
+        assert str(caught.value) == message
+
+    @pytest.mark.parametrize(
+        ("sidecar", "message"),
+        [
+            (
+                {"stages": []},
+                "The spine sidecar records no geographic_clone_count, so the "
+                "frame's geographic clone count cannot be checked against the "
+                "spine's (microcosm#931).",
+            ),
+            (
+                {"geographic_clone_count": True, "stages": []},
+                "The spine sidecar records no geographic_clone_count, so the "
+                "frame's geographic clone count cannot be checked against the "
+                "spine's (microcosm#931).",
+            ),
+            (
+                {"geographic_clone_count": 0, "stages": []},
+                "The spine sidecar records no geographic_clone_count, so the "
+                "frame's geographic clone count cannot be checked against the "
+                "spine's (microcosm#931).",
+            ),
+            (
+                {"geographic_clone_count": 1},
+                "The spine sidecar records no stage list.",
+            ),
+            (
+                {"geographic_clone_count": 1, "stages": ["cgt_support_split"]},
+                "The spine sidecar's cgt_support_split receipt records no "
+                "clone_count, so the count it counted its copies on cannot be "
+                "checked (microcosm#931).",
+            ),
+        ],
+    )
+    def test_a_missing_record_is_refused_in_a_fixed_sentence(
+        self, sidecar: dict, message: str
+    ) -> None:
+        tool = _load_tool()
+        with pytest.raises(ValueError) as caught:
+            tool.geographic_clone_counts(_frame(), sidecar=sidecar)
+        assert str(caught.value) == message
+
+    def test_a_sidecar_of_another_file_is_refused(self, tmp_path) -> None:
+        import hashlib
+
+        tool = _load_tool()
+        spine = tmp_path / "spine.h5"
+        spine.write_bytes(b"synthetic spine bytes")
+        named = {"sha256": hashlib.sha256(spine.read_bytes()).hexdigest()}
+        assert tool.geographic_clone_counts(
+            _frame(), sidecar=_sidecar(1, output=named), input_h5=spine
+        ) == {"frame": 1, "sidecar": 1, "cgt_support_split": None}
+        other = {"sha256": hashlib.sha256(b"another spine").hexdigest()}
+        with pytest.raises(ValueError) as caught:
+            tool.geographic_clone_counts(
+                _frame(), sidecar=_sidecar(1, output=other), input_h5=spine
+            )
+        assert str(caught.value) == (
+            "The spine sidecar records another H5 file than --input-h5: its "
+            "output digest differs."
+        )
+
+    @pytest.mark.parametrize("recorded", [3, 2])
+    def test_the_entry_point_checks_the_sidecar_before_any_receipt(
+        self, recorded: int, monkeypatch, tmp_path
+    ) -> None:
+        import json
+        import sys
+
+        tool = _load_tool()
+        _, three = _clone_first_split_then_cloned(3, _NESTING_SCENARIO)
+        monkeypatch.setattr(tool, "load_uk_national_frame", lambda path: (three, {}))
+        receipts: list[object] = []
+        monkeypatch.setattr(
+            tool,
+            "e9_identity_receipt",
+            lambda frame, **kwargs: (
+                receipts.append(frame)
+                or {"identical_under_permutation": True, "matches_stored_columns": True}
+            ),
+        )
+        sidecar = tmp_path / "spine.build.json"
+        sidecar.write_text(json.dumps(_sidecar(recorded, split_clones=3)))
+        output = tmp_path / "receipt.json"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "verify_uk_identity_stability.py",
+                "--input-h5",
+                str(tmp_path / "spine.h5"),
+                "--output",
+                str(output),
+                "--check",
+                "e9",
+                "--spine-sidecar",
+                str(sidecar),
+            ],
+        )
+        if recorded != 3:
+            with pytest.raises(
+                ValueError, match=r"\(frame 3, sidecar 2, cgt_support_split 3\)"
+            ):
+                tool.main()
+            assert receipts == [] and not output.exists()
+            return
+        assert tool.main() == 0
+        assert len(receipts) == 1
+        assert json.loads(output.read_text())["geographic_clones"] == {
+            "frame": 3,
+            "sidecar": 3,
+            "cgt_support_split": 3,
+        }
+
+
+class TestLaterRewrites:
+    """A column a later stage declares writing is reported, not compared.
+
+    The map is the packaged manifest's: each recomputed column belongs to the
+    last of the receipt's stages that declares it, and every stage after that
+    one that declares it again may have rewritten the value the final frame
+    holds.
+    """
+
+    def test_the_map_follows_the_manifest(self, monkeypatch) -> None:
+        tool = _load_tool()
+        stages = tool._source_stage_roster()
+        names = [stage["stage"] for stage in stages]
+        mapped = tool._later_writers(
+            ["would_claim_uc", "would_claim_uc_childcare", "student_loan_balance"],
+            checked_stages=(*tool._E4_STAGES, *tool._E5_STAGES),
+        )
+        for column, writers in mapped.items():
+            own = max(
+                position
+                for position, stage in enumerate(stages)
+                if stage["stage"] in (*tool._E4_STAGES, *tool._E5_STAGES)
+                and column
+                in {*(stage.get("outputs") or ()), *(stage.get("rewrites") or ())}
+            )
+            assert writers == tuple(
+                stage["stage"]
+                for stage in stages[own + 1 :]
+                if column
+                in {*(stage.get("outputs") or ()), *(stage.get("rewrites") or ())}
+            )
+        assert "would_claim_uc_childcare" not in mapped
+        assert mapped["student_loan_balance"] == ("student_loans",)
+        assert {"uc_take_up", "uc_capital_coherence"} <= set(mapped["would_claim_uc"])
+
+        # A rewrite the manifest gains is reported; one the scope took back is
+        # not; a column no checked stage declares is refused.
+        edited = [dict(stage) for stage in stages]
+        last = edited[names.index("trading_allowance_receipts")]
+        last["rewrites"] = [*(last.get("rewrites") or ()), "would_claim_uc_childcare"]
+        monkeypatch.setattr(tool, "_source_stage_roster", lambda: edited)
+        assert tool._later_writers(
+            ["would_claim_uc_childcare"], checked_stages=tool._E4_STAGES
+        ) == {"would_claim_uc_childcare": ("trading_allowance_receipts",)}
+        assert (
+            tool._later_writers(
+                ["would_claim_uc_childcare"],
+                checked_stages=tool._E4_STAGES,
+                reversed_stages=("trading_allowance_receipts",),
+            )
+            == {}
+        )
+        with pytest.raises(ValueError, match="cannot place it"):
+            tool._later_writers(["brma"], checked_stages=tool._E5_STAGES)
+
+    def test_e5_reports_the_balance_student_loans_re_split(self) -> None:
+        from microcosm.build.uk_runtime.student_loans import assign_student_loan_plans
+        from microcosm.build.uk_runtime.was_wealth import (
+            allocate_student_loan_balance_to_people,
+        )
+        from test_support.microcosm_build.uk_student_loans import (
+            _frame as student_loan_frame,
+        )
+        from test_support.microcosm_build.uk_student_loans import _stocks
+
+        tool = _load_tool()
+        # was_wealth splits each household's balance among its likely holders
+        # (two graduates share the first household's), and student_loans then
+        # moves it to its borrowers (the one who reports an outstanding loan).
+        frame = student_loan_frame(
+            ages=[30, 32, 41],
+            repayments=[0.0, 0.0, 0.0],
+            households=[1, 1, 2],
+            reports_outstanding=[True, False, True],
+            age_left=[21, 21, 21],
+        )
+        person = frame.table("person").copy()
+        person["student_loan_balance"] = allocate_student_loan_balance_to_people(
+            household_balances=pd.Series([20_000.0, 9_000.0]),
+            household_ids=pd.Series([1, 2]),
+            person=person,
+        )
+        wealth = uk_national_frame(
+            person=person,
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            time_period="2024",
+            household_weights=frame.weights_for("household").values,
+        )
+        final = assign_student_loan_plans(
+            wealth, stocks=_stocks(plan_2=0.0, plan_5=0.0, year=2024), year=2024
+        ).frame
+        moved = final.table("person")["student_loan_balance"].to_numpy()
+        assert not np.allclose(moved, person["student_loan_balance"].to_numpy())
+
+        receipt = tool.e5_identity_receipt(final, permutation_seed=7)
+        assert receipt["identical_under_permutation"] is True
+        assert receipt["matches_stored_columns"] is True
+        assert receipt["rewritten_later"] == {
+            "person": {"student_loan_balance": ["student_loans"]}
+        }
+        # Held to the store, as the tool before held it, the balance is red,
+        # and on the frame was_wealth left it is green.
+        held = tool.e5_identity_receipt(final, permutation_seed=7, rewritten_later={})
+        assert held["stored_column_mismatches"] == {"person": ["student_loan_balance"]}
+        before = tool.e5_identity_receipt(
+            wealth, permutation_seed=7, rewritten_later={}
+        )
+        assert before["matches_stored_columns"] is True
+
+
+# E4 on a frame the stages built. Sixteen synthetic households in two regions:
+# a claimant in each, aged 22 in full-time work in the odd ones (the apprentice
+# walk's population) and 40 in part-time work in the even ones, a child in
+# every fourth and a pension-age member, in a
+# benefit unit of their own, in every third. They run through
+# geographic_expand, frs_take_up, frs_person_draws, frs_household_draws and
+# frs_brma (on an engine whose LHA_category reads a claim to Universal Credit,
+# would_claim_uc or one at legacy closure, as policyengine-uk's does through
+# uc_non_dependants_counted), the SPI support channel at the manifest's shares
+# and the income band donors. Then a later stage rewrites would_claim_uc and
+# uc_legacy_closure_take_up first writes its claim, as their declarations say
+# they do (both drawn here from keyed uniforms).
+
+_E4_POLICY = UKTakeUpPopulationPolicy(
+    adult_age=18, state_pension_age=66, instant="2024-01-01", source="test"
+)
+_E4_BRMA_COUNTS = {
+    "cells": {
+        region: {
+            "A": {f"{region}_A1": 3, f"{region}_A2": 1},
+            "B": {f"{region}_B1": 1, f"{region}_B2": 2},
+        }
+        for region in ("LONDON", "SOUTH_EAST")
+    }
+}
+
+
+class _E4Contract:
+    """Take-up rates for the scenario; the apprentice rate puts the walk's
+    target where the final frame's weights move it to another prefix."""
+
+    build_year = 2024
+    rates = {
+        "child_benefit": 0.5,
+        "child_benefit_opts_out_rate": 0.1,
+        "pension_credit": 0.5,
+        "universal_credit": 0.5,
+        "tax_free_childcare": 0.5,
+        "extended_childcare": 0.5,
+        "extended_childcare_age_0_usage": 0.5,
+        "extended_childcare_age_1_usage": 0.5,
+        "universal_childcare": 0.5,
+        "targeted_childcare": 0.5,
+        "uc_childcare_single": 0.5,
+        "uc_childcare_couple": 0.5,
+        "marriage_allowance": 0.5,
+        "scp_under_6": 0.97,
+        "scp_6_plus": 0.85,
+        "tv_ownership_rate": 0.5,
+        "tv_licence_evasion_rate": 0.5,
+        "first_time_buyer_rate": 0.5,
+        "property_purchase_rate": 0.5,
+        "tax_free_childcare_spend_routed_share": 0.593,
+        "apprentice_stock_19_to_24": 0.43,
+    }
+
+    def rate(self, key: str, build_year: int | None = None) -> float:
+        return self.rates[key]
+
+    def continuous_entry(self, key: str):
+        return {"mean": 15.019, "sd": 4.972, "lower": 0, "upper": 30}
+
+    def entry(self, key: str):
+        return SimpleNamespace(raw={"entity": "person"})
+
+
+class _LHAEngine:
+    """LHA_category by whether the benefit unit claims Universal Credit."""
+
+    country = "uk"
+
+    def __init__(self, *, clones: int | None = None) -> None:
+        self.clones = clones
+        self.frames: list[object] = []
+
+    def materialize(self, frame, variables, period):
+        assert tuple(variables) == ("LHA_category",)
+        self.frames.append(frame)
+        benunit = frame.table("benunit")
+        claims = benunit["would_claim_uc"].to_numpy(dtype=bool)
+        if "would_claim_uc_at_legacy_closure" in benunit.columns:
+            claims = claims | benunit["would_claim_uc_at_legacy_closure"].to_numpy(
+                dtype=bool
+            )
+        return {"LHA_category": np.where(claims, "A", "B")}
+
+
+def _manifest_stage(name: str):
+    from microcosm.build.country_spec import load_country_spec
+
+    return load_country_spec("uk").sources.stage_map()[name]
+
+
+def _e4_raw_frame(n_households: int = 16):
+    people = []
+    for h in range(1, n_households + 1):
+        unit = h * 100 + 1
+        people.append(
+            {
+                "person_id": h * 1000 + 1,
+                "person_benunit_id": unit,
+                "age": 22 if h % 2 else 40,
+                "employment_status": "FT_EMPLOYED" if h % 2 else "PT_EMPLOYED",
+                "is_uc_claimant": True,
+                "gender": "MALE" if h % 3 else "FEMALE",
+                "universal_credit_reported": 10.0 if h % 5 == 0 else 0.0,
+                "pension_credit_reported": 0.0,
+                "child_benefit_reported": 5.0 if h % 4 == 0 else 0.0,
+            }
+        )
+        if h % 4 == 0:
+            people.append(
+                {
+                    "person_id": h * 1000 + 2,
+                    "person_benunit_id": unit,
+                    "age": 3,
+                    "employment_status": "CHILD",
+                    "is_uc_claimant": False,
+                    "gender": "FEMALE",
+                }
+            )
+        if h % 3 == 0:
+            people.append(
+                {
+                    "person_id": h * 1000 + 3,
+                    "person_benunit_id": h * 100 + 2,
+                    "age": 70,
+                    "employment_status": "RETIRED",
+                    "is_uc_claimant": True,
+                    "gender": "FEMALE",
+                    "pension_credit_reported": 4.0 if h % 6 == 0 else 0.0,
+                }
+            )
+    person = pd.DataFrame(people).fillna(
+        {
+            "universal_credit_reported": 0.0,
+            "pension_credit_reported": 0.0,
+            "child_benefit_reported": 0.0,
+        }
+    )
+    person["person_household_id"] = person["person_benunit_id"] // 100
+    person["months_since_last_birthday"] = 0.0
+    for column in ("person_id", "person_benunit_id", "person_household_id"):
+        person[column] = person[column].astype("int64")
+    ids = np.arange(1, n_households + 1, dtype="int64")
+    return uk_national_frame(
+        person=person.sort_values("person_id").reset_index(drop=True),
+        benunit=pd.DataFrame(
+            {
+                "benunit_id": np.sort(person["person_benunit_id"].unique()),
+                "is_married": False,
+            }
+        ),
+        household=pd.DataFrame(
+            {
+                "household_id": ids,
+                "region": np.where(ids % 2 == 0, "SOUTH_EAST", "LONDON"),
+            }
+        ),
+        household_weights=np.full(n_households, 100.0),
+        weight_kind=WeightKind.DESIGN,
+        time_period="2024",
+    )
+
+
+def _with_tables(frame, **tables):
+    from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
+
+    return uk_national_frame(
+        person=tables.get("person", frame.table("person")),
+        benunit=tables.get("benunit", frame.table("benunit")),
+        household=tables.get("household", frame.table("household")),
+        time_period="2024",
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
+
+
+def _e4_propensity() -> pd.DataFrame:
+    """Every candidate cell takes every reserved band."""
+
+    from microcosm.build.uk_runtime.spi_band_donors import (
+        SPI_INCOME_BAND_DONOR_LOWER_BOUNDS,
+        SPI_INCOME_BAND_PROPENSITY_AGE_BANDS,
+    )
+
+    return pd.DataFrame(
+        [
+            {
+                "region": region,
+                "gender": gender,
+                "age_band": lower,
+                "band": band,
+                "band_weight": 1.0,
+                "cell_weight": 10.0,
+                "propensity": 0.1,
+            }
+            for region in ("LONDON", "SOUTH_EAST")
+            for gender in ("MALE", "FEMALE")
+            for lower, _ in SPI_INCOME_BAND_PROPENSITY_AGE_BANDS
+            for band in SPI_INCOME_BAND_DONOR_LOWER_BOUNDS
+        ]
+    )
+
+
+def _e4_chain(clones: int) -> SimpleNamespace:
+    """The scenario through E4's stages and the later layers; each stage's frame."""
+
+    from microcosm.build.stochastic_assignment import stable_identity_uniforms
+    from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
+    from microcosm.build.uk_runtime.frs_household_draws import (
+        add_frs_household_draws,
+    )
+    from microcosm.build.uk_runtime.frs_person_draws import (
+        FRS_PERSON_DRAW_OUTPUT_COLUMNS,
+        derive_frs_person_draws,
+        uk_person_household_weights,
+    )
+    from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+    from microcosm.build.uk_runtime.geographic_expand import (
+        expand_uk_geographic_clones,
+    )
+    from microcosm.build.uk_runtime.receipt_counts import record_source_households
+    from microcosm.build.uk_runtime.spi_band_donors import (
+        stack_spi_income_band_donors,
+    )
+    from microcosm.build.uk_runtime.spi_spine import UKSPISupportChannelStageTransform
+
+    contract = _E4Contract()
+    expanded = expand_uk_geographic_clones(_e4_raw_frame(), clones=clones).frame
+    taken = UKFRSTakeUpStageTransform(
+        contract=contract,
+        stage=_manifest_stage("frs_take_up"),
+        population_policy=_E4_POLICY,
+    )(expanded)
+    # The person draws through their derivation: the stage transform reads
+    # the installed engine's apprentice schedule, which only its receipt uses.
+    person = taken.table("person").copy()
+    drawn = derive_frs_person_draws(
+        person,
+        contract=contract,
+        person_weights=uk_person_household_weights(taken),
+        person_sources=record_source_households(
+            taken, "person", stage="frs_person_draws", before_copies=True
+        ),
+    )
+    for column in FRS_PERSON_DRAW_OUTPUT_COLUMNS:
+        person[column] = drawn[column].to_numpy()
+    households = add_frs_household_draws(
+        _with_tables(taken, person=person), contract=contract
+    )
+    brma = UKFRSBRMAStageTransform(
+        stage=_manifest_stage("frs_brma"),
+        engine=_LHAEngine(),
+        count_resource=_E4_BRMA_COUNTS,
+    )(households)
+    supported = UKSPISupportChannelStageTransform(
+        stage=_manifest_stage("spi_support_channel"),
+        state_pension_age=_E4_POLICY.state_pension_age,
+    )(brma)
+    donors = stack_spi_income_band_donors(
+        supported,
+        propensity=_e4_propensity(),
+        band_taxpayers={
+            200_000: 50.0,
+            500_000: 40.0,
+            1_000_000: 30.0,
+            2_000_000: 20.0,
+        },
+        minimum_donors=1,
+        maximum_donor_weight=100.0,
+        taxpayer_period=2024,
+    ).frame
+    benunit = donors.table("benunit").copy()
+    ids = benunit["benunit_id"].to_numpy()
+    redrawn = stable_identity_uniforms(ids, seed=5, salt="later_uc_redraw") < 0.5
+    claims = benunit["would_claim_uc"].to_numpy(dtype=bool)
+    benunit["would_claim_uc"] = np.where(redrawn, ~claims, claims)
+    benunit["would_claim_uc_at_legacy_closure"] = (
+        stable_identity_uniforms(ids, seed=6, salt="later_legacy_closure") < 0.3
+    )
+    return SimpleNamespace(
+        contract=contract,
+        brma=brma,
+        donors=donors,
+        final=_with_tables(donors, benunit=benunit),
+    )
+
+
+def _weights_by_household(frame) -> pd.Series:
+    return pd.Series(
+        np.asarray(frame.weights_for("household").values, dtype=float),
+        index=frame.table("household")["household_id"].to_numpy(),
+    )
+
+
+def _e4_receipt(tool, frame, contract, **arguments):
+    return tool.e4_identity_receipt(
+        frame,
+        contract=contract,
+        count_resource=_E4_BRMA_COUNTS,
+        permutation_seed=7,
+        population_policy=_E4_POLICY,
+        **arguments,
+    )
+
+
+class TestE4OnAFrameTheStagesBuilt:
+    @pytest.mark.parametrize("clones", [1, 3])
+    def test_the_entry_point_receipts_green_with_the_engine_at_the_clone_count(
+        self, clones: int, monkeypatch, tmp_path
+    ) -> None:
+        import json
+        import sys
+
+        from microcosm.build.uk_runtime import take_up_contract
+        from microcosm.frame.adapters import policyengine_uk
+
+        tool = _load_tool()
+        built = _e4_chain(clones)
+        engines: list[_LHAEngine] = []
+
+        def engine(*, clones=None):
+            engines.append(_LHAEngine(clones=clones))
+            return engines[-1]
+
+        monkeypatch.setattr(policyengine_uk, "PolicyEngineUKEngine", engine)
+        monkeypatch.setattr(
+            take_up_contract, "load_uk_take_up_contract", lambda: built.contract
+        )
+        monkeypatch.setattr(tool, "uk_take_up_population_policy", lambda _: _E4_POLICY)
+        monkeypatch.setattr(tool, "load_brma_count_resource", lambda: _E4_BRMA_COUNTS)
+        monkeypatch.setattr(
+            tool, "load_uk_national_frame", lambda path: (built.final, {})
+        )
+        output = tmp_path / "receipt.json"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "verify_uk_identity_stability.py",
+                "--input-h5",
+                str(tmp_path / "spine.h5"),
+                "--output",
+                str(output),
+                "--check",
+                "e4",
+            ],
+        )
+
+        assert tool.main() == 0
+        receipt = json.loads(output.read_text())
+        assert receipt["identical_under_permutation"] is True
+        assert receipt["matches_stored_columns"] is True
+        assert receipt["stored_mismatches"] == {}
+        assert receipt["geographic_clones"] == {"frame": clones}
+        # The engine took the spine's clone count, and read every clone.
+        assert [engine.clones for engine in engines] == [clones]
+        (read,) = engines[0].frames
+        assert read.table("household")["household_clone_index"].nunique() == clones
+        # The take-up flags later stages rewrite are reported by those stages,
+        # as the manifest declares them.
+        rewritten = receipt["rewritten_later"]["benunit"]
+        assert {"uc_take_up", "uc_capital_coherence"} <= set(
+            rewritten["would_claim_uc"]
+        )
+        assert rewritten["would_claim_pc"] == ["pension_credit_take_up"]
+        assert rewritten["would_claim_child_benefit"] == ["child_benefit_take_up"]
+        assert rewritten["child_benefit_opts_out"] == ["child_benefit_take_up"]
+        assert "would_claim_uc_childcare" not in rewritten
+        # Those the store still holds are named: the columns
+        # childcare_copy_take_up declares, which no stage of the scenario
+        # rewrites, but not would_claim_uc, which a later stage redrew.
+        childcare = {
+            column
+            for columns in receipt["rewritten_later"].values()
+            for column, stages in columns.items()
+            if "childcare_copy_take_up" in stages
+        }
+        still_equal = {
+            column
+            for columns in receipt["rewritten_later_still_equal"].values()
+            for column in columns
+        }
+        assert childcare and childcare <= still_equal
+        assert "would_claim_uc" not in still_equal
+
+    def test_brma_on_the_final_frames_flags_draws_from_other_cells(self) -> None:
+        # The BRMA stage read LHA_category on its own input, carrying
+        # frs_take_up's would_claim_uc and no legacy closure claim. The final
+        # frame carries both as later stages left them, so LHA_category
+        # materialized there puts some benefit units in another cell, and
+        # their BRMA draws differ, though no later stage declares writing
+        # brma. On the frame the stage read, as the recompute restores it,
+        # every draw is the stage's.
+        tool = _load_tool()
+        built = _e4_chain(1)
+        scoped = tool._frame_as_draw_stages_saw(
+            built.final, state_pension_age=_E4_POLICY.state_pension_age
+        )
+        final_lha = _LHAEngine().materialize(
+            tool._engine_safe_frame(scoped), ("LHA_category",), "2024"
+        )["LHA_category"]
+        on_final = _e4_receipt(tool, scoped, built.contract, lha_category=final_lha)
+        assert "brma" in on_final["stored_mismatches"]["household"]
+
+        engine = _LHAEngine()
+        receipt = _e4_receipt(tool, scoped, built.contract, engine=engine)
+        assert receipt["stored_mismatches"] == {}
+        assert receipt["matches_stored_columns"] is True
+        (read,) = engine.frames
+        benunit = read.table("benunit").set_index("benunit_id")
+        stage_time = built.brma.table("benunit").set_index("benunit_id")
+        assert "would_claim_uc_at_legacy_closure" not in benunit.columns
+        np.testing.assert_array_equal(
+            benunit["would_claim_uc"].to_numpy(),
+            stage_time["would_claim_uc"].reindex(benunit.index).to_numpy(),
+        )
+        scope = receipt["lha_category_scope"]
+        assert scope["stage"] == "frs_brma"
+        assert "would_claim_uc" in scope["restored_from_the_recompute"]
+        assert scope["columns_first_written_later"] > 0
+        # What the artifact cannot restore is named, with its writers: the
+        # reported award the scenario carries, which the reporter redraw
+        # rewrites later.
+        assert (
+            "uc_reporter_redraw"
+            in scope["carried_as_stored"]["universal_credit_reported"]
+        )
+
+    def test_the_apprentice_walk_on_the_final_weights_flags_another_prefix(
+        self,
+    ) -> None:
+        # frs_person_draws walked the eligible employees at geographic_expand's
+        # weights. The SPI support channel then kept half of a household's
+        # weight, or four fifths where a member is of pension age, and the
+        # band donors' funding scaled each region's households again; the
+        # CGT layers fold back. Nearest the target on the final frame's
+        # weights lies another prefix, though no later stage declares
+        # writing is_apprentice. The scope takes both moves back, to rounding.
+        tool = _load_tool()
+        built = _e4_chain(1)
+        stage_weights = _weights_by_household(built.brma)
+        final_scope = tool._frs_only_frame(built.final)
+        moved = _weights_by_household(final_scope).reindex(stage_weights.index)
+        assert len(np.unique(np.round(moved / stage_weights, 12))) > 1
+
+        on_final = _e4_receipt(tool, final_scope, built.contract, engine=_LHAEngine())
+        assert on_final["stored_mismatches"] == {"person": ["is_apprentice"]}
+
+        scoped = tool._frame_as_draw_stages_saw(
+            built.final, state_pension_age=_E4_POLICY.state_pension_age
+        )
+        np.testing.assert_allclose(
+            _weights_by_household(scoped).reindex(stage_weights.index).to_numpy(),
+            stage_weights.to_numpy(),
+            rtol=1e-12,
+        )
+        receipt = _e4_receipt(tool, scoped, built.contract, engine=_LHAEngine())
+        assert receipt["stored_mismatches"] == {}
+        assert receipt["held_to_tolerance"] == {}
+
+    def test_the_cgt_layers_fold_back_to_the_weights_before_them(self) -> None:
+        # The #970 anchor moves weight between each clone pair's halves and the
+        # support split divides families; the scope's folds give the weights
+        # before both back to rounding, so neither moves the walk.
+        tool = _load_tool()
+        _, cloned = _split_then_cloned()
+        anchored = _through_the_residential_split(cloned)
+        household = anchored.table("household")
+        assert household[HOUSEHOLD_IS_CGT_CLONE].any()
+        scoped = tool._frame_as_draw_stages_saw(anchored, state_pension_age=66)
+        np.testing.assert_allclose(
+            scoped.weights_for("household").values, _SPLIT_WEIGHTS, rtol=1e-12
+        )
+
+    def test_a_rewritten_column_the_store_no_longer_holds_is_not_named_equal(
+        self,
+    ) -> None:
+        # childcare_copy_take_up declares writing would_claim_tfc, so E4 does
+        # not compare it. Flipped on a survey unit, the receipt stays green,
+        # but no longer names it among the columns the store still holds.
+        tool = _load_tool()
+        built = _e4_chain(1)
+        scoped = tool._frame_as_draw_stages_saw(
+            built.final, state_pension_age=_E4_POLICY.state_pension_age
+        )
+        receipt = _e4_receipt(tool, scoped, built.contract, engine=_LHAEngine())
+        assert "would_claim_tfc" in receipt["rewritten_later_still_equal"]["benunit"]
+        benunit = scoped.table("benunit").copy()
+        benunit["would_claim_tfc"] = benunit["would_claim_tfc"].astype(bool)
+        benunit.loc[0, "would_claim_tfc"] = not benunit.loc[0, "would_claim_tfc"]
+        flipped = _e4_receipt(
+            tool,
+            _with_tables(scoped, benunit=benunit),
+            built.contract,
+            engine=_LHAEngine(),
+        )
+        assert flipped["matches_stored_columns"] is True
+        assert flipped["rewritten_later"]["benunit"]["would_claim_tfc"] == [
+            "childcare_copy_take_up"
+        ]
+        assert "would_claim_tfc" not in flipped["rewritten_later_still_equal"].get(
+            "benunit", []
+        )
+
+    def test_a_flag_held_to_the_walk_is_named(self, monkeypatch) -> None:
+        tool = _load_tool()
+        built = _e4_chain(1)
+        scoped = tool._frame_as_draw_stages_saw(
+            built.final, state_pension_age=_E4_POLICY.state_pension_age
+        )
+        person = scoped.table("person").copy()
+        flagged = np.flatnonzero(person["is_apprentice"].to_numpy(dtype=bool))
+        person.loc[flagged[-1], "is_apprentice"] = False
+        unflagged = _with_tables(scoped, person=person)
+
+        receipt = _e4_receipt(tool, unflagged, built.contract, engine=_LHAEngine())
+        assert receipt["stored_mismatches"] == {"person": ["is_apprentice"]}
+        monkeypatch.setattr(tool, "_apprentice_walk_holds", lambda *a, **k: True)
+        receipt = _e4_receipt(tool, unflagged, built.contract, engine=_LHAEngine())
+        assert receipt["stored_mismatches"] == {}
+        assert receipt["held_to_tolerance"] == {"person": ["is_apprentice"]}
+
+
+class TestTheApprenticeWalkToRounding:
+    """Stored flags are the walk's on weights the stage read to rounding."""
+
+    @staticmethod
+    def _people(n: int = 4) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "person_id": np.arange(1, n + 1, dtype="int64"),
+                "age": [22] * n,
+                "employment_status": ["FT_EMPLOYED"] * n,
+            }
+        )
+
+    @staticmethod
+    def _in_draw_order(person: pd.DataFrame) -> np.ndarray:
+        from microcosm.build.stochastic_assignment import stable_identity_uniforms
+
+        uniforms = stable_identity_uniforms(
+            person["person_id"].to_numpy(), seed=0, salt="is_apprentice"
+        )
+        return np.argsort(uniforms, kind="stable")
+
+    def test_a_prefix_as_near_the_target_as_the_walks_holds(self) -> None:
+        # Two employees of weight 1 at a rate of a quarter: the target, 0.5,
+        # lies as near no one as the first in draw order, and the stage took
+        # the first. Restored a float heavier, the first now lies just
+        # further, and the recompute takes no one; the stored flag lies within
+        # the tolerance of it and holds.
+        tool = _load_tool()
+        person = self._people(2)
+        order = self._in_draw_order(person)
+        first = np.zeros(2, dtype=bool)
+        first[order[0]] = True
+        weights = np.ones(2)
+        assert tool._apprentice_walk_holds(
+            person, first, person_weights=weights, rate=0.25
+        )
+        weights[order[0]] = np.nextafter(1.0, 2.0)
+        assert tool._apprentice_walk_holds(
+            person, first, person_weights=weights, rate=0.25
+        )
+        assert tool._apprentice_walk_holds(
+            person, np.zeros(2, dtype=bool), person_weights=weights, rate=0.25
+        )
+        # Both flagged lie a whole weight further: not held.
+        assert not tool._apprentice_walk_holds(
+            person, np.ones(2, dtype=bool), person_weights=weights, rate=0.25
+        )
+
+    def test_flags_off_the_walk_do_not_hold(self) -> None:
+        tool = _load_tool()
+        person = self._people(4)
+        order = self._in_draw_order(person)
+        weights = np.ones(4)
+        prefix = np.zeros(4, dtype=bool)
+        prefix[order[:2]] = True
+        assert tool._apprentice_walk_holds(
+            person, prefix, person_weights=weights, rate=0.5
+        )
+        # The second and third in draw order: no threshold flags them alone.
+        skipped = np.zeros(4, dtype=bool)
+        skipped[order[1:3]] = True
+        assert not tool._apprentice_walk_holds(
+            person, skipped, person_weights=weights, rate=0.5
+        )
+        # A flagged person the stage could not flag: aged 30.
+        older = person.copy()
+        older.loc[order[0], "age"] = 30
+        assert not tool._apprentice_walk_holds(
+            older, prefix, person_weights=weights, rate=0.5
+        )
+
+    def test_the_tolerance_is_relative_to_the_people_aged_21_to_24(self) -> None:
+        # Four employees weighing 1, 1, a millionth and 1 in draw order, at a
+        # rate that puts the target at 1.9: the walk takes the first two, a
+        # tenth off, and a stored prefix of three lies a millionth further
+        # off. That is no rounding difference (the tolerance is 1e-9 of about
+        # 3), so it does not hold.
+        tool = _load_tool()
+        person = self._people(4)
+        order = self._in_draw_order(person)
+        weights = np.ones(4)
+        weights[order[2]] = 1e-6
+        rate = 1.9 / float(weights.sum())
+        two = np.zeros(4, dtype=bool)
+        two[order[:2]] = True
+        three = np.zeros(4, dtype=bool)
+        three[order[:3]] = True
+        assert tool._apprentice_walk_holds(
+            person, two, person_weights=weights, rate=rate
+        )
+        assert not tool._apprentice_walk_holds(
+            person, three, person_weights=weights, rate=rate
+        )

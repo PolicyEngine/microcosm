@@ -29,11 +29,14 @@ defaults:
     shell: bash
 
 # Every job sets timeout-minutes (GitHub's default is 360) so a hung test
-# frees its runner from the org's shared 60-runner pool. Each cap starts from
-# the job's slowest successful leg from 2026-11-19 to 2026-11-26 and rounds up
-# to a multiple of 5 minutes: 1.5 times that leg for engine-free (158 minutes)
-# and engine-us (106), twice it for engine-uk (67) and integration-uk (9), and
-# for each shorter job at least 5 minutes and at least twice its slowest run.
+# frees its runner from the org's shared 60-runner pool. Each cap follows the
+# job's slowest successful leg on 2026-11-09, rounded up to a multiple of 5
+# minutes: 1.5 times it for engine-free (109 minutes) and engine-us (73), twice
+# for integration-uk (8), and for each shorter job at least 5 minutes and at
+# least twice its slowest run. The engine-uk cap is about 1.6x its expected
+# slowest leg with microcosm#931's clone-first H2 test: legs took 31-46 minutes
+# on main on 2026-11-11, and that test's module runs about 2.6 times as long as
+# the H2 parity test (10 minutes in this job), so about 27 minutes more.
 
 # Every job names its runner image. `ubuntu-latest` is whichever image GitHub
 # assigns: on 2026-11-10 it gave one engine-free job ubuntu-26.04 and another
@@ -128,7 +131,7 @@ jobs:
     needs: select-countries
     if: needs['select-countries'].outputs.run_uk == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 135
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
