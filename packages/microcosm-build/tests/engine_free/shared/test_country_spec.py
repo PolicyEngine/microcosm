@@ -1077,8 +1077,14 @@ class TestUKCountryPackage:
             "hmrc_benefits_in_kind_facts.json",
             # microcosm#1095: dense builds only, uk_runtime.property_localisation.
             "scotgov_chargeable_dwellings_by_band.json",
+            # microcosm#1095 S2(a): frs_council_tax's Scottish level.
+            "scotgov_band_d_liability_facts.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
+            # microcosm#1095 Y4: uc_take_up's age fit.
+            "dwp_uc_people_by_age_facts.json",
+            # microcosm#1095 P1: pip_points' Pathways to Work tables.
+            "dwp_pip_points_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1121,7 +1127,7 @@ class TestUKCountryPackage:
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
             "input_mass_reviewed_exclusions.json",
-            "incumbent_unresolvable_measures.json",
+            "reference_unresolvable_measures.json",
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
@@ -1199,8 +1205,10 @@ class TestUKCountryPackage:
         # frs_annual_income_spells after frs_hmrc_spine_leaves; microcosm#1428
         # trading_allowance_receipts last; company_cars right after
         # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316);
-        # microcosm#1490 spi_employment_shell after it and aps_occupation next.
-        assert len(spec.sources.stages) == 54
+        # microcosm#1490 spi_employment_shell after it and aps_occupation next;
+        # microcosm#1095 (P1) pip_points just before trading_allowance_receipts;
+        # microcosm#1095 (Y1) uc_limited_capability just before uc_take_up.
+        assert len(spec.sources.stages) == 56
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1247,8 +1255,14 @@ class TestExistingPackagesGeneralize:
             "hmrc_benefits_in_kind_facts.json",
             # microcosm#1095: dense builds only, uk_runtime.property_localisation.
             "scotgov_chargeable_dwellings_by_band.json",
+            # microcosm#1095 S2(a): frs_council_tax's Scottish level.
+            "scotgov_band_d_liability_facts.json",
             "dwp_move_to_uc_facts.json",
             "dwp_uc_award_band_facts.json",
+            # microcosm#1095 Y4: uc_take_up's age fit.
+            "dwp_uc_people_by_age_facts.json",
+            # microcosm#1095 P1: pip_points' Pathways to Work tables.
+            "dwp_pip_points_facts.json",
             "obr_hvcts_costing_facts.json",
             "hmrc_itl_taxpayer_counts.json",
             "hmrc_uprating_engine_pins.json",
@@ -1291,7 +1305,7 @@ class TestExistingPackagesGeneralize:
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
             "input_mass_reviewed_exclusions.json",
-            "incumbent_unresolvable_measures.json",
+            "reference_unresolvable_measures.json",
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
@@ -1821,7 +1835,10 @@ class TestUKGatesManifest:
             params["uk_weight_ratio"]["maximum_max_to_median_ratio"]
             == 1_151.2542195939373
         )
-        assert params["uk_input_mass_parity"]["relative_tolerance"] == 4.521811483823806
+        # The a6299504 -> eeb6093e pair's exact maximum (microcosm#1095).
+        assert (
+            params["uk_input_mass_parity"]["relative_tolerance"] == 5.9984285545209834
+        )
         assert params["uk_input_mass_parity"]["minimum_reference_total"] == 0.0
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]

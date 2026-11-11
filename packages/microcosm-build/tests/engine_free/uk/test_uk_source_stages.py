@@ -92,6 +92,12 @@ UC_COHERENCE_STAGE_NAMES = [
 # microcosm#1334: the Universal Credit redraw reads the post-SPI awards and the
 # capital UC capital coherence sets, and writes would_claim_uc before the Move
 # to UC claim draw reads it.
+# microcosm#1095 (Y1): the UC limited capability flags, from DWP's admin-linked
+# status on linked FRS claims and the engine's proxy elsewhere, before the
+# redraw reads entitlement.
+UC_LIMITED_CAPABILITY_STAGE_NAMES = [
+    "uc_limited_capability",
+]
 UC_TAKE_UP_STAGE_NAMES = [
     "uc_take_up",
 ]
@@ -133,6 +139,9 @@ E8_STAGE_NAMES = [
     # microcosm#1415: the ISA subscriptions run on final incomes; nothing
     # reads their outputs.
     "isa_subscriptions",
+    # microcosm#1095 (P1): every PIP recipient's points, drawn within the
+    # stored awards, which the release then drops for the engine to derive.
+    "pip_points",
     # microcosm#1428: the self-employed's gross receipts run last, on final
     # profits; only the engine's trading allowance reads them.
     "trading_allowance_receipts",
@@ -151,6 +160,7 @@ UK_SOURCE_STAGE_NAMES = [
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
+    *UC_LIMITED_CAPABILITY_STAGE_NAMES,
     *UC_TAKE_UP_STAGE_NAMES,
     *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
@@ -224,6 +234,7 @@ class TestUKSourceStagesManifest:
             *UC_REPORTER_REDRAW_STAGE_NAMES,
             *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
+            *UC_LIMITED_CAPABILITY_STAGE_NAMES,
             *UC_TAKE_UP_STAGE_NAMES,
             *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
@@ -317,6 +328,7 @@ class TestUKSourceStagesManifest:
                     "uc_reporter_redraw": _identity,
                     "spi_benefit_coherence": _identity,
                     "uc_capital_coherence": _identity,
+                    "uc_limited_capability": _identity,
                     "uc_take_up": _identity,
                     "uc_legacy_closure_take_up": _identity,
                     "pension_credit_take_up": _identity,
@@ -333,6 +345,7 @@ class TestUKSourceStagesManifest:
                     "student_loans": _identity,
                     "private_school_attendance": _identity,
                     "isa_subscriptions": _identity,
+                    "pip_points": _identity,
                     "trading_allowance_receipts": _identity,
                     "company_cars": _identity,
                     "spi_employment_shell": _identity,
@@ -595,6 +608,10 @@ class TestE3ManifestLockstep:
 
         for stage_name in E3_STAGE_NAMES:
             for artifact in stages[stage_name].artifacts:
+                # frs_council_tax also reads a vendored public resource (S2(a)),
+                # which is no raw tab and carries no tab pin.
+                if artifact.get("kind") == "public_aggregate_reference":
+                    continue
                 assert (
                     artifact["locator"],
                     artifact["sha256"],
@@ -612,6 +629,8 @@ class TestE3ManifestLockstep:
         assert [op.kind for op in stages["frs_council_tax"].operations] == [
             "read_tables",
             "impute_cell_means",
+            "verify_vendored_fact_resource",
+            "level_scottish_council_tax",
         ]
         assert [op.kind for op in stages["frs_disability"].operations] == [
             "derive",

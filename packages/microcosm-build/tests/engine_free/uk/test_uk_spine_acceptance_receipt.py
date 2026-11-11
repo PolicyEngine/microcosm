@@ -143,6 +143,10 @@ def _apply_pending_roster_transformations(
     # claim draw reads would_claim_uc.
     assert "uc_take_up" not in roster
     roster.insert(roster.index("uc_capital_coherence") + 1, "uc_take_up")
+    # microcosm#1095 (Y1) re-mint pending: the UC limited capability flags,
+    # right before the Universal Credit redraw reads entitlement.
+    assert "uc_limited_capability" not in roster
+    roster.insert(roster.index("uc_capital_coherence") + 1, "uc_limited_capability")
     # microcosm#1063 re-mint pending: the Child Benefit redraw reads the same
     # post-SPI incomes, right after the Pension Credit redraw.
     assert "child_benefit_take_up" not in roster
@@ -188,6 +192,10 @@ def _apply_pending_roster_transformations(
     # the major group the employment shell settles.
     assert "aps_occupation" not in roster
     roster.insert(roster.index("spi_employment_shell") + 1, "aps_occupation")
+    # microcosm#1095 (P1) re-mint pending: the PIP points run just before
+    # the self-employed's gross receipts.
+    assert "pip_points" not in roster
+    roster.append("pip_points")
     # microcosm#1428 re-mint pending: the self-employed's gross receipts run
     # last.
     assert "trading_allowance_receipts" not in roster

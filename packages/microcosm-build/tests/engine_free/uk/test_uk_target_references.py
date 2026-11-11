@@ -136,8 +136,12 @@ _TEST_PATHS = paths_for("microcosm-build")
 # sub-major group and sex, 50 UK rows; the November event data: PRIS 2026's
 # Scottish landlords' receipts and expenses, measured diagnostics, and ONS's
 # single years 16 to 24 by sex in place of the 16-17, 18-19 and 20-24 sex
-# bands (eighteen rows for six)
-ACTIVE_REFERENCE_COUNT = 1597
+# bands (eighteen rows for six); HMRC's Scottish NSND outturn and taxpayers
+# (S4), measured diagnostics; and PR2's lane Q diagnostics: DWP's people on
+# UC aged 16 to 24, 16 to 21 and 22 to 24 (Y4), 94 DWP PIP cases rows for
+# England, Wales and the English regions (P3), and ONS's NEET people aged 16
+# to 24 on a quarterly window (Y3), all held out of the solve
+ACTIVE_REFERENCE_COUNT = 1697
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -389,6 +393,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "monthly_window_average",
         "monthly_window_count_x_mean",
         "monthly_window_sum_average",
+        "quarterly_window_average",
         "rolled_forward_by_ratio",
         "scaled_by_ratio",
     ]
@@ -908,6 +913,15 @@ UC_ELEMENT_TARGET_IDS = frozenset(
         "dwp.uc.households_childcare_element",
     }
 )
+#: Y4 of the November event-data plan: DWP's people on UC by age, every
+#: regime (María's bands of 2026-11-08, so 16 to 17 is never shown alone).
+UC_PEOPLE_BY_AGE_TARGET_IDS = frozenset(
+    {
+        "dwp.uc.people_aged_16_to_24",
+        "dwp.uc.people_aged_16_to_21",
+        "dwp.uc.people_aged_22_to_24",
+    }
+)
 
 
 def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> None:
@@ -970,6 +984,31 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
                 f"2025-{month:02d}" for month in range(1, 13)
             ]
             continue
+        elif target_id in UC_PEOPLE_BY_AGE_TARGET_IDS:
+            # People, not benefit units: the single years of age of every
+            # regime, summed at the four quarterly points of 2025 and averaged.
+            assert selector["dimensions"] == [
+                "age_bands_and_single_year",
+                "conditionality_regime",
+            ]
+            assert pins["conditionality_regime"] == "all"
+            assert selector["source_measure_id"] == "people"
+            assert operations[target_id] == "monthly_window_sum_average"
+            assert target["period_match_policy"] == "source_window"
+            assert target_id in sum_target_ids
+            assert selector["period_value"] == [
+                "2025-02",
+                "2025-05",
+                "2025-08",
+                "2025-11",
+            ]
+            low, high = (
+                int(age) for age in target_id.rsplit("_aged_", 1)[1].split("_to_")
+            )
+            # Chronicle's single years of age are integers, as the State
+            # Pension rows by age read them.
+            assert pins["age_bands_and_single_year"] == list(range(low, high + 1))
+            continue
         else:
             # Merely naming a dimension set still does not request a sum.
             assert target_id not in sum_target_ids
@@ -1026,8 +1065,11 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
     construction — while the GB default pin could never match.
     SLC's devolved repayments are one row per nation, each declaring its
     nation's geography in its selector (microcosm#1095 R4). The dwp.pip
-    claimant counts are no targets now: they are England-and-Wales diagnostics
-    on obr.pip, pinned K04000001 in their own declarations (microcosm#1095).
+    claimant counts of FOI2025/24990 are no targets: they are England-and-Wales
+    diagnostics on obr.pip, pinned K04000001 in their own declarations
+    (microcosm#1095). DWP's PIP cases (P3 of the November event-data plan) are
+    held-out rows per country and English region, each declaring its own
+    geography in its selector.
     """
     contract = _load_uk_resource("uk_population_targets.json")
     pins = _geography_pins(contract)
@@ -1073,7 +1115,34 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         "slc.repayments.scotland_total": "S92000003",
         "slc.repayments.northern_ireland_total": "N92000002",
     }
-    assert not [target_id for target_id in pins if target_id.startswith("dwp.pip.")]
+    regions = {
+        "north_east": "E12000001",
+        "north_west": "E12000002",
+        "yorkshire": "E12000003",
+        "east_midlands": "E12000004",
+        "west_midlands": "E12000005",
+        "east_of_england": "E12000006",
+        "london": "E12000007",
+        "south_east": "E12000008",
+        "south_west": "E12000009",
+    }
+    nations = {"england": "E92000001", "wales": "W92000004"}
+
+    def pip_area(target_id: str) -> str:
+        rest = target_id.removeprefix("dwp.pip.cases_")
+        area = next(
+            name
+            for name in sorted({**regions, **nations}, key=len, reverse=True)
+            if rest == name or rest.startswith(f"{name}_")
+        )
+        return {**regions, **nations}[area]
+
+    pip_ids = {target_id for target_id in pins if target_id.startswith("dwp.pip.")}
+    assert len(pip_ids) == 94
+    assert all(target_id.startswith("dwp.pip.cases_") for target_id in pip_ids)
+    assert {target_id: pins[target_id]["geography_id"] for target_id in pip_ids} == {
+        target_id: pip_area(target_id) for target_id in pip_ids
+    }
 
     def haystack(target: dict) -> str:
         selector = target.get("ledger_selector") or {}
@@ -1108,7 +1177,19 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         for target_id, pin in pins.items()
         if pin["geography_id"] == "S92000003" and target_id in national_target_ids
     }
-    assert scotland_pinned == scotgov_ids | substring_scotland
+    # HMRC's Scottish income tax outturn rows name Scotland in neither the id
+    # nor the concept; their selectors declare S92000003, which wins over every
+    # inferred pin (microcosm#1095 R8; S4 of the November event-data plan).
+    declared_scotland = {
+        "hmrc.scottish_income_tax.nsnd_outturn",
+        "hmrc.scottish_income_tax.nsnd_taxpayers",
+    }
+    targets_by_id = {str(target["target_id"]): target for target in contract["targets"]}
+    assert all(
+        targets_by_id[target_id]["ledger_selector"]["geography_id"] == "S92000003"
+        for target_id in declared_scotland
+    )
+    assert scotland_pinned == scotgov_ids | substring_scotland | declared_scotland
 
     membership = _load_uk_resource("target_reference_membership.json")
     for target_id in sorted(scotgov_ids):
@@ -1119,11 +1200,21 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         assert membership["targets"][target_id]["status"] == "active"
     for target_id in DEVOLVED_SLC_REPAYMENT_IDS:
         assert membership["targets"][target_id]["status"] == "active"
-    assert not [
+    for target_id in sorted(declared_scotland):
+        assert membership["geography_pins"][target_id]["geography_id"] == "S92000003"
+        assert membership["targets"][target_id]["status"] == "active"
+    # P3's held-out PIP rows: every one active, on the geography its id names.
+    membership_pip = {
         target_id
         for target_id in membership["targets"]
         if target_id.startswith("dwp.pip.")
-    ]
+    }
+    assert membership_pip == pip_ids
+    for target_id in sorted(membership_pip):
+        assert membership["targets"][target_id]["status"] == "active"
+        assert membership["geography_pins"][target_id]["geography_id"] == pip_area(
+            target_id
+        )
 
 
 #: microcosm#1095 D3, María's ruling of 2026-10-29.
@@ -1546,7 +1637,7 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         "dwp.uc.households_single_with_children",
         "dwp.uc.households_couple_no_children",
         "dwp.uc.households_couple_with_children",
-    }
+    } | UC_PEOPLE_BY_AGE_TARGET_IDS
     monthly_average_ids = {
         f"dwp.uc.households_children_{children}" for children in ("1", "2", "3", "4")
     } | {

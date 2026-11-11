@@ -170,6 +170,7 @@ from microcosm.build.uk_runtime.orrery_contract import (
 from microcosm.build.uk_runtime.pension_credit_take_up import (
     UKPensionCreditTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.pip_points import UKPIPPointsStageTransform
 from microcosm.build.uk_runtime.private_school_attendance import (
     UKPrivateSchoolAttendanceStageTransform,
 )
@@ -219,6 +220,9 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
 )
 from microcosm.build.uk_runtime.uc_deduction_attributes import (
     UKUCDeductionAttributesStageTransform,
+)
+from microcosm.build.uk_runtime.uc_limited_capability import (
+    UKUCLimitedCapabilityStageTransform,
 )
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
@@ -1911,6 +1915,11 @@ def prepare_uk_spine_execution(
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
         )
+    if "uc_limited_capability" in stage_names:
+        implementations["uc_limited_capability"] = UKUCLimitedCapabilityStageTransform(
+            stage=stages_by_name["uc_limited_capability"],
+            engine=engine,
+        )
     if "uc_take_up" in stage_names:
         implementations["uc_take_up"] = UKUCTakeUpStageTransform(
             stage=stages_by_name["uc_take_up"],
@@ -1999,6 +2008,10 @@ def prepare_uk_spine_execution(
         implementations["childcare_copy_take_up"] = UKChildcareCopyTakeUpStageTransform(
             contract=stochastic_contract,
             stage=stages_by_name["childcare_copy_take_up"],
+        )
+    if "pip_points" in stage_names:
+        implementations["pip_points"] = UKPIPPointsStageTransform(
+            stage=stages_by_name["pip_points"]
         )
     if "trading_allowance_receipts" in stage_names:
         implementations["trading_allowance_receipts"] = (

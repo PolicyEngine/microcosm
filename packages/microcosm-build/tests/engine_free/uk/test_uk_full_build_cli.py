@@ -104,7 +104,7 @@ def test_release_role_is_required_and_supplies_the_dense_posture(tmp_path):
     [
         (["--target-loss-cap", "5"], "--target-loss-cap"),
         (["--allow-unpinned-feed"], "--allow-unpinned-feed"),
-        (["--incumbent-h5", "incumbent.h5"], "--incumbent-h5"),
+        (["--reference-h5", "reference.h5"], "--reference-h5"),
         (["--target-weight-rule", "family_equal"], "--target-weight-rule family_equal"),
     ],
 )

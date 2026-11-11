@@ -106,7 +106,12 @@ distributes files across two pytest workers with `--dist loadfile`.
 Changed-file selection only controls the more resource-intensive country jobs.
 A documentation-only pull request selects neither country; a US-only or UK-only
 pull request selects that country; shared, mixed, unknown, or empty changed-path
-sets select both. Main pushes select both without querying the pull-request API.
+sets select both. Below `tools/`, the rules for documentation, test groups and
+the country runtime packages run first. A file there that none of them claims
+belongs to a country when its file name holds that country as a whole word and
+the other country's letters appear nowhere in its lower-cased path, and takes
+the `shared` scope otherwise. Main pushes select both without querying the
+pull-request API.
 The UK integration job follows the same UK selection as the ordinary UK engine
 job.
 
@@ -130,11 +135,12 @@ its 25 slowest tests.
 Every behavioral or cross-language compatibility assertion must be a pytest
 test in a directory registered by `TEST_GROUPS` and must run through that
 category's existing workflow job. Supporting programs and data may live under
-`tools/`, but they do not receive separate workflow jobs. The test-plan verifier
-allows only registered test jobs and the explicitly declared orchestration,
-lint, wheel-building, and aggregate-result jobs. Add a test category to
-`TEST_GROUPS` before its executor; do not create a separate selection system,
-test workflow, or single-purpose behavioral test job.
+`tools/`, but they do not receive separate workflow jobs.
+`tools/ci_test_plan.py verify-workflow` allows only registered test jobs and
+the explicitly declared orchestration, lint, wheel-building, and
+aggregate-result jobs. Add a test category to `TEST_GROUPS` before its
+executor; do not create a separate selection system, test workflow, or
+single-purpose behavioral test job.
 
 The Orrery parser compatibility assertion lives in
 `packages/microcosm-graph/tests/engine_free/shared/test_graph_orrery.py`. The
@@ -212,6 +218,9 @@ Every workflow job sets `timeout-minutes` (at least 1.5 times its slowest
 observed successful run) so a hung job releases its runner from the
 organization's shared pool; raise a job's cap when its suite legitimately
 grows past it.
+Every workflow job runs on `ubuntu-24.04`, and the workflow sets
+`UV_MANAGED_PYTHON=1`, so uv downloads its own Python and never takes the
+image's. Move every job to a newer image in one pull request.
 
 `load_country_spec("<code>")` loads each packaged country spec once per
 process and hands every caller the same immutable object; a `Path` argument is
@@ -219,6 +228,26 @@ re-read on every call. A test that patches something the loader itself runs and
 then loads a packaged spec by code must call
 `country_spec._load_packaged_country_spec.cache_clear()` before and after that
 load, or it silently receives the spec an earlier test cached.
+
+Git exports an absolute `GIT_DIR` to the hooks, `rebase --exec` commands and
+shell aliases it runs in a linked worktree, and `GIT_DIR` outranks `-C` and the
+working directory. The root `conftest.py` therefore removes, before any test
+runs, the variables `git rev-parse --local-env-vars` lists as local to one
+repository, less the two that carry `git -c` options, plus the
+`GIT_QUARANTINE_PATH` git gives a `pre-receive` hook
+(`test_support.git_isolation`), so a fixture's `git init` or `commit` in a
+temporary directory stays there. A test that needs one of those variables sets
+it itself. New code that runs git against a repository other than its own
+should not rely on that, because it also runs outside the suite: drop the
+variables from the child environment, as the Modal stage runner does
+(`modal_us_stage_plan.git_environment`). Two policies exist for the `git -c`
+carriers. The runner and the suite keep them, because git keeps them when it
+runs a command in another repository and
+`test_support.git_repositories.NO_BACKGROUND_MAINTENANCE_ENV` reaches git
+through them. The Axiom adapter's `_git_environment`
+(`microcosm.frame.adapters.axiom`) drops the carriers as well, as variables
+that carry configuration into the repository git reads. Several older call
+sites still run git with the inherited environment.
 
 **Adding or moving tests.** Every `test_*.py` module must live directly in one
 of these directories below its package's `tests/` directory:
@@ -397,6 +426,16 @@ single-year release H5 has none, so a 2024 release on that engine reports
 PolicyEngine/policyengine-us#10106. A Part with no weighted payer never reports
 a Trustees comparison. It is held out the same way: no calibration row, no
 release refusal.
+It also writes `us_population_structure_holdout.json` from the written H5
+alone (no engine): marital status of people 65+ by sex (ACS 2024 B12002),
+people 65+ living alone (ACS 2024 B09021), people receiving Social Security in
+total, 65+ and under 65 (SSA Monthly Statistical Snapshot, December 2024,
+Table 1), beneficiaries per component against Table 2's benefit types, and the
+number of people carrying more than one positive component. The release
+calibrates to none of these, and when the step cannot make a measurement it
+records the report as unavailable instead of refusing the release.
+`tools/report_us_population_structure.py <h5>` writes the same report for an
+already published release.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release

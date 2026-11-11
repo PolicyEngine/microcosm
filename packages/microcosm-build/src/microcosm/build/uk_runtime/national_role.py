@@ -5,8 +5,8 @@ line on the shared executable graph (:mod:`.graph_national`; the driver's
 national path lives in :mod:`.full_build_cli`). This module holds what the
 role adds around the graph: the dry-run plan, the receipted doctrine
 overrides, the schema-4 national manifest over the seam-shaped evidence, the
-optional end-of-build evaluation against the incumbent (microcosm#578 rule 1
-on the common surface), the pinned-input and output-path checks and the
+optional end-of-build comparison with the reference (the current national
+build, microcosm#1095), the pinned-input and output-path checks and the
 local sums. These functions were moved from
 ``tools/build_uk_rowwise_candidate.py`` (microcosm#901 phase 4) and consume
 only the shared rowwise command surface (:mod:`.rowwise_cli`,
@@ -57,11 +57,11 @@ from microcosm.build.uk_runtime.rowwise_staging import (
 from microcosm.calibrate import TargetRegistry
 
 __all__ = [
-    "evaluate_against_incumbent",
-    "incumbent_arguments",
+    "evaluate_against_reference",
     "national_doctrine_overrides",
     "national_dry_run",
     "national_manifest",
+    "reference_arguments",
     "require_bound_input",
     "require_signing_key",
 ]
@@ -146,6 +146,15 @@ def require_signing_key() -> None:
         ) from error
 
 
+def _dry_run_reference(args: argparse.Namespace) -> dict[str, Any] | None:
+    """The reference a dry run would compare with, without its full record."""
+
+    reference = reference_arguments(args)
+    if reference is None:
+        return None
+    return {key: value for key, value in reference.items() if key != "record"}
+
+
 def national_dry_run(
     args: argparse.Namespace,
     *,
@@ -203,7 +212,7 @@ def national_dry_run(
             ),
         ),
         "engine": "not_run",
-        "incumbent": incumbent_arguments(args),
+        "reference": _dry_run_reference(args),
         "releasable": False,
     }
     if operation_inventory is not None:
@@ -418,7 +427,7 @@ _verify_requested_pin = verify_requested_pin
 
 
 def _load_candidate_evaluator(importer=importlib.import_module):
-    """The common-surface scorer (microcosm#967), loaded when an incumbent is given.
+    """The head-to-head scorer, loaded when a reference is given.
 
     Lazy so the driver imports without it; a build asked to evaluate refuses
     up front, before any solve, when the scorer is not in the tree.
@@ -428,33 +437,45 @@ def _load_candidate_evaluator(importer=importlib.import_module):
         return importer("microcosm.build.uk_runtime.candidate_score")
     except ImportError as error:
         raise ValueError(
-            "--incumbent-h5 needs the common-surface scorer (microcosm#967): "
+            "--reference-h5 needs the head-to-head scorer: "
             "microcosm.build.uk_runtime.candidate_score is not in this tree."
         ) from error
 
 
-def incumbent_arguments(args: argparse.Namespace) -> dict[str, Any] | None:
-    """The national role's optional incumbent, pinned and verified up front."""
+def reference_arguments(args: argparse.Namespace) -> dict[str, Any] | None:
+    """The national role's optional reference, verified against its record.
 
-    if args.incumbent_h5 is None and args.incumbent_sha256 is None:
+    The reference is the current build the cut recorded when it fetched it
+    (:mod:`.cut_reference`); the file must be the one the record names.
+    """
+
+    from microcosm.build.uk_runtime.cut_reference import (
+        read_uk_cut_reference,
+        verify_uk_cut_reference_file,
+    )
+
+    if args.reference_h5 is None and args.reference_record is None:
         return None
-    if args.incumbent_h5 is None or args.incumbent_sha256 is None:
+    if args.reference_h5 is None or args.reference_record is None:
         raise ValueError(
-            "--incumbent-h5 and --incumbent-sha256 must be given together."
+            "--reference-h5 and --reference-record must be given together."
         )
     _load_candidate_evaluator()
-    incumbent_h5 = require_file(args.incumbent_h5, label="--incumbent-h5")
-    info = artifact_info(incumbent_h5)
-    verify_requested_pin("--incumbent-h5", info, requested=args.incumbent_sha256)
+    reference_h5 = require_file(args.reference_h5, label="--reference-h5")
+    record = read_uk_cut_reference(
+        require_file(args.reference_record, label="--reference-record")
+    )
+    verify_uk_cut_reference_file(record, reference_h5)
     return {
-        "path": str(incumbent_h5),
-        "sha256": info["sha256"],
-        "bytes": info["bytes"],
-        "label": str(args.incumbent_label),
+        "path": str(reference_h5),
+        "sha256": record.sha256,
+        "bytes": record.size_bytes,
+        "label": record.label,
+        "record": record.to_record(),
     }
 
 
-_incumbent_arguments = incumbent_arguments
+_reference_arguments = reference_arguments
 
 
 def list_sha256sums_entry(out_dir: Path, name: str) -> None:
@@ -476,127 +497,146 @@ _list_sha256sums_entry = list_sha256sums_entry
 
 
 #: Receipt blocks that are record arrays (lists of mappings): the reviewed
-#: telemetry artifact policy refuses them, and the verdict, the pruned block
-#: and the aggregates carry everything a reviewer reads. The full receipt stays
+#: telemetry artifact policy refuses them, and the summary, the pruned block
+#: and the counts carry everything a reviewer reads. The full receipt stays
 #: beside the outputs and in the staged bundle.
 _SCORE_RECEIPT_TELEMETRY_EXCLUDED = (
-    "target_drift",
     "signed_asymmetries",
     "measure_resolution",
 )
 
 
 def _score_receipt_telemetry_summary(score: Mapping[str, Any]) -> dict[str, Any]:
-    return {
+    summary = {
         key: value
         for key, value in score.items()
         if key not in _SCORE_RECEIPT_TELEMETRY_EXCLUDED
     }
+    head_to_head = summary.get("head_to_head")
+    if isinstance(head_to_head, Mapping):
+        targets = head_to_head.get("targets")
+        summary["head_to_head"] = {
+            **head_to_head,
+            "targets": {
+                key: value
+                for key, value in (targets or {}).items()
+                if key != "compared"
+            },
+        }
+    return summary
 
 
-def evaluate_against_incumbent(
+def evaluate_against_reference(
     args: argparse.Namespace,
     *,
-    incumbent: Mapping[str, Any] | None,
+    reference: Mapping[str, Any] | None,
     inputs: Mapping[str, Any],
     output_paths: Mapping[str, Path],
     telemetry: StagingRunBundleWriterV2 | None,
     calibration_year: int,
     out_dir: Path,
 ) -> dict[str, Any]:
-    """Score the finished candidate against the incumbent; never fail the build.
+    """Compare the finished candidate with the reference; never fail the build.
 
     Runs after the staged bundle is on the Hub and before the telemetry
     completes, so the receipt rides the run as a reviewed artifact. Rows the
-    incumbent cannot materialize are pruned from both arms and warned about
-    by name; the verdict (microcosm#578 rule 1 on the common surface) is
-    what the release-cut certifier requires to be ``passed``. An error is
-    recorded and warned, never raised: staging and the exit code stand.
+    reference cannot materialize are pruned from both arms and warned about
+    by name. The comparison decides nothing (microcosm#1095); the release-cut
+    certifier requires its receipt to name this candidate and this reference.
+    An error is recorded and warned, never raised: staging and the exit code
+    stand.
     """
 
-    if incumbent is None:
+    if reference is None:
         return {
             "status": "not_requested",
             "note": (
-                "no --incumbent-h5: the rule-1 score receipt the release-cut "
-                "certifier needs was not produced; score the candidate with "
+                "no --reference-h5: the score receipt the release-cut certifier "
+                "needs was not produced; score the candidate with "
                 "tools/score_uk_national_candidate.py before certification."
             ),
         }
     stage(
         telemetry,
-        "incumbent_evaluation",
+        "reference_evaluation",
         "started",
-        incumbent_sha256=incumbent["sha256"],
+        reference=reference["label"],
+        reference_sha256=reference["sha256"],
     )
     candidate = artifact_info(output_paths["dataset"])
     try:
         module = _load_candidate_evaluator()
-        score = module.evaluate_uk_candidate_against_incumbent(
+        score = module.evaluate_uk_candidate_against_reference(
             candidate_h5=output_paths["dataset"],
-            incumbent_h5=Path(incumbent["path"]),
+            reference_h5=Path(reference["path"]),
             candidate_sha256=candidate["sha256"],
-            incumbent_sha256=incumbent["sha256"],
+            reference_sha256=reference["sha256"],
             target_registry=inputs["national_registry"],
             calibration_year=calibration_year,
+            reference_label=reference["label"],
             measure_resolver_factory=module.uk_default_measure_resolver_factory(
                 out_dir, calibration_year
             ),
             candidate_label=output_paths["dataset"].stem,
-            incumbent_label=incumbent["label"],
             band_edge_registry=inputs["band_edge_registry"],
+            reference_record=reference["record"],
         )
         atomic_write_json(output_paths["score_receipt"], score)
     except Exception as error:  # noqa: BLE001 - the evaluation never fails a finished build
         message = f"{type(error).__name__}: {error}"[:600]
         print(
-            f"warning: the incumbent evaluation failed ({message}); the build's "
-            "evidence and staging are unaffected, and the candidate cannot be "
-            "certified until it is re-scored with "
+            f"warning: the comparison with the reference failed ({message}); the "
+            "build's evidence and staging are unaffected, and the candidate "
+            "cannot be certified until it is re-scored with "
             "tools/score_uk_national_candidate.py.",
             file=sys.stderr,
             flush=True,
         )
-        stage(telemetry, "incumbent_evaluation", "failed", error=message)
+        stage(telemetry, "reference_evaluation", "failed", error=message)
         return {
             "status": "error",
             "error": message,
-            "incumbent": dict(incumbent),
+            "reference": {
+                key: value for key, value in reference.items() if key != "record"
+            },
             "receipt": None,
         }
     warning = module.pruned_warning(score)
     if warning is not None:
         print(warning, file=sys.stderr, flush=True)
     evaluation = score["evaluation"]
-    pruned = score["incumbent_unresolvable_pruned"]
+    pruned = score["reference_unresolvable_pruned"]
     add_staging_artifact(
         telemetry,
-        "score_vs_incumbent",
+        "score_vs_reference",
         _score_receipt_telemetry_summary(score),
         artifact_kind="aggregate_diagnostics",
         classification="aggregate",
     )
     stage(
         telemetry,
-        "incumbent_evaluation",
+        "reference_evaluation",
         "completed",
-        verdict=evaluation["verdict"],
+        reference=evaluation["reference"],
         n_scored=int(evaluation["scored_surface"]["n_scored"]),
         n_pruned=int(evaluation["scored_surface"]["n_pruned"]),
     )
     return {
         "status": "completed",
-        "verdict": evaluation["verdict"],
-        "rule_1": dict(evaluation["rule_1"]),
+        "reference": evaluation["reference"],
+        "losses": dict(evaluation["losses"]),
+        "targets": dict(evaluation["targets"]),
         "scored_surface": dict(evaluation["scored_surface"]),
         "pruned_measures": list(pruned["measures"]),
         "pruned_families": dict(pruned["families"]),
         "receipt": artifact_info(output_paths["score_receipt"]),
-        "incumbent": dict(incumbent),
+        "reference_input": {
+            key: value for key, value in reference.items() if key != "record"
+        },
     }
 
 
-_evaluate_against_incumbent = evaluate_against_incumbent
+_evaluate_against_reference = evaluate_against_reference
 
 
 def validate_output_paths(

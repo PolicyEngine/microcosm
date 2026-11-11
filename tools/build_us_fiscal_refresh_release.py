@@ -313,6 +313,11 @@ from microcosm.build.us_runtime.parity_reference import (
     load_ecps_parity_known_gaps,
     load_ecps_parity_reference,
 )
+from microcosm.build.us_runtime.population_structure_holdout import (
+    population_structure_holdout_from_h5,
+    population_structure_holdout_unavailable,
+    write_population_structure_holdout,
+)
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
@@ -10821,6 +10826,37 @@ def _write_medicare_irmaa_holdout(
     )
 
 
+def _write_population_structure_holdout(
+    *, release_dir: Path, dataset_path: Path, release_id: str
+) -> None:
+    """Report held-out population structure without refusing the release.
+
+    It reads marital status and living arrangement of people 65+, and Social
+    Security beneficiary counts, from the written H5 without an engine. The
+    target surface holds none of these margins, so a release can meet every
+    target while missing them (microcosm#880).
+    """
+    path = release_dir / "us_population_structure_holdout.json"
+    try:
+        # Serializing inside the try keeps a measurement that strict JSON
+        # cannot hold observational as well.
+        write_population_structure_holdout(
+            population_structure_holdout_from_h5(
+                dataset_path, period=PERIOD, release_id=release_id
+            ),
+            path,
+        )
+    except Exception as error:
+        # Observational, like the SSI holdout: an unavailable measurement must
+        # not add a release refusal.
+        write_population_structure_holdout(
+            population_structure_holdout_unavailable(
+                error, period=PERIOD, release_id=release_id
+            ),
+            path,
+        )
+
+
 def _build_manifests(
     *,
     release_id: str,
@@ -11437,6 +11473,18 @@ def _build_manifests(
                     )
                 }
                 if (release_dir / "us_medicare_irmaa_holdout.json").exists()
+                else {}
+            ),
+            **(
+                {
+                    "us_population_structure_holdout": _artifact_entry(
+                        "us_population_structure_holdout.json",
+                        _sha256(release_dir / "us_population_structure_holdout.json"),
+                        kind="diagnostics",
+                        revision=release_id,
+                    )
+                }
+                if (release_dir / "us_population_structure_holdout.json").exists()
                 else {}
             ),
             **(
@@ -16823,6 +16871,21 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
     scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
     post_export_scorer = None
+    # Reads the written H5 without an engine, after the scorer frees its
+    # batch frames, so it adds no memory on top of them.
+    if telemetry is not None:
+        telemetry.stage(
+            "population_structure_holdout",
+            message="Writing held-out population-structure checks.",
+        )
+    _write_population_structure_holdout(
+        release_dir=release_dir, dataset_path=dataset_path, release_id=release_id
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact(
+            "us_population_structure_holdout",
+            release_dir / "us_population_structure_holdout.json",
+        )
 
     if telemetry is not None:
         telemetry.stage(
