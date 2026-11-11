@@ -1082,7 +1082,12 @@
       "hmrc.scottish_income_tax.nsnd_outturn": "No incumbent target: uk-data binds no Scottish outturn row. HMRC's Scottish income tax outturn 2024-25 (Table 1, NSND revenue) joins as a measured diagnostic for the Scottish Budget 2027-28 income tax costing.",
       "hmrc.scottish_income_tax.nsnd_taxpayers": "No incumbent target: uk-data binds no Scottish outturn row. HMRC's Scottish income tax outturn 2024-25 (Table 2, NSND taxpayers) joins as a measured diagnostic beside the revenue row.",
       "ons.paye_rti.employees_aged_0_to_17": "No incumbent target: uk-data binds no PAYE RTI row. ONS and HMRC's payrolled employees by age (PolicyEngine/chronicle#420 item 4) join as a measured diagnostic (B1 of the November event-data plan's PR3).",
-      "ons.paye_rti.employees_aged_18_to_24": "No incumbent target: uk-data binds no PAYE RTI row. ONS and HMRC's payrolled employees by age (PolicyEngine/chronicle#420 item 4) join as a measured diagnostic (B1 of the November event-data plan's PR3)."
+      "ons.paye_rti.employees_aged_18_to_24": "No incumbent target: uk-data binds no PAYE RTI row. ONS and HMRC's payrolled employees by age (PolicyEngine/chronicle#420 item 4) join as a measured diagnostic (B1 of the November event-data plan's PR3).",
+      "dwp.pip.cases_england_aged_16_to_24": "No incumbent target: uk-data binds no PIP row by age. DWP's PIP cases in broad age bands (PolicyEngine/chronicle#420 item 6) bind in PR3 (B2 of the November event-data plan, microcosm#1095; María's call of 2026-11-11).",
+      "dwp.pip.cases_england_aged_25_to_34": "No incumbent target: uk-data binds no PIP row by age. DWP's PIP cases in broad age bands (PolicyEngine/chronicle#420 item 6) bind in PR3 (B2 of the November event-data plan, microcosm#1095; María's call of 2026-11-11).",
+      "dwp.pip.cases_england_aged_35_to_49": "No incumbent target: uk-data binds no PIP row by age. DWP's PIP cases in broad age bands (PolicyEngine/chronicle#420 item 6) bind in PR3 (B2 of the November event-data plan, microcosm#1095; María's call of 2026-11-11).",
+      "dwp.pip.cases_england_aged_50_to_64": "No incumbent target: uk-data binds no PIP row by age. DWP's PIP cases in broad age bands (PolicyEngine/chronicle#420 item 6) bind in PR3 (B2 of the November event-data plan, microcosm#1095; María's call of 2026-11-11).",
+      "dwp.pip.cases_england_aged_65_and_over": "No incumbent target: uk-data binds no PIP row by age. DWP's PIP cases in broad age bands (PolicyEngine/chronicle#420 item 6) bind in PR3 (B2 of the November event-data plan, microcosm#1095; María's call of 2026-11-11)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1544,6 +1549,11 @@
       "dwp.pip.cases_england_aged_65_to_69",
       "dwp.pip.cases_england_aged_70_to_74",
       "dwp.pip.cases_england_aged_75_and_over",
+      "dwp.pip.cases_england_aged_16_to_24",
+      "dwp.pip.cases_england_aged_25_to_34",
+      "dwp.pip.cases_england_aged_35_to_49",
+      "dwp.pip.cases_england_aged_50_to_64",
+      "dwp.pip.cases_england_aged_65_and_over",
       "dwp.pip.cases_wales",
       "dwp.pip.cases_wales_daily_living_standard",
       "dwp.pip.cases_wales_daily_living_enhanced",
@@ -34214,6 +34224,670 @@
       "label": "PIP cases with entitlement, England, aged 75 and over",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pip.cases_england_aged_16_to_24",
+      "family": "dwp_pip",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pip.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 16
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 24
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/pip/cases_england_aged_16_to_24",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "pip",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 16
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 24
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "ENGLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore PIP cases with entitlement (PIP_Monthly_new; PolicyEngine/chronicle#420 item 6): PIP cases in England aged 16 to 24 at the caseload date, every award, the sum of the published bands 16-19, 20-24 at each quarter-end inside calendar 2025 (January, April, July, October), averaged. The model counts people with a PIP award (pip above zero). Bound on María's call of 2026-11-11 (B2 of the November event-data plan's PR3, microcosm#1095): the five broad bands carry PIP's age profile in England, and P3's thirteen published bands stay held out as checks on the split within them."
+        },
+        "axiom": {
+          "metric_name": "dwp/pip/cases_england_aged_16_to_24",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "16-19",
+            "20-24"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001"
+      },
+      "category_id": "dwp.pip",
+      "label": "PIP cases with entitlement, England, aged 16 to 24",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "16-19"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "20-24"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.pip.cases_england_aged_25_to_34",
+      "family": "dwp_pip",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pip.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 25
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 34
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/pip/cases_england_aged_25_to_34",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "pip",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 25
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 34
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "ENGLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore PIP cases with entitlement (PIP_Monthly_new; PolicyEngine/chronicle#420 item 6): PIP cases in England aged 25 to 34 at the caseload date, every award, the sum of the published bands 25-29, 30-34 at each quarter-end inside calendar 2025 (January, April, July, October), averaged. The model counts people with a PIP award (pip above zero). Bound on María's call of 2026-11-11 (B2 of the November event-data plan's PR3, microcosm#1095): the five broad bands carry PIP's age profile in England, and P3's thirteen published bands stay held out as checks on the split within them."
+        },
+        "axiom": {
+          "metric_name": "dwp/pip/cases_england_aged_25_to_34",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "25-29",
+            "30-34"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001"
+      },
+      "category_id": "dwp.pip",
+      "label": "PIP cases with entitlement, England, aged 25 to 34",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "25-29"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "30-34"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.pip.cases_england_aged_35_to_49",
+      "family": "dwp_pip",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pip.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 35
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 49
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/pip/cases_england_aged_35_to_49",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "pip",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 35
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 49
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "ENGLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore PIP cases with entitlement (PIP_Monthly_new; PolicyEngine/chronicle#420 item 6): PIP cases in England aged 35 to 49 at the caseload date, every award, the sum of the published bands 35-39, 40-44, 45-49 at each quarter-end inside calendar 2025 (January, April, July, October), averaged. The model counts people with a PIP award (pip above zero). Bound on María's call of 2026-11-11 (B2 of the November event-data plan's PR3, microcosm#1095): the five broad bands carry PIP's age profile in England, and P3's thirteen published bands stay held out as checks on the split within them."
+        },
+        "axiom": {
+          "metric_name": "dwp/pip/cases_england_aged_35_to_49",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "35-39",
+            "40-44",
+            "45-49"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001"
+      },
+      "category_id": "dwp.pip",
+      "label": "PIP cases with entitlement, England, aged 35 to 49",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "35-39"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "40-44"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "45-49"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.pip.cases_england_aged_50_to_64",
+      "family": "dwp_pip",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pip.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 50
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 64
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/pip/cases_england_aged_50_to_64",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "pip",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 50
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 64
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "ENGLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore PIP cases with entitlement (PIP_Monthly_new; PolicyEngine/chronicle#420 item 6): PIP cases in England aged 50 to 64 at the caseload date, every award, the sum of the published bands 50-54, 55-59, 60-64 at each quarter-end inside calendar 2025 (January, April, July, October), averaged. The model counts people with a PIP award (pip above zero). Bound on María's call of 2026-11-11 (B2 of the November event-data plan's PR3, microcosm#1095): the five broad bands carry PIP's age profile in England, and P3's thirteen published bands stay held out as checks on the split within them."
+        },
+        "axiom": {
+          "metric_name": "dwp/pip/cases_england_aged_50_to_64",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "50-54",
+            "55-59",
+            "60-64"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001"
+      },
+      "category_id": "dwp.pip",
+      "label": "PIP cases with entitlement, England, aged 50 to 64",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "50-54"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "55-59"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "60-64"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.pip.cases_england_aged_65_and_over",
+      "family": "dwp_pip",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pip.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 65
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/pip/cases_england_aged_65_and_over",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "pip",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 65
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "ENGLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore PIP cases with entitlement (PIP_Monthly_new; PolicyEngine/chronicle#420 item 6): PIP cases in England aged 65 and over at the caseload date, every award, the sum of the published bands 65-69, 70-74, 75-79 at each quarter-end inside calendar 2025 (January, April, July, October), averaged. The model counts people with a PIP award (pip above zero). Bound on María's call of 2026-11-11 (B2 of the November event-data plan's PR3, microcosm#1095): the five broad bands carry PIP's age profile in England, and P3's thirteen published bands stay held out as checks on the split within them."
+        },
+        "axiom": {
+          "metric_name": "dwp/pip/cases_england_aged_65_and_over",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "65-69",
+            "70-74",
+            "75-79"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001"
+      },
+      "category_id": "dwp.pip",
+      "label": "PIP cases with entitlement, England, aged 65 and over",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "65-69"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "70-74"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "75-79"
+          }
+        }
+      ]
     },
     {
       "target_id": "dwp.pip.cases_wales",
