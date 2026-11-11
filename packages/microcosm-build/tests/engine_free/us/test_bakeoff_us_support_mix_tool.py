@@ -3,8 +3,11 @@
 Invariants:
 
 - SPM flag: a household is flagged exactly when one of its SPM units has no
-  member the pinned engine counts as an adult, and the rule refuses a person
-  table without household-role columns rather than falling back to age;
+  member the pinned engine counts as an adult; the flag reads a stored
+  ``is_spm_independent_minor_role`` that holds a value on every row, uses the
+  role's formula when that column is absent or all null, and refuses a partly
+  null column and a person table without household-role columns rather than
+  falling back to age;
 - staleness: an arm's receipt depends only on the inputs and options its arm
   reads, the concept digest moves with part contents (not just sizes) and
   with the concept specs and measure list, a concept part is reusable only if
@@ -13,7 +16,8 @@ Invariants:
 - partcheck: a column fails when either side holds a nonfinite value or its
   scaled difference exceeds the tolerance, and a check refuses an unknown or
   empty part selection, a sample under one household and a negative or
-  nonfinite tolerance;
+  nonfinite tolerance; ``do_partcheck`` applies both rules to the parts it
+  re-materializes;
 - grid: ACS-only arms carry no years, so a grid on newer CPS years keeps them;
 - reporting: a report reads only current receipts of its own grid,
   replicate tables cover only groups with more than one draw, a report
@@ -77,6 +81,21 @@ def test_spm_flag_refuses_a_table_without_role_columns(tool) -> None:
     tables = _tables([(1, 10, 16, True, False)])
     tables["person"] = tables["person"].drop(columns=["is_household_head", "is_household_spouse"])
     with pytest.raises(ValueError, match="neither"):
+        tool.spm_zero_adult_households(tables)
+
+
+def test_spm_flag_follows_a_stored_role_column(tool) -> None:
+    tables = _tables([
+        (1, 10, 16, True, False),    # a head the stored role leaves a minor
+        (2, 20, 16, False, False),   # a non-head the stored role makes an adult
+    ])
+    person = tables["person"]
+    person["is_spm_independent_minor_role"] = [False, True]
+    assert tool.spm_zero_adult_households(tables).tolist() == [True, False]
+    person["is_spm_independent_minor_role"] = [None, None]
+    assert tool.spm_zero_adult_households(tables).tolist() == [False, True]
+    person["is_spm_independent_minor_role"] = [True, None]
+    with pytest.raises(ValueError, match="partially null"):
         tool.spm_zero_adult_households(tables)
 
 
@@ -286,6 +305,95 @@ def test_partcheck_refuses_a_bad_sample_size_or_tolerance(tool, tmp_path, per_pa
                               tolerance=tolerance, summary=None, batch=5_000, min_available_gb=0.0)
     with pytest.raises(SystemExit, match="per-part|tolerance"):
         tool.do_partcheck(args)
+
+
+class _StubFrame:
+    """The slice of a shard frame ``do_partcheck`` touches: person rows and select."""
+
+    def __init__(self, household_ids):
+        self.person = pd.DataFrame({"person_household_id": list(household_ids)})
+
+    def table(self, entity):
+        assert entity == "person"
+        return self.person
+
+    def select(self, mask):
+        return _StubFrame(self.person.loc[np.asarray(mask), "person_household_id"])
+
+
+def _partcheck_work(tmp_path, stored_by_shard):
+    """A work directory whose ACS part ``shard_NNN`` stores one row per household.
+
+    ``stored_by_shard`` maps a shard number to its stored rows; households of
+    shard ``s`` carry ids ``10 * s + i``. The measures are ``snap``, ``ssi``
+    and ``state_income_tax``.
+    """
+    work = tmp_path / "work"
+    with open(_mkdir(work) / "concept_specs.pkl", "wb") as handle:
+        pickle.dump([SimpleNamespace(measure="snap"), SimpleNamespace(measure="ssi")], handle)
+    (_mkdir(work / "shards" / "acs") / "shard.json").write_text(json.dumps({"h5_sha256": "h5"}))
+    parts, rows = _mkdir(work / "concepts" / "acs"), []
+    for shard, stored in stored_by_shard.items():
+        rows += [(10 * shard + i, shard) for i in range(len(stored))]
+        sp.save_npz(parts / f"shard_{shard:03d}.npz", sp.csr_matrix(np.asarray(stored, dtype=float)))
+    pd.DataFrame(rows, columns=["household_id", "shard"]).to_parquet(work / "rows_acs.parquet", index=False)
+    return work
+
+
+def _mkdir(path):
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _run_partcheck(tool, work, fresh_by_household, parts=None):
+    """``do_partcheck`` with the engine stubbed: re-materializing returns ``fresh_by_household``."""
+
+    def materialize(frame, _specs, *, summary_path, batch):
+        ids = frame.table("person")["person_household_id"].drop_duplicates().to_numpy()
+        values = np.asarray([fresh_by_household[i] for i in ids], dtype=float)
+        household = pd.DataFrame(values, columns=["snap", "ssi", "state_income_tax"])
+        household.insert(0, "household_id", ids)
+        return household, None, None, None
+
+    def load(path):
+        shard = int(path.stem.split("_")[1])
+        return _StubFrame([i for i in fresh_by_household if i // 10 == shard])
+
+    args = argparse.Namespace(work=work, source="acs", shards=None, summary=None, parts=parts,
+                              per_part=10, tolerance=1e-6, batch=10, min_available_gb=0.0)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(tool, "_materialize_frame", materialize)
+        patch.setattr(tool, "_load_shard_frame", load)
+        patch.setattr(tool, "wait_for_memory", lambda _gb: None)
+        tool.do_partcheck(args)
+
+
+def test_do_partcheck_fails_a_part_whose_fresh_values_are_nonfinite(tool, tmp_path) -> None:
+    stored = {0: [[1.0, 2.0, 0.0], [3.0, 4.0, 0.0]], 1: [[5.0, 6.0, 0.0]]}
+    fresh = {0: [1.0, 2.0, 0.0], 1: [3.0, 4.0, 0.0], 10: [5.0, 6.0, 0.0]}
+    work = _partcheck_work(tmp_path, stored)
+    _run_partcheck(tool, work, fresh)
+    receipt = json.loads((work / "partcheck_acs.json").read_text())
+    assert sorted(receipt["parts"]) == ["shard_000.npz", "shard_001.npz"]
+    assert receipt["max_scaled_abs_diff"] == 0.0
+    fresh[10] = [5.0, float("nan"), 0.0]
+    with pytest.raises(SystemExit, match="disagree"):
+        _run_partcheck(tool, work, fresh)
+    part = json.loads((work / "partcheck_acs.json").read_text())["parts"]["shard_001.npz"]
+    assert part["n_nonfinite_columns"] == 1
+    assert part["columns_over_tolerance"] == ["ssi"]
+
+
+def test_do_partcheck_checks_only_the_parts_it_names(tool, tmp_path) -> None:
+    stored = {0: [[1.0, 2.0, 0.0]], 1: [[5.0, 6.0, 0.0]]}
+    fresh = {0: [1.0, float("nan"), 0.0], 10: [5.0, 6.0, 0.0]}
+    work = _partcheck_work(tmp_path, stored)
+    _run_partcheck(tool, work, fresh, parts="shard_001")
+    assert list(json.loads((work / "partcheck_acs.json").read_text())["parts"]) == ["shard_001.npz"]
+    (work / "partcheck_acs.json").unlink()
+    with pytest.raises(SystemExit, match="names no stored part"):
+        _run_partcheck(tool, work, fresh, parts="shard_009")
+    assert not (work / "partcheck_acs.json").exists()
 
 
 def test_replicate_tables_cover_only_groups_with_several_draws(tool) -> None:

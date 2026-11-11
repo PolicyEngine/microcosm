@@ -6,6 +6,8 @@ Invariants checked for every drawn input:
   its budget, and infeasible arms are refused rather than truncated;
 - nesting: a smaller ACS selection is a prefix of a larger one, and the order
   depends only on the key set, not its input order;
+- replicates: blocks of one budget never share a position, replicate 0's
+  blocks nest by budget, and a block past the end of the order is refused;
 - clone allocation: copies sum to the requested clones and differ by at most
   one across households;
 - mass: starting weights are positive, sum to the requested total, give each
@@ -18,7 +20,8 @@ Invariants checked for every drawn input:
   construction, including cells that carry several targets;
 - split: the role is a pure function of the group key, district children
   share their parent's role, vintage tokens never change a role, and the
-  hash matches the pending release primitive byte for byte.
+  hash matches the release primitive (differential, for every drawn key and
+  salt) and the port branch's recorded draws.
 """
 
 from __future__ import annotations
@@ -45,6 +48,7 @@ from microcosm.build.us_runtime.support_mix import (  # noqa: E402
     hash_uniform,
     kish_ess,
     plan_arm_counts,
+    replicate_block,
     target_split_group_key,
     target_split_role,
 )
@@ -87,10 +91,50 @@ def test_hash_uniform_matches_the_port_branch_fixtures(key: str, salt: str, draw
 
 
 @given(st.text(min_size=1, max_size=40), st.text(min_size=1, max_size=20))
+def test_hash_uniform_equals_the_merged_release_primitive(key: str, salt: str) -> None:
+    from microcosm.build.holdout import hash_holdout_uniform
+
+    assert hash_uniform(key, salt=salt) == hash_holdout_uniform(key, salt=salt)
+
+
+@given(st.text(min_size=1, max_size=40), st.text(min_size=1, max_size=20))
 def test_hash_uniform_is_a_unit_interval_draw(key: str, salt: str) -> None:
     u = hash_uniform(key, salt=salt)
     assert 0.0 <= u < 1.0
     assert u == hash_uniform(key, salt=salt)
+
+
+@given(
+    size=st.integers(min_value=0, max_value=400),
+    budgets=st.lists(st.integers(min_value=0, max_value=60), min_size=1, max_size=4),
+    seed=st.integers(min_value=0, max_value=2**31 - 1),
+)
+def test_replicate_blocks_are_disjoint_and_nest_by_budget(size, budgets, seed) -> None:
+    order = np.random.default_rng(seed).permutation(size)
+    for n in budgets:
+        blocks = []
+        replicate = 0
+        while (replicate + 1) * n <= size and replicate < 8:
+            block = replicate_block(order, n, replicate)
+            assert len(block) == n
+            blocks.append(set(block.tolist()))
+            replicate += 1
+        for i, first in enumerate(blocks):
+            for second in blocks[i + 1:]:
+                assert not first & second
+        if (replicate + 1) * n > size and n:
+            with pytest.raises(ValueError, match="holds"):
+                replicate_block(order, n, replicate)
+    fitting = sorted(n for n in budgets if n <= size)
+    for small, large in zip(fitting, fitting[1:], strict=False):
+        assert replicate_block(order, small, 0).tolist() == replicate_block(order, large, 0)[:small].tolist()
+
+
+def test_replicate_block_refuses_negative_sizes() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        replicate_block(np.arange(5), -1, 0)
+    with pytest.raises(ValueError, match="non-negative"):
+        replicate_block(np.arange(5), 1, -1)
 
 
 @given(

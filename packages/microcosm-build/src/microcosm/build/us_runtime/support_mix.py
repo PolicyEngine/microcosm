@@ -12,6 +12,8 @@ bake-off that compares those mixes at a fixed household budget:
   location clones an arm holds (:func:`plan_arm_counts`);
 - nested, identity-keyed ACS selection (:func:`acs_selection_order`), so a
   smaller arm's ACS households are always a subset of a larger arm's;
+- replicate draws from one selection order (:func:`replicate_block`), disjoint
+  across replicates and nested by budget for replicate 0;
 - deterministic clone allocation (:func:`clone_copies`);
 - the arm's starting weights (:func:`arm_initial_weights`);
 - the US target split mirrored from the pending ``target_split`` module
@@ -49,6 +51,7 @@ __all__ = [
     "hash_uniform",
     "kish_ess",
     "plan_arm_counts",
+    "replicate_block",
     "target_split_group_key",
     "target_split_role",
 ]
@@ -72,7 +75,7 @@ def hash_uniform(key: str, *, salt: str) -> float:
     """A key's deterministic uniform draw on ``[0, 1)``.
 
     ``sha256(salt + "\\x1f" + key)``, first 8 bytes big-endian, divided by
-    ``2**64`` — byte-identical to the pending
+    ``2**64`` — byte-identical to
     ``microcosm.build.holdout.hash_holdout_uniform``. The draw depends only on
     the key and the salt, never on which other keys exist or their order.
     """
@@ -227,6 +230,27 @@ def acs_selection_order(unit_keys: Sequence[str], *, salt: str) -> np.ndarray:
         (hash_uniform(key, salt=salt) for key in keys), dtype=np.float64, count=len(keys)
     )
     return np.lexsort((np.asarray(keys, dtype=object).astype(str), draws))
+
+
+def replicate_block(order: np.ndarray, n: int, replicate: int) -> np.ndarray:
+    """The ``n`` positions of ``order`` that replicate ``replicate`` takes.
+
+    Replicate ``r`` takes the ``r``-th run of ``n`` positions, so replicates
+    of one budget never share a position, and replicate 0's block for a
+    smaller budget is a prefix of its block for a larger one. Refuses a
+    negative size or replicate, and a block that runs past the end of
+    ``order``.
+    """
+    if n < 0 or replicate < 0:
+        raise ValueError(f"block size and replicate must be non-negative, got {n!r} and {replicate!r}.")
+    order = np.asarray(order)
+    start = replicate * n
+    if start + n > len(order):
+        raise ValueError(
+            f"replicate {replicate} of {n:,} households needs positions up to {start + n:,}, "
+            f"but the order holds {len(order):,}."
+        )
+    return order[start:start + n]
 
 
 def clone_copies(unit_keys: Sequence[str], n_clones: int, *, salt: str) -> np.ndarray:

@@ -56,6 +56,7 @@ from microcosm.build.us_runtime.support_mix import (  # noqa: E402
     hash_uniform,
     kish_ess,
     plan_arm_counts,
+    replicate_block,
     target_split_group_key,
     target_split_role,
 )
@@ -111,13 +112,14 @@ def write_json(path: Path, payload: object) -> None:
     tmp.replace(path)
 
 
-#: Touch this file to pause every bake-off loop between units of work (a shard
-#: or an arm) — e.g. while a release stage needs the machine's memory.
-PAUSE_FILE = Path("/Users/maxghenis/PolicyEngine/_bakeoff-support-mix/PAUSE")
+#: ``<work>/PAUSE``, set from ``--work`` in :func:`main`. Touch it to pause
+#: every bake-off loop between units of work (a shard or an arm), e.g. while a
+#: release stage needs the machine's memory.
+PAUSE_FILE: Path | None = None
 
 
 def wait_while_paused() -> None:
-    while PAUSE_FILE.exists():
+    while PAUSE_FILE is not None and PAUSE_FILE.exists():
         log(f"paused: {PAUSE_FILE} exists")
         time.sleep(120)
 
@@ -482,24 +484,46 @@ def spm_zero_adult_households(tables: dict[str, pd.DataFrame]) -> np.ndarray:
     spm_calculator's policyengine adapter counts a member as an adult when
     ``age >= 18`` or ``age >= 15`` with ``is_spm_independent_minor_role``,
     whose formula is ``is_household_head | is_household_spouse``; a unit with
-    no such member raises ``SPMInputError``. Returns one flag per household
-    row, in household-table order.
+    no such member raises ``SPMInputError``. A person table that stores the
+    role with a value on every row hands the engine that column in place of
+    the formula, so the flag reads it too; ``materialize`` drops an all-null
+    copy (:data:`FORMULA_DERIVED_WHEN_ALL_NULL`), so the flag then uses the
+    formula, and refuses a partly null copy as ``materialize`` does. Returns
+    one flag per household row, in household-table order.
     """
     hh, person = tables["household"], tables["person"]
     age = pd.to_numeric(person["age"], errors="coerce").fillna(0).to_numpy()
-    # Either role column alone still classifies its members; with neither,
-    # 15-17-year-old heads and spouses would silently count as minors.
+    stored = person[SPM_ROLE_COLUMN] if SPM_ROLE_COLUMN in person else None
+    if stored is not None and stored.notna().all():
+        role = stored.astype(bool).to_numpy()
+    else:
+        if stored is not None and stored.notna().any():
+            raise ValueError(f"person.{SPM_ROLE_COLUMN} is partially null ({int(stored.isna().sum())} rows)")
+        role = _spm_role_formula(person)
+    adult = (age >= 18) | ((age >= 15) & role)
+    unit_adults = pd.Series(adult).groupby(person["person_spm_unit_id"].to_numpy()).sum()
+    empty_units = unit_adults.index[unit_adults.to_numpy() == 0]
+    flagged = person.loc[person["person_spm_unit_id"].isin(empty_units), "person_household_id"]
+    return np.isin(hh["household_id"].to_numpy(), flagged.to_numpy())
+
+
+#: The stored SPM role column the engine reads when a staging carries it.
+SPM_ROLE_COLUMN = "is_spm_independent_minor_role"
+
+
+def _spm_role_formula(person: pd.DataFrame) -> np.ndarray:
+    """``is_household_head | is_household_spouse``, the role's formula.
+
+    Either column alone still classifies its members; with neither, 15-17-year-old
+    heads and spouses would silently count as minors, so the rule refuses.
+    """
     role_columns = [c for c in ("is_household_head", "is_household_spouse") if c in person]
     if not role_columns:
         raise ValueError("person table has neither is_household_head nor is_household_spouse")
     role = np.zeros(len(person), dtype=bool)
     for column in role_columns:
         role |= pd.Series(person[column]).fillna(False).astype(bool).to_numpy()
-    adult = (age >= 18) | ((age >= 15) & role)
-    unit_adults = pd.Series(adult).groupby(person["person_spm_unit_id"].to_numpy()).sum()
-    empty_units = unit_adults.index[unit_adults.to_numpy() == 0]
-    flagged = person.loc[person["person_spm_unit_id"].isin(empty_units), "person_household_id"]
-    return np.isin(hh["household_id"].to_numpy(), flagged.to_numpy())
+    return role
 
 
 def _row_index_columns(tables: dict[str, pd.DataFrame], source: str) -> pd.DataFrame:
@@ -703,7 +727,7 @@ def _load_shard_frame(path: Path):
 #: engine derives the role from household structure, as it did for the
 #: production ACS local release, whose staging had no such column. A
 #: partially null column is an error. Counted in every receipt.
-FORMULA_DERIVED_WHEN_ALL_NULL = (("person", "is_spm_independent_minor_role"),)
+FORMULA_DERIVED_WHEN_ALL_NULL = (("person", SPM_ROLE_COLUMN),)
 
 
 def _drop_all_null_formula_inputs(frame):
@@ -1423,9 +1447,10 @@ def do_arm(args) -> None:
     # replicates are independent draws and seed 0 arms are nested by budget.
     rank = acs_rank(args.work)[rows_acs["row"].to_numpy()]
     order = np.argsort(rank, kind="stable")
-    block = order[arm.seed * counts.acs:(arm.seed + 1) * counts.acs]
-    if len(block) < counts.acs:
-        raise SystemExit(f"{arm.label}: replicate block exceeds the ACS rows available")
+    try:
+        block = replicate_block(order, counts.acs, arm.seed)
+    except ValueError as error:
+        raise SystemExit(f"{arm.label}: {error}") from None
     acs_rows = rows_acs.iloc[np.sort(block)].reset_index(drop=True)
     # Pre-repair mass only: the population mass repair below sets the level.
     newest = rows_cps["income_year"].max()
@@ -1913,7 +1938,8 @@ def main(argv=None) -> None:
     m.add_argument("--rank-range", help="ACS only: materialize rows whose selection rank is in [LO,HI)")
     m.add_argument("--min-available-gb", type=float, default=20.0)
     m.add_argument("--replace-stale", action="store_true",
-                   help="delete and rebuild parts not built from the current shards' source h5")
+                   help="delete and rebuild parts not built from the current shards' source h5, "
+                        "concept specs and null-fill summary")
     pc = sub.add_parser("partcheck")
     pc.add_argument("--work", type=Path, required=True)
     pc.add_argument("--source", choices=("cps", "acs"), required=True)
@@ -1971,6 +1997,8 @@ def main(argv=None) -> None:
     r.add_argument("--epochs", type=int, default=1_500)
     r.add_argument("--allow-stale", action="store_true", help="leave stale receipts out instead of refusing")
     args = parser.parse_args(argv)
+    global PAUSE_FILE
+    PAUSE_FILE = args.work / "PAUSE" if getattr(args, "work", None) is not None else None
     {
         "compile": do_compile, "shard": do_shard, "materialize": do_materialize,
         "diffcheck": do_diffcheck, "truth": do_truth, "arm": do_arm, "report": do_report,

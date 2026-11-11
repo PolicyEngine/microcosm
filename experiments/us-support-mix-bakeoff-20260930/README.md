@@ -25,8 +25,8 @@ gives the design, verdict and caveats.
 | `asec_quality.py`, `asec_quality.json` | CPS year response-quality check (script and its output) |
 | `memo_tables.py` | Builds the memo's results tables from these files |
 
-The folder holds no per-arm receipts (10–15 MB each, with every held-out
-target's estimate) and no saved weights. Both stayed in the run's work
-directory, which no longer exists. The `materialize/` receipts predate the
-source-h5, concept-spec and null-fill-summary digests the memo describes; on
-2026-09-30 their numerical fields matched the work copies'.
+The run's per-arm receipts (10–15 MB each, with every held-out target's
+estimate) and saved weights did not survive it, so a rerun rebuilds them from
+`compile`. The `materialize/` receipts lack the source-h5, concept-spec and
+null-fill-summary digests that `materialize` writes; on 2026-09-30 their
+numerical fields matched the run's annotated copies.
