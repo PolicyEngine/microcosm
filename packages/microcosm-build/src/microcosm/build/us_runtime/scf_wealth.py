@@ -25,7 +25,8 @@ which also reads U.S. savings bonds:
 
 - ``bank_account_assets`` ← SCF ``liq`` (checking, savings, money-market,
   call and prepaid-card accounts; the Fed's macro sets it to at least $1 for
-  a household holding any such account).
+  a household reporting a checking, savings, money-market or call account,
+  even at a zero balance, but not for one holding only a prepaid card).
 - ``stock_assets`` ← SCF ``stocks`` + ``nmmf`` (directly-held stock plus
   stock/non-money-market mutual funds).
 - ``bond_assets`` ← SCF ``bond`` + ``savbnd``. ``bond`` is directly held
@@ -35,9 +36,11 @@ which also reads U.S. savings bonds:
   ``nmmf``, so they land in ``stock_assets``.
 
 The archive read ``bond`` alone and kept ``savbnd`` as ``scf_savings_bonds``,
-a construction-only component of its net-worth reconciliation. Microcosm
-builds none of those components (see ``net_worth`` below), so under the
+one of its net-worth reconciliation components. That is not a countable
+resource leaf, and PolicyEngine-US defines no such variable, so under the
 archive mapping an SCF-drawn household's savings bonds reached no SSI leaf.
+Microcosm builds none of those components (see ``net_worth`` below), so
+before this change it read ``savbnd`` nowhere.
 PolicyEngine-US documents ``bond_assets`` as "Value of bonds and government
 securities. Imputed from SIPP TVAL_BOND." and cites POMS SI 01140.240 (U.S.
 Savings Bonds) and SI 01140.250 (Municipal, Corporate and Government Bonds).
