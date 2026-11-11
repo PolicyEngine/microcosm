@@ -734,10 +734,55 @@ def test_the_certification_records_the_change_since_the_baseline(
     certification = compose_uk_release_certification(**green_certification_inputs)
     assert certification["since_baseline"] == {
         "baseline": mass["baseline"],
+        # The chain starts at the national line's origin: no restart.
+        "restarted_from": None,
         "input_mass_ratios": mass["ratios"],
+        # Round 2 of the review: the columns that left the chain stay listed.
+        "input_mass_left": mass["left"],
         "baseline_inputs": coverage["inputs"],
         "inputs_dropped": coverage["dropped"],
     }
+
+
+def _release_cut_since(baseline: str, *, left: dict | None = None) -> dict:
+    mass = {"baseline": baseline, "ratios": {"employment_income": 1.1}}
+    if left is not None:
+        mass["left"] = left
+    return {
+        "gates": {
+            "uk_input_mass_parity": {"details": {"since_baseline": mass}},
+            "uk_release_input_coverage": {
+                "details": {
+                    "since_baseline": {
+                        "baseline": baseline,
+                        "inputs": ["employment_income"],
+                        "dropped": [],
+                    }
+                }
+            },
+        }
+    }
+
+
+def test_a_chain_that_restarted_says_so():
+    """Round 2 of the review of microcosm#1574: a chain that starts at any
+    build but the national line's origin has restarted, and the
+    certification records where the line's chain began."""
+
+    from microcosm.build.uk_runtime.cut_reference import (
+        UK_NATIONAL_SINCE_BASELINE_ORIGIN,
+    )
+    from microcosm.build.uk_runtime.release_certification import _since_baseline
+
+    origin = _since_baseline(
+        _release_cut_since(UK_NATIONAL_SINCE_BASELINE_ORIGIN, left={})
+    )
+    assert origin["restarted_from"] is None
+    restarted = _since_baseline(
+        _release_cut_since("microcosm-uk-2024-25-national@older", left={})
+    )
+    assert restarted["baseline"] == "microcosm-uk-2024-25-national@older"
+    assert restarted["restarted_from"] == UK_NATIONAL_SINCE_BASELINE_ORIGIN
 
 
 def test_compose_refuses_a_release_cut_with_no_record_since_the_baseline():
@@ -745,6 +790,9 @@ def test_compose_refuses_a_release_cut_with_no_record_since_the_baseline():
 
     with pytest.raises(UKReleaseCertificationError, match="no change since"):
         _since_baseline({"gates": {"uk_input_mass_parity": {"details": {}}}})
+    # Evidence from before the record listed the columns that leave it.
+    with pytest.raises(UKReleaseCertificationError, match="no change since"):
+        _since_baseline(_release_cut_since("microcosm-uk-2024-25-national@a"))
     mixed = {
         "gates": {
             "uk_input_mass_parity": {
@@ -752,6 +800,7 @@ def test_compose_refuses_a_release_cut_with_no_record_since_the_baseline():
                     "since_baseline": {
                         "baseline": "microcosm-uk-2024-25-national@a",
                         "ratios": {},
+                        "left": {},
                     }
                 }
             },

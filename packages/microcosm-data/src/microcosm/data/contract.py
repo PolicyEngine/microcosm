@@ -1006,8 +1006,24 @@ _UK_CERTIFICATION_REFERENCE_FIELDS = frozenset(
 _UK_CERTIFICATION_REFERENCE_SELECTIONS = frozenset({"current", "pinned"})
 _UK_RELEASE_CERTIFICATION_KIND = "uk_release_certification"
 _UK_CERTIFICATION_SINCE_BASELINE_FIELDS = frozenset(
-    {"baseline", "input_mass_ratios", "baseline_inputs", "inputs_dropped"}
+    {
+        "baseline",
+        "restarted_from",
+        "input_mass_ratios",
+        "input_mass_left",
+        "baseline_inputs",
+        "inputs_dropped",
+    }
 )
+#: Mirrors of microcosm-build's ``UK_NATIONAL_SINCE_BASELINE_ORIGIN`` (where
+#: the national record of change since the baseline starts; a chain that
+#: starts elsewhere has restarted) and ``UK_SINCE_BASELINE_LEFT_REASONS``
+#: (why a column leaves that record), from round 2 of the review of
+#: microcosm#1574.
+_UK_NATIONAL_SINCE_BASELINE_ORIGIN = (
+    f"{_UK_NATIONAL_RELEASE_ID}@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+)
+_UK_SINCE_BASELINE_LEFT_REASONS = ("absent", "zero_reference_total", "thin")
 
 
 def _check_uk_certification_since_baseline(
@@ -1025,6 +1041,7 @@ def _check_uk_certification_since_baseline(
         return
     baseline = since.get("baseline")
     ratios = since.get("input_mass_ratios")
+    left = since.get("input_mass_left")
     inputs = since.get("baseline_inputs")
     dropped = since.get("inputs_dropped")
     names_ok = all(
@@ -1032,26 +1049,61 @@ def _check_uk_certification_since_baseline(
         and all(isinstance(name, str) and name for name in names)
         for names in (inputs, dropped)
     )
-    if (
-        not isinstance(baseline, str)
-        or not baseline.startswith(f"{_UK_NATIONAL_RELEASE_ID}@")
-        or baseline == f"{_UK_NATIONAL_RELEASE_ID}@"
-        or not isinstance(ratios, Mapping)
-        or not all(
+
+    def national_build(label: object) -> bool:
+        return (
+            isinstance(label, str)
+            and label.startswith(f"{_UK_NATIONAL_RELEASE_ID}@")
+            and label != f"{_UK_NATIONAL_RELEASE_ID}@"
+        )
+
+    def ratio(value: object) -> bool:
+        return (
             isinstance(value, int | float)
             and not isinstance(value, bool)
             and math.isfinite(float(value))
             and float(value) >= 0.0
-            for value in ratios.values()
+        )
+
+    if (
+        not national_build(baseline)
+        or not isinstance(ratios, Mapping)
+        or not all(ratio(value) for value in ratios.values())
+        or not isinstance(left, Mapping)
+        or not all(
+            isinstance(entry, Mapping)
+            and set(entry) == {"reason", "last_ratio", "last_build"}
+            and entry["reason"] in _UK_SINCE_BASELINE_LEFT_REASONS
+            and ratio(entry["last_ratio"])
+            and national_build(entry["last_build"])
+            and column not in ratios
+            for column, entry in left.items()
         )
         or not names_ok
         or not set(dropped) <= set(inputs)
     ):
         failures.append(
             f"{file} since_baseline must name a national baseline build, a "
-            "finite non-negative ratio per column, and the baseline's inputs "
-            "with those this build no longer carries."
+            "finite non-negative ratio per column, each column that left the "
+            "chain with its reason, last ratio and last national build, and "
+            "the baseline's inputs with those this build no longer carries."
         )
+        return
+    # A chain that starts anywhere but the line's origin has restarted, and
+    # says so (round 2 of the review of microcosm#1574).
+    expected = (
+        None
+        if baseline == _UK_NATIONAL_SINCE_BASELINE_ORIGIN
+        else _UK_NATIONAL_SINCE_BASELINE_ORIGIN
+    )
+    if since.get("restarted_from") != expected:
+        failures.append(
+            f"{file} since_baseline must record restarted_from {expected!r}: "
+            f"the national chain starts at {_UK_NATIONAL_SINCE_BASELINE_ORIGIN}, "
+            "and one that starts at another build has restarted."
+        )
+
+
 _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
 _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
     {

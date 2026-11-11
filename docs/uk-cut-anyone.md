@@ -272,8 +272,9 @@ score and the certification then run again against it.
 
 It refuses to move to the cut's own candidate, which becomes the current build
 once the cut is promoted. A build withdrawn after the fetch stops the certify
-step, and `status` says so; the cut keeps its record until
-`--re-resolve-reference` moves it.
+and publish steps, even once the cut is certified, and `status` says so; the
+cut keeps its record until `--re-resolve-reference` moves it, which certifies
+the cut again.
 
 A line with no current build (a new line, or one whose only current build
 was withdrawn, `current: null`) refuses at the reference step. Pin one of its
@@ -288,16 +289,24 @@ change.
 Every check compares a cut with the build before it, so the certification
 also records the change since a fixed baseline:
 - each input column's total as a ratio of the baseline's;
+- each column that has left that chain, with why and its last ratio;
 - the inputs the baseline carried;
 - which of those this build no longer carries.
 
 The chain starts at the build each line compared with first (for the national
 line, eeb6093e). Each cut continues its reference's record, multiplying in
 the ratios its own input-mass gate measures, so no baseline dataset is ever
-loaded. A column one or two source households carry leaves the chain, with
-its figures withheld. The record carries no verdict. The dense line's
-published evidence carries none of these gates, so its chain restarts at each
-reference.
+loaded. It continues from the reference's certification kept beside it, which
+a resumed cut keeps again if the copy is missing.
+
+A column leaves the chain when it is absent on a side, when the reference's
+total is zero, or when one or two source households carry it on a side (its
+figures are withheld). It stays listed in every later certification, with the
+reason and the last ratio the chain recorded for it. A national chain that
+starts at any build but eeb6093e (a pinned build certified before the record
+began, say) has restarted, and the certification records `restarted_from`.
+The record carries no verdict. The dense line's published evidence carries
+none of these gates, so its chain restarts at each reference.
 
 ## Signing keys
 

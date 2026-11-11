@@ -305,12 +305,20 @@ def test_the_chain_starts_at_a_reference_with_none_and_continues_one(
     assert started == {
         "baseline": reference.label,
         "input_mass_ratios": {"employment_income": 1.0},
+        "input_mass_left": {},
         "baseline_inputs": ["employment_income", "rare_flag"],
     }
     certification = json.loads(kept.read_text())
+    gone = {
+        "reason": "thin",
+        "last_ratio": 0.4,
+        "last_build": f"{UK_NATIONAL_RELEASE}@earlier",
+    }
     certification["since_baseline"] = {
         "baseline": f"{UK_NATIONAL_RELEASE}@baseline",
+        "restarted_from": None,
         "input_mass_ratios": {"employment_income": 0.8},
+        "input_mass_left": {"gift_aid_amount": gone},
         "baseline_inputs": ["employment_income", "gift_aid"],
         "inputs_dropped": ["gift_aid"],
     }
@@ -322,8 +330,21 @@ def test_the_chain_starts_at_a_reference_with_none_and_continues_one(
         carriers={"employment_income": 900},
         carried_inputs={"employment_income"},
     )
+    # The columns that left the chain carry forward with it (round 2).
     assert continued == {
         "baseline": f"{UK_NATIONAL_RELEASE}@baseline",
         "input_mass_ratios": {"employment_income": 0.8},
+        "input_mass_left": {"gift_aid_amount": gone},
         "baseline_inputs": ["employment_income", "gift_aid"],
     }
+    # A missing copy is refused, not read as a reference with no chain,
+    # which would restart the chain without a trace (round 2).
+    kept.unlink()
+    with pytest.raises(ValueError, match="is missing"):
+        uk_cut_reference_chain(
+            reference,
+            tmp_path / "ref",
+            totals={"employment_income": 10.0},
+            carriers={"employment_income": 900},
+            carried_inputs={"employment_income"},
+        )

@@ -354,6 +354,24 @@ class TestCertificationMirrors:
 
         assert data_contract._UK_NATIONAL_RELEASE_ID == UK_NATIONAL_RELEASE_ID
 
+    def test_since_baseline_record_mirrors_the_build_shard(self) -> None:
+        """Round 2 of the review of microcosm#1574: where the national chain
+        starts, and why a column leaves it."""
+
+        from microcosm.build.uk_runtime.cut_reference import (
+            UK_NATIONAL_SINCE_BASELINE_ORIGIN,
+        )
+        from microcosm.build.uk_runtime.weighted_integrity import (
+            UK_SINCE_BASELINE_LEFT_REASONS,
+        )
+
+        assert data_contract._UK_NATIONAL_SINCE_BASELINE_ORIGIN == (
+            UK_NATIONAL_SINCE_BASELINE_ORIGIN
+        )
+        assert data_contract._UK_SINCE_BASELINE_LEFT_REASONS == (
+            UK_SINCE_BASELINE_LEFT_REASONS
+        )
+
 
 class TestDenseLineMirrors:
     """The dense joint line's contract mirrors (microcosm#762 A18)."""

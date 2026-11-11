@@ -6083,7 +6083,18 @@ def _green_uk_certification(
                 "microcosm-uk-2024-25-national@"
                 "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
             ),
+            "restarted_from": None,
             "input_mass_ratios": {"employment_income": 1.02},
+            "input_mass_left": {
+                "gift_aid": {
+                    "reason": "thin",
+                    "last_ratio": 0.9,
+                    "last_build": (
+                        "microcosm-uk-2024-25-national@"
+                        "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+                    ),
+                }
+            },
             "baseline_inputs": ["employment_income", "gift_aid"],
             "inputs_dropped": ["gift_aid"],
         },
@@ -6233,10 +6244,18 @@ def test_uk_release_certification_refusals(monkeypatch) -> None:
             for line in _certification_failures(certification, monkeypatch, key)
         ), broken
     # The change since a fixed baseline (the review of microcosm#1574).
+    left = _green_uk_certification(key)["since_baseline"]["input_mass_left"]["gift_aid"]
     for broken in (
         {"baseline": "microcosm-uk-2024-25-dense@x"},
         {"input_mass_ratios": {"employment_income": -1.0}},
         {"inputs_dropped": ["not_a_baseline_input"]},
+        # Round 2 of the review: each column that left the chain says why,
+        # with its last ratio and build, and is no longer in the ratios.
+        {"input_mass_left": {"gift_aid": {**left, "reason": "vanished"}}},
+        {"input_mass_left": {"gift_aid": {**left, "last_ratio": -0.5}}},
+        {"input_mass_left": {"gift_aid": {**left, "last_build": "elsewhere"}}},
+        {"input_mass_left": {"employment_income": left}},
+        {"input_mass_left": ["gift_aid"]},
     ):
         certification = _green_uk_certification(key)
         certification["since_baseline"].update(broken)
@@ -6250,6 +6269,24 @@ def test_uk_release_certification_refusals(monkeypatch) -> None:
         "since_baseline must record exactly" in line
         for line in _certification_failures(certification, monkeypatch, key)
     )
+    # A chain that starts anywhere but the national origin has restarted,
+    # and says so; one that starts there has not.
+    origin = contract._UK_NATIONAL_SINCE_BASELINE_ORIGIN
+    for baseline, restarted_from, ok in (
+        (origin, None, True),
+        (origin, origin, False),
+        ("microcosm-uk-2024-25-national@older", origin, True),
+        ("microcosm-uk-2024-25-national@older", None, False),
+    ):
+        certification = _green_uk_certification(key)
+        certification["since_baseline"].update(
+            {"baseline": baseline, "restarted_from": restarted_from}
+        )
+        failures = _certification_failures(certification, monkeypatch, key)
+        assert ok != any("restarted_from" in line for line in failures), (
+            baseline,
+            restarted_from,
+        )
     certification = _green_uk_certification(key)
     certification["schema_version"] = 1
     assert any(

@@ -409,11 +409,17 @@ def _since_baseline(release_cut: Mapping[str, Any]) -> dict[str, Any]:
     """The release cut's change since the baseline, from its two gates.
 
     The input-mass gate continues each column's ratio to the baseline's
-    total; the coverage gate names the baseline's inputs this build no
-    longer carries. Both continue the reference's own record, so the next
-    cut reads it from this certification without loading any baseline.
+    total and lists the columns that have left the chain; the coverage gate
+    names the baseline's inputs this build no longer carries. Both continue
+    the reference's own record, so the next cut reads it from this
+    certification without loading any baseline. A chain whose baseline is
+    not the national line's origin has restarted, and the certification
+    says so (``restarted_from``; round 2 of the review of microcosm#1574).
     """
 
+    from microcosm.build.uk_runtime.cut_reference import (
+        UK_NATIONAL_SINCE_BASELINE_ORIGIN,
+    )
     from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
 
     gates = release_cut.get("gates") or {}
@@ -425,7 +431,7 @@ def _since_baseline(release_cut: Mapping[str, Any]) -> dict[str, Any]:
 
     mass = block("uk_input_mass_parity")
     coverage = block("uk_release_input_coverage")
-    if mass is None or coverage is None:
+    if mass is None or coverage is None or not isinstance(mass.get("left"), Mapping):
         raise UKReleaseCertificationError(
             "The release-cut report records no change since the baseline: the "
             "cut's reference evidence predates it, so write it again (the "
@@ -442,7 +448,13 @@ def _since_baseline(release_cut: Mapping[str, Any]) -> dict[str, Any]:
         )
     return {
         "baseline": str(baseline),
+        "restarted_from": (
+            None
+            if baseline == UK_NATIONAL_SINCE_BASELINE_ORIGIN
+            else UK_NATIONAL_SINCE_BASELINE_ORIGIN
+        ),
         "input_mass_ratios": dict(sorted(mass["ratios"].items())),
+        "input_mass_left": dict(sorted(mass["left"].items())),
         "baseline_inputs": sorted(coverage["inputs"]),
         "inputs_dropped": sorted(coverage["dropped"]),
     }

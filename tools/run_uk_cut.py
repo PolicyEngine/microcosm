@@ -63,12 +63,14 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from microcosm.build.uk_runtime.cut_reference import (
+    UK_CUT_REFERENCE_EVIDENCE_NAME,
     UK_CUT_REFERENCE_INPUT_MASS_NAME,
     UK_CUT_REFERENCE_RECORD_NAME,
     UK_CUT_REFERENCE_SURFACE_NAME,
     UKCutReference,
     check_uk_cut_reference,
     fetch_uk_cut_reference,
+    keep_uk_cut_reference_evidence,
     read_uk_cut_reference,
     uk_cut_reference_evidence_done,
     uk_cut_reference_withdrawal,
@@ -1587,9 +1589,25 @@ def run_reference(
         except ValueError:
             pass
         else:
-            write_evidence(
-                reference, paths.reference_h5(reference), paths.reference_dir
-            )
+            try:
+                # The change since the baseline continues from the reference's
+                # own evidence, which a cut resolved before the record began
+                # never kept; without it the chain would restart without a
+                # trace (round 2 of the review of microcosm#1574).
+                if not (paths.reference_dir / UK_CUT_REFERENCE_EVIDENCE_NAME).is_file():
+                    keep_uk_cut_reference_evidence(
+                        reference, paths.reference_dir, hub_download=hub_download
+                    )
+                    runner.log(
+                        f"[reference] kept the evidence of {reference.label} again"
+                    )
+                write_evidence(
+                    reference, paths.reference_h5(reference), paths.reference_dir
+                )
+            except ValueError as error:
+                raise CutError(
+                    f"the cut's reference evidence cannot be written: {error}"
+                ) from error
             runner.log(f"[reference] wrote the evidence for {reference.label}")
             return reference
     if paths.reference_dir.exists():
@@ -1695,20 +1713,32 @@ def national_logbook_row(paths: CutPaths) -> str:
     return rows[0].stem
 
 
-def run_certify(runner: Runner) -> None:
-    paths = runner.paths
-    done, detail = certify_done(paths)
-    if done:
-        runner.log(f"[certify] done: {detail}")
-        return
-    # Withdrawal is checked at fetch; a build withdrawn since must not certify
-    # (the review of microcosm#1574). Read-only: the cut keeps its record.
+def _refuse_a_withdrawn_reference(paths: CutPaths) -> None:
+    """Refuse to certify or publish against a build withdrawn since the fetch.
+
+    Withdrawal is checked at fetch; a build withdrawn since must neither
+    certify nor publish (the review of microcosm#1574). Read-only: the cut
+    keeps its record.
+    """
+
     withdrawn = uk_cut_reference_withdrawal(cut_reference(paths))
     if withdrawn:
         raise CutError(
             f"{withdrawn}; the cut keeps its recorded reference, so pass "
-            "--re-resolve-reference to compare with the line's current build."
+            "--re-resolve-reference to compare with the line's current build, "
+            "which certifies the cut again."
         )
+
+
+def run_certify(runner: Runner) -> None:
+    paths = runner.paths
+    # Before the early return: a cut certified against a build withdrawn
+    # since must not go on to publish (round 2 of the review).
+    _refuse_a_withdrawn_reference(paths)
+    done, detail = certify_done(paths)
+    if done:
+        runner.log(f"[certify] done: {detail}")
+        return
     _set_aside(
         runner,
         "certify",
@@ -1834,6 +1864,8 @@ def tag_published(tag: str) -> bool:
 
 def run_publish(runner: Runner, tag: str, *, publish: bool) -> None:
     paths = runner.paths
+    # Again here, for a publish step run on its own (round 2 of the review).
+    _refuse_a_withdrawn_reference(paths)
     runner.run(
         "publish-preflight",
         publish_argv(paths, python=runner.python, tag=tag, preflight_only=True),

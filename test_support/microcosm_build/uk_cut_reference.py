@@ -227,6 +227,7 @@ def stub_reference_evidence(reference, h5_path, output_dir):
                 "since_baseline": {
                     "baseline": reference.label,
                     "ratios": {"employment_income": 1.0},
+                    "left": {},
                 },
             }
         )

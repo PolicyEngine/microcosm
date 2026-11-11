@@ -200,11 +200,18 @@ def _reference(paths: cut.CutPaths, *, build: str = REFERENCE_BUILD, data=b"ref"
         },
         resolved_at="2026-11-10T12:00:00Z",
     )
+    from microcosm.build.uk_runtime.cut_reference import (
+        UK_CUT_REFERENCE_EVIDENCE_NAME,
+    )
     from test_support.microcosm_build.uk_cut_reference import stub_reference_evidence
 
     paths.reference_dir.mkdir(parents=True, exist_ok=True)
     paths.reference_h5(reference).write_bytes(data)
     write_uk_cut_reference(paths.reference_record, reference)
+    # The reference's own certification, which the fetch keeps beside it.
+    (paths.reference_dir / UK_CUT_REFERENCE_EVIDENCE_NAME).write_text(
+        json.dumps({"kind": "uk_release_certification"})
+    )
     stub_reference_evidence(
         reference, paths.reference_h5(reference), paths.reference_dir
     )
@@ -1427,6 +1434,69 @@ def test_a_reference_without_its_evidence_gets_it_written_not_re_resolved(tmp_pa
 
     assert reference.build == REFERENCE_BUILD
     assert cut.reference_done(runner.paths)[0]
+
+
+def test_a_resumed_cut_keeps_its_reference_s_own_evidence_again(tmp_path):
+    """Round 2 of the review of microcosm#1574: a cut resolved before the
+    record since the baseline began never kept its reference's evidence, and
+    without it the chain would restart without a trace."""
+
+    from microcosm.build.uk_runtime.cut_reference import (
+        UK_CUT_REFERENCE_EVIDENCE_NAME,
+    )
+    from test_support.microcosm_build.uk_cut_reference import national_certification
+
+    runner, _ = _runner(tmp_path, reference=False)
+    hub = _reference_hub(tmp_path)
+    reference = cut.run_reference(
+        runner, hub_download=hub, write_evidence=_stub_evidence
+    )
+    kept = runner.paths.reference_dir / UK_CUT_REFERENCE_EVIDENCE_NAME
+    original = kept.read_bytes()
+    kept.unlink()
+    runner.paths.reference_input_mass.unlink()
+
+    again = cut.run_reference(runner, hub_download=hub, write_evidence=_stub_evidence)
+
+    assert again.build == reference.build
+    assert kept.read_bytes() == original
+    assert cut.reference_done(runner.paths)[0]
+    # A copy that no longer matches what the fetch checked is refused.
+    kept.unlink()
+    runner.paths.reference_input_mass.unlink()
+    hub.publish(
+        cut.RELEASE_ID,
+        REFERENCE_BUILD,
+        dataset=b"current build",
+        evidence=national_certification(b"current build", note="rewritten"),
+    )
+    with pytest.raises(cut.CutError, match="no longer has the sha256"):
+        cut.run_reference(runner, hub_download=hub, write_evidence=_stub_evidence)
+    assert not kept.exists()
+
+
+def test_a_reference_withdrawn_after_certification_stops_the_cut(tmp_path, monkeypatch):
+    """Round 2 of the review of microcosm#1574: once the certification
+    existed, a resumed cut skipped the check and went on to publish."""
+
+    runner, fake = _runner(tmp_path)
+    cut.run_spine(runner, staging_local_only=True)
+    cut.run_national(runner, retry=False, logbook_prev_row_digest=None)
+    cut.run_score(runner)
+    cut.run_certify(runner)
+    assert cut.certify_done(runner.paths)[0]
+    monkeypatch.setattr(
+        cut,
+        "uk_cut_reference_withdrawal",
+        lambda reference: (
+            f"{reference.label} has been withdrawn since the cut resolved it"
+        ),
+    )
+    with pytest.raises(cut.CutError, match="withdrawn since the cut resolved it"):
+        cut.run_certify(runner)
+    with pytest.raises(cut.CutError, match="withdrawn since the cut resolved it"):
+        cut.run_publish(runner, "microcosm-uk-2024-25-national-x", publish=True)
+    assert not {"publish-preflight", "publish"} & set(fake.calls)
 
 
 def test_a_reference_withdrawn_since_the_fetch_stops_certification(

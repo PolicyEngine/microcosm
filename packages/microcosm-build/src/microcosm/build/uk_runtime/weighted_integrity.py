@@ -151,6 +151,7 @@ __all__ = [
     "UKReviewedExclusion",
     "UK_INPUT_MASS_REFERENCE_REGISTRY",
     "UK_RELEASE_LINES",
+    "UK_SINCE_BASELINE_LEFT_REASONS",
     "coerce_input_mass_reference_registry",
     "coerce_reviewed_exclusions",
     "exclusion_evaluation_date",
@@ -180,6 +181,12 @@ UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE = (
 #: carriers. Schema 1 held the enhanced FRS's totals, which retired with it.
 UK_INPUT_MASS_REFERENCE_SCHEMA_VERSION = 2
 UK_INPUT_MASS_REFERENCE_KIND = "uk_input_mass_reference"
+#: Why a column leaves the record of change since the baseline, where it
+#: stays listed with its last ratio (round 2 of the review of
+#: microcosm#1574): absent from the candidate or the reference, a zero
+#: reference total (no ratio continues), or one or two source households on
+#: a side (its figures are withheld).
+UK_SINCE_BASELINE_LEFT_REASONS = ("absent", "zero_reference_total", "thin")
 
 
 _SHA256_HEX = frozenset("0123456789abcdef")
@@ -826,6 +833,30 @@ def uk_default_input_mass_reviewed_exclusions() -> Mapping[
     )
 
 
+def _is_ratio(value: object) -> bool:
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+        and float(value) >= 0.0
+    )
+
+
+def _left_chain_ok(left: object, ratios: Mapping[str, Any]) -> bool:
+    """Each column that left the chain: why, its last ratio and build."""
+
+    return isinstance(left, Mapping) and all(
+        isinstance(entry, Mapping)
+        and set(entry) == {"reason", "last_ratio", "last_build"}
+        and entry["reason"] in UK_SINCE_BASELINE_LEFT_REASONS
+        and _is_ratio(entry["last_ratio"])
+        and isinstance(entry["last_build"], str)
+        and entry["last_build"].count("@") == 1
+        and column not in ratios
+        for column, entry in left.items()
+    )
+
+
 def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
     """Load the input-mass reference a cut wrote from its reference build.
 
@@ -886,25 +917,32 @@ def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
             if isinstance(since_baseline, Mapping)
             else None
         )
+        left = (
+            since_baseline.get("left") if isinstance(since_baseline, Mapping) else None
+        )
         if (
             not isinstance(baseline, str)
             or baseline.count("@") != 1
             or not isinstance(ratios, Mapping)
-            or not all(
-                isinstance(value, int | float)
-                and not isinstance(value, bool)
-                and math.isfinite(float(value))
-                and float(value) >= 0.0
-                for value in ratios.values()
-            )
+            or not all(_is_ratio(value) for value in ratios.values())
+            or not _left_chain_ok(left, ratios)
         ):
             raise ValueError(
-                f"{path}: since_baseline names its baseline <release>@<build> and "
-                "a finite, non-negative ratio per column."
+                f"{path}: since_baseline names its baseline <release>@<build>, "
+                "a finite, non-negative ratio per column, and the columns that "
+                "left the chain, each with its reason, last ratio and last build."
             )
         since_baseline = {
             "baseline": baseline,
             "ratios": {str(name): float(value) for name, value in ratios.items()},
+            "left": {
+                str(name): {
+                    "reason": str(entry["reason"]),
+                    "last_ratio": float(entry["last_ratio"]),
+                    "last_build": str(entry["last_build"]),
+                }
+                for name, entry in left.items()
+            },
         }
     return UKInputMassReference(
         totals=dict(totals),
@@ -938,7 +976,8 @@ class UKInputMassReference:
     carriers: Mapping[str, int] | None = None
     #: The reference's own change since a fixed baseline, which the gate
     #: continues: ``{"baseline": "<release>@<build>", "ratios": {column:
-    #: total / baseline total}}`` (the review of microcosm#1574).
+    #: total / baseline total}, "left": {column: {"reason", "last_ratio",
+    #: "last_build"}}}`` (the review of microcosm#1574).
     since_baseline: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -1266,24 +1305,46 @@ def _since_baseline(
 
     A column leaves the chain where its ratio cannot be continued: absent on
     a side, a zero reference total, or one or two source households on a
-    side (its figures are withheld).
+    side (its figures are withheld). It stays listed, with the reason and
+    the last ratio the chain recorded for it, as of the reference, and the
+    reference's own list carries forward (round 2 of the review of
+    microcosm#1574): a column driven down and then dropped, or carried to
+    zero under a reviewed exclusion, does not vanish from the record. The
+    last ratio is one the reference's own certification already recorded,
+    so the list adds no figure.
     """
 
     chain = reference.since_baseline
     if not chain:
         return None
     ratios: dict[str, float] = {}
+    left: dict[str, dict[str, Any]] = {
+        column: dict(entry) for column, entry in chain["left"].items()
+    }
     for column, ratio in chain["ratios"].items():
-        if column in thin:
-            continue
         reference_total = reference.totals.get(column)
         candidate_total = candidate_totals.get(column)
         if reference_total is None or candidate_total is None:
+            reason = "absent"
+        elif float(reference_total) == 0.0:
+            reason = "zero_reference_total"
+        elif column in thin:
+            reason = "thin"
+        else:
+            ratios[column] = (
+                float(ratio) * float(candidate_total) / float(reference_total)
+            )
             continue
-        if float(reference_total) == 0.0:
-            continue
-        ratios[column] = float(ratio) * float(candidate_total) / float(reference_total)
-    return {"baseline": chain["baseline"], "ratios": dict(sorted(ratios.items()))}
+        left[column] = {
+            "reason": reason,
+            "last_ratio": float(ratio),
+            "last_build": reference.label,
+        }
+    return {
+        "baseline": chain["baseline"],
+        "ratios": dict(sorted(ratios.items())),
+        "left": dict(sorted(left.items())),
+    }
 
 
 def _withheld_failure(message: str, thin: frozenset[str]) -> str:

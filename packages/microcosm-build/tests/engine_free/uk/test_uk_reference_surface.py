@@ -156,6 +156,18 @@ def test_the_evidence_is_done_only_when_both_files_name_the_build(
         )
     )
     done, reason = uk_cut_reference_evidence_done(reference, tmp_path)
+    # And from before it listed the columns that leave it (round 2).
+    assert not done and "left the chain" in reason
+    mass.write_text(
+        json.dumps(
+            {
+                "label": LABEL,
+                "identity": {"sha256": SHA},
+                "since_baseline": {**chain, "left": {}},
+            }
+        )
+    )
+    done, reason = uk_cut_reference_evidence_done(reference, tmp_path)
     assert not done and UK_CUT_REFERENCE_SURFACE_NAME in reason
 
     surface = tmp_path / UK_CUT_REFERENCE_SURFACE_NAME

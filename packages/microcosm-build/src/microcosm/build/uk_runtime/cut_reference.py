@@ -45,8 +45,10 @@ __all__ = [
     "UK_CUT_REFERENCE_RECORD_NAME",
     "UK_CUT_REFERENCE_EVIDENCE_NAME",
     "UK_CUT_REFERENCE_SURFACE_NAME",
+    "UK_NATIONAL_SINCE_BASELINE_ORIGIN",
     "check_uk_cut_reference",
     "fetch_uk_cut_reference",
+    "keep_uk_cut_reference_evidence",
     "read_uk_cut_reference",
     "resolve_uk_cut_reference",
     "uk_cut_reference_chain",
@@ -72,6 +74,14 @@ UK_CUT_REFERENCE_SURFACE_NAME = "reference_surface.json"
 #: build's certification carries its change since the baseline, which the
 #: cut continues (the review of microcosm#1574).
 UK_CUT_REFERENCE_EVIDENCE_NAME = "reference_evidence.json"
+#: Where the national line's record of change since the baseline starts: its
+#: current build when the record began, whose certification predates it. A
+#: chain that starts at any other build has restarted, which the
+#: certification records as ``restarted_from`` (round 2 of the review of
+#: microcosm#1574). A new FRS year moves it, as it moves the release ids.
+UK_NATIONAL_SINCE_BASELINE_ORIGIN = (
+    f"{UK_NATIONAL_RELEASE_ID}@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+)
 
 #: Each line's registry variant and the build evidence its fetch reads.
 UK_CUT_REFERENCE_RELEASES: Mapping[str, tuple[str, str]] = {
@@ -577,25 +587,28 @@ def fetch_uk_cut_reference(
         partial.unlink(missing_ok=True)
         raise
     partial.replace(destination)
-    _keep_evidence(reference, directory, hub_download=hub_download)
+    keep_uk_cut_reference_evidence(reference, directory, hub_download=hub_download)
     write_uk_cut_reference(record_path, reference)
     return reference
 
 
-def _keep_evidence(
+def keep_uk_cut_reference_evidence(
     reference: UKCutReference,
-    directory: Path,
+    directory: str | Path,
     *,
-    hub_download: _HubDownload | None,
+    hub_download: _HubDownload | None = None,
 ) -> Path:
     """Copy the build's certification evidence beside it, checked.
 
-    The fetch read and checked it already; the copy is checked against the
-    record's sha256 before it is kept.
+    The fetch keeps it, having read and checked it already; a resumed cut
+    whose copy is missing keeps it again before it writes the evidence the
+    gates read, since the chain since the baseline continues from it. The
+    copy is checked against the record's sha256 before it is kept.
     """
 
     from pathlib import PurePosixPath
 
+    directory = Path(directory)
     if hub_download is None:
         from huggingface_hub import hf_hub_download as hub_download
     folder = PurePosixPath(reference.path_in_repo).parent
@@ -678,28 +691,46 @@ def uk_cut_reference_chain(
     Every check compares a cut with the build before it, so drift can add up
     across cuts (the review of microcosm#1574). A national build's
     certification records its change since a fixed baseline: each column's
-    input-mass total as a ratio of the baseline's, the inputs the baseline
+    input-mass total as a ratio of the baseline's, the columns that have left
+    that chain with why and their last ratio, the inputs the baseline
     carried, and which of them it no longer carries. The cut continues that
     chain, multiplying the ratios its own input-mass gate measures, with no
     baseline dataset loaded. A reference whose certification carries no chain
     (one certified before it, or a dense build, whose published evidence
     carries none of these gates) starts one: the reference is the baseline,
     its ratios one, for the columns at least three source households carry.
+
+    The chain continues from the reference's evidence kept beside it
+    (:func:`keep_uk_cut_reference_evidence`), so a missing copy is refused:
+    read as a reference with no chain, it would restart the chain without a
+    trace (round 2 of the review).
     """
 
     from microcosm.build.uk_runtime.receipt_counts import UK_DISCLOSURE_FLOOR
 
-    chain = None
     evidence = Path(directory) / UK_CUT_REFERENCE_EVIDENCE_NAME
-    if evidence.is_file():
-        payload = json.loads(evidence.read_text())
-        chain = payload.get("since_baseline") if isinstance(payload, Mapping) else None
+    if not evidence.is_file():
+        raise ValueError(
+            f"{evidence} is missing: the change since the baseline continues from "
+            f"{reference.label}'s own evidence, so keep it again before writing "
+            "the cut's evidence (the reference step of tools/run_uk_cut.py does)."
+        )
+    payload = json.loads(evidence.read_text())
+    chain = payload.get("since_baseline") if isinstance(payload, Mapping) else None
     if isinstance(chain, Mapping):
         return {
             "baseline": str(chain["baseline"]),
             "input_mass_ratios": {
                 str(name): float(value)
                 for name, value in chain["input_mass_ratios"].items()
+            },
+            "input_mass_left": {
+                str(name): {
+                    "reason": str(entry["reason"]),
+                    "last_ratio": float(entry["last_ratio"]),
+                    "last_build": str(entry["last_build"]),
+                }
+                for name, entry in chain["input_mass_left"].items()
             },
             "baseline_inputs": sorted(str(name) for name in chain["baseline_inputs"]),
         }
@@ -710,6 +741,7 @@ def uk_cut_reference_chain(
             for name, total in totals.items()
             if float(total) != 0.0 and int(carriers.get(name, 0)) >= UK_DISCLOSURE_FLOOR
         },
+        "input_mass_left": {},
         "baseline_inputs": sorted(str(name) for name in carried_inputs),
     }
 
@@ -753,6 +785,7 @@ def write_uk_cut_reference_evidence(
     payload["since_baseline"] = {
         "baseline": chain["baseline"],
         "ratios": chain["input_mass_ratios"],
+        "left": chain["input_mass_left"],
     }
     surface["baseline"] = {
         "label": chain["baseline"],
@@ -796,4 +829,10 @@ def uk_cut_reference_evidence_done(
         )
         if not isinstance(payload.get(block), Mapping):
             return False, f"{name} records no change since the baseline"
+        # Evidence written before the record listed the columns that leave
+        # the chain is written again (round 2 of the review).
+        if block == "since_baseline" and not isinstance(
+            payload[block].get("left"), Mapping
+        ):
+            return False, f"{name} lists no columns that left the chain"
     return True, f"evidence for {reference.label}"

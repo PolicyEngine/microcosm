@@ -902,6 +902,47 @@ def test_input_mass_reference_round_trips_the_cut_schema(tmp_path) -> None:
             load_uk_input_mass_reference(path)
 
 
+def test_input_mass_reference_reads_the_record_since_the_baseline(tmp_path) -> None:
+    """Round 2 of the review of microcosm#1574: the columns that left the
+    chain come with it, each with why, its last ratio and its last build."""
+
+    path = tmp_path / "input_mass_reference.json"
+    gone = {"reason": "thin", "last_ratio": 0.4, "last_build": REFERENCE_LABEL}
+    since = {
+        "baseline": REFERENCE_LABEL,
+        "ratios": {"employment_income": 1.0},
+        "left": {"gift_aid": gone},
+    }
+    payload = {
+        "schema_version": 2,
+        "kind": "uk_input_mass_reference",
+        "label": REFERENCE_LABEL,
+        "identity": {
+            "filename": "microcosm_uk_2024_25.h5",
+            "revision": REFERENCE_BUILD,
+            "sha256": "9" * 64,
+            "vintage": "2024_25",
+        },
+        "totals": {"employment_income": 10.5},
+        "carriers": {"employment_income": 7},
+        "since_baseline": since,
+    }
+    path.write_text(json.dumps(payload))
+
+    assert load_uk_input_mass_reference(path).since_baseline == since
+    for left in (
+        {"gift_aid": {**gone, "reason": "vanished"}},
+        {"gift_aid": {**gone, "last_ratio": -1.0}},
+        # A column is in the chain or has left it, never both.
+        {"employment_income": gone},
+        None,
+    ):
+        broken = {**since, "left": left}
+        path.write_text(json.dumps({**payload, "since_baseline": broken}))
+        with pytest.raises(ValueError, match="columns that left the chain"):
+            load_uk_input_mass_reference(path)
+
+
 def test_carriers_count_source_households_not_rows() -> None:
     """Clones repeat their source household; a person counts its household's."""
 

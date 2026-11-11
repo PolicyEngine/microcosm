@@ -1392,6 +1392,7 @@ def test_the_input_mass_gate_continues_the_change_since_the_baseline() -> None:
         since_baseline={
             "baseline": "microcosm-uk-2024-25-national@baseline",
             "ratios": {"employment_income": 0.5, "rare_flag": 1.0, "gone": 1.0},
+            "left": {"earlier": _left("thin", 0.7, "earlier")},
         },
     )
     gate = _input_mass_gate(
@@ -1400,10 +1401,86 @@ def test_the_input_mass_gate_continues_the_change_since_the_baseline() -> None:
         policy=_input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9),
         candidate_carriers={"employment_income": 950, "rare_flag": 2},
     )
-    # Thin and absent columns leave the chain; the rest continue it.
+    # Thin and absent columns leave the chain and stay listed, beside the
+    # columns that left before; the rest continue it.
     assert gate.details["since_baseline"] == {
         "baseline": "microcosm-uk-2024-25-national@baseline",
         "ratios": {"employment_income": pytest.approx(0.6)},
+        "left": {
+            "earlier": _left("thin", 0.7, "earlier"),
+            "gone": _left("absent", 1.0, REFERENCE_BUILD),
+            "rare_flag": _left("thin", 1.0, REFERENCE_BUILD),
+        },
     }
     plain = _input_mass_gate({"employment_income": 10.0})
     assert "since_baseline" not in plain.details
+
+
+def _left(reason: str, last_ratio: float, build: str) -> dict:
+    return {
+        "reason": reason,
+        "last_ratio": last_ratio,
+        "last_build": f"microcosm-uk-2024-25-national@{build}",
+    }
+
+
+def test_a_column_that_leaves_the_chain_stays_listed() -> None:
+    """Round 2 of the review of microcosm#1574: a column driven down and then
+    thin, or carried to zero, used to vanish from the record. Three cuts in a
+    row, each comparing with the build before it."""
+
+    import dataclasses
+
+    policy = _input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9)
+
+    def since_baseline(reference_totals, reference_carriers, chain, totals, carriers):
+        reference = dataclasses.replace(
+            _input_mass_reference(totals=reference_totals, carriers=reference_carriers),
+            since_baseline=chain,
+        )
+        gate = _input_mass_gate(
+            totals, reference, policy=policy, candidate_carriers=carriers
+        )
+        return gate.details["since_baseline"]
+
+    # a falls to a fifth, b to a tenth on two source households, and c grows
+    # from a zero reference total: only a's ratio continues.
+    first = since_baseline(
+        {"a": 100.0, "b": 100.0, "c": 0.0},
+        {"a": 50, "b": 40, "c": 0},
+        {
+            "baseline": "microcosm-uk-2024-25-national@baseline",
+            "ratios": {"a": 0.2, "b": 0.2, "c": 0.5},
+            "left": {},
+        },
+        {"a": 20.0, "b": 10.0, "c": 5.0},
+        {"a": 50, "b": 2, "c": 10},
+    )
+    assert first["ratios"] == {"a": pytest.approx(0.04)}
+    assert first["left"] == {
+        "b": _left("thin", 0.2, REFERENCE_BUILD),
+        "c": _left("zero_reference_total", 0.5, REFERENCE_BUILD),
+    }
+    # Carried to zero, as under a reviewed exclusion: a records zero once.
+    second = since_baseline(
+        {"a": 20.0, "b": 10.0, "c": 5.0},
+        {"a": 50, "b": 2, "c": 10},
+        first,
+        {"a": 0.0, "b": 10.0, "c": 5.0},
+        {"a": 0, "b": 2, "c": 10},
+    )
+    assert second["ratios"] == {"a": 0.0}
+    assert second["left"] == first["left"]
+    # Then its reference total is zero; it leaves, and stays listed too.
+    third = since_baseline(
+        {"a": 0.0, "b": 10.0, "c": 5.0},
+        {"a": 0, "b": 2, "c": 10},
+        second,
+        {"a": 0.0, "b": 10.0, "c": 5.0},
+        {"a": 0, "b": 2, "c": 10},
+    )
+    assert third["ratios"] == {}
+    assert third["left"] == {
+        "a": _left("zero_reference_total", 0.0, REFERENCE_BUILD),
+        **first["left"],
+    }

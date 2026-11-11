@@ -45,6 +45,13 @@ def signing_key(monkeypatch):
 GREEN_SINCE_BASELINE_MASS = {
     "baseline": "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e",
     "ratios": {"employment_income": 1.02, "dividend_income": 0.97},
+    "left": {
+        "gift_aid": {
+            "reason": "thin",
+            "last_ratio": 0.9,
+            "last_build": "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e",
+        }
+    },
 }
 GREEN_SINCE_BASELINE_COVERAGE = {
     "baseline": GREEN_SINCE_BASELINE_MASS["baseline"],
