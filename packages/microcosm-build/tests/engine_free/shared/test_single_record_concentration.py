@@ -35,11 +35,20 @@ reach. "Exactly" means in float64, with no tolerance.
    carrier count; on a thin column ``carriers`` is the gate's thin count.
 7. **Differential, against exact arithmetic.** Both shares equal the ratios of
    the same float masses summed as exact rationals, to float rounding.
-8. **Scale-free in the weights.** Multiplying every weight by one positive
-   factor leaves the carrier count and both shares unchanged and multiplies
-   ``top_1_weight`` by the factor: exactly for a power of two, to float
-   rounding otherwise. Scaling or negating every value changes nothing either,
-   since the measurement takes a signed column's absolute mass.
+8. **Scale-free, exactly for a power of two.** Multiplying every weight by a
+   power of two leaves the carrier count and both shares unchanged and
+   multiplies ``top_1_weight`` by the factor, exactly. Multiplying every
+   value by a power of two changes nothing, and neither does negating every
+   value, since the measurement takes a signed column's absolute mass. Any
+   other positive factor can round each mass differently. On the weights, it
+   leaves the carrier count unchanged and both shares unchanged to float
+   rounding; a property pins 1e-9 relative for factors from 1e-3 to 1e3. On
+   the weights or on the values, it can move ``top_1_weight`` to another
+   record whose mass ties the largest to within rounding: ``[1, 10]`` at
+   weights ``[1, 0.1]`` reports weight 1, and at three times those weights
+   it reports 0.30000000000000004, not 3. That move is intended: the
+   measurement compares float masses with no tolerance, so rounding decides
+   a near-tie.
 9. **Total.** Any float64 values and weights (NaN, infinities, zeros,
    negative weights, products past the float64 range) give a report that is
    valid JSON without NaN, and numpy warns about nothing. A column with no
@@ -49,8 +58,15 @@ reach. "Exactly" means in float64, with no tolerance.
 10. **Order-free.** Permuting the records leaves ``carriers`` and
     ``top_1_weight`` unchanged and the shares unchanged to float rounding.
     Records tied for the largest mass report the largest of their weights.
-11. **Monotone in the largest record.** Raising the largest record's value
-    never lowers ``top_1_share``.
+11. **Monotone in the largest record, to rounding.** Raising the largest
+    record's value never lowers ``top_1_share`` by more than float rounding;
+    a property pins 1e-12 relative for lifts of up to 1,000 times. It can
+    lower it by one float step, because the total is a rounded sum:
+    ``[2**53, 2**51 + 1]`` sums to ``5 * 2**51``, a share of 0.8, and
+    ``[2**53 + 2, 2**51 + 1]`` sums to ``5 * 2**51 + 4``, a share of
+    0.7999999999999999, the float just below 0.8. That one-step drop is an
+    intended violation of exact monotonicity: the measurement divides by the
+    float total it sums in record order, as the gate divides by its own.
 
 numpy leaves the order of the elements on each side of a partition undefined,
 and the order differs across CPUs. numpy 2.4 partitions float64 with
@@ -402,7 +418,7 @@ def test_agrees_with_the_tail_concentration_gate(columns, top_k, extra) -> None:
             continue
         assert result["carriers"] == gate.details["carrier_counts"][column]
         # The gate sums its tail and its total in different orders, so its
-        # share can pass 1 by a rounding step; the measurement caps it.
+        # share can pass 1 by a rounding step or two; the measurement caps it.
         assert result["top_k_share"] == min(checked[column], 1.0)
 
 
@@ -658,6 +674,90 @@ class TestExamples:
             assert share == pytest.approx(
                 _exact_top_k_share(records, top_k), rel=_ROUNDING, abs=0.0
             )
+
+    def test_a_factor_that_is_not_a_power_of_two_can_move_the_largest_record(
+        self,
+    ) -> None:
+        """Intended: such a factor rounds each mass anew, and rounding decides.
+
+        ``[1, 10]`` at weights ``[1, 0.1]`` ties at a mass of exactly 1, so
+        ``top_1_weight`` is the larger weight, 1. Three times each weight is
+        ``[3, 0.30000000000000004]``, and the masses come to
+        ``[3, 3.0000000000000004]``: the second record leads by one rounding
+        step. ``top_1_weight`` is then its weight, not three times the first
+        record's, and ``top_1_share`` moves one step off 0.5. Twice each
+        weight doubles ``top_1_weight`` and changes nothing else.
+
+        A factor on the values moves it too. ``[1, 3]`` at weights ``[9, 3]``
+        ties at a mass of 9 and reports weight 9. A tenth of each value is
+        ``[0.1, 0.30000000000000004]``, the masses come to
+        ``[0.9, 0.9000000000000001]``, and the report is the second record's
+        weight, 3. Half of each value changes nothing.
+        """
+        values, weights = [1.0, 10.0], [1.0, 0.1]
+        tied = {
+            "carriers": 2,
+            "top_1_share": 0.5,
+            "top_1_weight": 1.0,
+            "top_k_share": 1.0,
+        }
+
+        assert single_record_concentration(values, weights) == tied
+        assert single_record_concentration(
+            values, [2.0 * weight for weight in weights]
+        ) == {**tied, "top_1_weight": 2.0}
+        assert single_record_concentration(
+            values, [3.0 * weight for weight in weights]
+        ) == {
+            "carriers": 2,
+            "top_1_share": 0.5000000000000001,
+            "top_1_weight": 0.30000000000000004,
+            "top_k_share": 1.0,
+        }
+
+        values, weights = [1.0, 3.0], [9.0, 3.0]
+        tied = {**tied, "top_1_weight": 9.0}
+
+        assert single_record_concentration(values, weights) == tied
+        assert (
+            single_record_concentration([0.5 * value for value in values], weights)
+            == tied
+        )
+        assert single_record_concentration(
+            [0.1 * value for value in values], weights
+        ) == {**tied, "top_1_weight": 3.0}
+
+    def test_a_larger_top_record_can_lower_its_share_by_one_float_step(
+        self,
+    ) -> None:
+        """Intended: the share divides by a float total summed in record order.
+
+        Float64's spacing is 2 from ``2**53`` to ``2**54``. The masses
+        ``[2**53, 2**51 + 1]`` add up to ``5 * 2**51 + 1``, halfway between
+        two floats, and the sum rounds to the even one, ``5 * 2**51``: a
+        share of 0.8. One float step up, ``[2**53 + 2, 2**51 + 1]`` adds up
+        to ``5 * 2**51 + 3`` and the sum rounds to ``5 * 2**51 + 4``: a share
+        of 0.7999999999999999, the float just below 0.8. The total rose by
+        two steps where the largest mass rose by one. The exact share rises,
+        and both exact shares round to 0.7999999999999999, so each reported
+        share is within one float step of its exact one.
+        """
+        lift = 1.0 + 2.0**-52
+        assert 2.0**53 * lift == 2.0**53 + 2
+        base_records = [(2.0**53, 1.0), (2.0**51 + 1, 1.0)]
+        lifted_records = [(2.0**53 * lift, 1.0), (2.0**51 + 1, 1.0)]
+        assert float(_masses(base_records).sum()) == 5 * 2.0**51
+        assert float(_masses(lifted_records).sum()) == 5 * 2.0**51 + 4
+
+        base = _measure(base_records)["top_1_share"]
+        lifted = _measure(lifted_records)["top_1_share"]
+
+        assert (base, lifted) == (0.8, 0.7999999999999999)
+        assert lifted == math.nextafter(base, 0.0)
+        assert lifted >= base * (1.0 - _ROUNDING)
+        assert Fraction(2**53, 5 * 2**51 + 1) < Fraction(2**53 + 2, 5 * 2**51 + 3)
+        for records in (base_records, lifted_records):
+            assert _exact_top_k_share(records, 1) == 0.7999999999999999
 
     def test_top_k_share_is_exactly_1_when_every_carrier_is_in_the_top_k(
         self,

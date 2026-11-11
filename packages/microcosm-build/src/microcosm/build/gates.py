@@ -3496,8 +3496,7 @@ def single_record_concentration(
 
     Reporting only: this returns measurements, with no verdict and no
     threshold. After microcosm#1259's draw bound, the worst single-draw share
-    in a 12-seed sweep was still 33% for collectibles gains, so a threshold
-    needs a justification per column.
+    in a 12-seed sweep was still 33% for collectibles gains.
 
     The population is the gate's: records whose value and weight are finite
     and whose weighted absolute mass ``|value| * weight`` is positive. This
@@ -3527,7 +3526,8 @@ def single_record_concentration(
           its tail in the order ``np.partition`` leaves it, which numpy
           leaves undefined and which differs across platforms, and its total
           in record order; when the records outside the tail hold less mass
-          than one rounding step, its share can pass 1 by that step.
+          than one rounding step, its share can pass 1 by a rounding step or
+          two (the tests record 1.0000000000000002 and 1.0000000000000004).
 
         The three are ``None`` when the column has no share to report: its
         total mass is zero (no carriers) or not finite. Otherwise, exactly in
@@ -3536,9 +3536,16 @@ def single_record_concentration(
         never lowers ``top_k_share`` by more than float rounding; each
         ``top_k`` sums its own partition, so near a share of 1 it can fall by
         a rounding step, an intended drop that keeps ``top_k_share`` the
-        gate's own number. Scaling every weight by one positive factor scales
-        ``top_1_weight`` by it and leaves both shares unchanged, up to float
-        rounding.
+        gate's own number.
+
+        Scaling every weight by a power of two scales ``top_1_weight`` by it
+        and leaves both shares unchanged, exactly, as long as no product or
+        sum overflows or underflows (a property pins factors from ``2**-20``
+        to ``2**20``). Any other positive factor can round each mass
+        differently: it leaves both shares unchanged to float rounding (a
+        property pins 1e-9 relative for factors from 1e-3 to 1e3) and can
+        move ``top_1_weight`` to another record whose mass ties the largest
+        to within rounding.
 
     Raises:
         ValueError: If ``top_k`` falls below 1 or the values and weights do
@@ -3574,7 +3581,7 @@ def single_record_concentration(
         # With at most top_k carriers the tail is the whole column. Above
         # that, this sums the tail as the gate does, in an order numpy's
         # partition leaves undefined; that sum can pass the record-order
-        # total by a rounding step, hence the cap.
+        # total by a rounding step or two, hence the cap.
         tail = (
             total
             if carriers <= top_k
