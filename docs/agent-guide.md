@@ -231,14 +231,22 @@ load, or it silently receives the spec an earlier test cached.
 
 Git exports an absolute `GIT_DIR` to the hooks, `rebase --exec` commands and
 shell aliases it runs in a linked worktree, and `GIT_DIR` outranks `-C` and the
-working directory. The root `conftest.py` therefore removes the variables that
-pick git's repository (`git rev-parse --local-env-vars`, less the two that
-carry `git -c` options) before any test runs
-(`test_support.git_isolation`), so a fixture's `git init` or `commit` in a
-temporary directory stays there. A test that needs one of those variables sets
-it itself. Code that runs git against a repository other than its own, as the
-Modal stage runner does, must not rely on that: it drops them from the child
-environment (`modal_us_stage_plan.git_environment`).
+working directory. The root `conftest.py` therefore removes the variables git
+treats as local to one repository (`git rev-parse --local-env-vars`, less the
+two that carry `git -c` options, plus the `GIT_QUARANTINE_PATH` git gives a
+`pre-receive` hook) before any test runs (`test_support.git_isolation`), so a
+fixture's `git init` or `commit` in a temporary directory stays there. A test
+that needs one of those variables sets it itself. New code that runs git
+against a repository other than its own should not rely on that, because it
+also runs outside the suite: drop the variables from the child environment, as
+the Modal stage runner does (`modal_us_stage_plan.git_environment`). Two
+policies exist for the `git -c` carriers. The runner and the suite keep them,
+because git keeps them when it runs a command in another repository and
+`test_support.git_repositories.NO_BACKGROUND_MAINTENANCE_ENV` reaches git
+through them. The Axiom adapter's `_git_environment`
+(`microcosm.frame.adapters.axiom`) drops the carriers as well, as variables
+that carry configuration into the repository git reads. Several older call
+sites still run git with the inherited environment.
 
 **Adding or moving tests.** Every `test_*.py` module must live directly in one
 of these directories below its package's `tests/` directory:

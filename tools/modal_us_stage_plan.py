@@ -200,11 +200,13 @@ _GITHUB_URL = re.compile(r"https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.
 #: environment that would carry any other value (``hash_seed_problem``).
 HASH_SEED_ENV = "PYTHONHASHSEED"
 HASH_SEED = "0"
-#: Variables that choose git's repository, work tree, index or object store
-#: over the ``-C`` directory: ``git rev-parse --local-env-vars`` (git 2.55)
-#: without the ``git -c`` carriers ``GIT_CONFIG_PARAMETERS`` and
-#: ``GIT_CONFIG_COUNT``, which git itself keeps when it runs a command in
-#: another repository. Git exports an absolute ``GIT_DIR`` to the hooks,
+#: Variables git treats as local to one repository, which outrank the ``-C``
+#: directory: ``git rev-parse --local-env-vars`` (git 2.55) without the
+#: ``git -c`` carriers ``GIT_CONFIG_PARAMETERS`` and ``GIT_CONFIG_COUNT``,
+#: which git itself keeps when it runs a command in another repository, plus
+#: ``GIT_QUARANTINE_PATH``, which git sets for a ``pre-receive`` hook beside
+#: ``GIT_OBJECT_DIRECTORY`` and under which ``git init`` refuses to run (the
+#: branch check would come back unverified). Git exports an absolute ``GIT_DIR`` to the hooks,
 #: ``rebase --exec`` commands and shell aliases it runs in a linked
 #: worktree. A runner started under one would fetch the branch check into
 #: that worktree's repository (a promisor remote and filter in its config,
@@ -224,6 +226,7 @@ GIT_REPOSITORY_ENV = frozenset(
         "GIT_NO_REPLACE_OBJECTS",
         "GIT_OBJECT_DIRECTORY",
         "GIT_PREFIX",
+        "GIT_QUARANTINE_PATH",
         "GIT_REPLACE_REF_BASE",
         "GIT_SHALLOW_FILE",
         "GIT_WORK_TREE",

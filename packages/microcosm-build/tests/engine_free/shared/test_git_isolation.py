@@ -2,7 +2,7 @@
 
 Git exports an absolute ``GIT_DIR`` to the hooks, ``rebase --exec`` commands
 and shell aliases it runs in a linked worktree. The root ``conftest.py``
-removes it, and the other variables that pick git's repository, before any
+removes it, and the other variables git treats as local to one repository, before any
 test runs (``test_support.git_isolation``).
 """
 
@@ -20,6 +20,7 @@ from hypothesis import strategies as st
 
 from test_support.git_isolation import (
     GIT_CONFIG_CARRIERS,
+    GIT_QUARANTINE_ENV,
     drop_inherited_git_repository,
 )
 from test_support.git_repositories import NO_BACKGROUND_MAINTENANCE_ENV
@@ -62,7 +63,7 @@ def _repository_variables() -> list[str]:
         capture_output=True,
         text=True,
     ).stdout.split()
-    return sorted(set(listed) - GIT_CONFIG_CARRIERS)
+    return sorted((set(listed) - GIT_CONFIG_CARRIERS) | {GIT_QUARANTINE_ENV})
 
 
 def test_repository_variables_are_dropped_and_the_rest_kept() -> None:

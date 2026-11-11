@@ -124,9 +124,9 @@ release directory onto the runs volume. Publication stays the human step in
    before it runs anything: it fetches the plan's branch from the remote
    (commits only, into a scratch repository) and requires
    `git merge-base --is-ancestor <commit> <branch tip>`. The runner's git
-   commands run without `GIT_DIR` and the other variables that pick git's
-   repository, so they reach the clone and the scratch repository alone. The check and the
-   run both refuse a plan whose branch is missing or does not contain the
+   commands run without `GIT_DIR` and the other variables git treats as
+   local to one repository, so they reach the clone and the scratch
+   repository alone. The check and the run both refuse a plan whose branch is missing or does not contain the
    commit, and the receipt records the tip it was checked against. The
    release tool's `_repo_code_identity` therefore records the real sha and a
    branch that contained it when the stage ran. The runner
@@ -184,8 +184,8 @@ release directory onto the runs volume. Publication stays the human step in
    - every verified input;
    - the names, never the values, of environment variables withheld from
      the tool (credentials, the container's `PYTHONHASHSEED` if it had
-     one, and any variable that points git at a repository other than the
-     clone, such as `GIT_DIR`);
+     one, and any variable git treats as local to one repository, such as
+     `GIT_DIR`);
    - `runner.python_hash_seed`: the container's `PYTHONHASHSEED`, what the
      tool's environment carried (always none or `0`; the runner refuses
      anything else before staging), and the value the tool's stage

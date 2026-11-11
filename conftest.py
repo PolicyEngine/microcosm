@@ -8,8 +8,8 @@ accident of ``python -m pytest``.
 
 A suite started by a hook, ``rebase --exec`` command or shell alias in a
 linked worktree inherits an absolute ``GIT_DIR``, which would send every
-fixture's git command to that worktree's repository. The variables that
-pick git's repository are removed here, before any test runs.
+fixture's git command to that worktree's repository. The variables git
+treats as local to one repository are removed here, before any test runs.
 """
 
 import importlib.util
