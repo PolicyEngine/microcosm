@@ -26,8 +26,8 @@ from microcosm.build.source_lineage import (
     fold_replicas,
     replica_keys,
 )
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
-from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 
 __all__ = [
     "GEOGRAPHIC_SUPPORT_BRANCH",

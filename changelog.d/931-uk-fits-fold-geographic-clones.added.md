@@ -5,7 +5,7 @@ The UK fits trained on the frame's FRS rows now fold geographic clones into each
 - **What changes once the spine clones before enrichment:**
   - the fits see each record once wherever its clones agree, and every clone's value at its share wherever they differ;
   - the reference transport meets no duplicate twins from agreeing clones;
-  - the UC capital cells' donor minimum counts records, not identical clones.
+  - the UC capital cells' donor minimum counts survey records, so neither identical nor differing clones grow it.
 - **The country-neutral pieces.** `microcosm.build.source_lineage` gains three functions:
   - `copy_paths`: every household's ordered copy path from a declared lineage, never inferred from ids, weights or values;
   - `replica_keys`: a key per record of any entity, shared only by its replicas in the named branches, with a member's rank in its household telling members apart;

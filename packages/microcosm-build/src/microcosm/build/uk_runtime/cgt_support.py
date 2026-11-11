@@ -52,6 +52,11 @@ from microcosm.build.uk_runtime.cgt_structure import (
     _assert_closed_world_operations,
     _oldest_adult_indices,
 )
+
+# Moved to geographic_clones, beside the clone index columns' names; this
+# stage's node hashes that module (microcosm#931). Kept importable from here
+# for this module's other callers.
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_CONDITIONING_RESOURCE,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
@@ -173,10 +178,11 @@ CGT_SUPPORT_ONE_COPY_CHECK = (
 )
 _HOUSEHOLD_SUPPORT_CHANNEL_COLUMN = "household_support_channel"
 #: The geographic clone index the clone-first spine gives every household
-#: (``rowwise_dataset.ladder_clone_index_column("household")``, the
-#: ``geographic_support`` branch of the UK copy lineage; microcosm#931). It is
-#: spelled here, not imported, so a change to it re-keys this stage; a test
-#: holds the two spellings equal.
+#: (``geographic_clones.ladder_clone_index_column("household")``, the
+#: ``geographic_support`` branch of the UK copy lineage; microcosm#931). This
+#: stage reads ``K`` through ``geographic_clones.geographic_clone_count``,
+#: which reads that module's name, and its node hashes that module, so no code
+#: here reads this spelling any more; a test holds it equal to the others.
 _GEOGRAPHIC_CLONE_INDEX_COLUMN = "household_clone_index"
 _PERSON_ID_COLUMNS = ("person_id", "person_household_id", "person_benunit_id")
 _POLICY_PARAMETER_NAMES = (
@@ -506,52 +512,6 @@ def _require_clone_count(clone_count: object) -> int:
             f"count, got {clone_count!r}."
         )
     return int(clone_count)
-
-
-def geographic_clone_count(household: pd.DataFrame) -> int:
-    """The frame's geographic clone count ``K``: one more than its largest index.
-
-    The clone-first spine (microcosm#931) gives every household the index of
-    its geographic clone in ``household_clone_index``, 0 to ``K - 1``; a
-    household table without that column, as on every national spine today,
-    is one clone. Refuses a non-integer index column, a household without an
-    index, a negative index and indices that are not exactly 0 to ``K - 1``
-    (an index below the largest that no household carries). Each refusal
-    gives a count or the column's dtype, never an id or a value.
-    """
-
-    column = _GEOGRAPHIC_CLONE_INDEX_COLUMN
-    if column not in household.columns:
-        return 1
-    values = household[column]
-    if pd.api.types.is_bool_dtype(values.dtype) or not (
-        pd.api.types.is_integer_dtype(values.dtype)
-    ):
-        raise ValueError(
-            "The CGT support split counts geographic clones on an integer "
-            f"{column!r} column; it has dtype {values.dtype}."
-        )
-    rule = (
-        f"the CGT support split counts K geographic clones as the {column!r} "
-        "values 0 to K - 1 (microcosm#931)."
-    )
-    unindexed = int(values.isna().sum())
-    if unindexed:
-        raise ValueError(f"{unindexed} household(s) carry no {column!r}; {rule}")
-    indices = values.to_numpy(dtype=np.int64)
-    if not indices.size:
-        return 1
-    negative = int((indices < 0).sum())
-    if negative:
-        raise ValueError(f"{negative} household(s) carry a negative {column!r}; {rule}")
-    clone_count = int(indices.max()) + 1
-    absent = clone_count - int(np.unique(indices).size)
-    if absent:
-        raise ValueError(
-            f"{absent} of the {clone_count} indices from 0 to the largest are "
-            f"carried by no household; {rule}"
-        )
-    return clone_count
 
 
 def cgt_support_copy_counts(
