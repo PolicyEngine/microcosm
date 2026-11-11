@@ -99,6 +99,17 @@ exclusion register instead.
 - Facts with **real measure ids** route through
   `SOI_AMOUNT_MEASURE_VARIABLES` / `SOI_RETURN_MEASURE_VARIABLES` (measure id
   → concept) and `SOI_VARIABLE_MAP` (concept → engine variable).
+- Bind each SOI column to the engine quantity that matches SOI's own
+  definition (the column's line in SOI's guide), not to the engine variable
+  with the nearest name. When no single engine variable carries it, list the
+  concept in `SOI_DIFFERENCE_CONCEPTS` (concept → minuend and subtrahend)
+  instead of `SOI_VARIABLE_MAP`, and copy the entry into
+  `microcosm.data.compatibility_recertification` (a build test holds the
+  copies equal). SOI's income tax after credits (A06500, N06500) works this
+  way: Form 1040 line 22 equals `income_tax_before_credits` less
+  `income_tax_capped_non_refundable_credits`. The engine's `income_tax` also
+  subtracts the refundable credits and adds the net investment income tax,
+  so it matches no SOI income tax column.
 - Facts with **generic measure ids** (`amount`, `return_count` — the W-2
   item tables) route by layout in `_soi_layout_variable_override`, which
   runs before the unmapped early-return precisely so layout-only ids can
