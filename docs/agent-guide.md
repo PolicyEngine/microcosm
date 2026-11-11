@@ -42,7 +42,55 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, `integration-uk`, `wheels`, and `installed-emitter` jobs, plus the
-`select-countries` orchestration job.
+`select-countries` orchestration job and the `ci` job.
+
+`ci` gives the `main` ruleset one check that covers the country jobs. It fails
+unless every other job passed, or skipped because `select-countries` succeeded
+and reported `false` for its country. A skipped matrix job reports under its
+unexpanded name, so a ruleset cannot require `engine-us` or `engine-uk` by
+name. The ruleset also names each other check that runs on every pull
+request: `lint`, `wheels`, `select-countries`, `installed-emitter` and both
+`engine-free` legs. When `engine-free`'s matrix changes, change the ruleset
+too, because a leg's check name holds its Python version.
+
+The workflow runs on a pull request only when it targets `main`. Retargeting a
+pull request to `main` starts no run, because GitHub reports a base change as
+an `edited` event, which the workflow doesn't run on. After a stacked pull
+request retargets, push a commit or close and reopen it, then merge once its
+checks pass.
+
+The plan names the jobs the selection may leave out: each job whose test
+groups all need the same country's engine. The lint job runs
+`tools/ci_test_plan.py verify-workflow`, which parses the workflow with PyYAML
+and refuses:
+
+- two keys that PyYAML reads as one, a merge key (`<<`), and U+0085, U+2028
+  or U+2029, which YAML 1.1 reads as line breaks and YAML 1.2 doesn't;
+- a job outside the plan, a plan job the workflow lacks, and a job whose `if`
+  differs from the one the plan gives it;
+- a job the selection may leave out that doesn't need `select-countries`, and
+  a job that needs one the selection may leave out, unless both follow the
+  same country's selection;
+- a `ci` job that lacks `if: always()`, omits a job from `needs`, or does
+  anything but check out the repository and run `require-results` on its
+  `needs` context;
+- a `select-countries` job that doesn't publish the outputs its `plan` step
+  writes;
+- `continue-on-error` on any job or step, a step `if` other than `always()`,
+  `success()` or `!cancelled()`, and a job-level `name`;
+- a workflow `defaults` other than `run: shell: bash`, a job-level `defaults`
+  and a step `shell`. GitHub runs an explicit `shell: bash` as
+  `bash -eo pipefail`, so a pipe cannot hide a failed command.
+
+The plan's tests in `test_ci_test_plan.py` run the same checks and test the
+code `ci` runs. The ruleset reads `engine-free` without `ci`, so those tests
+stay in that job, and `tools/ci_test_plan.py verify` refuses a plan that moves
+them out. After editing the workflow, run
+`uv run python tools/ci_test_plan.py verify-workflow`. A pull request's run
+takes the workflow and the plan from the pull request's own merge with `main`,
+so a pull request that rewrites them can pass itself, and review has to catch
+that.
+
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
 changed-path country selection. Its `TEST_GROUPS` registry defines every valid
@@ -58,7 +106,12 @@ distributes files across two pytest workers with `--dist loadfile`.
 Changed-file selection only controls the more resource-intensive country jobs.
 A documentation-only pull request selects neither country; a US-only or UK-only
 pull request selects that country; shared, mixed, unknown, or empty changed-path
-sets select both. Main pushes select both without querying the pull-request API.
+sets select both. Below `tools/`, the rules for documentation, test groups and
+the country runtime packages run first. A file there that none of them claims
+belongs to a country when its file name holds that country as a whole word and
+the other country's letters appear nowhere in its lower-cased path, and takes
+the `shared` scope otherwise. Main pushes select both without querying the
+pull-request API.
 The UK integration job follows the same UK selection as the ordinary UK engine
 job.
 
@@ -82,9 +135,10 @@ its 25 slowest tests.
 Every behavioral or cross-language compatibility assertion must be a pytest
 test in a directory registered by `TEST_GROUPS` and must run through that
 category's existing workflow job. Supporting programs and data may live under
-`tools/`, but they do not receive separate workflow jobs. The test-plan verifier
-allows only registered test jobs and the explicitly declared orchestration,
-lint, and wheel-building jobs. Add a test category to `TEST_GROUPS` before its
+`tools/`, but they do not receive separate workflow jobs.
+`tools/ci_test_plan.py verify-workflow` allows only registered test jobs and
+the explicitly declared orchestration, lint, wheel-building, and
+aggregate-result jobs. Add a test category to `TEST_GROUPS` before its
 executor; do not create a separate selection system, test workflow, or
 single-purpose behavioral test job.
 
@@ -164,6 +218,9 @@ Every workflow job sets `timeout-minutes` (at least 1.5 times its slowest
 observed successful run) so a hung job releases its runner from the
 organization's shared pool; raise a job's cap when its suite legitimately
 grows past it.
+Every workflow job runs on `ubuntu-24.04`, and the workflow sets
+`UV_MANAGED_PYTHON=1`, so uv downloads its own Python and never takes the
+image's. Move every job to a newer image in one pull request.
 
 `load_country_spec("<code>")` loads each packaged country spec once per
 process and hands every caller the same immutable object; a `Path` argument is

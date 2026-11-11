@@ -317,9 +317,11 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.private_pension_income_annual_share",
     "person.self_employment_income_annual_share",
     "person.self_employment_income_other_spells",
-    # The self-employed's gross receipts for the trading allowance, which the
-    # enhanced FRS leaves at the engine's zero (microcosm#1428).
-    "person.self_employment_gross_receipts",
+    # The self-employed's trading allowance claim status, which the enhanced
+    # FRS leaves at the engine's UNKNOWN, and the full-relief group's carrier,
+    # which the bound SPI self-employment rows read (microcosm#1439).
+    "person.trading_allowance_claim_status",
+    "person.trading_allowance_full_relief",
     # The annuity and trust part of private_pension_income, a calibration-only
     # descriptor no engine input reads (microcosm#1428).
     "person.annuity_and_trust_income",
@@ -375,8 +377,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.owned_company_income_share",
     "person.owned_company_is_main_employment",
     "person.pension_contributions_via_salary_sacrifice",
-    "person.pip_dl_category",
-    "person.pip_m_category",
+    "person.pip_dl_points",
+    "person.pip_m_points",
     "person.property_finance_costs",
     "person.property_rental_income",
     "person.receives_benefits_in_own_right",
@@ -398,6 +400,11 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.trading_loss",
     "person.uc_is_in_startup_period",
     "person.uc_is_in_gainful_self_employment",
+    # microcosm#1095 (Y1): the limited capability flags the
+    # uc_limited_capability stage stores, DWP's status on linked claims and
+    # the engine's proxy elsewhere.
+    "person.uc_limited_capability_for_WRA",
+    "person.uc_limited_capability_for_work",
     "person.is_looked_after_by_local_authority",
     "person.child_limit_non_parental_caring_exception",
     "person.would_claim_carers_allowance",
@@ -511,6 +518,22 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "other_residential_property_value and non_residential_property_value; "
         "a persisted copy overrides that sum and has no uprating index, so the "
         "candidate must drop it (microcosm#1106, the uk-data#543 defect)."
+    ),
+    "person.pip_dl_category": (
+        "policyengine-uk derives pip_dl_category from pip_dl_points (8 points "
+        "for the standard rate, 12 for the enhanced) where no category is "
+        "supplied for the year; a persisted category would override the "
+        "points in every projected year, so the candidate carries the points "
+        "the pip_points stage draws within the stored award and drops the "
+        "category (microcosm#1095, P1; María's signature of 2026-11-09)."
+    ),
+    "person.pip_m_category": (
+        "policyengine-uk derives pip_m_category from pip_m_points (8 points "
+        "for the standard rate, 12 for the enhanced) where no category is "
+        "supplied for the year; a persisted category would override the "
+        "points in every projected year, so the candidate carries the points "
+        "the pip_points stage draws within the stored award and drops the "
+        "category (microcosm#1095, P1; María's signature of 2026-11-09)."
     ),
     "person.tax_free_savings_income": (
         "policyengine-uk derives tax_free_savings_income as the sum of the ISA "

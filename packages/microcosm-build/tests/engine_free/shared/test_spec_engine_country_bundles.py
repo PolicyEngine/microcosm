@@ -286,6 +286,7 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
         "reference_selection.json",
         "receipt_contract.json",
         "release_contract.json",
+        "rent_bands.json",
         "reporting_classifiers.json",
         "scenarios.json",
         "source_stages.json",

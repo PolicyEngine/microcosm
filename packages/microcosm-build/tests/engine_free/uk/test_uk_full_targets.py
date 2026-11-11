@@ -238,7 +238,11 @@ def test_wrong_fact_count_refuses_before_either_compiler(prepared):
 def test_current_national_and_local_pins_share_one_reviewed_identity():
     # main (#904) reads one committed pin, ``uk/chronicle_feed.json``, for the
     # national feed and the local census; the full build checks they agree.
-    # The identity is the 6475380 merge of PolicyEngine/chronicle#411
+    # The identity is 8045b13, Chronicle main after PolicyEngine/chronicle#423,
+    # #424 and #425 (PolicyEngine/chronicle#420's facts for the November UK
+    # events: young people, PIP and Scotland, for microcosm#1095's PR2), which
+    # also carries #413's UK area inputs, #415's land value inputs and #421's
+    # NRS data zone bands, on top of the 6475380 merge of PolicyEngine/chronicle#411
     # (PolicyEngine/chronicle#407: the APS's people in employment by SOC 2020
     # group and ASHE Table 2, for microcosm#1490), whose rows are
     # chronicle.consumer_fact.v5 (PolicyEngine/chronicle#377: one label per
@@ -266,19 +270,19 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("bcb226fd07a1eba8970a69b13e87ab20c3bd90e96e02509894a65799dbd9482a")
+        == ("0856f17072b09ed17d231d862b66d004729409a128fd1b3bf7b545f4e585d267")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("801d3e5e9d7039f877a12fc45afdd2d6b52ddbb46eecc91d7bd5ff843ea5efb8")
+        == ("559106a03970962cb7293af8664f69594d9aa64f5aa7f9c21e0f609838f96fef")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "64753803f9b22944a3ee8b24ba6d1fa6c26fef50"
+        == "8045b138355b196846f633f31323fd129908e751"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 1585295
+    assert national.fact_row_count == local["fact_row_count"] == 2091616
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):

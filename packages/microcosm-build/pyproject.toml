@@ -29,7 +29,7 @@ dependencies = [
     # microcosm-emitter`) and started as the build's child process, so an
     # emitter release needs no change here. The socket protocol carries its
     # own version, and every emitter release accepts the versions in use.
-    "microcosm-emitter-interface>=0.7.0,<1",
+    "microcosm-emitter-interface>=0.14.0,<1",
 ]
 
 [project.optional-dependencies]

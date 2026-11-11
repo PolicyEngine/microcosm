@@ -63,7 +63,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
-microcosm-emitter version           # the installed release; builds need 0.13.0 or later
+microcosm-emitter version           # the installed release; builds need 0.14.0 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -76,20 +76,26 @@ no remote staging, and queues no Orrery graph publication; a UK build given
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
-start one older than 0.13.0, the release that added `microcosm-emitter
-status`, which the US Modal stage runner runs after each stage to record how
-many telemetry events the stage's emitter left undelivered. The release is
+start one older than 0.14.0. That release adds the build machine's
+readings: each heartbeat carries the machine's memory, CPU and disk use and
+the build's processes, a heartbeat after the machine wakes carries the sleep,
+the run's first event describes the machine, each stage's end says how long
+the stage was awake and asleep, and progress can carry a counter one level
+above its own, such as the reform pass a scoring batch belongs to. 0.13.0
+added `microcosm-emitter status`, which the US Modal stage runner runs after
+each stage to record how many telemetry events the stage's emitter left
+undelivered. The release is
 written once, in `packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`,
 which builds read as package data and the Modal image's install step reads
 from the launching checkout. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the
-collector's hostname, which stays the same. 0.13.0 was the newest release
-when practically no machine ran the emitter yet, so requiring it cost
-nothing (see
+collector's hostname, which stays the same. 0.13.0 and 0.14.0 were each
+the newest release when practically no machine ran the emitter yet, so
+requiring them cost nothing (see
 [graph publication](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
-upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.13.0'`,
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.14.0'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build
@@ -112,7 +118,7 @@ if the emitter cannot be prepared or is missing, its
 `microcosm-emitter version` times out or fails, it is older than the
 minimum, it lists no protocol version 1, its `hello` fails, it exits or
 times out before it is ready, or it starts without its telemetry module.
-Every emitter a build starts (0.13.0 and later, the minimum) reads a given
+Every emitter a build starts (0.14.0 and later, the minimum) reads a given
 collector token, and exits at that point when the collector-token
 variables it inherits (`MICROCOSM_COLLECTOR_TOKEN`,
 `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
@@ -537,7 +543,7 @@ uv run python -m microcosm.build.build_folder_switch copy <owner/repository> \
 uv run python -m microcosm.build.build_folder_switch switch <owner/repository> \
   [--include <tag>=<release>] [--exclude <tag>] \
   [--retire-pointer <latest file>] [--current <release>=<build>] \
-  [--default <release>] [--write]
+  [--default <release>] [--finished-branch <release-staging/ branch>] [--write]
 ```
 
 Run the switch step only while nobody publishes to the repository, and give
@@ -547,12 +553,23 @@ The copy step moves every tag of a release that publishes into build folders
 whose manifest names that tag, and each release-per-build tag that
 `--include` names (the June 2023 UK release, or a US release), and refuses a
 build any of whose files does not match its manifest, or whose release, build
-or role the emitter interface refuses; it reports both without `--write`. The
+or role the emitter interface refuses; it reports both without `--write`. It
+also copies the files a build's checksum ledger records but its manifest
+doesn't declare (each US ACS local-area build has six), checked against the
+ledger, and a manifest that declares its own `build_manifest.json` (the US
+SPM builds') declares the rewritten one. The
 switch refuses unless every such build's folder holds exactly its copied
 files, every pointer file's build moves or `--retire-pointer` deletes that
 pointer file, no other build folder is on `main`, the repository's tags did
 not change while it read them, no `release-staging/` branch shows a tagged
-publication in progress, and the emitter interface's checks pass. Each build keeps the date of its
+publication in progress, and the emitter interface's checks pass. A
+`release-staging/` branch that a finished publication left behind is
+accepted when `--finished-branch` names it, its build is tagged and the commit
+it names is on `main`; the branch stays where it is. The publisher makes no
+branch for a build that is already tagged, but one older than 2026-09-23
+(`7053b9173`) did when retrying such a build, which looks the same while it
+runs (the US leftover branch is one), so name a branch only while nobody
+publishes. Each build keeps the date of its
 tagged commit as `published_at`, and each pointer file's build becomes its
 release's current build. The module's docstring describes both steps in full.
 
