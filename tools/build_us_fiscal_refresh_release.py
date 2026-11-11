@@ -8371,10 +8371,12 @@ def _qrf_tail_concentration_gate(
     change the gate's inputs, its verdict or the errors it raises: the loop
     resolves weights only for sparse outputs, and the gate runs before any
     measurement. A misaligned sparse output therefore still fails with the
-    gate's own message, which names the column.
+    gate's own message, which names the column. The loop stores a dense
+    output's entity and not its values, and the measurement reads the column
+    from the frame again.
     :func:`_qrf_single_record_measurements` runs after the gate and turns
-    every ``Exception`` into an ``unmeasured`` entry, so it cannot fail a run
-    the gate would pass.
+    every ``Exception`` into an ``unmeasured`` entry, so no ``Exception``
+    from a measurement fails a run the gate would pass.
     """
     qrf_outputs = sorted(_qrf_imputed_source_outputs())
     values: dict[str, np.ndarray] = {}
@@ -8385,7 +8387,7 @@ def _qrf_tail_concentration_gate(
     nonzero_shares: dict[str, float] = {}
     nonzero_records: dict[str, int] = {}
     entity_weights: dict[str, np.ndarray] = {}
-    dense_values: dict[str, tuple[str, np.ndarray]] = {}
+    dense_entities: dict[str, str] = {}
     for column in qrf_outputs:
         try:
             entity = export_frame.column_entity(column)
@@ -8403,7 +8405,7 @@ def _qrf_tail_concentration_gate(
         nonzero_records[column] = int((np.isfinite(array) & (array != 0.0)).sum())
         if nonzero_share > US_QRF_SPARSE_NONZERO_SHARE_MAX:
             dense.append(column)
-            dense_values[column] = (entity, array)
+            dense_entities[column] = entity
             continue
         if entity not in entity_weights:
             entity_weights[entity] = np.asarray(
@@ -8424,7 +8426,7 @@ def _qrf_tail_concentration_gate(
         qrf_outputs,
         sparse_values=values,
         sparse_weights=weights,
-        dense_values=dense_values,
+        dense_entities=dense_entities,
         entity_weights=entity_weights,
     )
     surface: dict[str, object] = {
@@ -8451,31 +8453,38 @@ def _qrf_single_record_measurements(
     *,
     sparse_values: Mapping[str, np.ndarray],
     sparse_weights: Mapping[str, np.ndarray],
-    dense_values: Mapping[str, tuple[str, np.ndarray]],
+    dense_entities: Mapping[str, str],
     entity_weights: Mapping[str, np.ndarray],
 ) -> tuple[dict[str, dict[str, float | int | None]], dict[str, str]]:
     """Each numeric QRF output's single-record measurements, after the gate.
 
-    A sparse output reuses the values and weights the gate checked. A dense
-    output resolves its entity's weights here, since the gate never weighs
-    one, and reuses weights that a sparse output of the same entity already
-    resolved. Any ``Exception``, from resolving weights or from measuring,
-    lists the output under ``unmeasured`` with the error's type and text, so
-    this never fails the run. Both mappings keep the order of
-    ``qrf_outputs``.
+    A sparse output reuses the values and weights the gate checked. For a
+    dense output the gate loop stored only the entity, so this reads the
+    column from the frame again, with the loop's two conversion statements,
+    and holds a dense column's converted values only until the next dense
+    output's replace them. A dense output resolves its entity's weights
+    here, since the gate never weighs one, and reuses weights that a sparse
+    output of the same entity already resolved. Any
+    ``Exception``, from reading a dense column, from resolving weights or
+    from measuring, lists the output under ``unmeasured`` with the reason
+    :func:`_unmeasured_reason` builds, so no ``Exception`` from an output
+    fails the run. Both mappings keep the order of ``qrf_outputs``.
     """
     resolved = dict(entity_weights)
     columns: dict[str, dict[str, float | int | None]] = {}
     unmeasured: dict[str, str] = {}
     for column in qrf_outputs:
-        if column not in sparse_values and column not in dense_values:
+        if column not in sparse_values and column not in dense_entities:
             continue
         try:
             if column in sparse_values:
                 column_values = sparse_values[column]
                 column_weights = sparse_weights[column]
             else:
-                entity, column_values = dense_values[column]
+                entity = dense_entities[column]
+                series = export_frame.table(entity)[column]
+                numeric = pd.to_numeric(series, errors="coerce").fillna(0.0)
+                column_values = numeric.to_numpy(dtype=np.float64)
                 if entity not in resolved:
                     resolved[entity] = np.asarray(
                         export_frame.resolve_weights(entity).values,
@@ -8488,8 +8497,27 @@ def _qrf_single_record_measurements(
                 top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
             )
         except Exception as error:
-            unmeasured[column] = f"{type(error).__name__}: {error}"
+            unmeasured[column] = _unmeasured_reason(error)
     return columns, unmeasured
+
+
+def _unmeasured_reason(error: Exception) -> str:
+    """Why an output went unmeasured: the error's type and text.
+
+    Formatting an error runs the error's own ``__str__`` or ``__format__``,
+    and reading its type's name can run a metaclass property; any of them
+    can raise. When one raises an ``Exception``, the reason falls back to
+    the type's name with ``unprintable error``, then to ``unprintable
+    error`` alone, so no ``Exception`` raised while formatting leaves this
+    function.
+    """
+    try:
+        return f"{type(error).__name__}: {error}"
+    except Exception:
+        try:
+            return f"{type(error).__name__}: unprintable error"
+        except Exception:
+            return "unprintable error"
 
 
 #: Failure-line prefix for a per-run QRF tail-concentration register that does

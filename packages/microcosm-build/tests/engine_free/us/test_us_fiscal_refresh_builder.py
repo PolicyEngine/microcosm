@@ -16611,6 +16611,278 @@ def test_any_error_measuring_a_dense_output_lands_under_unmeasured(
     assert block["unmeasured"]["taxable_interest_income"].startswith(reason)
 
 
+class _StrRaisesError(Exception):
+    def __str__(self) -> str:
+        raise RuntimeError("str failed")
+
+
+class _FormatRaisesError(Exception):
+    def __format__(self, spec: str) -> str:
+        raise LookupError("format failed")
+
+
+class _NameRaisesMeta(type):
+    @property
+    def __name__(cls) -> str:
+        raise OSError("name failed")
+
+
+class _NameRaisesError(Exception, metaclass=_NameRaisesMeta):
+    pass
+
+
+def test_a_dense_output_whose_error_cannot_print_itself_is_unmeasured() -> None:
+    """Review G-1: resolving a dense output's weights raises an error whose
+    ``__str__`` raises. Formatting the reason must not raise in its turn: the
+    gate passes, and the output goes under ``unmeasured`` with the type's
+    name."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        ),
+        "person",
+        error=_StrRaisesError(),
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert block["unmeasured"] == {
+        "taxable_interest_income": "_StrRaisesError: unprintable error"
+    }
+
+
+@pytest.mark.parametrize(
+    ("error_type", "reason"),
+    [
+        (ValueError, "ValueError: weights do not align"),
+        (_StrRaisesError, "_StrRaisesError: unprintable error"),
+        (_FormatRaisesError, "_FormatRaisesError: unprintable error"),
+        (_NameRaisesError, "unprintable error"),
+    ],
+    ids=["prints", "str-raises", "format-raises", "type-name-raises"],
+)
+def test_a_single_record_unmeasured_reason_never_raises(error_type, reason) -> None:
+    """Review G-1: the reason is the error's type and text; an error whose
+    text cannot format keeps its type's name, and one whose type cannot name
+    itself keeps the fixed text.
+
+    The test takes the error's class and builds the instance inside the call:
+    pytest prints a failing test's arguments with ``reprlib``, which reads
+    ``type(argument).__name__`` and so cannot print a ``_NameRaisesError``.
+    """
+    builder = _load_builder_module()
+
+    assert builder._unmeasured_reason(error_type("weights do not align")) == reason
+
+
+def test_a_single_record_unmeasured_reason_is_total() -> None:
+    """For every error the strategies build, the reason is the text the error
+    can still give, and no ``Exception`` leaves the helper. Each of
+    ``__str__``, ``__format__`` and the type's ``__name__`` either works or
+    raises a drawn ``Exception``, and ``__str__`` may return a number. The
+    reason is the type's name and the text, then the type's name with
+    ``unprintable error``, then ``unprintable error`` alone."""
+    builder = _load_builder_module()
+    raised = st.sampled_from(
+        [
+            ArithmeticError,
+            AttributeError,
+            KeyError,
+            MemoryError,
+            OSError,
+            RecursionError,
+            RuntimeError,
+            StopIteration,
+            TypeError,
+            ValueError,
+        ]
+    )
+    works_or_raises = st.one_of(st.none(), raised)
+
+    @hypothesis.settings(max_examples=200, deadline=None, database=None)
+    @hypothesis.given(
+        text=st.text(max_size=20),
+        str_raises=works_or_raises,
+        str_returns_a_number=st.booleans(),
+        format_raises=works_or_raises,
+        name_raises=works_or_raises,
+    )
+    def check(
+        text, str_raises, str_returns_a_number, format_raises, name_raises
+    ) -> None:
+        def broken_str(self):
+            if str_raises is not None:
+                raise str_raises("str failed")
+            return 7
+
+        def broken_format(self, spec):
+            raise format_raises("format failed")
+
+        def broken_name(cls):
+            raise name_raises("name failed")
+
+        methods: dict[str, object] = {}
+        if str_raises is not None or str_returns_a_number:
+            methods["__str__"] = broken_str
+        if format_raises is not None:
+            methods["__format__"] = broken_format
+        meta_methods: dict[str, object] = {}
+        if name_raises is not None:
+            meta_methods["__name__"] = property(broken_name)
+        meta = type("DrawnMeta", (type,), meta_methods)
+        error_type = meta("DrawnError", (Exception,), methods)
+
+        reason = builder._unmeasured_reason(error_type(text))
+
+        if name_raises is not None:
+            assert reason == "unprintable error"
+        elif methods:
+            assert reason == "DrawnError: unprintable error"
+        else:
+            assert reason == f"DrawnError: {text}"
+
+    check()
+
+
+class _TableSpy:
+    """An export frame that records each table it hands out.
+
+    Once ``offline`` is set, asking for a table raises; every other attribute
+    is the frame's.
+    """
+
+    def __init__(self, frame: Frame) -> None:
+        self._frame = frame
+        self.offline = False
+        self.tables_read: list[str] = []
+
+    def __getattr__(self, name: str):
+        return getattr(self._frame, name)
+
+    def table(self, entity: str):
+        self.tables_read.append(entity)
+        if self.offline:
+            raise RuntimeError("frame offline")
+        return self._frame.table(entity)
+
+
+def test_a_dense_output_the_frame_cannot_give_again_is_unmeasured_not_fatal() -> None:
+    """Review G-2: the gate loop stores no dense output's values, so the
+    measurement reads a dense column from the frame again, after the gate. A
+    frame that fails then leaves the gate's verdict alone: the dense output
+    goes under ``unmeasured`` and the sparse one keeps its measurement."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _TableSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        )
+    )
+    shared_gate = builder.tail_concentration_gate
+
+    def gate_then_offline(*args, **kwargs):
+        result = shared_gate(*args, **kwargs)
+        frame.offline = True
+        return result
+
+    builder.tail_concentration_gate = gate_then_offline
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    # The loop reads each output's table once; the measurement asks for the
+    # dense output's table again.
+    assert frame.tables_read == ["household", "person", "person"]
+    block = surface["single_record_concentration"]
+    assert set(block["columns"]) == {"auto_loan_balance"}
+    assert block["unmeasured"] == {
+        "taxable_interest_income": "RuntimeError: frame offline"
+    }
+
+
+def test_a_dense_output_stored_as_text_is_measured_as_the_gate_loop_read_it() -> None:
+    """Review G-2: the measurement converts a dense column as the gate loop
+    does, so an entry that is no number counts as zero in both. The column
+    holds text and one missing entry: 6,000 entries read ``"0"``, and of the
+    other 6,000 one is not a number and one is missing. The loop counts 5,998
+    nonzero records, and the measurement finds the same 5,998 carriers."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.array(["0"] * n, dtype=object)
+    interest[: n // 2] = "1000"
+    interest[1] = "50000"
+    interest[2] = "not a number"
+    interest[3] = None
+    frame = _TableSpy(
+        _qrf_person_frame(builder, {"taxable_interest_income": interest}, np.ones(n))
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    assert surface["nonzero_records"] == {"taxable_interest_income": 5_998}
+    assert frame.tables_read == ["person", "person"]
+    block = surface["single_record_concentration"]
+    assert block["unmeasured"] == {}
+    # 5,997 records of $1,000 and one of $50,000, at weight 1.
+    assert block["columns"] == {
+        "taxable_interest_income": {
+            "carriers": 5_998,
+            "top_1_share": pytest.approx(50_000.0 / 6_047_000.0),
+            "top_1_weight": 1.0,
+            "top_k_share": pytest.approx(149_000.0 / 6_047_000.0),
+        }
+    }
+
+
+def test_a_dense_output_is_measured_at_float64_as_the_gate_loop_read_it() -> None:
+    """Review G-2: the measurement rereads a dense column as float64, the
+    type the gate loop read it at. The block equals the shared measurement on
+    the column's float64 values, with no tolerance. 0.1 is not a float32
+    number, so a float32 reread would move both shares."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 0.1
+    interest[1] = 50_000.0
+    frame = _qrf_person_frame(
+        builder, {"taxable_interest_income": interest}, np.ones(n)
+    )
+
+    gate, surface = builder._qrf_tail_concentration_gate(frame)
+
+    assert gate.passed
+    assert surface["dense_columns"] == ["taxable_interest_income"]
+    block = surface["single_record_concentration"]
+    assert block["unmeasured"] == {}
+    assert block["columns"] == {
+        "taxable_interest_income": single_record_concentration(
+            interest, np.ones(n), top_k=builder.US_QRF_TAIL_CONCENTRATION_TOP_K
+        )
+    }
+
+
 def test_a_misaligned_sparse_output_fails_with_the_gates_own_message() -> None:
     """Review N2: misaligned weights on a sparse output raise the gate's error,
     which names the column, because no measurement runs before the gate."""
