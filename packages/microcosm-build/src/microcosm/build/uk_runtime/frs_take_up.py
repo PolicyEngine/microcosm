@@ -404,7 +404,13 @@ def add_frs_take_up(
     anchors = aggregate_person_reported_to_benunit(person, benunit)
     uc_age_eligible = uc_age_eligible_benunits(person, benunit, population_policy)
     derived = derive_frs_take_up(
-        benunit, anchors=anchors, contract=contract, uc_age_eligible=uc_age_eligible
+        benunit,
+        anchors=anchors,
+        contract=contract,
+        uc_age_eligible=uc_age_eligible,
+        # Each unit's household's clone, read through the person table's
+        # memberships; None on a frame without household_clone_index.
+        clone_index=geographic_clone_indices(frame, "benunit"),
     )
     for column in FRS_TAKE_UP_OUTPUT_COLUMNS:
         benunit[column] = derived[column].to_numpy()
@@ -478,16 +484,34 @@ def derive_frs_take_up(
     anchors: pd.DataFrame,
     contract: UKTakeUpContract,
     uc_age_eligible: np.ndarray,
+    clone_index: np.ndarray | None = None,
 ) -> pd.DataFrame:
+    """The stage's benefit-unit outputs, each drawn on ``benunit_id`` under
+    the output's own salt.
+
+    The Child Benefit, Pension Credit and Universal Credit flags fill their
+    anchored residuals within each geographic clone (microcosm#931):
+    ``clone_index``, aligned with ``benunit``, gives each unit's clone and is
+    the anchored draws' ``strata``. Clone 0's units have a one-clone spine's
+    ids, anchors and population, so they take its flags exactly at any clone
+    count; one count over every clone would round the target once over all
+    of them and move clone 0's threshold. ``None``, for a frame without the
+    clone index, counts over every unit, as clone indices that are all 0 do.
+    """
+
     ids = benunit["benunit_id"].to_numpy()
     values = pd.DataFrame(index=benunit.index)
     population = np.asarray(uc_age_eligible, dtype=bool)
     if population.shape != ids.shape:
         raise ValueError("uc_age_eligible must align with the benefit-unit table")
+    strata = None if clone_index is None else np.asarray(clone_index)
+    if strata is not None and strata.shape != ids.shape:
+        raise ValueError("clone_index must align with the benefit-unit table")
     values["would_claim_child_benefit"] = assign_binary_with_anchored_residual(
         _draws(ids, "would_claim_child_benefit"),
         contract.rate("child_benefit"),
         anchors["child_benefit_reported_anchor"].to_numpy(dtype=bool),
+        strata=strata,
     )
     values["child_benefit_opts_out"] = assign_binary_from_rate(
         _draws(ids, "child_benefit_opts_out"),
@@ -497,12 +521,14 @@ def derive_frs_take_up(
         _draws(ids, "would_claim_pc"),
         contract.rate("pension_credit"),
         anchors["pension_credit_reported_anchor"].to_numpy(dtype=bool),
+        strata=strata,
     )
     values["would_claim_uc"] = assign_binary_with_anchored_residual(
         _draws(ids, "would_claim_uc"),
         contract.rate("universal_credit"),
         anchors["universal_credit_reported_anchor"].to_numpy(dtype=bool),
         population=population,
+        strata=strata,
     )
     childcare = derive_childcare_take_up(ids, contract=contract)
     for output, _ in UK_CHILDCARE_TAKE_UP_FLAGS:
@@ -742,36 +768,71 @@ def geographic_clone_zero_rows(frame: Frame, entity: str) -> np.ndarray:
     """
 
     household = frame.table("household")
-    table = frame.table(entity)
     column = ladder_clone_index_column("household")
     if column not in household.columns:
-        return np.ones(len(table), dtype=bool)
-    zero = pd.Series(
-        household[column].to_numpy() == 0,
-        index=household[UK_NATIONAL_SCHEMA.id_column("household")].to_numpy(),
+        return np.ones(len(frame.table(entity)), dtype=bool)
+    return np.asarray(
+        _household_values_on_rows(frame, entity, household[column].to_numpy() == 0),
+        dtype=bool,
+    )
+
+
+def geographic_clone_indices(frame: Frame, entity: str) -> np.ndarray | None:
+    """Each ``entity`` row's geographic clone, or ``None`` (microcosm#931).
+
+    A row's clone is its household's ``household_clone_index``, as
+    :func:`geographic_clone_zero_rows` reads it: a person's household's, or
+    that of the household a benefit unit's members share, through the person
+    table's memberships, which a stage's frame always carries.
+    ``frs_take_up`` and ``frs_person_draws`` consume the household column
+    alone, so their draws count within each clone without reading another
+    table's index. A frame without the column (a unit fixture) is one clone
+    and gives ``None``.
+    """
+
+    household = frame.table("household")
+    column = ladder_clone_index_column("household")
+    if column not in household.columns:
+        return None
+    return _household_values_on_rows(frame, entity, household[column].to_numpy())
+
+
+def _household_values_on_rows(
+    frame: Frame, entity: str, values: np.ndarray
+) -> np.ndarray:
+    """``values``, one per household row, on each ``entity`` row: a person's
+    household's, or that of the household a benefit unit's members share.
+    The refusals name no id, count or value."""
+
+    household = frame.table("household")
+    by_household = pd.Series(
+        values, index=household[UK_NATIONAL_SCHEMA.id_column("household")].to_numpy()
     )
     if entity == "household":
-        return zero.to_numpy(dtype=bool)
+        return by_household.to_numpy()
     person = frame.table(UK_NATIONAL_SCHEMA.person_entity)
-    person_zero = person[UK_NATIONAL_SCHEMA.membership_column("household")].map(zero)
-    if person_zero.isna().any():
+    on_person = person[UK_NATIONAL_SCHEMA.membership_column("household")].map(
+        by_household
+    )
+    if on_person.isna().any():
         raise ValueError(
             "Every person needs a household on the frame to read its geographic clone."
         )
     if entity == UK_NATIONAL_SCHEMA.person_entity:
-        return person_zero.to_numpy(dtype=bool)
+        return on_person.to_numpy()
     by_unit = (
         pd.Series(
-            person_zero.to_numpy(dtype=bool),
+            on_person.to_numpy(),
             index=person[UK_NATIONAL_SCHEMA.membership_column(entity)].to_numpy(),
         )
         .groupby(level=0)
         .first()
     )
-    unit_zero = table[UK_NATIONAL_SCHEMA.id_column(entity)].map(by_unit)
-    if unit_zero.isna().any():
+    table = frame.table(entity)
+    on_unit = table[UK_NATIONAL_SCHEMA.id_column(entity)].map(by_unit)
+    if on_unit.isna().any():
         raise ValueError(f"A {entity} without members has no geographic clone to read.")
-    return unit_zero.to_numpy(dtype=bool)
+    return on_unit.to_numpy()
 
 
 @dataclass(frozen=True)

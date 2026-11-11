@@ -3,9 +3,10 @@
 Invented households go through the real geographic expansion (G1,
 ``geographic_expand``), then the SPI support channel (stage 16), the SPI income
 band donors (stage 17) and the CGT support split (stage 42), each run by its
-stage transform under the packaged stage declaration, G1's included. The
-frame runs at K = 1, 2, 3, 7 and 15 geographic clones; it is small, so K = 15
-takes well under a second. Each K is held to K = 1:
+stage transform under the packaged stage declaration, G1's included. Other
+invented households go through G1, then frs_take_up and frs_person_draws, the
+same way. Each frame runs at K = 1, 2, 3, 7 and 15 geographic clones; they are
+small, so K = 15 takes well under a second. Each K is held to K = 1:
 
 - **Reported first:** stage 17's mass scale at K = 1 and at each K. Clone 0's
   stage-17 weights nest on K = 1's only while the scale is the one a one-clone
@@ -13,6 +14,13 @@ takes well under a second. Each K is held to K = 1:
 - **Exact:**
   - clone 0 of G1's output is the one-clone frame, ids and G1's columns
     included;
+  - clone 0 of frs_take_up's and of frs_person_draws' output is the one-clone
+    frame. Their anchored residual and apprentice walk count within each
+    clone, and every other draw of the two is keyed on the row's own id. The
+    walk compares weights summed in draw order, which dividing by K scales
+    exactly at K = 2; on this frame it stops far from any near-tie, so it is
+    exact at every K. Counted once over every clone instead, each of the
+    four draws would move clone 0 at some K;
   - stage 16 copies, and stage 17 seats, K = 1's households in clone 0;
   - every table of every frame carries its clone index with exactly K values,
     and every copy carries its parent's.
@@ -42,12 +50,17 @@ takes well under a second. Each K is held to K = 1:
   columns, ids and weights, so the tests written on the stand-in hold for G1.
 - **The draws behind the clones:** frs_take_up, frs_person_draws and
   frs_household_draws run on every clone, after G1. On the stand-in at K = 3,
-  each take-up flag's population support and the apprentice draw's
-  population and eligible supports are K = 1's, since the stages count
-  support in true source households. Shares, and counts that follow a draw
-  (the apprentices flagged, how many values a flag takes), are left out, and
-  the extended hours are certain, so the under-two usage population follows
-  no draw.
+  each take-up flag's population support and distinct values, and the
+  apprentice draw's population, eligible and flagged supports and whether it
+  is cap-bound, are K = 1's: the stages count support in true source
+  households and distinct values in clone 0's rows, clone 0 walks as one
+  clone, and the cap bound compares sums over every clone that are one
+  clone's to rounding. The shares are left out, since each clone draws its
+  own flags on its own ids, and so are the targets: most are contract rates,
+  but the weighted means (the Scottish Child Payment's and Universal Credit
+  childcare's) are summed over K times the rows and are K = 1's only to
+  rounding. The extended hours are certain, so the under-two usage
+  population follows no draw.
 
 Invented values only. Assertion messages give K, stages, counts and booleans,
 never a weight or an id.
@@ -68,9 +81,11 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.stochastic_assignment import assign_binary_with_anchored_residual
 from microcosm.build.uk_runtime import (
     cgt_support,
     frs_person_draws,
+    frs_take_up,
     spi_band_donors,
     spi_support,
 )
@@ -90,8 +105,20 @@ from microcosm.build.uk_runtime.cgt_support import (
 from microcosm.build.uk_runtime.frs_household_draws import (
     UKFRSHouseholdDrawsStageTransform,
 )
-from microcosm.build.uk_runtime.frs_person_draws import UKFRSPersonDrawsStageTransform
-from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+from microcosm.build.uk_runtime.frs_person_draws import (
+    APPRENTICE_EMPLOYEE_STATUSES,
+    APPRENTICE_MAX_AGE_EXCLUSIVE,
+    APPRENTICE_MIN_AGE,
+    APPRENTICE_OUTPUT,
+    UKFRSPersonDrawsStageTransform,
+    derive_is_apprentice,
+    uk_person_household_weights,
+)
+from microcosm.build.uk_runtime.frs_take_up import (
+    UKFRSTakeUpStageTransform,
+    aggregate_person_reported_to_benunit,
+    uc_age_eligible_benunits,
+)
 from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.geographic_expand import (
     GEOGRAPHIC_EXPAND_STAGE_NAME,
@@ -105,6 +132,7 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     UK_BELOW_TEN_BAND,
+    own_source_households,
     support_band,
 )
 from microcosm.build.uk_runtime.spi_band_donors import (
@@ -1080,6 +1108,297 @@ def test_rule_b_puts_the_correction_on_a_copy_at_seven_and_thirteen_clones(
     assert abs(weights[-1] - values[-1]) < 1e-12 * values[-1]
 
 
+# --- frs_take_up and frs_person_draws, through G1 -------------------------------------
+#
+# Both run after G1, on every clone (microcosm#931). frs_take_up's Child
+# Benefit, Pension Credit and Universal Credit flags fill an anchored
+# residual, int(rate x units) less the anchors, and frs_person_draws walks
+# its apprentices to the rate times the weight aged 21 to 24, each within its
+# own clone; every other draw of the two is keyed on the row's own id.
+# Invented households: a family unit whose adult is 25 to 64, in work in two
+# households of three; a child in every third, some with reported Child
+# Benefit; in every other, a unit of one person of an apprentice's age, in
+# turn an employee aged 21 and a self-employed person aged 23; a pensioner's
+# unit in every fourth, some with reported Pension Credit; and reported
+# Universal Credit on every fifth family adult.
+
+TAKE_UP = "frs_take_up"
+PERSON_DRAWS = "frs_person_draws"
+#: The stages the invented frame goes through, in spine order.
+_DRAW_STAGES = (G1, TAKE_UP, PERSON_DRAWS)
+_TAKE_UP_HOUSEHOLDS = 60
+#: Invented design weights' seed.
+_TAKE_UP_WEIGHT_SEED = 11
+#: The three anchored draws' rate and the apprentices' rate per head. At
+#: these, each of the four draws counted once over every clone moves clone 0
+#: at some K (asserted), so the count within each clone is what nests them.
+_ANCHORED_RATE = 0.55
+_APPRENTICE_RATE = 0.4
+#: frs_take_up's anchored draws: each flag, its contract rate and its anchor.
+_ANCHORED_DRAWS = {
+    "would_claim_child_benefit": ("child_benefit", "child_benefit_reported_anchor"),
+    "would_claim_pc": ("pension_credit", "pension_credit_reported_anchor"),
+    "would_claim_uc": ("universal_credit", "universal_credit_reported_anchor"),
+}
+#: How far, relative to its target, the one-clone apprentice walk must stop
+#: from a near-tie for its clone-0 flags to be exact at any K: far above the
+#: rounding of weights split by K and summed over a frame of this size.
+_WALK_MARGIN = 1e-9
+
+
+class _NestingRatesContract(_Contract):
+    """test_support's take-up contract at the section's anchored and
+    apprentice rates."""
+
+    rates = {
+        **_Contract.rates,
+        **{key: _ANCHORED_RATE for key, _ in _ANCHORED_DRAWS.values()},
+        "apprentice_stock_19_to_24": _APPRENTICE_RATE,
+    }
+
+
+def _take_up_frame() -> Frame:
+    people: list[dict[str, object]] = []
+    units: list[dict[str, object]] = []
+    households: list[dict[str, object]] = []
+    for sernum in range(1, _TAKE_UP_HOUSEHOLDS + 1):
+        households.append(
+            {"household_id": sernum, "region": "LONDON" if sernum % 2 else "SCOTLAND"}
+        )
+        # (unit, age, employment status, UC claimant or partner, and the
+        # Child Benefit, Pension Credit and Universal Credit reported)
+        members = [
+            (
+                1,
+                25 + (sernum * 7) % 40,
+                "FT_EMPLOYED" if sernum % 3 else "UNEMPLOYED",
+                True,
+                0,
+                0,
+                30 * (sernum % 5 == 0),
+            )
+        ]
+        if sernum % 3 == 0:
+            members.append(
+                (1, sernum % 12, "CHILD", False, 20 * (sernum % 2 == 0), 0, 0)
+            )
+        if sernum % 2 == 0:
+            employee = sernum % 4 == 0
+            members.append(
+                (
+                    2,
+                    21 if employee else 23,
+                    "FT_EMPLOYED" if employee else "FT_SELF_EMPLOYED",
+                    True,
+                    0,
+                    0,
+                    0,
+                )
+            )
+        if sernum % 4 == 1:
+            members.append(
+                (3, 68 + sernum % 9, "RETIRED", True, 0, 15 * (sernum % 8 == 1), 0)
+            )
+        units.extend(
+            {
+                "benunit_id": sernum * 100 + unit,
+                "is_married": unit == 1 and sernum % 6 == 0,
+            }
+            for unit in sorted({member[0] for member in members})
+        )
+        for position, (unit, age, status, claimant, cb, pc, uc) in enumerate(
+            members, start=1
+        ):
+            people.append(
+                {
+                    "person_id": sernum * 1000 + position,
+                    "person_benunit_id": sernum * 100 + unit,
+                    "person_household_id": sernum,
+                    "age": age,
+                    "employment_status": status,
+                    "months_since_last_birthday": 6.0,
+                    "is_uc_claimant": claimant,
+                    "child_benefit_reported": cb,
+                    "pension_credit_reported": pc,
+                    "universal_credit_reported": uc,
+                }
+            )
+    return uk_national_frame(
+        person=pd.DataFrame(people),
+        benunit=pd.DataFrame(units),
+        household=pd.DataFrame(households),
+        household_weights=np.random.default_rng(_TAKE_UP_WEIGHT_SEED).uniform(
+            150.0, 1_500.0, _TAKE_UP_HOUSEHOLDS
+        ),
+        time_period=_PERIOD,
+        weight_kind=WeightKind.DESIGN,
+    )
+
+
+@pytest.fixture(scope="module")
+def draw_runs() -> dict[int, dict[str, Frame]]:
+    """The invented frame through G1, frs_take_up and frs_person_draws at
+    K = 1 and at every K of :data:`_CLONE_COUNTS`: each stage's frame."""
+
+    contract = _NestingRatesContract()
+    base = _take_up_frame()
+    runs: dict[int, dict[str, Frame]] = {}
+    with pytest.MonkeyPatch.context() as patch:
+        # The apprentices' relief reads an installed engine; their draw does not.
+        patch.setattr(frs_person_draws, "_installed_uk_system", lambda: None)
+        for clones in (1, *_CLONE_COUNTS):
+            transforms = (
+                UKGeographicExpandStageTransform(_packaged_stage(G1), clones=clones),
+                UKFRSTakeUpStageTransform(
+                    contract=contract,
+                    stage=_packaged_stage(TAKE_UP),
+                    population_policy=_POLICY,
+                ),
+                UKFRSPersonDrawsStageTransform(
+                    contract=contract, stage=_packaged_stage(PERSON_DRAWS)
+                ),
+            )
+            frame = base
+            runs[clones] = {}
+            for stage, transform in zip(_DRAW_STAGES, transforms, strict=True):
+                frame = transform(frame)
+                runs[clones][stage] = frame
+    return runs
+
+
+def _differing_columns(one: Frame, many: Frame) -> list[str]:
+    """The columns on which clone 0 of ``many`` is not ``one``: every table's,
+    by name, after its rows and column order are checked."""
+
+    differing = []
+    for entity in UK_NATIONAL_SCHEMA.entities:
+        reference = one.table(entity)
+        table = many.table(entity)
+        clone_zero = table.loc[table[ladder_clone_index_column(entity)].eq(0)]
+        assert clone_zero.index.tolist() == list(range(len(reference))), entity
+        assert list(clone_zero.columns) == list(reference.columns), entity
+        differing += [
+            f"{entity}.{column}"
+            for column in reference.columns
+            if not clone_zero[column].equals(reference[column])
+        ]
+    return differing
+
+
+def _apprentice_ages_and_employees(
+    person: pd.DataFrame,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The people aged 21 to 24, and the employees among them the walk can
+    flag."""
+
+    age = person["age"].to_numpy()
+    in_ages = (age >= APPRENTICE_MIN_AGE) & (age < APPRENTICE_MAX_AGE_EXCLUSIVE)
+    eligible = (
+        in_ages
+        & person["employment_status"].isin(APPRENTICE_EMPLOYEE_STATUSES).to_numpy()
+    )
+    return in_ages, eligible
+
+
+def _apprentice_walk_margin(frame: Frame) -> float:
+    """How far, relative to its target, the apprentice walk on ``frame`` (one
+    clone) stops from a near-tie: from every point where it would stop at
+    another prefix, the midpoints between consecutive prefixes' weights in
+    draw order (no one flagged among them), and from the eligible weight,
+    past which it flags everyone."""
+
+    person = frame.table("person")
+    weights = uk_person_household_weights(frame)
+    in_ages, eligible = _apprentice_ages_and_employees(person)
+    target = _APPRENTICE_RATE * float(weights[in_ages].sum())
+    uniforms = frs_person_draws._draws(
+        person["person_id"].to_numpy(), APPRENTICE_OUTPUT
+    )
+    order = np.argsort(uniforms[eligible], kind="stable")
+    prefixes = np.concatenate(([0.0], np.cumsum(weights[eligible][order])))
+    stops = np.concatenate(((prefixes[:-1] + prefixes[1:]) / 2, prefixes[-1:]))
+    return float(np.min(np.abs(stops - target)) / target)
+
+
+@pytest.mark.parametrize("stage", (TAKE_UP, PERSON_DRAWS))
+@pytest.mark.parametrize("clones", _CLONE_COUNTS)
+def test_clone_zero_takes_the_one_clone_draws_of_the_take_up_stages(
+    draw_runs, clones: int, stage: str
+) -> None:
+    """Clone 0 of frs_take_up's and of frs_person_draws' output is the
+    one-clone frame, every column and dtype, at every K:
+
+    - **The anchored residual.** Each clone counts ``int(rate x units)`` and
+      its anchors over its own benefit units, which clone 0 shares with one
+      clone, ids, anchors and population included.
+    - **The apprentice walk.** Each clone walks its own employees to the rate
+      times its own weight aged 21 to 24. Clone 0's weights are one clone's
+      over K, so its walk compares one clone's prefixes over K: exactly at
+      K = 2, and here at every K, since the one-clone walk stops
+      :data:`_WALK_MARGIN` or more from a near-tie (asserted).
+    - **Every other draw** is keyed on the row's own id.
+    """
+
+    one, many = draw_runs[1][stage], draw_runs[clones][stage]
+    if stage == PERSON_DRAWS:
+        margin = _apprentice_walk_margin(draw_runs[1][TAKE_UP])
+        assert margin >= _WALK_MARGIN, "The one-clone apprentice walk is near a tie."
+        person = one.table("person")
+        _, employees = _apprentice_ages_and_employees(person)
+        flagged = int(person[APPRENTICE_OUTPUT].sum())
+        assert 0 < flagged < int(employees.sum()), (
+            "The walk flags no one or every employee."
+        )
+    differing = _differing_columns(one, many)
+    assert not differing, f"Clone 0 after {stage} at K={clones} differs on {differing}."
+
+
+def test_the_draws_counted_over_every_clone_would_move_clone_zero(draw_runs) -> None:
+    """Not vacuous: frs_take_up's three anchored draws counted once over every
+    clone's units, the way the stage counted before it took the count within
+    each clone, and the apprentice walk over every clone's employees at once,
+    each move clone 0 off the one-clone flags at some K. So the count within
+    each clone is what nests them."""
+
+    contract = _NestingRatesContract()
+    one = draw_runs[1][PERSON_DRAWS]
+    reference = {
+        "benunit": one.table("benunit").set_index("benunit_id"),
+        "person": one.table("person").set_index("person_id"),
+    }
+    moved: Counter[str] = Counter()
+    for clones in _CLONE_COUNTS:
+        expanded = draw_runs[clones][G1]
+        person, benunit = expanded.table("person"), expanded.table("benunit")
+        anchors = aggregate_person_reported_to_benunit(person, benunit)
+        population = uc_age_eligible_benunits(person, benunit, _POLICY)
+        ids = benunit["benunit_id"].to_numpy()
+        for flag, (key, anchor) in _ANCHORED_DRAWS.items():
+            pooled = assign_binary_with_anchored_residual(
+                frs_take_up._draws(ids, flag),
+                contract.rate(key),
+                anchors[anchor].to_numpy(dtype=bool),
+                population=population if flag == "would_claim_uc" else None,
+            )
+            expected = reference["benunit"][flag]
+            pooled = pd.Series(pooled, index=ids).loc[expected.index]
+            moved[flag] += not pooled.equals(expected.astype(bool))
+        drawn = draw_runs[clones][TAKE_UP]
+        walk = derive_is_apprentice(
+            drawn.table("person"),
+            rate=_APPRENTICE_RATE,
+            person_weights=uk_person_household_weights(drawn),
+            person_sources=own_source_households(drawn.table("person")),
+        )
+        expected = reference["person"][APPRENTICE_OUTPUT]
+        pooled = pd.Series(walk.flags, index=drawn.table("person")["person_id"])
+        moved[APPRENTICE_OUTPUT] += not pooled.loc[expected.index].equals(expected)
+    assert set(moved) == {*_ANCHORED_DRAWS, APPRENTICE_OUTPUT}
+    assert all(moved.values()), (
+        f"Draws whose pooled count never moves clone 0: {moved}."
+    )
+
+
 # --- the draws behind the clones ----------------------------------------------------
 #
 # frs_take_up, frs_person_draws and frs_household_draws run on every clone,
@@ -1091,20 +1410,38 @@ def test_rule_b_puts_the_correction_on_a_copy_at_seven_and_thirteen_clones(
 
 _DRAW_FAMILIES = 4
 _DRAW_PENSIONERS = 4
-#: Receipt fields that are not counts: the flags' shares, and how many values
-#: a flag takes, which grows where clones draw apart on their own ids.
-_DRAW_SHARE_FIELDS = frozenset({"target", "weighted_share", "distinct_values"})
+#: Receipt fields measured over every clone: the flags' shares, which each
+#: clone's own draws move, and their targets, of which the weighted means
+#: (the Scottish Child Payment's and Universal Credit childcare's) are K = 1's
+#: only to rounding. How many values a flag takes is counted in clone 0's
+#: rows, so it is compared.
+_DRAW_SHARE_FIELDS = frozenset({"target", "weighted_share"})
+#: The apprentice receipt's fields that do not move with K: its supports,
+#: counted in clone 0's people in true source households, and whether the
+#: draw was cap-bound, which compares sums over every clone that are one
+#: clone's to rounding. Its masses are sums over every clone.
+_APPRENTICE_COUNT_FIELDS = (
+    "population_support",
+    "eligible_support",
+    "flagged_support",
+    "cap_bound",
+)
 
 
 class _CertainHoursContract(_Contract):
-    """test_support's take-up contract with the extended hours certain.
+    """test_support's take-up contract with the extended hours certain, and
+    an apprentice rate at which the walk flags some of the four employees.
 
     The under-two usage flag's population is the children under two in units
     drawn to claim the extended hours. Each clone draws its own claimants, on
     its own ids, so below a rate of one that population, and its support,
     grows with K; at one it is every such child on every clone."""
 
-    rates = {**_Contract.rates, "extended_childcare": 1.0}
+    rates = {
+        **_Contract.rates,
+        "extended_childcare": 1.0,
+        "apprentice_stock_19_to_24": 0.7,
+    }
 
 
 def _draws_frame() -> Frame:
@@ -1158,12 +1495,13 @@ def _draws_frame() -> Frame:
 
 def _draw_counts(frame: Frame) -> dict[str, dict[str, object]]:
     """frs_take_up, frs_person_draws and frs_household_draws on ``frame``, in
-    spine order, under their packaged declarations, and the count fields of
-    their receipts: each take-up flag's population support, with its nesting
-    count or why it is unmeasured, and the apprentice draw's population and
-    eligible supports. The flags' shares and the apprentices' masses and
-    flagged support are left out: the anchored residual and the apprentice
-    walk pool over the clones, whose draws are keyed on their own ids."""
+    spine order, under their packaged declarations, and the fields of their
+    receipts that do not move with K: each take-up flag's population support
+    and distinct values, with its nesting count or why it is unmeasured, and
+    the apprentice draw's supports and whether it was cap-bound. The flags'
+    shares, their targets and the apprentices' masses are left out: each
+    clone draws its own flags, and a target or mass summed over every clone
+    is K = 1's only to rounding."""
 
     contract = _CertainHoursContract()
     transforms = (
@@ -1196,7 +1534,7 @@ def _draw_counts(frame: Frame) -> dict[str, dict[str, object]]:
         if "apprentice_receipt" in evidence:
             receipt = evidence["apprentice_receipt"]
             counts[evidence["stage"]]["apprentices"] = {
-                key: receipt[key] for key in ("population_support", "eligible_support")
+                key: receipt[key] for key in _APPRENTICE_COUNT_FIELDS
             }
     return counts
 
@@ -1210,8 +1548,8 @@ def test_the_draws_count_in_source_households_on_every_clone(monkeypatch) -> Non
     assert _draw_counts(three) == one
 
     # Not vacuous: every household flag rests on the eight households, which
-    # reads "3-9", and so do the apprentices, while three clones' rows would
-    # read another band.
+    # reads "3-9", and so do the apprentices, three of whose four employees
+    # the walk flags, while three clones' rows would read another band.
     households = len(base.table("household"))
     assert {
         row["population_support"] for row in one["frs_household_draws"]["flags"]
@@ -1219,6 +1557,8 @@ def test_the_draws_count_in_source_households_on_every_clone(monkeypatch) -> Non
     assert one["frs_person_draws"]["apprentices"] == {
         "population_support": UK_BELOW_TEN_BAND,
         "eligible_support": UK_BELOW_TEN_BAND,
+        "flagged_support": UK_BELOW_TEN_BAND,
+        "cap_bound": False,
     }
     assert support_band(3 * households) != UK_BELOW_TEN_BAND
     # Without the lineage, as a node not given it would read the frame, the

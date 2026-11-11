@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from microcosm.build.stochastic_assignment import (
@@ -191,6 +192,257 @@ def test_anchored_residual_population_without_anchor_and_shape_refusal() -> None
         assign_binary_with_anchored_residual(
             draws, 0.4, np.zeros(10, dtype=bool), population=np.ones(3, dtype=bool)
         )
+
+
+# --- the anchored residual within strata (microcosm#931) ---------------------
+
+
+def _anchored_residual_without_strata(draws, rate, anchor=None, population=None):
+    """The anchored residual's arithmetic as it stood before ``strata`` was
+    added, copied unchanged (its refusals aside), as the oracle that the
+    calls without strata, and with every row in one stratum, are held to
+    byte for byte."""
+
+    draws = np.asarray(draws, dtype=np.float64)
+    if population is None:
+        population = np.ones(draws.shape, dtype=bool)
+    else:
+        population = np.asarray(population, dtype=bool)
+    if anchor is None:
+        return population & (draws < rate)
+    anchor = np.asarray(anchor, dtype=bool)
+    result = anchor.copy()
+    target = int(rate * int(population.sum()))
+    remaining_needed = max(0, target - int((anchor & population).sum()))
+    non_anchored = ~anchor & population
+    if remaining_needed == 0 or not non_anchored.any():
+        return result
+    adjusted = remaining_needed / int(non_anchored.sum())
+    result |= non_anchored & (draws < adjusted)
+    return result
+
+
+def _random_anchored_cases(seed: int, trials: int):
+    """Invented draws, rates, anchors and populations, with or without each.
+
+    Draws sometimes repeat or sit on the rate; anchors and populations run
+    from none to every row, so the residual fills, overshoots, has no row left
+    to fill and meets no anchor."""
+
+    rng = np.random.default_rng(seed)
+    densities = (0.0, 0.05, 0.3, 0.9, 1.0)
+    for trial in range(trials):
+        n = int(rng.integers(0, 120))
+        draws = rng.random(n)
+        if trial % 4 == 0 and n:
+            draws = np.round(draws, 1)
+        rate = float(rng.choice([0.0, 1.0, 0.5, *rng.random(3)]))
+        if trial % 5 == 0 and n:
+            draws[int(rng.integers(0, n))] = rate
+        anchor = (
+            None
+            if trial % 6 == 0
+            else rng.random(n) < densities[trial % len(densities)]
+        )
+        population = (
+            None if trial % 3 == 0 else rng.random(n) < float(rng.choice(densities))
+        )
+        yield draws, rate, anchor, population
+
+
+def test_without_strata_or_in_one_stratum_the_flags_are_unchanged() -> None:
+    """``strata=None``, the default, and every row in one stratum, under three
+    labels and integer dtypes, give the flags the arithmetic gave before
+    strata were added, byte for byte."""
+
+    branches = {"no anchor": 0, "filled": 0, "nothing to fill": 0}
+    for draws, rate, anchor, population in _random_anchored_cases(11, 600):
+        expected = _anchored_residual_without_strata(draws, rate, anchor, population)
+        assert expected.dtype == np.bool_
+        n = draws.size
+        results = [
+            assign_binary_with_anchored_residual(draws, rate, anchor, population),
+            assign_binary_with_anchored_residual(
+                draws, rate, anchor, population, strata=None
+            ),
+            assign_binary_with_anchored_residual(
+                draws, rate, anchor, population, strata=np.zeros(n, dtype=np.int64)
+            ),
+            assign_binary_with_anchored_residual(
+                draws, rate, anchor, population, strata=np.full(n, -7, dtype=np.int8)
+            ),
+            assign_binary_with_anchored_residual(
+                draws, rate, anchor, population, strata=np.full(n, 3, dtype=np.uint16)
+            ),
+        ]
+        for result in results:
+            assert result.dtype == expected.dtype
+            assert result.shape == expected.shape
+            assert result.tobytes() == expected.tobytes()
+        if anchor is None:
+            branches["no anchor"] += 1
+        elif (expected & ~anchor).any():
+            branches["filled"] += 1
+        else:
+            branches["nothing to fill"] += 1
+    assert min(branches.values()) > 50, branches
+
+
+def _two_strata() -> pd.DataFrame:
+    """Two invented strata, interleaved, at a rate of one half.
+
+    Stratum -2: eight reachable rows, one anchored, so its target is
+    int(0.5 x 8) = 4 and its residual fills 3 of its 7 other rows, at the
+    threshold 3 / 7, which the draws (2i + 1) / 14 cross after their third.
+    Stratum 5: six rows, four reachable, three of those anchored, and an
+    anchor outside the reach: its target int(0.5 x 4) = 2 is already
+    exceeded, so it fills nothing. One count over both strata would aim at
+    int(0.5 x 12) = 6, need 2 of its 8 unanchored reachable rows, at the
+    threshold 2 / 8, and so take three: stratum 5's one (drawn at 0.1) and
+    two of stratum -2's."""
+
+    rows = [
+        # (stratum, draw, anchor, reachable, with strata, without strata)
+        (5, 0.10, False, True, False, True),
+        (-2, 9 / 14, False, True, False, False),
+        (-2, 0.90, True, True, True, True),
+        (5, 0.95, True, True, True, True),
+        (-2, 1 / 14, False, True, True, True),
+        (5, 0.40, True, True, True, True),
+        (-2, 13 / 14, False, True, False, False),
+        (-2, 5 / 14, False, True, True, False),
+        (5, 0.01, False, False, False, False),
+        (-2, 3 / 14, False, True, True, True),
+        (5, 0.70, True, False, True, True),
+        (-2, 11 / 14, False, True, False, False),
+        (5, 0.20, True, True, True, True),
+        (-2, 7 / 14, False, True, False, False),
+    ]
+    return pd.DataFrame(
+        rows,
+        columns=["stratum", "draw", "anchor", "reachable", "strata", "pooled"],
+    )
+
+
+def test_strata_count_each_stratums_target_on_its_own_rows() -> None:
+    """Each stratum meets its own target on its own rows (:func:`_two_strata`),
+    where one count over both meets one target over every row."""
+
+    table = _two_strata()
+    draws = table["draw"].to_numpy()
+    anchor = table["anchor"].to_numpy()
+    population = table["reachable"].to_numpy()
+    strata = table["stratum"].to_numpy(dtype=np.int64)
+
+    result = assign_binary_with_anchored_residual(
+        draws, 0.5, anchor, population, strata=strata
+    )
+
+    assert result.tolist() == table["strata"].tolist()
+    pooled = assign_binary_with_anchored_residual(draws, 0.5, anchor, population)
+    assert pooled.tolist() == table["pooled"].tolist()
+    # Each stratum's flags are those its rows take alone.
+    for label in (-2, 5):
+        rows = strata == label
+        np.testing.assert_array_equal(
+            result[rows],
+            assign_binary_with_anchored_residual(
+                draws[rows], 0.5, anchor[rows], population[rows]
+            ),
+        )
+    # The labels only name the strata, and the rows' order does not matter.
+    renamed = np.where(strata == 5, 0, 1).astype(np.int32)
+    np.testing.assert_array_equal(
+        assign_binary_with_anchored_residual(
+            draws, 0.5, anchor, population, strata=renamed
+        ),
+        result,
+    )
+    order = np.random.default_rng(2).permutation(len(table))
+    np.testing.assert_array_equal(
+        assign_binary_with_anchored_residual(
+            draws[order],
+            0.5,
+            anchor[order],
+            population[order],
+            strata=strata[order],
+        ),
+        result[order],
+    )
+
+
+def test_a_stratum_takes_its_own_flags_whatever_the_others_hold() -> None:
+    """Stratum 0 takes the flags its rows take alone at every rate, beside
+    strata of other draws over the same anchors and reach, as geographic
+    clone 0 does beside the other clones (microcosm#931). One count over every
+    stratum moves them at some rates, so the strata are not idle."""
+
+    rng = np.random.default_rng(17)
+    n, copies = 40, 3
+    draws = rng.random(n)
+    anchor = rng.random(n) < 0.15
+    population = rng.random(n) < 0.8
+    stacked_draws = np.concatenate([draws, rng.random(n * (copies - 1))])
+    stacked_anchor = np.tile(anchor, copies)
+    stacked_population = np.tile(population, copies)
+    strata = np.repeat(np.arange(copies, dtype=np.int64), n)
+    pooled_moves = 0
+    for rate in np.linspace(0.0, 1.0, 81):
+        alone = assign_binary_with_anchored_residual(draws, rate, anchor, population)
+        stratified = assign_binary_with_anchored_residual(
+            stacked_draws, rate, stacked_anchor, stacked_population, strata=strata
+        )
+        np.testing.assert_array_equal(stratified[:n], alone)
+        pooled = assign_binary_with_anchored_residual(
+            stacked_draws, rate, stacked_anchor, stacked_population
+        )
+        pooled_moves += not np.array_equal(pooled[:n], alone)
+    assert pooled_moves > 0
+
+
+def test_without_an_anchor_strata_change_nothing() -> None:
+    rng = np.random.default_rng(8)
+    draws = rng.random(50)
+    population = rng.random(50) < 0.6
+    strata = rng.integers(0, 4, 50)
+
+    for rate in (0.0, 0.3, 1.0):
+        expected = population & (draws < rate)
+        np.testing.assert_array_equal(
+            assign_binary_with_anchored_residual(
+                draws, rate, population=population, strata=strata
+            ),
+            expected,
+        )
+        np.testing.assert_array_equal(
+            assign_binary_with_anchored_residual(draws, rate, strata=strata),
+            draws < rate,
+        )
+
+
+@pytest.mark.parametrize("with_anchor", [True, False])
+def test_strata_are_refused_misaligned_non_integer_or_missing(with_anchor) -> None:
+    """Strata are checked whether or not an anchor is given, and every refusal
+    names no count, label or row. An integer dtype holds no missing value, so
+    a missing label is refused with the other dtypes that are not integers."""
+
+    draws = np.linspace(0.0, 0.9, 4)
+    anchor = np.array([True, False, False, False]) if with_anchor else None
+    refused = (
+        (np.zeros(3, dtype=np.int64), ValueError, "strata and draws must align"),
+        (np.zeros((2, 2), dtype=np.int64), ValueError, "strata and draws must align"),
+        (np.zeros(4), TypeError, "strata must be integers"),
+        (np.zeros(4, dtype=bool), TypeError, "strata must be integers"),
+        (np.array([0, 1, 0, 1], dtype=object), TypeError, "strata must be integers"),
+        (np.array(["a", "b", "a", "b"]), TypeError, "strata must be integers"),
+        (np.array([0.0, np.nan, 1.0, 1.0]), TypeError, "none missing"),
+        (pd.array([0, None, 1, 1], dtype="Int64"), TypeError, "none missing"),
+        (np.array([0, None, 1, 1], dtype=object), TypeError, "none missing"),
+    )
+    for strata, error, message in refused:
+        with pytest.raises(error, match=message) as caught:
+            assign_binary_with_anchored_residual(draws, 0.5, anchor, strata=strata)
+        assert not any(character.isdigit() for character in str(caught.value))
 
 
 def test_integer_record_keys_pass_unique_integer_ids_through() -> None:

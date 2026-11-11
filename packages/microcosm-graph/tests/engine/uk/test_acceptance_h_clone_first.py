@@ -1,7 +1,7 @@
 """The clone-first UK spine at four geographic clones on the H2 fixture.
 
-microcosm#931 group (b). The H2 fixture's invented sources run the whole
-spine in this process twice, through the real engine: at one geographic
+microcosm#931 groups (b) and (c). The H2 fixture's invented sources run the
+whole spine in this process twice, through the real engine: at one geographic
 clone, the fixture's own config, and at four, the same config with
 ``geographic_clones`` 4, so the graph's geographic_expand node, the transform
 that makes the clones and the engine all take K = 4. Each run records, per
@@ -17,10 +17,11 @@ the populations the exact checks compare.
   geographic_expand on.
 - **Exact:** clone 0 after geographic_expand and geographic_identity is the
   one-clone frame on every column, at K x its weight bitwise. Through
-  frs_brma it differs from K = 1 only where a draw pools over the clones
-  (frs_take_up's anchored residual, frs_person_draws' apprentice walk) and in
-  the BRMA of the households those draws move, whose LHA_category the engine
-  computes from them; so the keyed per-row draws nest. spi_support_channel
+  frs_brma it is still the one-clone frame on every column: frs_take_up's
+  anchored residual and frs_person_draws' apprentice walk count within each
+  clone, the walk on prefixes that 1/4 scales exactly, every other draw is
+  keyed on the row's own id, and frs_brma's cell reads the LHA_category the
+  engine computes for clone 0 from that clone's rows. spi_support_channel
   copies K = 1's households in clone 0, at nesting weights, and
   spi_income_band_donors seats K = 1's households in K = 1's bands with
   K = 1's carriers.
@@ -32,10 +33,9 @@ the populations the exact checks compare.
   the stratum's own: K x clone-0 weights nest on one clone's only where the
   two scales are equal. Whether the stage takes a scale per clone is open
   (microcosm#931).
-- **Tolerance classes:** the pooled draws keep their K-invariant receipt
-  fields; from frs_take_up on, every output every clone carries, at a
-  weighted share near one clone's, and every node keeps K = 1's household
-  mass.
+- **Tolerance classes:** the draws keep their K-invariant receipt fields;
+  from frs_take_up on, every output every clone carries, at a weighted share
+  near one clone's, and every node keeps K = 1's household mass.
 - **Receipts:** the clone count in geographic_expand's, spi_support_channel's
   and spi_income_band_donors' receipts and, at K = 4 only, the support clips'
   and property components'; the geographic fold receipts at the six folding
@@ -113,13 +113,14 @@ _STAGE_COUNT = 56
 #: which is the first engine call after G1.
 _FIRST_DRAW = "frs_take_up"
 _LAST_DRAW = "frs_brma"
-#: The draws that pool over the clones before spi_support_channel:
-#: frs_take_up's anchored residual takes ``int(rate x units)`` of the pool's
-#: units, and frs_person_draws' apprentice walk meets a weighted target over
-#: the pool, so clone 0's draws need not be one clone's. Every other draw from
+#: The draws that count within each geographic clone before
+#: spi_support_channel: frs_take_up's anchored residual takes
+#: ``int(rate x units)`` of each clone's units, and frs_person_draws'
+#: apprentice walk meets the rate times each clone's weight aged 21 to 24, so
+#: clone 0's draws are one clone's (microcosm#931). Every other draw from
 #: frs_take_up to frs_brma is keyed on the row's own id, which clone 0 shares
 #: with one clone.
-_POOLED_DRAWS = {
+_COUNTED_WITHIN_EACH_CLONE = {
     ("benunit", "would_claim_child_benefit"),
     ("benunit", "would_claim_pc"),
     ("benunit", "would_claim_uc"),
@@ -620,39 +621,22 @@ def test_clone_zero_after_the_clones_is_the_one_clone_frame(runs, stage: str) ->
     assert (weights * _CLONES).tobytes() == _weights(one).to_numpy().tobytes()
 
 
-def _households_off_one_clone_on_the_pooled_draws(one: Frame, many: Frame) -> set[int]:
-    """The households where a clone-0 pooled draw (``_POOLED_DRAWS``) is not
-    one clone's: a benefit unit's take-up flag or a member's apprentice flag.
-    frs_brma takes each unit's count-table cell from the engine's
-    LHA_category, which reads the household's members and units (a claim to
-    Universal Credit decides whose non-dependants count), so only in these
-    households may clone 0's BRMA lie in another cell."""
+def test_clone_zero_through_frs_brma_is_the_one_clone_frame(runs) -> None:
+    """Through frs_brma clone 0 is the one-clone frame on every column, every
+    draw from frs_take_up to frs_brma among them:
 
-    person = one.table("person")
-    homes = {
-        "person": person.set_index("person_id")["person_household_id"],
-        "benunit": person.groupby("person_benunit_id")["person_household_id"].first(),
-    }
-    ids = {"person": "person_id", "benunit": "benunit_id"}
-    off: set[int] = set()
-    for entity, column in sorted(_POOLED_DRAWS):
-        left = one.table(entity).set_index(ids[entity])[column]
-        right = (
-            _clone_zero(many, entity).set_index(ids[entity])[column].reindex(left.index)
-        )
-        moved = left.index[left.to_numpy() != right.to_numpy()]
-        off |= set(homes[entity].loc[moved].tolist())
-    return off
-
-
-def test_clone_zero_keeps_the_keyed_per_row_draws_through_frs_brma(runs) -> None:
-    """Through frs_brma clone 0 is the one-clone frame on every column but
-    the draws that pool over the clones (``_POOLED_DRAWS``) and the BRMA of
-    the households where those differ: every other draw from frs_take_up to
-    frs_brma is keyed on the row's own id, and the BRMA draw's cell reads the
-    LHA_category the batched engine computes for clone 0 from that clone's
-    rows alone, so it is one clone's wherever the household's inputs are.
-    The other households' BRMA is left to the share class."""
+    - frs_take_up's anchored residual and frs_person_draws' apprentice walk
+      count within each clone (``_COUNTED_WITHIN_EACH_CLONE``); the walk
+      compares prefixes of clone 0's weights, one clone's over 4, which the
+      split scales exactly.
+    - Every other draw is keyed on the row's own id, which clone 0 shares
+      with one clone.
+    - frs_brma takes each unit's count-table cell from the engine's
+      LHA_category, which reads the household's members and units (a claim
+      to Universal Credit decides whose non-dependants count). The batched
+      engine computes it for clone 0 from that clone's rows alone, which are
+      one clone's, so the BRMA is one clone's too.
+    """
 
     one, many = runs[1].frames[_LAST_DRAW], runs[_CLONES].frames[_LAST_DRAW]
     compared: set[tuple[str, str]] = set()
@@ -662,37 +646,24 @@ def test_clone_zero_keeps_the_keyed_per_row_draws_through_frs_brma(runs) -> None
         clone_zero = _clone_zero(many, entity).reset_index(drop=True)
         assert list(clone_zero.columns) == list(reference.columns), entity
         for column in reference.columns:
-            if (entity, column) in _POOLED_DRAWS or (entity, column) == _BRMA:
-                continue
             compared.add((entity, column))
             if not clone_zero[column].equals(reference[column]):
                 differing.append(f"{entity}.{column}")
     assert not differing, f"Clone 0 after {_LAST_DRAW} differs on {differing}."
-    moved = _households_off_one_clone_on_the_pooled_draws(one, many)
-    entity, column = _BRMA
-    reference = one.table(entity).set_index("household_id")[column]
-    clone_zero = (
-        _clone_zero(many, entity)
-        .set_index("household_id")[column]
-        .reindex(reference.index)
-    )
-    kept = ~reference.index.isin(list(moved))
-    assert kept.any(), "The pooled draws moved every household; no BRMA compared."
-    off = int((clone_zero.to_numpy()[kept] != reference.to_numpy()[kept]).sum())
-    assert off == 0, (
-        f"{off} household(s) whose pooled draws are one clone's draw another "
-        f"BRMA in clone 0 ({len(moved)} household(s) left to the share class)."
-    )
-    compared.add(_BRMA)
     stages = runs[1].stage_names
-    keyed = {
+    drawn = {
         (entity, column)
-        for stage in ("frs_person_draws", "frs_household_draws", _LAST_DRAW)
+        for stage in (
+            _FIRST_DRAW,
+            "frs_person_draws",
+            "frs_household_draws",
+            _LAST_DRAW,
+        )
         for column in _stage_outputs(stages, stage)
         for entity in UK_NATIONAL_SCHEMA.entities
         if column in one.table(entity).columns
-    } - _POOLED_DRAWS
-    assert keyed and keyed <= compared
+    }
+    assert _COUNTED_WITHIN_EACH_CLONE | {_BRMA} <= drawn <= compared
 
 
 def _stage_outputs(stage_names: tuple[str, ...], stage: str) -> tuple[str, ...]:
@@ -822,12 +793,14 @@ def test_the_band_donors_fund_each_clone_zero_stratum_at_one_ratio(runs) -> None
 # --- tolerance classes ---------------------------------------------------------------
 
 
-def test_the_pooled_draws_keep_their_k_invariant_receipt_fields(runs) -> None:
+def test_the_draws_keep_their_k_invariant_receipt_fields(runs) -> None:
     """frs_take_up, frs_person_draws and frs_household_draws count each
     flag's population in true sources, and frs_person_draws' apprentice walk
-    its target, masses and supports, so these are one clone's at K = 4; each
+    its target, masses and supports, so these are one clone's at K = 4; the
+    flagged support too, counted in clone 0, whose walk is one clone's. Each
     target and mass, summed over the clones' rows, is one clone's to its
-    summation order. The realized shares are left to the share class."""
+    summation order. The realized shares and mass are left to the share
+    class: the other clones flag their own employees."""
 
     one, many = runs[1].evidence, runs[_CLONES].evidence
     for stage in (_FIRST_DRAW, "frs_person_draws", "frs_household_draws"):
@@ -855,6 +828,7 @@ def test_the_pooled_draws_keep_their_k_invariant_receipt_fields(runs) -> None:
         "eligible_mass",
         "population_support",
         "eligible_support",
+        "flagged_support",
         "cap_bound",
     ):
         expected, found = apprentices["one"][field], apprentices["many"][field]

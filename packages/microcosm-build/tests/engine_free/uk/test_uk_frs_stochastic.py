@@ -10,7 +10,16 @@ from microcosm.build.uk_runtime.frs_brma import (
     draw_household_brmas,
     load_brma_count_resource,
 )
+from microcosm.build.uk_runtime.frs_take_up import (
+    UK_UNDER_TWO_USAGE_OUTPUT,
+    geographic_clone_indices,
+    geographic_clone_zero_rows,
+)
 from microcosm.build.uk_runtime.receipt_counts import own_source_households
+from test_support.microcosm_build.uk_clone_first_frames import (
+    GEOGRAPHIC_RADIX,
+    clone_first_frame,
+)
 from test_support.microcosm_build.uk_frs_stochastic import *
 
 
@@ -513,3 +522,227 @@ def test_uc_childcare_take_up_is_drawn_by_family_type() -> None:
             contract=_Contract(),
             uc_age_eligible=uc_age_eligible_benunits(person, benunit, _POLICY),
         )
+
+
+# --- the anchored draws within each geographic clone (microcosm#931) ---------
+
+#: frs_take_up's three anchored draws.
+_ANCHORED_FLAGS = ("would_claim_child_benefit", "would_claim_pc", "would_claim_uc")
+#: Every anchored rate from 0 to 1 in steps of 0.025.
+_ANCHORED_RATES = tuple(step / 40 for step in range(41))
+_ANCHORED_HOUSEHOLDS = 36
+
+
+class _AnchoredRateContract(_Contract):
+    """test_support's take-up contract with the three anchored rates at one rate."""
+
+    def __init__(self, rate: float) -> None:
+        self.rates = {
+            **_Contract.rates,
+            "child_benefit": rate,
+            "pension_credit": rate,
+            "universal_credit": rate,
+        }
+
+
+def _anchored_frame() -> object:
+    """Invented households for the anchored draws, with ids as frs_spine makes
+    them.
+
+    Every household has a family unit whose adult, a UC claimant, is aged 22
+    to 79 in turn, with a child in every other household; every third has a
+    second unit of one pensioner. Reported Child Benefit (on children),
+    Pension Credit (on pensioners) and Universal Credit (on the family
+    adults, some past the draw's working-age reach) anchor some units."""
+
+    people: list[dict[str, object]] = []
+    units: list[dict[str, object]] = []
+    households: list[dict[str, object]] = []
+    for sernum in range(1, _ANCHORED_HOUSEHOLDS + 1):
+        households.append(
+            {
+                "household_id": sernum,
+                "region": "LONDON" if sernum % 2 else "SCOTLAND",
+                "household_weight": 100.0 + 10.0 * sernum,
+            }
+        )
+        # (unit, age, UC claimant or partner, CB, PC and UC reported)
+        members = [(1, 22 + (sernum * 7) % 58, True, 0, 0, 40 * (sernum % 5 == 0))]
+        if sernum % 2 == 0:
+            members.append((1, sernum % 15, False, 20 * (sernum % 6 == 0), 0, 0))
+        if sernum % 3 == 0:
+            members.append((2, 70 + sernum % 9, True, 0, 15 * (sernum % 9 == 0), 0))
+        units.extend(
+            {
+                "benunit_id": sernum * 100 + unit,
+                "is_married": unit == 1 and sernum % 4 == 0,
+            }
+            for unit in sorted({member[0] for member in members})
+        )
+        for position, (unit, age, claimant, cb, pc, uc) in enumerate(members, 1):
+            people.append(
+                {
+                    "person_id": sernum * 1000 + position,
+                    "person_benunit_id": sernum * 100 + unit,
+                    "person_household_id": sernum,
+                    "age": age,
+                    "months_since_last_birthday": 6.0,
+                    "is_uc_claimant": claimant,
+                    "child_benefit_reported": cb,
+                    "pension_credit_reported": pc,
+                    "universal_credit_reported": uc,
+                }
+            )
+    return uk_national_frame(
+        person=pd.DataFrame(people),
+        benunit=pd.DataFrame(units),
+        household=pd.DataFrame(households),
+        time_period="2024",
+    )
+
+
+def _take_up_transform(
+    rate: float, stage: SourceStageSpec
+) -> UKFRSTakeUpStageTransform:
+    """frs_take_up's transform under its packaged declaration ``stage``."""
+
+    return UKFRSTakeUpStageTransform(
+        contract=_AnchoredRateContract(rate), stage=stage, population_policy=_POLICY
+    )
+
+
+def _derived_benunits(frame, rate: float, *, clone: int | None = None) -> pd.DataFrame:
+    """The take-up draws without a clone index, by benefit-unit id: over every
+    unit of ``frame``, or over one geographic clone's units alone."""
+
+    person, benunit = frame.table("person"), frame.table("benunit")
+    if clone is not None:
+        benunit = benunit.loc[benunit["benunit_id"] // GEOGRAPHIC_RADIX == clone]
+        person = person.loc[person["person_benunit_id"].isin(benunit["benunit_id"])]
+    derived = derive_frs_take_up(
+        benunit,
+        anchors=aggregate_person_reported_to_benunit(person, benunit),
+        contract=_AnchoredRateContract(rate),
+        uc_age_eligible=uc_age_eligible_benunits(person, benunit, _POLICY),
+    )
+    derived.index = benunit["benunit_id"].to_numpy()
+    return derived
+
+
+def test_anchored_take_up_counts_within_each_geographic_clone() -> None:
+    """On the clone-first stand-in at three clones, clone 0 takes the
+    one-clone frame's Child Benefit, Pension Credit and Universal Credit
+    flags at every rate of the grid, and every clone takes the flags its own
+    units take alone: frs_take_up passes each unit's household clone, read
+    through the person memberships, as the anchored draws' strata. One count
+    over every clone moves clone 0's flags at some rates of each draw, so
+    the per-clone count is what nests them."""
+
+    base = _anchored_frame()
+    one_clone, three_clones = clone_first_frame(base, 1), clone_first_frame(base, 3)
+    stage = _take_up_stage()
+    pooled_moves = dict.fromkeys(_ANCHORED_FLAGS, 0)
+    for rate in _ANCHORED_RATES:
+        transform = _take_up_transform(rate, stage)
+        one = transform(one_clone).table("benunit").set_index("benunit_id")
+        three = transform(three_clones).table("benunit").set_index("benunit_id")
+        assert set((three.index // GEOGRAPHIC_RADIX).tolist()) == {0, 1, 2}
+        clone_zero = three.loc[one.index]
+        for flag in _ANCHORED_FLAGS:
+            assert clone_zero[flag].tolist() == one[flag].tolist(), (rate, flag)
+        for clone in range(3):
+            alone = _derived_benunits(three_clones, rate, clone=clone)
+            drawn = three.loc[alone.index]
+            for flag in _ANCHORED_FLAGS:
+                assert drawn[flag].tolist() == alone[flag].tolist(), (rate, clone, flag)
+        pooled = _derived_benunits(three_clones, rate).loc[one.index]
+        for flag in _ANCHORED_FLAGS:
+            pooled_moves[flag] += pooled[flag].tolist() != one[flag].tolist()
+    assert all(pooled_moves.values()), pooled_moves
+
+
+def test_anchored_take_up_is_bitwise_at_one_clone() -> None:
+    """A one-clone frame, its clone index all 0, takes every frs_take_up
+    output bit for bit as the frame without the index, whose draws count over
+    every unit as they did before the count was taken within each clone, at
+    every rate of the grid; so do clone indices of 0 handed to the draws."""
+
+    base = _anchored_frame()
+    one_clone = clone_first_frame(base, 1)
+    assert geographic_clone_indices(base, "benunit") is None
+    assert not geographic_clone_indices(one_clone, "benunit").any()
+    person, benunit = base.table("person"), base.table("benunit")
+    outputs = (
+        *(("benunit", column) for column in FRS_TAKE_UP_OUTPUT_COLUMNS),
+        ("person", UK_UNDER_TWO_USAGE_OUTPUT),
+    )
+    stage = _take_up_stage()
+    for rate in _ANCHORED_RATES:
+        transform = _take_up_transform(rate, stage)
+        without_index, with_zeros = transform(base), transform(one_clone)
+        for entity, column in outputs:
+            assert _same_bytes(
+                with_zeros.table(entity)[column], without_index.table(entity)[column]
+            ), (rate, column)
+        arguments = {
+            "anchors": aggregate_person_reported_to_benunit(person, benunit),
+            "contract": _AnchoredRateContract(rate),
+            "uc_age_eligible": uc_age_eligible_benunits(person, benunit, _POLICY),
+        }
+        pooled = derive_frs_take_up(benunit, **arguments)
+        zeros = derive_frs_take_up(
+            benunit, **arguments, clone_index=np.zeros(len(benunit), dtype=np.int64)
+        )
+        for column in pooled.columns:
+            assert _same_bytes(zeros[column], pooled[column]), (rate, column)
+
+
+def _same_bytes(got: pd.Series, expected: pd.Series) -> bool:
+    got, expected = got.to_numpy(), expected.to_numpy()
+    return got.dtype == expected.dtype and got.tobytes() == expected.tobytes()
+
+
+def test_geographic_clone_indices_read_each_rows_household_clone() -> None:
+    """Every row reads its household's clone: a person's household's, a
+    benefit unit's through its members; a frame without the index has none."""
+
+    base = _anchored_frame()
+    three_clones = clone_first_frame(base, 3)
+    for entity, id_column in (
+        ("household", "household_id"),
+        ("benunit", "benunit_id"),
+        ("person", "person_id"),
+    ):
+        indices = geographic_clone_indices(three_clones, entity)
+        assert indices.dtype.kind == "i"
+        np.testing.assert_array_equal(
+            indices,
+            three_clones.table(entity)[id_column].to_numpy() // GEOGRAPHIC_RADIX,
+        )
+        np.testing.assert_array_equal(
+            geographic_clone_zero_rows(three_clones, entity), indices == 0
+        )
+        assert geographic_clone_indices(base, entity) is None
+        assert geographic_clone_zero_rows(base, entity).all()
+
+
+def test_take_up_draws_refuse_a_clone_index_they_cannot_count_within() -> None:
+    frame = clone_first_frame(_anchored_frame(), 3)
+    person, benunit = frame.table("person"), frame.table("benunit")
+    arguments = {
+        "anchors": aggregate_person_reported_to_benunit(person, benunit),
+        "contract": _AnchoredRateContract(0.5),
+        "uc_age_eligible": uc_age_eligible_benunits(person, benunit, _POLICY),
+    }
+    for clone_index, error, message in (
+        (
+            np.zeros(len(benunit) - 1, dtype=np.int64),
+            ValueError,
+            "clone_index must align",
+        ),
+        (np.zeros(len(benunit)), TypeError, "strata must be integers"),
+        (np.full(len(benunit), np.nan), TypeError, "none missing"),
+    ):
+        with pytest.raises(error, match=message) as refused:
+            derive_frs_take_up(benunit, **arguments, clone_index=clone_index)
+        assert not any(character.isdigit() for character in str(refused.value))

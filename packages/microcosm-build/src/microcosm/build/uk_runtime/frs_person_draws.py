@@ -46,6 +46,7 @@ from microcosm.build.stochastic_assignment import (
 )
 from microcosm.build.uk_runtime.frs_employment import FRS_EMPSTATI_EMPLOYMENT_STATUS
 from microcosm.build.uk_runtime.frs_take_up import (
+    geographic_clone_indices,
     geographic_clone_zero_rows,
     take_up_signal_outputs,
     uk_take_up_signal_receipt,
@@ -181,6 +182,9 @@ def add_frs_person_draws_with_receipt(
             frame, "person", stage="frs_person_draws", before_copies=True
         ),
         person_clone_zero=geographic_clone_zero_rows(frame, "person"),
+        # Each person's household's clone, which the apprentice walk meets its
+        # target within; None on a frame without household_clone_index.
+        person_clone_index=geographic_clone_indices(frame, "person"),
     )
     for column in FRS_PERSON_DRAW_OUTPUT_COLUMNS:
         person[column] = derived[column].to_numpy()
@@ -205,13 +209,17 @@ def derive_frs_person_draws(
     relief_schedule: Mapping[str, float] | None = None,
     person_sources: np.ndarray,
     person_clone_zero: np.ndarray | None = None,
+    person_clone_index: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """Return the stage's person draws.
 
     ``person_weights`` are each person's household weight, which set
-    ``is_apprentice``'s target; ``person_sources`` are each person's true
-    source household, which its receipt counts support by, among geographic
-    clone 0's people (``person_clone_zero``; everyone when not given).
+    ``is_apprentice``'s target, met within each geographic clone of
+    ``person_clone_index`` (every person in one when not given);
+    ``person_sources`` are each person's true source household, which its
+    receipt counts support by, among geographic clone 0's people
+    (``person_clone_zero``; where it is not given, clone 0 of
+    ``person_clone_index``, else everyone).
     """
 
     return derive_frs_person_draws_with_receipt(
@@ -221,6 +229,7 @@ def derive_frs_person_draws(
         relief_schedule=relief_schedule,
         person_sources=person_sources,
         person_clone_zero=person_clone_zero,
+        person_clone_index=person_clone_index,
     )[0]
 
 
@@ -232,6 +241,7 @@ def derive_frs_person_draws_with_receipt(
     relief_schedule: Mapping[str, float] | None = None,
     person_sources: np.ndarray,
     person_clone_zero: np.ndarray | None = None,
+    person_clone_index: np.ndarray | None = None,
 ) -> tuple[pd.DataFrame, Mapping[str, object]]:
     """The stage's person draws and the receipt of its ``is_apprentice`` draw."""
 
@@ -266,6 +276,7 @@ def derive_frs_person_draws_with_receipt(
         relief_schedule=relief_schedule,
         person_sources=person_sources,
         person_clone_zero=person_clone_zero,
+        person_clone_index=person_clone_index,
     )
     values[APPRENTICE_OUTPUT] = apprentices.flags
     return values, {"build_year": contract.build_year, **apprentices.receipt}
@@ -287,6 +298,7 @@ def derive_is_apprentice(
     relief_schedule: Mapping[str, float] | None = None,
     person_sources: np.ndarray,
     person_clone_zero: np.ndarray | None = None,
+    person_clone_index: np.ndarray | None = None,
 ) -> UKApprenticeDraw:
     """Draw ``is_apprentice`` for employees aged 21 to 24.
 
@@ -297,6 +309,23 @@ def derive_is_apprentice(
     within one person's weight rather than only in expectation. When the
     eligible weight falls short of the target every eligible employee is
     flagged and the receipt says the draw was cap-bound.
+
+    The target is met within each geographic clone (microcosm#931).
+    ``person_clone_index`` gives each person's clone (everyone is in one
+    clone when it is not given), and each clone walks its own employees to
+    the rate times its own weight aged 21 to 24. Clone 0 holds a one-clone
+    spine's people at their weights over K, so it takes that spine's flags
+    at any power-of-two K, which scales its cumulative weights exactly, and
+    elsewhere except at a near-tie: where the target lies within rounding of
+    the midpoint between two consecutive prefixes of the walk, or of the
+    eligible weight, at which the walk flags everyone. One walk over every
+    clone would interleave the clones' employees and stop once, so clone 0's
+    flags would not be one clone's. The receipt's masses and realized weight
+    are sums over the clones. Its target is the rate times the weight aged
+    21 to 24 over every clone, and the draw is cap-bound where the eligible
+    weight over every clone is no more than that target: the figures
+    stage_health's apprentice_draw gate recomputes from the receipt, and at
+    one clone the walk's own, bit for bit.
 
     Given a ``relief_schedule`` (the engine's Class 1 rate and its secondary
     and apprentice upper secondary thresholds, annual), the receipt also
@@ -309,11 +338,12 @@ def derive_is_apprentice(
     without the frame's lineage passes ``own_source_households`` itself, so
     no table is counted by its rows unawares (microcosm#931). The supports
     it prints are counted among geographic clone 0's people,
-    ``person_clone_zero`` (everyone when not given): each clone flags its own
-    employees, so the flagged sources over every clone would grow with the
-    clone count. The masses are taken over every clone, so each is withheld
-    where one or two source households carry it in clone 0's people or over
-    every clone: clone 0 can flag none of the employees one or two
+    ``person_clone_zero`` (where it is not given, the people
+    ``person_clone_index`` puts in clone 0, else everyone): each clone flags
+    its own employees, so the flagged sources over every clone would grow
+    with the clone count. The masses are taken over every clone, so each is
+    withheld where one or two source households carry it in clone 0's people
+    or over every clone: clone 0 can flag none of the employees one or two
     households hold in the other clones.
     """
 
@@ -331,6 +361,7 @@ def derive_is_apprentice(
     )
     if weights.shape != (len(person),):
         raise ValueError("person_weights must hold one weight per person.")
+    clones = _clone_rows(person_clone_index, len(person))
     age = pd.to_numeric(person["age"], errors="coerce").to_numpy(dtype=float)
     in_ages = (age >= APPRENTICE_MIN_AGE) & (age < APPRENTICE_MAX_AGE_EXCLUSIVE)
     employee = (
@@ -343,22 +374,24 @@ def derive_is_apprentice(
     draws = _draws(person["person_id"].to_numpy(), APPRENTICE_OUTPUT)
     population_mass = float(weights[in_ages].sum())
     eligible_mass = float(weights[eligible].sum())
+    flags = np.zeros(len(person), dtype=bool)
+    for rows in clones:
+        clone_eligible = eligible & rows
+        threshold = _nearest_target_threshold(
+            float(rate) * float(weights[in_ages & rows].sum()),
+            draws=draws[clone_eligible],
+            weights=weights[clone_eligible],
+        )
+        flags |= clone_eligible & (draws < threshold)
+    # The receipt's target and cap bound are taken over every clone, as
+    # stage_health's apprentice_draw gate recomputes them from the receipt's
+    # masses; at one clone they are the walk's own, bit for bit.
     target = float(rate) * population_mass
-    threshold = _nearest_target_threshold(
-        target, draws=draws[eligible], weights=weights[eligible]
-    )
-    flags = eligible & (draws < threshold)
     realized = float(weights[flags].sum())
     sources = np.asarray(person_sources)
     if sources.shape != (len(person),):
         raise ValueError("person_sources must hold one source per person.")
-    clone_zero = (
-        np.ones(len(person), dtype=bool)
-        if person_clone_zero is None
-        else np.asarray(person_clone_zero, dtype=bool)
-    )
-    if clone_zero.shape != (len(person),):
-        raise ValueError("person_clone_zero must hold one flag per person.")
+    clone_zero = _clone_zero_people(person_clone_zero, person_clone_index, len(person))
     population_support = distinct_count(sources, in_ages & clone_zero, weights)
     eligible_support = distinct_count(sources, eligible & clone_zero, weights)
     flagged_support = distinct_count(sources, flags & clone_zero, weights)
@@ -426,6 +459,52 @@ def _thin(support: int) -> bool:
     """Whether one or two source households carry a figure: it is withheld."""
 
     return 0 < support < UK_DISCLOSURE_FLOOR
+
+
+def _clone_rows(clone_index: np.ndarray | None, rows: int) -> tuple[np.ndarray, ...]:
+    """Each geographic clone's rows of ``rows`` people, in sorted clone order.
+
+    A ``clone_index`` that is None or holds one clone gives one mask of every
+    row, so a one-clone frame's walk runs on its rows as a frame without the
+    index does. The index must hold one integer per person; the refusals name
+    no count, clone or row.
+    """
+
+    if clone_index is None:
+        return (np.ones(rows, dtype=bool),)
+    labels = np.asarray(clone_index)
+    if labels.shape != (rows,):
+        raise ValueError("person_clone_index must hold one clone per person.")
+    if labels.dtype.kind not in "iu":
+        raise TypeError("person_clone_index must hold an integer clone per person.")
+    clones = np.unique(labels)
+    if clones.size <= 1:
+        return (np.ones(rows, dtype=bool),)
+    return tuple(labels == clone for clone in clones)
+
+
+def _clone_zero_people(
+    clone_zero: np.ndarray | None, clone_index: np.ndarray | None, rows: int
+) -> np.ndarray:
+    """The people the receipt counts support among: ``clone_zero``, or where
+    it is not given the people ``clone_index`` puts in clone 0, or everyone.
+    Both given, they must agree; the refusals name no count or row."""
+
+    if clone_zero is None:
+        if clone_index is None:
+            return np.ones(rows, dtype=bool)
+        return np.asarray(clone_index) == 0
+    flags = np.asarray(clone_zero, dtype=bool)
+    if flags.shape != (rows,):
+        raise ValueError("person_clone_zero must hold one flag per person.")
+    if clone_index is not None and not np.array_equal(
+        flags, np.asarray(clone_index) == 0
+    ):
+        raise ValueError(
+            "person_clone_zero must flag exactly the people whose "
+            "person_clone_index is zero."
+        )
+    return flags
 
 
 def _nearest_target_threshold(
