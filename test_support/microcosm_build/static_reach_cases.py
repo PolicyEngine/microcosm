@@ -162,8 +162,8 @@ TARGETS = (
     "getattr_maybe_star_all_walrus_class",
     "getattr_maybe_star_all_walrus_default",
     "getattr_maybe_star_del",
-    "getattr_maybe_star_skipped",
     "getattr_maybe_star_private",
+    "getattr_maybe_star_skipped",
     "getattr_maybe_target",
     "getattr_maybe_typing",
     "getattr_maybe_walrus",
@@ -4880,11 +4880,11 @@ BLIND: dict[tuple[str, str], set[str]] = {
     # module part-built (through an import cycle, or a function the module
     # calls while it runs) or reads a star import's source part-built; for a
     # name a module, itself included, deletes as an attribute; for a name a
-    # star import leaves out through an __all__ that another module sets; for
-    # __all__, which a star import asks a module that doesn't define it for;
-    # for each name that a star import's __all__ lists and the module doesn't
-    # bind; and for __path__, which a from-import asks a module that isn't a
-    # package for.
+    # star import leaves out through an __all__ that a module, itself
+    # included, sets as an attribute; for __all__, which a star import asks a
+    # module that doesn't define it for; for each name that a star import's
+    # __all__ lists and the module doesn't bind; and for __path__, which a
+    # from-import asks a module that isn't a package for.
     ("r_getattr_import_cycle", "run"): {"getattr_import_cycle"},
     ("r_getattr_import_cycle_from", "run"): {"getattr_import_cycle_from"},
     ("r_getattr_init_cycle", "run"): {"getattr_init_cycle"},
