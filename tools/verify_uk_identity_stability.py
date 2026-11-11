@@ -29,8 +29,12 @@ from microcosm.build.uk_runtime.frs_brma import (
 from microcosm.build.uk_runtime.frs_household_draws import derive_frs_household_draws
 from microcosm.build.uk_runtime.frs_person_draws import derive_frs_person_draws
 from microcosm.build.uk_runtime.frs_take_up import (
+    UK_EXTENDED_CHILDCARE_OUTPUT,
+    UK_UNDER_TWO_USAGE_OUTPUT,
     aggregate_person_reported_to_benunit,
     derive_frs_take_up,
+    derive_under_two_childcare_usage,
+    person_unit_flag,
     uc_age_eligible_benunits,
     uk_take_up_population_policy,
 )
@@ -116,6 +120,15 @@ def e4_identity_receipt(
         raise ValueError("LHA_category materialization must align to benunit rows.")
     benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
     benunit["region"] = _benunit_regions(person, household, benunit)
+    # is_apprentice's rate among eligible employees reads the household
+    # weights, which a row permutation carries with each household id.
+    weight_by_household = dict(
+        zip(
+            household["household_id"].to_numpy(),
+            np.asarray(frame.weights_for("household").values, dtype=float),
+            strict=True,
+        )
+    )
 
     def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
         anchors = aggregate_person_reported_to_benunit(person_t, benunit_t)
@@ -127,8 +140,22 @@ def e4_identity_receipt(
                 person_t, benunit_t, population_policy
             ),
         )
+        claiming = person_unit_flag(
+            person_t,
+            benunit_t,
+            take_up[UK_EXTENDED_CHILDCARE_OUTPUT].to_numpy(),
+        )
         take_up.index = benunit_t["benunit_id"].to_numpy()
-        person_draws = derive_frs_person_draws(person_t, contract=contract)
+        person_draws = derive_frs_person_draws(
+            person_t,
+            contract=contract,
+            person_weights=person_t["person_household_id"]
+            .map(weight_by_household)
+            .to_numpy(dtype=float),
+        )
+        person_draws[UK_UNDER_TWO_USAGE_OUTPUT] = derive_under_two_childcare_usage(
+            person_t, claiming=claiming, contract=contract
+        )
         person_draws.index = person_t["person_id"].to_numpy()
         household_draws = derive_frs_household_draws(household_t, contract=contract)
         household_draws.index = household_t["household_id"].to_numpy()

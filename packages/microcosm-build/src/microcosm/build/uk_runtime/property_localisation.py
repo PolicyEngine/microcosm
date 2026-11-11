@@ -14,8 +14,11 @@ wherever it landed. Two post-geography nodes in the dense graph fix that:
   Non-owner rows and rows outside England and Wales keep their value.
 - ``uk.full.property.band`` draws the clone's band from its assigned LSOA's
   VOA band mix (``uk/voa_council_tax_band_mix_lsoa.json``) at the same
-  uniform, so value and band agree by construction. Rows outside England and
-  Wales keep their band.
+  uniform, so value and band agree by construction. A Scottish owner clone
+  draws from its council area's chargeable dwellings by band, A to H, at
+  September 2025 (``uk/scotgov_chargeable_dwellings_by_band.json``, vendored
+  from Chronicle) at the same uniform, its rank among Scotland's owners
+  (microcosm#1095 B12). Northern Ireland's rows keep their band.
 
 Everything here is pure: the kernels in ``graph_population`` hand these
 functions arrays and resources and write the results back.
@@ -48,26 +51,42 @@ __all__ = [
     "METHOD_VERSION",
     "PROPERTY_LOCALISATION_MODES",
     "PROPERTY_STREAM_EXPERIMENT",
+    "RANK_BASIS_COLUMN",
+    "SCOTLAND_BAND_MIX_RESOURCE",
+    "SCOTLAND_BAND_MIX_SOURCE",
+    "SCOTLAND_BAND_PERIOD",
     "SUPPORT_STRATUM_LOWER",
     "QUANTILES_SOURCE",
     "BandMix",
     "ValueKnots",
     "load_band_mix",
+    "load_scotland_band_mix",
     "load_value_knots",
     "localise_bands",
     "localise_values",
+    "main_residence_rank_basis",
     "owner_uniforms",
     "spine_household_keys",
 ]
 
 QUANTILES_SOURCE = "uk_price_paid_quantiles"
 BAND_MIX_SOURCE = "uk_voa_band_mix"
+#: The Scottish Government's chargeable dwellings by council-tax band per
+#: council area (CTAXBASE), vendored from Chronicle (microcosm#1095 B12).
+SCOTLAND_BAND_MIX_SOURCE = "uk_scotgov_band_mix"
+SCOTLAND_BAND_MIX_RESOURCE = "scotgov_chargeable_dwellings_by_band.json"
+SCOTLAND_BAND_PERIOD = "2025-09"
+_SCOTLAND_BAND_CONCEPT = "scotgov.chargeable_dwellings_band_"
+_SCOTTISH_COUNCIL_AREA_PREFIX = "S12"
 PROPERTY_LOCALISATION_MODES: tuple[str, ...] = ("none", "price_paid")
 PROPERTY_STREAM_EXPERIMENT = "uk-post-clone-property-localisation-v1"
 METHOD_VERSION = "uk-property-localisation-v1"
 #: Owner households at or above this within-region rank are the high-value
 #: support stratum (microcosm#1240 fix 1, ruled top 5%).
 SUPPORT_STRATUM_LOWER = 0.95
+#: The value the spine's regional home values replace (microcosm#1112), kept
+#: so this node ranks owners on what it ranked them on before that stage.
+RANK_BASIS_COLUMN = "main_residence_value_rank_basis"
 COUNCIL_TAX_BANDS: tuple[str, ...] = ("A", "B", "C", "D", "E", "F", "G", "H", "I")
 KNOTS_KIND = "uk_high_value_home_value_knots"
 BAND_MIX_KIND = "uk_voa_council_tax_band_mix_lsoa"
@@ -164,6 +183,67 @@ def load_band_mix(payload: bytes) -> BandMix:
     )
 
 
+def load_scotland_band_mix(payload: bytes) -> BandMix:
+    """Per-council-area cumulative band shares from the vendored CTAXBASE rows.
+
+    Scotland's bands run A to H, so a council area's share of band I is zero
+    and its cumulative shares reach one at H. Every council area must carry
+    every band once, at ``SCOTLAND_BAND_PERIOD``.
+    """
+    data = json.loads(payload.decode("utf-8"))
+    if (
+        data.get("kind") != "uk_vendored_ledger_facts"
+        or data.get("resource") != SCOTLAND_BAND_MIX_RESOURCE
+    ):
+        raise ValueError(
+            "The Scottish band mix resource is not the vendored CTAXBASE facts."
+        )
+    scottish_bands = COUNCIL_TAX_BANDS[:-1]
+    counts: dict[str, dict[str, float]] = {}
+    for row in data.get("rows") or ():
+        concept = str(row.get("concept") or "")
+        geography = row.get("geography") or {}
+        period = row.get("period") or {}
+        if (
+            not concept.startswith(_SCOTLAND_BAND_CONCEPT)
+            or geography.get("level") != "local_authority"
+            or str(period.get("value")) != SCOTLAND_BAND_PERIOD
+        ):
+            continue
+        band = concept[len(_SCOTLAND_BAND_CONCEPT) :].upper()
+        if band not in scottish_bands:
+            raise ValueError(f"Unknown Scottish council-tax band {band!r}.")
+        cells = counts.setdefault(str(geography.get("id")), {})
+        if band in cells:
+            raise ValueError(f"Council area {geography.get('id')} repeats band {band}.")
+        value = float(row["value"])
+        if not np.isfinite(value) or value < 0:
+            raise ValueError(
+                f"Council area {geography.get('id')} has a bad band count."
+            )
+        cells[band] = value
+    cumulative: dict[str, np.ndarray] = {}
+    for code, cells in sorted(counts.items()):
+        if set(cells) != set(scottish_bands):
+            raise ValueError(
+                f"Council area {code} lacks bands {sorted(set(scottish_bands) - set(cells))}."
+            )
+        values = np.asarray([cells[band] for band in scottish_bands], dtype=float)
+        if not values.sum() > 0:
+            raise ValueError(f"Council area {code} has no chargeable dwellings.")
+        shares = np.cumsum(values) / values.sum()
+        shares[-1] = 1.0
+        cumulative[code] = np.append(shares, 1.0)
+    if not cumulative:
+        raise ValueError("The Scottish band mix resource carries no council areas.")
+    feed = data.get("source_fact_feed") or {}
+    return BandMix(
+        cumulative=cumulative,
+        source_sha256=str(feed.get("facts_sha256") or ""),
+        as_at=SCOTLAND_BAND_PERIOD,
+    )
+
+
 # ----------------------------------------------------------------------------
 # Keys and uniforms
 
@@ -184,6 +264,26 @@ def spine_household_keys(
         for source_id, path in zip(source_ids, spine_paths, strict=True)
     ]
     return np.asarray(keys, dtype=object)
+
+
+def main_residence_rank_basis(household: pd.DataFrame, *, declared: bool) -> np.ndarray:
+    """The value owners are ranked on: the one the regional stage replaced.
+
+    ``declared`` says whether the regional home values stage stored
+    ``RANK_BASIS_COLUMN`` (the dense graph then declares it in the value
+    node's slice). A declared column must arrive and an undeclared one must
+    not: ranking on the regional values instead would move every owner's
+    draw, so either mismatch refuses rather than falling back.
+    """
+
+    if declared != (RANK_BASIS_COLUMN in household):
+        raise ValueError(
+            f"The value node's rank basis {RANK_BASIS_COLUMN!r} is "
+            f"{'declared but missing' if declared else 'present but undeclared'}; "
+            "owners must rank on the value the regional stage replaced."
+        )
+    column = RANK_BASIS_COLUMN if declared else "main_residence_value"
+    return household[column].to_numpy(dtype=float)
 
 
 def owner_mask(tenure_type: np.ndarray) -> np.ndarray:
@@ -393,12 +493,17 @@ def localise_bands(
     band: np.ndarray,
     tenure_type: np.ndarray,
     mix: BandMix,
+    scotland_mix: BandMix | None = None,
+    local_authority_code: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
-    """Draw each England-and-Wales owner's band from its LSOA's cumulative shares at ``u``.
+    """Draw each England-and-Wales owner's band from its LSOA's cumulative shares at
+    ``u``, and with ``scotland_mix`` each Scottish owner's from its council area's
+    (microcosm#1095 B12).
 
-    Renters keep the spine's band: the VOA mix counts every dwelling in the
-    LSOA, and drawing a social tenant from it would hand the owners' share of
-    the high bands to households the value node leaves untouched.
+    Renters keep the spine's band: the VOA and CTAXBASE mixes count every
+    dwelling, and drawing a social tenant from them would hand the owners' share
+    of the high bands to households the value node leaves untouched. Without
+    ``scotland_mix`` Scotland keeps its bands, as Northern Ireland always does.
     """
     u = np.asarray(u, dtype=float)
     codes = np.asarray(lsoa_code).astype(str)
@@ -410,18 +515,29 @@ def localise_bands(
     if missing:
         raise ValueError(f"No VOA band mix for LSOA {missing[:5]}.")
     new_band = current.copy()
-    for code in sorted(set(codes[target])):
-        rows = np.flatnonzero(target & (codes == code))
-        cumulative = mix.cumulative[code]
-        index = np.searchsorted(cumulative, u[rows], side="right")
-        index = np.minimum(index, len(COUNCIL_TAX_BANDS) - 1)
-        new_band[rows] = np.asarray(COUNCIL_TAX_BANDS, dtype=object)[index]
+    _draw_bands(new_band, target, codes, mix, u)
+    scotland = np.zeros(len(current), dtype=bool)
+    areas = np.full(len(current), "", dtype=object)
+    if scotland_mix is not None:
+        if local_authority_code is None:
+            raise ValueError("A Scottish band mix needs the rows' council areas.")
+        areas = np.asarray(local_authority_code).astype(str)
+        scotland = (
+            np.char.startswith(areas, _SCOTTISH_COUNCIL_AREA_PREFIX) & ~england_wales
+        )
+        missing = sorted(set(areas[scotland & owner]) - set(scotland_mix.cumulative))
+        if missing:
+            raise ValueError(f"No Scottish band mix for council area {missing[:5]}.")
+        _draw_bands(new_band, scotland & owner, areas, scotland_mix, u)
+    scottish_owner = scotland & owner
     changed = target & (new_band != current)
     receipt = {
         "rows": int(len(current)),
         "rows_rewritten": int(target.sum()),
         "rows_changed": int(changed.sum()),
-        "rows_untouched_outside_england_wales": int((~england_wales).sum()),
+        "rows_untouched_outside_england_wales": int(
+            (~england_wales & ~scottish_owner).sum()
+        ),
         "rows_untouched_renters_england_wales": int((england_wales & ~owner).sum()),
         "lsoas": int(len(set(codes[target]))),
         "band_mix_before": {
@@ -433,7 +549,36 @@ def localise_bands(
         "voa_as_at": mix.as_at,
         "method": METHOD_VERSION,
     }
+    if scotland_mix is not None:
+        receipt["scotland"] = {
+            "rows_rewritten": int(scottish_owner.sum()),
+            "rows_changed": int((scottish_owner & (new_band != current)).sum()),
+            "rows_untouched_renters": int((scotland & ~owner).sum()),
+            "council_areas": int(len(set(areas[scottish_owner]))),
+            "band_mix_before": {
+                b: int((current[scottish_owner] == b).sum()) for b in COUNCIL_TAX_BANDS
+            },
+            "band_mix_after": {
+                b: int((new_band[scottish_owner] == b).sum()) for b in COUNCIL_TAX_BANDS
+            },
+            "as_at": scotland_mix.as_at,
+        }
     return new_band, receipt
+
+
+def _draw_bands(
+    new_band: np.ndarray,
+    target: np.ndarray,
+    codes: np.ndarray,
+    mix: BandMix,
+    u: np.ndarray,
+) -> None:
+    """Write each target row's band from its area's cumulative shares at ``u``."""
+    for code in sorted(set(codes[target])):
+        rows = np.flatnonzero(target & (codes == code))
+        index = np.searchsorted(mix.cumulative[code], u[rows], side="right")
+        index = np.minimum(index, len(COUNCIL_TAX_BANDS) - 1)
+        new_band[rows] = np.asarray(COUNCIL_TAX_BANDS, dtype=object)[index]
 
 
 def monotone_violations(u: np.ndarray, band: np.ndarray, lsoa_code: np.ndarray) -> int:

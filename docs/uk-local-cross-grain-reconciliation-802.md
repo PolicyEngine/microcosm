@@ -97,8 +97,12 @@ change before the partition.
 the full compiled register, controls the Tables 3.14 and 3.15 area cells per
 grain (`fanout_sum_bridges`). The factor the cells take has two parts, and
 each is gated at each grain on its own. The source factor is the bands' total
-over the cells' total before either side's uprating index: more than 2% from
-one is refused (`max_factor_shift`). The index factor is the rest, the gap
+over the cells' total before either side's uprating index, refused outside
+the bridge's declared bounds: `max_factor_shift` from one, or, for a gap known
+to run one way, between `min_factor_shift` and `max_factor_shift` above one
+(the pension bridge: 2.5% to 3.7%, microcosm#1420). Each grain's totals count
+its off-surface cells and its small-cell deferrals, which the national bands
+cover too. The index factor is the rest, the gap
 between the bands' band-by-band growth and the cells' all-ranges growth: past
 the bridge's `max_index_shift` (its measured gap plus half a point) it is
 refused. A fan-out is never an exact-signature control: its cells are a
@@ -119,7 +123,10 @@ tier can imply is refused.
 (`share_of_parent`).
 
 **Small cells.** A small-cell deferral still counts its value in its leg's
-control, through a reconciliation row that never reaches the solve.
+control, through a reconciliation row that never reaches the solve. The
+membership keeps the cell's published value, so the row grows it by its
+target's bound cells' own index at its grain first (microcosm#1420: the
+pension income cells, by ITL Table 2.5).
 
 ## Declarations and enforcement
 

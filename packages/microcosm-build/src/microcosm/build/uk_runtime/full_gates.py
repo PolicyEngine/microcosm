@@ -25,7 +25,6 @@ from microcosm.build.uk_runtime.calibration_run import (
 from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
 from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_artifacts
 from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
-from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
 from microcosm.build.uk_runtime.support_floor import uk_support_floor_names
 from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
 from microcosm.calibrate import TargetRegistry
@@ -37,7 +36,7 @@ from microcosm.graph.canonical import canonical_json
 _LOCAL_FIT_GATES = frozenset(
     {"uk_local_target_fit", "uk_local_per_family_fit", "uk_local_area_support"}
 )
-_LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la"})
+_LOCAL_LEVELS = frozenset({"constituency", "local_authority", "la", "brma"})
 
 
 def _scope(selection_receipt: Mapping[str, Any] | None) -> tuple[bool, dict[str, str]]:
@@ -254,7 +253,6 @@ def build_full_gate_context(
         for spec in reference_registry.specs
         if (spec.name, spec.period) in selected
     }
-    reference = load_efrs_parity_reference()
     manifest = uk_full_gate_manifest(selection_receipt)
     admin_totals, admin_receipt = uk_aggregate_admin_totals(frame, manifest)
     artifacts = dict(supporting_evidence)
@@ -281,14 +279,14 @@ def build_full_gate_context(
                 "resolved_reference_count": len(problem.targets),
                 "matrix_target_count": len(problem.names),
             },
+            # The export-surface and input-coverage gates read the reference
+            # build's surface (``reference_surface``, the dense line's
+            # current build, from --reference-surface) beside this; without
+            # it they are evidence_absent (microcosm#1095).
             "parity_evidence": SimpleNamespace(
                 candidate_columns=uk_export_candidate_columns(
                     uk_release_export_frame(frame)
                 ),
-                reference_columns={
-                    f"{entity}.{name}"
-                    for name, entity in reference.input_entities.items()
-                },
                 candidate_targets=set(national_errors),
                 reference_targets=national_reference,
                 target_relative_errors=national_errors,
@@ -321,7 +319,8 @@ def classify_full_gate_outcomes(
 
     The combined driver exports a diagnostic candidate after failures of its
     five local fit/support/weight checks, but stops on a non-passing geography
-    ladder. Below f100 those five checks are recorded without enforcement.
+    ladder or local BRMA domain check. Below f100 those five checks are
+    recorded without enforcement.
     All newly included national/source checks keep the shared battery's own
     BLOCKS_ARTIFACT policy, including its declared missing-evidence rules.
     """
@@ -332,8 +331,11 @@ def classify_full_gate_outcomes(
         raise TypeError("Classify a validated GatePhaseReport, not unbound JSON.")
     if not 0.0 < sample_fraction <= 1.0:
         raise ValueError("sample_fraction must be in (0, 1].")
-    geography = "uk_local_geography_ladder_post_calibration"
-    local_export_exception = set(UK_LOCAL_GATE_SCOPE) - {geography}
+    structural_local = {
+        "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
+    }
+    local_export_exception = set(UK_LOCAL_GATE_SCOPE) - structural_local
     blocking = {
         outcome.entry.id
         for outcome in report.blocking_outcomes(release_candidate=release_candidate)
@@ -341,7 +343,7 @@ def classify_full_gate_outcomes(
     stop, exported_failures, unenforced, diagnostic = [], [], [], []
     for outcome in report.outcomes:
         gate_id = outcome.entry.id
-        if gate_id == geography and outcome.status is not GateStatus.PASSED:
+        if gate_id in structural_local and outcome.status is not GateStatus.PASSED:
             stop.append(gate_id)
             continue
         if outcome.status not in {GateStatus.FAILED, GateStatus.EVIDENCE_ABSENT}:

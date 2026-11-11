@@ -8,35 +8,22 @@ def test_us_catalog_has_complete_explicit_contracts() -> None:
     __import__("policyengine_us")
     catalog = build_catalogs()
     columns = catalog["columns"]
-    assert len(columns) == 176
-    assert len({row["key"] for row in columns}) == 176
-    assert catalog["metadata_waivers"] == [
-        {
-            "id": "policyengine_us_unit_unavailable",
-            "field": "unit",
-            "authority": "PolicyEngineUSVariableMetadataIndex",
-            "public": False,
-            "expires_on": "2026-11-16",
-            "reason": (
-                "The import-free installed-engine index exposes entity, dtype, "
-                "and period but no physical unit. Numeric columns remain "
-                "internal until a reviewed unit authority lands."
-            ),
-        }
-    ]
+    assert len(columns) == 177
+    assert len({row["key"] for row in columns}) == 177
+    assert "metadata_waivers" not in catalog
     for row in columns:
         contract = row["contract"]
         assert row["key"].startswith(f"{contract['entity']}.")
         assert contract["domain"]
         assert contract["public_stability"] == "internal"
-        if contract["unit"] == "unit_not_declared_by_engine_metadata":
-            assert contract["unit_waiver"] == "policyengine_us_unit_unavailable"
-        else:
-            assert "unit_waiver" not in contract
+        assert "unit_waiver" not in contract
     assert Counter(row["contract"]["unit"] for row in columns) == {
-        "unit_not_declared_by_engine_metadata": 89,
+        "usd": 84,
+        "hours": 2,
+        "weeks": 1,
+        "calendar_year": 2,
         "boolean": 51,
-        "count": 27,
+        "count": 28,
         "categorical": 9,
     }
     assert {
@@ -60,7 +47,7 @@ def test_us_catalog_has_complete_explicit_contracts() -> None:
             "catalogs": catalog,
         }
     )
-    assert len(resolved.columns) == 176
+    assert len(resolved.columns) == 177
     by_key = {row["key"]: row["contract"] for row in columns}
     for column in resolved.columns:
         contract = by_key[column.key]

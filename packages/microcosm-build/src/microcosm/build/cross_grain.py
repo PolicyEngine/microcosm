@@ -284,13 +284,19 @@ def _reconcile_cross_grain_surface_with_control_receipts(
     *,
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
     check_factor_bounds: bool = True,
+    frame_only_positions: frozenset[int] = frozenset(),
 ) -> tuple[
     pd.DataFrame,
     list[dict[str, Any]],
     list[dict[str, Any]],
     list[dict[str, Any]],
 ]:
-    """Return a copied surface with every detected lower grain rescaled."""
+    """Return a copied surface with every detected lower grain rescaled.
+
+    ``frame_only_positions`` are rows that join the frame to take a share of
+    a control and bind nothing (a small-cell rule's deferred cells): a leg
+    holding only those, for targets licensed empty on it, needs no control.
+    """
 
     columns = _surface_columns(local_frame)
     _validate_rule(rule)
@@ -313,6 +319,7 @@ def _reconcile_cross_grain_surface_with_control_receipts(
     unparented_rows: dict[tuple[str, str], dict[int, str]] = {}
     first_pair_id: dict[tuple[str, str], str] = {}
     absent_middle_tier_legs: list[dict[str, Any]] = []
+    deferred_legs_without_control: list[dict[str, Any]] = []
     pairs_per_key: dict[tuple[str, str], int] = {}
     for group in materialized_groups:
         key = (group.inconsistency_id.rsplit(":", 1)[0], group.lower_grain)
@@ -386,12 +393,24 @@ def _reconcile_cross_grain_surface_with_control_receipts(
         if last_pair_for_key and group.lower_grain not in control_grains:
             # No farther control can still claim these leaf rows: refuse now,
             # ahead of the empty-leg licence check, as the standing rule does.
+            # A leg only licensed-empty targets hold carries deferred cells
+            # alone and needs no control (_wholly_deferred_legs).
+            open_rows = {
+                position: leg
+                for position, leg in pending.items()
+                if position not in already and leg not in assigned_controls
+            }
             unparented = sorted(
-                {
-                    leg
-                    for position, leg in pending.items()
-                    if position not in already and leg not in assigned_controls
-                }
+                set(open_rows.values())
+                - set(
+                    _wholly_deferred_legs(
+                        open_rows,
+                        reconciled,
+                        columns,
+                        licensed_empty_legs,
+                        frame_only_positions,
+                    )
+                )
             )
             if unparented:
                 raise ValueError(
@@ -649,17 +668,30 @@ def _reconcile_cross_grain_surface_with_control_receipts(
             # A control-tier row with no control above it is the top of its
             # own leg, not an orphan.
             continue
-        still = {
-            leg
+        open_rows = {
+            position: leg
             for position, leg in pending.items()
             if position not in claimed[(identity, lower_grain)]
         }
+        deferred = _wholly_deferred_legs(
+            open_rows, reconciled, columns, licensed_empty_legs, frame_only_positions
+        )
+        still = set(open_rows.values()) - set(deferred)
         if still:
             raise ValueError(
                 f"cross-grain inconsistency "
                 f"{first_pair_id[(identity, lower_grain)]!r} has "
                 f"unparented lower-grain leg(s) {sorted(still)}."
             )
+        deferred_legs_without_control.extend(
+            {
+                "inconsistency_id": first_pair_id[(identity, lower_grain)],
+                "lower_grain": lower_grain,
+                "leg": leg,
+                "lower_target_ids": list(target_ids),
+            }
+            for leg, target_ids in sorted(deferred.items())
+        )
     return (
         reconciled,
         receipts,
@@ -667,7 +699,45 @@ def _reconcile_cross_grain_surface_with_control_receipts(
         controls_without_lower_rows,
         delegated_legs,
         absent_middle_tier_legs,
+        deferred_legs_without_control,
     )
+
+
+def _wholly_deferred_legs(
+    rows: Mapping[int, str],
+    frame: pd.DataFrame,
+    columns: Mapping[str, str],
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None,
+    frame_only_positions: frozenset[int],
+) -> dict[str, tuple[str, ...]]:
+    """The legs of ``rows`` that hold deferred cells alone.
+
+    A leg qualifies when every row on it is frame-only (it binds nothing and
+    joins the frame only to take its share of a control) and every target on
+    it is licensed empty there, so no cell of it binds on the leg. With no
+    control above them such rows have nothing to reconcile, and the leg is
+    no orphan (microcosm#1301: a region row signed out below the small-cell
+    floor leaves its wholly deferred authorities without one). A bound row,
+    or a row of a target the leg is not licensed for, keeps it an orphan.
+    """
+
+    targets_by_leg: dict[str, set[str]] = {}
+    bound_legs: set[str] = set()
+    for position, leg in rows.items():
+        targets_by_leg.setdefault(leg, set()).add(
+            str(frame.iloc[position][columns["target_id"]])
+        )
+        if position not in frame_only_positions:
+            bound_legs.add(leg)
+    return {
+        leg: tuple(sorted(target_ids))
+        for leg, target_ids in targets_by_leg.items()
+        if leg not in bound_legs
+        and all(
+            leg in _licensed_legs_for_target(target_id, licensed_empty_legs)
+            for target_id in target_ids
+        )
+    }
 
 
 def reconcile_cross_grain_surface(
@@ -699,12 +769,16 @@ def apply_cross_grain_reconciliation(
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
     check_factor_bounds: bool = True,
+    frame_only_positions: Iterable[int] = (),
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Detect, reconcile, and return the always-present pass receipt.
 
     ``check_factor_bounds=False`` records each bounded bridge's factor without
     refusing it, for a pass that is not the caller's last (a surface whose
     off-surface cells join a second pass is bounded on that one).
+    ``frame_only_positions`` names the rows that bind nothing (deferred
+    cells); a leg holding only those needs no control
+    (``deferred_legs_without_control``).
     """
 
     bound = tuple(str(target_id) for target_id in bound_higher_targets)
@@ -728,12 +802,14 @@ def apply_cross_grain_reconciliation(
         controls_without_lower_rows,
         delegated_legs,
         absent_middle_tier_legs,
+        deferred_legs_without_control,
     ) = _reconcile_cross_grain_surface_with_control_receipts(
         local_frame,
         groups,
         rule,
         licensed_empty_legs=licensed_empty_legs,
         check_factor_bounds=check_factor_bounds,
+        frame_only_positions=frozenset(int(p) for p in frame_only_positions),
     )
     receipt = {
         "bound_higher_targets": list(bound),
@@ -745,6 +821,7 @@ def apply_cross_grain_reconciliation(
         "controls_without_lower_rows": controls_without_lower_rows,
         "delegated_legs": delegated_legs,
         "absent_middle_tier_legs": absent_middle_tier_legs,
+        "deferred_legs_without_control": deferred_legs_without_control,
         "absence": (
             None
             if groups

@@ -678,8 +678,14 @@ def _heading_conflicts(
     return conflicts, checks
 
 
-def generate_crosswalk(source_dir, spec, report=None):
-    """Return a lean spec; fill a separate report with detailed audit evidence."""
+def generate_crosswalk(source_dir, spec, report=None, *, placements=None):
+    """Return a lean spec and optionally expose the identical SA1 placements.
+
+    ``placements`` receives usable Census populations and the final AU-derived
+    AS areas, after the existing interior-point and alias resolutions. This
+    lets the joint-geography generator reuse this bridge without a second
+    placement rule or a change to the generated MC9 document.
+    """
     groups, aliases = _load_sources(Path(source_dir), spec["provenance"])
     sa1, au, ta = groups["sa1"], groups["au"], groups["ta"]
     populations, suppression = population_counts(sa1)
@@ -840,7 +846,7 @@ def generate_crosswalk(source_dir, spec, report=None):
     )
     document["rows"] = rows
     document["row_shape"].update(
-        population_total="sum of usable 2023 Census URP assigned to this TA; zero only for explicitly declared TA 999 placeholder",
+        population_total="sum of usable 2023 Census URP assigned to this TA; TA 999 has Census population 33, while no TA 999 ERP fact exists",
         modal_area="unique largest-population AS area, for scenario S3; ties refuse",
     )
     document["unmatched_definition_entries"] = unmatched
@@ -996,6 +1002,19 @@ def generate_crosswalk(source_dir, spec, report=None):
     if report is not None:
         report.clear()
         report.update(details)
+    if placements is not None:
+        placements.clear()
+        placements.extend(
+            {
+                "sa1_code": feature["attributes"][SA1_CODE],
+                "ta_code": ta_code,
+                "as_area": areas[au_code],
+                "population": int(population),
+            }
+            for feature, ta_code, au_code, population in zip(
+                sa1, ta_codes, au_codes, populations, strict=True
+            )
+        )
     return document
 
 

@@ -378,7 +378,7 @@ def _run_engine_blocks(
         for area_type in metric_parts:
             metric_parts[area_type].append(
                 compute_household_metrics(
-                    resolver.simulation,
+                    resolver,
                     area_type,
                     period=period,
                     household_ids=block_household_ids,

@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import importlib.util
 import json
+import shlex
 from pathlib import Path
 
 import pytest
@@ -493,16 +494,22 @@ def _candidate_dir(
     return candidate, spine, incumbent_manifest
 
 
+@pytest.mark.parametrize("schema_version", [8, 9])
 def test_current_diagnostics_are_validated_then_copied_without_rewriting(
     tmp_path: Path,
     monkeypatch,
+    schema_version: int,
 ) -> None:
+    # A candidate written before schema 9 carries schema 8; both carry the
+    # calibration hierarchy and are copied byte for byte.
     assembler = _load("assemble_uk_dense_release_dir")
     source = tmp_path / "source.json"
     destination = tmp_path / "release.json"
-    source_bytes = b'{"schema_version":8,"source":"exact bytes"}\n'
+    source_bytes = (
+        f'{{"schema_version":{schema_version},"source":"exact bytes"}}\n'.encode()
+    )
     source.write_bytes(source_bytes)
-    diagnostics = {"schema_version": 8, "source": "exact bytes"}
+    diagnostics = {"schema_version": schema_version, "source": "exact bytes"}
     captured: dict[str, object] = {}
 
     def canonical_parser(payload: object) -> object:
@@ -562,7 +569,11 @@ def test_assembler_stages_a_contract_valid_dense_release(
     summary = json.loads(capsys.readouterr().out)
     release_dir = out / UK_DENSE_RELEASE_ID
     assert summary["release_id"] == UK_DENSE_RELEASE_ID
-    assert summary["cut_tag"] == f"{UK_DENSE_RELEASE_ID}-20260903T105422Z-ca611e43"
+    assert (summary.get("release"), summary.get("build")) == (
+        UK_DENSE_RELEASE_ID,
+        ATTEMPT,
+    )
+    assert "cut_tag" not in summary
     assert release_dir.is_dir()
     for name in dc._UK_DENSE_REQUIRED_RELEASE_FILES:
         assert (release_dir / name).is_file(), name
@@ -608,7 +619,28 @@ def test_assembler_stages_a_contract_valid_dense_release(
         shipped["reviewed_exclusions_stood_on"]
         == coverage["signed_deferrals"]["reviewed_exclusions"]
     )
-    assert "--tag-only" in summary["publish_command"]
+    # The printed publication lists the build and the printed promotion makes
+    # it current; --make-current on the publication would do both in one
+    # commit.
+    assert shlex.split(summary["publish_command"]) == [
+        "uv",
+        "run",
+        "microcosm-publish-release-build",
+        str(release_dir),
+        "--repo-id",
+        "policyengine/populace-uk-private",
+        "--artifact-root",
+        str(candidate),
+    ]
+    assert shlex.split(summary.get("promote_command", "")) == [
+        "uv",
+        "run",
+        "microcosm-publish-release-build",
+        str(release_dir),
+        "--repo-id",
+        "policyengine/populace-uk-private",
+        "--promote",
+    ]
     published = candidate / "microcosm_uk_2024_25_dense.h5"
     assert (
         published.read_bytes()
@@ -617,10 +649,38 @@ def test_assembler_stages_a_contract_valid_dense_release(
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     assert manifest["dataset_role"] == "non_default_local_area"
     assert manifest["default_datasets"] == {} and manifest["is_default"] is False
+    # The fixture's spine ran frs_spine alone, which reads no SPI tape; the
+    # marker is rederived from the stages the provenance names (#1095).
+    assert manifest["licensed_data"]["spi_public_use_tape"] == {
+        "study": "SN 9422",
+        "dependent": False,
+        "stages": [],
+        "conditions": [],
+    }
     assert (
-        manifest["artifacts"]["microcosm_uk_2024_25_dense"]["revision"]
-        == summary["cut_tag"]
+        manifest["artifacts"]["microcosm_uk_2024_25_dense"][
+            "spi_public_use_tape_dependent"
+        ]
+        is False
     )
+    # The build publishes into its own folder: both manifests name the release
+    # and the build (the calibration attempt), and nothing names a tag.
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    for document in (build_manifest, manifest):
+        assert (document.get("release"), document.get("build")) == (
+            UK_DENSE_RELEASE_ID,
+            ATTEMPT,
+        )
+        assert not {"build_id", "attempt_id", "cut_tag"} & set(document)
+    assert manifest["built_at"] == build_manifest["created_at"]
+    assert manifest["built_with_model_package"]["name"] == "policyengine-uk"
+    assert manifest["built_with_core_package"]["name"] == "policyengine-core"
+    assert not any("revision" in entry for entry in manifest["artifacts"].values())
+    assert manifest["artifacts"]["microcosm_uk_2024_25_dense"]["role"] == "dataset"
+    assert manifest["artifacts"]["calibration_diagnostics"]["role"] == (
+        "calibration_diagnostics"
+    )
+    assert manifest["artifacts"]["uk_local_gates"]["role"] == "uk_local_gates"
     assert (
         manifest["artifacts"]["microcosm_uk_2024_25_dense"]["repo_id"]
         == "policyengine/populace-uk-private"
@@ -644,13 +704,8 @@ def test_assembler_stages_a_contract_valid_dense_release(
     assert set(gate_summary["diagnostic_gates"]) == set(UK_LOCAL_GATE_SCOPE) - set(
         dc._UK_DENSE_RELEASE_BLOCKING_IDS
     )
-    assert (
-        "--no-latest" in summary["publish_command"]
-        and "populace-uk-private" in summary["publish_command"]
-    )
     # The national assembler's rule: the run's staging receipt rides into the
     # build manifest unchanged, where publication reads it.
-    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     assert build_manifest["staging"] == _staging_delivery()
     # The contract re-validates the finished directory, and so does the pre-flight.
     dc.validate_release_dir(release_dir)
@@ -658,13 +713,81 @@ def test_assembler_stages_a_contract_valid_dense_release(
     assert preflight.main(["--release-dir", str(release_dir)]) == 0
 
 
-def test_assembler_warns_on_a_shipped_support_figure_and_still_assembles(
+def test_an_assembled_dense_build_publishes_through_the_emitter(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    """A per-area support figure in a file the assembler ships byte for byte
-    is a warning, not a refusal: the directory is assembled, and the warning
-    is printed and listed in the summary by file and path, never by value
-    (review of microcosm#1307)."""
+    """The publication checks the assembled dense directory with the release
+    contract itself, not a replaced one, and hands every file over as a
+    build of the dense release."""
+    from microcosm.build import release_publication
+    from microcosm.data.contract import (
+        BUILD_MANIFEST_FILE_ROLE,
+        CHECKSUMS_FILE_ROLE,
+        RELEASE_MANIFEST_FILE_ROLE,
+    )
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    # The command lists the repository's files to refuse one that still has
+    # latest*.json pointer files; here the list is in memory, as after the
+    # switch, so the test never queries the private UK repository.
+    listed: list[str] = []
+
+    def switched_repository_files(repository: str) -> list[str]:
+        listed.append(repository)
+        return ["releases.json"]
+
+    monkeypatch.setattr(
+        release_publication,
+        "_repository_files",
+        switched_repository_files,
+        raising=False,
+    )
+    assembler = _load("assemble_uk_dense_release_dir")
+    candidate, spine, _ = _candidate_dir(tmp_path)
+    out = tmp_path / "releases"
+    assert assembler.main(_assemble_args(candidate, spine, None, out)) == 0
+    capsys.readouterr()
+    release_dir = out / UK_DENSE_RELEASE_ID
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    client = FakeEmitterClient()
+
+    outcome = release_publication.publish_release_build(
+        release_dir, artifact_root=candidate, client=client
+    )
+
+    assert outcome.published and outcome.succeeded and not outcome.current
+    (request,) = client.release_requests
+    assert (request.release, request.build, request.release_role) == (
+        UK_DENSE_RELEASE_ID,
+        ATTEMPT,
+        "local_area",
+    )
+    assert {item.name: item.role for item in request.files} == {
+        "release_manifest.json": RELEASE_MANIFEST_FILE_ROLE,
+        "build_manifest.json": BUILD_MANIFEST_FILE_ROLE,
+        # The dense assembler also writes a checksum ledger of the files.
+        "sha256sums.txt": CHECKSUMS_FILE_ROLE,
+        **{entry["path"]: entry["role"] for entry in manifest["artifacts"].values()},
+    }
+    published_dataset = client.hub_files[
+        (
+            "policyengine/populace-uk-private",
+            f"releases/{UK_DENSE_RELEASE_ID}/{ATTEMPT}/microcosm_uk_2024_25_dense.h5",
+        )
+    ]
+    assert (
+        published_dataset == (candidate / "microcosm_uk_2024_25_dense.h5").read_bytes()
+    )
+    assert listed == ["policyengine/populace-uk-private"]
+
+
+def test_assembler_ships_a_per_area_support_figure_without_a_warning(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """María's ruling of 2026-10-26: a release ships per-area support figures
+    (microcosm#1301), so one in a file the assembler ships byte for byte
+    draws no warning."""
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
     assembler = _load("assemble_uk_dense_release_dir")
     candidate, spine, _ = _candidate_dir(tmp_path)
@@ -683,16 +806,9 @@ def test_assembler_warns_on_a_shipped_support_figure_and_still_assembles(
 
     assert assembler.main(_assemble_args(candidate, spine, None, out)) == 0
     captured = capsys.readouterr()
-    (warning,) = json.loads(captured.out)["warnings"]
-    assert warning.startswith(
-        "rowwise_candidate_manifest.json carries 2 per-area support figure(s)"
-    )
-    assert "fit.weakest_areas[0].nonzero_households" in warning
-    assert f"warning: {warning}" in captured.err
-    for figure in ("37", "23.75"):
-        assert figure not in warning
-    release_dir = out / UK_DENSE_RELEASE_ID
-    assert dc.validate_release_dir(release_dir) == [warning]
+    assert json.loads(captured.out)["warnings"] == []
+    assert "warning:" not in captured.err
+    assert dc.validate_release_dir(out / UK_DENSE_RELEASE_ID) == []
 
 
 def test_assembler_override_assembles_a_pre_lane_run_with_a_recorded_opt_out(
@@ -1337,33 +1453,40 @@ def test_assembler_stages_a_graph_built_dense_candidate(
         assert coverage["holdout"] == {"run": False, "claim": "none"}
         assert coverage["incumbent"] == {"compared": False}
         assert {"no_out_of_sample_claim", "no_incumbent_comparison"} <= set(limitations)
-    # Disclosure (microcosm#1301): every area is below the floors, yet no
-    # shipped document carries an area's rows, ESS or sources, so the
-    # contract has nothing to warn about. The signed report names the floors
-    # each excused area misses; the manifest counts areas; the release
-    # manifest names the areas by code.
+    # Every area is below the floors, and the release ships each area's
+    # support figures (María's ruling of 2026-10-26 dropped their withholding,
+    # microcosm#1301): the signed report states each excused area's rows, ESS
+    # and sources, and the manifest the minima; the contract warns on none.
     assert dc.validate_release_dir(release_dir) == []
     assert summary["warnings"] == []
-    for path in sorted(release_dir.glob("*.json")):
-        payload = json.loads(path.read_text())
-        assert dc._uk_dense_disclosure_findings(path.name, payload) == [], path.name
     signed = json.loads((release_dir / "uk_local_gates.json").read_text())
     shipped_exclusions = signed["gates"]["uk_local_area_support"]["details"][
         "reviewed_exclusions"
     ]
     assert set(shipped_exclusions) == set(excused)
     assert all(
-        set(entry) == {"shortfalls", "record"} for entry in shipped_exclusions.values()
+        set(entry) == {"shortfalls", "rows", "ess", "sources", "record"}
+        for entry in shipped_exclusions.values()
     )
     shipped_manifest = json.loads(
         (release_dir / "rowwise_candidate_manifest.json").read_text()
     )
+    level_support = {
+        "areas_checked": 2,
+        "areas_below_floor": 2,
+        "min_assigned_households": 1,
+        "min_nonzero_households": 1,
+        "min_effective_sample_size": 1.0,
+        "min_nonzero_source_households": 1,
+    }
     assert shipped_manifest["support"] == {
         "areas_checked": 4,
         "areas_below_floor": 4,
+        "min_assigned_households": 1,
+        "min_nonzero_households": 1,
+        "min_effective_sample_size": 1.0,
         "by_geography_level": {
-            level: {"areas_checked": 2, "areas_below_floor": 2}
-            for level in ("constituency", "local_authority")
+            level: level_support for level in ("constituency", "local_authority")
         },
     }
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from test_support.paths import paths_for
@@ -655,7 +655,13 @@ def test_unexpected_zero_population_authority_refuses() -> None:
         )
 
 
-@settings(max_examples=40, deadline=None)
+# Four-item draws can be descheduled on a busy shared host; test correctness,
+# independently of Hypothesis's wall-clock input-generation health check.
+@settings(
+    max_examples=40,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
 @given(
     populations=st.lists(st.integers(1, 20), min_size=4, max_size=4),
     order=st.permutations((0, 1, 2, 3)),

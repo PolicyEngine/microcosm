@@ -32,8 +32,8 @@ US_ENGINE = {
 #: What every UK install path resolves: the locked policyengine-uk and the
 #: policyengine-core its own floor brings.
 UK_ENGINE = {
-    "policyengine-core": "3.33.3",
-    "policyengine-uk": "2.132.6",
+    "policyengine-core": "3.34.10",
+    "policyengine-uk": "2.177.7",
 }
 ENGINE_PACKAGES = ("microcosm-build", "microcosm-data", "microcosm-frame")
 
@@ -71,12 +71,19 @@ def _uv_export(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _resolved(requirements: str) -> dict[str, str]:
+    """Each exported package's version, or its URL for a direct reference."""
+
     versions = {}
     for line in requirements.splitlines():
         pin = line.split(";")[0].strip()
-        if "==" in pin and not pin.startswith(("#", "-")):
+        if pin.startswith(("#", "-")):
+            continue
+        if "==" in pin:
             name, version = pin.split("==", 1)
             versions[name.strip()] = version.strip()
+        elif " @ " in pin:
+            name, url = pin.split(" @ ", 1)
+            versions[name.strip()] = url.strip()
     return versions
 
 
@@ -188,4 +195,5 @@ def test_uv_refuses_every_us_and_uk_combination(args: tuple[str, ...]) -> None:
     result = _uv_export(*args)
 
     assert result.returncode != 0
-    assert "incompatible with the declared conflicts" in result.stderr
+    # uv wraps a long error at the terminal width, which differs between runners.
+    assert "incompatible with the declared conflicts" in " ".join(result.stderr.split())

@@ -8,9 +8,10 @@ from microcosm.build.uk_runtime.calibration_run import (
 )
 
 
-def test_local_scope_is_the_declared_six_gate_terminal_battery() -> None:
+def test_local_scope_is_the_declared_seven_gate_terminal_battery() -> None:
     assert UK_LOCAL_GATE_SCOPE == (
         "uk_local_geography_ladder_post_calibration",
+        "uk_local_brma_enum_domain",
         "uk_local_area_support",
         "uk_local_target_fit",
         "uk_local_per_family_fit",

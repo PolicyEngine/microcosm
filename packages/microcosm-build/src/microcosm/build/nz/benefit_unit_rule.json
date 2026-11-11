@@ -91,7 +91,7 @@
       "family.is_sole_parent": "single adult with at least one dependent child",
       "family.is_partnered": "the unit contains a partnered couple",
       "family.is_single": "the unit has one adult (not family.is_partnered)",
-      "family.youngest_dependent_child_age": "age of the youngest dependent child; 0 when there is none"
+      "family.youngest_dependent_child_age": "age of the youngest dependent child; null when there is none"
     }
   },
   "settled_date": "2026-10-12",

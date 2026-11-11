@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.build.uk_runtime.brma_area_layer import load_brma_area_layer
 from microcosm.build.uk_runtime.geography_ladder import region_tier_by_area
 
 DEFAULT_LADDER_ARTIFACT = Path("build/uk/uk_oa_ladder_2021.npz")
@@ -18,11 +19,21 @@ DEFAULT_LADDER_SUMMARY = Path("build/uk/ladder_summary.json")
 DEFAULT_OUTPUT = Path(
     "packages/microcosm-build/src/microcosm/build/uk/local_area_crosswalk.json"
 )
+DEFAULT_BRMA_LAYER = Path(
+    "packages/microcosm-build/src/microcosm/build/uk/brma_area_layer.json"
+)
 
 EXPECTED_COUNTS = {
     "constituency": 650,
     "local_authority": 361,
+    "statistical_scope": 18,
 }
+#: ONS's Price Index of Private Rents publishes Scotland's rents for its 18
+#: Broad Rental Market Areas, at ``statistical_scope`` (microcosm#1090). Their
+#: roster, and each code's BRMA, come from the area-to-BRMA layer, from which
+#: a placed household reads its own BRMA (microcosm#1262).
+BRMA_LEVEL = "statistical_scope"
+SCOTLAND_REGION_CODE = "S92000003"
 # Accept-sets, not single labels: publishers stamp the vintage of the LOOKUP
 # they published against, and ONS products list every UK local authority on
 # the 2023 LAD frame -- including Scottish council areas and Northern Irish
@@ -63,6 +74,7 @@ EXPECTED_FACT_VINTAGE = {
         "S": ["ca_2019", "lad_2023", "publication_2025_nspl"],
         "N": ["lgd_2014", "lad_2023"],
     },
+    BRMA_LEVEL: ["brma_scotland"],
 }
 
 
@@ -71,6 +83,7 @@ def main() -> None:
     resource = build_local_area_crosswalk(
         ladder_artifact=args.ladder_artifact,
         ladder_summary=args.ladder_summary,
+        brma_layer=args.brma_layer,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(resource, indent=2) + "\n", encoding="utf-8")
@@ -90,6 +103,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--ladder-artifact", type=Path, default=DEFAULT_LADDER_ARTIFACT)
     parser.add_argument("--ladder-summary", type=Path, default=DEFAULT_LADDER_SUMMARY)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--brma-layer", type=Path, default=DEFAULT_BRMA_LAYER)
     return parser
 
 
@@ -97,6 +111,7 @@ def build_local_area_crosswalk(
     *,
     ladder_artifact: Path,
     ladder_summary: Path,
+    brma_layer: Path = DEFAULT_BRMA_LAYER,
 ) -> dict[str, Any]:
     """Return the packaged crosswalk resource for the supplied ladder artifact."""
 
@@ -144,7 +159,32 @@ def build_local_area_crosswalk(
         "ladder_artifact_sha256": ladder_sha,
         "ladder_summary": ladder_summary.as_posix(),
         "ladder_summary_sha256": _sha256(ladder_summary),
-        "levels": levels,
+        "levels": {**levels, BRMA_LEVEL: brma_level_payload(brma_layer)},
+    }
+
+
+def brma_level_payload(layer_path: Path) -> dict[str, Any]:
+    """Scotland's BRMA level: the layer's 18 codes and each code's BRMA."""
+
+    layer = load_brma_area_layer(layer_path.read_bytes())
+    name_by_code = {code: name for name, code in layer.scotland_codes.items()}
+    area_ids = sorted(name_by_code)
+    if len(area_ids) != EXPECTED_COUNTS[BRMA_LEVEL]:
+        raise ValueError(
+            f"The BRMA area layer names {len(area_ids)} Scottish BRMA(s), "
+            f"expected {EXPECTED_COUNTS[BRMA_LEVEL]}."
+        )
+    return {
+        "ledger_geography_level": BRMA_LEVEL,
+        "area_layer": layer_path.name,
+        "area_layer_sha256": _sha256(layer_path),
+        "area_layer_method": layer.method,
+        "expected_vintage": EXPECTED_FACT_VINTAGE[BRMA_LEVEL],
+        "area_count": len(area_ids),
+        "area_ids": area_ids,
+        "region_code_by_area": {code: SCOTLAND_REGION_CODE for code in area_ids},
+        "brma_name_by_area": {code: name_by_code[code] for code in area_ids},
+        "code_aliases": {},
     }
 
 

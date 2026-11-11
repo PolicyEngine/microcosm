@@ -18,6 +18,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime.acs_release_predictors import (
+    crosswalk_acs_occupation_and_work_experience,
+)
+from microcosm.build.us_runtime.acs_transfer import (
+    ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
+)
 from microcosm.build.us_runtime.spm_role_source import (
     NATIVE_SPM_ROLE,
     SPM_ADULT_RULE,
@@ -29,14 +36,28 @@ __all__ = [
     "ACS_SPM_ROLE_PARTITION",
     "ACS_SPM_ROLE_RULE",
     "ACS_UNRESOLVED_PARENT_ID_MAPPINGS",
+    "ACS_WEEKS_WORKED_REFERENCE",
+    "ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS",
     "ACS_GROUP_QUARTERS_CHILD_RULE",
     "AcsGroupQuartersChildrenResult",
     "AcsNativeInputResult",
+    "ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE",
     "AcsSpmRoleResult",
+    "acs_weeks_worked_values",
+    "acs_self_employment_identity_gate",
     "map_acs_native_inputs",
+    "map_acs_weeks_worked",
     "with_acs_spm_independence_role",
     "without_acs_group_quarters_children",
 ]
+
+#: Census's own WKWN definition in the 2024 ACS PUMS data dictionary, the
+#: vintage of the ACS rows this lane reads: 1-52 weeks, blank (NIU) under 16
+#: or with no work in the past 12 months. The Census API codes that blank 0.
+ACS_WEEKS_WORKED_REFERENCE = (
+    "https://www2.census.gov/programs-surveys/acs/tech_docs/pums/"
+    "data_dict/PUMS_Data_Dictionary_2024.pdf#page=45"
+)
 
 _INFLATION_FACTOR_DENOMINATOR = 1_000_000.0
 
@@ -74,6 +95,31 @@ ACS_UNRESOLVED_PARENT_ID_MAPPINGS: tuple[tuple[str, str], ...] = (
     ("parent_1_id", "PEPAR1"),
     ("parent_2_id", "PEPAR2"),
 )
+
+#: Native work-experience receipts shared with the pre-assembly boundary.
+#: The same reviewed crosswalk serves fiscal-refresh and fresh ACS releases.
+ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
+    "detailed_occupation_recode": (
+        "POCCU2",
+        ("OCCP", "AGEP", "ESR"),
+        "OCCP via ACS_OCCP_TO_POCCU2; source-universe sentinels",
+    ),
+    "detailed_industry_recode": (
+        "WEIND",
+        ("INDP", "AGEP", "ESR"),
+        "INDP via ACS_INDP_TO_WEIND; source-universe sentinels",
+    ),
+    "major_industry_recode": (
+        "WEMIND",
+        ("INDP", "AGEP", "ESR"),
+        "WEIND_TO_WEMIND of INDP via ACS_INDP_TO_WEIND",
+    ),
+    "worked_last_year": (
+        "WKSWORK",
+        ("WKWN", "AGEP"),
+        "WKWN > 0; blank outside past-year work universe becomes False",
+    ),
+}
 
 _FORMULA_OWNED_AGGREGATES = frozenset(
     {
@@ -186,6 +232,7 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         )
 
     _map_usual_hours(person, register=native)
+    _map_work_experience(person, register=native)
 
     _map_adjusted_person_amount(
         person,
@@ -600,6 +647,176 @@ def without_acs_group_quarters_children(
     return AcsGroupQuartersChildrenResult(frame.select(~child), provenance)
 
 
+#: Dollar tolerance for :func:`acs_self_employment_identity_gate`. The native
+#: mapping derives the base leaf from the same two columns, so a passing row
+#: agrees to floating-point rounding; $1 absorbs storage round trips without
+#: hiding a donor draw.
+ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE = 1.0
+
+_SELF_EMPLOYMENT_LEAVES = (
+    "self_employment_income_before_lsr",
+    *ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
+)
+#: The two leaves an ACS row's SEMP may sit on. QBI reconciliation
+#: (``qbi_inputs.with_us_qbi_input_reconciliation``) routes their sum wholly
+#: to one of them, so at most one is nonzero.
+_SEMP_ROUTED_LEAVES = (
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+)
+#: Components no ACS producer separates from SEMP; on an ACS row they can only
+#: be donor draws.
+_NON_ACS_COMPONENTS = tuple(
+    column
+    for column in ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS
+    if column not in _SEMP_ROUTED_LEAVES
+)
+
+
+def acs_self_employment_identity_gate(
+    person: pd.DataFrame,
+    *,
+    rows: np.ndarray | pd.Series,
+    tolerance: float = ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE,
+) -> GateResult:
+    """Require each ACS person's self-employment to be exactly their SEMP.
+
+    ``rows`` selects the ACS person rows; the caller owns that provenance, so
+    this check reads no origin tags. On a row that reports SEMP, the base
+    self-employment leaf plus every self-employment component must equal
+    ``SEMP * ADJINC / 1_000_000`` within ``tolerance`` dollars, so a donor
+    draw added on top of SEMP fails (microcosm#1380). The sum alone would
+    let draws cancel, so the gate also checks where SEMP sits: on the base
+    leaf or, after QBI reconciliation, wholly on the SSTB leaf, never on
+    both, and never on farm operations income or partnership self-employment
+    net earnings, which ACS reports only inside SEMP. A row with blank SEMP
+    is outside the ACS self-employment universe and must carry no
+    self-employment; its blank leaves are reviewed structural nulls. A blank
+    or infinite leaf or ``ADJINC`` on a row that reports SEMP fails, because
+    the identity cannot be checked there, and so does an infinite SEMP,
+    which is not a blank.
+    """
+
+    name = "acs_self_employment_identity"
+    selected = np.asarray(rows, dtype=bool)
+    if selected.shape != (len(person),):
+        raise ValueError("rows must be a one-dimensional mask aligned to person.")
+    missing = [
+        column
+        for column in ("SEMP", "ADJINC", *_SELF_EMPLOYMENT_LEAVES)
+        if column not in person.columns
+    ]
+    if missing:
+        return GateResult(
+            name=name,
+            passed=False,
+            failures=(
+                "ACS self-employment identity needs person column(s) "
+                f"{missing}; refusing to treat them as zero.",
+            ),
+            details={"missing_columns": missing},
+        )
+
+    subset = person.loc[selected]
+
+    def numeric(column: str) -> np.ndarray:
+        return pd.to_numeric(subset[column], errors="coerce").to_numpy(
+            dtype=np.float64, na_value=np.nan
+        )
+
+    semp = numeric("SEMP")
+    adjinc = numeric("ADJINC")
+    leaves = np.column_stack([numeric(column) for column in _SELF_EMPLOYMENT_LEAVES])
+    reported = np.isfinite(semp)
+    blank_semp = np.isnan(semp)
+    infinite_semp = np.isinf(semp)
+    nonfinite_leaf = reported & ~np.isfinite(leaves).all(axis=1)
+    nonfinite_adjinc = reported & ~np.isfinite(adjinc)
+    checkable = reported & ~nonfinite_leaf & ~nonfinite_adjinc
+    filled = np.where(np.isnan(leaves), 0.0, leaves)
+    gap = np.zeros(len(subset), dtype=np.float64)
+    gap[checkable] = filled[checkable].sum(axis=1) - (
+        semp[checkable] * adjinc[checkable] / _INFLATION_FACTOR_DENOMINATOR
+    )
+    # Negated so a gap that overflows to a nonfinite value also fails.
+    mismatched = checkable & ~(np.abs(gap) <= tolerance)
+    outside_nonzero = blank_semp & (filled != 0.0).any(axis=1)
+    position = {column: index for index, column in enumerate(_SELF_EMPLOYMENT_LEAVES)}
+    non_acs_component = reported & np.column_stack(
+        [filled[:, position[column]] != 0.0 for column in _NON_ACS_COMPONENTS]
+    ).any(axis=1)
+    split_across_routed = reported & np.column_stack(
+        [filled[:, position[column]] != 0.0 for column in _SEMP_ROUTED_LEAVES]
+    ).all(axis=1)
+
+    failures: list[str] = []
+    if not selected.any():
+        failures.append("No ACS person rows were selected for the check.")
+    if mismatched.any():
+        failures.append(
+            f"{int(mismatched.sum())} ACS person row(s) reporting SEMP carry "
+            "self-employment leaves that differ from SEMP * ADJINC / 1e6 by "
+            f"more than ${tolerance:g} (largest gap "
+            f"${float(np.abs(gap).max()):,.2f}); a donor component drawn on "
+            "top of SEMP counts that income twice."
+        )
+    if outside_nonzero.any():
+        failures.append(
+            f"{int(outside_nonzero.sum())} ACS person row(s) with blank SEMP "
+            "carry nonzero self-employment."
+        )
+    if non_acs_component.any():
+        failures.append(
+            f"{int(non_acs_component.sum())} ACS person row(s) reporting SEMP "
+            f"carry nonzero {' or '.join(_NON_ACS_COMPONENTS)}, which ACS "
+            "reports only inside SEMP; only a donor draw puts it there."
+        )
+    if split_across_routed.any():
+        failures.append(
+            f"{int(split_across_routed.sum())} ACS person row(s) reporting SEMP "
+            "carry both base and SSTB self-employment; QBI reconciliation "
+            "routes SEMP wholly to one of them."
+        )
+    if infinite_semp.any():
+        failures.append(
+            f"{int(infinite_semp.sum())} ACS person row(s) have an infinite SEMP."
+        )
+    if nonfinite_leaf.any():
+        failures.append(
+            f"{int(nonfinite_leaf.sum())} ACS person row(s) reporting SEMP have a "
+            "blank or infinite self-employment leaf."
+        )
+    if nonfinite_adjinc.any():
+        failures.append(
+            f"{int(nonfinite_adjinc.sum())} ACS person row(s) reporting SEMP have "
+            "a blank or infinite ADJINC."
+        )
+    return GateResult(
+        name=name,
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "tolerance": float(tolerance),
+            "acs_person_rows": int(selected.sum()),
+            "semp_reported_rows": int(reported.sum()),
+            "mismatched_rows": int(mismatched.sum()),
+            "max_abs_gap": float(np.abs(gap).max()) if len(gap) else 0.0,
+            "excess_over_semp": float(gap[mismatched].clip(min=0.0).sum()),
+            "blank_semp_rows": int(blank_semp.sum()),
+            "blank_semp_nonzero_rows": int(outside_nonzero.sum()),
+            "non_acs_component_rows": int(non_acs_component.sum()),
+            "base_and_sstb_rows": int(split_across_routed.sum()),
+            "infinite_semp_rows": int(infinite_semp.sum()),
+            "nonfinite_leaf_rows": int(nonfinite_leaf.sum()),
+            "nonfinite_adjinc_rows": int(nonfinite_adjinc.sum()),
+            "nonzero_rows_by_leaf": {
+                column: int((filled[:, index] != 0.0).sum())
+                for index, column in enumerate(_SELF_EMPLOYMENT_LEAVES)
+            },
+        },
+    )
+
+
 def _refuse_units(offending: pd.Index, problem: str) -> None:
     if len(offending):
         examples = [
@@ -609,6 +826,34 @@ def _refuse_units(offending: pd.Index, problem: str) -> None:
         raise ValueError(
             f"ACS SPM independence role refuses {len(offending)} SPM unit(s) "
             f"with {problem}. Example unit id(s): {examples}."
+        )
+
+
+def _map_work_experience(
+    person: pd.DataFrame, *, register: dict[str, Mapping[str, Any]]
+) -> None:
+    # Sparse in-memory frames may omit this entire source surface. The PUMS
+    # loader requires it on every production archive; a partial surface never
+    # silently drops the contract.
+    if not {"OCCP", "INDP", "WKWN"}.intersection(person.columns):
+        return
+    mapped = crosswalk_acs_occupation_and_work_experience(person)
+    for output, (
+        source,
+        columns,
+        transformation,
+    ) in ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS.items():
+        values = mapped[source].to_numpy()
+        if output == "worked_last_year":
+            values = values > 0
+        _add_native(
+            person,
+            output,
+            values,
+            entity="person",
+            source_columns=columns,
+            transformation=transformation,
+            register=register,
         )
 
 
@@ -672,6 +917,115 @@ def _map_usual_hours(
             "data_dict/PUMS_Data_Dictionary_2024.pdf#page=45"
         ),
         "allocation_reference_page": 130,
+    }
+
+
+def map_acs_weeks_worked(frame: Frame) -> AcsNativeInputResult:
+    """Map ACS ``WKWN`` to ``weeks_worked`` under the ``WKHP`` universe rules.
+
+    ACS local lane only (microcosm#1021). :func:`map_acs_native_inputs`, which
+    the multispine pool shares, does not call this, so the pool's native
+    surface is unchanged. See :func:`acs_weeks_worked_values` for the rules.
+    A frame without ``WKWN`` is returned unmapped with an empty receipt; the
+    caller decides whether that is acceptable.
+    """
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("ACS weeks-worked mapping requires the US schema.")
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    person = tables["person"].copy()
+    tables["person"] = person
+    native: dict[str, Mapping[str, Any]] = {}
+    if "WKWN" in person:
+        values, counts = acs_weeks_worked_values(person)
+        output = "weeks_worked"
+        _add_native(
+            person,
+            output,
+            values,
+            entity="person",
+            source_columns=tuple(
+                column for column in ("WKWN", "WKHP", "AGEP", "WKL") if column in person
+            ),
+            transformation=(
+                "WKWN; zero only for source-confirmed past-year nonwork; "
+                "blank together with WKHP"
+            ),
+            register=native,
+        )
+        native[output] = {
+            **native[output],
+            **counts,
+            "reference": ACS_WEEKS_WORKED_REFERENCE,
+        }
+    mapped = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return AcsNativeInputResult(mapped, native)
+
+
+def acs_weeks_worked_values(person: pd.DataFrame) -> tuple[np.ndarray, dict[str, int]]:
+    """Weeks worked in the past 12 months from ``WKWN``, and their row counts.
+
+    ``WKWN`` is 1-52. The 2024 FTP file leaves it blank for the universe
+    ``WKHP`` also leaves blank: under 16, or no work in the past 12 months
+    (the Census API codes that blank as 0, which this reader refuses, as it
+    does for ``WKHP``). So, as for usual hours, a blank is a structural zero
+    only where ``WKL`` confirms no work in the past 12 months (2 or 3); under
+    16 it stays missing, since that is survey-universe absence rather than
+    observed nonwork; and a value under 16 or with ``WKL`` 2/3 is a
+    contradiction. ``WKWN`` and ``WKHP`` describe the same weeks, so a row
+    carrying one without the other is refused.
+
+    Raises:
+        ValueError: On an invalid code, a missing ``WKHP``, a row carrying
+            only one of ``WKWN``/``WKHP``, or a value outside its universe.
+    """
+
+    if "WKHP" not in person:
+        raise ValueError(
+            "ACS WKWN requires WKHP: weeks worked and usual hours share one "
+            "past-year work universe, and the pairing is checked row by row."
+        )
+    weeks = _nullable_source_codes(person["WKWN"], minimum=1, maximum=52)
+    hours = _nullable_source_codes(person["WKHP"], minimum=1, maximum=99)
+    worked = (
+        _nullable_source_codes(person["WKL"], minimum=1, maximum=3)
+        if "WKL" in person
+        else pd.Series(np.nan, index=person.index)
+    )
+    age = (
+        pd.to_numeric(person["AGEP"], errors="coerce")
+        if "AGEP" in person
+        else pd.Series(np.nan, index=person.index)
+    )
+    unpaired = weeks.notna() != hours.notna()
+    if unpaired.any():
+        raise ValueError(
+            f"ACS WKWN and WKHP must be blank together: {int(unpaired.sum())} "
+            "row(s) carry weeks worked without usual hours or the reverse."
+        )
+    under_sixteen = age.ge(0) & age.lt(16)
+    not_worked = worked.isin([2, 3])
+    if (weeks.notna() & (under_sixteen | not_worked)).any() or (
+        under_sixteen & worked.notna()
+    ).any():
+        raise ValueError("ACS WKWN/WKL contradict their age or past-year universe.")
+    structural_zero = weeks.isna() & not_worked
+    values = weeks.mask(structural_zero, 0.0).to_numpy(dtype=float, na_value=np.nan)
+    return values, {
+        "source_value_rows": int(weeks.notna().sum()),
+        "structural_zero_rows": int(structural_zero.sum()),
+        "source_universe_unavailable_rows": int(under_sixteen.sum()),
+        "source_unresolved_rows": int(
+            (weeks.isna() & ~structural_zero & ~under_sixteen).sum()
+        ),
+        "hours_paired_rows": int((weeks.notna() & hours.notna()).sum()),
     }
 
 

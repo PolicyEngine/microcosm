@@ -472,6 +472,10 @@ class _NationalKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        import microcosm.calibrate.artifacts as calibrate_artifacts
+        import microcosm.calibrate.matrix as calibrate_matrix
+
+        from . import receipt_counts, weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -489,6 +493,20 @@ class _NationalKernel(KernelBase):
             national_calibration,
             national_doctrine,
             support_floor_rules,
+            # The constraint matrices and their encoding, as the dense kernels
+            # hash them (microcosm#1492). Not calibrate.solve: neither the
+            # national target nor the problem path calls it. Its one caller
+            # here, national_calibration_manifest, runs in
+            # uk.full.national-gates@1, which reads the solve's result, whose
+            # key moves with calibrate.solve through calibrate.adam@1.
+            calibrate_matrix,
+            calibrate_artifacts,
+            # full_targets takes its exclusion clock from here; hashed
+            # directly, as the dense target kernels do. Its input-mass gate
+            # counts source households with receipt_counts (microcosm#1095),
+            # hashed beside it so every import it makes is hashed.
+            weighted_integrity,
+            receipt_counts,
             *uk_target_compile_modules(),
         )
         return hashlib.sha256(
@@ -988,7 +1006,7 @@ class UKNationalGateKernel(_NationalKernel):
 
     def implementation_hash(self) -> str:
         from .. import gate_battery
-        from . import battery_bindings, diagnostics, weighted_integrity
+        from . import battery_bindings, diagnostics, receipt_counts, weighted_integrity
 
         return hashlib.sha256(
             canonical_json(
@@ -1000,6 +1018,8 @@ class UKNationalGateKernel(_NationalKernel):
                         battery_bindings,
                         calibration_run,
                         weighted_integrity,
+                        # The input-mass gate's source-household counts.
+                        receipt_counts,
                         diagnostics,
                         support_floor_rules,
                     ),
@@ -1054,7 +1074,7 @@ class UKNationalGateKernel(_NationalKernel):
                 target_relative_errors={
                     str(row["name"]): float(row["relative_error"])
                     for row in diagnostics_rows
-                }
+                },
             ),
             "aggregate_admin": admin_totals,
             UK_CGT_PROJECTION_ARTIFACT_KEY: projection,
@@ -1070,6 +1090,7 @@ class UKNationalGateKernel(_NationalKernel):
             registry=UK_GATE_REGISTRY,
         )
         blocking = report.blocking_outcomes(release_candidate=False)
+        report_payload = gate_phase_report_payload(report, gates=gates)
         payload = {
             "schema_version": 1,
             "kind": "uk_national_gate_report",
@@ -1077,7 +1098,7 @@ class UKNationalGateKernel(_NationalKernel):
             "policy_suffix": str(context.params["gate_policy_suffix"]),
             "scope": list(scope),
             "scope_exclusions": dict(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS),
-            "report": gate_phase_report_payload(report, gates=gates),
+            "report": report_payload,
             "aggregate_admin_measurement": _json_safe(admin_receipt),
             "blocking": [outcome.entry.id for outcome in blocking],
             "artifact_permitted": not blocking,
@@ -1351,7 +1372,7 @@ def replay_uk_dense_gate_battery(
     """Write the local gate report the dense release contract verifies.
 
     The graph evaluated every UK gate once (``uk.full.gates.calibrated``);
-    the dense line ships the six-gate local battery, signed and bound to its
+    the dense line ships the seven-gate local battery, signed and bound to its
     Logbook attempt. The stored terminal outcomes are projected onto the
     local scope in the scoped manifest's order — nothing is re-evaluated:
     both manifests hold the same frozen declarations, and the projection

@@ -21,7 +21,9 @@ def test_declared_factors_lockstep_with_the_installed_engine() -> None:
         for column, spec in lcfs_receipt["columns"].items()
         if spec.get("parameter_path") == CPI
     ]
-    assert len(cpi_columns) == 13
+    # Thirteen diary spend columns and, from microcosm#1278, the liquid and
+    # solid heating fuels.
+    assert len(cpi_columns) == 15
     for column in cpi_columns:
         assert lcfs_factors[column] == pytest.approx(diary_ratio), column
         assert lcfs_receipt["columns"][column]["following"] == reader(CPI, 2025)

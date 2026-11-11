@@ -124,6 +124,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     coerce_reviewed_exclusions,
     load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
+    uk_input_mass_carriers,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
 )
@@ -257,9 +258,13 @@ def _evaluate_release_input_coverage(
         build_state = _uk_gate_surface(spine_frame)
     else:
         build_state = spine_frame
+    # The required inputs are the ones the cut's reference build carries
+    # (microcosm#1095); the artifact selector marks the gate evidence_absent
+    # when no reference surface arrived.
     return uk_release_input_coverage_gate(
         _uk_gate_surface(uk_release_export_frame(context.frame)),
         engine,
+        reference_surface=context.artifacts["reference_surface"],
         manifest=manifest,
         build_state_frame=build_state,
     )
@@ -276,7 +281,7 @@ def _coverage_required_artifacts(parameters: Mapping[str, Any]) -> frozenset[str
     # the calibrated frame.
     if parameters.get("check") == "manifest_current":
         return frozenset({"coverage_engine"})
-    return frozenset({"coverage_engine", "spine_frame"})
+    return frozenset({"coverage_engine", "spine_frame", "reference_surface"})
 
 
 def _evaluate_source_coverage(
@@ -572,6 +577,31 @@ def _evaluate_column_implication(
             "same_source_mismatch_count": int(sum_mismatch.sum()),
             "nonfinite_capital_count": int(nonfinite.sum()),
         }
+    # From policyengine-uk 2.136.1 a unit on the sentinel takes its own share
+    # of its household's property for each scheme, which a recording unit
+    # beside it already holds, so the property would count twice there
+    # (Vahid's review of microcosm#1333). No unit may sit on the sentinel
+    # beside a unit that records a property share for either scheme.
+    person = frame.table("person")
+    unit_household = (
+        person.drop_duplicates("person_benunit_id")
+        .set_index("person_benunit_id")["person_household_id"]
+        .reindex(target[target_id_column])
+        .to_numpy()
+    )
+    on_sentinel = carrier == sentinel
+    sentinel_beside: dict[str, int] = {}
+    for column in property_shares:
+        share = np.asarray(shares.get(column, 0.0), dtype=float)
+        recording = (carrier >= 0.0) & (share > 0.0)
+        beside = on_sentinel & np.isin(unit_household, unit_household[recording])
+        sentinel_beside[column] = int(beside.sum())
+        if beside.any():
+            failures.append(
+                f"{target_entity}: {int(beside.sum())} unit(s) on the "
+                f"{sentinel:g} sentinel beside a unit that records {column}'s "
+                "property share; the engine would count that property twice."
+            )
     return GateResult(
         name="column_implication",
         passed=not failures,
@@ -592,6 +622,7 @@ def _evaluate_column_implication(
                 f"{target_entity}.{column}": counts[column]
                 for column in capital_columns
             },
+            "sentinel_units_beside_recorded_property": sentinel_beside,
         },
     )
 
@@ -604,16 +635,25 @@ def _declared_property_shares(
     from microcosm.build.uk_runtime.uc_capital_coherence import (
         PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
         PROPERTY_CAPITAL_OWNERS,
+        PROPERTY_CAPITAL_SECURED_DEBT,
         PROPERTY_CAPITAL_VALUATION,
         UC_PROPERTY_CAPITAL_REPORTER_RULE,
         UC_PROPERTY_CAPITAL_SOURCES,
     )
+
+    def secured_debt(sources: tuple[str, ...]) -> dict[str, str]:
+        return {
+            source: PROPERTY_CAPITAL_SECURED_DEBT[source]
+            for source in sources
+            if source in PROPERTY_CAPITAL_SECURED_DEBT
+        }
 
     rules = {
         "uc_reported_capital": {
             "sources": list(UC_PROPERTY_CAPITAL_SOURCES),
             "owners": PROPERTY_CAPITAL_OWNERS,
             "valuation": PROPERTY_CAPITAL_VALUATION,
+            "secured_debt": secured_debt(UC_PROPERTY_CAPITAL_SOURCES),
             # A unit that reports Universal Credit keeps its receipt.
             "units_reporting_universal_credit": UC_PROPERTY_CAPITAL_REPORTER_RULE,
         },
@@ -621,6 +661,7 @@ def _declared_property_shares(
             "sources": list(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
             "owners": PROPERTY_CAPITAL_OWNERS,
             "valuation": PROPERTY_CAPITAL_VALUATION,
+            "secured_debt": secured_debt(PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
         },
     }
     declared = {
@@ -1107,18 +1148,31 @@ def _validate_input_mass_exclusion_references(
     *,
     label: str,
 ) -> None:
-    unknown = sorted(set(register) - set(UK_INPUT_MASS_REFERENCE_REGISTRY))
-    if unknown:
+    from microcosm.build.uk_runtime.cut_reference import UK_CUT_REFERENCE_RELEASES
+
+    malformed = sorted(
+        name
+        for name in register
+        if name.count("@") != 1
+        or name.split("@", 1)[0] not in UK_CUT_REFERENCE_RELEASES
+        or not name.split("@", 1)[1]
+    )
+    if malformed:
         raise ValueError(
-            f"{label} names unknown input-mass reference(s) {unknown}; known "
-            f"references are {sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)}."
+            f"{label} names {malformed}; an input-mass exclusion is signed for "
+            "one reference build, named <release>@<build> for a UK line "
+            "(microcosm#1095)."
         )
 
 
 def _resolve_input_mass_exclusions(
     context: EvidenceContext, *, reference: str
 ) -> tuple[Mapping[str, UKReviewedExclusion], str]:
-    """Active-reference input-mass exclusions and their content source."""
+    """The exclusions signed for this reference build, and their source.
+
+    ``reference`` is the build's ``<release>@<build>``; entries signed for
+    any other build are dormant (microcosm#1095).
+    """
 
     committed = uk_default_input_mass_reviewed_exclusions()
     _validate_input_mass_exclusion_references(
@@ -1439,10 +1493,14 @@ def _evaluate_weights_audit(
 def _evaluate_export_surface(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
+    # The reference side is the export surface of the cut's reference build,
+    # the current build of the line (microcosm#1095).
     parity = context.artifacts["parity_evidence"]
+    reference = context.artifacts["reference_surface"]
     return uk_export_surface_gate(
         parity.candidate_columns,
-        parity.reference_columns,
+        reference.export_columns,
+        reference_name=reference.label,
         **dict(parameters),
     )
 
@@ -1568,6 +1626,8 @@ def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
     for area_type, geography_level in (
         ("constituency", "constituency"),
         ("la", "local_authority"),
+        # Scotland's PIPR BRMAs (microcosm#1262).
+        ("brma", "statistical_scope"),
     ):
         level = levels.get(geography_level)
         if not isinstance(level, Mapping):
@@ -1728,6 +1788,12 @@ def _evaluate_input_mass_parity(
     register = kwargs.pop("reviewed_exclusions_resource", None)
     relative_tolerance = kwargs.pop("relative_tolerance", None)
     minimum_reference_total = kwargs.pop("minimum_reference_total", None)
+    maximum_relative_drop = kwargs.pop("maximum_relative_drop", None)
+    if maximum_relative_drop is None:
+        raise ValueError(
+            "uk/gates.json input_mass_parity declares no maximum_relative_drop; "
+            "the drop limit is part of the reviewed policy (microcosm#1095)."
+        )
     coerced_registry = coerce_input_mass_reference_registry(
         declared_registry, label="uk/gates.json input_mass_parity"
     )
@@ -1742,18 +1808,21 @@ def _evaluate_input_mass_parity(
             f"uk/gates.json declares input-mass reference {reference_name!r} "
             f"but known references are {sorted(coerced_registry)}."
         )
+    reference = context.artifacts["input_mass_reference"]
+    descriptor = coerced_registry[reference_name].descriptor_for(reference)
     if register != UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
             f"runtime loads {UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     exclusions, _source = _resolve_input_mass_exclusions(
-        context, reference=reference_name
+        context, reference=reference.label
     )
     exclusions, out_of_line = _in_line(exclusions, context)
     policy = UKInputMassParityPolicy(
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
+        maximum_relative_drop=maximum_relative_drop,
         reviewed_exclusions=exclusions,
     )
     # The reference is compared against the surface the release ships: the
@@ -1762,12 +1831,14 @@ def _evaluate_input_mass_parity(
     # carries the spine's WAS property_wealth, which the reference also
     # stores, so comparing it there would call the signed exclusion stale
     # (microcosm#1106).
+    export_frame = uk_release_export_frame(context.frame)
     result = uk_input_mass_parity_gate(
-        uk_input_mass_totals(uk_release_export_frame(context.frame)),
-        context.artifacts["input_mass_reference"],
-        descriptor=coerced_registry[reference_name],
+        uk_input_mass_totals(export_frame),
+        reference,
+        descriptor=descriptor,
         policy=policy,
         now=_exclusion_clock(context),
+        candidate_carriers=uk_input_mass_carriers(export_frame),
         **kwargs,
     )
     return _with_out_of_line(result, context, out_of_line)
@@ -1779,10 +1850,11 @@ def _input_mass_reference_evidence(
     reference_name = str(parameters["reference"])
     reference = context.artifacts["input_mass_reference"]
     exclusions, source = _resolve_input_mass_exclusions(
-        context, reference=reference_name
+        context, reference=reference.label
     )
     return {
         "reference": reference_name,
+        "reference_label": reference.label,
         "reference_evidence_sha256": _input_mass_reference_evidence_sha256(reference),
         "exclusions_policy": source,
         "reviewed_exclusions": _exclusion_payload(exclusions),
@@ -2049,15 +2121,28 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1069 c7 pension_credit_take_up stage-health check.
                 "maximum_take_up_deviation",
                 "minimum_entitled_units",
+                # microcosm#1334 uc_take_up stage-health check.
+                "maximum_caseload_deviation",
+                "maximum_reachable_pool_deviation",
+                # frs_annual_income_spells stage-health check.
+                "pay_concept_ratio_bounds",
+                "annual_over_current_earners_bounds",
+                "minimum_observed_pay_share",
                 # microcosm#1095 spi_benefit_coherence stage-health check.
                 "zeroed_columns",
                 "restored_columns",
+                "restored_within_earnings_limit_columns",
                 # microcosm#1063 child_benefit_take_up stage-health check.
                 "maximum_claim_rate_deviation",
                 "maximum_age_claim_rate_deviation",
                 "minimum_age_child_rows",
                 "maximum_opt_out_share_deviation",
                 "minimum_eligible_family_units",
+                # microcosm#1095 take_up_signal stage-health check (María's
+                # ruling of 2026-10-29: the flags at their drawing stages).
+                "maximum_share_deviation",
+                "under_two_usage_maximum_share_deviation",
+                "outputs",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
@@ -2108,6 +2193,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_connected_share_deviation",
                 "convergence_window_sweeps",
                 "maximum_residual_change_over_window",
+                # #1418: the bounds on an ONS-spend level over Energy Trends',
+                # which catch a wrong input row the recomputation shares, and
+                # the QEP payment method the stage must price at.
+                "ons_level_to_energy_trends_ratio",
+                "qep_payment_method",
                 # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
                 # trip rates recomputed from the vendored rows.
                 "trip_rates_period_value",
@@ -2119,6 +2209,38 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1113 road_fuel_level check: the ceiling on the LCFS donor
                 # share of other personal-transport fuels netted off 07.2.2.
                 "maximum_other_fuels_share",
+                # #1359 excise_quantities check: the ceiling on the donor
+                # share whose published total sits beside its diary lines, and
+                # the support band each excise share must rest on.
+                "maximum_parent_residual_share",
+                "required_support_band",
+                # #1359 gambling_participation check: how far a stratum's
+                # topped-up share may sit from its published target, and the
+                # bounds on the scale that anchors the added stakes.
+                "maximum_stratum_shortfall",
+                "amount_scale_bounds",
+                # #1415 isa_subscriptions check: how far a total may sit from
+                # its target, and how far person balances may miss the
+                # household draws they split.
+                "maximum_relative_total_deviation",
+                "maximum_household_sum_error_gbp",
+                # The company_cars check (dashboard #316): how far SPI-channel
+                # pay plus its carved benefits may miss the tape's total.
+                "maximum_pay_identity_error_gbp",
+                # The occupation_redraw check (microcosm#1490): the held-out
+                # log-loss gain over the constant, the calibration slope's
+                # bounds, the occupation-share gaps within pay bands and status
+                # groups, and the blend's allowance over its better learner.
+                "minimum_log_loss_gain",
+                "calibration_slope_bounds",
+                "maximum_pay_band_share_gap",
+                "maximum_status_group_share_gap",
+                "maximum_blend_log_loss_excess",
+                # The sub_major_draw check (microcosm#1490) shares those and adds
+                # the sub-major share gap within regions and the FRS rows' gap
+                # from the APS donors within a major group.
+                "maximum_region_share_gap",
+                "maximum_frame_share_gap",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
@@ -2132,6 +2254,25 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_rows_receipts_below_profit",
                 "maximum_rows_with_profit_above_band",
                 "maximum_band_error_in_boundary_weights",
+                # #1308's three stages, gated with the next policyengine-uk
+                # bump (María's ruling of 2026-10-17): the purchase kinds and
+                # their fit, the home-value ranking, the Move to UC draw.
+                "kinds",
+                "maximum_transactions_relative_deviation",
+                "maximum_value_shortfall_share",
+                "regions",
+                "maximum_sources_at_cap",
+                "knots_basis_year",
+                "rank_basis",
+                "p_basis",
+                "rate_sources",
+                # The apprentice draw (microcosm#1373).
+                "rate_key",
+                "maximum_relative_realization_deviation",
+                "maximum_implied_relief",
+                # uk-data#629 spi_hourly_pay check: the drawn employees' share
+                # below the minimum wage may exceed the FRS rows' by this much.
+                "maximum_share_above_frs",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
@@ -2167,7 +2308,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "take_up_signal": UKGateBinding(
         name="take_up_signal",
         evaluator=_evaluate_take_up_signal,
-        parameter_keys=frozenset({"maximum_share_deviation"}),
+        parameter_keys=frozenset(
+            {"maximum_share_deviation", "under_two_usage_maximum_share_deviation"}
+        ),
     ),
     "enum_domain": UKGateBinding(
         name="enum_domain",
@@ -2258,7 +2401,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         name="export_surface",
         evaluator=_evaluate_export_surface,
         parameter_keys=frozenset({"allowed_extra_columns", "reviewed_exclusions"}),
-        artifact_keys=frozenset({"parity_evidence"}),
+        artifact_keys=frozenset({"parity_evidence", "reference_surface"}),
         needs_frame=False,
     ),
     "target_surface": UKGateBinding(
@@ -2296,6 +2439,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "reviewed_exclusions_resource",
                 "relative_tolerance",
                 "minimum_reference_total",
+                "maximum_relative_drop",
                 "candidate_name",
             }
         ),

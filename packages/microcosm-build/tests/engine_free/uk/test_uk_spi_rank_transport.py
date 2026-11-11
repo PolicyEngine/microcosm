@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import spi_rank_transport as transport
+from microcosm.build.uk_runtime.receipt_counts import rounded_count
 from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_STAGE1_ANALOGUE_COLUMNS,
     analogue_source_columns,
@@ -41,8 +42,8 @@ def test_observed_analogues_read_the_twin_and_derive_taxable_interest() -> None:
         {column: [0.0, 5.0] for column in analogue_source_columns()},
         index=[10, 11],
     )
-    person["savings_interest_income"] = [100.0, 20.0]
-    person["tax_free_savings_income"] = [30.0, 50.0]
+    # Interest outside ISAs, floored at zero (microcosm#1360).
+    person["savings_interest_income"] = [70.0, -30.0]
     person["dividend_income"] = [7.0, 0.0]
     observed = observed_analogues(person)
     assert list(observed.columns) == list(analogue_targets())
@@ -168,7 +169,8 @@ def test_transport_locates_twins_and_keys_the_rest_on_identity(reference) -> Non
     # under ten rows.
     kolmogorov = result.receipt["targets"]["hmrc_spi_pay"]["kolmogorov"]
     assert 0.0 <= kolmogorov["sign"] <= 1.0 and 0.0 <= kolmogorov["quantile"] <= 1.0
-    assert kolmogorov["positive_rows"] == int((pay > 0).sum())
+    # The count is rounded as every receipt count is (receipt_counts).
+    assert kolmogorov["positive_rows"] == rounded_count(int((pay > 0).sum()))
     by_group = result.receipt["targets"]["hmrc_spi_pay"]["by_group"]
     assert by_group["trade"] is None
     assert by_group["pay"]["rows"] == int((groups == "pay").sum())
@@ -265,7 +267,7 @@ def test_cell_folds_share_a_cell_between_twins_and_copies() -> None:
         {
             "gender": ["MALE", "MALE", "FEMALE", "FEMALE", "MALE"],
             "region": ["LONDON"] * 5,
-            "age": [30.5, 30.5, 40.5, 40.5, 50.5],
+            "spi_age_band": [2.0, 2.0, 3.0, 3.0, 4.0],
             "main_source": ["pay", "pay", "pension", "pension", "trade"],
             "has_pay": [1.0, 1.0, 0.0, 0.0, 0.0],
             "has_trade": [0.0, 0.0, 0.0, 0.0, 1.0],
@@ -302,11 +304,15 @@ def test_cross_fit_locates_a_copy_on_a_forest_that_never_saw_its_twin() -> None:
     rng = np.random.default_rng(21)
     n = 600
     ages = rng.integers(25, 60, n).astype(float) + 0.5
+    # The stage's age predictor is the SPI band (uk-data#628): codes 2 to 5.
+    bands = np.floor((ages - 5.0) / 10.0)
+    # Band cells are coarse, so the frame spans regions to fill all five folds.
+    regions = np.array(["LONDON", "WALES", "SCOTLAND", "NORTH_EAST", "SOUTH_WEST"])
     raw = pd.DataFrame(
         {
             "gender": np.where(rng.random(n) < 0.5, "MALE", "FEMALE"),
-            "region": "LONDON",
-            "age": ages,
+            "region": regions[rng.integers(0, len(regions), n)],
+            "spi_age_band": bands,
             "main_source": "pay",
             "has_pay": 1.0,
             "has_trade": 0.0,
@@ -315,7 +321,7 @@ def test_cross_fit_locates_a_copy_on_a_forest_that_never_saw_its_twin() -> None:
     )
     encoded = pd.DataFrame(
         {
-            "age": ages,
+            "spi_age_band": bands,
             "gender_MALE": (raw.gender == "MALE").astype(float),
             "gender_FEMALE": (raw.gender == "FEMALE").astype(float),
         }
@@ -371,7 +377,7 @@ def test_cross_fit_locates_a_copy_on_a_forest_that_never_saw_its_twin() -> None:
         located = copies[folds[copies] == fold]
         assert not (set(located.tolist()) & rows_seen)
         assert len(rows_seen) == int((folds != fold).sum())
-    # Within a cell (same whole-year age and gender, and here the same
+    # Within a cell (same SPI age band, gender and region, and here the same
     # earlier leaves) the located pay quantiles are monotone in the twin's
     # pay: one forest locates the whole cell and holds no twin's own value.
     pay = observed["hmrc_spi_pay"].to_numpy()[copies]
@@ -379,8 +385,9 @@ def test_cross_fit_locates_a_copy_on_a_forest_that_never_saw_its_twin() -> None:
     cells = pd.DataFrame(
         {
             "cell": (
-                np.floor(ages[copies]).astype(int).astype(str)
+                bands[copies].astype(int).astype(str)
                 + raw.gender.to_numpy()[copies]
+                + raw.region.to_numpy()[copies]
             ),
             "pay": pay,
             "u": located,
@@ -407,7 +414,7 @@ def test_cross_fit_locates_a_copy_on_a_forest_that_never_saw_its_twin() -> None:
     # A copy whose fold-key cell moved away from its twin's is refused: the
     # forest that located it could have seen the twin.
     moved = raw.iloc[copies].reset_index(drop=True)
-    moved["age"] = moved["age"] + 7.0
+    moved["spi_age_band"] = moved["spi_age_band"] + 1.0
     with pytest.raises(ValueError, match="differs from its twin's"):
         cross_fit_transport(
             fit_reference,
@@ -427,8 +434,10 @@ def test_cross_fit_locates_a_copy_on_a_forest_that_never_saw_its_twin() -> None:
         )
     # A frame of one cell cannot hold anything out: refused unless the caller
     # is a sampled rung or a synthetic fixture, and then the receipt says so.
-    one_cell = raw.iloc[:10].assign(age=30.5, gender="MALE")
-    one_encoded = encoded.iloc[:10].assign(age=30.5, gender_MALE=1.0, gender_FEMALE=0.0)
+    one_cell = raw.iloc[:10].assign(spi_age_band=2.0, gender="MALE", region="LONDON")
+    one_encoded = encoded.iloc[:10].assign(
+        spi_age_band=2.0, gender_MALE=1.0, gender_FEMALE=0.0
+    )
     folds_one, used_one = cell_fold_ids(one_cell, folds=5, seed=42)
     assert used_one == 1
     one_cell_call = dict(
@@ -450,13 +459,11 @@ def test_cross_fit_locates_a_copy_on_a_forest_that_never_saw_its_twin() -> None:
         cross_fit_transport(fit_reference, **one_cell_call)
     single = cross_fit_transport(fit_reference, allow_in_sample=True, **one_cell_call)
     assert single.receipt["folds"] == 1 and single.receipt["cross_fitted"] is False
-    # A positive-row count under the group floor is withheld.
+    # A positive-row count is rounded as every receipt count is: one or two
+    # rows read "<3", three to nine "3-9".
     assert single.receipt["targets"]["dividend_income"]["kolmogorov"][
         "positive_rows"
-    ] in (
-        None,
-        *range(10, 11),
-    )
+    ] in (0, "<3", "3-9", 10)
 
 
 class _ClassReference:
@@ -495,11 +502,13 @@ def test_cross_fit_refuses_folds_that_disagree_on_sign_classes() -> None:
     rng = np.random.default_rng(5)
     n = 400
     ages = rng.integers(25, 60, n).astype(float) + 0.5
+    # The stage's age predictor is the SPI band (uk-data#628): codes 2 to 5.
+    bands = np.floor((ages - 5.0) / 10.0)
     raw = pd.DataFrame(
         {
             "gender": np.where(rng.random(n) < 0.5, "MALE", "FEMALE"),
             "region": "LONDON",
-            "age": ages,
+            "spi_age_band": bands,
             "main_source": "pay",
             "has_pay": 1.0,
             "has_trade": 0.0,
@@ -508,7 +517,7 @@ def test_cross_fit_refuses_folds_that_disagree_on_sign_classes() -> None:
     )
     encoded = pd.DataFrame(
         {
-            "age": ages,
+            "spi_age_band": bands,
             "gender_MALE": (raw.gender == "MALE").astype(float),
             "gender_FEMALE": (raw.gender == "FEMALE").astype(float),
         }

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import UTC, date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -29,7 +31,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     uk_zero_weight_strata_gate,
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
-    UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+    UK_CURRENT_BUILD_REFERENCE,
     UKInputMassReferenceDescriptor,
     UKReviewedExclusion,
 )
@@ -42,7 +44,15 @@ VALIDATE_REFERENCE = (
 )
 
 
-def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
+#: A synthetic approval window. The gates compare it with the real date when a
+#: test passes no ``now``, so a real-looking window (it was 2026-08-10 to
+#: 2027-02-10) would fail those tests once it lapsed, as the UK build
+#: fixture's did on 2026-10-04 (microcosm#1103). Expiry itself is tested with
+#: explicit dates.
+SYNTHETIC_EXPIRY = "2099-12-31"
+
+
+def _entry(reason: str, *, expires_on: str = SYNTHETIC_EXPIRY) -> dict[str, str]:
     """A valid schema-2 approval receipt around the fixture's reason."""
 
     return {
@@ -121,7 +131,7 @@ def test_reviewed_degenerate_exclusion_is_recorded_and_stale_entries_fail() -> N
     assert recorded["reason"] == reason
     assert recorded["approved_by"] == "test-reviewer"
     assert recorded["adjudication"] == "microcosm#610"
-    assert recorded["expires_on"] == "2027-02-10"
+    assert recorded["expires_on"] == SYNTHETIC_EXPIRY
     assert not stale.passed
     assert stale.details["stale_exclusions"] == ["person.employment_income"]
 
@@ -173,10 +183,20 @@ def test_missing_zero_weight_selector_columns_fail_even_with_positive_weights() 
     assert "selector column(s) are missing" in gate.failures[0]
 
 
-def test_default_declarations_name_both_june_100k_zero_strata() -> None:
+def test_default_declarations_cap_both_spi_synthetic_strata_at_zero() -> None:
+    """No household may carry zero weight (microcosm#1095, re-declared from #688).
+
+    The June caps of 100,000 counted the retired ten-clone grain; the national
+    seam ships no zero-weight row, so both strata are capped at 0 and keep
+    their selectors only to name a zero-weight row by stratum.
+    """
+    assert [row.name for row in UK_DEFAULT_ZERO_WEIGHT_STRATA] == [
+        "spi_synthetic_base",
+        "spi_synthetic_capital_gains",
+    ]
     assert [row.maximum_zero_weight_rows for row in UK_DEFAULT_ZERO_WEIGHT_STRATA] == [
-        100_000,
-        100_000,
+        0,
+        0,
     ]
     assert [row.selector for row in UK_DEFAULT_ZERO_WEIGHT_STRATA] == [
         {
@@ -188,6 +208,20 @@ def test_default_declarations_name_both_june_100k_zero_strata() -> None:
             "household_is_spi_synthetic": True,
         },
     ]
+
+
+def test_default_declarations_name_a_zero_weight_spi_row_by_stratum() -> None:
+    dataset = _dataset(weights=[1.0, 0.0, 1.0, 1.0])
+
+    gate = uk_zero_weight_strata_gate(dataset.household)
+
+    assert not gate.passed
+    strata = {row["name"]: row for row in gate.details["declared_strata"]}
+    assert strata["spi_synthetic_base"]["zero_weight_rows"] == 1
+    assert strata["spi_synthetic_capital_gains"]["zero_weight_rows"] == 0
+    assert gate.details["unmatched_zero_weight_rows"] == 0
+    assert "spi_synthetic_base" in gate.failures[0]
+    assert "exceed the declared maximum" in gate.failures[0]
 
 
 def test_ess_collapse_produces_named_finding() -> None:
@@ -269,16 +303,55 @@ def test_ported_june_parity_gates_retain_their_named_failures() -> None:
     assert fit.name == "target_fit"
 
 
-def test_export_surface_allows_claimant_roles_but_not_unreviewed_columns() -> None:
+def test_export_surface_allows_declared_extras_but_not_unreviewed_columns() -> None:
     reference = {"person.age"}
-    assert uk_export_surface_gate(
-        reference | {"person.is_uc_claimant"}, reference
-    ).passed
+    assert uk_export_surface_gate(reference | {"household.lsoa_code"}, reference).passed
     unrelated = uk_export_surface_gate(
-        reference | {"person.is_uc_claimant", "person.unreviewed_extra"}, reference
+        reference | {"household.lsoa_code", "person.unreviewed_extra"}, reference
     )
     assert not unrelated.passed
     assert any("unreviewed_extra" in failure for failure in unrelated.failures)
+
+
+def test_export_surface_reports_a_declared_extra_the_reference_now_carries() -> None:
+    # microcosm#1095: a promotion moves the reference past a declared extra;
+    # the entry is reported as redundant, never failed.
+    reference = {"person.age", "household.lsoa_code"}
+    result = uk_export_surface_gate(reference, reference)
+    assert result.passed
+    assert result.details["redundant_allowed_extra_columns"] == ["household.lsoa_code"]
+
+
+def test_export_surface_names_the_reference_build() -> None:
+    result = uk_export_surface_gate(
+        {"person.age"},
+        {"person.age", "person.dropped_input"},
+        reference_name="microcosm-uk-2024-25-national@build-a",
+    )
+    assert not result.passed
+    assert "microcosm-uk-2024-25-national@build-a" in result.failures[0]
+    assert result.details["reference_name"] == "microcosm-uk-2024-25-national@build-a"
+
+
+def test_export_surface_extras_are_not_exported_by_the_current_national_build() -> None:
+    # The standing list holds only what the current national build does not
+    # export (microcosm#1095): the dense line's geography and clone columns.
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+    )
+
+    gates = json.loads(
+        (
+            Path(__file__).resolve().parents[3] / "src/microcosm/build/uk/gates.json"
+        ).read_text()
+    )
+    entry = next(gate for gate in gates["gates"] if gate["id"] == "uk_export_surface")
+    assert entry["parameters"]["allowed_extra_columns"] == list(
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+    )
+    assert len(UK_ALLOWED_EXTRA_EXPORT_COLUMNS) == len(
+        set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
+    )
 
 
 def test_export_candidate_columns_and_release_frame_carry_consumer_area_code_names() -> (
@@ -366,7 +439,6 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         uk_release_export_frame,
     )
     from microcosm.build.uk_runtime.terminal_gates import (
-        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
         UK_REVIEWED_EXPORT_EXCLUSIONS,
         uk_export_candidate_columns,
     )
@@ -403,8 +475,9 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     }
     exported = uk_release_export_frame(frame)
     # microcosm#1106: the WAS total leaves; its engine components stay.
-    # microcosm#1194: the build identifiers stay beside the renumbered ones,
-    # as reviewed extras of the export surface.
+    # microcosm#1194: the build identifiers stay beside the renumbered ones;
+    # the current national build exports them too, so since microcosm#1095
+    # they are part of the reference surface, not declared extras.
     carriers = {
         f"{entity}.{column}" for entity, column in UK_BUILD_IDENTIFIER_COLUMNS.items()
     }
@@ -415,16 +488,28 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         "household.household_weight",
         *carriers,
     }
-    assert carriers <= set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
     assert exported.weights_for("household").values.tolist() == [1.0, 2.0]
     assert exported.mass_log == frame.mass_log
     # The boundary drops the reviewed export exclusions, the internal
-    # disability carriers, the salary-sacrifice pre-conversion pay carrier
-    # and the landlord carrier, and nothing else.
+    # disability carriers, the salary-sacrifice pre-conversion pay carrier,
+    # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
+    # in-household care hours carrier (microcosm#1418), the admin UC limited
+    # capability carrier (microcosm#1095, Y1), the company car carriers
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the value the
+    # regional home values replaced (microcosm#1112) and the household ISA
+    # totals policyengine-uk sums from the person balances (microcosm#1415),
+    # and nothing else.
     from microcosm.build.uk_runtime.frs_disability import (
         UK_INTERNAL_DISABILITY_REPORTED_COLUMNS,
     )
-    from microcosm.build.uk_runtime.frs_spine import FRS_LANDLORD_CARRIER_COLUMN
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_BONUS_CARRIER_COLUMN,
+        FRS_COMPANY_CAR_CARRIER_COLUMNS,
+        FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
+        FRS_LANDLORD_CARRIER_COLUMN,
+        FRS_UC_LCW_STATUS_COLUMN,
+    )
+    from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
     from microcosm.build.uk_runtime.salary_sacrifice import (
         SALSAC_PRE_CONVERSION_PAY_COLUMN,
     )
@@ -434,14 +519,64 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         for entity, columns in UK_RELEASE_EXPORT_DROPPED_COLUMNS.items()
         for column in columns
     }
+    # The all-zero incapacity layer left the reviewed exclusions, which never
+    # matched the pinned reference (microcosm#1095); the boundary still drops it.
+    assert "person.incapacity_benefit_reported" not in UK_REVIEWED_EXPORT_EXCLUSIONS
     assert dropped == (
         set(UK_REVIEWED_EXPORT_EXCLUSIONS)
+        | {"person.incapacity_benefit_reported"}
         | {f"person.{column}" for column in UK_INTERNAL_DISABILITY_REPORTED_COLUMNS}
         | {f"person.{SALSAC_PRE_CONVERSION_PAY_COLUMN}"}
         | {f"person.{FRS_LANDLORD_CARRIER_COLUMN}"}
+        | {f"person.{FRS_BONUS_CARRIER_COLUMN}"}
+        | {f"person.{FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN}"}
+        | {f"person.{FRS_UC_LCW_STATUS_COLUMN}"}
+        | {f"person.{column}" for column in FRS_COMPANY_CAR_CARRIER_COLUMNS}
+        | {f"household.{RANK_BASIS_COLUMN}"}
+        | {"household.cash_isa", "household.stocks_and_shares_isa"}
     )
     # A frame without the column passes through untouched.
     assert uk_release_export_frame(exported) is exported
+
+
+def test_no_spine_column_writes_an_input_signed_at_the_engine_default() -> None:
+    """A signed engine default (microcosm#1095) holds only while no stage writes it."""
+
+    import json
+
+    from microcosm.frame.adapters.policyengine_uk_concepts import (
+        UK_ENGINE_DEFAULT_INPUTS,
+    )
+    from test_support.paths import paths_for
+
+    schema = json.loads(
+        (
+            paths_for("microcosm-graph").tests
+            / "fixtures/parity/uk_spine/sources/schema.json"
+        ).read_text()
+    )
+    written = {column for dtypes in schema["dtypes"].values() for column in dtypes}
+    assert "self_employment_income" in written
+    # A stage's declared outputs and rewrites count too: the H2 fixture holds
+    # only the root sources' columns, and a later stage may write an input
+    # (the review of microcosm#1422).
+    stages = json.loads(
+        (
+            paths_for("microcosm-build").package
+            / "src/microcosm/build/uk/source_stages.json"
+        ).read_text()
+    )["stages"]
+    written |= {
+        column
+        for stage in stages
+        for key in ("outputs", "rewrites")
+        for column in stage.get(key, ())
+    }
+    assert "would_claim_tfc" in written
+    # The company_cars stage writes six of the company car inputs
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    assert "company_car_list_price" in written
+    assert not written & set(UK_ENGINE_DEFAULT_INPUTS)
 
 
 def _target_fit_exclusion(
@@ -575,7 +710,22 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # with microcosm#1106 (2026-10-11): on that head the cell sits at +23.1 %
     # to +23.4 % across the C3 and final arms, inside the bound, and the gate
     # fails the deferral as stale.
-    assert register == {}
+    assert set(register) == {
+        "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000@2025",
+        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000@2025",
+        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000@2025",
+        "hmrc.spi_region.taxpayers_by_region_200000_plus@S92000003@2025",
+        "hmrc/dividend_income_income_band_20_000_to_30_000@2025",
+        "hmrc/dividend_income_income_band_30_000_to_40_000@2025",
+        "hmrc/dividend_income_income_band_40_000_to_50_000@2025",
+        "hmrc/dividend_income_income_band_50_000_to_70_000@2025",
+        "hmrc/dividend_income_income_band_70_000_to_100_000@2025",
+        "hmrc/private_pension_income_income_band_12_570_to_15_000@2025",
+        "hmrc/property_income_income_band_12_570_to_15_000@2025",
+        "hmrc/property_income_income_band_15_000_to_20_000@2025",
+        "ons.population.female_19@2025",
+    }
+    assert {record.release_lines for record in register.values()} == {("local",)}
 
 
 def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
@@ -597,7 +747,40 @@ def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
         assert pieces[1] in area_codes, key
         assert "%" not in record.reason, key
     assert uk_default_local_target_fit_reviewed_exclusions() is register
-    assert register == {}
+    assert set(register) == {
+        "age_structure/E06000023/age/20_30",
+        "age_structure/E07000008/age/20_30",
+        "age_structure/E07000178/age/20_30",
+        "age_structure/E14001080/age/20_30",
+        "age_structure/E14001081/age/20_30",
+        "age_structure/E14001096/age/20_30",
+        "age_structure/E14001131/age/20_30",
+        "age_structure/E14001149/age/20_30",
+        "age_structure/E14001182/age/20_30",
+        "age_structure/E14001231/age/20_30",
+        "age_structure/E14001319/age/20_30",
+        "age_structure/E14001327/age/20_30",
+        "age_structure/E14001338/age/20_30",
+        "age_structure/E14001346/age/20_30",
+        "age_structure/E14001352/age/20_30",
+        "age_structure/E14001353/age/20_30",
+        "age_structure/E14001412/age/20_30",
+        "age_structure/E14001467/age/20_30",
+        "age_structure/W07000091/age/20_30",
+        "council_tax/E06000014/council_tax/band_a",
+        "council_tax/E08000028/council_tax/band_f",
+        "council_tax/E09000020/council_tax/band_b",
+        "council_tax/E09000020/council_tax/band_c",
+        "council_tax/E09000033/council_tax/band_c",
+        "council_tax/E09000033/council_tax/band_g",
+        "domestic_energy/S12000023/energy/electricity_kwh",
+        "hmrc_income_by_area/E09000020/hmrc/self_employment_income/amount",
+        "hmrc_income_by_area/E14001310/hmrc/self_employment_income/amount",
+        "hmrc_income_by_area/E14001535/hmrc/higher_rate_taxpayers/count",
+        "hmrc_income_by_area/E14001576/hmrc/self_employment_income/count",
+        "uc_households/E14001098/uc_hh_3plus_children",
+    }
+    assert {record.release_lines for record in register.values()} == {("local",)}
 
 
 def _national_line_register() -> dict[str, UKReviewedExclusion]:
@@ -722,41 +905,46 @@ def test_ported_june_parity_gates_reject_empty_evidence() -> None:
     assert "evidence is empty" in " ".join(fit.failures)
 
 
-def _input_mass_reference(totals=None) -> UKInputMassReference:
+REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+
+
+def _input_mass_reference(totals=None, carriers=None) -> UKInputMassReference:
     return UKInputMassReference(
         totals=({"employment_income": 10.0} if totals is None else totals),
-        filename="enhanced_frs_2024_25.h5",
-        revision="a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-        sha256=("e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"),
+        filename="microcosm_uk_2024_25.h5",
+        revision=REFERENCE_BUILD,
+        sha256="9" * 64,
         vintage="2024_25",
+        label=f"microcosm-uk-2024-25-national@{REFERENCE_BUILD}",
+        carriers=carriers,
     )
 
 
 def _input_mass_descriptor() -> UKInputMassReferenceDescriptor:
-    return UKInputMassReferenceDescriptor(
-        name="efrs-post-calibration",
-        filename="enhanced_frs_2024_25.h5",
-        revision="a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-        sha256="e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
-        vintage="2024_25",
-        totals_sha256=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
-        scope_note="Seeded scoped-reference note.",
-    )
+    return UK_CURRENT_BUILD_REFERENCE.descriptor_for(_input_mass_reference())
 
 
 def _input_mass_policy(**overrides) -> UKInputMassParityPolicy:
-    fields = {"relative_tolerance": 0.5, "minimum_reference_total": 0.0}
+    fields = {
+        "relative_tolerance": 0.5,
+        "minimum_reference_total": 0.0,
+        # Within a 0.5 tolerance a drop past 0.5 already fails; 1.0 adds none.
+        "maximum_relative_drop": 1.0,
+    }
     fields.update(overrides)
     return UKInputMassParityPolicy(**fields)
 
 
-def _input_mass_gate(candidate_totals, reference=None, *, policy=None):
+def _input_mass_gate(
+    candidate_totals, reference=None, *, policy=None, candidate_carriers=None
+):
     with patch(VALIDATE_REFERENCE, return_value=None):
         return uk_input_mass_parity_gate(
             candidate_totals,
             _input_mass_reference() if reference is None else reference,
             descriptor=_input_mass_descriptor(),
             policy=_input_mass_policy() if policy is None else policy,
+            candidate_carriers=candidate_carriers,
         )
 
 
@@ -767,7 +955,10 @@ def test_zeroed_input_column_fails_by_name() -> None:
     assert gate.name == "input_mass_parity"
     assert "employment_income" in gate.failures[0]
     assert "mass is zero" in gate.failures[0]
-    assert gate.details["reference_identity"]["filename"] == ("enhanced_frs_2024_25.h5")
+    assert gate.details["reference_identity"]["filename"] == "microcosm_uk_2024_25.h5"
+    assert gate.details["reference_label"] == (
+        f"microcosm-uk-2024-25-national@{REFERENCE_BUILD}"
+    )
 
 
 def test_999_permille_mass_loss_fails_by_name() -> None:
@@ -792,6 +983,100 @@ def test_stale_weighted_integrity_exclusions_fail() -> None:
     assert "Stale reviewed input-mass exclusions" in gate.failures[0]
 
 
+def test_a_drop_past_the_limit_fails_inside_a_wide_tolerance() -> None:
+    """The symmetric tolerance above one fails no drop short of zero; the drop
+    limit bounds how much of its reference total a column may lose
+    (microcosm#1095)."""
+
+    policy = _input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9)
+    within = _input_mass_gate({"employment_income": 1.5}, policy=policy)
+    assert within.passed, within.failures
+    assert within.details["excess_drops"] == []
+    assert within.details["maximum_relative_drop"] == 0.9
+
+    beyond = _input_mass_gate({"employment_income": 0.5}, policy=policy)
+    assert not beyond.passed
+    assert beyond.details["excess_drops"] == ["employment_income"]
+    assert any(
+        failure.startswith("employment_income:")
+        and "beyond the reviewed maximum drop 0.9" in failure
+        for failure in beyond.failures
+    )
+    # Growth inside the tolerance still passes.
+    assert _input_mass_gate({"employment_income": 60.0}, policy=policy).passed
+
+
+def test_a_reviewed_exclusion_covers_a_drop_and_stays_live() -> None:
+    policy = _input_mass_policy(
+        relative_tolerance=6.0,
+        maximum_relative_drop=0.9,
+        reviewed_exclusions={"employment_income": _entry("Seeded drop entry.")},
+    )
+    gate = _input_mass_gate({"employment_income": 0.5}, policy=policy)
+    assert gate.passed, gate.failures
+    assert gate.details["excess_drops"] == []
+    # The column still drops past the limit, so the entry is not stale.
+    assert gate.details["stale_exclusions"] == []
+
+
+def test_a_thin_column_drop_fails_by_name_only() -> None:
+    reference = _input_mass_reference(
+        totals={"employment_income": 10.0, "rare_flag": 4.0},
+        carriers={"employment_income": 900, "rare_flag": 2},
+    )
+    gate = _input_mass_gate(
+        {"employment_income": 10.0, "rare_flag": 0.2},
+        reference,
+        policy=_input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9),
+        candidate_carriers={"employment_income": 950, "rare_flag": 2},
+    )
+    assert not gate.passed
+    rare = [failure for failure in gate.failures if failure.startswith("rare_flag:")]
+    assert len(rare) == 1
+    assert "figures are withheld" in rare[0]
+    assert "0.95" not in rare[0]
+
+
+@pytest.mark.parametrize("drop", [-0.1, 1.5, float("nan")])
+def test_the_drop_limit_is_a_share(drop) -> None:
+    with pytest.raises(ValueError, match="maximum_relative_drop"):
+        _input_mass_policy(maximum_relative_drop=drop)
+
+
+def test_a_thin_column_is_checked_but_its_figures_are_withheld() -> None:
+    """One or two source households on a side: the verdict stands, the
+    figures never reach the report (microcosm#1095)."""
+
+    reference = _input_mass_reference(
+        totals={"employment_income": 10.0, "rare_flag": 4.0},
+        carriers={"employment_income": 900, "rare_flag": 2},
+    )
+    gate = _input_mass_gate(
+        {"employment_income": 30.0, "rare_flag": 0.0},
+        reference,
+        candidate_carriers={"employment_income": 950, "rare_flag": 0},
+    )
+
+    assert not gate.passed
+    rare = [failure for failure in gate.failures if failure.startswith("rare_flag:")]
+    assert rare == [
+        "rare_flag: its mass check failed on a column one or two source "
+        "households carry on one side; the figures are withheld."
+    ]
+    employment = [f for f in gate.failures if f.startswith("employment_income:")]
+    assert employment and "30" in employment[0]
+    assert "rare_flag" not in gate.details["worst_drifts"]
+    assert "employment_income" in gate.details["worst_drifts"]
+    assert gate.details["withheld_thin_columns"] == ["rare_flag"]
+
+
+def test_without_carriers_nothing_is_withheld() -> None:
+    gate = _input_mass_gate({"employment_income": 0.0})
+
+    assert gate.details["withheld_thin_columns"] == []
+    assert "mass is zero" in gate.failures[0]
+
+
 def test_weighted_integrity_type_errors_are_named() -> None:
     with pytest.raises(TypeError, match="reference must be UKInputMassReference"):
         uk_input_mass_parity_gate(
@@ -806,8 +1091,11 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     register = uk_default_degenerate_reviewed_exclusions()
     assert set(register) == {
         "household.atomic_area_basis",
+        "household.beer_draught_share",
+        "household.cider_draught_share",
         "household.source_year",
         "person.tax_free_childcare_spend_routed_share",
+        "person.trading_allowance_full_relief",
     }
     basis = register["household.atomic_area_basis"]
     assert basis.approved_by == "juaristi22"
@@ -827,6 +1115,25 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     assert routed_share.approved_on == "2026-09-05"
     assert routed_share.expires_on == "2027-03-05"
     assert routed_share.reason.strip()
+    # The excise step writes HMRC's published draught-relief share to every
+    # household (microcosm#1359), on both lines.
+    for column in ("household.beer_draught_share", "household.cider_draught_share"):
+        draught = register[column]
+        assert draught.adjudication == "microcosm#1359"
+        assert draught.approved_by == "juaristi22"
+        assert draught.approved_on == "2026-10-27"
+        assert draught.expires_on == "2027-04-27"
+        assert not draught.release_lines
+        assert draught.reason.strip()
+    # The trading allowance receipts stage places no one in the full-relief
+    # group by ruling (microcosm#1439), so its carrier is all zero on both lines.
+    full_relief = register["person.trading_allowance_full_relief"]
+    assert full_relief.adjudication == "microcosm#1439"
+    assert full_relief.approved_by == "juaristi22"
+    assert full_relief.approved_on == "2026-11-11"
+    assert full_relief.expires_on == "2027-05-11"
+    assert not full_relief.release_lines
+    assert full_relief.reason.strip()
 
 
 def test_policy_of_record_is_immutable_and_loaded_once() -> None:
@@ -839,7 +1146,7 @@ def test_policy_of_record_is_immutable_and_loaded_once() -> None:
 
 
 def test_expired_degenerate_exclusion_fails_with_renewal_context() -> None:
-    entry = _entry("Fixture broadcast, admitted.")
+    entry = _entry("Fixture broadcast, admitted.", expires_on="2027-02-10")
     honored = uk_degenerate_release_surface_gate(
         _dataset(signal=7.0),
         reviewed_exclusions={"person.employment_income": entry},
@@ -869,8 +1176,12 @@ def test_out_of_force_exclusions_fail_at_every_column_state() -> None:
     dormant = uk_degenerate_release_surface_gate(
         _dataset(signal=7.0),
         reviewed_exclusions={
-            "person.employment_income": _entry("Fixture broadcast, admitted."),
-            "person.ghost_column": _entry("Column since dropped."),
+            "person.employment_income": _entry(
+                "Fixture broadcast, admitted.", expires_on="2027-02-10"
+            ),
+            "person.ghost_column": _entry(
+                "Column since dropped.", expires_on="2027-02-10"
+            ),
         },
         now=after_expiry,
     )
@@ -887,7 +1198,9 @@ def test_out_of_force_exclusions_fail_at_every_column_state() -> None:
     regained = uk_degenerate_release_surface_gate(
         _dataset(),
         reviewed_exclusions={
-            "person.employment_income": _entry("Fixture broadcast, admitted.")
+            "person.employment_income": _entry(
+                "Fixture broadcast, admitted.", expires_on="2027-02-10"
+            )
         },
         now=after_expiry,
     )
@@ -1011,3 +1324,173 @@ def test_degenerate_gate_skips_columns_the_release_boundary_drops() -> None:
         _dataset(), dropped_at_export={"household": ("not_a_column",)}
     )
     assert inert.passed is True and inert.details["dropped_at_export"] == []
+
+
+def test_the_gross_receipts_exclusions_are_signed_for_the_current_builds() -> None:
+    """microcosm#1550 stops writing self_employment_gross_receipts; the current
+    builds carry it, so it is excluded against them (María, 2026-11-10)."""
+
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_REVIEWED_EXPORT_EXCLUSIONS,
+    )
+    from microcosm.build.uk_runtime.weighted_integrity import (
+        uk_default_input_mass_reviewed_exclusions,
+    )
+
+    register = uk_default_input_mass_reviewed_exclusions()
+    lines = {
+        "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-20261107T020434Z-eeb6093e": (
+            "national",
+        ),
+        "microcosm-uk-2024-25-dense@uk-local-candidate-f100-s42-20261107T173210Z-38605444": (
+            "local",
+        ),
+    }
+    assert set(register) == set(lines)
+    for label, line in lines.items():
+        entry = register[label]["self_employment_gross_receipts"]
+        assert entry.approved_by == "juaristi22"
+        assert entry.approved_on == "2026-11-10"
+        assert entry.release_lines == line
+    assert "person.self_employment_gross_receipts" in UK_REVIEWED_EXPORT_EXCLUSIONS
+    gate = uk_export_surface_gate(
+        {"person.age", "person.self_employment_gross_receipts"},
+        {"person.age", "person.self_employment_gross_receipts"},
+    )
+    assert not gate.passed
+    assert gate.details["forbidden_candidate_columns"] == [
+        "person.self_employment_gross_receipts"
+    ]
+    assert uk_export_surface_gate(
+        {"person.age"}, {"person.age", "person.self_employment_gross_receipts"}
+    ).passed
+
+
+def test_a_signed_input_mass_entry_covers_the_missing_column_for_its_build() -> None:
+    policy = _input_mass_policy(
+        relative_tolerance=6.0,
+        maximum_relative_drop=0.9,
+        reviewed_exclusions={
+            "self_employment_gross_receipts": _entry("Seeded retired column.")
+        },
+    )
+    reference = _input_mass_reference(
+        totals={"employment_income": 10.0, "self_employment_gross_receipts": 5.0},
+    )
+    gate = _input_mass_gate({"employment_income": 10.0}, reference, policy=policy)
+    assert gate.passed, gate.failures
+    assert gate.details["stale_exclusions"] == []
+    unsigned = _input_mass_gate(
+        {"employment_income": 10.0},
+        reference,
+        policy=_input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9),
+    )
+    assert not unsigned.passed
+
+
+def test_the_input_mass_gate_continues_the_change_since_the_baseline() -> None:
+    """The review of microcosm#1574 (S5): each column's ratio to the fixed
+    baseline is the reference's ratio times this comparison's."""
+
+    import dataclasses
+
+    reference = dataclasses.replace(
+        _input_mass_reference(
+            totals={"employment_income": 10.0, "rare_flag": 4.0, "gone": 2.0},
+            carriers={"employment_income": 900, "rare_flag": 2, "gone": 50},
+        ),
+        since_baseline={
+            "baseline": "microcosm-uk-2024-25-national@baseline",
+            "ratios": {"employment_income": 0.5, "rare_flag": 1.0, "gone": 1.0},
+            "left": {"earlier": _left("thin", 0.7, "earlier")},
+        },
+    )
+    gate = _input_mass_gate(
+        {"employment_income": 12.0, "rare_flag": 4.0},
+        reference,
+        policy=_input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9),
+        candidate_carriers={"employment_income": 950, "rare_flag": 2},
+    )
+    # Thin and absent columns leave the chain and stay listed, beside the
+    # columns that left before; the rest continue it.
+    assert gate.details["since_baseline"] == {
+        "baseline": "microcosm-uk-2024-25-national@baseline",
+        "ratios": {"employment_income": pytest.approx(0.6)},
+        "left": {
+            "earlier": _left("thin", 0.7, "earlier"),
+            "gone": _left("absent", 1.0, REFERENCE_BUILD),
+            "rare_flag": _left("thin", 1.0, REFERENCE_BUILD),
+        },
+    }
+    plain = _input_mass_gate({"employment_income": 10.0})
+    assert "since_baseline" not in plain.details
+
+
+def _left(reason: str, last_ratio: float, build: str) -> dict:
+    return {
+        "reason": reason,
+        "last_ratio": last_ratio,
+        "last_build": f"microcosm-uk-2024-25-national@{build}",
+    }
+
+
+def test_a_column_that_leaves_the_chain_stays_listed() -> None:
+    """Round 2 of the review of microcosm#1574: a column driven down and then
+    thin, or carried to zero, used to vanish from the record. Three cuts in a
+    row, each comparing with the build before it."""
+
+    import dataclasses
+
+    policy = _input_mass_policy(relative_tolerance=6.0, maximum_relative_drop=0.9)
+
+    def since_baseline(reference_totals, reference_carriers, chain, totals, carriers):
+        reference = dataclasses.replace(
+            _input_mass_reference(totals=reference_totals, carriers=reference_carriers),
+            since_baseline=chain,
+        )
+        gate = _input_mass_gate(
+            totals, reference, policy=policy, candidate_carriers=carriers
+        )
+        return gate.details["since_baseline"]
+
+    # a falls to a fifth, b to a tenth on two source households, and c grows
+    # from a zero reference total: only a's ratio continues.
+    first = since_baseline(
+        {"a": 100.0, "b": 100.0, "c": 0.0},
+        {"a": 50, "b": 40, "c": 0},
+        {
+            "baseline": "microcosm-uk-2024-25-national@baseline",
+            "ratios": {"a": 0.2, "b": 0.2, "c": 0.5},
+            "left": {},
+        },
+        {"a": 20.0, "b": 10.0, "c": 5.0},
+        {"a": 50, "b": 2, "c": 10},
+    )
+    assert first["ratios"] == {"a": pytest.approx(0.04)}
+    assert first["left"] == {
+        "b": _left("thin", 0.2, REFERENCE_BUILD),
+        "c": _left("zero_reference_total", 0.5, REFERENCE_BUILD),
+    }
+    # Carried to zero, as under a reviewed exclusion: a records zero once.
+    second = since_baseline(
+        {"a": 20.0, "b": 10.0, "c": 5.0},
+        {"a": 50, "b": 2, "c": 10},
+        first,
+        {"a": 0.0, "b": 10.0, "c": 5.0},
+        {"a": 0, "b": 2, "c": 10},
+    )
+    assert second["ratios"] == {"a": 0.0}
+    assert second["left"] == first["left"]
+    # Then its reference total is zero; it leaves, and stays listed too.
+    third = since_baseline(
+        {"a": 0.0, "b": 10.0, "c": 5.0},
+        {"a": 0, "b": 2, "c": 10},
+        second,
+        {"a": 0.0, "b": 10.0, "c": 5.0},
+        {"a": 0, "b": 2, "c": 10},
+    )
+    assert third["ratios"] == {}
+    assert third["left"] == {
+        "a": _left("zero_reference_total", 0.0, REFERENCE_BUILD),
+        **first["left"],
+    }

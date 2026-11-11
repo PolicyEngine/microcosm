@@ -449,6 +449,47 @@ def test_bus_engine_parity_marks_each_area_against_the_engine() -> None:
     assert ni["within_tolerance"] is False and drifted["within_tolerance"] is False
 
 
+def test_bus_engine_parity_ties_the_receipts_factor_to_the_engines_index() -> None:
+    """microcosm#1331: the fare receipts move on the engine's index, so they tie."""
+
+    from microcosm.build.uk_runtime.bus_fare_pricing import (
+        UK_ENGINE_BUS_AREA_BY_STAGE_AREA,
+        bus_engine_parity,
+    )
+    from microcosm.build.uk_runtime.ledger_targets import (
+        uk_bus_fare_alignment_factors,
+    )
+
+    prices = bus_fare_prices(_declared(), allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    areas = {
+        prices.london.label: prices.london,
+        **{area.label: area for area in prices.other_by_region.values()},
+    }
+    factors = uk_bus_fare_alignment_factors(2024, 2025)
+    engine = {
+        "boardings_per_trip": {
+            UK_ENGINE_BUS_AREA_BY_STAGE_AREA[label]: area.boardings_per_trip
+            for label, area in areas.items()
+        },
+        "yield_per_boarding": {
+            UK_ENGINE_BUS_AREA_BY_STAGE_AREA[label]: area.yield_per_fare_paying_boarding
+            for label, area in areas.items()
+        },
+        "benchmark_year": 2024,
+        "local_bus_fares_index_ratio": dict(factors),
+    }
+    parity = bus_engine_parity(prices, engine, alignment_factors=factors)
+    assert set(parity["fares_index_ratio"]) == {"LONDON", "ENGLAND_OUTSIDE_LONDON"}
+    assert parity["within_tolerance"] is True
+    # An engine still on the calendar factor outside London misses by 1.3%.
+    engine["local_bus_fares_index_ratio"]["ENGLAND_OUTSIDE_LONDON"] = 1.112
+    drifted = bus_engine_parity(prices, engine, alignment_factors=factors)
+    check = drifted["fares_index_ratio"]["ENGLAND_OUTSIDE_LONDON"]
+    assert check["within_tolerance"] is False and drifted["within_tolerance"] is False
+    # Without factors, or an engine without the index, there is nothing to tie.
+    assert "fares_index_ratio" not in bus_engine_parity(prices, engine)
+
+
 def _journey_cell(area: str, fact_period: str) -> TargetSpec:
     return TargetSpec(
         name=f"dft.bus_journeys.{area}",

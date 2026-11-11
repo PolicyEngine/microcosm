@@ -14,6 +14,7 @@ from microcosm.build.uk_runtime.local_doctrine import (
     UKLocalSolveDoctrine,
     uk_local_doctrine_with_overrides,
     uk_local_target_loss_weights,
+    uk_weight_grains,
 )
 from microcosm.build.uk_runtime.target_weights import (
     NATION_REGION_GRAIN,
@@ -450,3 +451,31 @@ def test_a_share_equal_to_its_floor_meets_it() -> None:
         rows, weights, floors={"domestic_energy": 0.025}
     )
     assert receipt["families"]["domestic_energy"]["status"] == "met"
+
+
+def test_grain_equal_weighs_the_brma_rows_inside_the_authority_grain():
+    """microcosm#1305 review: no rule gives the 18 BRMA rows a grain of their own.
+
+    Under ``grain_equal`` raw labels would make ``brma`` a fourth grain, with a
+    quarter of the loss for 18 rows; mapped into ``la``, every grain keeps the
+    share it had without them.
+    """
+
+    base = ["constituency"] * 650 + ["la"] * 361 + ["national"] * 364
+    with_brma = base[:1011] + ["brma"] * 18 + base[1011:]
+
+    def shares(labels):
+        weights = np.asarray(uk_local_target_loss_weights(labels, rule="grain_equal"))
+        grains = np.asarray(uk_weight_grains(labels))
+        return {
+            grain: float(weights[grains == grain].sum() / weights.sum())
+            for grain in sorted(set(grains))
+        }
+
+    assert shares(with_brma) == pytest.approx(shares(base))
+    assert set(shares(with_brma)) == {"constituency", "la", "national"}
+    assert uk_weight_grains(["brma", "la", "constituency"]) == [
+        "la",
+        "la",
+        "constituency",
+    ]

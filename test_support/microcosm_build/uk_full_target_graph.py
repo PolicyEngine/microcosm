@@ -50,7 +50,10 @@ from microcosm.graph import (
 )
 from test_support.microcosm_build.uk_atomic_support_fixtures import (
     toy_support_sources,
+    write_toy_brma_area_layer,
+    write_toy_private_rent_resources,
     write_toy_property_resources,
+    write_toy_rfdr_area_layer,
     write_toy_supports,
 )
 from test_support.microcosm_build.uk_full_calibration_graph import (
@@ -348,6 +351,9 @@ def build(
                     # microcosm#1240: the atomic assignment runs the value
                     # and band nodes, which read the toy knots and band mix.
                     **write_toy_property_resources(tmp_path / "property"),
+                    **write_toy_brma_area_layer(tmp_path / "brma"),
+                    **write_toy_private_rent_resources(tmp_path / "rent"),
+                    **write_toy_rfdr_area_layer(tmp_path / "rfdr"),
                 }
                 if geography_assignment == "atomic"
                 else {}

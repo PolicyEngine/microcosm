@@ -35,6 +35,26 @@
       "release_lines": [
         "local"
       ]
+    },
+    "constituency/S14000027": {
+      "reason": "Gate-only sign-off of the constituency support floor for S14000027 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261018T161007Z-35fb4c89 (full gate report sha256 46d42e6abf5fa8eaf08e3301a982703f113838c41cb7869340a3a41bafc6407f) the area missed the ESS-50 floor. It stays in the solve with its measured support and is flagged support_below_floor in the build's area-support table; consumers must treat its estimates as unsupported. Re-measured on every candidate: a build in which the area meets every floor fails the entry as stale.",
+      "approved_by": "juaristi22",
+      "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1310).",
+      "approved_on": "2026-10-19",
+      "expires_on": "2027-01-19",
+      "release_lines": [
+        "local"
+      ]
+    },
+    "local_authority/S12000013": {
+      "reason": "Gate-only sign-off of the local-authority support floor for Na h-Eileanan Siar (S12000013) on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261018T161007Z-35fb4c89 (full gate report sha256 46d42e6abf5fa8eaf08e3301a982703f113838c41cb7869340a3a41bafc6407f) the area missed the ESS-50 floor. It stays in the solve with its measured support and is flagged support_below_floor in the build's area-support table; consumers must treat its estimates as unsupported. Re-measured on every candidate: a build in which the area meets every floor fails the entry as stale.",
+      "approved_by": "juaristi22",
+      "adjudication": "Gate-only sign-off of the local release's measured build, drafted from its run (microcosm#1301, microcosm#1310).",
+      "approved_on": "2026-10-19",
+      "expires_on": "2027-01-19",
+      "release_lines": [
+        "local"
+      ]
     }
   },
   "bound_despite_support_floor": {

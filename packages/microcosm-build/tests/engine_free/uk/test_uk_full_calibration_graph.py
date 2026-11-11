@@ -267,7 +267,10 @@ def binding_solver():
 def test_orrery_summary_replays_dense_and_size_artifacts_without_solving(
     k, tmp_path, monkeypatch
 ):
-    from microcosm.build.uk_runtime.orrery_contract import UK_SUMMARY_PROVIDERS
+    from microcosm.build.uk_runtime.orrery_contract import (
+        UK_SUMMARY_PROVIDERS,
+        public_summary_findings,
+    )
     from microcosm.graph import (
         collect_execution_evidence,
         graph_schema,
@@ -314,11 +317,9 @@ def test_orrery_summary_replays_dense_and_size_artifacts_without_solving(
     )
     rows = summary["tables"]["targets"]
     assert rows[0]["target"] == expected.diagnostics[0].target
-    assert rows[0]["achieved"] == expected.diagnostics[0].final_estimate
-    assert (
-        rows[0]["residual"]
-        == expected.diagnostics[0].final_estimate - expected.diagnostics[0].target
-    )
+    # The summaries may be published, so they carry no row's model figures
+    # (Vahid's review of #1396, M1); the diagnostics keep them.
+    assert "achieved" not in rows[0] and "residual" not in rows[0]
     assert rows[0]["uncertainty"]["status"] == "not_recorded"
     assert summary["overview"]["final_weights"]["total"] == float(
         expected.weights.sum()
@@ -346,6 +347,8 @@ def test_orrery_summary_replays_dense_and_size_artifacts_without_solving(
     )
     assert {row["status"] for row in preflight["tables"]["gates"]} == {"passed"}
     assert "details" not in preflight["tables"]["gates"][0]
+    assert "failures" not in preflight["tables"]["gates"][0]
+    assert public_summary_findings(evidence["summaries"]) == []
     serialized = json.dumps(evidence)
     assert '"household_ids":' not in serialized
     assert '"pool_row_indices":' not in serialized

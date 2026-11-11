@@ -65,7 +65,7 @@ def test_etb_vat_cleaning_drops_donors_with_no_expenditure_after_vat() -> None:
     assert donor.empty
     assert donor.attrs[UK_ETB_VAT_DONOR_RATE_RECEIPT] == {
         "rate_bounds": [0.0, 1.0],
-        "rows_dropped_no_expenditure_after_vat": "<10",
+        "rows_dropped_no_expenditure_after_vat": "<3",
         "rows_capped_at_upper_bound": 0,
     }
 
@@ -84,9 +84,9 @@ def test_etb_vat_cleaning_caps_rates_above_one() -> None:
     assert donor["full_rate_vat_expenditure_rate"].between(0.0, 1.0).all()
     receipt = donor.attrs[UK_ETB_VAT_DONOR_RATE_RECEIPT]
     # Donor counts are banded (microcosm#1164): an extreme-value count under
-    # ten is "<10"; zero stays zero. The receipt records no donor size, which
+    # three is "<3"; zero stays zero. The receipt records no donor size, which
     # beside the donor year's sample size would give the dropped count back.
-    assert receipt["rows_capped_at_upper_bound"] == "<10"
+    assert receipt["rows_capped_at_upper_bound"] == "<3"
     assert receipt["rows_dropped_no_expenditure_after_vat"] == 0
     assert "donor_rows" not in receipt
 

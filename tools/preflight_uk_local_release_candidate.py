@@ -36,7 +36,11 @@ import sys
 from datetime import date
 from pathlib import Path
 
-SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
+from microcosm.data.gate_signing_keys import (
+    UK_GATE_SIGNING_KEY_ENV,
+    unregistered_gate_signing_key_problem,
+)
+
 PIN_NAMES = ("spine", "ladder", "facts", "manifest")
 RELEASE_BLOCKING = "release_blocking"
 
@@ -60,21 +64,27 @@ def check_env(
 ) -> list[str]:
     env = os.environ if environ is None else environ
     failures: list[str] = []
-    key = env.get(SIGNING_KEY_ENV, "")
+    key = env.get(UK_GATE_SIGNING_KEY_ENV, "")
     if not key.strip():
         failures.append(
-            f"{SIGNING_KEY_ENV} is not set: the gate report cannot be signed."
+            f"{UK_GATE_SIGNING_KEY_ENV} is not set: the gate report cannot be signed."
         )
     else:
         try:
             raw = base64.b64decode(key.strip(), validate=True)
             if len(raw) != 32:
                 failures.append(
-                    f"{SIGNING_KEY_ENV} decodes to {len(raw)} bytes; the gate "
+                    f"{UK_GATE_SIGNING_KEY_ENV} decodes to {len(raw)} bytes; the gate "
                     "battery signs only with exactly 32."
                 )
+            else:
+                problem = unregistered_gate_signing_key_problem(
+                    "uk", raw, purpose="sign"
+                )
+                if problem is not None:
+                    failures.append(f"{UK_GATE_SIGNING_KEY_ENV}: {problem}")
         except Exception:
-            failures.append(f"{SIGNING_KEY_ENV} is not valid base64.")
+            failures.append(f"{UK_GATE_SIGNING_KEY_ENV} is not valid base64.")
     if not pins_path.exists():
         failures.append(f"pins file missing: {pins_path}")
         return failures
@@ -437,67 +447,6 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     return failures
 
 
-#: The opt-in incumbent comparison's files in a run directory, which the
-#: assembler ships byte for byte when ``--incumbent-manifest`` attaches them.
-INCUMBENT_COMPARISON_FILES = (
-    "score_vs_incumbent.json",
-    "incumbent_surface_evaluation.json",
-)
-
-
-def candidate_disclosure_warnings(
-    candidate_dir: Path, *, incumbent_manifest: Path | None = None
-) -> list[str]:
-    """The release's disclosure walk over a run's to-be-shipped JSON (microcosm#1301).
-
-    The assembler ships the candidate manifest, the original diagnostics and
-    the signed local gate report byte for byte, and, when the incumbent
-    comparison is attached, the score, the surface evaluation and the
-    extraction manifest (``incumbent_manifest``). So a per-area support figure
-    in one of them, or a false match, shows here after the build rather than
-    first at assembly. The comparison's files are walked whenever the run
-    directory holds them. Each file is read and walked as the contract does
-    (:func:`microcosm.data.contract._uk_dense_disclosure_file_warnings`), so a
-    file with NaN or a nesting too deep to walk is reported rather than
-    skipped or crashing the pre-flight. Like the contract, it warns and never
-    fails.
-    """
-
-    from microcosm.data.contract import _uk_dense_disclosure_file_warnings
-
-    manifest_path = candidate_dir / "rowwise_candidate_manifest.json"
-    try:
-        outputs = json.loads(manifest_path.read_text()).get("outputs") or {}
-    except (OSError, ValueError, AttributeError, RecursionError):
-        # check_candidate_dir reports a missing or unreadable manifest, and
-        # the walk below reports one it cannot walk.
-        outputs = {}
-    if not isinstance(outputs, dict):
-        outputs = {}
-
-    def shipped(key: str, pattern: str) -> Path | None:
-        # The manifest's own output path, as the assembler reads it.
-        entry = outputs.get(key)
-        if isinstance(entry, dict) and entry.get("path"):
-            path = Path(str(entry["path"]))
-            return path if path.is_absolute() else candidate_dir / path
-        matches = sorted(glob.glob(str(candidate_dir / pattern)))
-        return Path(matches[0]) if matches else None
-
-    paths = [
-        manifest_path,
-        shipped("calibration_diagnostics", "*.diagnostics.json"),
-        shipped("local_gate_report", "*local_gates.json"),
-        *(candidate_dir / name for name in INCUMBENT_COMPARISON_FILES),
-        incumbent_manifest,
-    ]
-    warnings: list[str] = []
-    for path in paths:
-        if path is not None and path.is_file():
-            warnings += _uk_dense_disclosure_file_warnings(path)
-    return warnings
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -514,7 +463,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help=(
             "with --candidate-dir, the incumbent extraction manifest assembly "
-            "will attach; the disclosure walk reads it too"
+            "will attach"
         ),
     )
     parser.add_argument(
@@ -524,8 +473,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.incumbent_manifest is not None and args.candidate_dir is None:
         parser.error("--incumbent-manifest needs --candidate-dir")
     failures: list[str] = []
-    # The contract's warnings (the disclosure walk, microcosm#1301) are
-    # printed but never fail the pre-flight.
+    # The contract's warnings are printed but never fail the pre-flight.
     warnings: list[str] = []
     if args.release_dir is not None:
         from microcosm.data.contract import ReleaseContractError, validate_release_dir
@@ -561,9 +509,6 @@ def main(argv: list[str] | None = None) -> int:
             and not args.incumbent_manifest.is_file()
         ):
             failures.append(f"incumbent manifest missing: {args.incumbent_manifest}")
-        warnings += candidate_disclosure_warnings(
-            args.candidate_dir, incumbent_manifest=args.incumbent_manifest
-        )
     if not args.env and args.candidate_dir is None and args.release_dir is None:
         parser.error(
             "nothing to check: pass --env, --candidate-dir and/or --release-dir"

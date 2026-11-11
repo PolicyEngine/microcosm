@@ -73,12 +73,10 @@ __all__ = [
 ]
 
 UK_CANDIDATE_DATASET_NAME = "microcosm_uk_2024_25"
-# The label names the pinned reference artifact exactly: the 2024-25 line's
-# published enhanced_frs_2024_25.h5 (no separate "recalibrated" variant
-# exists at this vintage; the June report strings keep their own label).
-# After the swap, "reference" becomes the previous certified microcosm line
-# once a second certified cut exists; that later increment flips this value.
-UK_REFERENCE_DATASET_NAME = "enhanced_frs_2024_25"
+# The export-surface reference is the current build of the cut's own line
+# (microcosm#1095), as the cut's reference step recorded it; the reports name
+# the build. Until then it was the published enhanced_frs_2024_25.h5.
+UK_REFERENCE_DATASET_NAME = "current_build"
 UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
 
 
@@ -137,250 +135,86 @@ class UKZeroWeightStratumDeclaration:
         object.__setattr__(self, "selector", dict(sorted(normalized.items())))
 
 
+# No household may carry zero weight (microcosm#1095, re-declared from #688):
+# the two SPI-synthetic strata keep their selectors at a cap of 0, so a
+# zero-weight row there is named by stratum, and one anywhere else fails as
+# unmatched. The June caps of 100,000 counted 10,000 SPI-synthetic households
+# times ten output-area clones, a grain the national seam no longer builds.
 UK_DEFAULT_ZERO_WEIGHT_STRATA: tuple[UKZeroWeightStratumDeclaration, ...] = (
     UKZeroWeightStratumDeclaration(
-        name="june_spi_synthetic_base",
+        name="spi_synthetic_base",
         selector={_SPI_FLAG: True, _CAPITAL_GAINS_FLAG: False},
-        maximum_zero_weight_rows=100_000,
+        maximum_zero_weight_rows=0,
         reason=(
-            "The certified June FRS-derived artifact ships 100,000 zero-weight "
-            "SPI-synthetic non-capital-gains rows."
+            "No SPI-synthetic non-capital-gains row may carry zero weight: the "
+            "SPI stage gives the stacked donors their prior mass before "
+            "calibration, and the national seam's calibrated control of "
+            "2026-10-28 (4374e0bf) ships none at zero."
         ),
     ),
     UKZeroWeightStratumDeclaration(
-        name="june_spi_synthetic_capital_gains",
+        name="spi_synthetic_capital_gains",
         selector={_SPI_FLAG: True, _CAPITAL_GAINS_FLAG: True},
-        maximum_zero_weight_rows=100_000,
+        maximum_zero_weight_rows=0,
         reason=(
-            "The certified June FRS-derived artifact ships 100,000 zero-weight "
-            "SPI-synthetic capital-gains-clone rows."
+            "No SPI-synthetic capital-gains-clone row may carry zero weight: the "
+            "SPI stage gives the stacked donors their prior mass before "
+            "calibration, and the national seam's calibrated control of "
+            "2026-10-28 (4374e0bf) ships none at zero."
         ),
     ),
 )
 
 
-# Reviewed candidate-only fields from the June UK prototype.  They are source
-# provenance or genuine additional model inputs, not incumbent-surface losses.
+# Reviewed columns a candidate may export beyond the reference's surface.
+# Since microcosm#1095 the reference is the current build of the cut's own
+# line, so this lists only what the current national build does not export:
+# the dense line's geography and clone columns, which its own reference
+# carries, and any column new since the reference, each naming its PR. An
+# entry the reference now carries is reported as redundant, never failed;
+# the enhanced-FRS era's 224 entries the current build carries left with
+# it.
 UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
-    "benunit.child_benefit_opts_out",
-    "benunit.frs_benunit_capital",
-    "benunit.has_mixed_age_couple_pension_credit_saving",
-    "benunit.liable_for_share_of_household_rent",
-    "benunit.pension_credit_reported_capital",
-    "benunit.uc_deduction_combination",
-    "benunit.uc_deduction_random_draw",
-    "benunit.uc_deduction_type_random_draw",
-    "benunit.uc_latent_deduction_rate",
-    "benunit.uc_reported_capital",
-    "benunit.would_claim_uc_childcare",
     "household.atomic_area_basis",
     "household.atomic_area_code",
     "household.atomic_area_system",
-    "household.bus_fare_spending",
-    "household.bus_subsidy_spending",
     "household.cash_isa",
-    # #1045: the CGT support split's family copy count.
-    "household.cgt_support_copies",
-    "household.cgt_support_copy_index",
-    # #1063: the residential split's arm flag and index.
-    "household.household_is_cgt_residential_clone",
-    "household.cgt_residential_clone_index",
     "household.household_clone_index",
-    # microcosm#1114: the three area codes leave every artifact under the
-    # consumers' names (geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS); the
-    # ladder names never reach an artifact and uk_export_candidate_columns
-    # translates them before this list is compared.
     "household.constituency_code_oa",
-    "household.consumer_debt",
-    # microcosm#932: the five nation-native aliases of the atomic assignment
-    # (output_area_code, data_zone_code, intermediate_zone_code,
-    # super_data_zone_code, district_electoral_area_code) never reach an
-    # artifact: graph_terminal._tables drops them at the single-year export
-    # boundary. They are listed because the full-build export-surface gate
-    # reads the graph frame's in-memory columns (full_gates.py,
-    # ``parity_evidence.candidate_columns``) before that boundary, and would
-    # otherwise flag them as unreviewed extras (the F8 gap on #932).
     "household.data_zone_code",
     "household.district_electoral_area_code",
-    "household.electricity_consumption",
-    "household.gas_consumption",
     "household.geography_household_key",
-    "household.has_fuel_consumption",
-    # The LCFS prepayment-meter flag (microcosm#1110): policyengine-uk reads it
-    # from 2.123.3 for the Energy Price Guarantee prepayment discount, and an
-    # older engine ignores the column; the incumbent does not carry it yet
-    # (uk-data#539).
-    "household.uses_energy_prepayment_meter",
-    "household.household_is_capital_gains_clone",
-    "household.household_is_cgt_support_copy",
-    "household.household_is_spi_income_band_donor",
-    "household.household_is_spi_synthetic",
-    # #1003: the WAS Lifetime ISA stage's household total and person cells.
-    "household.household_lifetime_isa_balance",
-    # #930: the NTS bus-travel stage's household journey cell.
-    "household.household_local_bus_trips",
-    "household.spi_income_band_donor_lower_bound",
+    "household.in_rural_fuel_duty_relief_area",
     "household.intermediate_zone_code",
     "household.la_code_oa",
-    # #953: the engine's household local_authority enum input, written by the
-    # rowwise geography ladder from local_authority_code. The incumbent never
-    # carried it, so the coverage manifest cannot list it; this allow-list
-    # binds at the national release-cut export gate, and the rowwise lane's
-    # own guard is the ladder gate's code/member consistency check.
     "household.local_authority",
     "household.lsoa_code",
-    "household.mortgage_debt",
     "household.msoa_code",
-    "household.num_vehicles",
     "household.oa_code",
-    "household.ons_household_type",
     "household.output_area_code",
-    "household.private_pension_wealth",
-    "household.property_purchased",
-    "household.rail_usage",
     "household.region_code_oa",
     "household.stocks_and_shares_isa",
     "household.super_data_zone_code",
-    "person.a_and_e_visits",
-    "person.aa_category",
-    "person.admitted_patient_visits",
-    "person.age_left_full_time_education",
-    "person.age_started_or_accepted_current_education_or_training",
-    "person.attends_private_school",
-    "person.attends_private_school_random_draw",
-    "person.capital_gains_asset_type",
-    "person.capital_gains_badr",
-    "person.capital_gains_residential_property",
-    "person.cgt_residential_probability",
-    "person.bus_in_london_trips",
-    "person.bus_pass_eligible",
-    "person.care_hours",
-    "person.charitable_investment_gifts",
-    "person.dla_m_category",
-    "person.dla_sc_category",
-    "person.employment_sector",
-    "person.esa_health_condition_proxy",
-    "person.esa_includes_support_component",
-    "person.esa_support_group_proxy",
-    "person.gift_aid",
-    "person.has_lifetime_isa",
-    "person.highest_education",
-    "person.is_before_universal_credit_qualifying_young_person_terminal_date",
-    "person.is_blind",
-    "person.is_claimant_or_partner",
-    "person.is_engaged_in_owned_company_trade",
-    "person.is_hbai_dependent_child",
-    "person.is_in_non_advanced_education",
-    "person.is_parent",
-    "person.is_uc_claimant",
-    "person.legacy_jobseeker_proxy",
-    "person.lifetime_isa_balance",
-    "person.local_bus_single_fare_share",
-    "person.local_bus_trips",
-    "person.local_bus_use_band",
-    "person.loss_relief",
-    "person.ni_class_4_losses_brought_forward",
-    "person.ons_family_index",
-    "person.ons_family_role",
-    "person.other_local_bus_trips",
-    "person.outpatient_visits",
-    "person.owned_company_carries_on_property_business",
-    "person.owned_company_carries_on_trade",
-    "person.owned_company_income_share",
-    "person.owned_company_is_main_employment",
-    "person.pension_contributions_via_salary_sacrifice",
-    "person.pip_dl_category",
-    "person.pip_m_category",
-    "person.property_finance_costs",
-    "person.property_rental_income",
-    "person.receives_benefits_in_own_right",
-    "person.rent_paid_as_boarder",
-    "person.rent_paid_as_lodger",
-    "person.relationship_to_head",
-    "person.reports_outstanding_student_loan",
-    "person.salary_sacrifice_asked",
-    "person.salary_sacrifice_reported",
-    "person.sic_industry_division",
-    "person.stands_as_sole_owner_or_partner_of_company",
-    "person.statutory_paternity_pay",
-    "person.student_loan_balance",
-    "person.student_loan_plan",
-    "person.tax_free_childcare_spend_routed_share",
-    "person.trading_loss",
-    "person.uc_is_in_startup_period",
-    "person.uc_is_in_gainful_self_employment",
-    "person.is_looked_after_by_local_authority",
-    "person.would_claim_carers_allowance",
-    "person.would_claim_marriage_allowance",
-    "person.would_claim_scp",
-    "person.person_is_spi_income_band_carrier",
-    "person.person_is_spi_income_recipient",
-    # microcosm#1063 c9 (ruling 2026-10-02): every declared stage output the
-    # enhanced-FRS incumbent never carried is allow-listed rather than
-    # dropped, so the release candidate ships the spine's own surface. The
-    # certifier rehearsal R5 on the 2026-09-30 build named them: the source
-    # and support-channel lineage of the three entities, the council tax
-    # family (#934), the reported-benefit inputs the take-up stages read
-    # (the five internal disability carriers are not among them: they leave
-    # at the release boundary, UK_RELEASE_EXPORT_DROPPED_COLUMNS),
-    # the SPI channel's hmrc_spi_* leaves (#717), the FRS education and
-    # housing fields, the two raw FRS codes the spine fences
-    # (ossben_identifiable_subset, srp_regular_code5) and
-    # other_investment_income. Only incapacity_benefit_reported is dropped
-    # (UK_REVIEWED_EXPORT_EXCLUSIONS).
-    "benunit.benunit_source_id",
-    "benunit.benunit_support_channel",
-    "benunit.benunit_support_clone_index",
-    "benunit.dependent_children",
-    "household.council_tax_rebate",
-    "household.council_tax_reported",
-    "household.council_tax_single_adult_raw",
-    "household.household_source_id",
-    "household.household_support_channel",
-    "household.household_support_clone_index",
-    "household.num_bedrooms",
-    "household.source_household_id",
-    "household.source_household_key",
-    "household.source_year",
-    "household.subrent",
-    "person.disabled_students_allowance_eligible_expenses",
-    "person.free_school_breakfasts",
-    "person.hmrc_spi_assessable_income",
-    "person.hmrc_spi_employed_income",
-    "person.hmrc_spi_employment_benefits",
-    "person.hmrc_spi_employment_expenses",
-    "person.hmrc_spi_incapacity_benefit_income",
-    "person.hmrc_spi_miscellaneous_employment_income",
-    "person.hmrc_spi_other_income",
-    "person.hmrc_spi_other_social_security_income",
-    "person.hmrc_spi_pay",
-    "person.hmrc_spi_state_pension_income",
-    "person.hmrc_spi_taxable_termination_pay",
-    "person.hmrc_spi_total_earned_income",
-    "person.hmrc_spi_total_investment_income",
-    "person.hmrc_spi_unemployment_benefit_income",
-    "person.is_in_approved_training",
-    "person.ossben_identifiable_subset",
-    "person.other_investment_income",
-    "person.person_source_id",
-    "person.person_support_channel",
-    "person.person_support_clone_index",
-    "person.srp_regular_code5",
     "benunit.benunit_clone_index",
     "person.person_clone_index",
-    # microcosm#1194: the build identifiers the release keeps beside the
-    # renumbered ones (national_frame.UK_BUILD_IDENTIFIER_COLUMNS). The
-    # lineage columns above describe them.
-    "benunit.benunit_build_id",
-    "household.household_build_id",
-    "person.person_build_id",
-    # The months since each person's last birthday, stored by the root stage
-    # so the engine reads one date of birth everywhere (microcosm#1095).
-    "person.months_since_last_birthday",
     "household.itl1_code",
     "household.itl2_code",
     "household.itl3_code",
     "household.ward_code",
+    # New since the current builds (national eeb6093e, dense 38605444); each
+    # leaves once a promotion moves the reference past it (microcosm#1095).
+    # microcosm#1550 (microcosm#1095, P1): the PIP points the pip_points stage
+    # draws within the stored award, from which the engine derives the
+    # categories.
+    "person.pip_dl_points",
+    "person.pip_m_points",
+    # microcosm#1550 (microcosm#1439): the trading allowance claim status and
+    # the full-relief group's carrier.
+    "person.trading_allowance_claim_status",
+    "person.trading_allowance_full_relief",
+    # microcosm#1550 (microcosm#1095, Y1): the UC limited capability flags.
+    "person.uc_limited_capability_for_WRA",
+    "person.uc_limited_capability_for_work",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
@@ -389,15 +223,44 @@ UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
 )
 
 UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
-    "person.incapacity_benefit_reported": (
-        "The enhanced FRS stores this legacy reported-benefit input as an "
-        "all-zero layer; the candidate must drop dead zero layers."
-    ),
     "household.property_wealth": (
         "policyengine-uk derives property_wealth from main_residence_value, "
         "other_residential_property_value and non_residential_property_value; "
         "a persisted copy overrides that sum and has no uprating index, so the "
         "candidate must drop it (microcosm#1106, the uk-data#543 defect)."
+    ),
+    "person.pip_dl_category": (
+        "policyengine-uk derives pip_dl_category from pip_dl_points (8 points "
+        "for the standard rate, 12 for the enhanced) where no category is "
+        "supplied for the year; a persisted category would override the "
+        "points in every projected year, so the candidate carries the points "
+        "the pip_points stage draws within the stored award and drops the "
+        "category (microcosm#1095, P1; María's signature of 2026-11-09)."
+    ),
+    "person.pip_m_category": (
+        "policyengine-uk derives pip_m_category from pip_m_points (8 points "
+        "for the standard rate, 12 for the enhanced) where no category is "
+        "supplied for the year; a persisted category would override the "
+        "points in every projected year, so the candidate carries the points "
+        "the pip_points stage draws within the stored award and drops the "
+        "category (microcosm#1095, P1; María's signature of 2026-11-09)."
+    ),
+    "person.self_employment_gross_receipts": (
+        "microcosm#1550 (microcosm#1439) stops writing "
+        "self_employment_gross_receipts: the trading allowance stage stores "
+        "each trader's trading_allowance_claim_status and leaves gross receipts "
+        "at the engine's zero, since neither the FRS nor the SPI records them. "
+        "The current builds (national eeb6093e, dense 38605444) still export "
+        "the receipts encoding microcosm#1428 wrote, so the candidate drops the "
+        "column against them; the entry leaves once a promotion moves the "
+        "reference past it (microcosm#1095; María's signature of 2026-11-10)."
+    ),
+    "person.tax_free_savings_income": (
+        "policyengine-uk derives tax_free_savings_income as the sum of the ISA "
+        "interest it adds (individual_savings_account_interest_income); a "
+        "persisted copy overrides that sum and is never uprated, so the "
+        "candidate stores ISA interest apart from non-ISA interest under the "
+        "additive ISA income contract and drops it (microcosm#1360)."
     ),
 }
 
@@ -455,8 +318,8 @@ def uk_export_candidate_columns(frame: Any) -> set[str]:
     Structural id columns are not exported content (microcosm#1063 c9: the
     certifier rehearsal listed every id as an unreviewed extra), and the
     frame's household weights live beside the tables, so the surface carries
-    ``household.household_weight`` explicitly, as the enhanced-FRS reference
-    does.
+    ``household.household_weight`` explicitly, as the reference build's
+    surface does (the reference is measured with this function too).
     """
 
     from microcosm.build.uk_runtime.geography_ladder import (
@@ -940,8 +803,13 @@ def uk_export_surface_gate(
     *,
     allowed_extra_columns: Iterable[str] = UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
     reviewed_exclusions: Mapping[str, str] | None = None,
+    reference_name: str = UK_REFERENCE_DATASET_NAME,
 ) -> GateResult:
-    """Run the incumbent-compatible UK export-surface gate."""
+    """Compare the candidate's export surface with the reference build's.
+
+    ``reference_name`` labels the reference in the report: the binding
+    passes the build the cut's reference step recorded.
+    """
 
     candidate = {str(name) for name in candidate_columns}
     reference = {str(name) for name in reference_columns}
@@ -950,7 +818,7 @@ def uk_export_surface_gate(
         candidate,
         reference,
         candidate_name=UK_CANDIDATE_DATASET_NAME,
-        reference_name=UK_REFERENCE_DATASET_NAME,
+        reference_name=reference_name,
         allowed_extra_columns=allowed_extra_columns,
         reviewed_exclusions=exclusions,
     )
@@ -959,7 +827,7 @@ def uk_export_surface_gate(
     if not candidate:
         failures.append("UK candidate export-surface evidence is empty.")
     if not reference:
-        failures.append("Enhanced-FRS reference export-surface evidence is empty.")
+        failures.append("The reference build's export-surface evidence is empty.")
     if forbidden:
         failures.append(
             f"{UK_CANDIDATE_DATASET_NAME}: exports {len(forbidden)} reviewed "
@@ -969,7 +837,15 @@ def uk_export_surface_gate(
         name=result.name,
         passed=not failures,
         failures=tuple(failures),
-        details={**dict(result.details), "forbidden_candidate_columns": forbidden},
+        details={
+            **dict(result.details),
+            "forbidden_candidate_columns": forbidden,
+            # Declared extras the reference now carries: reported, not failed,
+            # since a promotion moves the reference past them (microcosm#1095).
+            "redundant_allowed_extra_columns": sorted(
+                {str(name) for name in allowed_extra_columns} & reference
+            ),
+        },
     )
 
 
@@ -977,7 +853,7 @@ def uk_target_surface_gate(
     candidate_targets: Iterable[str],
     reference_targets: Iterable[str],
 ) -> GateResult:
-    """Require the UK candidate target surface to cover enhanced FRS."""
+    """Require the UK candidate target surface to cover the reference register."""
 
     candidate = {str(name) for name in candidate_targets}
     reference = {str(name) for name in reference_targets}
@@ -985,13 +861,13 @@ def uk_target_surface_gate(
         candidate,
         reference,
         candidate_name=UK_CANDIDATE_DATASET_NAME,
-        reference_name=UK_REFERENCE_DATASET_NAME,
+        reference_name="reference_register",
     )
     failures = [*result.failures]
     if not candidate:
         failures.append("UK candidate target-surface evidence is empty.")
     if not reference:
-        failures.append("Enhanced-FRS reference target-surface evidence is empty.")
+        failures.append("Reference register target-surface evidence is empty.")
     return GateResult(
         name=result.name,
         passed=not failures,

@@ -21,6 +21,10 @@ from test_support.microcosm_build.uk_graph_terminal import _frame
 from test_support.microcosm_build.uk_hierarchy_fixtures import (
     uk_fixture_hierarchy,
 )
+from test_support.microcosm_diagnostics.json_schema import (
+    load_strict_json,
+    published_json_schema_errors,
+)
 
 
 def test_export_drops_native_aliases_and_keeps_identity_keyed_assignment(tmp_path):
@@ -510,6 +514,7 @@ def test_terminal_byte_materialization_recreates_exact_files(tmp_path):
 
 def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypatch):
     import json
+    from datetime import date
     from types import SimpleNamespace
 
     from microcosm.build.uk_runtime import graph_targets, local_rowwise
@@ -534,6 +539,7 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
         ),
     )
     calls = []
+    reviewed_on = []
 
     def solve(frame, training, **kwargs):
         calls.append(
@@ -544,6 +550,7 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
                 kwargs["selection_initial_lambda"],
             )
         )
+        reviewed_on.append(kwargs["now"])
         return SimpleNamespace(weights=np.ones(2), selected_support=np.array([0, 2]))
 
     monkeypatch.setattr(local_rowwise, "solve_uk_rowwise_weights_under_doctrine", solve)
@@ -580,6 +587,8 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
             "baseline_pi_floor": 0.0,
             # Every fold's budget search starts where the main search started.
             "selection_initial_lambda": 1.7e-7,
+            # Inherited from uk.full.problem: the binding's review date.
+            "review_date": "2026-10-20",
         },
         artifacts={
             "preflight": SimpleNamespace(payload=preflight_payload(), key="a" * 64),
@@ -602,6 +611,160 @@ def test_holdout_kernel_preserves_existing_rotations_and_seed_settings(monkeypat
         key: value for key, value in result.items() if key != "graph_binding"
     } == expected
     assert calls == [(42, 2, 17, 1.7e-7)] * 10
+    # Every fold the kernel ran reviewed the binding on the build's review
+    # date (microcosm#1278); the direct call above reviewed on today's.
+    assert reviewed_on == [date(2026, 10, 20)] * 5 + [None] * 5
+
+
+def _bound_problem_inputs():
+    """A clone frame and a local problem that binds two fenced families."""
+
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import local_rowwise
+    from test_support.microcosm_build.uk_local_rowwise import (
+        _assigned,
+        _clone_frame,
+    )
+
+    problem = local_rowwise.build_uk_rowwise_local_matrix(
+        pd.DataFrame(
+            {"households": [2.0, 1.0, 3.0], "tenure/social_rent": [1.0, 0.0, 1.0]},
+            index=[101, 102, 103],
+        ),
+        _assigned(),
+        pd.DataFrame(
+            {
+                "code": ["E001", "S001"],
+                "households": [4.0, 2.0],
+                "tenure/social_rent": [1.0, 1.0],
+            }
+        ),
+    )
+    return SimpleNamespace(
+        frame=_clone_frame(),
+        local_problem=problem,
+        national_rows=None,
+        bound_families=["census_households/constituency", "tenure/constituency"],
+        selection=None,
+        selected=(),
+        metadata={},
+        full=None,
+        cross=None,
+        rung=None,
+        country_only=False,
+    )
+
+
+def test_problem_kernel_reviews_the_binding_on_the_build_review_date(monkeypatch):
+    """microcosm#1278: uk.full.problem reviews the local binding
+    adjudications on its review_date parameter, not the wall clock, so a date
+    past the committed register's windows is refused."""
+    from datetime import date
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import graph_targets
+    from microcosm.build.uk_runtime.graph_targets import UKFullProblemKernel
+
+    inputs = _bound_problem_inputs()
+    monkeypatch.setattr(
+        graph_targets, "reconstruct_uk_full_problem_inputs", lambda context: inputs
+    )
+
+    def context(review_date):
+        return SimpleNamespace(
+            params={"target_weight_rule": "uniform", "review_date": review_date},
+            artifacts={},
+        )
+
+    class ReviewedError(Exception):
+        pass
+
+    reviewed_on = []
+
+    def prepare(*args, **kwargs):
+        reviewed_on.append(kwargs["now"])
+        raise ReviewedError
+
+    with monkeypatch.context() as patch:
+        patch.setattr(graph_targets, "prepare_uk_full_solve", prepare)
+        with pytest.raises(ReviewedError):
+            UKFullProblemKernel().run(context("2026-10-20"))
+    assert reviewed_on == [date(2026, 10, 20)]
+    with pytest.raises(ValueError, match="outside its reviewed window"):
+        UKFullProblemKernel().run(context("2099-01-01"))
+
+
+def test_holdout_kernel_refuses_a_review_date_past_the_binding_windows(monkeypatch):
+    """microcosm#1278: every fold of the rotated holdout reviews the binding
+    on the review date the holdout inherits from uk.full.problem."""
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import graph_targets, local_rowwise
+    from microcosm.build.uk_runtime.graph_terminal import UKFullHoldoutKernel
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+    from microcosm.calibrate import Target, TargetSet, build_constraint_matrix
+    from microcosm.calibrate.artifacts import encode_problem
+    from test_support.microcosm_build.uk_full_calibration_graph import (
+        preflight_payload,
+    )
+
+    # Five areas, so each of the five folds holds one out; the household
+    # counts bind a fenced family.
+    household_ids = [101, 102, 103, 104, 105]
+    area_codes = ["E001", "W001", "S001", "N001", "E002"]
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2, 3, 4, 5],
+                "person_household_id": household_ids,
+                "person_benunit_id": [11, 12, 13, 14, 15],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [11, 12, 13, 14, 15]}),
+        household=pd.DataFrame(
+            {"household_id": household_ids, "household_weight": [1.0] * 5}
+        ),
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+    )
+    problem = local_rowwise.build_uk_rowwise_local_matrix(
+        pd.DataFrame({"households": np.ones(5)}, index=household_ids),
+        pd.Series(area_codes, index=household_ids),
+        pd.DataFrame({"code": area_codes, "households": [2.0] * 5}),
+    )
+    inputs = SimpleNamespace(
+        frame=frame, local_problem=problem, national_rows=None, bound_families=None
+    )
+    monkeypatch.setattr(
+        graph_targets, "reconstruct_uk_full_problem_inputs", lambda context: inputs
+    )
+    original = encode_problem(
+        build_constraint_matrix(
+            frame,
+            TargetSet([Target("count", "household", lambda f: np.ones(5), 5.0)]),
+            "household",
+        ),
+        entity_ids=household_ids,
+    )
+    context = SimpleNamespace(
+        params={
+            "skip_holdout": False,
+            "target_weight_rule": "uniform",
+            "epochs": 1,
+            "learning_rate": 0.1,
+            "seed": 42,
+            "selection_pi_hi": 1.0,
+            "baseline_pi_floor": 0.0,
+            "review_date": "2099-01-01",
+        },
+        artifacts={
+            "preflight": SimpleNamespace(payload=preflight_payload(), key="a" * 64),
+            "problem": SimpleNamespace(payload=original, key="b" * 64),
+        },
+    )
+    with pytest.raises(ValueError, match="outside its reviewed window"):
+        UKFullHoldoutKernel().run(context)
 
 
 def test_holdout_kernel_refuses_a_floor_its_folds_cannot_honour():
@@ -788,10 +951,18 @@ def test_both_gate_kernels_are_registered():
     assert type(registry.get(UKFullHoldoutKernel.ref)) is UKFullHoldoutKernel
 
 
-def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
-    monkeypatch,
-):
-    import json
+def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
+    """Run the terminal gate kernel on a two-household fixture.
+
+    Rebuilding the diagnostics is forbidden, so a returned document proves
+    the kernel reused the decoded calibration result.
+
+    ``solved``, a list, receives the calibration result the kernel decodes.
+
+    ``brma_row`` adds a Scottish BRMA rent row far from its target, resting
+    on two source households; every row carries its figures (María's ruling
+    of 2026-10-26).
+    """
     from dataclasses import replace
     from types import SimpleNamespace
 
@@ -800,7 +971,6 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     from microcosm.build.uk_runtime.graph_targets import registry_payload
     from microcosm.build.uk_runtime.graph_terminal import (
         UKFullGateKernel,
-        decode_full_gate_report,
         uk_terminal_only_code_hash,
     )
     from microcosm.calibrate import (
@@ -882,9 +1052,35 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
                 "area_type": "constituency",
                 "area_code": "E14000001",
                 "metric": "households",
+                # A local row names its contract target (Vahid's third review
+                # of #1383, item 33); this one ties to no family.
+                "contract_target_id": "fixture.census_households",
             },
         ),
     ]
+    if brma_row:
+        specs.append(
+            TargetSpec(
+                name="brma_rent",
+                entity="household",
+                value=1000.0,
+                measure="household_id",
+                period=2024,
+                source="fixture",
+                family="private_rent",
+                hierarchy=uk_fixture_hierarchy(
+                    "brma_rent", level="brma", geography_id="S33999999"
+                ),
+                metadata={
+                    "geography_level": "brma",
+                    "geography_id": "S33999999",
+                    "materialization": "uk_local_surface",
+                    "area_type": "brma",
+                    "area_code": "S33999999",
+                    "metric": "rent/private_rent_brma",
+                },
+            )
+        )
     unsolved_spec = replace(
         specs[1],
         name="dropped_local",
@@ -903,6 +1099,11 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
         [
             replace(specs[0].to_target(), measure=lambda f: np.ones(2)),
             replace(specs[1].to_target(), measure=lambda f: np.array([1.0, 0.0])),
+            *(
+                [replace(specs[2].to_target(), measure=lambda f: np.array([1.0, 0.5]))]
+                if brma_row
+                else []
+            ),
         ]
     )
     selection = {
@@ -927,6 +1128,8 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     )
     ordered = decode_problem(problem_bytes)
     result = calibrate(initial, targets, weight_entity="household", epochs=1, seed=42)
+    if solved is not None:
+        solved.append(result)
     frame = result.frame
 
     def artifact(payload, raw=False):
@@ -1013,11 +1216,6 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
         ),
     )
     monkeypatch.setattr(
-        full_gates,
-        "load_efrs_parity_reference",
-        lambda: SimpleNamespace(input_entities={}),
-    )
-    monkeypatch.setattr(
         full_gates, "uk_aggregate_admin_totals", lambda frame, gates: ({}, [])
     )
 
@@ -1047,9 +1245,19 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
         artifacts=artifacts,
         sources={"uk_ladder": "fixture"},
     )
-    stored = UKFullGateKernel(coverage_engine=object(), engine_identity="fixture").run(
+    return UKFullGateKernel(coverage_engine=object(), engine_identity="fixture").run(
         context
     )
+
+
+def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
+    monkeypatch,
+):
+    import json
+
+    from microcosm.build.uk_runtime.graph_terminal import decode_full_gate_report
+
+    stored = _run_final_gate_kernel(monkeypatch)
     phase, _ = decode_full_gate_report(stored.artifacts["gate_report"])
     assert phase.phase == "terminal"
     document = json.loads(stored.artifacts["calibration_diagnostics"])
@@ -1062,6 +1270,61 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     assert len(support_csv) == 4
     # Consumers read which areas sit below the floor (microcosm#1278).
     assert support_csv["support_below_floor"].dtype == bool
+
+
+@pytest.mark.parametrize(
+    "brma_row", [False, True], ids=["national_rows", "thin_brma_row"]
+)
+def test_final_gate_kernel_diagnostics_match_the_published_json_schema(
+    monkeypatch, brma_row
+):
+    # The BRMA row exercises the ``brma`` geography level.
+    stored = _run_final_gate_kernel(monkeypatch, brma_row=brma_row)
+    document = load_strict_json(stored.artifacts["calibration_diagnostics"])
+
+    assert published_json_schema_errors(document) == []
+    assert "model_figures_withheld" not in document["uk_diagnostics"]
+
+
+def test_the_gate_kernel_judges_a_thin_brma_row_and_ships_its_figures(monkeypatch):
+    """María's ruling of 2026-10-26 dropped the withholding of microcosm#1262.
+
+    The BRMA row misses its target by about 90% on two source households,
+    through the real bindings: both fit gates judge it, and the targets
+    table, the embedded rows and the calibration diagnostics carry its
+    figures and the solve's own totals.
+    """
+    import io
+    import json
+
+    solved: list = []
+    stored = _run_final_gate_kernel(monkeypatch, brma_row=True, solved=solved)
+    key = "private_rent/S33999999/rent/private_rent_brma"
+    document = json.loads(stored.artifacts["gate_report"])
+    outcomes = {row["id"]: row for row in document["report"]["outcomes"]}
+    fit = outcomes["uk_local_target_fit"]
+    assert "withheld_targets" not in fit["details"]
+    assert key in fit["details"]["failing_targets"]
+    family = outcomes["uk_local_per_family_fit"]["details"]
+    assert "withheld_targets" not in family
+    assert family["family_sizes"]["private_rent"] == 1
+    (embedded,) = [
+        row for row in document["target_diagnostics"] if row["family"] == "private_rent"
+    ]
+    assert "model_figures_withheld" not in embedded
+    assert np.isfinite(embedded["estimate"]) and np.isfinite(embedded["relative_error"])
+    table = pd.read_csv(io.BytesIO(stored.artifacts["target_diagnostics_csv"]))
+    assert "model_figures_withheld" not in table.columns
+    assert table[["estimate", "relative_error"]].notna().all().all()
+    diagnostics = json.loads(stored.artifacts["calibration_diagnostics"])
+    (row,) = [r for r in diagnostics["targets"] if r["target_name"] == "brma_rent"]
+    assert np.isfinite(row["final_estimate"]) and np.isfinite(row["initial_estimate"])
+    assert "model_figures_withheld" not in (row.get("metadata") or {})
+    assert "carrier_floor_met" not in (row.get("metadata") or {})
+    (result,) = solved
+    assert diagnostics["final_loss"] == pytest.approx(float(result.final_loss))
+    assert diagnostics["loss_trajectory"]
+    assert "model_figures_withheld" not in diagnostics["uk_diagnostics"]
 
 
 def test_package_validates_materialized_evidence_against_graph_bytes(tmp_path):
@@ -1229,13 +1492,68 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
         ).implementation_hash()
         assert not hashed[-1] & high_value, kernel.__name__
     # The hash is memoised per process; its undecorated body hashes the two
-    # high-value homes modules.
+    # high-value homes modules (and the diagnostics publication code, next
+    # test).
     graph_terminal.uk_terminal_only_code_hash.__wrapped__()
-    assert hashed[-1] == high_value
+    assert high_value <= hashed[-1]
     first = graph_terminal.uk_terminal_only_code_hash()
     calls = len(hashed)
     assert graph_terminal.uk_terminal_only_code_hash() == first
     assert len(hashed) == calls
+
+
+def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve(
+    monkeypatch,
+):
+    # The calibrated node (uk.full.gates.calibrated) publishes its
+    # calibration_diagnostics output as schema 9:
+    # catalog_calibration_diagnostics with the UK label choices,
+    # dumped from CalibrationDiagnosticsV9. An edit to any of those modules
+    # changes the output's bytes, so it must re-key the calibrated node (through
+    # its terminal_code parameter); otherwise a store run with resume="auto"
+    # serves the old labels. Like the high-value homes code, it stays out of
+    # the two kernels' shared code hash. An edit to the catalogs, the schema
+    # or the label choices therefore never re-keys the preflight node or the
+    # solve; an edit to geography_constants still does, because the target
+    # kernels the preflight reads hash it too (microcosm#1492).
+    import microcosm.calibrate.geography_constants as geography_constants_module
+    import microcosm.calibrate.hierarchy_labels as hierarchy_labels_module
+    import microcosm.diagnostics.catalogs as catalogs_module
+    import microcosm.diagnostics.schema as diagnostics_schema_module
+    from microcosm.build.uk_runtime import (
+        graph_terminal,
+        high_value_home_gates,
+        high_value_homes,
+    )
+
+    hashed_module_names: list[set[str]] = []
+    real_source_hash = graph_terminal.source_hash
+
+    def record_hashed_modules(*objects, **dependencies):
+        hashed_module_names.append({obj.__name__ for obj in objects})
+        return real_source_hash(*objects, **dependencies)
+
+    monkeypatch.setattr(graph_terminal, "source_hash", record_hashed_modules)
+    publication = {
+        catalogs_module.__name__,
+        diagnostics_schema_module.__name__,
+        hierarchy_labels_module.__name__,
+        geography_constants_module.__name__,
+    }
+    for kernel in (
+        graph_terminal.UKFullGateKernel,
+        graph_terminal.UKFullPreflightGateKernel,
+    ):
+        kernel(
+            coverage_engine=object(), engine_identity="fixture"
+        ).implementation_hash()
+        assert not hashed_module_names[-1] & publication, kernel.__name__
+    graph_terminal.uk_terminal_only_code_hash.__wrapped__()
+    assert hashed_module_names[-1] == {
+        high_value_home_gates.__name__,
+        high_value_homes.__name__,
+        *publication,
+    }
 
 
 def test_the_calibrated_gates_refuse_a_stale_terminal_code() -> None:
@@ -1254,3 +1572,27 @@ def test_the_calibrated_gates_refuse_a_stale_terminal_code() -> None:
     )
     with pytest.raises(ValueError, match="terminal-only code"):
         kernel.run(context)
+
+
+def test_the_dense_gates_refuse_references_of_two_builds() -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.graph_terminal import _require_one_reference
+
+    mass = SimpleNamespace(label="microcosm-uk-2024-25-dense@a", sha256="1" * 64)
+    same = SimpleNamespace(label="microcosm-uk-2024-25-dense@a", sha256="1" * 64)
+    other = SimpleNamespace(label="microcosm-uk-2024-25-dense@b", sha256="2" * 64)
+    _require_one_reference({"input_mass_reference": mass, "reference_surface": same})
+    _require_one_reference({"input_mass_reference": mass})
+    _require_one_reference({"reference_surface": other})
+    with pytest.raises(ValueError, match="from one reference"):
+        _require_one_reference(
+            {"input_mass_reference": mass, "reference_surface": other}
+        )
+    # Two files of one national build agree with each other, but the dense
+    # line compares with its own current build (the review of microcosm#1574).
+    national = SimpleNamespace(label="microcosm-uk-2024-25-national@b", sha256="3" * 64)
+    with pytest.raises(ValueError, match="not a build of microcosm-uk-2024-25-dense"):
+        _require_one_reference(
+            {"input_mass_reference": national, "reference_surface": national}
+        )

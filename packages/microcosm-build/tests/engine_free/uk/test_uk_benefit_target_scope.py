@@ -39,8 +39,6 @@ GREAT_BRITAIN_ROWS = (
     "obr.esa",
     "obr.jobseekers_allowance",
     "obr.universal_credit",
-    "obr.universal_credit_in_cap",
-    "obr.universal_credit_outside_cap",
     "obr.housing_benefit",
     "obr.statutory_maternity_pay",
     "dwp.esa_claimants",

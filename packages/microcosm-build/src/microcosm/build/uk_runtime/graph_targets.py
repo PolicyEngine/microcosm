@@ -15,6 +15,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+import microcosm.calibrate.artifacts as calibrate_artifacts
+import microcosm.calibrate.geography_constants as geography_constants
+import microcosm.calibrate.matrix as calibrate_matrix
+import microcosm.calibrate.solve as calibrate_solve
+import microcosm.calibrate.target_selection as calibrate_target_selection
 from microcosm.build import cross_grain
 from microcosm.calibrate import CalibrationHierarchy, TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import (
@@ -121,7 +126,7 @@ def target_geography(spec: TargetSpec) -> str:
     if local and ledger and local != ledger:
         raise ValueError(f"Target {spec.name!r} has contradictory geography levels.")
     level = local or ledger
-    if level not in {"country", "region", "constituency", "la"}:
+    if level not in {"country", "region", "constituency", "la", "brma"}:
         raise ValueError(
             f"Target {spec.name!r} has unsupported geography level {level!r}."
         )
@@ -217,7 +222,13 @@ class _TargetKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        from . import full_targets, high_value_homes, measure_simulation
+        from . import (
+            full_targets,
+            high_value_homes,
+            measure_simulation,
+            receipt_counts,
+            weighted_integrity,
+        )
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -235,6 +246,18 @@ class _TargetKernel(KernelBase):
             # alone must re-key the measures and everything they feed.
             measure_simulation,
             support_floor,
+            # The selection, the constraint matrices and their encoding, as
+            # the transport kernels hash them (microcosm#1492).
+            calibrate_target_selection,
+            calibrate_matrix,
+            calibrate_artifacts,
+            # full_targets takes its exclusion clock from here. Hashed
+            # directly, not listed: the module also loads the registers only
+            # the validation checks read, which no listed module may. Its
+            # input-mass gate counts source households with receipt_counts
+            # (microcosm#1095), hashed beside it.
+            weighted_integrity,
+            receipt_counts,
             *uk_target_compile_modules(),
         )
         # The solve fingerprint: every packaged resource but the gate-only
@@ -409,6 +432,16 @@ class UKFullTargetSelectionKernel(_TargetKernel):
                     or f"{spec.family}/{target_geography(spec)}" in families
                 )
             )
+        brma_left_out = 0
+        if context.params.get("brma_rows", True) is False:
+            # Without area BRMAs the BRMA rows would bind on the spine's
+            # regional draw, unrelated to placement (microcosm#1305 review).
+            brma_left_out = sum(
+                target_geography(spec) == "brma" for spec in registry.specs
+            )
+            registry = registry.select(
+                predicate=lambda spec: target_geography(spec) != "brma"
+            )
         selected = select_targets(
             registry, geography_levels=levels, geography_resolver=target_geography
         )
@@ -418,6 +451,19 @@ class UKFullTargetSelectionKernel(_TargetKernel):
             "registry": registry_payload(selected.registry),
             "receipt": selected.receipt,
             "target_families": None if families is None else list(families),
+            **(
+                {}
+                if context.params.get("brma_rows", True)
+                else {
+                    "brma_rows_left_out": {
+                        "rows": brma_left_out,
+                        "reason": (
+                            "no area BRMAs (--brma-localisation none): the rows "
+                            "would bind on the spine's regional BRMA draw"
+                        ),
+                    }
+                }
+            ),
         }
         return KernelResult(artifacts={"selection": canonical_json(payload)})
 
@@ -626,12 +672,22 @@ class UKFullProblemKernel(_TargetKernel):
         # ``local_rowwise.prepare_uk_full_solve`` from the rules in
         # ``target_weights`` and ``national_doctrine`` (microcosm#1124), so an
         # edit there re-keys the problem instead of replaying a stale vector.
+        # ``target_weights`` reads the UK-wide geography codes from
+        # ``geography_constants``, and the loss scales the problem stores from
+        # ``calibrate.solve.default_target_loss_scales`` (microcosm#1492). All
+        # of ``calibrate.solve`` is hashed: ``calibrate.adam@1``, whose hash
+        # every UK solve kernel embeds, already hashes it, so an edit there
+        # re-solves anyway and re-keys only this node besides.
         return hashlib.sha256(
             canonical_json(
                 {
                     "targets": super().implementation_hash(),
                     "weights": source_hash(
-                        local_rowwise, national_doctrine, target_weights
+                        local_rowwise,
+                        national_doctrine,
+                        target_weights,
+                        geography_constants,
+                        calibrate_solve,
                     ),
                 }
             )
@@ -652,6 +708,9 @@ class UKFullProblemKernel(_TargetKernel):
             national_rows=national_rows,
             target_weight_rule=str(context.params["target_weight_rule"]),
             allow_empty_local_binding=inputs.country_only,
+            # The local binding adjudications are reviewed on the build's
+            # review date, not the wall clock (microcosm#1278).
+            now=date.fromisoformat(str(context.params["review_date"])),
         )
         problem = build_constraint_matrix(frame, prepared.target_set, "household")
         if problem.skipped:
@@ -742,8 +801,14 @@ def append_uk_target_nodes(
     target_weight_rule: str = "uniform",
     optional_sources: tuple[str, ...] = (),
     review_date: str | None = None,
+    brma_rows: bool = True,
 ) -> Graph:
-    """Default all geographies. Scope is independent of K, k and solver outcomes."""
+    """Default all geographies. Scope is independent of K, k and solver outcomes.
+
+    ``brma_rows=False`` (no area BRMAs) leaves the BRMA-grain rows out of the
+    selection: they bind on each placed household's own BRMA, and the spine's
+    regional draw is unrelated to placement (microcosm#1305 review).
+    """
 
     if geography_levels is not None and not geography_levels:
         raise ValueError("An explicit geography selector must contain levels.")
@@ -784,6 +849,7 @@ def append_uk_target_nodes(
             params={
                 "geography_levels": geography_levels,
                 "target_families": target_families,
+                **({} if brma_rows else {"brma_rows": False}),
             },
             artifact_inputs=(surface,),
             artifact_outputs=(ArtifactOutput("selection", TARGET_SELECTION_TYPE),),
@@ -817,6 +883,9 @@ def append_uk_target_nodes(
                 **common,
                 "sample_fraction": float(sample_fraction),
                 "target_weight_rule": target_weight_rule,
+                # The binding adjudications' review date; the rotated holdout
+                # inherits it with these parameters (microcosm#1278).
+                "review_date": review_date,
             },
             sources=("uk_ladder",),
             artifact_inputs=(

@@ -7,7 +7,6 @@ from explicitly supplied artifact-type providers. No kernel is called here.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import math
@@ -20,7 +19,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .availability import execution_state, unavailable_artifacts
-from .canonical import canonical_json, normative
+from .canonical import canonical_json, normative, sha256
 from .decl import (
     GATE_OUTCOMES,
     CompiledGraph,
@@ -29,6 +28,7 @@ from .decl import (
     StructuralDelta,
     compile_graph,
 )
+from .execution_overlay import EXECUTION_PROTOCOL
 from .kernel import Capabilities, KernelRole
 from .keys import (
     artifact_key,
@@ -52,7 +52,6 @@ from .store import ContentStore
 
 BINDING_PROTOCOL = "microcosm.graph.run-binding.v1"
 EVIDENCE_INPUT_PROTOCOL = "microcosm.graph.execution-input.v1"
-EXECUTION_PROTOCOL = "microcosm.graph.execution-evidence.v1"
 # Native evidence files are exact copies of run manifests and graphs, which a
 # real build already holds in memory; they are bounded by bytes and nesting
 # depth only. The per-item complexity charge of the compiler-schema reader is
@@ -67,10 +66,6 @@ _MAX_BYTES = 1024 * 1024 * 1024
 _MAX_DEPTH = 64
 _SUMMARY_FIELDS = frozenset({"node", "artifact", "key", "type", "data"})
 _LOG = logging.getLogger(__name__)
-
-
-def sha256(payload: bytes) -> str:
-    return hashlib.sha256(payload).hexdigest()
 
 
 def _plain(value: object) -> object:

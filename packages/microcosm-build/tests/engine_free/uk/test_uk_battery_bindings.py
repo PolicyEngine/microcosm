@@ -52,27 +52,27 @@ from microcosm.build.uk_runtime.terminal_gates import (
 from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import engine_tables
+from test_support.microcosm_build.uk_cut_reference import reference_surface
 from tools.generate_uk_local_target_references import SUPPORT_FLOOR_DEFERRED_AREA_IDS
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: The shared exclusion-expiry clock, fixed inside the committed registers'
-#: validity window (latest approval 2026-09-23, the two v21b deferrals on the
-#: target-fit register from the PolicyEngine/chronicle#280 lane; earliest expiry
-#: 2026-10-21, the same entries) so the suite never drifts across an approval
-#: or expiry boundary. Move it forward when a register gains a later approval.
-# The committed registers are evaluated as of this date; the microcosm#1063
-# c9 input-mass entries take force on 2026-10-02, the
-# microcosm#1095 UC payment-band measure exclusions on 2026-10-07 (its West
-# Midlands target-fit deferral is retired with microcosm#1106), and the
-# microcosm#1106 property_wealth input-mass entry on 2026-10-11. The earliest
-# expiry is 2026-10-15.
-# On or after the newest committed receipt's approval (2026-10-14).
-CLOCK = date(2026, 10, 14)
+#: validity window so the suite never drifts across an approval or expiry
+#: boundary: on the latest approval (2026-11-11, the trading allowance
+#: full-relief degenerate exclusion of microcosm#1439) and before the earliest
+#: expiry (2026-11-16, the first of the dense build's target-fit entries). Move
+#: it forward when a register gains a later approval.
+CLOCK = date(2026, 11, 11)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
     "_validate_input_mass_reference_for_descriptor"
 )
+
+
+# A reference that carries no input: the coverage tests' manifests declare
+# the required inputs themselves (microcosm#1095).
+NO_REFERENCE_INPUTS = reference_surface(export_columns=("person.age",))
 
 
 @pytest.fixture(autouse=True)
@@ -85,21 +85,69 @@ def uk_gates():
     return load_country_spec("uk").gates
 
 
-def test_declared_export_surface_preserves_claimants_and_matches_runtime(uk_gates):
+def test_declared_export_surface_matches_runtime(uk_gates):
     from microcosm.build.uk_runtime.terminal_gates import (
         UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
     )
 
     entry = next(entry for entry in uk_gates.gates if entry.id == "uk_export_surface")
     declared = set(entry.parameters["allowed_extra_columns"])
-    assert "person.is_uc_claimant" in declared
     assert declared == set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
     battery = _run_battery(
         _tables(),
-        parity=_parity(candidate_columns={"person.age", "person.is_uc_claimant"}),
+        parity=_parity(candidate_columns={"person.age", "household.lsoa_code"}),
     )
     outcome = next(o for o in battery.outcomes if o.entry.id == "uk_export_surface")
     assert outcome.status is GateStatus.PASSED
+    assert outcome.result.details["reference_name"] == REFERENCE_LABEL
+
+
+def test_export_surface_needs_the_reference_surface(uk_gates):
+    # Without the cut's reference surface the gate is evidence_absent, which
+    # blocks a release candidate, never a verdict against no reference.
+    battery = _run_battery(_tables(), parity=None)
+    outcome = next(o for o in battery.outcomes if o.entry.id == "uk_export_surface")
+    assert outcome.status is GateStatus.EVIDENCE_ABSENT
+
+
+def test_spine_export_never_carries_a_reviewed_export_exclusion(uk_gates):
+    """The release boundary drops every column a candidate must never export.
+
+    Until microcosm#1095 this ran the export-surface gate on the spine's
+    declared surface against the checked-in enhanced-FRS reference, so a new
+    spine column without an allow-list entry failed here before it failed a
+    certification (#1222). The reference is now the current build of the
+    line, which the repository does not hold, so that half runs at the cut;
+    the half that needs no reference stays: a persisted copy of a reviewed
+    export exclusion overrides the engine's formula.
+    """
+
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_national_frame,
+        uk_release_export_frame,
+    )
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_REVIEWED_EXPORT_EXCLUSIONS,
+        uk_export_candidate_columns,
+    )
+
+    columns = {
+        "person": ["person_id", "person_benunit_id", "person_household_id"],
+        "benunit": ["benunit_id"],
+        "household": ["household_id"],
+    }
+    for cells in uk_spine_endpoint(uk_spine_graph()).inputs:
+        columns[cells.entity] = list(
+            dict.fromkeys([*columns[cells.entity], *cells.columns])
+        )
+    tables = {
+        entity: pd.DataFrame({column: np.array([1]) for column in names})
+        for entity, names in columns.items()
+    }
+    frame = uk_national_frame(**tables, time_period="2024", household_weights=[1.0])
+    candidate = uk_export_candidate_columns(uk_release_export_frame(frame))
+    assert not candidate & set(UK_REVIEWED_EXPORT_EXCLUSIONS)
 
 
 def _tables(*, n: int = 4, weights=None):
@@ -115,6 +163,15 @@ def _tables(*, n: int = 4, weights=None):
     other_property = 1_000.0 * (np.arange(n) % 2)
     non_residential = 500.0 * (np.arange(n) % 2)
     land = 250.0 * (np.arange(n) % 2)
+    # Debt secured on the last unit's property (microcosm#1095): the shares
+    # net it class by class, the non-residential debt above 90% of its
+    # property's value flooring that class at zero.
+    last = np.arange(n) == n - 1
+    other_property_debt = np.where(last, 300.0, 0.0)
+    non_residential_debt = np.where(last, 600.0, 0.0)
+    property_share = np.maximum(0.9 * other_property - other_property_debt, 0.0) + (
+        np.maximum(0.9 * non_residential - non_residential_debt, 0.0)
+    )
     carrier = np.arange(n, dtype=float)
     person = pd.DataFrame(
         {
@@ -136,20 +193,24 @@ def _tables(*, n: int = 4, weights=None):
             "benunit_id": np.arange(201, 201 + n, dtype=np.int64),
             "would_claim_uc": np.asarray([True, False] * n)[:n],
             "frs_benunit_capital": carrier,
-            "uc_reported_capital": carrier + 0.9 * (other_property + non_residential),
-            "pension_credit_reported_capital": carrier
-            + 0.9 * (land + other_property + non_residential),
+            "uc_reported_capital": carrier + property_share,
+            "pension_credit_reported_capital": carrier + 0.9 * land + property_share,
         }
     )
     household = pd.DataFrame(
         {
             "household_id": household_ids,
             "household_weight": np.asarray(weights, dtype=float),
+            # Each household its own survey source, as the input-mass gate's
+            # carriers read them (microcosm#1095).
+            "household_source_id": household_ids + 1000,
             "household_is_spi_synthetic": np.arange(n) % 2 == 1,
             "household_is_capital_gains_clone": np.arange(n) % 4 >= 2,
             "owned_land": land,
             "other_residential_property_value": other_property,
             "non_residential_property_value": non_residential,
+            "other_residential_property_secured_debt": other_property_debt,
+            "non_residential_property_secured_debt": non_residential_debt,
         }
     )
     return person, benunit, household
@@ -175,13 +236,20 @@ def _parity(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**fields)
 
 
-def _reference() -> UKInputMassReference:
+REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+REFERENCE_LABEL = f"microcosm-uk-2024-25-national@{REFERENCE_BUILD}"
+
+
+def _reference(totals=None) -> UKInputMassReference:
+    """The current build's input-mass reference (microcosm#1095)."""
+
     return UKInputMassReference(
-        totals={"employment_income": 10.0},
-        filename="enhanced_frs_2023_24.h5",
-        revision="655dd07e4bb9c777b00dac044949611f1feb824f",
-        sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-        vintage="2023_24",
+        totals={"employment_income": 10.0} if totals is None else totals,
+        filename="microcosm_uk_2024_25.h5",
+        revision=REFERENCE_BUILD,
+        sha256="9" * 64,
+        vintage="2024_25",
+        label=REFERENCE_LABEL,
     )
 
 
@@ -205,7 +273,7 @@ def _fixture_coverage_registry():
             evaluator=lambda context, parameters: GateResult(
                 name="take_up_signal", passed=True
             ),
-            parameter_keys=frozenset({"maximum_share_deviation"}),
+            parameter_keys=UK_GATE_REGISTRY["take_up_signal"].parameter_keys,
         ),
         "enum_domain": UKGateBinding(
             name="enum_domain",
@@ -297,6 +365,12 @@ def _run_battery(
         artifacts["fit_weight_records"] = fit_records
     if parity is not None:
         artifacts["parity_evidence"] = parity
+        # The export-surface gate reads the reference's columns from the
+        # cut's reference surface (microcosm#1095); the fixture keeps them
+        # beside the parity evidence for readability.
+        artifacts["reference_surface"] = reference_surface(
+            export_columns=tuple(parity.reference_columns), label=REFERENCE_LABEL
+        )
     if armed:
         artifacts["input_mass_reference"] = _reference()
         artifacts["aggregate_admin"] = {
@@ -530,6 +604,54 @@ class TestUKSurfaceAdapter:
         for column in ("uc_reported_capital", "pension_credit_reported_capital"):
             assert columns[f"benunit.{column}"]["same_source_mismatch_count"] == 1
 
+    @pytest.mark.parametrize(
+        ("reference_reports_uc", "expected"),
+        [
+            (False, {"uc_reported_capital": 1, "pension_credit_reported_capital": 1}),
+            (True, {"uc_reported_capital": 0, "pension_credit_reported_capital": 1}),
+        ],
+        ids=["both_schemes", "pension_credit_only"],
+    )
+    def test_uc_column_implication_binding_refuses_a_sentinel_unit_beside_property(
+        self, reference_reports_uc: bool, expected: dict[str, int]
+    ) -> None:
+        # From policyengine-uk 2.136.1 a unit on the sentinel takes its own
+        # share of its household's property, which the recording unit beside
+        # it already holds (Vahid's review of microcosm#1333). Unit 204 joins
+        # household 2 on the sentinel, beside the reference person's unit 202,
+        # which records the property: both schemes' shares, or Pension
+        # Credit's alone where unit 202 reports Universal Credit.
+        person, benunit, household = _tables()
+        person.loc[3, "person_household_id"] = 2
+        person.loc[3, "is_household_head"] = False
+        for column in (
+            "frs_benunit_capital",
+            "uc_reported_capital",
+            "pension_credit_reported_capital",
+        ):
+            benunit.loc[3, column] = -1.0
+        if reference_reports_uc:
+            person.loc[1, "universal_credit_reported"] = 10.0
+            benunit.loc[1, "would_claim_uc"] = True
+            benunit.loc[1, "uc_reported_capital"] = benunit.loc[
+                1, "frs_benunit_capital"
+            ]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household.iloc[:3].copy(),
+            time_period="2023",
+        )
+        entry = self._capital_gate()
+        result = UK_GATE_REGISTRY["column_implication"].evaluate(
+            EvidenceContext(frame=frame), entry.parameters
+        )
+
+        assert not result.passed
+        assert result.details["sentinel_units_beside_recorded_property"] == expected
+        beside = [failure for failure in result.failures if "would count" in failure]
+        assert len(beside) == sum(expected.values())
+
     def test_uc_column_implication_binding_keeps_a_reporters_receipt(
         self,
     ) -> None:
@@ -659,12 +781,15 @@ class TestUKSurfaceAdapter:
         """
 
         from microcosm.build.uk_runtime.salary_sacrifice import (
+            BONUS_SACRIFICE_OUTPUT,
             SALSAC_OUTPUT,
             SALSAC_PRE_CONVERSION_PAY_COLUMN,
         )
 
         person, benunit, household = _tables()
         person[SALSAC_OUTPUT] = [0.0, 10.0, 0.0, 5.0]
+        # The stage's bonus route (#1340) is a declared non-negative output too.
+        person[BONUS_SACRIFICE_OUTPUT] = [0.0, 0.0, 3.0, 0.0]
         person["employee_pension_contributions"] = [1.0, 0.0, 2.0, 0.0]
         release = uk_national_frame(
             person=person.copy(),
@@ -976,23 +1101,22 @@ class TestBatteryRegressions:
         # Plus the #970 projection fence, armed here with the pinned growth
         # path over distinct sub-exempt gains that never cross the exempt
         # amount, and the release-frame council-tax band check (#1278).
-        assert len(passed) == 21
+        # Plus uk_local_brma_enum_domain, the terminal recheck of the area-BRMA
+        # rewrite (microcosm#1262; its enum_domain binding is stubbed here), and
+        # the SOC 2020 major and sub-major groups' enum checks (microcosm#1490).
+        assert len(passed) == 24
+        assert "uk_local_brma_enum_domain" in passed
+        assert "uk_soc2020_major_group_enum_domain" in passed
+        assert "uk_soc2020_sub_major_group_enum_domain" in passed
 
     def test_input_mass_parity_compares_the_release_surface(self) -> None:
-        # The frame carries the spine's WAS property_wealth and the reference
-        # stores its own total within tolerance. Compared on the raw frame the
-        # signed exclusion would be stale and the gate would fail; the gate
-        # compares the export frame, where the column is absent, so the
-        # exclusion is in force and nothing is stale (microcosm#1106).
+        # The frame carries the spine's WAS property_wealth, which the release
+        # leaves to the engine (microcosm#1106); the current build's export
+        # does not carry it either. The gate compares the export frame, so the
+        # spine's copy never enters the comparison as a candidate-only column.
         person, benunit, household = _tables()
         household = household.assign(property_wealth=100.0)
-        reference = UKInputMassReference(
-            totals={"employment_income": 10.0, "property_wealth": 400.0},
-            filename="enhanced_frs_2023_24.h5",
-            revision="655dd07e4bb9c777b00dac044949611f1feb824f",
-            sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-            vintage="2023_24",
-        )
+        reference = _reference()
         battery = _run_battery(
             (person, benunit, household),
             parity=_parity(),
@@ -1003,7 +1127,8 @@ class TestBatteryRegressions:
         assert outcome.status is GateStatus.PASSED, outcome.result.failures
         details = outcome.result.details
         assert details["stale_exclusions"] == []
-        assert "property_wealth" in details["reviewed_exclusions"]
+        assert "property_wealth" not in details["candidate_only_columns"]
+        assert details["reference_label"] == REFERENCE_LABEL
 
     def test_empty_fit_records_fail_closed(self) -> None:
         # Present-but-empty is not absent: a fit stage that ran and emitted
@@ -1033,6 +1158,22 @@ class TestBatteryRegressions:
             "uk_export_surface",
             "uk_target_fit",
         } <= failed
+
+    def test_the_fit_gate_judges_a_thin_national_row(self) -> None:
+        """María's ruling of 2026-10-26: no row's figures are withheld, so the
+        fit gate judges a row however few source households carry it."""
+
+        thin = "dwp.uc.payment_distribution_single_thin@2025"
+        parity = _parity(
+            candidate_targets={"ons/population", thin},
+            reference_targets={"ons/population", thin},
+            target_relative_errors={"ons/population": 0.01, thin: -0.60},
+        )
+        battery = _run_battery(_tables(), parity=parity)
+        fit = {o.entry.id: o for o in battery.outcomes}["uk_target_fit"]
+        assert fit.status is GateStatus.FAILED
+        assert fit.result.details["failing_targets"] == {thin: -0.60}
+        assert "withheld_targets" not in fit.result.details
 
 
 class TestUnevidencedArms:
@@ -1130,11 +1271,11 @@ class TestExclusionDiscipline:
 
     def test_an_expired_register_fails_closed(self) -> None:
         # The committed input-mass register carries no entry since the
-        # 2026-09-21 retirements, so the expiry discipline is exercised on an
-        # injected receipt that lapses before the clock below; the other two
-        # registers still expire from their committed entries.
+        # enhanced-FRS reference retired (microcosm#1095), so the expiry
+        # discipline is exercised on an injected receipt, signed for the
+        # reference build, that lapses before the clock below.
         lapsed = {
-            "efrs-post-calibration": {
+            REFERENCE_LABEL: {
                 "owned_land": {
                     "reason": "injected: a reviewed exclusion whose window has closed",
                     "approved_by": "juaristi22",
@@ -1320,6 +1461,7 @@ class TestTerminalCoverageBinding:
                 artifacts={
                     "coverage_engine": engine,
                     "coverage_manifest": manifest,
+                    "reference_surface": NO_REFERENCE_INPUTS,
                     "spine_frame": frame,
                 },
             ),
@@ -1328,6 +1470,7 @@ class TestTerminalCoverageBinding:
         direct = uk_release_input_coverage_gate(
             _uk_gate_surface(frame),
             engine,
+            reference_surface=NO_REFERENCE_INPUTS,
             manifest=manifest,
             build_state_frame=_uk_gate_surface(frame),
         )
@@ -1382,7 +1525,10 @@ class TestTerminalCoverageBinding:
             family_coverage={},
         )
         raw = uk_release_input_coverage_gate(
-            _uk_gate_surface(frame), engine, manifest=manifest
+            _uk_gate_surface(frame),
+            engine,
+            reference_surface=NO_REFERENCE_INPUTS,
+            manifest=manifest,
         )
         result = UK_GATE_REGISTRY["release_input_coverage"].evaluate(
             EvidenceContext(
@@ -1390,6 +1536,7 @@ class TestTerminalCoverageBinding:
                 artifacts={
                     "coverage_engine": engine,
                     "coverage_manifest": manifest,
+                    "reference_surface": NO_REFERENCE_INPUTS,
                     # The spine build state the family half reads (#1115).
                     "spine_frame": frame,
                 },
@@ -1677,19 +1824,36 @@ class TestPreflightBindings:
         # kWh row. microcosm#1301 defers 2,323 of the high-value homes cells:
         # all 1,725 constituency cells, which the region rows now control,
         # and the 598 authority cells under the 400-home floor.
-        assert result.details["candidate_targets"] == 22_986
-        assert result.details["reference_targets"] == 27_115
-        # Only the 4,129 signed area deferrals and absences remain (2,100
+        # microcosm#1262 adds Scotland's 18 PIPR BRMA cells, all compiled.
+        # microcosm#1095 adds England's single adult discount cells: 296
+        # billing authorities, less the two the support floor defers; and
+        # 1,896 DESNZ energy cells by constituency (632 Great Britain seats,
+        # three rows), 1,894 of them compiled: the Orkney and Shetland seat has
+        # no gas kWh row and its gas-connected cell is deferred, as the two
+        # councils' are. microcosm#1418 adds SPI pension income and the
+        # taxpayers with it by constituency and authority: 2,022 cells, 2,016
+        # of them compiled, less the 40 the rounded-thousand floor defers
+        # (microcosm#1420: the 20 count cells HMRC publishes at 5,000 or fewer
+        # and their amounts). The pair built on microcosm#1535's merge defers
+        # Carmarthenshire's band-I cell, which the support check refused.
+        assert result.details["candidate_targets"] == 27_167
+        assert result.details["reference_targets"] == 31_347
+        # Only the 4,180 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
-        # Shetland band H is the one Scottish support deferral; microcosm#1123
+        # Shetland band H is the one Scottish support deferral and
+        # Carmarthenshire band I the one Welsh; microcosm#1123
         # adds the three higher rate taxpayer gaps; microcosm#1240 the six
         # high-value homes cells above; microcosm#1278 signs the two
         # small-cell rules, which defer 16 council-tax band cells and 192
         # higher-rate cells; microcosm#1207 the ten energy cells above;
-        # microcosm#1301 the 2,323 high-value homes cells above); the 1,011
+        # microcosm#1301 the 2,323 high-value homes cells above; microcosm#1095
+        # the two single adult discount cells and the Orkney and Shetland
+        # seat's two gas cells above; microcosm#1418 the six pension cells of
+        # the two authorities without SPI local measures and the City of
+        # London, and the 40 under the rounded-thousand floor); the 1,011
         # household rows are ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 4_129
+        assert len(exclusions) == 4_180
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
@@ -1928,14 +2092,7 @@ class TestBindingUnits:
         entry = {e.id: e for e in uk_gates.gates}["uk_input_mass_parity"]
         drifted = dict(entry.parameters)
         drifted["reference_registry"] = {
-            name: (
-                {
-                    **payload,
-                    "totals_sha256": "0" * 64,
-                }
-                if name == "efrs-post-calibration"
-                else payload
-            )
+            name: {**payload, "scope_note": "a drifted scope note"}
             for name, payload in drifted["reference_registry"].items()
         }
         binding = UK_GATE_REGISTRY["input_mass_parity"]
@@ -2066,6 +2223,64 @@ class TestEnumDomainResolution:
             {"columns": ["student_loan_plan"]},
         )
         assert result.passed
+
+    def test_an_off_domain_brma_fails_the_local_recheck_as_a_structural_stop(
+        self,
+    ) -> None:
+        """microcosm#1305 review: the unstubbed binding, then the classification.
+
+        The area-BRMA rewrite is rechecked by ``uk_local_brma_enum_domain``;
+        a value outside the engine's enum fails it, and the failure stops even
+        a development build (no candidate is exported).
+        """
+
+        import enum
+
+        from microcosm.build.gate_battery import GateOutcome, GatePhaseReport
+        from microcosm.build.uk_runtime import full_gates
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        person, benunit, household = _tables()
+        household["brma"] = ["LOTHIAN", "NOT_A_BRMA", "CARDIFF", "LOTHIAN"][
+            : len(household)
+        ]
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+
+        class BRMAName(enum.Enum):
+            CARDIFF = "CARDIFF"
+            LOTHIAN = "LOTHIAN"
+
+        class Accessor:
+            def enum_domain(self, column):
+                assert column == "brma"
+                return BRMAName
+
+        entry = next(
+            gate
+            for gate in load_country_spec("uk").gates.gates
+            if gate.id == "uk_local_brma_enum_domain"
+        )
+        result = _evaluate_enum_domain(
+            EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()}),
+            entry.parameters,
+        )
+        assert not result.passed
+        report = GatePhaseReport(
+            entry.phase,
+            (
+                GateOutcome(
+                    entry=entry, status=GateStatus.FAILED, result=result, reason=None
+                ),
+            ),
+        )
+        for fraction in (0.1, 1.0):
+            outcome = full_gates.classify_full_gate_outcomes(
+                report, sample_fraction=fraction, release_candidate=False
+            )
+            assert outcome["artifact_permitted"] is False
+            assert outcome["structural_failures"] == ["uk_local_brma_enum_domain"]
 
     def test_an_engine_with_neither_names_itself(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
@@ -2413,6 +2628,100 @@ class TestLocalTargetFitRegister:
             self._evaluate(monkeypatch, uk_gates, {}, -0.30, parameters=parameters)
 
 
+class TestThinRowsAreJudged:
+    """The production local fit bindings on a thin BRMA row.
+
+    María's ruling of 2026-10-26 dropped the withholding of microcosm#1262: a
+    row resting on fewer than ten source households keeps its figures, and
+    both fit gates judge it with every other row.
+    """
+
+    THIN = "private_rent/S33999999/rent/private_rent_brma"
+
+    @staticmethod
+    def _rows() -> list[dict]:
+        rows = [
+            {
+                "family": "private_rent",
+                "area_code": f"E0600000{index}",
+                "metric": "rent/private_rent",
+                "relative_error": error,
+            }
+            for index, error in enumerate((0.01, 0.02, 0.05, 0.30, 0.04, 0.03), 1)
+        ]
+        rows += [
+            {
+                "family": "private_rent",
+                "area_code": "S33999999",
+                "metric": "rent/private_rent_brma",
+                "relative_error": -0.4,
+            },
+            {
+                "family": "private_rent",
+                "area_code": "S33999998",
+                "metric": "rent/private_rent_brma",
+                "relative_error": 0.02,
+            },
+        ]
+        return rows
+
+    def _evaluate(self, monkeypatch, uk_gates, gate_id, rows, register=None):
+        import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+        monkeypatch.setattr(
+            battery_bindings,
+            "uk_default_local_target_fit_reviewed_exclusions",
+            lambda: MappingProxyType(register or {}),
+        )
+        entry = {entry.id: entry for entry in uk_gates.gates}[gate_id]
+        return UK_GATE_REGISTRY[entry.gate].evaluate(
+            EvidenceContext(
+                artifacts={
+                    "local_target_diagnostics": rows,
+                    "exclusions_evaluated_on": CLOCK,
+                    "release_line": "local",
+                }
+            ),
+            entry.parameters,
+        )
+
+    def test_the_target_fit_judges_the_thin_row(self, monkeypatch, uk_gates) -> None:
+        """The thin row misses its target by 40% and fails beside the
+        published row beyond the bound; nothing is counted as withheld."""
+
+        result = self._evaluate(
+            monkeypatch, uk_gates, "uk_local_target_fit", self._rows()
+        )
+        assert result.passed is False
+        published = "private_rent/E06000004/rent/private_rent"
+        assert result.details["failing_targets"] == {published: 0.30, self.THIN: -0.4}
+        assert result.details["targets_checked"] == 8
+        assert "withheld_targets" not in result.details
+
+    def test_the_thin_rows_register_entry_excuses_it(
+        self, monkeypatch, uk_gates
+    ) -> None:
+        result = self._evaluate(
+            monkeypatch,
+            uk_gates,
+            "uk_local_target_fit",
+            self._rows(),
+            register={self.THIN: _receipt()},
+        )
+        assert self.THIN in result.details["reviewed_exclusions"]
+        assert self.THIN not in result.details["failing_targets"]
+
+    def test_family_fit_counts_every_row(self, monkeypatch, uk_gates) -> None:
+        result = self._evaluate(
+            monkeypatch, uk_gates, "uk_local_per_family_fit", self._rows()
+        )
+        assert result.details["family_sizes"] == {"private_rent": 8}
+        assert result.details["family_within_shares"]["private_rent"] == pytest.approx(
+            6 / 8
+        )
+        assert "withheld_targets" not in result.details
+
+
 class TestGateOnlyAreaSupport:
     """Area-support exclusions excuse an area at the gate only (microcosm#1301).
 
@@ -2529,3 +2838,50 @@ class TestGateOnlyAreaSupport:
             "bound_despite_support_floor/census_households"
         ]
         assert result.details["out_of_line_exclusions"] == ["local_authority/LA_B"]
+
+
+class TestInputMassReferenceBuild:
+    """The exclusions a gate applies are the ones signed for its reference build."""
+
+    def test_an_exclusion_signed_for_another_build_is_dormant(self) -> None:
+        signed = {
+            "microcosm-uk-2024-25-national@uk-frs-calibration-attempt-older": {
+                "employment_income": {
+                    "reason": "injected: signed for an earlier reference build",
+                    "approved_by": "juaristi22",
+                    "adjudication": "microcosm#1095 (test)",
+                    "approved_on": "2026-11-01",
+                    "expires_on": "2027-03-01",
+                }
+            }
+        }
+        person, benunit, household = _tables()
+        battery = _run_battery(
+            (person, benunit, household),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+            extra_artifacts={
+                # The candidate carries far more than the reference: past the
+                # tolerance, which an exclusion for this build would excuse.
+                "input_mass_reference": _reference({"employment_income": 1.0e-3}),
+                "reviewed_input_mass_exclusions": signed,
+            },
+        )
+        outcome = {o.entry.id: o for o in battery.outcomes}["uk_input_mass_parity"]
+        # The entry is for another build, so the drift fails here.
+        assert outcome.status is GateStatus.FAILED
+        assert outcome.result.details["reviewed_exclusions"] == {}
+
+    def test_an_exclusion_key_that_names_no_build_is_refused(self) -> None:
+        person, benunit, household = _tables()
+        battery = _run_battery(
+            (person, benunit, household),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+            extra_artifacts={
+                "reviewed_input_mass_exclusions": {"efrs-post-calibration": {}},
+            },
+        )
+        outcome = {o.entry.id: o for o in battery.outcomes}["uk_input_mass_parity"]
+        assert outcome.status is GateStatus.FAILED
+        assert "<release>@<build>" in " ".join(outcome.result.failures)

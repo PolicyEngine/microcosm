@@ -11,7 +11,7 @@ Run only after one of these is true:
 - Maria explicitly names a different base spine for this run.
 
 The input posture is a non-certified staging candidate at pre-clone grain,
-matching the incumbent published national surface. The seam records that
+matching the published national surface. The seam records that
 posture itself and marks its artifact `shippable: false`: release certification
 is the release-cut producer's job, not calibration's.
 
@@ -91,40 +91,56 @@ Signing the terminal gate report needs
 
 ## Scoring
 
-Rule 1 is decided by a separate tool run against the staged artifact, so run
-identity never depends on the incumbent's bytes:
+The candidate is compared with the current build of the national line, the
+cut's reference (microcosm#1095; `tools/resolve_uk_reference.py` resolves it
+and writes its record). The comparison is a separate tool run against the
+staged artifact, so run identity never depends on the reference's bytes:
 
 ```bash
 uv run --no-sync python tools/score_uk_national_candidate.py \
   --candidate-h5 data/ukds/acceptance/623-first-calibrated-candidate/microcosm_uk_2024_25.h5 \
   --candidate-sha256 <sha256-from-the-build-record> \
-  --incumbent-h5 <enhanced-frs-2024-25-h5> \
-  --incumbent-sha256 <sha256> \
+  --reference-h5 <reference-dir>/microcosm_uk_2024_25.h5 \
+  --reference-record <reference-dir>/reference.json \
   --registry-json data/ukds/acceptance/623-first-calibrated-candidate/national_target_registry.json \
-  --output-json data/ukds/acceptance/623-first-calibrated-candidate/score_vs_enhanced_frs.json
+  --output-json data/ukds/acceptance/623-first-calibrated-candidate/score_vs_reference.json
 ```
 
-Both artifacts are verified against the supplied digests before they are read,
-and both sides are scored on the same frozen register.
+Both artifacts are verified against their digests before they are read, and
+both sides are scored on the same frozen register.
 
-A target whose measure the incumbent cannot materialize (the admin-basis UC
-family measures, the CGT asset type, the ONS household type: inputs the
-enhanced FRS never carried) is pruned from **both** arms and reported, never
+A target whose measure the reference cannot materialize (an input a newer
+build added, for example) is pruned from **both** arms and reported, never
 refused: the scorer warns on stderr naming every absent measure and the rows
 it removed, and the receipt carries them under
-`incumbent_unresolvable_pruned` (`n_pruned`, `n_scored`, `n_surface`,
-`pruned_targets` with each one's family and measure, `measures`, `families`). The score stands on the common surface
-with band edges from the full register (#803). A measure the *candidate*
-cannot materialize still refuses: that is a defect.
-`--no-prune-incumbent-unresolvable` restores the refusal on the incumbent A measure may be pruned only under a signed, in-force entry of the reviewed incumbent-unresolvable register (`packages/microcosm-build/src/microcosm/build/uk/incumbent_unresolvable_measures.json`, keyed `entity.variable`, reviewed-exclusion schema); an unlisted measure refuses the evaluation, the receipt records the register digest and the entries used, and the certifier re-checks every pruned measure against the committed register, including each entry's window at the certification's own evaluation date. The candidate is validated on the full surface before any pruning, so an export missing a listed measure refuses rather than scoring on a reduced surface.
-side too. The receipt's `evaluation` block decides rule 1 (#578) on that
-surface: `verdict` is `passed` when the candidate's full loss is below the
-incumbent's, `failed` otherwise, and the release-cut certifier refuses any
-receipt whose verdict is not `passed` or whose surface does not close, so
-publication never runs on an unpassed evaluation. The build driver's
-national role runs this evaluation at the end of every build it is given an
-incumbent for (microcosm#965) and writes the same receipt as
-`score_vs_incumbent.json`.
+`reference_unresolvable_pruned` (`n_pruned`, `n_scored`, `n_surface`,
+`pruned_targets` with each one's family and measure, `measures`, `families`).
+The comparison stands on the common surface with band edges from the full
+register (#803). A measure the *candidate* cannot materialize still refuses:
+that is a defect. `--no-prune-reference-unresolvable` restores the refusal on
+the reference side too.
+
+A measure may be pruned only under a signed, in-force entry for this
+reference in the reviewed register
+(`packages/microcosm-build/src/microcosm/build/uk/reference_unresolvable_measures.json`,
+keyed by the reference's `<release>@<build>` label, then `entity.variable`,
+reviewed-exclusion schema). An unlisted measure refuses the comparison; the
+receipt records the register digest and the entries used, and the certifier
+re-checks every pruned measure against the committed register, including
+each entry's window at the certification's own evaluation date. The
+candidate is validated on the full surface before any pruning, so an export
+missing a listed measure refuses rather than scoring on a reduced surface.
+
+The receipt is a report with no verdict: its `evaluation` block records each
+side's loss and how many targets each fits more closely, with
+`no_threshold_applied`. The release-cut certifier requires it to name the
+candidate and the cut's reference and its surface to close; whether the
+comparison is good enough is the owner's call. The build driver's national
+role runs this comparison at the end of every build it is given a
+`--reference-h5` and `--reference-record` for, and writes the same receipt
+as `score_vs_reference.json`. Until microcosm#1095 the comparison was with
+the enhanced FRS and decided rule 1 (#578): the candidate's full loss had to
+be below the incumbent's.
 
 ## Evidence directory
 
@@ -137,13 +153,13 @@ incumbent for (microcosm#965) and writes the same receipt as
 - `national_target_registry.json`
 - `national_contract_registry.json`
 - `rowwise_candidate_manifest.json`
-- `score_vs_incumbent.json` (the build's own when run with `--incumbent-h5`;
-  the manifest's `evaluation` block records its verdict)
+- `score_vs_reference.json` (the build's own when run with `--reference-h5`;
+  the manifest's `evaluation` block summarizes it)
 - `logbook-spool/` (one row for the attempt, whatever its disposition)
 
-Acceptance follows #578: the candidate must not regress incumbent battery
-observables, and the score block decides rule 1. A rule-1 loss is evidence for
-#686/#736, not a threshold-edit instruction.
+The comparison with the reference informs acceptance and decides nothing
+by itself (microcosm#1095). A candidate that fits worse than the reference is
+evidence for #686/#736, not a threshold-edit instruction.
 
 The calibration battery is scoped to the calibration-relevant gates; the
 spine-construction and imputation gates are out of scope here and are listed in

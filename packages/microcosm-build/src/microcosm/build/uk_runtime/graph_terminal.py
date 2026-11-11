@@ -25,6 +25,10 @@ import pandas as pd
 
 from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame, MassChangeRecord, WeightKind, engine_tables
+from microcosm.frame.adapters.policyengine_uk import (
+    UK_ISA_INCOME_CONTRACT,
+    UK_SAVINGS_INCOME_PROJECTION,
+)
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -68,7 +72,9 @@ from .national_frame import (
     _write_uk_single_year_tables,
     uk_household_weight_kind,
     uk_identifier_range_failures,
+    uk_isa_income_contract,
     uk_release_identifier_tables,
+    uk_savings_income_projection,
     uk_time_period,
     validate_uk_national_frame,
 )
@@ -297,7 +303,9 @@ def materialize_uk_export(
         time_period=uk_time_period(frame),
         weight_kind=uk_household_weight_kind(frame),
         mass_log=frame.mass_log,
+        isa_income_contract=uk_isa_income_contract(frame),
         path=destination,
+        savings_income_projection=uk_savings_income_projection(frame),
     )
     return file_artifact(destination)
 
@@ -323,6 +331,10 @@ def validate_uk_export(
     for key in ("time_period", "weight_kind", "mass_log", "hash_environment"):
         if actual[key] != descriptor[key]:
             failures.append(f"Exported {key} differs from its graph descriptor.")
+    if payload["isa_income_contract"] != dict(UK_ISA_INCOME_CONTRACT):
+        failures.append("Exported ISA income contract is not the producer's.")
+    if payload["savings_income_projection"] != UK_SAVINGS_INCOME_PROJECTION:
+        failures.append("Exported savings income projection is not the producer's.")
     failures.extend(_area_code_failures(payload["household"], descriptor))
     failures.extend(uk_identifier_range_failures(payload))
     if file_artifact(path) != dataset:
@@ -639,6 +651,38 @@ def decode_full_gate_report(payload: bytes | Mapping):
     return report, enforcement
 
 
+def _require_one_reference(supporting: Mapping[str, Any]) -> None:
+    """Refuse references of two builds, or of another line than the dense one.
+
+    The dense line compares with one build, its current one (microcosm#1095):
+    both files come from ``tools/resolve_uk_reference.py`` for that build. A
+    national build's files agree with each other, so the line is checked too
+    (the review of microcosm#1574).
+    """
+
+    from .release_identity import UK_DENSE_RELEASE_ID
+
+    mass = supporting.get("input_mass_reference")
+    surface = supporting.get("reference_surface")
+    for name, evidence in (("input-mass reference", mass), ("surface", surface)):
+        if evidence is not None and not str(evidence.label).startswith(
+            f"{UK_DENSE_RELEASE_ID}@"
+        ):
+            raise ValueError(
+                f"The dense build's {name} names {evidence.label}, not a build of "
+                f"{UK_DENSE_RELEASE_ID}; resolve it with tools/resolve_uk_reference.py "
+                f"--release {UK_DENSE_RELEASE_ID}."
+            )
+    if mass is None or surface is None:
+        return
+    if (mass.label, mass.sha256) != (surface.label, surface.sha256):
+        raise ValueError(
+            f"The input-mass reference names {mass.label} ({mass.sha256}) but the "
+            f"reference surface names {surface.label} ({surface.sha256}); write "
+            "both from one reference with tools/resolve_uk_reference.py."
+        )
+
+
 def _spine_gate_evidence(context: KernelContext):
     from ..stage_evidence import decode_stage_evidence
 
@@ -704,7 +748,7 @@ def _source_gate_evidence(context: KernelContext, engine):
 
 @cache
 def uk_terminal_only_code_hash() -> str:
-    """The source hash of the high-value homes code the calibrated gates run.
+    """The source hash of the code only the calibrated gates run.
 
     The high-value homes evidence is computed on the calibrated pool alone.
     The source preflight runs the gate kernel's code and the dense solve keys
@@ -716,12 +760,34 @@ def uk_terminal_only_code_hash() -> str:
     between two builds that must reuse the solve belongs in
     ``high_value_home_gates`` alone.
 
+    The calibrated node (``uk.full.gates.calibrated``) also publishes its
+    ``calibration_diagnostics`` output as schema 9:
+    ``catalog_calibration_diagnostics`` with the UK label choices (which read
+    ``UK_GEOGRAPHY_ID_TO_LABEL``), dumped from ``CalibrationDiagnosticsV9``.
+    Those modules decide the published labels and bytes, so an edit to them
+    re-keys the calibrated node the same way. ``geography_constants``, like
+    ``high_value_homes``, also feeds the target kernels, which hash it
+    (microcosm#1492), so an edit to it still re-solves; an edit to the other
+    three never does.
+
     Hashed once per process, as the code was imported: an edit to the files
     while a build runs cannot fail the calibrated gates after the solve.
     """
+    import microcosm.calibrate.geography_constants as geography_constants
+    import microcosm.calibrate.hierarchy_labels as hierarchy_labels
+    import microcosm.diagnostics.catalogs as diagnostics_catalogs
+    import microcosm.diagnostics.schema as diagnostics_schema
+
     from . import high_value_home_gates, high_value_homes
 
-    return source_hash(high_value_home_gates, high_value_homes)
+    return source_hash(
+        high_value_home_gates,
+        high_value_homes,
+        diagnostics_catalogs,
+        diagnostics_schema,
+        hierarchy_labels,
+        geography_constants,
+    )
 
 
 class UKFullGateKernel(KernelBase):
@@ -812,6 +878,7 @@ class UKFullGateKernel(KernelBase):
         )
         from .geography_ladder import load_uk_oa_ladder
         from .local_rowwise import uk_ladder_area_support_summary
+        from .reference_surface import load_uk_reference_surface
         from .release_certification import rehydrate_uk_fit_weight_records
         from .weighted_integrity import load_uk_input_mass_reference
 
@@ -904,6 +971,11 @@ class UKFullGateKernel(KernelBase):
                 supporting["input_mass_reference"] = load_uk_input_mass_reference(
                     context.sources["uk_input_mass_reference"]
                 )
+            if "uk_reference_surface" in context.sources:
+                supporting["reference_surface"] = load_uk_reference_surface(
+                    context.sources["uk_reference_surface"]
+                )
+            _require_one_reference(supporting)
             household = frame.table("household").copy()
             household["household_weight"] = frame.weights_for("household").values
             summaries = uk_ladder_area_support_summary(
@@ -943,7 +1015,15 @@ class UKFullGateKernel(KernelBase):
             )
             diagnostics = evidence.artifacts["target_diagnostics"]
             support = support_frame.to_dict(orient="records")
-            from .diagnostics import uk_calibration_diagnostics_payload
+            from microcosm.diagnostics import (
+                CalibrationDiagnosticsV8,
+                catalog_calibration_diagnostics,
+            )
+
+            from .diagnostics import (
+                uk_calibration_diagnostics_payload,
+                uk_hierarchy_label_choices,
+            )
             from .graph_targets import registry_from_payload
 
             selected_registry = registry_from_payload(
@@ -984,10 +1064,18 @@ class UKFullGateKernel(KernelBase):
                     "target_scope": selection["selector"],
                 },
             )
+            # Published as schema 9, as the canonical writer publishes it:
+            # one label per area, whichever publisher named it
+            # (uk_hierarchy_label_choices); an unresolved second label is
+            # refused (HierarchyLabelConflictError).
+            published_diagnostics = catalog_calibration_diagnostics(
+                CalibrationDiagnosticsV8.model_validate(complete_diagnostics),
+                label_choices=uk_hierarchy_label_choices(),
+            ).model_dump(mode="python", exclude_defaults=True)
             output_artifacts.update(
                 {
                     "calibration_diagnostics": encode_stage_evidence(
-                        _json_safe(complete_diagnostics)
+                        _json_safe(published_diagnostics)
                     ),
                     "target_diagnostics_csv": pd.DataFrame(diagnostics)
                     .to_csv(index=False)
@@ -1159,10 +1247,10 @@ def append_uk_full_gate_nodes(
         else node
         for node in graph.nodes
     )
-    sources = ("uk_ladder",) + (
-        ("uk_input_mass_reference",)
-        if any(source.name == "uk_input_mass_reference" for source in graph.sources)
-        else ()
+    sources = ("uk_ladder",) + tuple(
+        name
+        for name in ("uk_input_mass_reference", "uk_reference_surface")
+        if any(source.name == name for source in graph.sources)
     )
     # The spine checkpoint's build state, when the bound checkpoint publishes
     # it: the input-coverage gate reads the stages' importance weights and
@@ -1296,6 +1384,8 @@ class UKFullHoldoutKernel(KernelBase):
         ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
+        from datetime import date
+
         from microcosm.calibrate.artifacts import decode_problem
 
         from ..gate_battery import _json_safe
@@ -1351,6 +1441,9 @@ class UKFullHoldoutKernel(KernelBase):
                 selection_pi_hi=float(context.params["selection_pi_hi"]),
                 baseline_pi_floor=float(context.params["baseline_pi_floor"]),
                 selection_initial_lambda=context.params.get("selection_initial_lambda"),
+                # Every fold reviews the binding on the build's review date,
+                # inherited from uk.full.problem (microcosm#1278).
+                now=date.fromisoformat(str(context.params["review_date"])),
                 **{
                     key: context.params[key]
                     for key in UK_SIZE_L2_PARAM_KEYS
@@ -1736,6 +1829,8 @@ def rowwise_candidate_manifest_from_graph(
     local_rows = len(materialization) - ladder_rows - national_rows
     local_fit, national_fit = _fit_rows(target_rows, materialization)
     abs_errors = target_rows["abs_relative_error"].to_numpy(dtype=np.float64)
+    if not np.isfinite(abs_errors).all():
+        raise ValueError("A target row has a non-finite relative error.")
     support_by_grain = {
         ("la" if grain == "local_authority" else str(grain)): rows.reset_index(
             drop=True
@@ -1967,16 +2062,26 @@ def rowwise_candidate_manifest_from_graph(
             ),
             "rotated_holdout": diagnostics["uk_diagnostics"].get("rotated_holdout"),
         },
-        # Area counts only: the manifest ships in a release, and a level's
-        # minima would be one area's support figures (microcosm#1301). The
-        # figures stay in the area-support table.
+        # The counts and the minima: María's ruling of 2026-10-26 dropped the
+        # withholding of per-area support figures (microcosm#1301).
         "support": {
             "areas_checked": int(len(support)),
             "areas_below_floor": int(support["support_below_floor"].sum()),
+            "min_assigned_households": int(support["assigned_households"].min()),
+            "min_nonzero_households": int(support["nonzero_households"].min()),
+            "min_effective_sample_size": float(support["effective_sample_size"].min()),
             "by_geography_level": {
                 str(level): {
                     "areas_checked": int(len(rows)),
                     "areas_below_floor": int(rows["support_below_floor"].sum()),
+                    "min_assigned_households": int(rows["assigned_households"].min()),
+                    "min_nonzero_households": int(rows["nonzero_households"].min()),
+                    "min_effective_sample_size": float(
+                        rows["effective_sample_size"].min()
+                    ),
+                    "min_nonzero_source_households": int(
+                        rows["nonzero_source_households"].min()
+                    ),
                 }
                 for level, rows in support.groupby("geography_level", sort=True)
             },

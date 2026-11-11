@@ -25,6 +25,7 @@ from microcosm.build.ledger_artifact import ChronicleFeedPinMismatchError
 from microcosm.build.transport.population_kernels import (
     TRANSPORT_BOUNDARY,
     TRANSPORT_CREATE,
+    TRANSPORT_CREATE_DECLARED,
     TRANSPORT_CURRENCY,
     TRANSPORT_QUANTILE_MAP,
     register_population_kernels,
@@ -121,6 +122,7 @@ def test_kernel_registration_is_explicit_idempotent_and_country_neutral():
     assert register_population_kernels(registry) is registry
     kernels = (
         TRANSPORT_CREATE,
+        TRANSPORT_CREATE_DECLARED,
         TRANSPORT_BOUNDARY,
         TRANSPORT_CURRENCY,
         TRANSPORT_QUANTILE_MAP,
@@ -132,19 +134,27 @@ def test_kernel_registration_is_explicit_idempotent_and_country_neutral():
         assert kernel.capabilities.consumes_se is False
         assert kernel.implementation_hash() == kernel.implementation_hash()
         assert kernel.capabilities.seed_source is (
-            SeedSource.KEYED if kernel is TRANSPORT_CREATE else SeedSource.NONE
+            SeedSource.KEYED
+            if kernel in (TRANSPORT_CREATE, TRANSPORT_CREATE_DECLARED)
+            else SeedSource.NONE
         )
 
 
-def test_aggregate_population_registration_installs_exactly_ten_kernels():
+def test_aggregate_population_registration_installs_exactly_sixteen_kernels():
     registry = KernelRegistry()
     assert register_transport_population_kernels(registry) is registry
     assert register_transport_population_kernels(registry) is registry
     assert set(registry.refs()) == {
+        "money.normalize@1",
+        "money.minor_units@1",
+        "money.annual_transfers@1",
+        "measure.combine@1",
         "transport.create@1",
+        "transport.create@2",
         "transport.boundary@1",
         "transport.currency@1",
         "transport.quantile_map@1",
+        "transport.quantile_map@2",
         "transport.unit_attributes@1",
         "concepts.encode@1",
         "concepts.encode_groups@1",
@@ -577,6 +587,82 @@ def test_quantile_map_refuses_absent_facts_and_mismatched_component_coverage(
         run_population(tmp_path / "run", sources, graph=graph)
 
 
+def _one_sex_per_household(tables):
+    """Give each household one sex flag, with both flags across the donor."""
+    person = tables["person"]
+    person["is_female"] = person.groupby("person_household_id").ngroup() % 2 == 0
+
+
+def _one_mixed_household(tables):
+    """Give the first household one sex flag and leave the others as drawn."""
+    person = tables["person"]
+    first = person["person_household_id"] == person["person_household_id"].iloc[0]
+    person.loc[first, "is_female"] = False
+
+
+@pytest.mark.parametrize("shape", ["bare", "component"])
+@pytest.mark.parametrize("mixed", [True, "one_household", False])
+def test_aggregate_map_refuses_members_with_two_component_codes(tmp_path, mixed, shape):
+    """An aggregate maps as one unit only when its members share one code.
+
+    Under component bands this check is the only guard: each component's map
+    would see a split household as a partial aggregate. The support kernel
+    judges each member's aggregate total by that member's own code, so it
+    relies on this refusal too.
+    """
+    sources = write_population_sources(
+        tmp_path / "sources",
+        band_entity="household",
+        edit_tables={
+            True: None,
+            "one_household": _one_mixed_household,
+            False: _one_sex_per_household,
+        }[mixed],
+    )
+    direct, _ = direct_population(sources)
+    person = direct.table("person")
+    codes = person.groupby("person_household_id")["sex"].nunique()
+    assert bool((codes > 1).any()) == bool(mixed)
+    assert bool((codes > 1).all()) == (mixed is True)
+    assert person["sex"].nunique() == 2
+    graph = population_graph(
+        sources, qmap_column="liquid_financial_assets", aggregate_entity="household"
+    )
+    quantile = graph.node("nz.quantile")
+    params = {**quantile.params, "component_column": "sex"}
+    if shape == "component":
+        bands = json.loads(quantile.params["bands"])["bands"]
+        document = {
+            "components": [
+                {"value": code, "bands": bands}
+                for code in sorted(person["sex"].unique().tolist())
+            ]
+        }
+        params = {
+            **params,
+            "bands": canonical_text(document),
+            "bands_sha256": digest(document),
+        }
+    quantile = replace(
+        quantile,
+        inputs=(Slice("person", ("liquid_financial_assets", "sex")),),
+        params=params,
+    )
+    graph = replace(
+        graph,
+        nodes=tuple(
+            quantile if node.id == quantile.id else node for node in graph.nodes
+        ),
+    )
+    if mixed:
+        with pytest.raises(
+            NodeRejectedError, match="Aggregate members must repeat one component code"
+        ):
+            run_population(tmp_path / "run", sources, graph=graph)
+    else:
+        run_population(tmp_path / "run", sources, graph=graph)
+
+
 def test_create_runtime_rejects_a_missing_declared_column(tmp_path):
     sources = write_population_sources(tmp_path / "sources")
     graph = population_graph(sources, through="boundary")
@@ -857,3 +943,23 @@ def test_create_artifacts_pin_python_string_storage_with_pyarrow_installed(tmp_p
         frame = run.manifest.population(node)
         for entity, column in text:
             assert frame.table(entity)[column].dtype == pinned, (node, column)
+
+
+@pytest.mark.parametrize("time_period", [2024, None])
+def test_create_records_the_donor_money_period_in_metadata_and_receipt(
+    tmp_path, time_period
+):
+    sources = write_population_sources(tmp_path / "sources", time_period=time_period)
+    node = create_node(sources)
+    context = KernelContext(
+        node=node,
+        tables={},
+        weights={},
+        strata=pd.Series([], dtype=object),
+        params=node.params,
+        rng=np.random.default_rng(0),
+        sources={"donor": sources.donor, "facts": sources.facts},
+    )
+    result = TRANSPORT_CREATE.run(context)
+    assert result.frame.metadata["donor_time_period"] == time_period
+    assert result.receipt["donor_time_period"] == time_period

@@ -29,7 +29,7 @@ def test_uc_take_up_population_mirrors_the_engines_eligibility_rule() -> None:
 
     The take-up population holds a unit with a UC claimant or partner aged 18
     to under Pension Credit qualifying age. One-person units aged 0 to 100
-    agree with the engine; the three cases below are engine conditions the
+    agree with the engine; the four cases below are engine conditions the
     population does not read, named so that an engine change to any fails
     here.
     """
@@ -77,10 +77,28 @@ def test_uc_take_up_population_mirrors_the_engines_eligibility_rule() -> None:
     # Named exception (iv): from 2.128.0 the closure of tax credits moves a
     # family onto Universal Credit (pe-uk#2119), and a pension-age Working Tax
     # Credit recipient claims it with the upper age condition waived (SI
-    # 2014/1230 reg 60A). The population leaves them out; the build leaves
-    # would_claim_uc_at_legacy_closure at the engine's default.
+    # 2014/1230 reg 60A). The population leaves them out; whether such a
+    # family claims at the closure is would_claim_uc_at_legacy_closure, which
+    # uc_legacy_closure_take_up draws at DWP's Move to UC rates (microcosm#1095).
     assert _engine_uc_eligible(
         {"wtc": {"age": {2025: 70}, "working_tax_credit_reported": {2025: 2_000}}},
         {"b_wtc": {"members": ["wtc"]}},
     ) == [True]
     assert not policy.working_age(np.array([70])).any()
+
+    # Named exception (v): from 2.173.2 a claimant must not be receiving
+    # education (meets_uc_education_condition), and frs_education sets
+    # is_in_full_time_education (microcosm#1095). A childless full-time
+    # university student whom no exception covers receives it, so the engine
+    # excludes the unit; the population holds it.
+    assert _engine_uc_eligible(
+        {
+            "student": {
+                "age": {2025: 20},
+                "is_in_full_time_education": {2025: True},
+                "current_education": {2025: "TERTIARY"},
+            }
+        },
+        {"b_student": {"members": ["student"]}},
+    ) == [False]
+    assert policy.working_age(np.array([20])).all()

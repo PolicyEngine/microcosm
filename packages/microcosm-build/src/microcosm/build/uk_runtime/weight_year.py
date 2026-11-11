@@ -8,7 +8,8 @@ weight is stored, and the person and benefit-unit weights are formulas of it).
 
 The UK release is stamped with the survey year and its weights are solved at
 the calibration year. Written as solved, they read high at the calibration
-year by the growth between the two: 0.72% from 2024 to 2025. uk-data#538 is the
+year by the growth between the two, which the ``dataset_projection`` block of
+``uk/hmrc_uprating_engine_pins.json`` pins for each engine lock. uk-data#538 is the
 incumbent's version of the same mechanism, with the opposite sign.
 
 So the release writes the solved weights divided by the engine's own factor,
@@ -55,6 +56,11 @@ UK_WEIGHT_YEAR_MASS_REASON = (
 UK_ENGINE_YEAR_MASS_REASON = (
     "Household weights as policyengine-uk projects them from the dataset year "
     "to the simulation year (microcosm#796 A19)."
+)
+UK_RECORDED_SOLVE_YEAR_MASS_REASON = (
+    "Household weights at the solve year by the release's own record: the "
+    "stored weights times the factor its build divided them by, whatever "
+    "policyengine-uk is installed (microcosm#1095)."
 )
 
 
@@ -181,14 +187,46 @@ def uk_solve_year_frame(frame: Frame, *, solve_year: int) -> Frame:
     return uk_engine_year_frame(frame, simulation_year=solve_year)
 
 
+def uk_recorded_solve_year_frame(frame: Frame) -> Frame:
+    """A written frame at the weights its own build solved, by its record.
+
+    :func:`uk_solve_year_frame` gives a release back its solved weights
+    through the installed engine's projection, so it refuses a release an
+    earlier policyengine-uk wrote, whose projection differed. A cut's
+    reference is such a release: the current build may predate the installed
+    engine. Its mass log records the factor its build divided by, and that
+    factor alone returns its solve (microcosm#1095). A frame that was never
+    divided is returned as it is.
+    """
+
+    if not uk_weights_are_at_dataset_year(frame):
+        return frame
+    record = [r for r in frame.mass_log if r.entity == "household"][-1]
+    declared = record.declared_factor
+    if declared is None or not np.isfinite(float(declared)) or float(declared) <= 0.0:
+        raise ValueError(
+            "The frame's household weights were divided at the dataset year, but "
+            "its mass log records no positive factor to multiply them back by."
+        )
+    weights = frame.weights_for("household")
+    factor = 1.0 / float(declared)
+    return frame.with_weights(
+        "household",
+        Weights(np.asarray(weights.values, dtype=np.float64) * factor, weights.kind),
+        mass=MassChange(factor=factor, reason=UK_RECORDED_SOLVE_YEAR_MASS_REASON),
+    )
+
+
 __all__ = [
     "UK_ENGINE_YEAR_MASS_REASON",
+    "UK_RECORDED_SOLVE_YEAR_MASS_REASON",
     "UK_WEIGHT_PROJECTION_PARAMETER",
     "UK_WEIGHT_PROJECTION_PINS_BLOCK",
     "UK_WEIGHT_PROJECTION_VARIABLE",
     "UK_WEIGHT_YEAR_MASS_REASON",
     "uk_dataset_year_frame",
     "uk_engine_year_frame",
+    "uk_recorded_solve_year_frame",
     "uk_solve_year_frame",
     "uk_weight_projection_factor",
     "uk_weight_projection_growth",

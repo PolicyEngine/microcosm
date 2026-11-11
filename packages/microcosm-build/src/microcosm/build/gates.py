@@ -247,6 +247,26 @@ def ledger_compile_parity_gate(
     )
 
 
+#: The classifier's reason for each kind of compile-parity difference. The UK
+#: parity tool replaces it with a ruled rationale where one applies, and its
+#: receipt test replays both, so either text changing marks the receipt stale.
+PARITY_DIFFERENCE_REASONS = {
+    "ledger_absent": (
+        "Packaged Ledger reference did not resolve for this comparison period."
+    ),
+    "fixture_only": (
+        "Fixture row has no Ledger-compiled counterpart at this comparison period."
+    ),
+    "ledger_only": (
+        "Ledger-compiled row has no fixture counterpart at this comparison period."
+    ),
+    "calibration_drift": (
+        "Ledger-compiled value differs from the fixture value at this comparison "
+        "period."
+    ),
+}
+
+
 def ledger_compile_parity_signed_differences(
     compiled_registry: TargetRegistry | Mapping[str, object],
     fixture: TargetRegistry | Mapping[str, object],
@@ -282,7 +302,7 @@ def ledger_compile_parity_signed_differences(
             "kind": "ledger_absent",
             "name": name,
             "period": period,
-            "reason": "Packaged Ledger reference did not resolve for this comparison period.",
+            "reason": PARITY_DIFFERENCE_REASONS["ledger_absent"],
         }
         if fixture_spec is not None:
             row["fixture_value"] = fixture_spec.value
@@ -298,10 +318,7 @@ def ledger_compile_parity_signed_differences(
                 "kind": "fixture_only",
                 "name": spec.name,
                 "period": spec.period,
-                "reason": (
-                    "Fixture row has no Ledger-compiled counterpart at this "
-                    "comparison period."
-                ),
+                "reason": PARITY_DIFFERENCE_REASONS["fixture_only"],
             }
         )
 
@@ -313,10 +330,7 @@ def ledger_compile_parity_signed_differences(
                 "ledger_value": spec.value,
                 "name": spec.name,
                 "period": spec.period,
-                "reason": (
-                    "Ledger-compiled row has no fixture counterpart at this "
-                    "comparison period."
-                ),
+                "reason": PARITY_DIFFERENCE_REASONS["ledger_only"],
             }
         )
 
@@ -332,10 +346,7 @@ def ledger_compile_parity_signed_differences(
                 "ledger_value": actual_spec.value,
                 "name": actual_spec.name,
                 "period": actual_spec.period,
-                "reason": (
-                    "Ledger-compiled value differs from the fixture value at "
-                    "this comparison period."
-                ),
+                "reason": PARITY_DIFFERENCE_REASONS["calibration_drift"],
             }
         )
 
@@ -2540,20 +2551,24 @@ def area_support_shortfalls(
 ) -> list[str]:
     """The support floors one area misses, worded as :func:`area_support_gate` reports them.
 
-    Each shortfall names the floor, never the area's measured value: the
-    gate's failures and its reviewed-exclusion details ship in a signed
-    release file, and an area's rows, ESS and distinct sources are per-area
-    support figures a release withholds (microcosm#1301). The figures stay
-    in the build's area-support table.
+    Each shortfall states the area's measured value beside the floor: the
+    release ships per-area support figures since María's ruling of
+    2026-10-26, which dropped their withholding (microcosm#1301).
     """
 
     shortfalls = []
     if rows < minimum_rows:
-        shortfalls.append(f"rows < {minimum_rows}")
+        shortfalls.append(f"rows {int(rows)} < {minimum_rows}")
     if effective_sample_size < minimum_effective_sample_size:
-        shortfalls.append(f"ESS < {float(minimum_effective_sample_size):.6g}")
+        shortfalls.append(
+            "ESS "
+            f"{float(effective_sample_size):.6g} < "
+            f"{float(minimum_effective_sample_size):.6g}"
+        )
     if sources < minimum_distinct_sources:
-        shortfalls.append(f"distinct sources < {minimum_distinct_sources}")
+        shortfalls.append(
+            f"distinct sources {int(sources)} < {minimum_distinct_sources}"
+        )
     return shortfalls
 
 
@@ -2605,11 +2620,10 @@ def area_support_gate(
     declared ``area_roster`` is load-bearing: a missing weak area cannot make
     the gate look better by disappearing from the evidence table.
 
-    The details and failures carry no per-area support figures
-    (microcosm#1301): a failure and a reviewed exclusion name the floors the
-    area misses, and each geography level reports how many areas were
-    checked and how many sit below a floor. A level's minima would be one
-    area's figures, so they are not reported either.
+    A failure and a reviewed exclusion state the area's measured support
+    beside the floors it misses, and each geography level reports how many
+    areas were checked and sit below a floor, and its minima (María's ruling
+    of 2026-10-26 dropped the withholding of microcosm#1301).
     """
 
     levels = tuple(str(level) for level in geography_levels)
@@ -2717,7 +2731,13 @@ def area_support_gate(
             below_floor[row.geography_level] += 1
         record = exclusions.get(key)
         if record is not None and shortfalls:
-            used_exclusions[key] = {"shortfalls": shortfalls, "record": dict(record)}
+            used_exclusions[key] = {
+                "shortfalls": shortfalls,
+                "rows": int(row.nonzero_households),
+                "ess": float(row.effective_sample_size),
+                "sources": int(row.nonzero_source_households),
+                "record": dict(record),
+            }
         elif record is not None:
             stale_exclusions.append(key)
             failures.append(
@@ -2734,13 +2754,20 @@ def area_support_gate(
         for key in unknown_exclusions
     )
 
-    by_level = {
-        level: {
-            "areas_checked": int((rows["geography_level"] == level).sum()),
+    by_level: dict[str, dict[str, object]] = {}
+    for level in levels:
+        level_rows = rows.loc[rows["geography_level"] == level]
+        by_level[level] = {
+            "areas_checked": int(len(level_rows)),
             "areas_below_floor": below_floor[level],
+            "minimum_rows": int(level_rows["nonzero_households"].min()),
+            "minimum_effective_sample_size": float(
+                level_rows["effective_sample_size"].min()
+            ),
+            "minimum_distinct_sources": int(
+                level_rows["nonzero_source_households"].min()
+            ),
         }
-        for level in levels
-    }
     return GateResult(
         name="area_support",
         passed=not failures,

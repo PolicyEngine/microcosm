@@ -8,6 +8,9 @@ dist/
 build/
 out/
 *.h5
+# Licensed run outputs: pool tables and audit directories (UKDS CD137 cl. 8).
+*.npz
+audit-*/
 !packages/*/build/
 # microcosm.build is a real namespace package, not a build-artifact dir
 !packages/microcosm-build/src/microcosm/build/

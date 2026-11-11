@@ -177,15 +177,25 @@ class TestE6Receipt:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         class _FakeModel:
-            def __init__(self, *, n_estimators, seed):
-                del n_estimators, seed
+            def __init__(self, *, n_estimators, seed, gate_calibration):
+                del n_estimators, seed, gate_calibration
 
             def start_chain(self, donor, predictors, targets, *, weights):
                 del donor, predictors, weights
                 return {"targets": list(targets)}
 
-            def fit_draw_next(self, donor, recipient_base, raw, *, state, weights):
-                del recipient_base, raw, weights
+            def fit_draw_next(
+                self,
+                donor,
+                recipient_base,
+                raw,
+                *,
+                state,
+                weights,
+                quantiles,
+                sign_uniforms,
+            ):
+                del recipient_base, raw, weights, quantiles, sign_uniforms
                 target = state["targets"][0]
                 state = {"targets": state["targets"][1:]}
                 return SimpleNamespace(

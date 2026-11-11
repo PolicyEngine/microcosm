@@ -2130,6 +2130,77 @@
           "note": "Sheffield, recoded E08000039 in the April 2025 ONS LAD layer."
         }
       }
+    },
+    "statistical_scope": {
+      "ledger_geography_level": "statistical_scope",
+      "area_layer": "brma_area_layer.json",
+      "area_layer_sha256": "79a4b799c5c767af7a03979a325e0e830fe543e74692136529ede0eb4b448ecf",
+      "area_layer_method": "uk-brma-area-layer-v1",
+      "expected_vintage": [
+        "brma_scotland"
+      ],
+      "area_count": 18,
+      "area_ids": [
+        "S33000001",
+        "S33000002",
+        "S33000003",
+        "S33000004",
+        "S33000005",
+        "S33000006",
+        "S33000007",
+        "S33000008",
+        "S33000009",
+        "S33000010",
+        "S33000011",
+        "S33000012",
+        "S33000013",
+        "S33000014",
+        "S33000015",
+        "S33000016",
+        "S33000017",
+        "S33000018"
+      ],
+      "region_code_by_area": {
+        "S33000001": "S92000003",
+        "S33000002": "S92000003",
+        "S33000003": "S92000003",
+        "S33000004": "S92000003",
+        "S33000005": "S92000003",
+        "S33000006": "S92000003",
+        "S33000007": "S92000003",
+        "S33000008": "S92000003",
+        "S33000009": "S92000003",
+        "S33000010": "S92000003",
+        "S33000011": "S92000003",
+        "S33000012": "S92000003",
+        "S33000013": "S92000003",
+        "S33000014": "S92000003",
+        "S33000015": "S92000003",
+        "S33000016": "S92000003",
+        "S33000017": "S92000003",
+        "S33000018": "S92000003"
+      },
+      "brma_name_by_area": {
+        "S33000001": "ABERDEEN_AND_SHIRE",
+        "S33000002": "ARGYLL_AND_BUTE",
+        "S33000003": "AYRSHIRES",
+        "S33000004": "DUMFRIES_AND_GALLOWAY",
+        "S33000005": "DUNDEE_AND_ANGUS",
+        "S33000006": "EAST_DUNBARTONSHIRE",
+        "S33000007": "FIFE",
+        "S33000008": "FORTH_VALLEY",
+        "S33000009": "GREATER_GLASGOW",
+        "S33000010": "HIGHLAND_AND_ISLANDS",
+        "S33000011": "LOTHIAN",
+        "S33000012": "NORTH_LANARKSHIRE",
+        "S33000013": "PERTH_AND_KINROSS",
+        "S33000014": "RENFREWSHIRE_AND_INVERCLYDE",
+        "S33000015": "SCOTTISH_BORDERS",
+        "S33000016": "SOUTH_LANARKSHIRE",
+        "S33000017": "WEST_DUNBARTONSHIRE",
+        "S33000018": "WEST_LOTHIAN"
+      },
+      "code_aliases": {}
     }
   }
 }

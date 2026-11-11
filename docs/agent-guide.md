@@ -15,9 +15,10 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 ## Commands
 
 UK build completion exports and stages Orrery graph evidence. Publication uses
-an independent worker inside the external `microcosm-emitter` service and a durable queue;
-see [configuration and retry](orrery-publication.md). No new producer secret or
-environment variable is required. Keep graph export/publication tests independent
+an independent module of the separately installed `microcosm-emitter`, which the
+build starts through `microcosm-emitter-interface`, and a durable queue; see
+[configuration and retry](orrery-publication.md). Staging run files and staged
+dataset bundles go through the same emitter. No new producer secret is required. Keep graph export/publication tests independent
 of the hosted runs app and collector; use synthetic files and fake HTTP.
 
 ```bash
@@ -40,8 +41,56 @@ or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 `UV_PROJECT_ENVIRONMENT` at a separate directory outside the checkout for each.
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
-`engine-uk`, `integration-uk`, and `wheels` jobs, plus the
-`select-countries` orchestration job.
+`engine-uk`, `integration-uk`, `wheels`, and `installed-emitter` jobs, plus the
+`select-countries` orchestration job and the `ci` job.
+
+`ci` gives the `main` ruleset one check that covers the country jobs. It fails
+unless every other job passed, or skipped because `select-countries` succeeded
+and reported `false` for its country. A skipped matrix job reports under its
+unexpanded name, so a ruleset cannot require `engine-us` or `engine-uk` by
+name. The ruleset also names each other check that runs on every pull
+request: `lint`, `wheels`, `select-countries`, `installed-emitter` and both
+`engine-free` legs. When `engine-free`'s matrix changes, change the ruleset
+too, because a leg's check name holds its Python version.
+
+The workflow runs on a pull request only when it targets `main`. Retargeting a
+pull request to `main` starts no run, because GitHub reports a base change as
+an `edited` event, which the workflow doesn't run on. After a stacked pull
+request retargets, push a commit or close and reopen it, then merge once its
+checks pass.
+
+The plan names the jobs the selection may leave out: each job whose test
+groups all need the same country's engine. The lint job runs
+`tools/ci_test_plan.py verify-workflow`, which parses the workflow with PyYAML
+and refuses:
+
+- two keys that PyYAML reads as one, a merge key (`<<`), and U+0085, U+2028
+  or U+2029, which YAML 1.1 reads as line breaks and YAML 1.2 doesn't;
+- a job outside the plan, a plan job the workflow lacks, and a job whose `if`
+  differs from the one the plan gives it;
+- a job the selection may leave out that doesn't need `select-countries`, and
+  a job that needs one the selection may leave out, unless both follow the
+  same country's selection;
+- a `ci` job that lacks `if: always()`, omits a job from `needs`, or does
+  anything but check out the repository and run `require-results` on its
+  `needs` context;
+- a `select-countries` job that doesn't publish the outputs its `plan` step
+  writes;
+- `continue-on-error` on any job or step, a step `if` other than `always()`,
+  `success()` or `!cancelled()`, and a job-level `name`;
+- a workflow `defaults` other than `run: shell: bash`, a job-level `defaults`
+  and a step `shell`. GitHub runs an explicit `shell: bash` as
+  `bash -eo pipefail`, so a pipe cannot hide a failed command.
+
+The plan's tests in `test_ci_test_plan.py` run the same checks and test the
+code `ci` runs. The ruleset reads `engine-free` without `ci`, so those tests
+stay in that job, and `tools/ci_test_plan.py verify` refuses a plan that moves
+them out. After editing the workflow, run
+`uv run python tools/ci_test_plan.py verify-workflow`. A pull request's run
+takes the workflow and the plan from the pull request's own merge with `main`,
+so a pull request that rewrites them can pass itself, and review has to catch
+that.
+
 `tools/ci_test_plan.py` is the only authority for test-directory ownership, CI
 job assignment, country ownership, US timing-report categories, and
 changed-path country selection. Its `TEST_GROUPS` registry defines every valid
@@ -57,7 +106,12 @@ distributes files across two pytest workers with `--dist loadfile`.
 Changed-file selection only controls the more resource-intensive country jobs.
 A documentation-only pull request selects neither country; a US-only or UK-only
 pull request selects that country; shared, mixed, unknown, or empty changed-path
-sets select both. Main pushes select both without querying the pull-request API.
+sets select both. Below `tools/`, the rules for documentation, test groups and
+the country runtime packages run first. A file there that none of them claims
+belongs to a country when its file name holds that country as a whole word and
+the other country's letters appear nowhere in its lower-cased path, and takes
+the `shared` scope otherwise. Main pushes select both without querying the
+pull-request API.
 The UK integration job follows the same UK selection as the ordinary UK engine
 job.
 
@@ -81,9 +135,10 @@ its 25 slowest tests.
 Every behavioral or cross-language compatibility assertion must be a pytest
 test in a directory registered by `TEST_GROUPS` and must run through that
 category's existing workflow job. Supporting programs and data may live under
-`tools/`, but they do not receive separate workflow jobs. The test-plan verifier
-allows only registered test jobs and the explicitly declared orchestration,
-lint, and wheel-building jobs. Add a test category to `TEST_GROUPS` before its
+`tools/`, but they do not receive separate workflow jobs.
+`tools/ci_test_plan.py verify-workflow` allows only registered test jobs and
+the explicitly declared orchestration, lint, wheel-building, and
+aggregate-result jobs. Add a test category to `TEST_GROUPS` before its
 executor; do not create a separate selection system, test workflow, or
 single-purpose behavioral test job.
 
@@ -93,19 +148,66 @@ engine-free runner installs the supported public Orrery range and locked Node
 dependency set under `tools/orrery-contract/`; the pytest test generates a
 document through Microcosm's public Python API and requires Orrery's public
 parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
-uses the same pinned parser for groups, statuses, activities and artifacts.
+uses the same pinned parser for groups, statuses, activities and artifacts, and
+the one in `test_graph_reconstruction.py` uses it for the reconstruction marker
+of a declaration-only document.
 These CI tests perform no browser rendering.
 
-Workspace tests use an in-memory telemetry emitter by default. The shared
-fixture isolates Hugging Face credentials and cache paths. Adapter tests replace
-emitter startup, inventory and publication APIs with fakes. Emitter process, persistence
-and HTTP-delivery tests belong in microcosm-emitter; do not copy them
-into Microcosm. Build tests inspect `fake_telemetry_emitters` without creating
-sockets or service processes.
+Workspace tests use an in-memory emitter client by default
+(`test_support/microcosm_build/emitter.py`), and the shared fixture refuses to
+start the installed command. It also isolates Hugging Face credentials and cache
+paths. Build tests inspect `fake_telemetry_emitters`: their events follow the
+emitter's documented request-to-event rules, and the run files they were handed
+are in `client.hub_files`. Staged dataset bundles are in `client.bundle_requests`;
+the fake copies their small files as the emitter does and commits them through
+the fake Hub `share_fake_hub` gives it (`bundle_receipts` scripts other answers,
+`never_copy` leaves named files uncopied). Its bundles are jobs in a
+`FakeHandoverQueue`, which clients standing for emitters on one machine can
+share: an identical hand-over returns the queued receipt, and a delivering
+client attempts the jobs that are due, the earliest due first, with a wait
+that doubles after each failed attempt, as the emitter claims them
+(`deliver=False` and `answer_receipts=False` stand for an emitter that took a
+hand-over and stopped). Emitter process, persistence and
+HTTP-delivery tests belong in microcosm-emitter; do not copy them into
+Microcosm.
+
+The `installed-emitter` job is the one place that starts the real emitter.
+`tools/run_installed_emitter_tests.sh` installs `microcosm-emitter` at each
+release `tools/installed_emitter_releases.py` names (`MINIMUM_EMITTER_VERSION`,
+then the newest release pinned in `tools/installed-emitter/requirements.txt`),
+each into its own uv tool directory, and runs `installed_emitter/shared/` once
+for each; it tests every release even when an earlier one fails. Those tests
+start the installed command with `start_bundle_emitter()`, as the UK re-stage
+command does (the Hugging Face module only), and send its Hugging Face Hub
+requests through `HF_ENDPOINT` to a loopback stand-in server
+(`test_support/microcosm_build/stand_in_hub.py`), so the job needs no secret.
+With Xet turned off, the stand-in takes the dataset through the LFS upload a
+real Hub requires for it, with the single-part `basic` transfer. It does not
+model Xet, which machines with `hf_xet` use, or the multipart transfer a real
+Hub can choose for a large object, so the tested path is that of machines
+without `hf_xet`, or with it turned off, for files sent in one part. A request
+it has no route for, or that its handler fails on, fails the test. The tests check
+what builds rely on in the hand-over (one commit per bundle on the head it
+names, `copied_files`, `already_staged`, the recorded error codes and the
+version check), not the emitter's own queue or delivery.
+`test_installed_emitter_status.py` runs a stage through the US Modal runner's
+`_run_stage` against local directories, with the installed command at the
+image's emitter path: its tool starts the emitter's telemetry module through
+the interface, with no credential, no collector token and a closed loopback
+collector address, so the emitter keeps its events and sends nothing, and the
+test checks what the runner records from the emitter's `status`, and that the
+emitter host has exited before the runner runs it. The runner warns when
+the package index has a newer release than the pin; raise the pin in a pull
+request then. `tools/installed-emitter/constraints.txt` pins the
+`huggingface_hub` release whose requests the stand-in answers; the runner also
+warns when a newer 1.x release, which a new emitter install takes, is
+published. Change the constraint only together with the stand-in. Run the job's tests locally with
+`bash tools/run_installed_emitter_tests.sh <directory for the tool installs>`.
 
 The UK full-build caller sets `close_service_on_finish=False`: reporting an outcome
-leaves the graph worker available, and that caller's existing `finally` cleanup
-closes the combined service. Other callers close automatically when they finish.
+leaves the emitter running for graph and staging hand-overs, and that caller's
+existing `finally` cleanup closes it. Other callers close automatically when they
+finish, so they hand over their staging run's final state first.
 Keep validation-refused outcomes and structured
 failure codes intact when changing the adapter.
 
@@ -116,6 +218,9 @@ Every workflow job sets `timeout-minutes` (at least 1.5 times its slowest
 observed successful run) so a hung job releases its runner from the
 organization's shared pool; raise a job's cap when its suite legitimately
 grows past it.
+Every workflow job runs on `ubuntu-24.04`, and the workflow sets
+`UV_MANAGED_PYTHON=1`, so uv downloads its own Python and never takes the
+image's. Move every job to a newer image in one pull request.
 
 `load_country_spec("<code>")` loads each packaged country spec once per
 process and hands every caller the same immutable object; a `Path` argument is
@@ -123,6 +228,26 @@ re-read on every call. A test that patches something the loader itself runs and
 then loads a packaged spec by code must call
 `country_spec._load_packaged_country_spec.cache_clear()` before and after that
 load, or it silently receives the spec an earlier test cached.
+
+Git exports an absolute `GIT_DIR` to the hooks, `rebase --exec` commands and
+shell aliases it runs in a linked worktree, and `GIT_DIR` outranks `-C` and the
+working directory. The root `conftest.py` therefore removes, before any test
+runs, the variables `git rev-parse --local-env-vars` lists as local to one
+repository, less the two that carry `git -c` options, plus the
+`GIT_QUARANTINE_PATH` git gives a `pre-receive` hook
+(`test_support.git_isolation`), so a fixture's `git init` or `commit` in a
+temporary directory stays there. A test that needs one of those variables sets
+it itself. New code that runs git against a repository other than its own
+should not rely on that, because it also runs outside the suite: drop the
+variables from the child environment, as the Modal stage runner does
+(`modal_us_stage_plan.git_environment`). Two policies exist for the `git -c`
+carriers. The runner and the suite keep them, because git keeps them when it
+runs a command in another repository and
+`test_support.git_repositories.NO_BACKGROUND_MAINTENANCE_ENV` reaches git
+through them. The Axiom adapter's `_git_environment`
+(`microcosm.frame.adapters.axiom`) drops the carriers as well, as variables
+that carry configuration into the repository git reads. Several older call
+sites still run git with the inherited environment.
 
 **Adding or moving tests.** Every `test_*.py` module must live directly in one
 of these directories below its package's `tests/` directory:
@@ -142,6 +267,9 @@ of these directories below its package's `tests/` directory:
 - `engine/uk/`: imports or executes the UK engine.
 - `integration/uk/`: runs serially through the `integration-uk` job with the
   explicit `--run-integration` option.
+- `installed_emitter/shared/`: starts the separately installed
+  `microcosm-emitter`; runs through the `installed-emitter` job, once per
+  installed release, with the explicit `--run-integration` option.
 
 Classify a mixed US module by its most resource-intensive test, or split it when
 the tests already have cleanly separable helpers. The directory is the execution
@@ -183,6 +311,14 @@ module or dependency. CI tests the merge ref, so merge main and re-pin rather
 than hunting for an environment leak. Editable installs hide packaging breaks;
 if you touch packaging, build wheels locally before pushing.
 
+For an intentional US source-stage change, regenerate the release input
+coverage manifest with `tools/build_us_release_input_coverage_manifest.py`,
+then follow the bundle/pin/coverage sequence documented in
+`tools/repin_us_spec_engine_contracts.py`. The repinner derives frozen source
+hashes, compiler field inventories and their test expectations; its `--check`
+mode refuses drift. Full bundle generation needs the US engine environment.
+These commands do not rebuild survey data or certify a release.
+
 The `integration-uk` job in `.github/workflows/test.yml` runs the
 `integration/uk/` directory serially on Python 3.13 whenever the unified
 changed-path selection includes the UK, and on every push to `main`. It skips
@@ -212,17 +348,32 @@ no secret. Green PR checks mean the code contracts hold — they do **not**
 certify data artifacts.
 Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
-deliberate human step (`tools/publish_release.sh` →
-`microcosm-publish-release`), gated by `tools/preflight_us_release_gates.py`;
-reviewed line promotion is a separate deliberate call to the same CLI with
-`--promote-line`. See README "Releasing & alerts". Before launching a US
+deliberate human step. A US release publishes with tags and `latest.json`
+(`tools/publish_release.sh` → `microcosm-publish-release`), checked by
+`tools/preflight_us_release_gates.py`. The UK repository's switch moved the
+June 2023 UK build into release `populace-uk-2023`, which takes no new builds,
+and `populace-uk-<year>-<tier>-k<N>` releases have no publication path there.
+The UK national, dense and
+local-area releases publish each build into its own folder through the
+emitter (`microcosm-publish-release-build`, from
+`microcosm.build.release_publication`), which records it in the repository's
+`releases.json`; making a published build current is a separate deliberate
+call to the same command with `--promote`. The emitter refuses that while any
+`latest*.json` pointer file exists; the UK repository's switch to
+`releases.json` deleted them. Tests hand release changes to the
+in-memory client (`client.release_requests`), which applies them to
+`hub_files` with the interface's shared `releases.json` checks. See README
+"Releasing & alerts". Before launching a US
 release, dry-run it with `tools/dry_run_us_release_gates.py` (or the release
 tool's `--dry-run-gates-report`). It replays the release's own input stages and
 grades every waiver register on the staged frame before the solve; see README
 "Dry-running the release's registers". Publication also refuses a
 release whose build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
-publishes without the flag. Never publish or promote artifacts as a side
+publishes without the flag. A UK national cut runs end to end with
+`tools/run_uk_cut.py` ([uk-cut-anyone.md](uk-cut-anyone.md)): inputs fetched
+by pin, a signing key registered in `microcosm.data.gate_signing_keys`, and
+an inspection-only `--publish`. Never publish or promote artifacts as a side
 effect of another task. A UK rowwise run's **staged** bundle
 (`staged/<run_id>/` in the private repository, written by the build itself)
 is inspection evidence, not a release: it never moves `releases/` or
@@ -265,6 +416,16 @@ single-year release H5 has none, so a 2024 release on that engine reports
 PolicyEngine/policyengine-us#10106. A Part with no weighted payer never reports
 a Trustees comparison. It is held out the same way: no calibration row, no
 release refusal.
+It also writes `us_population_structure_holdout.json` from the written H5
+alone (no engine): marital status of people 65+ by sex (ACS 2024 B12002),
+people 65+ living alone (ACS 2024 B09021), people receiving Social Security in
+total, 65+ and under 65 (SSA Monthly Statistical Snapshot, December 2024,
+Table 1), beneficiaries per component against Table 2's benefit types, and the
+number of people carrying more than one positive component. The release
+calibrates to none of these, and when the step cannot make a measurement it
+records the report as unavailable instead of refusing the release.
+`tools/report_us_population_structure.py <h5>` writes the same report for an
+already published release.
 Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release
@@ -303,6 +464,18 @@ against both H5 files. The publisher refuses to point `latest.json` at this
 child, so publish it with `--no-latest --tag-only`. See
 [the reported-receipt runbook](us-reported-receipt-source-enrichment.md).
 
+`compatibility_recertification` is a separate release type
+(`microcosm.data.compatibility_recertification`,
+`tools/build_us_compatibility_recertification.py`): a published US
+calibration release, republished byte for byte with a measured claim for a
+newer policyengine-us. Its parent identity is the parent's own published
+`release_manifest.json`, carried and hashed, never a code constant; the
+publisher checks the parent tag on the Hub before any upload. A change in
+what the tested engine reads or ignores must have an entry in
+`RECERTIFICATION_COLUMN_CHANGES`. It takes `--compatibility-wheel` and no
+`--parent-h5`. National parents only for now. See
+[the recertification runbook](us-compatibility-recertification.md).
+
 Three US release seams refuse a stored column that is lowercase snake_case,
 not a variable of the engine the release is certified against, and not in the
 reviewed register `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`
@@ -321,6 +494,17 @@ and the ACS local-area `stored_inputs` gate, each naming the built-with engine
 on which an SPM unit the built-with engine measures has no classified adult,
 and binds the `spm_measurement_composition` gate the publisher requires
 (microcosm#1263; `microcosm.build.us_runtime.spm_measurement_gate`).
+The same package stage requires complete occupation, industry and
+worked-last-year inputs on every final person row and binds that verdict to
+the H5 hash. ACS staging checks its preserved ASEC donor before acquisition;
+historical donors and staging files missing these inputs must be rebuilt
+through the exact ASEC restoration/fiscal carry and native ACS mapping.
+US household ladders carry both `county_fips` (2020 counties for the locked
+policyengine-us rules) and `county_fips_2023` (3,144 county-equivalents for
+calibration, including Connecticut's nine planning regions). The latter is
+registered non-engine metadata. Geography gates require both columns; older
+artifacts need the new mapping before they pass. County target joins must
+choose the 2023 column explicitly. See [the vintage investigation](us-county-2023-geography.md).
 A source-enrichment publisher claim widens the range
 consumers accept, not what was checked: the bundle's
 `compatibility.claim_measurement` names the one version the probe measured.
@@ -354,6 +538,15 @@ can replay it. See
 The ACS local-area release can build its fresh staging H5 on Modal with
 `us-acs-multispine-staging`, then consume its verified H5 and summary through
 `us-acs-local-release`; see [the Modal stage runbook](us-modal-stage-runbook.md#acs-multispine-staging).
+Its optional [county calibration rung](us-acs-local-county-rung.md) uses
+`--geographies state,cd,county --soi-mode state_county`, a county-inclusive
+Ledger feed, and matching county boundaries. Full runs require all 3,144
+county-equivalents and write `county_reliability.json`; the base year is 2024.
+County solves use a run-level loss cap of 10 and a per-record weight cap of 5,
+configurable with `--county-target-loss-cap` and `--county-max-weight-ratio`
+(the pilot also tested 20). Later calibration stages resolve this profile from
+the checkpoint's recorded county surface. Ordinary runs retain their historical
+solver settings. County grades use source-household ESS; row ESS is diagnostic.
 
 The independent US annual static-aging candidate builder lives in
 `microcosm.build.us_annual_static_aging`; it consumes a pinned published parent
@@ -411,6 +604,18 @@ label, search for an existing definition and follow
 AI assistants must import shared static data from its domain-specific constants
 module instead of copying it or reconstructing alternate views in consumers.
 
+## Calibration diagnostics JSON Schema
+
+`packages/microcosm-diagnostics/src/microcosm/diagnostics/schemas/calibration_diagnostics.v9.schema.json`
+(what builds publish) and `calibration_diagnostics.v8.schema.json` beside it
+(documents published before schema 9) are generated from the models in
+`microcosm.diagnostics.schema`. After changing one, regenerate both with
+`uv run --no-sync python tools/generate_calibration_diagnostics_json_schema.py`.
+A new model validator also needs an entry in
+`CALIBRATION_DIAGNOSTICS_V9_JSON_SCHEMA_GAPS` (or the schema-8 list) and a
+document in `test_json_schema_v9.py` (or `test_json_schema.py`) that the schema
+accepts and the models refuse; the diagnostics tests fail until both exist.
+
 ## Review this guide
 
 Update this guide in the same PR whenever the workspace layout, test
@@ -467,6 +672,9 @@ An optional `entitlement_graph.json` legacy resource installs the entitlement
 extension in both composition and the local driver. Its scenario templates,
 bridge parameters, comparison references and receipt connections are described
 in [the entitlement declaration contract](transport-entitlement.md).
+An optional `precalibration_stages.json` legacy resource lists the rules
+bindings whose declared outputs may feed calibration; see
+[pre-calibration stages](transport-precalibration-stages.md).
 The zero solver requires independent, non-increasing row residuals and verifies
 the returned answers after its fixed iterations. Its receipt counts the final
 verification. The local differential driver validates call and output identities

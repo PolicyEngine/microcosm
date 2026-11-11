@@ -3,7 +3,7 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "dft_bus_journeys.json",
-  "purpose": "DfT BUS01 local bus passenger journeys by area (England, London, England outside London, the metropolitan split and the nine English regions; year-ending-March labels 2023 to 2025), the BUS01c elderly and disabled and total concessionary journeys by the same areas, the BUS05i operating revenue and support components beyond fare receipts and net support (concessionary travel reimbursement, Bus Service Operators Grant, gross and net public transport support, total operating revenue, additional funding to operators, fare cap) for England, London and England outside London, and the ONS mid-year population of the four UK countries and the nine English regions (England is the regions' sum). Consumed by the bus fare pricing (receipts over fare-paying boardings, boardings per resident trip) and the support-per-journey diagnostic (microcosm#930).",
+  "purpose": "DfT BUS01 local bus passenger journeys by area (England, London, England outside London, the metropolitan split and the nine English regions; year-ending-March labels 2023 to 2025), the BUS01c elderly and disabled and total concessionary journeys by the same areas, the BUS05i operating revenue and support components beyond fare receipts and net support (concessionary travel reimbursement, Bus Service Operators Grant, gross and net public transport support, total operating revenue, additional funding to operators, fare cap) for England, London and England outside London, and the ONS mid-year population of the four UK countries and the nine English regions (England is the regions' sum). Consumed by the bus fare pricing (receipts over fare-paying boardings, boardings per resident trip; microcosm#930) and the bus support pricing (the concessionary reimbursement per concessionary boarding and the rest of the net support per boarding; Mar\u00eda's ruling of 2026-09-23).",
   "consumers": [
     "uk_runtime.bus_fare_pricing",
     "uk_runtime.etb_services",
@@ -17,12 +17,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "abf0921b896d29ee0745ed2aefde8d6337ed7164",
+    "source_commit": "8045b138355b196846f633f31323fd129908e751",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 1499301,
-    "facts_sha256": "2b64fecfe746164203dac1726aae6ffdb3e5d8e478bd3d64d118ac76cb00780b",
-    "manifest_sha256": "b90fb1b8f1a910458fac41425360209d101796e6de0b134f952ad93323ca6e21"
+    "fact_row_count": 2091616,
+    "facts_sha256": "0856f17072b09ed17d231d862b66d004729409a128fd1b3bf7b545f4e585d267",
+    "manifest_sha256": "559106a03970962cb7293af8664f69594d9aa64f5aa7f9c21e0f609838f96fef"
   },
   "selections": [
     {

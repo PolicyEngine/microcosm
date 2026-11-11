@@ -7,6 +7,7 @@ import json
 import math
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import date
 from functools import lru_cache
 from importlib import resources as importlib_resources
 from types import MappingProxyType
@@ -28,13 +29,18 @@ from microcosm.build.ledger_targets import (
     _source_name,
     compile_ledger_target_references,
     reference_fact_selectors,
+    restamp_reference_period,
 )
 from microcosm.build.target_materialization import (
+    ENGINE_PERIOD_COLUMN_PREFIX,
     TargetMaterializationResult,
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.bus_fare_pricing import bus_journey_appliers
-from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.cgt_calibration import (
+    uk_cgt_annual_exempt_amount,
+    uk_cgt_dated_measure_year,
+)
 from microcosm.build.uk_runtime.cross_grain_declarations import (
     assert_uk_cross_grain_coverage,
     load_uk_cross_grain_declarations,
@@ -47,6 +53,9 @@ from microcosm.build.uk_runtime.domestic_energy_targets import (
     domestic_energy_appliers,
 )
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
+from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
+    company_car_dated_benefit_year,
+)
 from microcosm.build.uk_runtime.hmrc_uprating import hmrc_uprating_appliers
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
@@ -55,10 +64,15 @@ from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
     metric_names,
 )
+from microcosm.build.uk_runtime.national_frame import UK_TIME_PERIOD_METADATA_KEY
 from microcosm.build.uk_runtime.off_surface_cells import (
     uk_membership_bound_areas,
     uk_off_surface_frame_rows,
     uk_signed_cells_off_the_surface,
+)
+from microcosm.build.uk_runtime.scotland_brma_la_overlap import (
+    load_uk_scotland_brma_la_overlap,
+    scotland_brma_council_overlaps,
 )
 from microcosm.build.uk_runtime.tenure_drift import tenure_drift_appliers
 from microcosm.build.uk_runtime.uc_source_periods import (
@@ -466,6 +480,19 @@ def _uk_local_metric_target_ids() -> dict[str, str | dict[str, str]]:
     return mapping
 
 
+#: The target period the committed UK references are authored at: the
+#: generators' default ``--period``.
+UK_TARGET_REFERENCE_PERIOD = 2025
+
+#: The model year the contract's observation periods are written for: the DfE
+#: rows read January 2026, the spring term after model year 2025 (microcosm#1095
+#: D5). It belongs to the contract, not to the references: authoring them at
+#: another period moves their observation periods from it and leaves it alone,
+#: and it moves only with the contract's own periods (the fourth review of
+#: microcosm#1422).
+UK_OBSERVATION_PERIOD_BASE = 2025
+
+
 def compile_uk_target_registry(
     facts: Iterable[Mapping[str, Any]],
     *,
@@ -480,9 +507,16 @@ def compile_uk_target_registry(
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.target_references:
-        restamped = LedgerTargetReference(
-            **{**reference.__dict__, "period": target_period}
-        )
+        try:
+            restamped = restamp_reference_period(reference, target_period)
+        except ValueError as error:
+            # An observation period that cannot move is a contract error, not
+            # a fact gap: refuse the whole compile, naming the row (the third
+            # review of microcosm#1422).
+            raise ValueError(
+                f"UK target reference {reference.name!r} cannot be restamped to "
+                f"{target_period!r}: {error}"
+            ) from error
         candidate_facts = _candidate_facts_for_reference(
             fact_rows, restamped, fact_indices_by_source=fact_indices_by_source
         )
@@ -534,21 +568,49 @@ def compile_uk_target_registry(
     )
 
 
-#: DfT BUS05ai fare receipts are aligned from the publisher's year-ending-March
-#: period to the calibration year with the BUS0415 local bus fares index (a
-#: ruling of 2026-09-10: calendar-year basis). The contract declares the index
-#: on the fare-receipt rows (``uprating_index``); net support declares none and
-#: is never aligned. The index series is read from the vendored resource
-#: ``dft_bus_value_anchors.json`` (hash-pinned to the same Chronicle feed as
-#: the references), so the factor is reproducible without the licensed feed.
+#: DfT BUS05ai fare receipts are aligned from the publisher's April-to-March
+#: year to the calibration year on policyengine-uk's own window (María's ruling
+#: of 2026-10-21 on microcosm#1331, which replaced the calendar-year basis of
+#: 2026-09-10): the engine's model year t runs from 6 April t to 5 April t+1
+#: and day-weights the BUS0415a quarter-end index over it, each value in force
+#: from the start of the quarter it ends (``gov.dft.bus.local_bus_fares_index``,
+#: ``fiscal_year_blend``, PolicyEngine/policyengine-uk#2546). London and
+#: England outside London move by their own series, and England's receipts are
+#: their sum, as the engine prices each area by its own index. The contract
+#: declares the index on the fare-receipt rows (``uprating_index``); net
+#: support declares none and is never aligned. The index and the receipts are
+#: read from the vendored resource ``dft_bus_value_anchors.json`` (hash-pinned
+#: to the same Chronicle feed as the references), so the factor is
+#: reproducible without the licensed feed.
 UK_DFT_BUS_FARE_RECEIPTS_CONCEPT = "dft.local_bus_passenger_fare_receipts"
 UK_DFT_BUS_FARES_INDEX_CONCEPT = "dft.local_bus_fares_index"
 UK_DFT_BUS_FARES_INDEX_RESOURCE = "dft_bus_value_anchors.json"
 UK_DFT_BUS_FARE_INDEX_BASIS = (
-    "mean of the quarter-end BUS0415 index (March, June, September, December) "
-    "inside the calibration calendar year over the mean of the four quarter-ends "
-    "inside the receipts' April-to-March fiscal year"
+    "the BUS0415a quarter-end index, each value in force from the start of the "
+    "quarter it ends, day-weighted over 6 April to 5 April of the calibration "
+    "year over the same in the receipts' fiscal year (policyengine-uk's "
+    "fiscal_year_blend); England's receipts move as London's and England "
+    "outside London's, each by its own series"
 )
+UK_DFT_BUS_LONDON_ID = "E12000007"
+UK_DFT_BUS_ENGLAND_OUTSIDE_LONDON_ID = "dft:england_outside_london"
+UK_DFT_BUS_ENGLAND_ID = "E92000001"
+#: The areas England's fare receipts are the sum of, each moved by its own series.
+UK_DFT_BUS_ENGLAND_PARTS: tuple[str, ...] = (
+    UK_DFT_BUS_LONDON_ID,
+    UK_DFT_BUS_ENGLAND_OUTSIDE_LONDON_ID,
+)
+#: policyengine-uk's ``local_bus_fares_index`` area for each series the
+#: receipts move by (the parity check reads the engine's ratio by these).
+UK_ENGINE_BUS_INDEX_AREA_BY_SERIES: Mapping[str, str] = MappingProxyType(
+    {
+        UK_DFT_BUS_LONDON_ID: "LONDON",
+        UK_DFT_BUS_ENGLAND_OUTSIDE_LONDON_ID: "ENGLAND_OUTSIDE_LONDON",
+    }
+)
+#: How far London's and England outside London's receipts may sum from
+#: England's before the split refuses (the vendored values are unrounded).
+_UK_DFT_BUS_ENGLAND_SUM_TOLERANCE = 1e-9
 
 
 def _vendored_fares_index_rows() -> list[Mapping[str, Any]]:
@@ -559,6 +621,100 @@ def _vendored_fares_index_rows() -> list[Mapping[str, Any]]:
         concept=UK_DFT_BUS_FARES_INDEX_CONCEPT,
         period_type="month",
     )
+
+
+def _vendored_fare_receipt_rows(fiscal_start_year: int) -> list[Mapping[str, Any]]:
+    """BUS05ai fare receipts for the fiscal year opening in April of a year."""
+
+    return vendored_rows(
+        UK_DFT_BUS_FARES_INDEX_RESOURCE,
+        concept=UK_DFT_BUS_FARE_RECEIPTS_CONCEPT,
+        fiscal_start=f"{int(fiscal_start_year):04d}-04-01",
+    )
+
+
+def _fare_receipts(rows: Iterable[Mapping[str, Any]], geography_id: str) -> float:
+    values = {
+        float(row["value"])
+        for row in rows
+        if isinstance(row.get("geography"), Mapping)
+        and row["geography"].get("id") == geography_id
+        and row.get("concept") == UK_DFT_BUS_FARE_RECEIPTS_CONCEPT
+        and isinstance(row.get("value"), (int, float))
+        and not isinstance(row.get("value"), bool)
+    }
+    if len(values) != 1:
+        raise ValueError(
+            f"BUS05ai fare receipts for {geography_id!r} must be one value, "
+            f"found {sorted(values)}."
+        )
+    return values.pop()
+
+
+def _quarter_start(month: str) -> date:
+    """The first day of the quarter a quarter-end month (``YYYY-MM``) closes."""
+
+    year, number = (int(part) for part in month.split("-"))
+    if number not in (3, 6, 9, 12):
+        raise ValueError(f"BUS0415 month {month!r} does not end a quarter.")
+    return date(year, number - 2, 1)
+
+
+def uk_bus_fares_index_fiscal_year_blend(
+    series: Mapping[str, tuple[float, str]], year: int
+) -> tuple[float, tuple[str, ...]]:
+    """One BUS0415 series over policyengine-uk's model year ``year``.
+
+    The day-weighted mean over 6 April ``year`` to 5 April ``year + 1`` of the
+    value in force each day, where a quarter-end value is in force from the
+    start of the quarter it closes until the next one: how the engine dates
+    ``gov.dft.bus.local_bus_fares_index`` and blends it (``fiscal_year_blend``,
+    PolicyEngine/policyengine-uk#2546). The last published value holds after
+    its quarter, as the engine's does until its uprating adds a value. Returns
+    the blend and the quarter-end months it read; refuses when no value is in
+    force on 6 April.
+    """
+
+    start, end = date(int(year), 4, 6), date(int(year) + 1, 4, 6)
+    dated = sorted(
+        (_quarter_start(month), float(value), month)
+        for month, (value, _record) in series.items()
+    )
+    if not dated or dated[0][0] > start:
+        raise ValueError(
+            f"BUS0415 series has no value in force on {start.isoformat()}."
+        )
+    boundaries = [start, *(when for when, _, _ in dated if start < when < end), end]
+    total = 0.0
+    months: list[str] = []
+    for first, last in zip(boundaries, boundaries[1:], strict=False):
+        _when, value, month = next(item for item in reversed(dated) if item[0] <= first)
+        total += value * (last - first).days
+        months.append(month)
+    return total / (end - start).days, tuple(months)
+
+
+def uk_bus_fare_alignment_factors(
+    from_year: int,
+    to_year: int,
+    *,
+    index_rows: Iterable[Mapping[str, Any]] | None = None,
+) -> dict[str, float]:
+    """The receipts' alignment factor by engine area, from one model year to another.
+
+    The BUS0415 series the fare receipts move by, keyed by the engine's
+    ``local_bus_fares_index`` area: what the parity check compares with the
+    engine's own index ratio.
+    """
+
+    rows = list(index_rows) if index_rows is not None else _vendored_fares_index_rows()
+    factors = {}
+    for series_id, engine_area in UK_ENGINE_BUS_INDEX_AREA_BY_SERIES.items():
+        series = _fares_index_series(rows, series_id)
+        from_blend, _ = uk_bus_fares_index_fiscal_year_blend(series, from_year)
+        to_blend, _ = uk_bus_fares_index_fiscal_year_blend(series, to_year)
+        factors[engine_area] = to_blend / from_blend
+    return factors
 
 
 def _fares_index_series(
@@ -589,37 +745,25 @@ def _fares_index_series(
     return series
 
 
-def _quarter_end_months(start_year: int, start_month: int) -> tuple[str, ...]:
-    months = []
-    year, month = start_year, start_month
-    for _ in range(4):
-        # advance to the next quarter-end month (3, 6, 9, 12) on or after
-        # (year, month), then step past it
-        while month not in (3, 6, 9, 12):
-            month += 1
-            if month > 12:
-                month, year = 1, year + 1
-        months.append(f"{year:04d}-{month:02d}")
-        month += 1
-        if month > 12:
-            month, year = 1, year + 1
-    return tuple(months)
-
-
 def align_dft_bus_fare_receipts_to_period(
     reference: LedgerTargetReference,
     registry: TargetRegistry,
     *,
     index_rows: Iterable[Mapping[str, Any]] | None = None,
+    receipt_rows: Iterable[Mapping[str, Any]] | None = None,
 ) -> TargetRegistry:
     """Transport BUS05ai fare receipts to the reference period with BUS0415.
 
     Applies to references that declare ``uprating_index`` equal to the BUS0415
-    concept; any other reference passes through untouched. The generator and
-    the runtime both call this on the compiled registry, so the committed
-    membership, the parity receipts and the run manifest carry one value. The
-    factor is declared on the spec's metadata with the index concept, the
-    series geography, the months used, their source record ids and the
+    concept; any other reference passes through untouched. The reference
+    period is policyengine-uk's model year (6 April to 5 April), and each
+    area moves by its own series blended over that window
+    (:func:`uk_bus_fares_index_fiscal_year_blend`); England's receipts move as
+    London's plus England outside London's. The generator and the runtime
+    both call this on the compiled registry, so the committed membership, the
+    parity receipts and the run manifest carry one value. The factor is
+    declared on the spec's metadata with the index concept, each area's
+    series, blends, months, source record ids and receipt share, and the
     pre-alignment value.
     """
 
@@ -636,7 +780,7 @@ def align_dft_bus_fare_receipts_to_period(
     if reference.period is None or not str(reference.period).isdigit():
         raise ValueError(
             f"UK reference {reference.name!r}: BUS0415 alignment needs a "
-            "calendar-year reference period."
+            "model-year reference period."
         )
     target_period = int(str(reference.period))
     rows = list(index_rows) if index_rows is not None else _vendored_fares_index_rows()
@@ -650,37 +794,93 @@ def align_dft_bus_fare_receipts_to_period(
                 "resolved Ledger geography and fiscal start year."
             )
         start_year = int(fact_period)
-        from_months = _quarter_end_months(start_year, 4)
-        to_months = _quarter_end_months(target_period, 1)
-        series = _fares_index_series(rows, geography_id)
-        missing = [m for m in (*from_months, *to_months) if m not in series]
-        if missing:
-            raise ValueError(
-                f"UK target {spec.name!r}: BUS0415 series {geography_id!r} lacks "
-                f"quarter-end month(s) {missing}; refusing to align fare receipts."
+        parts = (
+            UK_DFT_BUS_ENGLAND_PARTS
+            if geography_id == UK_DFT_BUS_ENGLAND_ID
+            else (geography_id,)
+        )
+        areas: dict[str, dict[str, Any]] = {}
+        record_ids: list[str] = []
+        for part in parts:
+            series = _fares_index_series(rows, part)
+            try:
+                from_blend, from_months = uk_bus_fares_index_fiscal_year_blend(
+                    series, start_year
+                )
+                to_blend, to_months = uk_bus_fares_index_fiscal_year_blend(
+                    series, target_period
+                )
+            except ValueError as error:
+                raise ValueError(
+                    f"UK target {spec.name!r}: BUS0415 series {part!r}: {error} "
+                    "Refusing to align fare receipts."
+                ) from error
+            if from_blend <= 0 or to_blend <= 0:
+                raise ValueError(
+                    f"UK target {spec.name!r}: BUS0415 blends must be positive."
+                )
+            areas[part] = {
+                "from_blend": from_blend,
+                "to_blend": to_blend,
+                "factor": to_blend / from_blend,
+                "from_months": from_months,
+                "to_months": to_months,
+            }
+            record_ids.extend(
+                series[month][1] for month in dict.fromkeys((*from_months, *to_months))
             )
-        from_mean = sum(series[m][0] for m in from_months) / len(from_months)
-        to_mean = sum(series[m][0] for m in to_months) / len(to_months)
-        if from_mean <= 0 or to_mean <= 0:
-            raise ValueError(
-                f"UK target {spec.name!r}: BUS0415 index means must be positive."
+        if len(parts) == 1:
+            areas[parts[0]]["receipts_share"] = 1.0
+            factor = areas[parts[0]]["factor"]
+        else:
+            receipts = (
+                list(receipt_rows)
+                if receipt_rows is not None
+                else _vendored_fare_receipt_rows(start_year)
             )
-        factor = to_mean / from_mean
-        record_ids = ",".join(series[m][1] for m in (*from_months, *to_months))
+            values = {part: _fare_receipts(receipts, part) for part in parts}
+            total = math.fsum(values.values())
+            if not total > 0 or (
+                abs(total / spec.value - 1.0) > _UK_DFT_BUS_ENGLAND_SUM_TOLERANCE
+            ):
+                raise ValueError(
+                    f"UK target {spec.name!r}: London's and England outside "
+                    "London's fare receipts do not sum to England's; refusing "
+                    "to align them area by area."
+                )
+            for part in parts:
+                areas[part]["receipts_share"] = values[part] / total
+            factor = (
+                math.fsum(values[part] * areas[part]["factor"] for part in parts)
+                / total
+            )
         metadata = {
             **spec.metadata,
             "uprating_index": UK_DFT_BUS_FARES_INDEX_CONCEPT,
             "uprating_index_basis": UK_DFT_BUS_FARE_INDEX_BASIS,
             "uprating_index_resource": UK_DFT_BUS_FARES_INDEX_RESOURCE,
-            "uprating_index_series_geography_id": geography_id,
-            "uprating_index_from_months": ",".join(from_months),
-            "uprating_index_to_months": ",".join(to_months),
-            "uprating_index_from_mean": f"{from_mean:.15g}",
-            "uprating_index_to_mean": f"{to_mean:.15g}",
-            "uprating_index_source_record_ids": record_ids,
+            "uprating_index_series_geography_id": ",".join(parts),
+            "uprating_index_areas": json.dumps(
+                {
+                    part: {
+                        "from_blend": f"{area['from_blend']:.15g}",
+                        "to_blend": f"{area['to_blend']:.15g}",
+                        "factor": f"{area['factor']:.15g}",
+                        "receipts_share": f"{area['receipts_share']:.15g}",
+                        "from_months": list(area["from_months"]),
+                        "to_months": list(area["to_months"]),
+                    }
+                    for part, area in areas.items()
+                },
+                sort_keys=True,
+            ),
+            "uprating_index_source_record_ids": ",".join(record_ids),
             "uprating_factor": f"{factor:.15g}",
             "ledger_value_before_alignment": f"{spec.value:.15g}",
-            "uprating_adjudication": "microcosm#890 (ruling 2026-09-10: calendar-year basis)",
+            "uprating_adjudication": (
+                "microcosm#1331 (María's ruling of 2026-10-21: policyengine-uk's "
+                "April-to-March window, London and outside London apart)"
+            ),
         }
         aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
     return TargetRegistry(aligned, country="uk")
@@ -962,7 +1162,10 @@ def _uk_small_cell_rules() -> tuple[Mapping[str, Any], ...]:
 def uk_small_cell_deferred_cells(
     membership: Mapping[str, Any],
 ) -> tuple[dict[str, Any], ...]:
-    """The cells the small-cell rule deferred, with their compiled values.
+    """The cells the small-cell rule deferred, with their published values.
+
+    A deferral keeps the value before any index; the surface grows it by its
+    target's bound cells' own index before it joins the reconciliation.
 
     The joint surface adds them to the reconciliation frame only: they take
     their share of their leg's control and never reach the solve, so deferring
@@ -1249,9 +1452,16 @@ def compile_uk_local_target_registry(
     compiled = []
     unsupported: list[dict[str, str]] = []
     for reference in spec.local_target_references:
-        restamped = LedgerTargetReference(
-            **{**reference.__dict__, "period": target_period}
-        )
+        try:
+            restamped = restamp_reference_period(reference, target_period)
+        except ValueError as error:
+            # An observation period that cannot move is a contract error, not
+            # a fact gap: refuse the whole compile, naming the row (the third
+            # review of microcosm#1422).
+            raise ValueError(
+                f"UK local reference {reference.name!r} cannot be restamped to "
+                f"{target_period!r}: {error}"
+            ) from error
         _assert_local_reference_in_crosswalk(restamped, rosters)
         candidate_facts = _candidate_facts_for_reference(
             _local_candidate_fact_pool(
@@ -1610,9 +1820,65 @@ class UKFrameTargetAdapter:
         self.frame = frame
         self.tables = {entity: frame.table(entity).copy() for entity in frame.entities}
         self.link_tables = {name: frame.link(name).copy() for name in frame.links}
+        # The columns the frame itself stores, and the period they hold
+        # (microcosm#1324): a stored column is the frame's own year, so a
+        # value read at another period goes to the measure provider.
+        self.stored_columns = {
+            entity: frozenset(table.columns) for entity, table in self.tables.items()
+        }
+        period = frame.metadata.get(UK_TIME_PERIOD_METADATA_KEY)
+        self.frame_period = (
+            str(period) if isinstance(period, str) and period.strip() else None
+        )
 
     def has_column(self, entity: str, variable: str) -> bool:
         return variable in self.tables[entity]
+
+    def value_period(self, entity: str, variable: str) -> str | None:
+        """The period a value variable holds without the engine (microcosm#1324).
+
+        A stored column holds the frame's own period, and a CGT calibration
+        measure or a company car benefit dated by its name
+        (``cgt_2024_gains``, ``company_car_benefit_2024``) is computed at that
+        year. Any other value comes from the engine at the run's calibration
+        period, so it holds no period of its own: None.
+        """
+
+        if variable in self.stored_columns.get(entity, ()):
+            return self.frame_period
+        year = uk_cgt_dated_measure_year(variable)
+        if year is None:
+            year = company_car_dated_benefit_year(variable)
+        return None if year is None else str(year)
+
+    def column_at(
+        self,
+        entity: str,
+        variable: str,
+        *,
+        period: int | str,
+        route_stored: bool,
+    ) -> np.ndarray:
+        """A value variable at ``period`` (microcosm#1324).
+
+        The frame's own period reads the stored column. At any other period
+        a stored column's injected engine-period value is read; before it is
+        injected, ``route_stored`` reports the column missing, so the
+        measure resolver computes it at that period. Without a provider
+        (``route_stored`` false and nothing injected) the stored column is
+        read as it is.
+        """
+
+        stored = variable in self.stored_columns.get(entity, ())
+        if not stored or self.frame_period is None or str(period) == self.frame_period:
+            return self.column(entity, variable)
+        table = self.tables[entity]
+        engine_period = ENGINE_PERIOD_COLUMN_PREFIX + variable
+        if engine_period in table:
+            return np.asarray(table[engine_period])
+        if route_stored:
+            raise KeyError(f"{entity}.{variable}")
+        return self.column(entity, variable)
 
     def column(self, entity: str, variable: str) -> np.ndarray:
         table = self.tables[entity]
@@ -1810,10 +2076,11 @@ def uk_contract_target_calibration_lines(target: Mapping[str, Any]) -> frozenset
 
     A target binds on every line unless it declares ``calibration_lines``: a
     non-empty list of distinct lines from :data:`UK_CALIBRATION_LINES`. The
-    high-value homes region rows declare ``["local"]``, because their measure
-    reads the Land Registry placement of ``main_residence_value`` that only the
-    local line's pool clones carry; on the national spine the value is the WAS
-    donor's (microcosm#1301).
+    high-value homes region rows declare ``["local"]`` (microcosm#1301). Since
+    microcosm#1095 the national spine reads ``main_residence_value`` off the
+    regions' Land Registry knots too, but binding the rows there would move
+    the national registry and solve while the knots' tails still place more
+    homes in the top bands than the derived stock (microcosm#1112).
     """
 
     declared = target.get("calibration_lines")
@@ -1997,6 +2264,7 @@ def apply_uk_cross_grain_reconciliation(
     extra_bridges: Sequence[CrossGrainBridge] = (),
     extra_signatures: Mapping[str, Mapping[str, Any]] | None = None,
     check_factor_bounds: bool = True,
+    frame_only_positions: Iterable[int] = (),
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
 
@@ -2004,6 +2272,9 @@ def apply_uk_cross_grain_reconciliation(
     controls the joint surface adds for its declared fan-out sum bridges.
     ``check_factor_bounds=False`` records the bridges' factor bounds without
     refusing, for a pass the caller reruns with more rows.
+    ``frame_only_positions`` names the rows that bind nothing (the small-cell
+    rule's deferred cells), so a wholly deferred leg with no control above it
+    is receipted rather than refused (microcosm#1301).
 
     Increment #762 may extend the grains in the UK rowwise solve only through
     this front door, so detection, reconciliation, and the manifest receipt
@@ -2040,6 +2311,7 @@ def apply_uk_cross_grain_reconciliation(
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licences,
         check_factor_bounds=check_factor_bounds,
+        frame_only_positions=frame_only_positions,
     )
 
 
@@ -2359,10 +2631,157 @@ def uk_private_rent_mean_to_total(
         "reason": (
             "PIPR supplies monthly private-rent price levels while the bound "
             "metric is an annual weighted total; compose each mean with the "
-            "same authority's A17-uprated private-renter household count."
+            "same authority's private-renter household count, SPREE-drifted in "
+            "England and reconciled to the nation household controls."
         ),
         "price_level_source": ("ons_pipr_private_rents calendar_year_average 2025"),
-        "renter_count_source": "ons.tenure.private_rent (A17-uprated)",
+        "renter_count_source": (
+            "ons.tenure.private_rent (SPREE-drifted in England, reconciled to "
+            "the nation household controls)"
+        ),
+        "cells_detail": cells_detail,
+    }
+
+
+#: Scotland's PIPR rents: means over its 18 BRMAs (microcosm#1090, #1262).
+UK_PRIVATE_RENT_BRMA_METRIC = "rent/private_rent_brma"
+
+
+def uk_private_rent_brma_mean_to_total(
+    target_frame: pd.DataFrame,
+    *,
+    months: int | float = 12,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Compose Scotland's PIPR BRMA rent means into annual totals.
+
+    A BRMA's private renters are no bound cell: the BRMAs overlap the
+    councils. Each BRMA's count is the sum over councils of the council's
+    share of the BRMA's private renters in Census 2022 (UV404 by output area,
+    ``scotland_brma_la_overlap.json``) times the council's reconciled
+    ``tenure/private_rent`` cell, so the counts add up to Scotland's
+    reconciled private renters, and the row is ``months`` x the BRMA's mean
+    x its count (microcosm#1090, #1262). A council without its tenure cell
+    refuses: its renters would drop out of every BRMA it touches.
+    """
+
+    if target_frame.empty or "metric" not in target_frame.columns:
+        return target_frame.copy(deep=True), {
+            "applied": False,
+            "reason": "no Scottish BRMA private-rent rows on the surface",
+        }
+    metrics = target_frame["metric"].astype(str).to_numpy()
+    rent_positions = np.flatnonzero(metrics == UK_PRIVATE_RENT_BRMA_METRIC)
+    if not len(rent_positions):
+        return target_frame.copy(deep=True), {
+            "applied": False,
+            "reason": "no Scottish BRMA private-rent rows on the surface",
+        }
+
+    overlap = load_uk_scotland_brma_la_overlap()
+    brma_by_code = {
+        str(entry["pipr_area_code"]): str(brma)
+        for brma, entry in overlap["brmas"].items()
+    }
+    tenure_by_council: dict[str, float] = {}
+    for position in np.flatnonzero(metrics == "tenure/private_rent"):
+        row = target_frame.iloc[position]
+        if "area_type" in target_frame.columns and str(row["area_type"]) != "la":
+            continue
+        tenure_by_council[str(row["area_code"])] = float(row["value"])
+    shares: dict[str, list[tuple[str, float]]] = {}
+    for item in scotland_brma_council_overlaps("private_rented_households"):
+        shares.setdefault(item.brma, []).append(
+            (item.local_authority, item.share_of_council)
+        )
+    councils = sorted({council for pairs in shares.values() for council, _ in pairs})
+    missing = [council for council in councils if council not in tenure_by_council]
+    if missing:
+        raise ValueError(
+            "Scottish BRMA private-rent rows need every Scottish council's "
+            f"tenure/private_rent row; missing {missing}."
+        )
+    invalid = [
+        council
+        for council in councils
+        if not np.isfinite(tenure_by_council[council])
+        or tenure_by_council[council] <= 0
+    ]
+    if invalid:
+        raise ValueError(
+            "tenure/private_rent value must be positive and finite for "
+            f"council(s) {invalid}."
+        )
+
+    composed = target_frame.copy(deep=True)
+    if "metadata" not in composed.columns:
+        composed["metadata"] = None
+    cells_detail: list[dict[str, Any]] = []
+    for position in rent_positions:
+        row = target_frame.iloc[position]
+        area_code = str(row["area_code"])
+        brma = brma_by_code.get(area_code)
+        if brma is None:
+            raise ValueError(
+                f"Scottish BRMA private-rent row {area_code!r} is not one of the "
+                "overlap's 18 BRMAs."
+            )
+        mean = float(row["value"])
+        if not np.isfinite(mean) or mean <= 0:
+            raise ValueError(
+                "private-rent monthly mean must be positive and finite for "
+                f"BRMA {area_code!r}."
+            )
+        renter_households = math.fsum(
+            share * tenure_by_council[council] for council, share in shares[brma]
+        )
+        total = float(months) * mean * renter_households
+        existing_metadata = row.get("metadata")
+        metadata = (
+            dict(existing_metadata) if isinstance(existing_metadata, Mapping) else {}
+        )
+        metadata.update(
+            {
+                "price_level_mean_monthly": mean,
+                "renter_households": renter_households,
+                "renter_households_councils": len(shares[brma]),
+                "renter_households_basis": (
+                    "Census 2022 council shares of the BRMA's private renters "
+                    "(scotland_brma_la_overlap.json) x the councils' reconciled "
+                    "tenure/private_rent cells"
+                ),
+            }
+        )
+        composed.iat[int(position), composed.columns.get_loc("value")] = total
+        composed.iat[int(position), composed.columns.get_loc("metadata")] = metadata
+        cells_detail.append(
+            {
+                "area_code": area_code,
+                "brma": brma,
+                "mean_monthly_rent": mean,
+                "renter_households": renter_households,
+                "councils": len(shares[brma]),
+                "total": total,
+            }
+        )
+    return composed, {
+        "applied": True,
+        "months": months,
+        "cells": len(cells_detail),
+        "adjudication": "microcosm#1262 plan (María, 2026-10-16)",
+        "reason": (
+            "PIPR publishes Scotland's rents as monthly means over its 18 BRMAs, "
+            "which overlap the councils; each BRMA's private renters are the "
+            "councils' reconciled renters in the shares Census 2022 places them "
+            "in the BRMA, and the bound metric is the annual total."
+        ),
+        "price_level_source": "ons_pipr_private_rents calendar_year_average 2025",
+        "renter_count_source": (
+            "ons.tenure.private_rent (councils) x scotland_brma_la_overlap.json"
+        ),
+        "councils": len(councils),
+        "renter_households_total": math.fsum(
+            tenure_by_council[council] for council in councils
+        ),
         "cells_detail": cells_detail,
     }
 
@@ -2716,18 +3135,40 @@ def uk_local_target_surface(
                 deferrals_outside_the_ladder.add(str(cell["geography_id"]))
                 continue
         placed_deferrals.append(cell)
-    reconciliation_rows.extend(
-        {
-            "grain": "la"
+    # A deferral keeps its published value, before any index, so it is grown
+    # by its target's bound cells' own index at its grain and takes its share
+    # of the leg at the surface's period, as an off-surface cell does
+    # (microcosm#1420: the pension income cells grow by ITL Table 2.5). A
+    # target no index moves grows by exactly one.
+    bound_growth: dict[tuple[str, str], list[float]] = {}
+    for position, row in enumerate(output_rows):
+        totals = bound_growth.setdefault(
+            (str(row["contract_target_id"]), str(row["area_type"])), [0.0, 0.0]
+        )
+        totals[0] += float(row["value"])
+        totals[1] += float(published_values[position])
+    deferral_growth: dict[str, float] = {}
+    for cell in placed_deferrals:
+        grain = (
+            "la"
             if cell["geography_level"] == "local_authority"
-            else str(cell["geography_level"]),
-            "geography_id": str(cell["geography_id"]),
-            "target_id": f"contract:{cell['target_id']}",
-            "value": float(cell["value"]),
-            "_output_position": None,
-        }
-        for cell in placed_deferrals
-    )
+            else str(cell["geography_level"])
+        )
+        frame_total, published_total = bound_growth.get(
+            (str(cell["target_id"]), grain), (0.0, 0.0)
+        )
+        growth = frame_total / published_total if published_total else 1.0
+        if growth != 1.0:
+            deferral_growth[f"{cell['target_id']}@{grain}"] = growth
+        reconciliation_rows.append(
+            {
+                "grain": grain,
+                "geography_id": str(cell["geography_id"]),
+                "target_id": f"contract:{cell['target_id']}",
+                "value": float(cell["value"]) * growth,
+                "_output_position": None,
+            }
+        )
     bound_control_ids = (
         *bound_control_ids,
         *(bridge.higher_target_ids[0] for bridge in fanout_bridges),
@@ -2741,6 +3182,14 @@ def uk_local_target_surface(
             columns=["grain", "geography_id", "target_id", "value", "_output_position"],
         )
         raw = frame[["grain", "geography_id", "target_id", "value"]]
+        # The area rows that bind nothing (deferred and off-surface cells): a
+        # leg holding only deferred ones needs no control (microcosm#1301).
+        frame_only = [
+            position
+            for position, row in enumerate(reconciliation_rows)
+            if row["_output_position"] is None
+            and row["grain"] in level_to_area_type.values()
+        ]
         result, pass_receipt = apply_uk_cross_grain_reconciliation(
             raw,
             bound_control_ids,
@@ -2750,6 +3199,7 @@ def uk_local_target_surface(
             extra_bridges=fanout_bridges,
             extra_signatures=fanout_signatures,
             check_factor_bounds=check_factor_bounds,
+            frame_only_positions=frame_only,
         )
         return frame, raw, result, pass_receipt
 
@@ -2849,9 +3299,13 @@ def uk_local_target_surface(
     receipt["small_cell_deferrals"] = {
         "rows_added": len(placed_deferrals),
         "areas_outside_the_ladder": sorted(deferrals_outside_the_ladder),
+        "grown_by_bound_index": dict(sorted(deferral_growth.items())),
     }
     receipt["fanout_sum_bridges"] = _assert_uk_fanout_sum_agreement(
-        local_registry, fanout_sum_controls, off_surface_rows=off_surface_rows
+        local_registry,
+        fanout_sum_controls,
+        off_surface_rows=off_surface_rows,
+        deferred_cells=placed_deferrals,
     )
     reconciled, partition_receipt = apply_cross_grain_partitions(
         raw_surface, reconciled, UK_CROSS_GRAIN_PARTITIONS
@@ -2905,6 +3359,8 @@ def uk_local_target_surface(
         pd.DataFrame(output_rows)
     )
     receipt["private_rent_mean_to_total"] = private_rent_receipt
+    surface, brma_receipt = uk_private_rent_brma_mean_to_total(surface)
+    receipt["private_rent_brma_mean_to_total"] = brma_receipt
     return surface, receipt
 
 
@@ -2970,6 +3426,7 @@ def _assert_uk_fanout_sum_agreement(
     fanout_sum_controls: Mapping[str, Mapping[str, Any]] | None,
     *,
     off_surface_rows: Sequence[Mapping[str, Any]] = (),
+    deferred_cells: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Bound both parts of the factor a fan-out sum bridge applies, per grain.
 
@@ -2994,8 +3451,19 @@ def _assert_uk_fanout_sum_agreement(
     that are not bound (``uk_runtime.off_surface_cells``). The national bands
     cover those areas too, so each grain's totals count them: without them a
     grain that lacks a few authorities would read as a source disagreement.
+    ``deferred_cells`` are the small-cell rule's deferrals the surface placed
+    (``uk_small_cell_deferred_cells``), at their published values. The
+    national bands cover them too, so each grain's totals count them, grown by
+    the grain's bound cells' own index: they move the source factor only
+    (microcosm#1420, the pension income cells HMRC counts under 5,500).
     """
 
+    deferred: dict[tuple[str, str], list[float]] = {}
+    for cell in deferred_cells:
+        key = (str(cell["target_id"]), str(cell["geography_level"]))
+        totals = deferred.setdefault(key, [0.0, 0])
+        totals[0] += float(cell["value"])
+        totals[1] += 1
     off_surface: dict[tuple[str, str], list[float]] = {}
     for row in off_surface_rows:
         level = AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL.get(str(row["grain"]))
@@ -3030,22 +3498,25 @@ def _assert_uk_fanout_sum_agreement(
             extra, extra_before, extra_cells = off_surface.get(
                 (bridge.lower_target_id, level), (0.0, 0.0, 0)
             )
-            total = math.fsum(float(spec.value) for spec in cells) + extra
-            total_before = (
-                math.fsum(uk_value_before_uprating(s) for s in cells) + extra_before
-            )
-            if total <= 0.0 or total_before <= 0.0:
+            bound_total = math.fsum(float(spec.value) for spec in cells)
+            bound_before = math.fsum(uk_value_before_uprating(s) for s in cells)
+            if bound_total <= 0.0 or bound_before <= 0.0:
                 raise ValueError(
                     f"UK fan-out sum bridge {bridge.bridge_id!r} has a "
                     f"non-positive {level} cell total."
                 )
+            held, held_cells = deferred.get((bridge.lower_target_id, level), (0.0, 0))
+            total = bound_total + extra + held * bound_total / bound_before
+            total_before = bound_before + extra_before + held
             applied = control_value / total
             source = control_before / total_before
-            if abs(source - 1.0) > bridge.max_factor_shift:
+            lowest, highest = bridge.source_factor_bounds
+            if not lowest <= source <= highest:
                 raise ValueError(
                     f"UK fan-out sum bridge {bridge.bridge_id!r}: at source its "
                     f"{level} cells sum to the national bands by {source!r}, "
-                    f"beyond the declared {bridge.max_factor_shift!r}: the area "
+                    f"outside the declared [{lowest!r}, {highest!r}] "
+                    f"(max_factor_shift {bridge.max_factor_shift!r}): the area "
                     "cells and the national bands no longer measure one "
                     "quantity (microcosm#1123)."
                 )
@@ -3066,6 +3537,7 @@ def _assert_uk_fanout_sum_agreement(
                     "geography_level": level,
                     "cells": len(cells),
                     "off_surface_cells": extra_cells,
+                    "small_cell_deferrals": held_cells,
                     "control": control_value,
                     "control_before_alignment": control_before,
                     "cell_total": total,
@@ -3074,6 +3546,7 @@ def _assert_uk_fanout_sum_agreement(
                     "source_factor": source,
                     "index_factor": index,
                     "max_factor_shift": bridge.max_factor_shift,
+                    "min_factor_shift": bridge.min_factor_shift,
                     "max_index_shift": bridge.max_index_shift,
                 }
             )

@@ -7,6 +7,7 @@ the retired rowwise tool pinned them, plus the tool's stub.
 """
 
 # ruff: noqa: F403, F405
+from microcosm.build.calibration_epoch_telemetry import CALIBRATION_MAX_EPOCH_ROWS
 from test_support.microcosm_build.uk_rowwise_candidate import *
 
 
@@ -93,6 +94,10 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
         # dry run keeps the spine's values rather than planning the value and
         # band nodes.
         "--property-localisation",
+        "none",
+        # microcosm#1262: nor a BRMA column, so the dry run keeps the spine's
+        # regional draw rather than planning the area-BRMA node.
+        "--brma-localisation",
         "none",
         "--dry-run",
         "--no-staging",
@@ -563,81 +568,148 @@ def test_staging_epoch_stride_keeps_the_forwarded_rows_bounded():
     assert stride(2, None) == 10 and stride(2, 300) == 10
     assert stride(2000, None) == 10
     # dense + ten probes + refit at 2,000 epochs: 24,000 epochs -> 2,400 rows
+    # on the stride, plus each of the twelve solves' first epoch
     assert stride(2000, 55000) == 10
     assert stride(10000, 55000) == 50
     assert stride(100000, None) == 42
     for epochs, households in ((2000, 55000), (10000, 55000), (100000, None)):
         solves = 1 if households is None else 2 + rowwise_cli.BUDGET_ITERS
         assert (
-            epochs * solves / stride(epochs, households)
-            <= builder._STAGING_MAX_EPOCH_ROWS
+            epochs * solves / stride(epochs, households) <= CALIBRATION_MAX_EPOCH_ROWS
         )
+
+
+def test_uk_thinned_epochs_forward_each_solve_first_epoch():
+    """A UK size run no longer than the stride keeps its solves apart.
+
+    The dense solve, each budget-search probe and the refit all run
+    ``--epochs`` and restart the epoch counter at 1. Forwarding each solve's
+    first epoch beside its last makes the epoch fall at every boundary, which
+    is how the calibration-diagnostics build monitor starts a new solver pass
+    (microcosm#1292).
+    """
+
+    epochs = 5
+    forwarded_rows: list[dict[str, object]] = []
+    observer = rowwise_staging.thinned_epochs(
+        forwarded_rows.append,
+        every=rowwise_staging.staging_epoch_every(
+            SimpleNamespace(epochs=epochs, dataset_households=55000)
+        ),
+    )
+    # The dense solve's reports carry no phase; probe epochs are flagged.
+    solve_contexts = [
+        {},
+        {"phase": "size_search", "budget_search": True},
+        {"phase": "size_search", "budget_search": True},
+        {"phase": "size_refit"},
+    ]
+
+    for solve_context in solve_contexts:
+        for epoch in range(1, epochs + 1):
+            observer(
+                {
+                    **solve_context,
+                    "kind": "calibration_epoch",
+                    "epoch": epoch,
+                    "epochs": epochs,
+                    "loss": 1.0 / epoch,
+                }
+            )
+
+    assert [(row.get("phase"), row["epoch"]) for row in forwarded_rows] == [
+        (solve_context.get("phase"), epoch)
+        for solve_context in solve_contexts
+        for epoch in (1, epochs)
+    ]
+    # The staging contract records the probe flag as 1 or null.
+    assert [row.get("budget_search") for row in forwarded_rows] == [
+        None,
+        None,
+        1,
+        1,
+        1,
+        1,
+        None,
+        None,
+    ]
 
 
 def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
     monkeypatch, tmp_path, capsys
 ):
+    """The build's emitter checks the credential and the repository before
+    the spine is read, so a stage it could not complete costs nothing."""
+    from test_support.microcosm_build.telemetry import configure_fake_emitter
+
     builder = _load_builder_module()
     input_h5, ladder_path, flags = _staging_run_setup(
         builder, monkeypatch, tmp_path, remote=True
     )
     out = tmp_path / "refused"
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: None)
+
+    def access(**answer):
+        return {
+            "status": "checked",
+            "credential": "present",
+            "reachable": True,
+            "can_write": True,
+            "error_type": None,
+            **answer,
+        }
+
+    # The emitter uploads the bundle: a build whose emitter cannot take it
+    # (none installed, or one without the Hugging Face module) is refused.
+    configure_fake_emitter(monkeypatch, modules={"telemetry", "orrery"})
+    with pytest.raises(ValueError, match="emitter"):
+        builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert not out.exists()
+
+    configure_fake_emitter(
+        monkeypatch,
+        write_access=access(credential="missing", reachable=None, can_write=None),
+    )
     with pytest.raises(ValueError, match="write credential"):
         builder.main(_build_args(input_h5, ladder_path, flags, out))
     assert not out.exists()
 
-    class Unreachable:
-        def repo_info(self, **kwargs):
-            raise RuntimeError("503 token=do-not-record")
-
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: Unreachable())
-    with pytest.raises(ValueError, match="cannot reach") as info:
-        builder.main(_build_args(input_h5, ladder_path, flags, out))
-    assert "do-not-record" not in str(info.value)
-    assert not out.exists()
-
-    # A read token sees the private repository but cannot upload: refused
-    # before the spine is read, not after the solve (the Hub answers 403).
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: _FakeHub(role="read"))
-    with pytest.raises(ValueError, match="read-only"):
-        builder.main(_build_args(input_h5, ladder_path, flags, out))
-    assert not out.exists()
-
-    # A fine-grained token scoped to another owner is refused the same way;
-    # one scoped to the repository's organisation passes the pre-flight.
-    user_scoped = [
-        {"entity": {"type": "user", "name": "someone"}, "permissions": ["repo.write"]}
-    ]
-    monkeypatch.setattr(
-        rowwise_staging,
-        "_hub_api",
-        lambda: _FakeHub(role="fineGrained", scopes=user_scoped),
+    configure_fake_emitter(
+        monkeypatch,
+        write_access=access(reachable=False, can_write=None, error_type="HTTPError"),
     )
-    with pytest.raises(ValueError, match="repo.write"):
+    with pytest.raises(ValueError, match=r"cannot reach .*\(HTTPError\)"):
         builder.main(_build_args(input_h5, ladder_path, flags, out))
     assert not out.exists()
-    org_scoped = [
-        {
-            "entity": {"type": "org", "name": "policyengine"},
-            "permissions": ["repo.write"],
-        }
-    ]
-    org_hub = _FakeHub(role="fineGrained", scopes=org_scoped)
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: org_hub)
-    status = builder.main(
-        _build_args(input_h5, ladder_path, flags, tmp_path / "org-scoped")
-    )
-    # The pre-flight admits the org-scoped token; the synthetic spine
-    # carries no bound checkpoint sidecar, so the graph driver refuses
-    # later, on its inputs, never on the credential.
-    assert status == 1
-    assert "sidecar absent" in capsys.readouterr().err
+
+    # A read token, or a fine-grained token scoped elsewhere, sees the private
+    # repository but cannot upload: refused before the spine is read, not
+    # after the solve (the Hub answers 403).
+    configure_fake_emitter(monkeypatch, write_access=access(can_write=False))
+    with pytest.raises(ValueError, match="read-only") as info:
+        builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert "repo.write" in str(info.value)
+    assert not out.exists()
+
+    # A credential that can write, or whose scope the Hub does not describe,
+    # passes the pre-flight; the synthetic spine carries no bound checkpoint
+    # sidecar, so the graph driver refuses later, on its inputs, never on the
+    # credential.
+    for answer, warned in ((access(), False), (access(can_write=None), True)):
+        configure_fake_emitter(monkeypatch, write_access=answer)
+        status = builder.main(
+            _build_args(input_h5, ladder_path, flags, tmp_path / f"passes-{warned}")
+        )
+        assert status == 1
+        err = capsys.readouterr().err
+        assert "sidecar absent" in err
+        assert ("write scope could not be read" in err) is warned
 
     # Argument refusals cost nothing and come first: a missing credential is
     # never the reported reason when the arguments are wrong.
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: None)
+    configure_fake_emitter(
+        monkeypatch,
+        write_access=access(credential="missing", reachable=None, can_write=None),
+    )
     with pytest.raises(ValueError, match="only with --dry-run"):
         builder.main(
             _build_args(

@@ -125,7 +125,7 @@ LOCAL_REGISTRY_FILENAME = "local_target_registry.json"
 BUILD_RECORD_FILENAME = "build_record.json"
 NATIONAL_REGISTRY_FILENAME = "national_target_registry.json"
 NATIONAL_CONTRACT_REGISTRY_FILENAME = "national_contract_registry.json"
-SCORE_RECEIPT_FILENAME = "score_vs_incumbent.json"
+SCORE_RECEIPT_FILENAME = "score_vs_reference.json"
 DENSE_REFERENCE_DIAGNOSTICS_FILENAME = "dense_reference_diagnostics.csv"
 DATASET_SIZE_SELECTION_FILENAME = "dataset_size_selection.csv"
 
@@ -1080,6 +1080,15 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         if getattr(args, "property_localisation", "price_paid") == "none":
             # The release line localises home values and bands (microcosm#1240).
             refused.append("--property-localisation none")
+        if getattr(args, "brma_localisation", "area") == "none":
+            # The release line reads BRMAs off the assigned area (microcosm#1262).
+            refused.append("--brma-localisation none")
+        if getattr(args, "private_rent_localisation", "brma_list") == "none":
+            # The release line re-draws private rents from the area's list.
+            refused.append("--private-rent-localisation none")
+        if getattr(args, "rfdr_localisation", "area") == "none":
+            # The release line flags its Rural Fuel Duty Relief areas (#1418).
+            refused.append("--rfdr-localisation none")
         target_levels = getattr(args, "target_geographies", None)
         if target_levels is not None and not set(target_levels) & {
             "constituency",
@@ -1191,6 +1200,10 @@ def refuse_dense_role_arguments(
         refused.append("--require-solve-reuse")
     if args.dataset_households is not None:
         refused.append("--dataset-households")
+    # The national cut's certify step reads its reference surface
+    # (microcosm#1095); the national build runs no export-surface gate.
+    if getattr(args, "reference_surface", None) is not None:
+        refused.append("--reference-surface")
     if args.selection_seed is not None:
         refused.append("--selection-seed")
     if getattr(args, "selection_initial_lambda", None) is not None:
@@ -1240,8 +1253,8 @@ def refuse_national_role_arguments(
         refused.append("--target-loss-cap")
     if args.allow_unpinned_feed:
         refused.append("--allow-unpinned-feed")
-    if args.incumbent_h5 is not None or args.incumbent_sha256 is not None:
-        refused.append("--incumbent-h5/--incumbent-sha256")
+    if args.reference_h5 is not None or args.reference_record is not None:
+        refused.append("--reference-h5/--reference-record")
     if args.target_weight_rule not in posture.allowed_target_weight_rules:
         refused.append(f"--target-weight-rule {args.target_weight_rule}")
     if refused:

@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     UK_LCFS_VENDORED_RESOURCES,
     bus_pricing_operation,
 )
+from microcosm.build.uk_runtime.ledger_targets import uk_bus_fare_alignment_factors
 from microcosm.build.uk_runtime.measure_simulation import (
     engine_bus_pricing_parameters,
 )
@@ -32,7 +33,8 @@ def test_engine_bus_parameters_stand_beside_the_stages() -> None:
     prices = bus_fare_prices(
         bus_pricing_operation(stage), allowed_resources=UK_LCFS_VENDORED_RESOURCES
     )
-    parity = bus_engine_parity(prices, engine)
+    factors = uk_bus_fare_alignment_factors(int(engine["benchmark_year"]), 2025)
+    parity = bus_engine_parity(prices, engine, alignment_factors=factors)
     # The engine's values come from the same published derivation (#954): a
     # re-pin or a restatement can open a small gap, which the receipt marks; a
     # gap of a whole per cent would mean the two derive different things.
@@ -41,3 +43,8 @@ def test_engine_bus_parameters_stand_beside_the_stages() -> None:
             assert abs(entry[name]["relative_gap"]) < 0.01, (name, entry)
     assert isinstance(parity["within_tolerance"], bool)
     assert parity["tolerance"] == pytest.approx(0.001)
+    # The fare receipts move on the engine's index window (microcosm#1331), so
+    # at the locked engine each area's factor ties to its index ratio.
+    assert set(parity["fares_index_ratio"]) == set(factors)
+    for area, check in parity["fares_index_ratio"].items():
+        assert check["within_tolerance"], (area, check)
