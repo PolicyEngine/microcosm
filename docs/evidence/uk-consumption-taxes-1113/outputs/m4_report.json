@@ -1,0 +1,293 @@
+{
+ "arms": {
+  "base": {
+   "alcohol_and_tobacco_consumption_bn": 31.032198722813476,
+   "clothing_and_footwear_consumption_bn": 33.51528272967898,
+   "communication_consumption_bn": 23.712801218995363,
+   "consumption_bn": 982.306499104543,
+   "diesel_positive_share": 0.19797341148093411,
+   "diesel_spending_bn": 13.034663310137006,
+   "education_consumption_bn": 3.454623571396632,
+   "electricity_consumption_bn": 26.53740155629187,
+   "food_and_non_alcoholic_beverages_consumption_bn": 111.08332291155837,
+   "fuel_car_zero_fuel_share": 0.2801463537227878,
+   "gas_connected_share": 0.7893298977571055,
+   "gas_consumption_bn": 15.349806244794449,
+   "health_consumption_bn": 18.58104021896402,
+   "household_furnishings_consumption_bn": 90.29246037356589,
+   "households_m": 29.034491143643425,
+   "housing_water_and_electricity_consumption_bn": 174.28212155347464,
+   "kish_ess": 5198.462021020197,
+   "masked_rows_error": {
+    "obr.fuel_duties_cars@2025": -0.10074248471410699,
+    "obr.vat@2025": 0.2111578668141781,
+    "ons.household_electricity_expenditure@2025": 0.0005807087056695242,
+    "ons.household_gas_expenditure@2025": 0.000704494738541306
+   },
+   "median_abs_error_common": 0.0013262378935435266,
+   "miscellaneous_consumption_bn": 88.59572572785969,
+   "past_25pct_common": 1,
+   "petrol_positive_share": 0.4250550606712402,
+   "petrol_spending_bn": 23.84161837930163,
+   "recreation_consumption_bn": 140.76478976461524,
+   "restaurants_and_hotels_consumption_bn": 86.27255067759224,
+   "share_of_mass_moved_from_design": 0.48194501204148676,
+   "transport_consumption_bn": 180.71958163402851,
+   "within_10pct_common": 0.9843462246777164
+  },
+  "design": {
+   "alcohol_and_tobacco_consumption_bn": 22.827163321665363,
+   "clothing_and_footwear_consumption_bn": 32.8873705111075,
+   "communication_consumption_bn": 24.377383553769416,
+   "consumption_bn": 1010.9332219151071,
+   "diesel_positive_share": 0.16926893427534434,
+   "diesel_spending_bn": 9.125353225182106,
+   "education_consumption_bn": 4.296291479961526,
+   "electricity_consumption_bn": 29.106587893462578,
+   "food_and_non_alcoholic_beverages_consumption_bn": 111.96216107480173,
+   "fuel_car_zero_fuel_share": 0.33588497980394383,
+   "gas_connected_share": 0.8452408776767967,
+   "gas_consumption_bn": 18.97336346721625,
+   "health_consumption_bn": 21.13108443594327,
+   "household_furnishings_consumption_bn": 102.75270684207364,
+   "households_m": 29.422432999999995,
+   "housing_water_and_electricity_consumption_bn": 181.10998308556697,
+   "kish_ess": 19771.34459143942,
+   "masked_rows_error": {
+    "obr.fuel_duties_cars@2025": -0.3056067568336933,
+    "obr.vat@2025": 0.3091936298119841,
+    "ons.household_electricity_expenditure@2025": 0.09745071613993068,
+    "ons.household_gas_expenditure@2025": 0.23693614102723556
+   },
+   "median_abs_error_common": 0.12085744385438074,
+   "miscellaneous_consumption_bn": 88.67038499531921,
+   "past_25pct_common": 294,
+   "petrol_positive_share": 0.3786090998592338,
+   "petrol_spending_bn": 19.300497308930442,
+   "recreation_consumption_bn": 147.1569475338749,
+   "restaurants_and_hotels_consumption_bn": 87.77877283109534,
+   "share_of_mass_moved_from_design": 0.0,
+   "transport_consumption_bn": 185.98297224992828,
+   "within_10pct_common": 0.43646408839779005
+  },
+  "drop4": {
+   "alcohol_and_tobacco_consumption_bn": 33.83411810481215,
+   "clothing_and_footwear_consumption_bn": 35.36916495643828,
+   "communication_consumption_bn": 24.586667385292255,
+   "consumption_bn": 1036.9312609134965,
+   "diesel_positive_share": 0.17558177548254741,
+   "diesel_spending_bn": 9.576794494562,
+   "education_consumption_bn": 4.272138151975178,
+   "electricity_consumption_bn": 28.701652399210673,
+   "food_and_non_alcoholic_beverages_consumption_bn": 115.78212389023008,
+   "fuel_car_zero_fuel_share": 0.3291783469242681,
+   "gas_connected_share": 0.8460846594231438,
+   "gas_consumption_bn": 18.966873730458406,
+   "health_consumption_bn": 19.56207353002008,
+   "household_furnishings_consumption_bn": 100.81119694659765,
+   "households_m": 29.041642136084107,
+   "housing_water_and_electricity_consumption_bn": 182.79123228155242,
+   "kish_ess": 5393.286651241132,
+   "masked_rows_error": {
+    "obr.fuel_duties_cars@2025": -0.2727261744045993,
+    "obr.vat@2025": 0.35104333100974,
+    "ons.household_electricity_expenditure@2025": 0.08218280669671178,
+    "ons.household_gas_expenditure@2025": 0.2365130536839444
+   },
+   "median_abs_error_common": 0.0014508675011035543,
+   "miscellaneous_consumption_bn": 93.84377330729446,
+   "past_25pct_common": 0,
+   "petrol_positive_share": 0.38816607243773904,
+   "petrol_spending_bn": 20.196081529630188,
+   "recreation_consumption_bn": 152.73249756527946,
+   "restaurants_and_hotels_consumption_bn": 88.2716026820318,
+   "share_of_mass_moved_from_design": 0.4659839918165792,
+   "transport_consumption_bn": 185.0746721119727,
+   "within_10pct_common": 0.9852670349907919
+  },
+  "stored": {
+   "alcohol_and_tobacco_consumption_bn": 31.032198722813476,
+   "clothing_and_footwear_consumption_bn": 33.51528272967898,
+   "communication_consumption_bn": 23.712801218995363,
+   "consumption_bn": 982.306499104543,
+   "diesel_positive_share": 0.19797341148093411,
+   "diesel_spending_bn": 13.034663310137006,
+   "education_consumption_bn": 3.454623571396632,
+   "electricity_consumption_bn": 26.53740155629187,
+   "food_and_non_alcoholic_beverages_consumption_bn": 111.08332291155837,
+   "fuel_car_zero_fuel_share": 0.2801463537227878,
+   "gas_connected_share": 0.7893298977571055,
+   "gas_consumption_bn": 15.349806244794449,
+   "health_consumption_bn": 18.58104021896402,
+   "household_furnishings_consumption_bn": 90.29246037356589,
+   "households_m": 29.034491143643425,
+   "housing_water_and_electricity_consumption_bn": 174.28212155347464,
+   "kish_ess": 5198.462021020197,
+   "masked_rows_error": {
+    "obr.fuel_duties_cars@2025": -0.10074248471410699,
+    "obr.vat@2025": 0.2111578668141781,
+    "ons.household_electricity_expenditure@2025": 0.0005807087056695242,
+    "ons.household_gas_expenditure@2025": 0.000704494738541306
+   },
+   "median_abs_error_common": 0.0013262378935435266,
+   "miscellaneous_consumption_bn": 88.59572572785969,
+   "past_25pct_common": 1,
+   "petrol_positive_share": 0.4250550606712402,
+   "petrol_spending_bn": 23.84161837930163,
+   "recreation_consumption_bn": 140.76478976461524,
+   "restaurants_and_hotels_consumption_bn": 86.27255067759224,
+   "share_of_mass_moved_from_design": 0.48194501204148676,
+   "transport_consumption_bn": 180.71958163402851,
+   "within_10pct_common": 0.9843462246777164
+  }
+ },
+ "base_vs_stored_max_abs_weight_ratio_diff": 0.0,
+ "family_mean_abs_error_change": {
+  "council_tax_stock": -4.876113881059493e-05,
+  "dfe_funded_childcare": -0.00027914918202383195,
+  "dft_local_bus": 0.0005009329950593557,
+  "dwp_benefit_cap": 0.00041873747256600794,
+  "dwp_legacy_benefits": -0.00014683578763508703,
+  "dwp_two_child_limit": -1.266837174275745e-05,
+  "dwp_universal_credit": -0.00027110483063167904,
+  "hmrc_cgt": 0.00016912286675864257,
+  "hmrc_itl": -6.84605852937443e-05,
+  "hmrc_salary_sacrifice": 0.00029184102768234815,
+  "hmrc_spi": -0.00122715096119087,
+  "hmrc_spi_region": -0.00017435348679129093,
+  "hmrc_tfc": 0.0005107756647561502,
+  "isc": 0.00030299501789398726,
+  "obr": -0.0013977152973243467,
+  "ons_employment": -0.0005890081019839045,
+  "ons_household_composition": 0.00037324267767541576,
+  "ons_land": -0.00010906431885748524,
+  "ons_population": 0.00021085713101216642,
+  "orr_rail": 0.0007216684405321228,
+  "scotgov_social_security": 0.0009424583317545063,
+  "slc_borrowers": -0.001145323848724365,
+  "slc_repayments": 8.827496772799014e-05,
+  "slc_student_support": -0.00034930310034614375
+ },
+ "largest_fit_changes_drop4_vs_base": [
+  {
+   "base": -0.04108233894758536,
+   "drop4": -0.0008663217110854599,
+   "family": "hmrc_spi",
+   "target": "hmrc/private_pension_income_income_band_20_000_to_30_000@2025"
+  },
+  {
+   "base": 0.032686089603446,
+   "drop4": 0.005576138074220368,
+   "family": "hmrc_spi",
+   "target": "hmrc/state_pension_income_band_70_000_to_100_000@2025"
+  },
+  {
+   "base": 0.25204650843017756,
+   "drop4": 0.22560423947379968,
+   "family": "hmrc_spi",
+   "target": "hmrc/state_pension_income_band_50_000_to_70_000@2025"
+  },
+  {
+   "base": 0.23232474854799368,
+   "drop4": 0.20604662211207186,
+   "family": "hmrc_spi_region",
+   "target": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000002@2025"
+  },
+  {
+   "base": 0.04627427430747402,
+   "drop4": 0.020906602174894564,
+   "family": "dwp_universal_credit",
+   "target": "dwp.uc.households_lcwra_element@2025"
+  },
+  {
+   "base": 0.08321944760443173,
+   "drop4": 0.06033183119663514,
+   "family": "hmrc_spi",
+   "target": "hmrc/self_employment_income_income_band_20_000_to_30_000@2025"
+  },
+  {
+   "base": 0.02689690948832479,
+   "drop4": 0.004914072298974003,
+   "family": "hmrc_spi_region",
+   "target": "hmrc.spi_region.income_tax_by_region_15000_20000@E12000004@2025"
+  },
+  {
+   "base": -0.0885870375887832,
+   "drop4": -0.06724748711306773,
+   "family": "hmrc_spi",
+   "target": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_30000@2025"
+  },
+  {
+   "base": 0.01745991933876574,
+   "drop4": 0.03817062114497365,
+   "family": "hmrc_spi_region",
+   "target": "hmrc.spi_region.income_tax_by_region_200000_plus@E12000002@2025"
+  },
+  {
+   "base": -0.04084479611478475,
+   "drop4": -0.02148660547884708,
+   "family": "hmrc_spi",
+   "target": "hmrc/state_pension_count_income_band_100_000_to_150_000@2025"
+  },
+  {
+   "base": -0.17201980378347992,
+   "drop4": -0.15322025398933634,
+   "family": "hmrc_spi",
+   "target": "hmrc/private_pension_income_income_band_15_000_to_20_000@2025"
+  },
+  {
+   "base": 0.031326516366177636,
+   "drop4": 0.013137496216388291,
+   "family": "hmrc_spi_region",
+   "target": "hmrc.spi_region.income_tax_by_region_150000_200000@E12000002@2025"
+  },
+  {
+   "base": 0.22602431550913724,
+   "drop4": 0.24366655106862212,
+   "family": "hmrc_spi_region",
+   "target": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008@2025"
+  },
+  {
+   "base": 0.0276326321834286,
+   "drop4": 0.04467994970578849,
+   "family": "hmrc_spi_region",
+   "target": "hmrc.spi_region.taxpayers_by_region_150000_200000@E12000005@2025"
+  },
+  {
+   "base": -0.031654816170571275,
+   "drop4": -0.015417529164819904,
+   "family": "hmrc_spi_region",
+   "target": "hmrc.spi_region.total_income_by_region_200000_plus@E12000002@2025"
+  },
+  {
+   "base": 0.0038296015509031354,
+   "drop4": 0.019384231711783616,
+   "family": "hmrc_spi_region",
+   "target": "hmrc.spi_region.income_tax_by_region_70000_100000@E12000002@2025"
+  },
+  {
+   "base": 0.03254040595882117,
+   "drop4": 0.04803866987562927,
+   "family": "hmrc_spi",
+   "target": "hmrc/private_pension_income_count_income_band_20_000_to_30_000@2025"
+  },
+  {
+   "base": -0.08065287660663702,
+   "drop4": -0.06724504595736759,
+   "family": "hmrc_spi",
+   "target": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_20000@2025"
+  },
+  {
+   "base": -0.030767513678775414,
+   "drop4": -0.01747330309983,
+   "family": "hmrc_spi_region",
+   "target": "hmrc.spi_region.total_income_by_region_150000_200000@E12000003@2025"
+  },
+  {
+   "base": 0.20507020813637533,
+   "drop4": 0.19177750655326062,
+   "family": "obr",
+   "target": "obr.child_benefit@2025"
+  }
+ ]
+}

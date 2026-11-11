@@ -26,6 +26,7 @@ from microcosm.build.us_runtime import (
     us_org_wages_stage_spec,
 )
 from microcosm.build.us_runtime import org_wages as module
+from microcosm.build.us_runtime.asec_census_person_columns import WEIND_TO_WEMIND
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
@@ -58,6 +59,9 @@ def _person(n: int = 1_000) -> pd.DataFrame:
     occupation[447:737] = 1
     employment = np.zeros(n)
     employment[400:] = 52_000.0
+    industry = np.where(occupation == 0, 0, 23).astype(np.int16)
+    industry[employment > 0] = 13
+    industry[occupation == 52] = 22
     return pd.DataFrame(
         {
             "person_id": np.arange(1, n + 1, dtype=np.int64),
@@ -71,6 +75,9 @@ def _person(n: int = 1_000) -> pd.DataFrame:
             "PRDTRACE": np.resize(np.asarray([1, 1, 2, 4]), n),
             "PRDTHSP": np.arange(n) % 7 == 0,
             "POCCU2": occupation,
+            "WEIND": industry,
+            "WEMIND": np.asarray([WEIND_TO_WEMIND[code] for code in industry]),
+            "WKSWORK": np.where(employment > 0, 52, 0).astype(np.int16),
             "employment_income_before_lsr": employment,
             "self_employment_income_before_lsr": 0.0,
             "weekly_hours_worked_before_lsr": np.where(employment > 0, 40.0, 0.0),

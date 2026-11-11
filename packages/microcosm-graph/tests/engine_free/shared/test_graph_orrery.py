@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import subprocess
@@ -43,7 +44,20 @@ def test_document_is_complete_static_metadata_with_no_runtime_claims():
     document = orrery_document_from_schema(schema)
 
     assert document["schemaVersion"] == "graph-explorer/v1"
-    assert document["metadata"]["microcosm"] == schema
+    summary = document["metadata"]["microcosm"]
+    assert summary["protocol"] == schema["protocol"]
+    assert summary["graph_sha256"] == schema["graph_sha256"]
+    assert (
+        summary["schema_sha256"] == hashlib.sha256(canonical_json(schema)).hexdigest()
+    )
+    assert summary["counts"] == {
+        "operations": 6,
+        "sources": 1,
+        "fields": len(schema["fields"]),
+        "input_bindings": len(schema["input_bindings"]),
+    }
+    assert summary["compiled_order"] == schema["compiled"]["order"]
+    assert "graph" not in summary and "fields" not in summary
     assert document["metadata"]["scope"] == "complete_compiler_schema"
     assert document["metadata"]["truncated"] is False
     assert len([node for node in document["nodes"] if node["kind"] == "operation"]) == 6
@@ -66,6 +80,13 @@ def test_document_is_complete_static_metadata_with_no_runtime_claims():
     assert {edge["source"] for edge in document["edges"]} | {
         edge["target"] for edge in document["edges"]
     } <= identities
+    fields = [node for node in document["nodes"] if node["kind"] == "field"]
+    assert fields
+    for field in fields:
+        assert _parts(field["parentId"]) == ["operation", field["data"]["provider"]]
+        assert field["data"]["population"] in field["description"]
+    read = next(edge for edge in document["edges"] if edge["kind"] == "declared_read")
+    assert read["label"].startswith(read["data"]["read_kind"].replace("_", " "))
 
 
 def test_descriptions_are_promoted_and_declarations_remain_available():
@@ -197,7 +218,7 @@ def test_json_is_deterministic_detached_and_transports_large_numbers():
         "large": {"integer_literal": str(2**80)},
         "value": {"float_literal": "1e+100"},
     }
-    document["metadata"]["microcosm"]["graph"]["nodes"].clear()
+    document["metadata"]["microcosm"]["extensions"].clear()
     assert schema == before
 
 
@@ -251,11 +272,42 @@ def test_output_complexity_and_size_limits_are_enforced(monkeypatch):
         orrery_document_from_schema(schema)
 
 
-def test_schema_embeds_the_exact_canonical_graph_declaration():
+def test_schema_digest_binds_the_separately_saved_canonical_schema(tmp_path):
+    from microcosm.graph import save_graph_schema
+
     compiled = compiled_graph()
-    document = orrery_document_from_schema(graph_schema(compiled))
-    embedded = document["metadata"]["microcosm"]["graph"]
-    assert canonical_json(embedded).decode() == graph_to_json(compiled.graph)
+    saved = save_graph_schema(compiled, tmp_path)
+    document = orrery_document_from_schema(json.loads(saved.read_bytes()))
+    summary = document["metadata"]["microcosm"]
+    assert summary["schema_sha256"] == hashlib.sha256(saved.read_bytes()).hexdigest()
+    assert (
+        summary["graph_sha256"]
+        == hashlib.sha256(graph_to_json(compiled.graph).encode()).hexdigest()
+    )
+
+
+def test_presentation_scope_names_the_document():
+    from microcosm.graph.presentation import (
+        PRESENTATION_EXTENSION,
+        PRESENTATION_PROTOCOL,
+    )
+
+    compiled = compiled_graph()
+    plain = orrery_document(compiled)
+    assert _parts(plain["id"]) == ["microcosm", "invented"]
+    assert plain["title"] == "INVENTED graph schema"
+    scoped = orrery_document(
+        compiled,
+        extensions={
+            PRESENTATION_EXTENSION: {
+                "protocol": PRESENTATION_PROTOCOL,
+                "scope": {"id": "national", "label": "National build"},
+            }
+        },
+    )
+    assert _parts(scoped["id"]) == ["microcosm", "invented", "national"]
+    assert scoped["title"] == "INVENTED · National build"
+    assert orrery_document(compiled, title="Given")["title"] == "Given"
 
 
 def test_direct_graph_compiled_and_saved_schema_paths_are_identical():

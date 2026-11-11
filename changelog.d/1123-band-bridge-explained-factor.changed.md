@@ -1,0 +1,1 @@
+Each national band bridge now names what explains its factor and the compile checks it on the values: the factor must sit within half a point of HMRC SPI Table 3.11's United Kingdom row over the twelve regional areas' sum (the taxpayers HMRC places in no region), read from a vendored resource of the UK rows (microcosm#1123).

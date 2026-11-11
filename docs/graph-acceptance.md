@@ -740,12 +740,13 @@ lock unchanged:
       battery's source.
 
     Their node keys move, and so do their descendants'. No other kernel's
-    hash reads a file this change edits; all 41 `implementation_hash`
-    definitions in `packages/*/src` were checked. A `fail` filed by an earlier
-    version under a stale identity therefore sits under a key that no run of
-    this version derives, and is never served. Raised by the independent
-    review of #1125 (finding 1, Subfleet job 20261007-081708); adopted with the
-    fix on 2026-10-07.
+    hash reads a file this change edits. That was checked for the 41
+    `implementation_hash` definitions in `packages/*/src` on 2026-10-07, and
+    again for the 71 on main (`ecf87ee24`) on 2026-11-11. A `fail` filed by an
+    earlier version under a stale identity therefore sits under a key that no
+    run of this version derives, and is never served. Raised by the
+    independent review of #1125 (finding 1, Subfleet job 20261007-081708);
+    adopted with the fix in #1140.
 
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and

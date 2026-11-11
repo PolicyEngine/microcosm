@@ -1,0 +1,1 @@
+The UK national target register is reconciled across its own grains (exact signatures, and HMRC ITL Table 2.5 bands controlling the SPI regional band cells) and written back before the measure exclusions and the frozen-register check, in both the full and national loaders; the joint local pass refuses a national factor away from one (microcosm#1123).

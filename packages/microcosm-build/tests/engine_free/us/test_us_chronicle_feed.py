@@ -13,11 +13,13 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import textwrap
 from importlib.resources import files
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -26,13 +28,14 @@ from microcosm.build.us_runtime.chronicle_feed import (
     load_us_chronicle_feed,
     us_chronicle_feed_scope_sha256,
 )
+from test_support.git_repositories import NO_BACKGROUND_MAINTENANCE
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
 
 _ROOT = _TEST_PATHS.repository
-_CHRONICLE_COMMIT = "c5e5bf8aa84960c1a200ee47303b19c953092d0f"
-_FACTS_SHA256 = "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801"
+_CHRONICLE_COMMIT = "41b2fb2b864a28c0eda03322b77a97ef147dfa3c"
+_FACTS_SHA256 = "1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07"
 _SCHEMA_SHA256 = "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d"
 
 
@@ -55,7 +58,7 @@ def test_pin_records_the_rebuilt_bare_feed() -> None:
     assert pin.source_repo == "PolicyEngine/chronicle"
     assert pin.source_commit == _CHRONICLE_COMMIT
     assert pin.scope == "us_fiscal_targets"
-    assert pin.fact_row_count == 39158
+    assert pin.fact_row_count == 40642
     assert pin.facts_sha256 == _FACTS_SHA256
     assert pin.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
     assert pin.consumer_fact_schema_sha256 == _SCHEMA_SHA256
@@ -103,6 +106,32 @@ def test_pin_rejects_malformed_identity(
         chronicle_feed.load_us_chronicle_feed()
 
 
+@pytest.mark.parametrize(
+    "versions",
+    [
+        ["chronicle.consumer_fact.v6"],
+        ["chronicle.consumer_fact.v3", "chronicle.consumer_fact.v6"],
+    ],
+    ids=["undeclared_only", "declared_and_undeclared"],
+)
+def test_pin_rejects_an_undeclared_row_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, versions: list[str]
+) -> None:
+    """A pin naming a row contract chronicle_epoch does not declare is refused."""
+    raw = json.loads(chronicle_feed._feed_path().read_text())
+    raw["consumer_fact_schema_versions"] = versions
+    path = tmp_path / "pin.json"
+    path.write_text(json.dumps(raw))
+    monkeypatch.setattr(chronicle_feed, "_feed_path", lambda: path)
+
+    with pytest.raises(ValueError) as refusal:
+        chronicle_feed.load_us_chronicle_feed()
+
+    message = str(refusal.value)
+    assert "['chronicle.consumer_fact.v6']" in message
+    assert "microcosm.build.chronicle_epoch" in message
+
+
 def test_pin_rejects_an_unsupported_artifact_schema(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -114,6 +143,62 @@ def test_pin_rejects_an_unsupported_artifact_schema(
     monkeypatch.setattr(chronicle_feed, "_feed_path", lambda: path)
     with pytest.raises(ValueError, match="artifact_schema_version is unsupported"):
         chronicle_feed.load_us_chronicle_feed()
+
+
+@pytest.mark.parametrize(
+    ("rows", "message"),
+    [
+        (["chronicle.consumer_fact.v6"], "['chronicle.consumer_fact.v6']"),
+        (["chronicle.consumer_fact.v4"], "consumer_fact_schema_versions"),
+        (
+            ["chronicle.consumer_fact.v3", "chronicle.consumer_fact.v4"],
+            "consumer_fact_schema_versions",
+        ),
+    ],
+    ids=["undeclared", "not_in_the_pin", "pin_lists_fewer"],
+)
+def test_parity_generator_holds_the_rows_row_contracts_to_the_pin(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    rows: list[str],
+    message: str,
+) -> None:
+    """The target-parity generator checks the rows it compiles, as the release does.
+
+    It holds the feed to the committed pin by digest and writes committed
+    files, so on the pinned feed the rows must carry exactly the pin's
+    ``consumer_fact_schema_versions``; the refusal comes before any compile
+    or write.
+    """
+    generator = _load_tool("build_us_target_parity_manifest")
+    feed = tmp_path / "consumer_facts.jsonl"
+    feed.write_text(
+        "".join(
+            json.dumps({"aggregate_fact_key": f"fact-{index}", "schema_version": row})
+            + "\n"
+            for index, row in enumerate(rows)
+        )
+    )
+    facts_sha256 = hashlib.sha256(feed.read_bytes()).hexdigest()
+    pin = SimpleNamespace(
+        facts_sha256=facts_sha256,
+        consumer_fact_schema_versions=("chronicle.consumer_fact.v3",),
+    )
+    monkeypatch.setattr(generator, "EXPECTED_FEED_SHA256", facts_sha256)
+    monkeypatch.setattr(generator, "load_us_chronicle_feed", lambda: pin)
+    monkeypatch.setattr(generator, "MANIFEST_PATH", tmp_path / "manifest.json")
+    monkeypatch.setattr(generator, "FEED_FAMILIES_PATH", tmp_path / "families.json")
+
+    def build_manifest(*args, **kwargs):
+        raise AssertionError("the rows reached the manifest build")
+
+    monkeypatch.setattr(generator, "build_manifest", build_manifest)
+    monkeypatch.setattr(sys, "argv", ["generator", "--ledger-facts", str(feed)])
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        generator.main()
+
+    assert not (tmp_path / "manifest.json").exists()
 
 
 def test_parity_resources_and_generator_restate_the_pin() -> None:
@@ -128,7 +213,37 @@ def test_parity_resources_and_generator_restate_the_pin() -> None:
     assert manifest["reference"]["feed"] == generator.DEFAULT_FEED_NAME
     assert generator.DEFAULT_FEED_PATH.name == generator.DEFAULT_FEED_NAME
     assert manifest["reference"]["compiled_families"] == "32"
-    assert manifest["reference"]["reviewed_exclusions"] == "52"
+    assert manifest["reference"]["reviewed_exclusions"] == "64"
+
+
+#: The dimension values the pinned feed labels more than one way, as the
+#: generator records them in the feed-family inventory. microcosm#1343 gave
+#: adjusted gross income ``under_1`` and ``all`` and age ``85_plus`` one label
+#: each; the age_20 and age_21 pairs (Census projections against ACS B01001)
+#: select no compiled target and were left as they are.
+_REVIEWED_FEED_LABEL_VARIANTS = {
+    "age": {
+        "age_20": ["Age 20", "Female 20 years"],
+        "age_21": ["Age 21", "Female 21 years"],
+    }
+}
+
+
+def test_feed_inventory_lists_only_the_reviewed_label_variants() -> None:
+    """Runs in CI without the feed. A re-pin regenerates the inventory from its
+    feed (the inventory restates the pinned digest), so a re-pin built on a
+    Chronicle commit without the microcosm#1343 label commits lists those
+    values here again and fails, and so does any new dimension value with two
+    labels until it is reviewed."""
+    feed_families = _us_resource("target_parity_feed_families.json")
+    variants = feed_families["dimension_value_label_variants"]
+    for dimension_id, value_id in (
+        ("us:statutes/26/62#adjusted_gross_income", "under_1"),
+        ("us:statutes/26/62#adjusted_gross_income", "all"),
+        ("age", "85_plus"),
+    ):
+        assert value_id not in variants.get(dimension_id, {})
+    assert variants == _REVIEWED_FEED_LABEL_VARIANTS
 
 
 def test_scope_names_every_pinned_pair_once() -> None:
@@ -137,8 +252,10 @@ def test_scope_names_every_pinned_pair_once() -> None:
     scope = builder.load_scope(scope_path)
     raw = scope["raw"]
     assert scope["commit"] == load_us_chronicle_feed().source_commit
-    assert len(scope["pairs"]) == 586 == raw["pair_count"]
-    assert sum(len(p) for p in scope["runs"].values()) == 62
+    assert len(scope["pairs"]) == 706 == raw["pair_count"]
+    # 63 package runs, plus the B4923C package in its three years (#454),
+    # plus the six packages/ed_fsa packages at build year 2026 (#1074).
+    assert sum(len(p) for p in scope["runs"].values()) == 72
     assert set(scope["runs"]) == {
         2020,
         2021,
@@ -257,7 +374,10 @@ def _row(key: str, record_set: str, period_type: str, period_value, value) -> di
 
 def _git(root: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-C", str(root), *args], check=True, capture_output=True, text=True
+        ["git", *NO_BACKGROUND_MAINTENANCE, "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
 

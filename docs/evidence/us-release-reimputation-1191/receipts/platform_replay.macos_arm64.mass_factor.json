@@ -1,0 +1,164 @@
+{
+ "columns": {
+  "roth_401k_contributions_desired": {
+   "vs_stored_base": {
+    "max_abs_difference": 2539.2173280113348,
+    "rows_differing": 19910,
+    "rows_differing_by_channel": {
+     "asec/clone0": 0,
+     "puf_tax_detail/clone1": 16484,
+     "puf_tax_detail/clone2": 3426
+    },
+    "rows_differing_by_more_than_1_dollar": 19530,
+    "rows_differing_by_more_than_1e-9": 19909
+   },
+   "vs_stored_release": {
+    "max_abs_difference": 4872.555,
+    "rows_differing": 27526,
+    "rows_differing_by_channel": {
+     "asec/clone0": 0,
+     "puf_tax_detail/clone1": 23362,
+     "puf_tax_detail/clone2": 4164
+    },
+    "rows_differing_by_more_than_1_dollar": 27140,
+    "rows_differing_by_more_than_1e-9": 27526
+   }
+  },
+  "roth_ira_contributions_desired": {
+   "vs_stored_base": {
+    "max_abs_difference": 4244.5696,
+    "rows_differing": 20419,
+    "rows_differing_by_channel": {
+     "asec/clone0": 0,
+     "puf_tax_detail/clone1": 16883,
+     "puf_tax_detail/clone2": 3536
+    },
+    "rows_differing_by_more_than_1_dollar": 19610,
+    "rows_differing_by_more_than_1e-9": 20418
+   },
+   "vs_stored_release": {
+    "max_abs_difference": 4524.2496,
+    "rows_differing": 28192,
+    "rows_differing_by_channel": {
+     "asec/clone0": 0,
+     "puf_tax_detail/clone1": 23922,
+     "puf_tax_detail/clone2": 4270
+    },
+    "rows_differing_by_more_than_1_dollar": 27433,
+    "rows_differing_by_more_than_1e-9": 28192
+   }
+  },
+  "self_employed_pension_contributions_desired": {
+   "vs_stored_base": {
+    "max_abs_difference": 816.5,
+    "rows_differing": 529,
+    "rows_differing_by_channel": {
+     "asec/clone0": 0,
+     "puf_tax_detail/clone1": 415,
+     "puf_tax_detail/clone2": 114
+    },
+    "rows_differing_by_more_than_1_dollar": 491,
+    "rows_differing_by_more_than_1e-9": 528
+   },
+   "vs_stored_release": {
+    "max_abs_difference": 1380.0,
+    "rows_differing": 1106,
+    "rows_differing_by_channel": {
+     "asec/clone0": 0,
+     "puf_tax_detail/clone1": 916,
+     "puf_tax_detail/clone2": 190
+    },
+    "rows_differing_by_more_than_1_dollar": 1078,
+    "rows_differing_by_more_than_1e-9": 1106
+   }
+  },
+  "traditional_401k_contributions_desired": {
+   "vs_stored_base": {
+    "max_abs_difference": 18523.199999999997,
+    "rows_differing": 21765,
+    "rows_differing_by_channel": {
+     "asec/clone0": 0,
+     "puf_tax_detail/clone1": 17994,
+     "puf_tax_detail/clone2": 3771
+    },
+    "rows_differing_by_more_than_1_dollar": 21484,
+    "rows_differing_by_more_than_1e-9": 21755
+   },
+   "vs_stored_release": {
+    "max_abs_difference": 26241.2,
+    "rows_differing": 29464,
+    "rows_differing_by_channel": {
+     "asec/clone0": 0,
+     "puf_tax_detail/clone1": 24997,
+     "puf_tax_detail/clone2": 4467
+    },
+    "rows_differing_by_more_than_1_dollar": 29210,
+    "rows_differing_by_more_than_1e-9": 29459
+   }
+  },
+  "traditional_ira_contributions_desired": {
+   "vs_stored_base": {
+    "max_abs_difference": 2421.2391274895363,
+    "rows_differing": 20081,
+    "rows_differing_by_channel": {
+     "asec/clone0": 0,
+     "puf_tax_detail/clone1": 16531,
+     "puf_tax_detail/clone2": 3550
+    },
+    "rows_differing_by_more_than_1_dollar": 18854,
+    "rows_differing_by_more_than_1e-9": 20078
+   },
+   "vs_stored_release": {
+    "max_abs_difference": 2916.9504,
+    "rows_differing": 27852,
+    "rows_differing_by_channel": {
+     "asec/clone0": 0,
+     "puf_tax_detail/clone1": 23564,
+     "puf_tax_detail/clone2": 4288
+    },
+    "rows_differing_by_more_than_1_dollar": 26782,
+    "rows_differing_by_more_than_1e-9": 27852
+   }
+  }
+ },
+ "compared_with": "outputs.macos_arm64.npz",
+ "compared_with_sha256": "ec2c4533087060dbfafd6cca524ab489a67b07782bc70a574685de8cbfc76f6b",
+ "input": "retirement_stage_input.pkl",
+ "input_attrs": {
+  "base_h5": "base_populace_us_2024_puf_support.h5",
+  "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+  "release_h5": "populace_us_2024.h5",
+  "release_h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559"
+ },
+ "input_sha256": "e283b6703f9a48c933c81517faaa2e2e8ef7047ee47ea88242c464d894d9413f",
+ "period": 2024,
+ "platform": {
+  "cpu_count": 18,
+  "gil_enabled": true,
+  "machine": "arm64",
+  "numpy": "2.4.6",
+  "pandas": "3.0.3",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "python": "3.14.7 free-threading build (main, Sep  1 2026, 14:07:44) [Clang 22.1.3 ]",
+  "quantile_forest": "1.4.2",
+  "sklearn": "1.8.0",
+  "thread_environment": {
+   "OMP_NUM_THREADS": "4",
+   "OPENBLAS_NUM_THREADS": "4",
+   "POPULACE_FIT_N_JOBS": null,
+   "POPULACE_FIT_PREDICT_WORKERS": null,
+   "PYTHONHASHSEED": "0"
+  }
+ },
+ "rows_differing_from_compared": {
+  "roth_401k_contributions_desired": 0,
+  "roth_ira_contributions_desired": 0,
+  "self_employed_pension_contributions_desired": 0,
+  "traditional_401k_contributions_desired": 0,
+  "traditional_ira_contributions_desired": 0
+ },
+ "seconds": 5.7,
+ "seed": 0,
+ "threads": null,
+ "weight_factor": 1.0253031783870294
+}

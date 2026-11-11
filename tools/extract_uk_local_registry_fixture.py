@@ -27,6 +27,8 @@ import numpy as np
 import pandas as pd
 from policyengine_uk_data.datasets.local_areas.constituencies.boundary_changes.mapping_matrix import (
     mapping_matrix,
+    new_codes,
+    old_codes,
 )
 from policyengine_uk_data.datasets.local_areas.constituencies.devolved_housing import (
     add_private_rent_targets,
@@ -56,6 +58,18 @@ from policyengine_uk_data.targets.sources.local_uc import (
 from policyengine_uk_data.utils.uc_data import uc_la_households, uc_pc_households
 
 TIME_PERIOD = 2025
+#: uk-data#589 fix-and-sign (María, 2026-10-16): five unchanged Scottish
+#: constituencies keep their 2010 codes in the incumbent's boundary-change
+#: source, so the mapping's sorted 2024 rows put them, and every Scottish row
+#: between them, out of the roster's order. Their 2024 codes, as uk-data#589
+#: maps them; the mapped rows are then taken by code into the roster's order.
+SCOTTISH_UNCHANGED_2010_TO_2024 = {
+    "S14000006": "S14000107",  # Ayr, Carrick and Cumnock
+    "S14000008": "S14000108",  # Berwickshire, Roxburgh and Selkirk
+    "S14000010": "S14000109",  # Central Ayrshire
+    "S14000040": "S14000110",  # Kilmarnock and Loudoun
+    "S14000058": "S14000111",  # West Aberdeenshire and Kincardine
+}
 
 
 def _normalized_area_name(name):
@@ -213,8 +227,27 @@ def constituency_surface():
         raise ValueError(
             f"pre-mapping frame has {len(raw)} rows on a {len(grain_codes)}-row grain."
         )
-    raw_mapped = pd.DataFrame(mapping_matrix @ raw.values, columns=list(raw.columns))
-    cal_mapped = pd.DataFrame(mapping_matrix @ cal.values, columns=list(cal.columns))
+    # The matrix's columns are the 2010 codes in sorted order, so the grain's
+    # rows must come in that order; its rows are the source's 2024 codes.
+    if list(grain_codes) != list(old_codes):
+        raise ValueError("the age-target grain is not the mapping's 2010 code order.")
+    mapped_codes = [SCOTTISH_UNCHANGED_2010_TO_2024.get(c, c) for c in new_codes]
+    if len(set(mapped_codes)) != len(mapped_codes) or set(mapped_codes) != set(codes):
+        raise ValueError("the mapping's 2024 rows are not the 2024 roster, once each.")
+    raw_mapped = (
+        pd.DataFrame(
+            mapping_matrix @ raw.values, columns=list(raw.columns), index=mapped_codes
+        )
+        .loc[codes]
+        .reset_index(drop=True)
+    )
+    cal_mapped = (
+        pd.DataFrame(
+            mapping_matrix @ cal.values, columns=list(cal.columns), index=mapped_codes
+        )
+        .loc[codes]
+        .reset_index(drop=True)
+    )
 
     # uk-data#468 fix-and-sign: UC is PCON24-native, so under the correction it
     # is attached AFTER the boundary mapping, by name-join to the 2024 roster --
@@ -485,7 +518,15 @@ def main():
                 "totals join to their areas BY NAME (never by row position), attach "
                 "post-mapping on native PCON24/LAD codes, and the child splits "
                 "recompute from the corrected totals with the incumbent's own "
-                "country-proportion buckets keyed by true country prefix."
+                "country-proportion buckets keyed by true country prefix. "
+                "EXCEPTION 2, fix-and-signed (María, 2026-10-16; uk-data#589): five "
+                "unchanged Scottish constituencies keep their 2010 codes "
+                "(S14000006, S14000008, S14000010, S14000040, S14000058) in the "
+                "incumbent's boundary-change source, so its mapped rows, sorted by "
+                "those codes, sat out of the PCON24 roster's order for every Scottish "
+                "row between them; the codes map to S14000107 to S14000111 as "
+                "uk-data#589 maps them, and the mapped rows are taken by code into "
+                "the roster's order."
             ),
             "time_period": TIME_PERIOD,
         },

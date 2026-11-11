@@ -1,0 +1,1 @@
+The US ACS rent imputation now places each draw on the head of the household it was drawn for. It used to write household-order draws in person order, which left about 47% of base households with the wrong rent.

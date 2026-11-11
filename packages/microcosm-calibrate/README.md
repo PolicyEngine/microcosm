@@ -85,9 +85,13 @@ label only when Chronicle has no label for that field. The dashboard consumes
 these identifiers and labels verbatim and does not infer schema-8 display text.
 Generic in-memory payloads whose targets carry no hierarchy retain schema 6 for
 historical readers; a payload cannot mix hierarchy-bearing and hierarchy-free
-targets. Current release builders write only schema 8. They pass a complete
-`TargetRegistry` to `write_calibration_diagnostics`, which validates the typed
-document before an atomic write. The writer returns either `available` with the
+targets. Current release builders assemble schema 8 and publish schema 9: they
+pass a complete `TargetRegistry` to `write_calibration_diagnostics`, which
+validates the typed document, declares each provider, category, geography and
+dimension label once in `hierarchy_catalogs`, and writes it atomically. Rows
+that give one identifier two labels are refused (`label_conflict`) unless the
+registry country's reviewed choices in `microcosm.calibrate.hierarchy_labels`
+name the label. The writer returns either `available` with the
 file digest or `failed` with a structured error. A failed diagnostics attempt
 does not invalidate the calibrated dataset.
 

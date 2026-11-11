@@ -44,6 +44,13 @@ _STEPS = (
     "50-downstream",
     "90-summary",
 )
+#: The incumbent comparison is an opt-in diagnostic (microcosm#1301): these
+#: steps run only behind --incumbent-diagnostic or when --steps names them.
+_OPT_IN_STEPS = ("30-incumbent-score", "40-incumbent-surface")
+_DEFAULT_STEPS = tuple(step for step in _STEPS if step not in _OPT_IN_STEPS)
+_OPT_IN_NOT_REQUESTED = (
+    "opt-in incumbent diagnostic not requested (--incumbent-diagnostic)"
+)
 _CANDIDATE_NOTICE = (
     "These are candidate evaluations and untargeted diagnostics. No gate "
     "threshold is loosened or applied as a verdict; `--release-candidate` "
@@ -73,6 +80,14 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--eval-home", type=Path)
     parser.add_argument("--incumbent-h5", type=Path)
     parser.add_argument("--reforms-config", type=Path)
+    parser.add_argument(
+        "--incumbent-diagnostic",
+        action="store_true",
+        help=(
+            "also run the opt-in incumbent comparison (steps 30 and 40); a "
+            "release does not need it (microcosm#1301)"
+        ),
+    )
     parser.add_argument("--steps")
     parser.add_argument("--skip")
     parser.add_argument("--out", type=Path)
@@ -93,9 +108,13 @@ def _label_paths(values: Sequence[str], *, option: str) -> dict[str, Path]:
 
 
 def _selected_steps(args: argparse.Namespace) -> set[str]:
-    selected = set(_STEPS)
+    """The steps to run: the defaults, or ``--steps``, plus any opt-ins asked for."""
+
+    selected = set(_DEFAULT_STEPS)
     if args.steps:
         selected = {value.strip() for value in args.steps.split(",") if value.strip()}
+    if getattr(args, "incumbent_diagnostic", False):
+        selected |= set(_OPT_IN_STEPS)
     skipped: set[str] = set()
     if args.skip:
         skipped = {value.strip() for value in args.skip.split(",") if value.strip()}
@@ -1074,7 +1093,13 @@ def main(argv: list[str] | None = None) -> int:
     for step in _STEPS:
         step_state.setdefault(
             step,
-            {"status": "skipped", "reason": "not selected", "receipt": None},
+            {
+                "status": "skipped",
+                "reason": _OPT_IN_NOT_REQUESTED
+                if step in _OPT_IN_STEPS
+                else "not selected",
+                "receipt": None,
+            },
         )
     evaluation_manifest = {
         "schema_version": 1,

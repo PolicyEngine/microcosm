@@ -8,8 +8,10 @@ outputs, and check that property three ways: directly on kernel contexts
 both engines, and against two single-engine ``simulate.rules@1`` graph runs.
 """
 
+import importlib.util
 import itertools
 import json
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -193,6 +195,88 @@ def _by_ref(**extra) -> SimulateRulesByRefKernel:
     )
 
 
+def _fixture_axiom_engine() -> AxiomEngine:
+    return AxiomEngine(
+        _RULESPEC_ROOT / "zz/policies/tests/axiom_toy_family.yaml",
+        schema=NZ_SCHEMA,
+        rulespec_roots=(_RULESPEC_ROOT,),
+    )
+
+
+def _module_order(classes) -> tuple[type, ...]:
+    """Adapter classes in the order the kernel hashes them."""
+
+    return tuple(sorted(classes, key=lambda cls: (cls.__module__, cls.__qualname__)))
+
+
+def _hash_of(classes) -> str:
+    """The by-ref kernel's implementation hash over ``classes`` in this order."""
+
+    return source_hash(
+        SimulateRulesByRefKernel,
+        SimulateRulesKernel,
+        *classes,
+        frame_bundle_module,
+        frame_rules_module,
+        frame_schema_module,
+    )
+
+
+# Two importable modules, each defining a rules engine named ``TwinEngine``.
+# Their names sort before ``microcosm.frame.adapters.axiom``.
+_TWIN_MODULES = ("kernel_hash_probe_a", "kernel_hash_probe_b")
+_TWIN_SOURCE = """\
+# A rules engine outside the test module, for implementation-hash tests.
+
+TAG = {tag!r}
+
+
+class TwinEngine:
+    def variable_metadata(self, name):
+        raise ValueError(name)
+
+    def variables(self):
+        return ()
+
+    def entity_schema(self):
+        return None
+
+    def materialize(self, bundle, variables, period):
+        return {{}}
+
+    def export_contract(self):
+        return None
+
+    def write_dataset(self, bundle, path, period):
+        return None
+"""
+
+
+@pytest.fixture(scope="module")
+def twin_engine_classes(tmp_path_factory) -> tuple[type, type]:
+    """``TwinEngine`` from each of two modules written for this test module.
+
+    ``source_hash`` locates a class's module through ``sys.modules``, so the
+    modules are registered there while the tests run.
+    """
+
+    directory = tmp_path_factory.mktemp("kernel-hash-probes")
+    classes = []
+    try:
+        for name in _TWIN_MODULES:
+            path = directory / f"{name}.py"
+            path.write_text(_TWIN_SOURCE.format(tag=name), encoding="utf-8")
+            spec = importlib.util.spec_from_file_location(name, path)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+            classes.append(module.TwinEngine)
+        yield tuple(classes)
+    finally:
+        for name in _TWIN_MODULES:
+            sys.modules.pop(name, None)
+
+
 @st.composite
 def nz_frames(draw: st.DrawFn) -> Frame:
     """A nested NZ frame with person and family inputs and household weights."""
@@ -347,8 +431,8 @@ class TestConstruction:
         Three adapter classes from three modules make the source order
         observable: all six binding orders must give the hash of the classes
         in ``(module, qualname)`` order. These three classes sort the same way
-        by qualname alone, so the test pins order independence, not the
-        choice of sort key.
+        by qualname alone, so this test pins order independence; the two
+        tests after it pin the sort key.
         """
 
         bindings = {
@@ -378,6 +462,119 @@ class TestConstruction:
         for order in orders:
             kernel = SimulateRulesByRefKernel({ref: bindings[ref] for ref in order})
             assert kernel.implementation_hash() == expected, order
+
+    def test_the_hash_is_independent_of_ref_names(self) -> None:
+        """Invariant: which reference names which class never moves the hash.
+
+        Every assignment of three reference names to three adapter classes
+        from three modules, bound in every order, gives the hash of the
+        classes in ``(module, qualname)`` order. Some assignments put the
+        classes in another module order when sorted by reference name, so a
+        kernel that ordered its classes that way fails here.
+        """
+
+        engines = (_fixture_axiom_engine(), _StubRulesEngine(), _PersonEngine())
+        expected = _hash_of(_module_order({type(engine) for engine in engines}))
+        names = ("axiom", "person", "stub")
+        by_ref_name = set()
+        for assignment in itertools.permutations(engines):
+            bindings = dict(zip(names, assignment, strict=True))
+            by_ref_name.add(
+                _hash_of(dict.fromkeys(type(bindings[ref]) for ref in sorted(bindings)))
+            )
+            for order in itertools.permutations(names):
+                kernel = SimulateRulesByRefKernel({ref: bindings[ref] for ref in order})
+                assert kernel.implementation_hash() == expected, (assignment, order)
+        # The assignments discriminate: ordering by reference name would move
+        # the hash for at least one of them.
+        assert by_ref_name - {expected}
+
+    def test_classes_sharing_a_qualname_are_ordered_by_module(
+        self, twin_engine_classes
+    ) -> None:
+        """Invariant: the module, not the qualname alone, orders the classes.
+
+        Two classes named ``TwinEngine`` in two modules that sort before
+        ``microcosm.frame.adapters.axiom`` are bound with ``AxiomEngine``. By
+        qualname alone ``AxiomEngine`` would come first; by module it comes
+        last, and only that order gives the expected hash.
+        """
+
+        first, second = twin_engine_classes
+        assert first.__qualname__ == second.__qualname__
+        assert first.__module__ != second.__module__
+        engines = {
+            "twin-a": first(),
+            "twin-b": second(),
+            "axiom": _fixture_axiom_engine(),
+        }
+        classes = _module_order({type(engine) for engine in engines.values()})
+        assert classes == (first, second, AxiomEngine)
+        expected = _hash_of(classes)
+        by_qualname = sorted(classes, key=lambda cls: cls.__qualname__)
+        assert by_qualname[0] is AxiomEngine
+        assert _hash_of(by_qualname) != expected
+        for order in itertools.permutations(engines):
+            for names in itertools.permutations(engines):
+                instances = [engines[ref] for ref in order]
+                kernel = SimulateRulesByRefKernel(
+                    dict(zip(names, instances, strict=True))
+                )
+                assert kernel.implementation_hash() == expected, (order, names)
+        # Same qualname, different module: each binds its own source.
+        assert (
+            SimulateRulesByRefKernel({"twin": first()}).implementation_hash()
+            != SimulateRulesByRefKernel({"twin": second()}).implementation_hash()
+        )
+
+    @settings(max_examples=120, deadline=None)
+    @given(data=st.data())
+    def test_property_the_hash_depends_only_on_the_bound_classes(
+        self, twin_engine_classes, data
+    ) -> None:
+        """Invariant: the hash is a function of the set of adapter classes.
+
+        Any multiset of bindings over six adapter classes from five modules,
+        under any distinct reference names and in any order, hashes as the
+        set of its classes in ``(module, qualname)`` order. Two binding sets
+        hash alike exactly when their classes come from the same modules
+        (``source_hash`` hashes each module file once).
+        """
+
+        factories = (
+            _fixture_axiom_engine,
+            _StubRulesEngine,
+            _PersonEngine,
+            _FamilyEngine,
+            *twin_engine_classes,
+        )
+        names = st.text(
+            alphabet="abcdefghijklmnopqrstuvwxyz-_.{}:0123456789",
+            min_size=1,
+            max_size=12,
+        )
+
+        def draw_kernel() -> tuple[SimulateRulesByRefKernel, frozenset[str]]:
+            chosen = data.draw(
+                st.lists(st.sampled_from(factories), min_size=1, max_size=6)
+            )
+            refs = data.draw(
+                st.lists(names, min_size=len(chosen), max_size=len(chosen), unique=True)
+            )
+            bindings = {
+                ref: factory() for ref, factory in zip(refs, chosen, strict=True)
+            }
+            order = data.draw(st.permutations(list(bindings)))
+            kernel = SimulateRulesByRefKernel({ref: bindings[ref] for ref in order})
+            classes = {type(engine) for engine in bindings.values()}
+            assert kernel.implementation_hash() == _hash_of(_module_order(classes))
+            return kernel, frozenset(cls.__module__ for cls in classes)
+
+        first, first_modules = draw_kernel()
+        second, second_modules = draw_kernel()
+        assert (first.implementation_hash() == second.implementation_hash()) == (
+            first_modules == second_modules
+        )
 
     def test_binding_a_new_adapter_class_moves_the_hash(self) -> None:
         # Documented: a new class's source joins the hash.
