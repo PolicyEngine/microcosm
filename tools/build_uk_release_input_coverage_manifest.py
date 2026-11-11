@@ -139,7 +139,7 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
             "reaches the tax credit severe disability elements and the "
             "working-age council tax reduction's child amounts, and the "
             "release and calibration boundaries drop a stored copy should one "
-            "appear (for María's signature)."
+            "appear (María's signature of 2026-11-11)."
         ),
         "approved_by": "juaristi22",
         "approved_on": "2026-11-11",

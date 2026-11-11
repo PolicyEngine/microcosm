@@ -239,7 +239,7 @@ UK_REVIEWED_EXPORT_EXCLUSIONS: Mapping[str, str] = {
         "living and Attendance Allowance categories and Armed Forces "
         "Independence Payment; a persisted copy would override the formula "
         "in every projected year, so the candidate leaves it to the formula "
-        "and drops it (microcosm#1095, A4; for María's signature)."
+        "and drops it (microcosm#1095, A4; María's signature of 2026-11-11)."
     ),
     "person.pip_dl_category": (
         "policyengine-uk derives pip_dl_category from pip_dl_points (8 points "

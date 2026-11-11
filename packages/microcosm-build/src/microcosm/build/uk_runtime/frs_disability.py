@@ -388,7 +388,7 @@ def derive_frs_disability(
     # The tax credit severe disability condition (CTC Regs 2002 reg 8, WTC
     # Regs 2002 reg 17), is_severely_disabled_for_benefits, is left to
     # policyengine-uk's formula (A4 of the November event-data plan's PR3,
-    # microcosm#1095). The formula reads the categories derived above (DLA
+    # microcosm#1095; María's signature of 2026-11-11). The formula reads the categories derived above (DLA
     # care at the highest rate, PIP daily living at the enhanced rate,
     # higher-rate Attendance Allowance) and Armed Forces Independence Payment,
     # which the build never writes, since FRS code 8 cannot be told apart from
