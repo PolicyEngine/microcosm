@@ -1,0 +1,20 @@
+country: nz
+identity_generation: 1
+seed_protocol: legacy-v1
+dataset_run:
+  target_period: 2026
+status: >-
+  New Zealand public-donor transport package for tax year 2026-27. G8-r1
+  expands the pinned Chronicle reference inventory: 98 calibration
+  references are active for all-sex regional age bands and household tenure,
+  and 67 territorial-authority population references are active support
+  inputs. The territorial-authority to Accommodation Supplement area
+  crosswalk is harvested. D1376 rules the D1 fit policy at 2% for demography,
+  5% for every selected calibration target, and 5% for national and regional
+  administrative anchors. Incomplete target families remain release blockers.
+  Household-size and Census-family targets remain parked for their named
+  statistical-definition gaps. IRD income contracts, intervals and ageing
+  remain parked for G8-r2. MSD receipt references remain parked for G8-w's
+  receipt bindings and stratified assignment; Veterans Pension is unsupported.
+  Full package execution remains inactive pending G8-w graph wiring and
+  prepared inputs, G8-r2 contracts, and complete release-gate evidence.

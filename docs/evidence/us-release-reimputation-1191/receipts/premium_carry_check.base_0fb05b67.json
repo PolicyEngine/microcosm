@@ -1,0 +1,20 @@
+{
+ "asec_rows": 432523,
+ "asec_rows_equal_to_PHIP_VAL": 432523,
+ "asec_source_ids_unique": true,
+ "base_h5": "base_populace_us_2024_puf_support.h5",
+ "base_h5_sha256": "0fb05b674899114e66dc01c2df0ff5349de88bbc8fed440755f4b19f287cedd2",
+ "clones": {
+  "1": {
+   "rows": 432523,
+   "rows_equal_to_asec_twin": 432523,
+   "rows_with_an_asec_twin": 432523
+  },
+  "2": {
+   "rows": 42817,
+   "rows_equal_to_asec_twin": 42817,
+   "rows_with_an_asec_twin": 42817
+  }
+ },
+ "column": "health_insurance_premiums_without_medicare_part_b"
+}

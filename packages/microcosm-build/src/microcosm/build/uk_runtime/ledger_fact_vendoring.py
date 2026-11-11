@@ -42,6 +42,10 @@ _SELECTION_KEYS = frozenset({"label", "selector", "expected_row_count"})
 _RESOURCE_KEYS = frozenset(
     {"resource", "purpose", "consumers", "planned_consumers", "selections"}
 )
+#: A resource may state the licence its publishers' rows carry (microcosm#1207
+#: review): copied verbatim into the vendored header, as the derived resources
+#: state theirs.
+_RESOURCE_OPTIONAL_KEYS = frozenset({"licence"})
 _ROW_ORDER_KEYS = (
     "concept",
     "geography_id",
@@ -102,10 +106,15 @@ def validate_vendor_selections(register: Mapping[str, Any]) -> None:
         raise ValueError("Vendor selection register must list at least one resource.")
     seen: set[str] = set()
     for entry in resources:
-        if not isinstance(entry, Mapping) or set(entry) != _RESOURCE_KEYS:
+        if (
+            not isinstance(entry, Mapping)
+            or set(entry) - _RESOURCE_OPTIONAL_KEYS != _RESOURCE_KEYS
+        ):
             raise ValueError(
                 "Each vendor selection resource must carry exactly "
-                f"{sorted(_RESOURCE_KEYS)}; got {sorted(entry) if isinstance(entry, Mapping) else entry!r}."
+                f"{sorted(_RESOURCE_KEYS)}, optionally with "
+                f"{sorted(_RESOURCE_OPTIONAL_KEYS)}; got "
+                f"{sorted(entry) if isinstance(entry, Mapping) else entry!r}."
             )
         name = entry["resource"]
         if not isinstance(name, str) or not name.endswith(".json") or "/" in name:
@@ -117,6 +126,8 @@ def validate_vendor_selections(register: Mapping[str, Any]) -> None:
         seen.add(name)
         if not isinstance(entry["purpose"], str) or not entry["purpose"].strip():
             raise ValueError(f"Vendored resource {name!r} needs a non-blank purpose.")
+        if "licence" in entry:
+            _validate_licence(name, entry["licence"])
         for key in ("consumers", "planned_consumers"):
             consumers = entry.get(key, [])
             if not isinstance(consumers, list) or not all(
@@ -160,6 +171,25 @@ def validate_vendor_selections(register: Mapping[str, Any]) -> None:
                     f"Vendored resource {name!r} selection {label!r}: "
                     "expected_row_count must be a positive integer."
                 )
+
+
+def _validate_licence(name: str, licence: object) -> None:
+    """A licence names the licence and lists the publishers' attribution lines."""
+
+    attribution = licence.get("attribution") if isinstance(licence, Mapping) else None
+    if (
+        not isinstance(licence, Mapping)
+        or set(licence) != {"licence", "attribution"}
+        or not isinstance(licence["licence"], str)
+        or not licence["licence"].strip()
+        or not isinstance(attribution, list)
+        or not attribution
+        or not all(isinstance(line, str) and line.strip() for line in attribution)
+    ):
+        raise ValueError(
+            f"Vendored resource {name!r}: licence must carry a non-blank 'licence' "
+            "and a non-empty 'attribution' list of lines."
+        )
 
 
 def feed_identity(pin: UKChronicleFeed) -> dict[str, Any]:
@@ -297,6 +327,7 @@ def vendor_resource(
             "declare their own arithmetic on these rows and never edit this file by "
             f"hand: regenerate it with {VENDOR_TOOL}."
         ),
+        **({"licence": dict(entry["licence"])} if "licence" in entry else {}),
         "generator": {"tool": VENDOR_TOOL, "version": VENDOR_TOOL_VERSION},
         "source_fact_feed": feed_identity(pin),
         "selections": selections_out,

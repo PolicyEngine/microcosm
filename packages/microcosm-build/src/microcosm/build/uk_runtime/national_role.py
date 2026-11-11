@@ -28,13 +28,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gate_battery import _signing_key
 from microcosm.build.logbook_adoption import atomic_write_json
 from microcosm.build.staging_dataset import (
     SHA256SUMS_FILENAME,
     parse_sha256sums,
     refresh_sha256sums_entry,
 )
-from microcosm.build.staging_v2 import StagingTelemetryV2
+from microcosm.build.staging_v2 import StagingRunBundleWriterV2
 from microcosm.build.uk_runtime.calibration_run import runtime_provenance
 from microcosm.build.uk_runtime.diagnostics import uk_fit_by_family
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
@@ -62,6 +63,7 @@ __all__ = [
     "national_dry_run",
     "national_manifest",
     "require_bound_input",
+    "require_signing_key",
 ]
 
 
@@ -124,6 +126,24 @@ def require_bound_input(args: argparse.Namespace) -> None:
 
 
 _require_bound_input = require_bound_input
+
+
+def require_signing_key() -> None:
+    """Refuse a national build whose gate reports could not be signed.
+
+    The seam signs its terminal report only after the solve, so a missing,
+    malformed or unregistered key used to surface 25-40 minutes in, as
+    "unsigned full-scale calibration runs refuse to stage". Check it before
+    any input is read.
+    """
+
+    try:
+        _signing_key("uk")
+    except RuntimeError as error:
+        raise ValueError(
+            "--release-role national signs its gate reports and needs a "
+            f"registered UK gate signing key: {error}"
+        ) from error
 
 
 def national_dry_run(
@@ -480,7 +500,7 @@ def evaluate_against_incumbent(
     incumbent: Mapping[str, Any] | None,
     inputs: Mapping[str, Any],
     output_paths: Mapping[str, Path],
-    telemetry: StagingTelemetryV2 | None,
+    telemetry: StagingRunBundleWriterV2 | None,
     calibration_year: int,
     out_dir: Path,
 ) -> dict[str, Any]:

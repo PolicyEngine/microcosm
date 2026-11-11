@@ -249,6 +249,45 @@ def test_write_round_trip_preserves_ladder_columns(toy_ladder, tmp_path) -> None
     assert "local_authority" in household.columns
 
 
+def test_ladder_clone_keeps_the_source_files_savings_income_rule(
+    toy_ladder, tmp_path
+) -> None:
+    """A source H5 that declares no savings income projection rule, such as any
+    national written before the producer declared one, projects by GDP per
+    head, so its ladder clone must too; a declared source keeps the producer's
+    rule (Vahid's review of microcosm#1511, item 2)."""
+
+    pytest.importorskip("tables")
+    h5py = pytest.importorskip("h5py")
+    from microcosm.build.uk_runtime.national_frame import uk_savings_income_projection
+    from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
+    from microcosm.frame.adapters.policyengine_uk import (
+        UK_DEFAULT_SAVINGS_INCOME_PROJECTION,
+        UK_SAVINGS_INCOME_PROJECTION,
+        UK_SAVINGS_INCOME_PROJECTION_ATTR,
+    )
+
+    ladder, _ = toy_ladder
+    for declared, expected in (
+        (True, UK_SAVINGS_INCOME_PROJECTION),
+        (False, UK_DEFAULT_SAVINGS_INCOME_PROJECTION),
+    ):
+        source = tmp_path / f"seam-{declared}.h5"
+        _write_seam_h5(source)
+        if not declared:
+            with h5py.File(source, mode="r+") as file:
+                del file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR]
+        output = tmp_path / f"ladder-{declared}.h5"
+        result = clone_uk_dataset_with_ladder_geography(
+            source, ladder, output_path=output, n_clones=1
+        )
+        assert uk_savings_income_projection(result.frame) == expected
+        with h5py.File(output, mode="r") as file:
+            assert file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR] == expected
+        loaded, _provenance = load_uk_rowwise_dataset(output)
+        assert uk_savings_income_projection(loaded) == expected
+
+
 def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path):
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
@@ -564,6 +603,8 @@ def test_driver_ladder_spine_lineage_plan_manifest_parity(
             "household_is_capital_gains_clone",
             "household_is_cgt_support_copy",
             "cgt_support_copy_index",
+            "household_is_cgt_residential_clone",
+            "cgt_residential_clone_index",
         ],
         "distinct_source_households": 3,
         "distinct_by_support_channel": {"frs": 1, "spi": 2},
@@ -571,6 +612,7 @@ def test_driver_ladder_spine_lineage_plan_manifest_parity(
             "household_is_spi_synthetic": 2,
             "household_is_capital_gains_clone": 1,
             "household_is_cgt_support_copy": 1,
+            "household_is_cgt_residential_clone": 0,
         },
     }
 

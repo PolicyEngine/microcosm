@@ -1,0 +1,99 @@
+{
+ "duties": {
+  "alcohol_duty": 13062476800.0,
+  "beer_duty": 3761580544.0,
+  "bingo_duty": 25233000.0,
+  "cider_duty": 288421984.0,
+  "gambling_duty": 3619303936.0,
+  "gaming_duty": 165396992.0,
+  "general_betting_duty": 713858112.0,
+  "household_tax": 24848474112.0,
+  "lottery_duty": 931886976.0,
+  "machine_games_duty": 612264960.0,
+  "other_fermented_duty": 298430528.0,
+  "pool_betting_duty": 8125000.5,
+  "remote_gaming_duty": 1162539008.0,
+  "sparkling_cider_duty": 0.0,
+  "spirits_duty": 4204673536.0,
+  "tobacco_duty": 8166694912.0,
+  "wine_duty": 4509370368.0
+ },
+ "national_levels": {
+  "beer_draught_share": 0.3972504238069507,
+  "beer_litres": 4631940882.095249,
+  "betting_exchange_commission": 123949909.1922428,
+  "bingo_net_receipts": 252330000.0,
+  "cider_draught_share": 0.23257594494574382,
+  "cider_litres": 674388250.8241311,
+  "cigarettes_per_week": 261113666.03291157,
+  "cigars_grams_per_week": 7598518.917797942,
+  "hand_rolling_tobacco_grams_per_week": 77470743.97904557,
+  "horse_and_dog_pool_betting_net_losses": 55219132.22492455,
+  "land_based_casino_net_losses": 702361489.1692535,
+  "land_based_fixed_odds_betting_net_losses": 1527826124.9133615,
+  "machine_games_higher_rate_net_takings": 2384000.0,
+  "machine_games_lower_rate_net_takings": 138420000.0,
+  "machine_games_standard_rate_net_takings": 3023740000.0,
+  "national_lottery_ticket_spending": 7765725000.0,
+  "other_fermented_litres": 239435846.48703998,
+  "other_tobacco_grams_per_week": 5797406.910050115,
+  "pool_betting_net_receipts": 54166666.66666667,
+  "remote_gaming_net_losses": 5535900000.0,
+  "remote_other_betting_net_losses": 2163978657.2782593,
+  "remote_uk_horseracing_betting_net_losses": 888079509.7245454,
+  "spirits_litres": 330123776.919805,
+  "wine_litres": 1266891770.4008167
+ },
+ "rows": {
+  "obr.beer_and_cider_duties": {
+   "engine": 4050002528.0,
+   "gap": 0.08115390496529629,
+   "measurement_period": 2024,
+   "obr": 3746000000.0,
+   "variables": [
+    "beer_duty",
+    "cider_duty",
+    "sparkling_cider_duty"
+   ]
+  },
+  "obr.betting_and_gaming_duties": {
+   "engine": 3619303936.0,
+   "gap": 0.000913699115044242,
+   "measurement_period": 2024,
+   "obr": 3616000000.0,
+   "variables": [
+    "gambling_duty"
+   ]
+  },
+  "obr.spirits_duties": {
+   "engine": 4204673536.0,
+   "gap": 0.02228872744955024,
+   "measurement_period": 2024,
+   "obr": 4113000000.0,
+   "variables": [
+    "spirits_duty"
+   ]
+  },
+  "obr.tobacco_duties": {
+   "engine": 8166694912.0,
+   "gap": 0.030237783776964733,
+   "measurement_period": 2024,
+   "obr": 7927000000.0,
+   "variables": [
+    "tobacco_duty"
+   ]
+  },
+  "obr.wine_duties": {
+   "engine": 4807800896.0,
+   "gap": 0.02599250874946657,
+   "measurement_period": 2024,
+   "obr": 4686000000.0,
+   "variables": [
+    "wine_duty",
+    "other_fermented_duty"
+   ]
+  }
+ },
+ "three_duties": 24848475648.0,
+ "year": 2024
+}

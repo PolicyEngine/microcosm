@@ -1,0 +1,1 @@
+Source the UK `maximum_extended_childcare_hours_usage` draw from DfE: the mean moves from the frozen 15.019 to 31.141 (sd 4.972, clip [0, 30]), so a working-parent 3- or 4-year-old averages the 28.5 weekly hours implied by DfE's January 2025 additional-hours PTEs, lifting 2026-27 free early-years spending from £5.81bn to about £9.30bn against DfE's £9.9bn (#1126).

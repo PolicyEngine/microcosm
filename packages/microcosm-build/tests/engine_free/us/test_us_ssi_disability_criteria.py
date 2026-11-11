@@ -20,6 +20,7 @@ def test_reported_ssi_anchor_coalesces_native_asec_and_harmonized_acs() -> None:
     np.testing.assert_array_equal(values, [1_200.0, 900.0, 0.0])
     assert pd.isna(person.loc[2, "ssi_reported"])
 
+
 def test_reported_ssi_anchor_refuses_an_adult_universe_blank() -> None:
     person = pd.DataFrame(
         {
@@ -30,6 +31,7 @@ def test_reported_ssi_anchor_refuses_an_adult_universe_blank() -> None:
 
     with pytest.raises(ValueError, match="blank only below"):
         module._reported_ssi_anchor(person, age=np.asarray([40.0]))
+
 
 def test_archived_coordinates_exact_predictors_and_pinned_artifact() -> None:
     assert US_SSI_DISABILITY_CRITERIA_STAGE_NAME == "ssi_disability_criteria"
@@ -75,6 +77,7 @@ def test_archived_coordinates_exact_predictors_and_pinned_artifact() -> None:
         "has_disability_income",
     )
 
+
 def test_stage_manifest_pins_exact_runtime_contract() -> None:
     spec = us_ssi_disability_criteria_stage_spec()
 
@@ -91,6 +94,7 @@ def test_stage_manifest_pins_exact_runtime_contract() -> None:
     )
     assert SIPP_SSI_DISABILITY_FIT_PARAMETERS["model_seed"] == 42
     assert SIPP_SSI_DISABILITY_FIT_PARAMETERS["seed_from_build_config"] is False
+
 
 def test_loader_applies_observation_allocation_and_financial_screens(
     tmp_path: Path,
@@ -160,6 +164,7 @@ def test_loader_applies_observation_allocation_and_financial_screens(
     assert audit["negative_rows"] == 3
     assert audit["pinned_transform"] is False
 
+
 def test_loader_rejects_missing_allocation_flags(tmp_path: Path) -> None:
     path = _write_source(tmp_path, [_source_row("one", 1)])
     source = pd.read_csv(path, sep="|").drop(columns=["ASSI_BRSN"])
@@ -170,6 +175,7 @@ def test_loader_rejects_missing_allocation_flags(tmp_path: Path) -> None:
             path,
             expected_size_bytes=None,
         )
+
 
 def test_pinned_full_file_audit_contract_is_exact() -> None:
     assert module._PINNED_DECEMBER_ROWS == 39_513
@@ -182,6 +188,7 @@ def test_pinned_full_file_audit_contract_is_exact() -> None:
     assert module._PINNED_RESAMPLE_UNIQUE_SOURCE_ROWS == 5_314
     assert module._PINNED_RESAMPLE_POSITIVE_ROWS == 524
     assert module._PINNED_RESAMPLE_TRUE_SHARE == pytest.approx(0.05606676653113631)
+
 
 def test_imputer_uses_exact_weighted_replacement_draw_and_fixed_model_seed(
     monkeypatch: pytest.MonkeyPatch,
@@ -207,6 +214,7 @@ def test_imputer_uses_exact_weighted_replacement_draw_and_fixed_model_seed(
     np.testing.assert_array_equal(second_fit.training["age"], expected_ages)
     np.testing.assert_array_equal(first, second)
 
+
 def test_receiver_uses_complete_income_components_and_archived_signal_screen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -227,6 +235,7 @@ def test_receiver_uses_complete_income_components_and_archived_signal_screen(
     # person 2 has both the positive model draw and a difficulty. Person 3 has
     # a positive model draw but negative SSDI, which is not a disability signal.
     assert np.flatnonzero(result.to_numpy()).tolist() == [0, 1]
+
 
 def test_asec_reporter_anchor_is_not_copied_to_puf_and_rows_predict_separately(
     monkeypatch: pytest.MonkeyPatch,
@@ -266,6 +275,7 @@ def test_asec_reporter_anchor_is_not_copied_to_puf_and_rows_predict_separately(
     assert not bool(source_three_values["asec"])
     assert bool(source_three_values["puf_tax_detail"])
 
+
 def test_support_validation_allows_puf_only_source_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -279,6 +289,7 @@ def test_support_validation_allows_puf_only_source_ids(
 
     assert len(result) == len(person)
 
+
 def test_support_validation_rejects_unknown_or_missing_channel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -288,6 +299,7 @@ def test_support_validation_rejects_unknown_or_missing_channel(
 
     with pytest.raises(ValueError, match="unsupported support channel"):
         impute_us_ssi_disability_criteria(expanded, _donor(), seed=0)
+
 
 def test_wrapper_heals_stale_output_and_is_idempotent(
     monkeypatch: pytest.MonkeyPatch,
@@ -311,6 +323,7 @@ def test_wrapper_heals_stale_output_and_is_idempotent(
 
     assert healed.table("person")[_OUTPUT].sum() == 2
     assert twice is healed
+
 
 def test_signal_gate_requires_each_channel_but_allows_clone_divergence(
     monkeypatch: pytest.MonkeyPatch,
@@ -354,6 +367,7 @@ def test_signal_gate_requires_each_channel_but_allows_clone_divergence(
         for failure in implausible_gate.failures
     )
 
+
 def test_stacked_clone_divergence_diagnostic_checks_clone_two() -> None:
     stacked = _replace_person(
         _frame(3),
@@ -369,6 +383,7 @@ def test_stacked_clone_divergence_diagnostic_checks_clone_two() -> None:
     summary = us_ssi_disability_criteria_summary(stacked)
 
     assert summary["clone_divergence_source_people"] == 1
+
 
 def test_historical_tail_copy_predicts_in_the_puf_role_stream(
     monkeypatch: pytest.MonkeyPatch,
@@ -412,6 +427,7 @@ def test_historical_tail_copy_predicts_in_the_puf_role_stream(
     # diagnostic groups every copy, the tail copy included, by source person.
     assert summary["clone_divergence_source_people"] == 2
 
+
 def test_historical_tail_copy_divergence_joins_its_source_group() -> None:
     tailed = _TAIL.with_capital_gains_tail_copies(
         clone_us_frame_for_puf_support(_frame(3)), [2]
@@ -430,6 +446,7 @@ def test_historical_tail_copy_divergence_joins_its_source_group() -> None:
     )
 
     assert summary["clone_divergence_source_people"] == 1
+
 
 @pytest.mark.parametrize(
     "columns",
@@ -478,6 +495,7 @@ def test_assembled_frame_missing_support_provenance_is_flagged(
         "person_source_id provenance." in gate.failures
     )
 
+
 def test_divergence_compares_repeated_historical_clone_index() -> None:
     # A malformed historical table whose tail copy repeats clone index 1:
     # grouping by source ID still compares that copy (the old role-occurrence
@@ -501,6 +519,7 @@ def test_divergence_compares_repeated_historical_clone_index() -> None:
 
     assert summary["support_provenance_missing"] is False
     assert summary["clone_divergence_source_people"] == 1
+
 
 def test_clone_index_past_int64_is_flagged() -> None:
     # float(2**63) is the first float past int64; the base let it wrap to
@@ -526,6 +545,7 @@ def test_clone_index_past_int64_is_flagged() -> None:
     assert summary["support_provenance_missing"] is True
     assert summary["channels"] == {}
 
+
 def test_summary_checks_harmonized_ssi_on_native_role() -> None:
     expanded = clone_us_frame_for_puf_support(_frame())
     person = expanded.table("person")
@@ -547,6 +567,7 @@ def test_summary_checks_harmonized_ssi_on_native_role() -> None:
     assert any(
         "native-role SSI reporter anchor" in failure for failure in gate.failures
     )
+
 
 def test_gate_requires_complete_support_provenance(
     monkeypatch: pytest.MonkeyPatch,

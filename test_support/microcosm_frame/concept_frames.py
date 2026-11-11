@@ -55,20 +55,29 @@ def concept_frames(
     min_households: int = 1,
     max_households: int = 4,
     max_members: int = 5,
+    min_id: int = 0,
 ) -> dict[str, pd.DataFrame]:
-    """A valid concept frame with every concept column present."""
+    """A valid concept frame with every concept column present.
 
+    Person and household ids are drawn from ``[min_id, 10**9]``. The
+    concept-frame contract accepts any unique integer id, so a negative
+    ``min_id`` checks that no consumer reads an id as a sentinel such as -1;
+    ids near zero are then mixed in, because a draw from a wide range almost
+    never yields one exactly.
+    """
+
+    ids = st.integers(min_id, 10**9)
+    if min_id < 0:
+        ids |= st.integers(max(min_id, -3), 3)
     n_households = draw(st.integers(min_households, max_households))
     sizes = [draw(st.integers(1, max_members)) for _ in range(n_households)]
     n_persons = sum(sizes)
     person_ids = draw(
-        st.lists(
-            st.integers(0, 10**9), min_size=n_persons, max_size=n_persons, unique=True
-        )
+        st.lists(ids, min_size=n_persons, max_size=n_persons, unique=True)
     )
     household_ids = draw(
         st.lists(
-            st.integers(0, 10**9),
+            ids,
             min_size=n_households,
             max_size=n_households,
             unique=True,

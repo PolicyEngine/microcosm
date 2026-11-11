@@ -427,6 +427,7 @@ def _gated_household() -> tuple[pd.DataFrame, np.ndarray]:
             "puma": ["3603801", "3600100", "0603701", "4800100"],
             "congressional_district_geoid": [3612, 3620, 653, 4802],
             "county_fips": ["36061", "36001", "06037", "48001"],
+            "county_fips_2023": ["36061", "36001", "06037", "48001"],
         }
     )
     weights = np.asarray([2.6, 3.6, 73.8, 20.0])

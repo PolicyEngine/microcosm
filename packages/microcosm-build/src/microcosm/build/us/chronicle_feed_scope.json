@@ -2,9 +2,9 @@
  "version": 1,
  "country": "us",
  "source_repo": "PolicyEngine/chronicle",
- "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
- "rule": "Exactly the (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl; each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
- "pair_count": 586,
+ "source_commit": "41b2fb2b864a28c0eda03322b77a97ef147dfa3c",
+ "rule": "The (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl, plus the 51 TY2023 Historic Table 2 state AGI-band record sets (irs_soi.ty2023.historic_table_2.state_agi.<st>, microcosm#940), plus the three BEA NIPA Table 7.8 line 17 (B4923C) record sets (bea_nipa.cy<year>.private_group_health_insurance, 2023 to 2025, microcosm#454), plus the 66 Federal Student Aid loan portfolio record sets of the six packages/ed_fsa packages (ed_fsa.*, chronicle#347, microcosm#1357), each one quarter-end month from 2025-12 to 2026-06 and built at 2026, the only year their manifests carry a file for; each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
+ "pair_count": 706,
  "runs": {
   "2020": [
    "packages/bea/nipa_total_wages_salaries",
@@ -28,6 +28,7 @@
    "packages/bea/nipa_pension_contributions",
    "packages/bea/nipa_personal_income_components",
    "packages/bea/nipa_personal_income_disposition",
+   "packages/bea/nipa_private_group_health_insurance",
    "packages/bea/nipa_total_wages_salaries",
    "packages/bea/regional_personal_income_state",
    "packages/cbo/individual_income_tax_receipts_2026_02",
@@ -40,6 +41,7 @@
    "packages/federal_reserve/z1_household_net_worth",
    "packages/hhs_acf_liheap/fy2023_national_profile",
    "packages/irs_soi/congressional_district_2022",
+   "packages/irs_soi/historic_table_2_state_agi_2023",
    "packages/irs_soi/ira_roth_contributions_2022",
    "packages/irs_soi/ira_traditional_contributions_2022",
    "packages/irs_soi/state_2022",
@@ -53,6 +55,7 @@
    "packages/irs_soi/w2_statistics_2020"
   ],
   "2024": [
+   "packages/bea/nipa_private_group_health_insurance",
    "packages/bea/nipa_total_wages_salaries",
    "packages/cbo/revenue_projections_income_by_source_2026_02",
    "packages/census/pep_2024_national_age_sex",
@@ -73,10 +76,17 @@
    "packages/usda_snap/fy69_to_current"
   ],
   "2025": [
+   "packages/bea/nipa_private_group_health_insurance",
    "packages/cbo/revenue_projections_income_by_source_2026_02"
   ],
   "2026": [
    "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "packages/ed_fsa/portfolio_by_age_fy2026_q2",
+   "packages/ed_fsa/portfolio_by_debt_size_fy2026_q2",
+   "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "packages/ed_fsa/portfolio_by_location_fy2026_q2",
+   "packages/ed_fsa/portfolio_summary_fy2026_q3",
    "packages/jct/obbba_revenue_estimates_2025"
   ],
   "2027": [
@@ -259,6 +269,14 @@
    "build_year": 2023
   },
   {
+   "record_set_id": "bea_nipa.cy2023.private_group_health_insurance",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-private-group-health-insurance",
+   "package": "packages/bea/nipa_private_group_health_insurance",
+   "build_year": 2023
+  },
+  {
    "record_set_id": "bea_nipa.cy2023.proprietors_income",
    "period_type": "calendar_year",
    "period_value": "2023",
@@ -315,12 +333,28 @@
    "build_year": 2023
   },
   {
+   "record_set_id": "bea_nipa.cy2024.private_group_health_insurance",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "bea-nipa-private-group-health-insurance",
+   "package": "packages/bea/nipa_private_group_health_insurance",
+   "build_year": 2024
+  },
+  {
    "record_set_id": "bea_nipa.cy2024.total_wages_salaries",
    "period_type": "calendar_year",
    "period_value": "2024",
    "package_id": "bea-nipa-total-wages-salaries",
    "package": "packages/bea/nipa_total_wages_salaries",
    "build_year": 2024
+  },
+  {
+   "record_set_id": "bea_nipa.cy2025.private_group_health_insurance",
+   "period_type": "calendar_year",
+   "period_value": "2025",
+   "package_id": "bea-nipa-private-group-health-insurance",
+   "package": "packages/bea/nipa_private_group_health_insurance",
+   "build_year": 2025
   },
   {
    "record_set_id": "bea_regional.cy2023.state_contributions_for_government_social_insurance",
@@ -2547,6 +2581,534 @@
    "build_year": 2024
   },
   {
+   "record_set_id": "ed_fsa.dl_by_repayment_plan.fy2026_q1.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_by_repayment_plan.fy2026_q1.recipients",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_by_repayment_plan.fy2026_q2.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_by_repayment_plan.fy2026_q2.recipients",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_by_repayment_plan.fy2026_q3.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_by_repayment_plan.fy2026_q3.recipients",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_idr_by_partial_financial_hardship.fy2026_q1.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_idr_by_partial_financial_hardship.fy2026_q1.recipients",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_idr_by_partial_financial_hardship.fy2026_q2.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_idr_by_partial_financial_hardship.fy2026_q2.recipients",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_idr_by_partial_financial_hardship.fy2026_q3.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.dl_idr_by_partial_financial_hardship.fy2026_q3.recipients",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_by_repayment_plan.fy2026_q1.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_by_repayment_plan.fy2026_q1.recipients",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_by_repayment_plan.fy2026_q2.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_by_repayment_plan.fy2026_q2.recipients",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_by_repayment_plan.fy2026_q3.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_by_repayment_plan.fy2026_q3.recipients",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_idr_by_partial_financial_hardship.fy2026_q1.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_idr_by_partial_financial_hardship.fy2026_q1.recipients",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_idr_by_partial_financial_hardship.fy2026_q2.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_idr_by_partial_financial_hardship.fy2026_q2.recipients",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_idr_by_partial_financial_hardship.fy2026_q3.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.ed_held_ffel_idr_by_partial_financial_hardship.fy2026_q3.recipients",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_by_repayment_plan.fy2026_q1.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_by_repayment_plan.fy2026_q1.recipients",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_by_repayment_plan.fy2026_q2.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_by_repayment_plan.fy2026_q2.recipients",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_by_repayment_plan.fy2026_q3.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_by_repayment_plan.fy2026_q3.recipients",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_idr_by_partial_financial_hardship.fy2026_q1.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_idr_by_partial_financial_hardship.fy2026_q1.recipients",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_idr_by_partial_financial_hardship.fy2026_q2.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_idr_by_partial_financial_hardship.fy2026_q2.recipients",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_idr_by_partial_financial_hardship.fy2026_q3.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.federally_managed_idr_by_partial_financial_hardship.fy2026_q3.recipients",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-dl-portfolio-by-repayment-plan-fy2026-q3",
+   "package": "packages/ed_fsa/dl_portfolio_by_repayment_plan_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_age.fy2026_q1.borrowers",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-by-age-fy2026-q2",
+   "package": "packages/ed_fsa/portfolio_by_age_fy2026_q2",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_age.fy2026_q1.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-by-age-fy2026-q2",
+   "package": "packages/ed_fsa/portfolio_by_age_fy2026_q2",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_age.fy2026_q2.borrowers",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-by-age-fy2026-q2",
+   "package": "packages/ed_fsa/portfolio_by_age_fy2026_q2",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_age.fy2026_q2.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-by-age-fy2026-q2",
+   "package": "packages/ed_fsa/portfolio_by_age_fy2026_q2",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_debt_size.fy2026_q1.borrowers",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-by-debt-size-fy2026-q2",
+   "package": "packages/ed_fsa/portfolio_by_debt_size_fy2026_q2",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_debt_size.fy2026_q1.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-by-debt-size-fy2026-q2",
+   "package": "packages/ed_fsa/portfolio_by_debt_size_fy2026_q2",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_debt_size.fy2026_q2.borrowers",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-by-debt-size-fy2026-q2",
+   "package": "packages/ed_fsa/portfolio_by_debt_size_fy2026_q2",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_debt_size.fy2026_q2.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-by-debt-size-fy2026-q2",
+   "package": "packages/ed_fsa/portfolio_by_debt_size_fy2026_q2",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q1.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q1.recipients",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q1.stafford_combined_dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q1.stafford_combined_unique_recipients",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q2.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q2.recipients",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q2.stafford_combined_dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q2.stafford_combined_unique_recipients",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q3.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q3.recipients",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q3.stafford_combined_dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_loan_type.fy2026_q3.stafford_combined_unique_recipients",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-portfolio-by-loan-type-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_by_loan_type_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_by_location.2026_03_31",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-by-location-fy2026-q2",
+   "package": "packages/ed_fsa/portfolio_by_location_fy2026_q2",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_summary.fy2026_q1.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-summary-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_summary_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_summary.fy2026_q1.recipients",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-summary-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_summary_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_summary.fy2026_q1.unduplicated_recipients",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "ed-fsa-portfolio-summary-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_summary_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_summary.fy2026_q2.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-summary-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_summary_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_summary.fy2026_q2.recipients",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-summary-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_summary_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_summary.fy2026_q2.unduplicated_recipients",
+   "period_type": "month",
+   "period_value": "2026-03",
+   "package_id": "ed-fsa-portfolio-summary-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_summary_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_summary.fy2026_q3.dollars_outstanding",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-portfolio-summary-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_summary_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_summary.fy2026_q3.recipients",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-portfolio-summary-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_summary_fy2026_q3",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "ed_fsa.portfolio_summary.fy2026_q3.unduplicated_recipients",
+   "period_type": "month",
+   "period_value": "2026-06",
+   "package_id": "ed-fsa-portfolio-summary-fy2026-q3",
+   "package": "packages/ed_fsa/portfolio_summary_fy2026_q3",
+   "build_year": 2026
+  },
+  {
    "record_set_id": "federal_reserve_z1.cy2023.households_nonprofits_balance_sheet.net_worth",
    "period_type": "calendar_year",
    "period_value": "2023",
@@ -4344,6 +4906,414 @@
    "period_value": "2023",
    "package_id": "soi-w2-statistics-2020",
    "package": "packages/irs_soi/w2_statistics_2020",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ak",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.al",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ar",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.az",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ca",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.co",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ct",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.dc",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.de",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.fl",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ga",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.hi",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ia",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.id",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.il",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.in",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ks",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ky",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.la",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ma",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.md",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.me",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.mi",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.mn",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.mo",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ms",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.mt",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nc",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nd",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ne",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nh",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nj",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nm",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.nv",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ny",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.oh",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ok",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.or",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.pa",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ri",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.sc",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.sd",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.tn",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.tx",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.ut",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.va",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.vt",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.wa",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.wi",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.wv",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.historic_table_2.state_agi.wy",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-historic-table-2-state-agi-2023",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2023",
    "build_year": 2023
   },
   {

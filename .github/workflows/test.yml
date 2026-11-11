@@ -15,13 +15,37 @@ env:
   OMP_NUM_THREADS: "1"
   OPENBLAS_NUM_THREADS: "1"
   MKL_NUM_THREADS: "1"
+  # uv takes a runner image's own Python when it holds no managed one, and an
+  # image's Python can trail the patch release a test needs. On 2026-11-10 an
+  # ubuntu-26.04 runner gave an engine-free leg its Python 3.14.4, where the
+  # head-to-head scorer's worker recycling needs 3.14.7.
+  UV_MANAGED_PYTHON: "1"
+
+# GitHub runs an explicit `shell: bash` as `bash -eo pipefail`, and a step
+# with no shell as `bash -e`, where a pipe hides the exit status of the command
+# that feeds it.
+defaults:
+  run:
+    shell: bash
+
+# Every job sets timeout-minutes (GitHub's default is 360) so a hung test
+# frees its runner from the org's shared 60-runner pool. Each cap follows the
+# job's slowest successful leg on 2026-11-09, rounded up to a multiple of 5
+# minutes: 1.5 times it for engine-free (109 minutes) and engine-us (73), twice
+# for engine-uk (45) and integration-uk (8), and for each shorter job at least
+# 5 minutes and at least twice its slowest run.
+
+# Every job names its runner image. `ubuntu-latest` is whichever image GitHub
+# assigns: on 2026-11-10 it gave one engine-free job ubuntu-26.04 and another
+# ubuntu-24.04. Move every job to a newer image in one change.
 
 jobs:
   select-countries:
     permissions:
       contents: read
       pull-requests: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       run_us: ${{ steps.plan.outputs.run_us }}
       run_uk: ${{ steps.plan.outputs.run_uk }}
@@ -34,7 +58,8 @@ jobs:
         run: python3 tools/ci_test_plan.py select-countries
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -46,11 +71,14 @@ jobs:
         run: uv run python tools/graph_acceptance_burndown.py --verify
       - name: Sync workspace
         run: uv sync --all-packages --locked
+      - name: Verify the workflow against the test plan
+        run: uv run --no-sync python tools/ci_test_plan.py verify-workflow
       - name: Lint
         run: uv run --no-sync ruff check .
 
   engine-free:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 165
     strategy:
       fail-fast: false
       matrix:
@@ -60,6 +88,11 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/orrery-contract/package-lock.json
       - name: Sync workspace without country engines
         run: uv sync --all-packages --locked
       - name: Run engine-free tests
@@ -68,7 +101,8 @@ jobs:
   engine-us:
     needs: select-countries
     if: needs['select-countries'].outputs.run_us == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
     strategy:
       fail-fast: false
       matrix:
@@ -98,7 +132,8 @@ jobs:
   engine-uk:
     needs: select-countries
     if: needs['select-countries'].outputs.run_uk == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -118,8 +153,8 @@ jobs:
     if: needs['select-countries'].outputs.run_uk == 'true'
     permissions:
       contents: read
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -135,7 +170,8 @@ jobs:
   wheels:
     # Editable installs can hide missing package directories and namespace
     # mistakes. Build each wheel once and compare its contents with source.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -143,3 +179,55 @@ jobs:
           python-version: "3.13"
       - name: Build and inspect every shard wheel
         run: tools/build_and_inspect_wheels.sh
+
+  installed-emitter:
+    # Stages bundles through the released microcosm-emitter, at the minimum
+    # release builds accept and at the newest release pinned in
+    # tools/installed-emitter/, with its Hugging Face Hub requests answered by
+    # a loopback stand-in. It needs no secrets.
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Sync workspace without country engines
+        run: uv sync --all-packages --locked
+      - name: Run installed-emitter tests
+        run: bash tools/run_installed_emitter_tests.sh
+
+  ci:
+    # ci gives the main ruleset one check that covers the country jobs. It
+    # fails unless every other job passed, or skipped because select-countries
+    # succeeded and reported `false` for its country. A skipped matrix job
+    # reports under its unexpanded name, so a ruleset cannot require engine-us
+    # or engine-uk by name. GitHub reports a skipped required check as passing,
+    # so ci runs with `if: always()`. verify-workflow refuses any other shape
+    # of this job, and the plan's tests, which engine-free runs, fail on one.
+    if: always()
+    needs:
+      - select-countries
+      - lint
+      - engine-free
+      - engine-us
+      - engine-uk
+      - integration-uk
+      - wheels
+      - installed-emitter
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require every job to pass, or the selection to leave it out
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 tools/ci_test_plan.py require-results

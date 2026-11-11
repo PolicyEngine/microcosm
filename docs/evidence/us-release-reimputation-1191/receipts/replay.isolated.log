@@ -1,0 +1,6 @@
+<frozen importlib._bootstrap>:491: RuntimeWarning: The global interpreter lock (GIL) has been enabled to load module 'quantile_forest._quantile_forest_fast', which has not declared that it can run safely without the GIL. To override this behavior and keep the GIL disabled (at your own risk), run with PYTHON_GIL=0 or -Xgil=0.
+[isolated] base_as_loaded->weeks_unemployed weeks_unemployed 89s (vs base, vs release): {'weeks_unemployed': (9, 0)}
+[isolated] base_as_loaded->childcare childcare 174s (vs base, vs release): {'spm_unit_pre_subsidy_childcare_expenses': (54, 1801)}
+[isolated] base_as_loaded->energy_subsidy energy_subsidy 78s (vs base, vs release): {'spm_unit_energy_subsidy': (17, 3283)}
+microcosm-fit: near-discrete target (29 distinct values); bounding max_samples_leaf at 4096 for this forest.
+[isolated] base_as_loaded->retirement_contributions retirement_contributions 88s (vs base, vs release): {'traditional_401k_contributions_desired': (21765, 29464), 'roth_401k_contributions_desired': (19910, 27526), 'traditional_ira_contributions_desired': (20081, 27852), 'roth_ira_contributions_desired': (20419, 28192), 'self_employed_pension_contributions_desired': (529, 1106)}

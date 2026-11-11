@@ -7,8 +7,9 @@ country's public targets, where that country's own rules engine computes its
 taxes and benefits. This module defines the neutral layer that removes the
 tie. It declares, once, the record-level facts a household survey observes
 and that stay meaningful across countries: age, sex, co-resident
-relationships, income by component, hours and weeks worked, tenure and
-housing costs, disability, education and a persistent take-up seed.
+relationships, income by component, liquid financial assets, hours and weeks
+worked, tenure and housing costs, disability, education and a persistent
+take-up seed.
 
 Each :class:`Concept` states what a value *is*: its entity, dtype, unit,
 period semantics, currency and price-level handling, provenance class and
@@ -88,6 +89,7 @@ __all__ = [
     "PERSON_ID_COLUMN",
     "RENTED_TENURES",
     "SEX_DOMAIN",
+    "SOURCE_HOUSEHOLD_ID_COLUMN",
     "TENURE_DOMAIN",
     "AlignmentRelation",
     "CanonicalConceptKind",
@@ -116,13 +118,14 @@ __all__ = [
 #: concept is added, removed or changes any declared field, so artifacts that
 #: pin :func:`concept_schema_sha256` can say which schema they were written
 #: against.
-CONCEPT_SCHEMA_VERSION = 1
+CONCEPT_SCHEMA_VERSION = 3
 
 #: The two entities concept content lives on. Engine group entities (tax
 #: units, benefit units, SPM units, families) are engine constructs built
 #: from relationships. Today the US operator in microcosm.frame.units builds
 #: them from raw CPS roster columns and the UK adapter requires them already
-#: present; building them from these concepts' pointers is future work.
+#: present; microcosm.frame.unit_construction builds benefit units from these
+#: concepts' pointers.
 CONCEPT_ENTITIES: tuple[str, ...] = ("person", "household")
 
 #: A concept frame's entity structure, in the kernel's id conventions.
@@ -131,6 +134,8 @@ CONCEPT_FRAME_SCHEMA = EntitySchema(group_entities=("household",))
 PERSON_ID_COLUMN = CONCEPT_FRAME_SCHEMA.person_id_column
 PERSON_HOUSEHOLD_ID_COLUMN = CONCEPT_FRAME_SCHEMA.membership_column("household")
 HOUSEHOLD_ID_COLUMN = CONCEPT_FRAME_SCHEMA.id_column("household")
+#: Original donor household identity; support clones carry the same key.
+SOURCE_HOUSEHOLD_ID_COLUMN = "source_household_id"
 _PERSON_ID = PERSON_ID_COLUMN
 _HOUSEHOLD_ID = HOUSEHOLD_ID_COLUMN
 _PERSON_HOUSEHOLD_ID = PERSON_HOUSEHOLD_ID_COLUMN
@@ -162,6 +167,7 @@ class Unit(StrEnum):
     CATEGORY = "category"
     BOOLEAN = "boolean"
     PERSON_ID = "person_id"
+    SOURCE_ID = "source_id"
     UNIT_INTERVAL = "unit_interval"
 
 
@@ -658,6 +664,8 @@ class Concept:
             raise ValueError(
                 f"Pointer concept {self.id!r} must be an int named *_person_id."
             )
+        if self.unit is Unit.SOURCE_ID and self.dtype != "str":
+            raise ValueError(f"Source identity concept {self.id!r} must be str.")
 
     def _validate_bounds(self) -> None:
         numeric = self.dtype in ("float", "int")
@@ -1003,6 +1011,31 @@ CONCEPTS: tuple[Concept, ...] = (
         index_family=IndexFamily.CAPITAL_INCOME,
         signed=True,
     ),
+    # --- Financial wealth -------------------------------------------------
+    Concept(
+        id="fact:person.liquid_financial_assets",
+        label="Liquid financial assets",
+        definition=(
+            "Value at the reference date of the person's deposits (checking, "
+            "current, savings and money-market accounts and term deposits with "
+            "banks and other deposit-taking institutions), shares and "
+            "investment-fund units, and bonds and other debt securities, "
+            "before deducting any debt. A jointly held asset is divided among "
+            "its owners, so each asset counts once in a household total. "
+            "Excludes notes and coins, money lent to others, balances in "
+            "pension and retirement-savings schemes (such as US IRAs and "
+            "401(k) plans or NZ KiwiSaver), life insurance, equity in a "
+            "business the person runs, and real estate."
+        ),
+        dtype="float",
+        unit=Unit.BASE_CURRENCY,
+        period="point",
+        temporal_basis=TemporalBasis.REFERENCE_STATE,
+        provenance=ProvenanceClass.OBSERVED,
+        transport=TransportRule.QUANTILE_MAP,
+        monetary=MonetaryHandling(index_family=IndexFamily.CONSUMER_PRICES),
+        lower=0.0,
+    ),
     # --- Pensions ---------------------------------------------------------
     _amount(
         "private_pension_income",
@@ -1220,6 +1253,24 @@ CONCEPTS: tuple[Concept, ...] = (
         index_family=IndexFamily.OWNER_HOUSING_COSTS,
         entity="household",
     ),
+    # --- Source lineage ---------------------------------------------------
+    Concept(
+        id=f"fact:household.{SOURCE_HOUSEHOLD_ID_COLUMN}",
+        label="Original source household identity",
+        definition=(
+            "Exact identity of the original sampled source household, scoped "
+            "by source vintage when source household identifiers are "
+            "vintage-local. All support clones retain the same identity. "
+            "Derived only from explicit source lineage, never from row order "
+            "or the support row's household id."
+        ),
+        dtype="str",
+        unit=Unit.SOURCE_ID,
+        period="point",
+        temporal_basis=TemporalBasis.PERSISTENT,
+        provenance=ProvenanceClass.DERIVED,
+        transport=TransportRule.CARRY,
+    ),
 )
 
 #: Concepts by id, read-only.
@@ -1371,8 +1422,10 @@ def validate_concept_tables(
         Every violation found, empty for a valid frame.
 
     Raises:
-        ValueError: If a table or an id column is missing, ids are not unique,
-            or a person points at an unknown household.
+        ValueError: If a table or an id column is missing, an id column
+            holds anything but non-null integers, an unsigned id or pointer
+            exceeds ``2**63 - 1`` (ids are matched as int64), ids are not
+            unique, or a person points at an unknown household.
     """
 
     person, household = _require_structure(tables)
@@ -1496,9 +1549,20 @@ def _require_structure(
                     f"Concept frame id column {column!r} must hold non-null "
                     f"integers, found dtype {ids.dtype}."
                 )
-    if not person[_PERSON_ID].is_unique or not household[_HOUSEHOLD_ID].is_unique:
+    # Ids are matched as int64 from here on, here and in _check_pointers. An
+    # unsigned id above 2**63 - 1 would wrap (2**64 - 1 onto -1), so it is
+    # refused before anything converts; every other id converts exactly.
+    # Matching the native dtypes is not exact either: pandas compares int64
+    # with uint64 through float64, which merges ids above 2**53.
+    _require_int64_ids(person, household, "Validation matches")
+    person_ids = pd.Index(person[_PERSON_ID].to_numpy(dtype=np.int64))
+    household_ids = pd.Index(household[_HOUSEHOLD_ID].to_numpy(dtype=np.int64))
+    if not person_ids.is_unique or not household_ids.is_unique:
         raise ValueError("Concept frame ids must be unique.")
-    unknown = ~person[_PERSON_HOUSEHOLD_ID].isin(household[_HOUSEHOLD_ID])
+    unknown = (
+        household_ids.get_indexer(person[_PERSON_HOUSEHOLD_ID].to_numpy(dtype=np.int64))
+        < 0
+    )
     if unknown.any():
         raise ValueError(f"{int(unknown.sum())} person(s) name an unknown household.")
     return person, household
@@ -1573,9 +1637,13 @@ def _check_column(item: Concept, values: pd.Series) -> list[ConceptViolation]:
 def _check_pointers(
     person: pd.DataFrame, household: pd.DataFrame
 ) -> list[ConceptViolation]:
+    # Ids and pointers are matched as int64; _require_structure has refused
+    # any id int64 cannot hold, so every conversion here is exact. The
+    # person ids are widened too: pandas matches against a narrower unsigned
+    # index by casting the pointers down to it (261 onto 5 for uint8).
     out: list[ConceptViolation] = []
-    ids = pd.Index(person[_PERSON_ID].to_numpy())
-    own_household = person[_PERSON_HOUSEHOLD_ID].to_numpy()
+    ids = pd.Index(person[_PERSON_ID].to_numpy(dtype=np.int64))
+    own_household = person[_PERSON_HOUSEHOLD_ID].to_numpy(dtype=np.int64)
     rows = np.arange(len(person))
 
     def add(
@@ -1685,7 +1753,7 @@ def _check_pointers(
         household["reference_person_id"]
     ):
         found, present = positions(household["reference_person_id"])
-        own = household[_HOUSEHOLD_ID].to_numpy()
+        own = household[_HOUSEHOLD_ID].to_numpy(dtype=np.int64)
         member = (found >= 0) & (own_household[np.maximum(found, 0)] == own)
         add(
             "household",
@@ -1700,6 +1768,53 @@ def _check_pointers(
 def _is_integer_column(values: pd.Series) -> bool:
     # NumPy integer dtypes and pandas' nullable Int64 both report kind "i".
     return values.dtype.kind in "iu"
+
+
+#: The largest id a pointer can be matched by: ids are matched as int64.
+_INT64_MAX = int(np.iinfo(np.int64).max)
+
+#: Every column holding a person or household id, as (entity, column).
+_ID_COLUMNS = (
+    ("person", _PERSON_ID),
+    ("person", _PERSON_HOUSEHOLD_ID),
+    ("person", "partner_person_id"),
+    ("person", "parent_1_person_id"),
+    ("person", "parent_2_person_id"),
+    ("household", _HOUSEHOLD_ID),
+    ("household", "reference_person_id"),
+)
+
+
+def _exceeds_int64(values: pd.Series) -> bool:
+    """Whether an unsigned integer column holds an id int64 cannot hold."""
+
+    if values.dtype.kind != "u":
+        return False
+    present = values.dropna()
+    return len(present) > 0 and int(present.max()) > _INT64_MAX
+
+
+def _require_int64_ids(
+    person: pd.DataFrame, household: pd.DataFrame, what: str
+) -> None:
+    """Refuse a frame whose ids int64 cannot hold, naming every such column.
+
+    Only an unsigned id above ``2**63 - 1`` is refused; every other integer
+    id converts to int64 exactly. ``what`` starts the message, as in
+    "Encoding matches". Columns of other dtypes are not inspected.
+    """
+
+    tables = {"person": person, "household": household}
+    wide = [
+        f"{entity}.{column}"
+        for entity, column in _ID_COLUMNS
+        if column in tables[entity].columns and _exceeds_int64(tables[entity][column])
+    ]
+    if wide:
+        raise ValueError(
+            f"{what} ids as int64, and {wide} hold unsigned ids above "
+            f"{_INT64_MAX}, which int64 cannot represent."
+        )
 
 
 def _parent_cycle_members(n_persons: int, parent_rows: list[np.ndarray]) -> int:

@@ -1,0 +1,11 @@
+{
+  "description": "Test-double data only: Schedule 1 individual rates effective 2025-04-01; no policy implementation in shared src.",
+  "module_sha256": "5ff8e7bf645b85e3d59d612e3c6eb70e09090fb13b40d49c3c5f8a4202e0b82a",
+  "brackets": [
+    {"lower": "0", "rate": "0.105"},
+    {"lower": "15600", "rate": "0.175"},
+    {"lower": "53500", "rate": "0.30"},
+    {"lower": "78100", "rate": "0.33"},
+    {"lower": "180000", "rate": "0.39"}
+  ]
+}

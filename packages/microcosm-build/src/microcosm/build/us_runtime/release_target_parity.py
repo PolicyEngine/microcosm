@@ -73,6 +73,7 @@ __all__ = [
     "us_release_target_parity_gate",
     "us_release_target_parity_reviewed_exclusions",
     "us_target_family_id",
+    "us_target_family_vintage_free_id",
 ]
 
 US_TARGET_PARITY_MANIFEST_RESOURCE = "target_parity_manifest.json"
@@ -111,14 +112,17 @@ SOURCE_ABSENT_CLASSIFICATION = "source_absent"
 #:   including nonfilers, the ~$12.4T universe that tax-return / CPS-reported
 #:   wages undercount by two-thirds. Silent loss of it is the exact failure the
 #:   Chesterton's-fence audit surfaced.
-#: - ``irs_soi.congressional_district_2022``: the CD target family is ordinary
+#: - ``irs_soi.congressional_district``: the CD target family is ordinary
 #:   geography inside the one US target surface. Artifact record count may
-#:   change L0, never whether these constraints compile (microcosm#449).
+#:   change L0, never whether these constraints compile (microcosm#449). The
+#:   entry is vintage-free (``us_target_family_vintage_free_id``): it holds for
+#:   ``irs_soi.congressional_district_2022`` on the pinned feed and for the
+#:   next IRS release after a repin, and every declared vintage must compile.
 RED_LINE_COMPILED_FAMILIES = (
     "ssa_ssi_monthly.ssi_federal_payment_recipients",
     "ssa_supplement.ssi_recipients",
     "bea_nipa.total_wages_salaries",
-    "irs_soi.congressional_district_2022",
+    "irs_soi.congressional_district",
 )
 
 
@@ -167,6 +171,21 @@ def us_target_family_id(source_record_id: str) -> str:
         if not _is_target_period_token(token):
             return f"{namespace}.{token}"
     return namespace
+
+
+def us_target_family_vintage_free_id(family_id: str) -> str:
+    """A target-family id without the IRS data vintage its concept may carry.
+
+    The SOI congressional-district package names its data year, so its family
+    is ``irs_soi.congressional_district_2022`` on the pinned feed and would be
+    ``irs_soi.congressional_district_2024`` after a repin to the next release.
+    Both map to ``irs_soi.congressional_district``, the id the red line and the
+    manifest notes key on. Every other family id is returned unchanged.
+    """
+    namespace, _, concept = family_id.partition(".")
+    if namespace == "irs_soi" and concept.startswith("congressional_district"):
+        return "irs_soi.congressional_district"
+    return family_id
 
 
 @dataclass(frozen=True)
@@ -577,18 +596,23 @@ def assert_target_parity_manifest_current(
         )
 
     for family in RED_LINE_COMPILED_FAMILIES:
-        entry = manifest.by_name.get(family)
-        if entry is None:
+        entries = [
+            entry
+            for entry in manifest.families
+            if us_target_family_vintage_free_id(entry.name) == family
+        ]
+        if not entries:
             failures.append(
                 f"{family}: red-line administrative target family must be declared "
                 "and compiled (the target-parity red line)."
             )
-        elif entry.status != COMPILED_STATUS:
-            failures.append(
-                f"{family}: red-line administrative target family must stay status="
-                f"{COMPILED_STATUS!r}, not {entry.status!r} — it can never be "
-                "quietly downgraded to a reviewed exclusion."
-            )
+        for entry in entries:
+            if entry.status != COMPILED_STATUS:
+                failures.append(
+                    f"{entry.name}: red-line administrative target family must stay "
+                    f"status={COMPILED_STATUS!r}, not {entry.status!r} — it can never "
+                    "be quietly downgraded to a reviewed exclusion."
+                )
 
     if registry is not None:
         present = registry_target_family_ids(registry)

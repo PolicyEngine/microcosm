@@ -923,6 +923,13 @@ DECLARED_ENTRY = {
 }
 
 
+#: What a certification that declares DECLARED_RANGE records it measured: the
+#: tested version alone (microcosm#1034).
+MEASURED_RECORD = {
+    "model": {"specifier": ">=1.999.0,<2", "measured_versions": ["1.999.0"]}
+}
+
+
 def _declare(**overrides):
     return {
         "compatible_model_specifier": DECLARED_RANGE,
@@ -1487,9 +1494,12 @@ def test_cli_certify_declares_the_claim_it_was_given(
         )
         == 0
     )
+    # The verdict carries what the declared range was measured against
+    # (microcosm#1034), as validation and the publisher's preflight do.
     assert json.loads(capsys.readouterr().out) == {
         "certified_bundle": str(output),
         "published": False,
+        "claim_measurement": MEASURED_RECORD,
     }
     manifest, report = _certified(output)
     assert manifest["compatible_model_packages"] == [DECLARED_ENTRY]
@@ -1818,8 +1828,13 @@ def test_validation_output_surfaces_a_recorded_narrowing(
         "narrowed_claims": NARROWED_RECORD,
     }
     # A bundle that gave nothing up says nothing, so the key's presence is the
-    # signal rather than an empty object every run has to read past.
-    assert _validate(declared) == {"valid": True, "compatibility": "passed"}
+    # signal rather than an empty object every run has to read past. The
+    # declared bundle still says what its range was measured against.
+    assert _validate(declared) == {
+        "valid": True,
+        "compatibility": "passed",
+        "claim_measurement": MEASURED_RECORD,
+    }
 
 
 def test_publish_preflight_surfaces_a_recorded_narrowing(
@@ -1859,7 +1874,11 @@ def test_publish_preflight_surfaces_a_recorded_narrowing(
         "published": False,
         "narrowed_claims": NARROWED_RECORD,
     }
-    assert _preflight(declared) == {"valid": True, "published": False}
+    assert _preflight(declared) == {
+        "valid": True,
+        "published": False,
+        "claim_measurement": MEASURED_RECORD,
+    }
 
 
 def test_publication_says_on_stderr_what_the_preflight_says_in_json(
@@ -1894,7 +1913,12 @@ def test_publication_says_on_stderr_what_the_preflight_says_in_json(
     assert ">=1.999.0,<2" in published.err
 
     assert publish_main([str(declared), *tail]) == 0
-    assert "narrowing" not in capsys.readouterr().err
+    declared_err = capsys.readouterr().err
+    assert "narrowing" not in declared_err
+    # The declared range is announced with the one version it was measured
+    # against (microcosm#1034).
+    assert "measured against only the versions recorded here" in declared_err
+    assert json.dumps(MEASURED_RECORD, sort_keys=True) in declared_err
 
 
 @pytest.mark.parametrize(
@@ -1985,7 +2009,9 @@ def test_producer_validation_is_not_the_tamper_control(
     claims existed, one who rewrote the exact pin did. What stands between an
     edited bundle and the Hub is :func:`_check_producer_source_identity`, the
     publish preflight, and the human publication decision. Pinned here so a
-    later reader does not mistake the cross-check for a seal.
+    later reader does not mistake the cross-check for a seal. The claim
+    measurement (microcosm#1034) is no seal either: it is derived from the
+    claim and the tested version, so the forger writes it too.
     """
     output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
     _, parent, root = candidate
@@ -1998,6 +2024,7 @@ def test_producer_validation_is_not_the_tamper_control(
     report_path = output / enrichment.SOURCE_ENRICHMENT_FILE
     report = json.loads(report_path.read_text())
     report["compatibility"]["publisher_claims"] = {"model": widened}
+    report["compatibility"]["claim_measurement"] = MEASURED_RECORD
     _write(report_path, report)
     manifest_path = output / "release_manifest.json"
     manifest = json.loads(manifest_path.read_text())
@@ -2011,3 +2038,289 @@ def test_producer_validation_is_not_the_tamper_control(
         require_compatibility=True,
         compatibility_wheels=(tmp_path / "country.whl",),
     )
+
+
+# ---------------------------------------------------------------------------
+# What a declared range was measured against (microcosm#1034)
+#
+# The native-loader probe, and the stored-input contract it runs, grade only
+# the tested policyengine-us version. A claim admits others, later and
+# possibly earlier, that no check measured; the certified report says so.
+# ---------------------------------------------------------------------------
+
+
+def _validate_certified(output, candidate, tmp_path):
+    _, parent, root = candidate
+    return enrichment.validate_source_enrichment_candidate(
+        output,
+        parent_h5=parent,
+        artifact_root=root,
+        require_compatibility=True,
+        compatibility_wheels=(tmp_path / "country.whl",),
+    )
+
+
+def _rewrite_report(output, mutate):
+    path = output / enrichment.SOURCE_ENRICHMENT_FILE
+    report = json.loads(path.read_text())
+    mutate(report["compatibility"])
+    _write(path, report)
+    _refresh(output, enrichment.SOURCE_ENRICHMENT_FILE)
+
+
+def test_a_declared_range_records_the_one_version_it_was_measured_against(
+    candidate, tmp_path, monkeypatch
+):
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    _, report = _certified(output)
+
+    assert report["compatibility"]["claim_measurement"] == MEASURED_RECORD
+    assert enrichment.recorded_claim_measurement(output) == MEASURED_RECORD
+    _validate_certified(output, candidate, tmp_path)
+
+
+def test_an_undeclared_certification_records_no_measurement(
+    candidate, tmp_path, monkeypatch
+):
+    """The exact pin is measured by construction, and an undeclared bundle
+    keeps the bytes it has always had."""
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    _, report = _certified(output)
+
+    assert "claim_measurement" not in report["compatibility"]
+    assert enrichment.recorded_claim_measurement(output) == {}
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda c: c.pop("claim_measurement"), "claim_measurement is missing"),
+        (
+            lambda c: c["claim_measurement"]["model"].update(specifier=">=1.999.0,<3"),
+            "specifier must be the declared claim's specifier",
+        ),
+        (
+            lambda c: c["claim_measurement"]["model"].update(
+                measured_versions=["1.999.0", "1.999.1"]
+            ),
+            "measured_versions must be exactly",
+        ),
+        (
+            lambda c: c["claim_measurement"]["model"].update(measured_versions=[]),
+            "measured_versions must be exactly",
+        ),
+        (
+            lambda c: c["claim_measurement"]["model"].update(
+                measured_versions=["1.999.1"]
+            ),
+            "measured_versions must be exactly",
+        ),
+        (
+            lambda c: c["claim_measurement"]["model"].update(
+                measured_versions="1.999.0"
+            ),
+            "measured_versions must be exactly",
+        ),
+        (
+            lambda c: c["claim_measurement"]["model"].update(graded_by="hand"),
+            "must record exactly 'measured_versions' and 'specifier'",
+        ),
+        (
+            lambda c: c["claim_measurement"].update(core=MEASURED_RECORD["model"]),
+            "must map 'model', and nothing else",
+        ),
+        (
+            lambda c: c.update(claim_measurement="1.999.0"),
+            "must map 'model', and nothing else",
+        ),
+    ],
+    ids=[
+        "missing",
+        "other-specifier",
+        "extra-version",
+        "no-version",
+        "other-version",
+        "version-not-a-list",
+        "extra-field",
+        "core-field",
+        "not-a-mapping",
+    ],
+)
+def test_the_recorded_measurement_is_replayed_not_trusted(
+    candidate, tmp_path, monkeypatch, mutate, message
+):
+    """A report edited after certification to claim more was measured, or to
+    drop the record, is refused by name when the contract replays it."""
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    _rewrite_report(output, mutate)
+
+    with pytest.raises(ReleaseContractError, match=message):
+        _validate_certified(output, candidate, tmp_path)
+
+
+def test_a_measurement_without_a_claim_is_refused(candidate, tmp_path, monkeypatch):
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    _rewrite_report(output, lambda c: c.update(claim_measurement=MEASURED_RECORD))
+
+    with pytest.raises(
+        ReleaseContractError, match="declares no publisher compatibility claim"
+    ):
+        _validate_certified(output, candidate, tmp_path)
+
+
+def test_a_pending_candidate_cannot_record_a_measurement(candidate):
+    release, _, _ = candidate
+    path = release / enrichment.SOURCE_ENRICHMENT_FILE
+    report = json.loads(path.read_text())
+    report["compatibility"]["claim_measurement"] = MEASURED_RECORD
+    _write(path, report)
+    _refresh(release, enrichment.SOURCE_ENRICHMENT_FILE)
+
+    with pytest.raises(
+        ReleaseContractError,
+        match="pending source enrichment must not record a claim_measurement",
+    ):
+        _validate(candidate)
+
+
+def test_only_the_model_claim_has_a_measured_version():
+    with pytest.raises(ValueError, match="only the 'model' claim"):
+        enrichment.claim_measurement_record(
+            {"core": {"specifier": "==3.99.0"}}, measured_version="3.99.0"
+        )
+
+
+def _hypothesis():
+    pytest.importorskip("hypothesis")
+    import hypothesis
+    from hypothesis import strategies as st
+
+    return hypothesis, st
+
+
+def _accepted_claims(st):
+    """(tested version, claim entry) pairs compatibility_claim_entry accepts,
+    over releases, pre-releases and several claim shapes."""
+    versions = st.builds(
+        lambda major, minor, micro, pre: f"{major}.{minor}.{micro}{pre}",
+        st.integers(0, 3),
+        st.integers(0, 12),
+        st.integers(0, 9),
+        st.sampled_from(["", "", "", "rc1"]),
+    )
+
+    @st.composite
+    def pair(draw):
+        from packaging.version import Version
+
+        tested = draw(versions, label="tested")
+        v = Version(tested)
+        shape = draw(
+            st.sampled_from(
+                [
+                    f">={v.public},<{v.major}.{v.minor + 1}",
+                    f">={v.public},<{v.major + 1}",
+                    f"~={v.major}.{v.minor}.{v.micro}",
+                    f"=={v.public}",
+                    f">={v.major}.0.0,<{v.major}.{v.minor + 2}",
+                    f">={v.public},<{v.major + 1},!={v.major}.{v.minor}.{v.micro + 1}",
+                ]
+            ),
+            label="specifier",
+        )
+        try:
+            entry = enrichment.compatibility_claim_entry(
+                shape, package="policyengine-us", version=tested, declared_by="owner"
+            )
+        except ValueError:
+            entry = None
+        return tested, entry
+
+    return pair()
+
+
+def test_property_a_measurement_names_the_tested_version_and_the_claim_verbatim():
+    """For all tested versions and all claims compatibility_claim_entry
+    accepts over them, the record names exactly the claim's specifier,
+    character for character, and exactly one measured version, the tested
+    one; it is deterministic, and the replay check accepts it."""
+    hypothesis, st = _hypothesis()
+
+    @hypothesis.settings(max_examples=300, deadline=None)
+    @hypothesis.given(pair=_accepted_claims(st))
+    def check(pair):
+        tested, entry = pair
+        hypothesis.assume(entry is not None)
+        claims = {"model": entry}
+
+        record = enrichment.claim_measurement_record(claims, measured_version=tested)
+
+        assert record == {
+            "model": {"specifier": entry["specifier"], "measured_versions": [tested]}
+        }
+        assert record == enrichment.claim_measurement_record(
+            json.loads(json.dumps(claims)), measured_version=tested
+        )
+        assert (
+            enrichment._claim_measurement_failures(
+                {"claim_measurement": record},
+                claims,
+                declared=True,
+                measured_version=tested,
+            )
+            == []
+        )
+
+    check()
+
+
+def test_property_the_replay_accepts_a_measurement_iff_it_is_the_derived_one():
+    """For all recorded measurements, near the valid one or not, the replay
+    check accepts the record if and only if it equals the record derived
+    from the declared claim and the replayed version (an independent
+    comparison), and refuses a record with no claim to describe."""
+    hypothesis, st = _hypothesis()
+    tested = "1.999.0"
+    entry = DECLARED_ENTRY
+    valid = {"model": {"specifier": entry["specifier"], "measured_versions": [tested]}}
+    scalars = st.one_of(
+        st.sampled_from([entry["specifier"], ">=1.999.0,<3", "", tested, "2.0.0"]),
+        st.none(),
+        st.integers(-1, 2),
+    )
+    versions = st.one_of(
+        st.lists(st.sampled_from([tested, "2.0.0", "1.998.0"]), max_size=3),
+        scalars,
+    )
+    inner = st.one_of(
+        st.fixed_dictionaries({"specifier": scalars, "measured_versions": versions}),
+        st.dictionaries(
+            st.sampled_from(["specifier", "measured_versions", "x"]), scalars
+        ),
+        scalars,
+    )
+    records = st.one_of(
+        st.just(valid),
+        st.dictionaries(st.sampled_from(["model", "core"]), inner, max_size=2),
+        scalars,
+    )
+
+    @hypothesis.settings(max_examples=300, deadline=None)
+    @hypothesis.given(record=records, present=st.booleans(), declared=st.booleans())
+    def check(record, present, declared):
+        compatibility = {"claim_measurement": record} if present else {}
+
+        failures = enrichment._claim_measurement_failures(
+            compatibility,
+            {"model": entry} if declared else {},
+            declared=declared,
+            measured_version=tested,
+        )
+
+        if declared:
+            assert (failures == []) == (present and record == valid)
+        else:
+            assert (failures == []) == (not present)
+        assert all("claim_measurement" in failure for failure in failures)
+
+    check()

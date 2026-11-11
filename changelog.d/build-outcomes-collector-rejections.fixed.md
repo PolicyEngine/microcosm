@@ -1,0 +1,1 @@
+The hosted telemetry emitter no longer retries a settled collector rejection forever. A 4xx other than a timeout (408) or a rate limit (429) on a run's events or registration (an event shape the collector does not accept, say) now makes that run local-only with a recorded reason and one warning; the build continues and later contract changes cannot wedge delivery.

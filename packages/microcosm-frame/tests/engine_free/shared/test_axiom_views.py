@@ -1,0 +1,1263 @@
+"""Binding-local view contract tests for the Axiom adapter, engine-free.
+
+A fake engine compiles fake dense programs per engine entity and evaluates a
+fixed row-local function ``f``; it implements no RuleSpec formula. Real dense
+execution of a view is the skip-gated differential (b) at the end.
+"""
+
+import importlib.util
+import json
+import math
+import os
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import pandas as pd
+import pytest
+from hypothesis import example, given, settings
+from hypothesis import strategies as st
+
+from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame.adapters.axiom import (
+    AxiomEngine,
+    AxiomPeriod,
+    AxiomRelation,
+    AxiomView,
+    assert_no_relations,
+    axiom_engine_ref,
+)
+from microcosm.frame.kernels import SimulateRulesKernel
+from microcosm.frame.rules_kernels import SimulateCounterfactualKernel
+from microcosm.frame.schema import EntitySchema
+from microcosm.graph import Node, Owned, Slice
+from test_support.paths import paths_for
+
+ROOT = paths_for("microcosm-frame").tests / "fixtures/rulespec-zz"
+MODULE = ROOT / "zz/policies/tests/axiom_toy_relations.yaml"
+SCHEMA = EntitySchema(group_entities=("household",))
+NAMES = {"person": "Person", "household": "Household"}
+PINS = dict(
+    engine_commit="a" * 40,
+    wheel_sha256="b" * 64,
+    rulespec_root=ROOT,
+    rulespec_commit="c" * 40,
+)
+OUTSIDE = {"child_amount": -7.5, "child_test": 0, "child_flag": False}
+
+
+def f(age: np.ndarray, income: np.ndarray) -> dict[str, np.ndarray]:
+    """The fake program's row-local function; integer-valued decimals."""
+    return {
+        "child_amount": age * 10.0 + income,
+        "child_test": np.where(age < 18, 1, -1).astype(np.int8),
+        "child_flag": age % 2 == 0,
+        "child_count": age // 3,
+    }
+
+
+def _metadata(name, entity, dtype):
+    return SimpleNamespace(name=name, entity=entity, dtype=dtype, period="Year")
+
+
+CHILD_METADATA = [
+    _metadata("child_amount", "Child", "decimal"),
+    _metadata("child_test", "Child", "judgment"),
+    _metadata("child_flag", "Child", "bool"),
+    _metadata("child_count", "Child", "integer"),
+]
+
+
+class _Program:
+    """A fake dense program: records each call and evaluates ``f``."""
+
+    def __init__(self, entity, root_inputs, metadata, *, relations=(), function=f):
+        self.root_entity = entity
+        self.root_inputs = list(root_inputs)
+        self.relations = list(relations)
+        self.derived_metadata = list(metadata)
+        self.function = function
+        self.calls = []
+
+    def execute(self, **arguments):
+        self.calls.append(arguments)
+        inputs = arguments["inputs"]
+        values = self.function(*(inputs[name] for name in self.root_inputs))
+        return {"outputs": {name: values[name] for name in arguments["outputs"]}}
+
+    execute_f64 = execute
+
+
+class _FakeEngine:
+    """Stands in for ``axiom_rules_engine``: compiles fake programs by entity."""
+
+    def __init__(self, programs):
+        self.programs = programs
+        self.compiled = []
+        self.CompiledDenseProgram = self
+
+    def from_file(self, module, *, rulespec_roots, entity):
+        self.compiled.append(entity)
+        if entity not in self.programs:
+            raise ValueError(
+                f"dense compilation could not find derived outputs for entity `{entity}`"
+            )
+        return self.programs[entity]
+
+
+def _child_program(**updates):
+    return _Program("Child", ("age", "income"), CHILD_METADATA, **updates)
+
+
+def _view(**updates):
+    values = dict(logical_entity="Child", selector="is_child", outside=OUTSIDE)
+    values.update(updates)
+    return AxiomView(**values)
+
+
+def _adapter(monkeypatch, programs=None, *, views=(), **updates):
+    values = dict(
+        module=MODULE,
+        rulespec_roots=(ROOT,),
+        schema=SCHEMA,
+        entity_names=NAMES,
+        output_dtypes="graph",
+        views=views if views != () else (_view(),),
+    )
+    values.update(updates)
+    adapter = AxiomEngine(**values)
+    engine = _FakeEngine({"Child": _child_program()} if programs is None else programs)
+    monkeypatch.setattr(adapter, "_import_engine", lambda: engine)
+    return adapter, engine
+
+
+def _frame(selected, age=None, income=None, ids=None):
+    n = len(selected)
+    people = pd.DataFrame(
+        {
+            "person_id": np.arange(1, n + 1) if ids is None else ids,
+            "person_household_id": np.ones(n, dtype=np.int64),
+            "is_child": np.asarray(selected, dtype=bool),
+            "age": np.arange(n, dtype=np.int64) if age is None else age,
+            "income": np.arange(n, dtype=np.float64) * 3.0
+            if income is None
+            else income,
+        }
+    )
+    return Frame(
+        tables={"person": people, "household": pd.DataFrame({"household_id": [1]})},
+        schema=SCHEMA,
+        weights={"household": Weights(np.ones(1), WeightKind.DESIGN)},
+    )
+
+
+def _materialize(adapter, selected, variables, age=None, income=None):
+    """Materialize through a Frame; an empty person table skips the Frame.
+
+    A Frame refuses a table without rows (its weights cannot be empty), so a
+    zero-row person table reaches the view through ``_materialize_view``
+    with the same graph dtypes ``materialize`` passes it.
+    """
+    if len(selected):
+        return adapter.materialize(_frame(selected, age, income), variables, "2025")
+    table = pd.DataFrame(
+        {
+            "person_id": np.asarray([], dtype=np.int64),
+            "person_household_id": np.asarray([], dtype=np.int64),
+            "is_child": np.asarray([], dtype=bool),
+            "age": np.asarray([], dtype=np.int64),
+            "income": np.asarray([], dtype=np.float64),
+        }
+    )
+    derived = adapter._derived_metadata()
+    return adapter._materialize_view(
+        SimpleNamespace(table=lambda entity: table),
+        adapter._views[0],
+        variables,
+        {name: derived[name].dtype for name in variables},
+        dict(period_kind="calendar_year", start="2025-01-01", end="2025-12-31"),
+    )
+
+
+VARIABLES = ["child_amount", "child_test", "child_flag"]
+
+
+# ---------------------------------------------------------------------------
+# Declarations
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "updates,match",
+    [
+        ({"logical_entity": ""}, "logical_entity"),
+        ({"selector": ""}, "selector"),
+        ({"outside": {}}, "outside"),
+        ({"outside": {"x": "zero"}}, "finite bool"),
+        ({"outside": {"x": float("nan")}}, "finite bool"),
+        ({"outside": {"": 0}}, "non-empty"),
+    ],
+)
+def test_view_declaration_shape_is_refused(updates, match):
+    with pytest.raises(ValueError, match=match):
+        _view(**updates)
+
+
+def test_view_declaration_is_immutable_and_serializes_flat():
+    source = {"child_amount": 1.0}
+    view = _view(outside=source)
+    source["child_amount"] = 2.0
+    assert view.outside["child_amount"] == 1.0
+    with pytest.raises(TypeError):
+        view.outside["child_amount"] = 3.0
+    assert view.to_dict() == {
+        "logical_entity": "Child",
+        "selector": {"column": "is_child"},
+        "outside": {"child_amount": 1.0},
+    }
+
+
+@pytest.mark.parametrize(
+    "updates,error,match",
+    [
+        ({"views": []}, ValueError, "at least one view"),
+        ({"views": [{}]}, TypeError, "AxiomView"),
+        ({"views": [_view(logical_entity="Person")]}, ValueError, "maps to"),
+        ({"views": [_view(), _view()]}, ValueError, "Two views"),
+        ({"views": [_view(selector="person_id")]}, ValueError, "structural"),
+        ({"views": [_view(selector="person_household_id")]}, ValueError, "structural"),
+        ({"views": [_view(selector="child_flag")]}, ValueError, "view output"),
+        ({"output_dtypes": "native"}, ValueError, "output_dtypes='graph'"),
+    ],
+)
+def test_adapter_refuses_an_unexecutable_view(monkeypatch, updates, error, match):
+    with pytest.raises(error, match=match):
+        _adapter(monkeypatch, **updates)
+
+
+def _selector_override(variables):
+    return {
+        "engine_ref": "fixture",
+        "variables": variables,
+        "period": "2025",
+        "input_overrides": [{"entity": "person", "column": "is_child", "value": True}],
+    }
+
+
+def test_input_overrides_name_a_view_selector_in_the_refusal(monkeypatch):
+    adapter, engine = _adapter(monkeypatch)
+    with pytest.raises(ValueError, match="view selector 'is_child'"):
+        adapter.validate_input_override("person", "is_child")
+    kernel = SimulateCounterfactualKernel({"fixture": adapter})
+    with pytest.raises(ValueError, match="view selector 'is_child'"):
+        kernel._evaluate(
+            _frame([True, False, False]), [_selector_override(["child_amount"])], []
+        )
+    assert engine.programs["Child"].calls == []
+
+
+def test_a_selector_that_a_program_reads_stays_overridable(monkeypatch):
+    """A Person program that reads the selector makes it an engine input.
+
+    The override reaches that program's input and, through the column it
+    writes, the rows the view selects.
+    """
+    person = _Program(
+        "Person",
+        ("is_child",),
+        [_metadata("adult_amount", "Person", "decimal")],
+        function=lambda selected: {"adult_amount": selected.astype(np.float64)},
+    )
+    child = _child_program()
+    adapter, _ = _adapter(monkeypatch, {"Person": person, "Child": child})
+    assert "is_child" in adapter.variables()
+    adapter.validate_input_override("person", "is_child")
+    kernel = SimulateCounterfactualKernel({"fixture": adapter})
+    kernel._evaluate(
+        _frame([True, False, False]),
+        [_selector_override(["adult_amount", "child_amount"])],
+        [],
+    )
+    assert person.calls[-1]["inputs"]["is_child"].tolist() == [True, True, True]
+    assert child.calls[-1]["inputs"]["age"].tolist() == [0, 1, 2]
+
+
+def test_adapter_refuses_views_with_relations(monkeypatch):
+    relation = AxiomRelation(
+        predicate="toy_member",
+        key="toy_member:0:1",
+        current_slot=0,
+        related_slot=1,
+        arguments=("Household", "Person"),
+        root_entity="household",
+        related_entity="person",
+        membership_column="person_household_id",
+        related_inputs={"toy_income": "income"},
+        cardinality="many",
+        period="2025",
+    )
+    with pytest.raises(ValueError, match="views or relations"):
+        _adapter(monkeypatch, relations=(relation,))
+
+
+# ---------------------------------------------------------------------------
+# Materialization
+# ---------------------------------------------------------------------------
+
+
+def test_a_view_runs_the_logical_entity_on_selected_rows_only(monkeypatch):
+    adapter, engine = _adapter(monkeypatch)
+    frame = _frame([True, False, True, True, False])
+    result = adapter.materialize(frame, VARIABLES, "2025")
+    program = engine.programs["Child"]
+    (call,) = program.calls
+    assert set(call) == {"period_kind", "start", "end", "inputs", "outputs"}
+    assert call["inputs"]["age"].tolist() == [0, 2, 3]
+    assert call["outputs"] == VARIABLES
+    assert result["child_amount"].tolist() == [0.0, -7.5, 26.0, 39.0, -7.5]
+    assert result["child_amount"].dtype == np.float64
+    assert result["child_test"].tolist() == [1, 0, 1, 1, 0]
+    assert result["child_test"].dtype == np.int64
+    assert result["child_flag"].tolist() == [True, False, True, False, False]
+    assert engine.compiled.count("Child") == 1
+
+
+def test_a_view_output_resolves_to_the_person_entity(monkeypatch):
+    adapter, _ = _adapter(monkeypatch)
+    metadata = adapter.variable_metadata("child_amount")
+    assert (metadata.entity, metadata.dtype, metadata.period) == (
+        "person",
+        "float",
+        "year",
+    )
+    assert adapter.graph_dtype("child_test") == "int64"
+    assert adapter.variables() == ["age", "income"]
+    assert adapter.view_root_inputs() == {"Child": ("age", "income")}
+
+
+def test_a_child_output_without_a_view_keeps_todays_message(monkeypatch):
+    adapter = AxiomEngine(
+        MODULE,
+        SCHEMA,
+        rulespec_roots=(ROOT,),
+        entity_names=NAMES,
+        output_dtypes="graph",
+    )
+    engine = _FakeEngine(
+        {
+            "Person": _Program(
+                "Person",
+                ("income",),
+                [_metadata("adult_amount", "Person", "decimal"), *CHILD_METADATA],
+            )
+        }
+    )
+    monkeypatch.setattr(adapter, "_import_engine", lambda: engine)
+    with pytest.raises(ValueError, match="which no frame entity is mapped to"):
+        adapter.variable_metadata("child_amount")
+    with pytest.raises(ValueError, match="which no frame entity is mapped to"):
+        adapter.materialize(_frame([True]), ["child_amount"], "2025")
+
+
+def test_a_child_only_module_materializes(monkeypatch):
+    adapter, engine = _adapter(monkeypatch)
+    assert set(engine.compiled) <= {"Child"}
+    result = adapter.materialize(_frame([False, True]), ["child_amount"], "2025")
+    assert result["child_amount"].tolist() == [-7.5, 13.0]
+    assert "Person" in engine.compiled and "Household" in engine.compiled
+
+
+@pytest.mark.parametrize(
+    "selector,match",
+    [
+        (pd.array([True, None], dtype="boolean"), "null"),
+        (np.asarray([1, 0]), "bool column"),
+        (np.asarray(["y", "n"], dtype=object), "bool column"),
+        (None, "not a column"),
+    ],
+)
+def test_a_null_absent_or_non_bool_selector_refuses(monkeypatch, selector, match):
+    adapter, engine = _adapter(monkeypatch)
+    frame = _frame([True, False])
+    if selector is None:
+        frame.table("person").drop(columns="is_child", inplace=True)
+    else:
+        frame.table("person")["is_child"] = selector
+    with pytest.raises(ValueError, match=match):
+        adapter.materialize(frame, VARIABLES, "2025")
+    assert engine.programs["Child"].calls == []
+
+
+def test_an_empty_selection_makes_no_engine_call(monkeypatch):
+    adapter, engine = _adapter(monkeypatch)
+    result = adapter.materialize(_frame([False, False, False]), VARIABLES, "2025")
+    assert engine.programs["Child"].calls == []
+    assert result["child_amount"].tolist() == [-7.5] * 3
+    assert result["child_test"].tolist() == [0] * 3
+    empty = _materialize(adapter, [], VARIABLES)
+    assert {name: values.shape for name, values in empty.items()} == {
+        name: (0,) for name in VARIABLES
+    }
+
+
+def test_the_batch_length_must_equal_the_selected_count(monkeypatch):
+    """A length-1 engine array would broadcast through ``out[mask] = values``."""
+
+    def one_value(age, income):
+        return {name: values[:1] for name, values in f(age, income).items()}
+
+    adapter, engine = _adapter(
+        monkeypatch, {"Child": _child_program(function=one_value)}
+    )
+    with pytest.raises(ValueError, match="selects 3 row"):
+        adapter.materialize(_frame([True, True, True]), ["child_amount"], "2025")
+    (call,) = engine.programs["Child"].calls
+    assert len(call["inputs"]["age"]) == 3
+
+
+@pytest.mark.parametrize(
+    "outside,match",
+    [
+        ({"child_amount": 1.0}, "no outside value"),
+        ({**OUTSIDE, "child_test": 2}, "codes outside"),
+        ({**OUTSIDE, "child_test": 0.5}, "losslessly"),
+        ({**OUTSIDE, "child_test": True}, "losslessly"),
+        ({**OUTSIDE, "child_flag": 0}, "losslessly"),
+        ({**OUTSIDE, "child_amount": True}, "losslessly"),
+        ({**OUTSIDE, "child_amount": 2**60 + 1}, "losslessly"),
+    ],
+)
+def test_a_missing_or_uncastable_outside_value_refuses(monkeypatch, outside, match):
+    adapter, engine = _adapter(monkeypatch, views=(_view(outside=outside),))
+    with pytest.raises(ValueError, match=match):
+        adapter.materialize(_frame([True, False]), VARIABLES, "2025")
+    assert engine.programs["Child"].calls == []
+
+
+def test_an_integer_outside_value_stands_for_an_exact_decimal(monkeypatch):
+    adapter, _ = _adapter(
+        monkeypatch, views=(_view(outside={**OUTSIDE, "child_amount": 4}),)
+    )
+    result = adapter.materialize(_frame([False]), ["child_amount"], "2025")
+    assert result["child_amount"].dtype == np.float64
+    assert result["child_amount"].tolist() == [4.0]
+
+
+def test_a_relation_on_the_view_program_refuses(monkeypatch):
+    relation = SimpleNamespace(name="toy_member", key="toy_member:0:1")
+    adapter, _ = _adapter(monkeypatch, {"Child": _child_program(relations=[relation])})
+    with pytest.raises(NotImplementedError, match="view entity 'Child'"):
+        adapter.materialize(_frame([True]), ["child_amount"], "2025")
+    adapter, _ = _adapter(monkeypatch, {"Child": _child_program(relations=[relation])})
+    with pytest.raises(NotImplementedError, match="gathers no related rows"):
+        assert_no_relations(adapter, "Child")
+
+
+def test_a_view_compile_refuses_after_the_pinned_tree_moves(monkeypatch, tmp_path):
+    root = tmp_path / "rulespec-zz"
+    module = root / "zz/policies/tests/axiom_toy_relations.yaml"
+    module.parent.mkdir(parents=True)
+    module.write_bytes(MODULE.read_bytes())
+    adapter, engine = _adapter(monkeypatch, module=module, rulespec_roots=(root,))
+    axiom_engine_ref(adapter, **{**PINS, "rulespec_root": root})
+    (root / "zz/added.yaml").write_text("{}\n")
+    with pytest.raises(ValueError, match="changed after this adapter's engine_ref"):
+        adapter.view_root_inputs()
+    assert "Child" not in engine.compiled
+
+
+def test_a_reference_refuses_an_adapter_whose_view_already_compiled(monkeypatch):
+    adapter, _ = _adapter(monkeypatch)
+    adapter.view_root_inputs()
+    with pytest.raises(ValueError, match="before the adapter compiles"):
+        axiom_engine_ref(adapter, **PINS)
+
+
+def test_view_and_frame_programs_cache_under_separate_keys(monkeypatch):
+    """A module with a Person program and a Child view runs each on its own rows."""
+    person = _Program(
+        "Person",
+        ("income",),
+        [_metadata("adult_amount", "Person", "decimal")],
+        function=lambda income: {"adult_amount": income + 0.5},
+    )
+    adapter, engine = _adapter(
+        monkeypatch, {"Person": person, "Child": _child_program()}
+    )
+    frame = _frame([True, False, True])
+    result = adapter.materialize(frame, ["adult_amount", "child_amount"], "2025")
+    assert result["adult_amount"].tolist() == [0.5, 3.5, 6.5]
+    assert result["child_amount"].tolist() == [0.0, -7.5, 26.0]
+    assert len(person.calls[-1]["inputs"]["income"]) == 3
+    assert len(engine.programs["Child"].calls[-1]["inputs"]["income"]) == 2
+    assert engine.compiled.count("Person") == 1
+    assert engine.compiled.count("Child") == 1
+    assert adapter._programs["person"] is person
+    assert adapter._view_programs["Child"] is engine.programs["Child"]
+    assert adapter.variable_metadata("adult_amount").entity == "person"
+
+
+def test_the_selector_is_a_whole_table_person_dependency(monkeypatch):
+    adapter, _ = _adapter(monkeypatch)
+    assert adapter.relation_dependencies("person") == (("person", "is_child"),)
+    assert adapter.relation_dependencies("household") == ()
+
+
+def test_the_reference_carries_views_in_declaration_order(monkeypatch):
+    second = AxiomView("Vehicle", "has_vehicle", {"vehicle_tax": 0.0})
+    adapter, _ = _adapter(monkeypatch, views=(_view(), second))
+    document = json.loads(axiom_engine_ref(adapter, **PINS))
+    assert document["views"] == [_view().to_dict(), second.to_dict()]
+    absent = AxiomEngine(
+        MODULE,
+        SCHEMA,
+        rulespec_roots=(ROOT,),
+        entity_names=NAMES,
+        output_dtypes="graph",
+    )
+    assert "views" not in json.loads(axiom_engine_ref(absent, **PINS))
+
+
+# ---------------------------------------------------------------------------
+# Properties P1 to P6
+# ---------------------------------------------------------------------------
+
+
+@st.composite
+def _population(draw, *, min_rows=0, max_rows=60):
+    n = draw(st.integers(min_value=min_rows, max_value=max_rows))
+    selected = draw(st.lists(st.booleans(), min_size=n, max_size=n))
+    ages = draw(st.lists(st.integers(0, 90), min_size=n, max_size=n))
+    incomes = draw(st.lists(st.integers(-1000, 1000), min_size=n, max_size=n))
+    outside = float(draw(st.integers(1, 1000)) * draw(st.sampled_from((-1, 1))))
+    return (
+        np.asarray(selected, dtype=bool),
+        np.asarray(ages, dtype=np.int64),
+        np.asarray(incomes, dtype=np.float64),
+        outside,
+    )
+
+
+_PROPERTY_OUTPUTS = {
+    "decimal": ("child_amount", np.dtype("float64")),
+    "integer": ("child_count", np.dtype("int64")),
+    "judgment": ("child_test", np.dtype("int64")),
+    "bool": ("child_flag", np.dtype("bool")),
+}
+
+
+def _property_outside(population, dtype):
+    outside = population[3]
+    return {
+        "decimal": float(outside),
+        "integer": int(outside),
+        "judgment": 1 if outside > 0 else -1,
+        "bool": outside > 0,
+    }[dtype]
+
+
+def _edge_population(selected):
+    n = len(selected)
+    return (
+        np.asarray(selected, dtype=bool),
+        np.arange(n, dtype=np.int64),
+        np.arange(n, dtype=np.float64) * 3.0,
+        5.0,
+    )
+
+
+def _edge_examples(*, shuffled=False):
+    """Replay every graph dtype at zero rows, no rows selected and all selected."""
+
+    def decorate(test):
+        for dtype in _PROPERTY_OUTPUTS:
+            for selected in ([], [False, False], [True, True]):
+                arguments = dict(population=_edge_population(selected), dtype=dtype)
+                if shuffled:
+                    arguments["seed"] = 0
+                test = example(**arguments)(test)
+        return test
+
+    return decorate
+
+
+def _run(population, *, dtype="decimal", function=f):
+    selected, ages, incomes, _ = population
+    name, _ = _PROPERTY_OUTPUTS[dtype]
+    outside = _property_outside(population, dtype)
+    with pytest.MonkeyPatch.context() as patch:
+        adapter, engine = _adapter(
+            patch,
+            {"Child": _child_program(function=function)},
+            views=(_view(outside={name: outside}),),
+        )
+        result = _materialize(adapter, selected, [name], ages, incomes)
+    return result[name], engine.programs["Child"]
+
+
+@settings(max_examples=60, deadline=None, database=None)
+@_edge_examples()
+@given(population=_population(), dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)))
+def test_p1_one_output_per_row(population, dtype):
+    """An exact oracle checks every row in each graph dtype."""
+    selected, ages, incomes, _ = population
+    name, graph_dtype = _PROPERTY_OUTPUTS[dtype]
+    outside = _property_outside(population, dtype)
+    out, program = _run(population, dtype=dtype)
+    expected = np.full(len(selected), outside, dtype=graph_dtype)
+    expected[selected] = f(ages[selected], incomes[selected])[name]
+    assert out.dtype == graph_dtype
+    assert np.array_equal(out, expected)
+    assert len(program.calls) == int(selected.any())
+
+
+@settings(max_examples=60, deadline=None, database=None)
+@_edge_examples()
+@given(population=_population(), dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)))
+def test_p2_outside_rows_hold_the_outside_value(population, dtype):
+    selected, _, _, _ = population
+    _, graph_dtype = _PROPERTY_OUTPUTS[dtype]
+    outside = _property_outside(population, dtype)
+    out, _ = _run(population, dtype=dtype)
+    assert out.dtype == graph_dtype
+    assert (out[~selected] == outside).all()
+
+
+@settings(max_examples=60, deadline=None, database=None)
+@_edge_examples()
+@given(population=_population(), dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)))
+def test_p3_conservation_is_exact(population, dtype):
+    """Integer-valued decimals and all discrete graph totals compare exactly."""
+    selected, ages, incomes, _ = population
+    name, _ = _PROPERTY_OUTPUTS[dtype]
+    outside = _property_outside(population, dtype)
+    out, _ = _run(population, dtype=dtype)
+    view_total = f(ages[selected], incomes[selected])[name].sum()
+    assert out.sum() == view_total + outside * int((~selected).sum())
+
+
+_RELATION = AxiomRelation(
+    predicate="toy_member",
+    key="toy_member:0:1",
+    current_slot=0,
+    related_slot=1,
+    arguments=("Household", "Person"),
+    root_entity="household",
+    related_entity="person",
+    membership_column="person_household_id",
+    related_inputs={"toy_income": "income"},
+    cardinality="many",
+    period="2025",
+)
+
+
+@settings(max_examples=40, deadline=None, database=None)
+@given(
+    relations=st.sampled_from((None, (), (_RELATION,))),
+    arithmetic=st.sampled_from(("decimal", "f64")),
+    output_dtypes=st.sampled_from(("native", "graph")),
+    population=_population(min_rows=1, max_rows=12),
+)
+def test_p4_no_views_no_change(relations, arithmetic, output_dtypes, population):
+    """``views=None`` leaves the call, dependencies and variables as before."""
+    selected, ages, incomes, _ = population
+    calls = []
+    for spelled in (False, True):
+        program = _Program(
+            "Household",
+            ("scale",),
+            [_metadata("toy_total", "Household", "decimal")],
+            relations=[]
+            if not relations
+            else [
+                SimpleNamespace(
+                    name="toy_member",
+                    key="toy_member:0:1",
+                    current_slot=0,
+                    related_slot=1,
+                    related_inputs=("toy_income",),
+                )
+            ],
+            function=lambda scale: {"toy_total": scale * 1.0},
+        )
+        options = dict(
+            relations=relations, arithmetic=arithmetic, output_dtypes=output_dtypes
+        )
+        if spelled:
+            options["views"] = None
+        adapter = AxiomEngine(
+            MODULE, SCHEMA, rulespec_roots=(ROOT,), entity_names=NAMES, **options
+        )
+        engine = _FakeEngine({"Household": program})
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(adapter, "_import_engine", lambda engine=engine: engine)
+            reference = json.loads(axiom_engine_ref(adapter, **PINS))
+            patch.setattr(
+                "microcosm.frame.adapters.axiom._source_relation_arguments",
+                lambda *args: ("Household", "Person"),
+            )
+            patch.setattr(
+                "microcosm.frame.adapters.axiom.AxiomEngine._relation_batches",
+                lambda self, bundle, entity, period: {"toy_member:0:1": "batch"},
+            )
+            frame = _frame(selected, ages, incomes)
+            frame.table("household")["scale"] = np.ones(1)
+            adapter.materialize(frame, ["toy_total"], "2025")
+            calls.append(
+                (
+                    sorted(program.calls[-1]),
+                    {k: v.tolist() for k, v in program.calls[-1]["inputs"].items()},
+                    adapter.relation_dependencies("person"),
+                    adapter.relation_dependencies("household"),
+                    adapter.variables(),
+                    reference,
+                )
+            )
+        keys = calls[-1][0]
+        assert "views" not in calls[-1][5]
+        assert ("relations" in keys) == bool(relations)
+    assert calls[0] == calls[1]
+
+
+def _base_materialize(adapter, bundle, variables, period):
+    """A reference copy of main 4a36edcf's ``AxiomEngine.materialize``.
+
+    The no-view path regroups requested names by execution root at PR 1's
+    head; this copy keeps the base grouping, so P4 compares outputs with it.
+    """
+    from microcosm.frame.adapters.axiom import (
+        _GRAPH_OUTPUT_DTYPES,
+        _batch_from_table,
+        _graph_output,
+    )
+
+    adapter._require_schema(bundle)
+    start, end, period_kind = adapter._materialization_period(period)
+    by_entity = {}
+    for name in variables:
+        metadata = adapter.variable_metadata(name)
+        by_entity.setdefault(metadata.entity, []).append(name)
+    engine_dtypes = {}
+    if adapter._output_dtypes == "graph":
+        derived = adapter._derived_metadata()
+        engine_dtypes = {name: derived[name].dtype for name in variables}
+        assert all(dtype in _GRAPH_OUTPUT_DTYPES for dtype in engine_dtypes.values())
+    results = {}
+    for frame_entity, names in by_entity.items():
+        program = adapter._program(frame_entity)
+        if program.relations or adapter._relations:
+            adapter.assert_declared_relations(frame_entity)
+        table = bundle.table(frame_entity)
+        inputs = _batch_from_table(table, program.root_inputs)
+        execute = (
+            program.execute_f64 if adapter._arithmetic == "f64" else program.execute
+        )
+        arguments = dict(
+            period_kind=period_kind,
+            start=start,
+            end=end,
+            inputs=inputs,
+            outputs=list(names),
+        )
+        if program.relations:
+            arguments["relations"] = adapter._relation_batches(
+                bundle, frame_entity, period
+            )
+        outputs = execute(**arguments)["outputs"]
+        expected = bundle.n(frame_entity)
+        for name in names:
+            values = np.asarray(outputs[name])
+            assert values.shape == (expected,)
+            if adapter._output_dtypes == "graph":
+                values = _graph_output(name, engine_dtypes[name], values)
+            results[name] = values
+    return results
+
+
+def _no_view_programs():
+    person = _Program(
+        "Person",
+        ("age", "income"),
+        [
+            _metadata("adult_amount", "Person", "decimal"),
+            _metadata("adult_test", "Person", "judgment"),
+            _metadata("adult_flag", "Person", "bool"),
+            _metadata("adult_count", "Person", "integer"),
+            _metadata("toy_total", "Household", "decimal"),
+        ],
+        function=lambda age, income: {
+            "adult_amount": age * 2.5 + income,
+            "adult_test": np.where(age > 40, 1, np.where(age > 20, 0, -1)).astype(
+                np.int8
+            ),
+            "adult_flag": income > 0,
+            "adult_count": age // 3,
+        },
+    )
+    household = _Program(
+        "Household",
+        ("scale",),
+        person.derived_metadata,
+        function=lambda scale: {"toy_total": scale * 3.0},
+    )
+    return {"Person": person, "Household": household}
+
+
+_NO_VIEW_NAMES = ("adult_amount", "adult_test", "adult_flag", "adult_count")
+
+
+@settings(max_examples=40, deadline=None, database=None)
+@given(
+    arithmetic=st.sampled_from(("decimal", "f64")),
+    output_dtypes=st.sampled_from(("native", "graph")),
+    names=st.lists(
+        st.sampled_from((*_NO_VIEW_NAMES, "toy_total")), min_size=1, unique=True
+    ),
+    population=_population(min_rows=1, max_rows=20),
+)
+def test_p4_no_views_outputs_equal_the_base_path(
+    arithmetic, output_dtypes, names, population
+):
+    """``views=None`` returns the base adapter's tables: names, order, dtypes, values."""
+    selected, ages, incomes, _ = population
+    returned = []
+    for materialize in (AxiomEngine.materialize, _base_materialize):
+        adapter = AxiomEngine(
+            MODULE,
+            SCHEMA,
+            rulespec_roots=(ROOT,),
+            entity_names=NAMES,
+            arithmetic=arithmetic,
+            output_dtypes=output_dtypes,
+            views=None,
+        )
+        engine = _FakeEngine(_no_view_programs())
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(adapter, "_import_engine", lambda engine=engine: engine)
+            frame = _frame(selected, ages, incomes)
+            frame.table("household")["scale"] = np.full(1, 7.0)
+            result = materialize(adapter, frame, names, "2025")
+        returned.append(
+            (
+                list(result),
+                [(values.dtype, values.tolist()) for values in result.values()],
+                [
+                    (sorted(call), call["outputs"])
+                    for program in engine.programs.values()
+                    for call in program.calls
+                ],
+            )
+        )
+    assert returned[0] == returned[1]
+
+
+@settings(max_examples=60, deadline=None, database=None)
+@_edge_examples(shuffled=True)
+@given(
+    population=_population(),
+    seed=st.integers(0, 2**32 - 1),
+    dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)),
+)
+def test_p5_shuffling_rows_shuffles_outputs(population, seed, dtype):
+    selected, ages, incomes, outside = population
+    order = np.random.default_rng(seed).permutation(len(selected))
+    out, _ = _run(population, dtype=dtype)
+    shuffled, _ = _run(
+        (selected[order], ages[order], incomes[order], outside), dtype=dtype
+    )
+    assert np.array_equal(shuffled, out[order])
+
+
+@settings(max_examples=60, deadline=None, database=None)
+@_edge_examples()
+@given(population=_population(), dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)))
+def test_p6_each_selected_output_is_f_of_that_row_alone(population, dtype):
+    selected, ages, incomes, _ = population
+    name, _ = _PROPERTY_OUTPUTS[dtype]
+    out, _ = _run(population, dtype=dtype)
+    for index in np.flatnonzero(selected):
+        alone = f(ages[index : index + 1], incomes[index : index + 1])[name]
+        assert out[index] == alone[0]
+
+
+def _batch_dependent(age, income):
+    """Varies with the batch: each output adds the batch's position."""
+    values = f(age, income)
+    values["child_amount"] = values["child_amount"] + np.arange(len(age))
+    return values
+
+
+def test_p6_detects_an_engine_whose_output_depends_on_other_rows():
+    population = (
+        np.asarray([True, True]),
+        np.asarray([3, 4]),
+        np.asarray([1.0, 2.0]),
+        5.0,
+    )
+    out, _ = _run(population, function=_batch_dependent)
+    alone = f(np.asarray([4]), np.asarray([2.0]))["child_amount"][0]
+    assert out[1] != alone
+
+
+# ---------------------------------------------------------------------------
+# Differential (a): the mapped-entity path against the view path, engine-free
+# ---------------------------------------------------------------------------
+
+CHILD_SCHEMA = EntitySchema(person_entity="child", group_entities=("household",))
+
+
+@settings(max_examples=40, deadline=None, database=None)
+@example(population=_edge_population([True, True]), dtype="decimal")
+@example(population=_edge_population([True, True]), dtype="integer")
+@example(population=_edge_population([True, True]), dtype="judgment")
+@example(population=_edge_population([True, True]), dtype="bool")
+@given(
+    population=_population(min_rows=1, max_rows=30).filter(lambda item: item[0].any()),
+    dtype=st.sampled_from(tuple(_PROPERTY_OUTPUTS)),
+)
+def test_differential_a_mapped_child_entity_against_the_view(population, dtype):
+    """An adapter whose person entity maps to Child, and the view, agree per child."""
+    selected, ages, incomes, _ = population
+    name, _ = _PROPERTY_OUTPUTS[dtype]
+    outside = _property_outside(population, dtype)
+    with pytest.MonkeyPatch.context() as patch:
+        view, _ = _adapter(patch, views=(_view(outside={name: outside}),))
+        through_view = view.materialize(_frame(selected, ages, incomes), [name], "2025")
+        mapped = AxiomEngine(
+            MODULE,
+            CHILD_SCHEMA,
+            rulespec_roots=(ROOT,),
+            entity_names={"child": "Child", "household": "Household"},
+            output_dtypes="graph",
+        )
+        engine = _FakeEngine({"Child": _child_program()})
+        patch.setattr(mapped, "_import_engine", lambda: engine)
+        count = int(selected.sum())
+        children = Frame(
+            tables={
+                "child": pd.DataFrame(
+                    {
+                        "child_id": np.arange(1, count + 1),
+                        "child_household_id": np.ones(count, dtype=np.int64),
+                        "age": ages[selected],
+                        "income": incomes[selected],
+                    }
+                ),
+                "household": pd.DataFrame({"household_id": [1]}),
+            },
+            schema=CHILD_SCHEMA,
+            weights={"household": Weights(np.ones(1), WeightKind.DESIGN)},
+        )
+        direct = mapped.materialize(children, [name], "2025")
+    assert through_view[name][selected].tolist() == direct[name].tolist()
+    assert through_view[name].dtype == direct[name].dtype
+
+
+# ---------------------------------------------------------------------------
+# Placement: view code stays in axiom.py (source_hash does not follow imports)
+# ---------------------------------------------------------------------------
+
+
+def test_axiom_imports_are_pinned_everywhere_in_the_module():
+    """Every import node, in function bodies and relative ones too, is pinned.
+
+    A view helper moved to a new module, or into one axiom.py already imports
+    (``materialize``, ``concept_mapping``), would leave the simulate.* hashes,
+    which hash axiom.py's own file, unmoved by an edit to it.
+    """
+    import ast
+
+    source = (
+        paths_for("microcosm-frame").package / "src/microcosm/frame/adapters/axiom.py"
+    ).read_text()
+    imported = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom):
+            base = "." * node.level + (node.module or "")
+            if node.module is None:
+                imported.update(f"{base}{alias.name}" for alias in node.names)
+            else:
+                imported.add(base)
+        elif isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+    first_party = {
+        name
+        for name in imported
+        if name.startswith("microcosm") or name.startswith(".")
+    }
+    assert first_party == {
+        "microcosm.frame.bundle",
+        "microcosm.frame.concept_mapping",
+        "microcosm.frame.materialize",
+        "microcosm.frame.rules",
+        "microcosm.frame.schema",
+        "microcosm.graph.canonical",
+    }
+    # Lazy engine imports in function bodies are third-party, not first-party.
+    assert {"axiom_rules_engine", "axiom_rules_engine.dense", "yaml"} <= imported
+
+
+def test_view_code_is_defined_in_the_adapter_module():
+    """Code re-exported from another module would carry that module's name."""
+    from microcosm.frame.adapters import axiom
+
+    view_code = (
+        AxiomView,
+        AxiomEngine._validate_views,
+        AxiomEngine._view_for,
+        AxiomEngine.view_root_inputs,
+        AxiomEngine._view_program,
+        AxiomEngine._view_selection,
+        AxiomEngine._materialize_view,
+        AxiomEngine.materialize,
+        AxiomEngine.relation_dependencies,
+        AxiomEngine._derived_metadata,
+        axiom._outside_values,
+        axiom._graph_output,
+        axiom._batch_from_table,
+    )
+    assert {item.__module__ for item in view_code} == {"microcosm.frame.adapters.axiom"}
+
+
+# ---------------------------------------------------------------------------
+# Differential (b): the real engine, skip-gated
+# ---------------------------------------------------------------------------
+
+_ENGINE = importlib.util.find_spec("axiom_rules_engine")
+if _ENGINE is not None:
+    from axiom_rules_engine.dense import NativeCompiledDenseProgram
+else:
+    NativeCompiledDenseProgram = None
+
+#: rulespec-be at 530849e: ``be.json`` module 61 (0-based), 107 Child roots.
+_BE_ROOT = os.environ.get("POPULACE_RULESPEC_BE")
+_BE_MODULE = "be/statutes/family_benefits/regional_routing.yaml"
+_BE_MODULE_SHA256 = "408e73587e60d91136f80a71612802cb8c111f7ea5baf5abaeecb772c43c2413"
+_GRAPH_KINDS = ("bool", "integer", "decimal", "judgment")
+#: The values of the Child roots whose names mislead :func:`_real_inputs`'s
+#: suffix rule, typed as the written cases in rulespec-be's own tests at
+#: 530849e type them. The routing region takes all four region codes,
+#: Flanders 0 to the German-speaking Community 3.
+_REAL_INPUT_VALUES = {
+    "belgium_family_benefits_region": (0, 1, 2, 3),
+    **dict.fromkeys(
+        (
+            "brussels_family_benefits_child_domiciled_in_brussels_capital_region",
+            "flanders_family_benefits_child_domiciled_in_dutch_language_region",
+            "german_speaking_community_family_benefits_child_domiciled_in_german_language_region",
+            "german_speaking_community_family_benefits_foreign_stay_or_settlement_authorized_more_than_three_months",
+            "wallonia_family_benefits_child_legal_domicile_in_french_language_region",
+            "wallonia_family_benefits_child_without_legal_domicile_effectively_resides_in_french_language_region",
+            "wallonia_family_benefits_parents_eu_or_reg883_and_economic_activity_in_french_region",
+        ),
+        (False, True),
+    ),
+    "flanders_family_benefits_disability_tier": tuple(range(5)),
+    "flanders_family_benefits_orphan_status_code": tuple(range(3)),
+    "wallonia_family_benefits_disability_tier": tuple(range(8)),
+    "german_speaking_community_family_benefits_disability_category": tuple(range(4)),
+    "german_speaking_community_family_benefits_benefit_year": (2025, 2026, 2027, 2028),
+    "german_speaking_community_family_benefits_article_10_extension_months_used": tuple(
+        range(26)
+    ),
+    "german_speaking_community_family_benefits_months_since_disappearance": tuple(
+        range(26)
+    ),
+    **dict.fromkeys(
+        (
+            "german_speaking_community_family_benefits_current_index_factor",
+            "german_speaking_community_family_benefits_pre_2025_index_factor",
+        ),
+        (1.0, 1.1, 1.2, 1.4),
+    ),
+}
+
+
+def _real_inputs(names, n, generator):
+    """Typed random inputs by name: RuleSpec inputs carry no dtype (axiom#62).
+
+    A name in ``_REAL_INPUT_VALUES`` draws from its values there. Otherwise
+    counts, ages and years become integers, money becomes decimals, and
+    every other input a bool. The run on the pinned engine checks the
+    typing where a program needs a number: it reports a bool, text or date
+    column there as a type mismatch, though the message doesn't name the
+    input. Names draw in sorted order, because ``root_inputs`` comes back in
+    a different order in each process, and the seed fixes the batch only for
+    one order.
+    """
+    columns = {}
+    for name in sorted(names):
+        if name in _REAL_INPUT_VALUES:
+            columns[name] = generator.choice(np.asarray(_REAL_INPUT_VALUES[name]), n)
+        elif name.endswith(("_years", "_count", "_months", "_rank")):
+            columns[name] = generator.integers(0, 26, n).astype(np.int64)
+        elif name.endswith(("_income", "_amount", "_eur")):
+            columns[name] = generator.integers(0, 60_000, n).astype(np.float64)
+        else:
+            columns[name] = generator.integers(0, 2, n).astype(bool)
+    return columns
+
+
+def test_real_inputs_preserve_types_regions_and_seed_across_root_orders():
+    """Misleading suffixes keep the types of the pinned RuleSpec examples."""
+    kinds = {
+        "belgium_family_benefits_region": "i",
+        "flanders_family_benefits_child_domiciled_in_dutch_language_region": "b",
+        "flanders_family_benefits_disability_tier": "i",
+        "german_speaking_community_family_benefits_current_index_factor": "f",
+        "german_speaking_community_family_benefits_foreign_stay_or_settlement_authorized_more_than_three_months": "b",
+    }
+    forward = _real_inputs(kinds, 200, np.random.default_rng(530849))
+    assert {name: values.dtype.kind for name, values in forward.items()} == kinds
+    assert set(forward["belgium_family_benefits_region"]) == {0, 1, 2, 3}
+    reverse = _real_inputs(reversed(kinds), 200, np.random.default_rng(530849))
+    assert all(np.array_equal(forward[name], reverse[name]) for name in kinds)
+
+
+@pytest.mark.skipif(
+    NativeCompiledDenseProgram is None or not _BE_ROOT,
+    reason=(
+        "Axiom dense native extension is not installed, or POPULACE_RULESPEC_BE "
+        "does not name a rulespec-be 530849e export"
+    ),
+)
+def test_differential_b_real_child_program_against_the_view():
+    """The real Child program agrees with the view, and is row-local per batch.
+
+    Shuffled, single-row and random-subset batches must give each row the
+    value the full batch gives it: the only test that can falsify
+    row-locality inside the engine.
+    """
+    import hashlib
+
+    from axiom_rules_engine import CompiledDenseProgram
+
+    root = Path(_BE_ROOT).resolve()
+    module = root / _BE_MODULE
+    assert hashlib.sha256(module.read_bytes()).hexdigest() == _BE_MODULE_SHA256
+    program = CompiledDenseProgram.from_file(
+        module, rulespec_roots=(root,), entity="Child"
+    )
+    assert not list(program.relations)
+    assert "is_child" not in program.root_inputs
+    dtypes = {
+        item.name: item.dtype
+        for item in program.derived_metadata
+        if item.entity == "Child" and item.dtype in _GRAPH_KINDS
+    }
+    outputs = sorted(dtypes)
+    assert outputs
+    generator = np.random.default_rng(530849)
+    n = 40
+    batch = _real_inputs(program.root_inputs, n, generator)
+    bounds = dict(period_kind="calendar_year", start="2026-01-01", end="2026-12-31")
+    full = program.execute(**bounds, inputs=batch, outputs=outputs)["outputs"]
+    assert any(len(set(np.asarray(full[name]).tolist())) > 1 for name in outputs)
+    for order in (
+        generator.permutation(n),
+        np.asarray([0]),
+        np.flatnonzero(generator.integers(0, 2, n)),
+    ):
+        part = program.execute(
+            **bounds,
+            inputs={name: values[order] for name, values in batch.items()},
+            outputs=outputs,
+        )["outputs"]
+        for name in outputs:
+            assert (
+                np.asarray(part[name]).tolist()
+                == np.asarray(full[name])[order].tolist()
+            )
+    # The view over persons: the children are the batch's rows, in order,
+    # among adults the selector leaves out.
+    selected = np.zeros(2 * n, dtype=bool)
+    selected[generator.choice(2 * n, n, replace=False)] = True
+    people = pd.DataFrame(
+        {
+            "person_id": np.arange(1, 2 * n + 1),
+            "person_household_id": np.ones(2 * n, dtype=np.int64),
+            "is_child": selected,
+        }
+    )
+    for name, values in batch.items():
+        column = np.zeros(2 * n, dtype=values.dtype)
+        column[selected] = values
+        people[name] = column
+    outside = {
+        name: {"bool": False, "integer": 0, "judgment": 0}.get(dtypes[name], 0.0)
+        for name in outputs
+    }
+    adapter = AxiomEngine(
+        module,
+        SCHEMA,
+        rulespec_roots=(root,),
+        entity_names=NAMES,
+        output_dtypes="graph",
+        periods={"2026": AxiomPeriod("2026-01-01", "2026-12-31", "calendar_year")},
+        views=(AxiomView("Child", "is_child", outside),),
+    )
+    frame = Frame(
+        tables={"person": people, "household": pd.DataFrame({"household_id": [1]})},
+        schema=SCHEMA,
+        weights={"household": Weights(np.ones(1), WeightKind.DESIGN)},
+    )
+    through_view = adapter.materialize(frame, outputs, "2026")
+    for name in outputs:
+        expected = np.asarray(full[name])
+        assert through_view[name][selected].tolist() == expected.tolist()
+        assert (through_view[name][~selected] == outside[name]).all()
+        if dtypes[name] == "decimal":
+            # P3 on the real engine. math.fsum rounds the exact total once,
+            # so neither the order of the rows nor the outside rows can move
+            # it, as float64 sums in numpy's order can.
+            assert math.fsum(through_view[name]) == math.fsum(
+                [
+                    *expected.astype(np.float64),
+                    *[outside[name]] * int((~selected).sum()),
+                ]
+            )
+
+
+# ---------------------------------------------------------------------------
+# Rules kernels: the selector is a whole-table dependency
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("person", "match"),
+    [
+        (Slice("person", ("age", "income")), "whole-table relation inputs"),
+        (
+            Slice("person", ("is_child", "age", "income"), rows="is_child"),
+            "whole-table relation inputs",
+        ),
+        (Slice("person", ("is_child", "age", "income")), None),
+    ],
+    ids=("no-selector", "masked", "whole"),
+)
+def test_every_rules_kernel_requires_the_whole_selector(monkeypatch, person, match):
+    adapter, _ = _adapter(monkeypatch)
+    node = Node(
+        "view",
+        "simulate.rules_by_ref@1",
+        population="create",
+        inputs=(person,),
+        outputs=(Owned("person", "child_amount", "float64"),),
+        params={"engine_ref": "fixture", "variables": ("child_amount",)},
+    )
+    if match is None:
+        SimulateRulesKernel._require_relation_inputs(node, adapter)
+    else:
+        with pytest.raises(ValueError, match=match):
+            SimulateRulesKernel._require_relation_inputs(node, adapter)
+
+
+def test_view_equality_preserves_outside_value_types_and_hashes():
+    left = AxiomView("Child", "s", {"a": 0.0, "b": 0})
+    right = AxiomView("Child", "s", {"a": 0, "b": False})
+    assert left != right
+    equal = AxiomView("Child", "s", {"b": 0, "a": 0.0})
+    assert left == equal
+    assert hash(left) == hash(equal)
+    assert len({left, right, equal}) == 2
+    assert left != left.to_dict()

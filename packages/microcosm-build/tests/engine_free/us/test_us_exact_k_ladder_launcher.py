@@ -365,7 +365,7 @@ def test_staging_credentials_cannot_enable_pointer_writes(
 
     monkeypatch.setattr(
         launcher.fiscal_release,
-        "StagingTelemetry",
+        "StagingRunBundleWriter",
         UnexpectedTelemetry,
     )
     argv = launcher._builder_argv(
@@ -376,13 +376,27 @@ def test_staging_credentials_cannot_enable_pointer_writes(
     )
     parsed = launcher.fiscal_release._parse_args(argv)
 
-    telemetry = launcher.fiscal_release._staging_telemetry(
+    class Emitter:
+        def transition_stage(self, *args, **kwargs):
+            pass
+
+        def transition_calibration_progress(self, *args, **kwargs):
+            pass
+
+        def fail(self, *args, **kwargs):
+            pass
+
+        def complete(self):
+            pass
+
+    progress = launcher.fiscal_release._build_progress(
         parsed,
         release_root=tmp_path / "out",
         release_id=config.release_id,
+        emitter=Emitter(),
     )
 
     assert parsed.no_staging is True
-    assert telemetry is None
+    assert progress.staging_bundle is None
     assert constructed is False
     assert not (tmp_path / "out" / "staging").exists()
