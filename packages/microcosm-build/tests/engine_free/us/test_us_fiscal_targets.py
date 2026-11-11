@@ -757,6 +757,7 @@ def test_exclusion_receipt_lists_the_ids_each_rule_acts_on(monkeypatch) -> None:
         "soi_misplaced_row_merge": "merged",
     }
     assert rules["soi_misplaced_row_merge"]["source_record_ids"] == []
+    assert rules["soi_misplaced_row_merge"]["passed_through_source_record_ids"] == []
     for name, ids in expected.items():
         assert rules[name]["source_record_ids"] == ids, name
     assert rules["all_vintage_reviewed_exclusion"]["entries"] == sorted(
@@ -899,9 +900,60 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
     )
     assert len(merge_rule["source_record_ids"]) == 4
     assert all(".ty2023." in name for name in merge_rule["source_record_ids"])
+    assert merge_rule["passed_through_source_record_ids"] == []
     assert [entry["merged_target"] for entry in merge_rule["merges"]] == [
         merge.merged_name for merge in fiscal_targets.US_SOI_MISPLACED_ROW_MERGES
     ]
+
+
+def _soi_row_merge_member_fact(
+    merge: fiscal_targets.SoiRowMerge, row_id: str, value: float
+) -> dict[str, object]:
+    lower, upper = (1_000 * int(bound.rstrip("k")) for bound in row_id.split("_to_"))
+    return _soi_eitc_child_fact(
+        2023,
+        source_record_id=f"{merge.record_set_id}.{row_id}.{merge.measure_id}",
+        measure_id=merge.measure_id,
+        value=value,
+        income_range=row_id,
+        child_group=merge.record_set_id.rsplit(".", 1)[1],
+        lower=lower,
+        upper=upper,
+    )
+
+
+@pytest.mark.parametrize("carried", ["one", "every"])
+def test_exclusion_receipt_lists_merge_rows_the_compile_merges(carried) -> None:
+    """The receipt's merge rule follows the compile. A feed that carries
+    every row of a reviewed SOI row merge compiles them as one target (or
+    stops), so the rule lists them as merged. A feed that carries one row,
+    not at its published value, compiles it as it is
+    (``_merge_misplaced_soi_rows``), so the rule lists it as passed through
+    and merges nothing."""
+
+    merge = fiscal_targets.US_SOI_MISPLACED_ROW_MERGES[0]
+    rows = list(zip(merge.source_row_ids, merge.published_values, strict=True))
+    if carried == "one":
+        row_id, published = rows[0]
+        members = [_soi_row_merge_member_fact(merge, row_id, published + 1)]
+        carried_ids = [merge.member_names[0]]
+    else:
+        members = [
+            _soi_row_merge_member_fact(merge, row_id, published)
+            for row_id, published in rows
+        ]
+        carried_ids = sorted(merge.member_names)
+
+    rule = us_fiscal_target_exclusion_receipt(
+        [*packaged_reference_facts(), *members], target_period=2024
+    )["rules"]["soi_misplaced_row_merge"]
+
+    if carried == "one":
+        assert rule["source_record_ids"] == []
+        assert rule["passed_through_source_record_ids"] == carried_ids
+    else:
+        assert rule["source_record_ids"] == carried_ids
+        assert rule["passed_through_source_record_ids"] == []
 
 
 def test_pinned_feed_national_state_surface_restores_the_fences(

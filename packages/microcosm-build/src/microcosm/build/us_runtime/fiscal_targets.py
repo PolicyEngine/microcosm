@@ -1267,11 +1267,16 @@ def us_fiscal_target_exclusion_receipt(
       at ``target_period`` that are another vintage of an excluded cell and
       carry a reviewed ``US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`` entry
       (allowed).
-    - ``soi_misplaced_row_merge``: facts whose id names a row of a
-      ``US_SOI_MISPLACED_ROW_MERGES`` entry (merged: the compile binds the
-      entry's rows as one target at their sum, or stops, as
-      ``_merge_misplaced_soi_rows`` says). The rule lists each entry with its
-      reviewed values and evidence.
+    - ``soi_misplaced_row_merge``: the rows of each
+      ``US_SOI_MISPLACED_ROW_MERGES`` entry among the facts latest-vintage
+      selection activates. When those facts hold every row of an entry, the
+      compile binds the rows as one target at their sum or stops, as
+      ``_merge_misplaced_soi_rows`` says, so the rule lists them under
+      ``source_record_ids`` (merged). When they hold only some rows, a
+      compile that finishes leaves those rows as they are (none sits at its
+      published value), and the rule lists them under
+      ``passed_through_source_record_ids``. The rule also lists each entry
+      with its reviewed values and evidence.
 
     It replays the compiler's fact filter and latest-vintage selection, so pass
     the same ``target_period`` and crosswalk as the compile. Like the compile,
@@ -1287,16 +1292,10 @@ def us_fiscal_target_exclusion_receipt(
     reviewed: set[str] = set()
     all_vintage: set[str] = set()
     m_chip: set[str] = set()
-    merge_rows = {
-        name for merge in US_SOI_MISPLACED_ROW_MERGES for name in merge.member_names
-    }
-    merged: set[str] = set()
     for fact in materialized_facts:
         source_record_id = _source_record_id(fact)
         if not source_record_id:
             continue
-        if source_record_id in merge_rows:
-            merged.add(source_record_id)
         if _is_all_vintage_support_exclusion(source_record_id):
             all_vintage.add(source_record_id)
         elif source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
@@ -1314,6 +1313,15 @@ def us_fiscal_target_exclusion_receipt(
         )
     ]
     allowed = _check_exclusion_vintage_scope(selected_ids)
+    selected = set(selected_ids)
+    merged: list[str] = []
+    passed_through: list[str] = []
+    for merge in US_SOI_MISPLACED_ROW_MERGES:
+        carried = [name for name in merge.member_names if name in selected]
+        if len(carried) == len(merge.member_names):
+            merged.extend(carried)
+        else:
+            passed_through.extend(carried)
     return {
         "target_period": str(target_period),
         "rules": {
@@ -1362,6 +1370,7 @@ def us_fiscal_target_exclusion_receipt(
                     for merge in US_SOI_MISPLACED_ROW_MERGES
                 ],
                 "source_record_ids": sorted(merged),
+                "passed_through_source_record_ids": sorted(passed_through),
             },
         },
     }
@@ -3047,9 +3056,14 @@ def _coarsen_eitc_agi_groups(
       holds the other;
     - a leaf (a row that holds no other row of its child split, passed in
       ``leaves``) that no one group holds, even one that holds two or more
-      groups exactly. A row with rows of its own split inside it, such as a
-      split's all-AGI total, may hold several groups: the rows inside it
-      carry its EITC into each group.
+      groups exactly.
+
+    A row with rows of its own split inside it, such as a split's all-AGI
+    total, may hold several groups, because the rows inside it carry its
+    EITC into each group. That holds only while those rows tile it, as
+    Table 2.5's bins tile each split's total. If a split lacks a bin under
+    its total, no group counts that bin's EITC, and the factors of the
+    groups it falls in go wrong without an error.
 
     For each such row, this merges every group that overlaps the row
     without holding it into one group over their joint range, which then

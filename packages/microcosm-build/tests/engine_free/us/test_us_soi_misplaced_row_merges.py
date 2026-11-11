@@ -12,9 +12,10 @@ their invariants as properties:
   straddling a group and no leaf outside a single group, and come back
   unchanged when no row needs a merge; it is idempotent and agrees with an
   independent edge-removal reading of the same rule;
-* through the real uprating, for any filing-season AGI groups and any child
-  splits whose bins tile AGI, each final group's uprated bins add to its
-  controls and the uprated split totals add to all of them.
+* through the real uprating, for any filing-season AGI groups that tile
+  AGI and any child splits whose bins tile it, each final group's uprated
+  bins add to its controls and the uprated split totals add to all of them;
+* only rows that uprating scales shape the groups.
 """
 
 from __future__ import annotations
@@ -23,13 +24,15 @@ import math
 from dataclasses import replace
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.us_runtime.fiscal_targets import (
     US_SOI_MISPLACED_ROW_MERGES,
     SoiRowMerge,
     _coarsen_eitc_agi_groups,
+    _coarsened_eitc_agi_totals,
+    _eitc_active_agi_totals,
     _EitcAgiTotal,
     _merge_misplaced_soi_rows,
     _uprate_cross_period_eitc_decompositions,
@@ -623,14 +626,38 @@ def _uprating_cases(draw):
     return season, splits
 
 
+# Review r1's geometry: split 0's $10,000-and-over bin holds the $10,000 to
+# $20,000 and $20,000-and-over groups exactly, while split 1 has a bin in
+# each. Without the leaf rule the $10,000 to $20,000 group's source total
+# misses split 0's EITC, and split 1's bin there takes the group's whole
+# control. The example runs on every test run, so the leaf rule's guard
+# doesn't depend on what Hypothesis draws.
+_LEAF_HOLDING_GROUPS = (
+    [(-_INF, 10_000.0, 100.0), (10_000.0, 20_000.0, 200.0), (20_000.0, _INF, 300.0)],
+    [
+        ([(-_INF, 10_000.0, 40.0), (10_000.0, _INF, 60.0)], None),
+        (
+            [
+                (-_INF, 10_000.0, 10.0),
+                (10_000.0, 20_000.0, 30.0),
+                (20_000.0, _INF, 20.0),
+            ],
+            None,
+        ),
+    ],
+)
+
+
 @given(_uprating_cases())
+@example(_LEAF_HOLDING_GROUPS)
 @_SETTINGS
 def test_uprating_conserves_each_group_s_controls_for_any_split_tiling(case):
     """Invariant: after coarsening, each final uprating group's uprated bins,
     over all splits, add to the controls inside it, and the uprated split
     totals add to every control. Each bin takes one group's factor, and that
     group holds it. Reviewers found that a bin holding two filing-season
-    groups exactly broke the first property before the leaf rule."""
+    groups exactly broke the first property before the leaf rule
+    (``_LEAF_HOLDING_GROUPS``)."""
 
     season, splits = case
     specs = [
@@ -691,3 +718,42 @@ def test_uprating_conserves_each_group_s_controls_for_any_split_tiling(case):
         sum(value for _, _, value in season),
         rel_tol=1e-9,
     )
+
+
+@pytest.mark.parametrize("uprated", [False, True])
+def test_coarsening_reads_only_rows_that_uprating_scales(uprated):
+    """A Table 2.5 row that the compile doesn't uprate shapes no group: its
+    straddle across the $10,000 edge merges groups only when the row
+    carries ``requires_total_eitc_uprating``."""
+
+    season = [
+        (-_INF, 10_000.0, 100.0),
+        (10_000.0, 20_000.0, 200.0),
+        (20_000.0, _INF, 300.0),
+    ]
+    specs = [
+        _season_total(index, lower, upper, value)
+        for index, (lower, upper, value) in enumerate(season)
+    ]
+    specs += [
+        _split_row(0, f"bin_{index}", lower, upper, value)
+        for index, (lower, upper, value) in enumerate(season)
+    ]
+    straddler = _split_row(1, "bin_0", 5_000.0, 15_000.0, 50.0)
+    if not uprated:
+        straddler = replace(
+            straddler,
+            metadata={**straddler.metadata, "requires_total_eitc_uprating": "false"},
+        )
+    registry = TargetRegistry([*specs, straddler], country="us")
+
+    groups = _coarsened_eitc_agi_totals(registry, _eitc_active_agi_totals(registry))[
+        ("returns", "2023")
+    ]
+
+    expected = (
+        [(-_INF, 20_000.0), (20_000.0, _INF)]
+        if uprated
+        else [(lower, upper) for lower, upper, _ in season]
+    )
+    assert [(group.lower, group.upper) for group in groups] == expected
