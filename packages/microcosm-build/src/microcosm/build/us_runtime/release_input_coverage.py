@@ -144,8 +144,10 @@ __all__ = [
     "ReleaseInputColumn",
     "ReleaseInputCoverageManifest",
     "assert_release_input_coverage_manifest_current",
+    "check_resolved_list_edit_target",
     "installed_list_parameter_baseline",
     "list_parameter_baseline",
+    "list_parameter_pieces",
     "load_release_input_coverage_manifest",
     "project_ecps_parity_known_gap_names",
     "resolve_list_parameter_edit",
@@ -493,6 +495,80 @@ def _is_list(value: Any) -> bool:
     return not isinstance(value, (str, bytes)) and isinstance(value, Sequence)
 
 
+def _list_leaf(parameters: Any, path: str) -> Any:
+    try:
+        parameter = parameters.get_child(path)
+    except ValueError as error:
+        raise ValueError(f"{path}: not a parameter of the engine ({error}).") from error
+    if not callable(parameter) or not hasattr(parameter, "values_list"):
+        raise ValueError(f"{path}: not a leaf parameter of the engine.")
+    return parameter
+
+
+def _refuse_edit_reaching_first_value(
+    path: str, edit: ListParameterEdit, first: str | None, *, where: str
+) -> None:
+    # PolicyEngine-US's CountryTaxBenefitSystem applies its reforms once before
+    # it backdates each parameter's first value to earlier years
+    # (policyengine_us.tools.parameters.backdate_parameters) and once after.
+    # An edit that starts on or before the list's first breakpoint at that
+    # first pass becomes the list's first value, which the backdating then
+    # copies outside the edit period.
+    if first is not None and edit.start <= first:
+        raise ValueError(
+            f"{path}: the list edit period {edit.period} starts on or before "
+            f"{first}, the list's first breakpoint {where}. PolicyEngine-US "
+            "applies reforms before it backdates each parameter's first value "
+            "to earlier years, so an edit that reaches the first value would "
+            f"be backdated outside its period. Start the edit after {first}."
+        )
+
+
+def _first_breakpoint(parameter: Any) -> str | None:
+    instants = [str(value_at.instant_str) for value_at in parameter.values_list]
+    return min(instants) if instants else None
+
+
+def list_parameter_pieces(
+    parameters: Any, path: str, edit: ListParameterEdit
+) -> list[tuple[str, Any]]:
+    """The values a ``policyengine-core`` parameter takes over an edit's period.
+
+    Args:
+        parameters: The root parameter node of a tax-benefit system.
+        path: The parameter's dotted path.
+        edit: The edit whose period is read.
+
+    Returns:
+        ``(instant, value)`` for ``edit.start`` and for every breakpoint in
+        ``(edit.start, edit.stop]`` where the value differs from the one
+        before it, in date order. Each value holds from its instant to the
+        next one (or to ``edit.stop``). Values need not be lists.
+
+    Raises:
+        ValueError: If ``path`` is not a leaf parameter, or the period starts
+            on or before the parameter's first breakpoint (an edit there would
+            become the first value, which PolicyEngine-US backdates).
+    """
+    parameter = _list_leaf(parameters, path)
+    _refuse_edit_reaching_first_value(
+        path, edit, _first_breakpoint(parameter), where="in the tree it is read from"
+    )
+    pieces = [(edit.start, parameter(edit.start))]
+    breakpoints = sorted(
+        {
+            str(value_at.instant_str)
+            for value_at in parameter.values_list
+            if edit.start < str(value_at.instant_str) <= edit.stop
+        }
+    )
+    for instant in breakpoints:
+        value = parameter(instant)
+        if value != pieces[-1][1]:
+            pieces.append((instant, value))
+    return pieces
+
+
 def list_parameter_baseline(
     parameters: Any, path: str, edit: ListParameterEdit
 ) -> list[str]:
@@ -507,44 +583,29 @@ def list_parameter_baseline(
         The list at ``edit.start``.
 
     Raises:
-        ValueError: If ``path`` is not a leaf parameter, a value it takes inside
-            ``edit.period`` is not a list, or the list changes inside the
-            period (no single baseline to edit, so the edit must be split at
-            each change, all of which the message names in date order).
+        ValueError: If ``path`` is not a leaf parameter, the period starts on or
+            before its first breakpoint (:func:`list_parameter_pieces`), a value
+            it takes inside ``edit.period`` is not a list, or the list changes
+            inside the period (no single baseline to edit, so the edit must be
+            split at each change, all of which the message names in date
+            order).
     """
-    try:
-        parameter = parameters.get_child(path)
-    except ValueError as error:
-        raise ValueError(f"{path}: not a parameter of the engine ({error}).") from error
-    if not callable(parameter) or not hasattr(parameter, "values_list"):
-        raise ValueError(f"{path}: not a leaf parameter of the engine.")
-    baseline = parameter(edit.start)
+    pieces = list_parameter_pieces(parameters, path, edit)
+    (start, baseline), *changed = pieces
     if not _is_list(baseline):
         raise ValueError(
-            f"{path}: value {baseline!r} at {edit.start} is not a list; list "
+            f"{path}: value {baseline!r} at {start} is not a list; list "
             "edits apply only to list-valued parameters."
         )
-    breakpoints = sorted(
-        {
-            str(value_at.instant_str)
-            for value_at in parameter.values_list
-            if edit.start < str(value_at.instant_str) <= edit.stop
-        }
-    )
-    changes: list[str] = []
-    previous = list(baseline)
-    for instant in breakpoints:
-        value = parameter(instant)
+    for instant, value in changed:
         if not _is_list(value):
             raise ValueError(
                 f"{path}: value {value!r} at {instant}, inside the list edit "
                 f"period {edit.period}, is not a list; list edits apply only "
                 "to list-valued parameters."
             )
-        if list(value) != previous:
-            changes.append(instant)
-        previous = list(value)
-    if changes:
+    if changed:
+        changes = [instant for instant, _ in changed]
         raise ValueError(
             f"{path}: the list changes at {', '.join(changes)}, inside the list "
             f"edit period {edit.period}; split the edit at "
@@ -554,24 +615,91 @@ def list_parameter_baseline(
     return list(baseline)
 
 
+def check_resolved_list_edit_target(
+    parameters: Any,
+    path: str,
+    edit: ListParameterEdit,
+    *,
+    baseline: Sequence[str],
+    resolved: Sequence[str],
+) -> None:
+    """Refuse to apply a resolved list edit over a list it was not resolved on.
+
+    Applying a resolved edit writes ``resolved`` over the whole period. That
+    is safe exactly when every stretch of the period holds ``baseline`` (the
+    edit replaces it, as declared) or ``resolved`` (an earlier application of
+    the same edit, which the write repeats). Each stretch is checked on its
+    own, so an earlier application over an overlapping period is accepted and
+    the write extends it over the union of the periods.
+
+    Raises:
+        ValueError: If the period starts on or before the target's first
+            breakpoint (:func:`list_parameter_pieces`), or any stretch holds
+            another value; the message names the first such stretch, since
+            writing ``resolved`` there would revert a change the resolution
+            never saw.
+    """
+    accepted = (list(baseline), list(resolved))
+    for instant, value in list_parameter_pieces(parameters, path, edit):
+        if not (_is_list(value) and list(value) in accepted):
+            raise ValueError(
+                f"{path} was resolved against the baseline {list(baseline)} but "
+                f"the system it is applied to holds {value!r} from {instant}, "
+                f"inside {edit.period}; the resolved list would revert that "
+                "difference."
+            )
+
+
 @functools.cache
-def _installed_parameters() -> Any:
+def _installed_parameter_stages() -> tuple[Mapping[str, str], Any]:
+    """The installed engine's first breakpoints at its first reform pass.
+
+    Builds one PolicyEngine-US system per process with a reform that records
+    each leaf parameter's first breakpoint the first time the system applies
+    it (before backdating), and returns those with the finished system's
+    parameter tree, which the baseline lists are read from.
+    """
+    from policyengine_core.reforms import Reform
     from policyengine_us import CountryTaxBenefitSystem
 
-    return CountryTaxBenefitSystem().parameters
+    first_breakpoints: dict[str, str] = {}
+
+    class _RecordFirstBreakpoints(Reform):
+        def apply(self) -> None:
+            if first_breakpoints:
+                return
+            for leaf in self.parameters.get_descendants():
+                if getattr(leaf, "values_list", None):
+                    first = _first_breakpoint(leaf)
+                    if first is not None:
+                        first_breakpoints[str(leaf.name)] = first
+
+    system = CountryTaxBenefitSystem(reform=(_RecordFirstBreakpoints,))
+    return first_breakpoints, system.parameters
 
 
 def installed_list_parameter_baseline(path: str, edit: ListParameterEdit) -> list[str]:
     """The installed PolicyEngine-US baseline list an edit resolves against.
 
-    Builds one baseline tax-benefit system per process and keeps only its
-    parameter tree.
+    Builds one tax-benefit system per process (see
+    ``_installed_parameter_stages``). Besides :func:`list_parameter_baseline`
+    on its finished parameter tree, the edit must start after the list's
+    first breakpoint at the system's first reform pass, so the system the
+    scorer builds applies the edit to the same baseline it resolved on.
 
     Raises:
         ImportError: If PolicyEngine-US is not installed.
-        ValueError: As :func:`list_parameter_baseline`.
+        ValueError: As :func:`list_parameter_baseline`, or if the edit starts on
+            or before the list's first breakpoint at the first reform pass.
     """
-    return list_parameter_baseline(_installed_parameters(), path, edit)
+    first_breakpoints, parameters = _installed_parameter_stages()
+    _refuse_edit_reaching_first_value(
+        path,
+        edit,
+        first_breakpoints.get(path),
+        where="when the installed engine first applies reforms",
+    )
+    return list_parameter_baseline(parameters, path, edit)
 
 
 def _pins_a_list(value: Any) -> bool:
@@ -810,9 +938,11 @@ _LIST_EDIT_KEYS = frozenset({"period", "remove", "add"})
 
 
 def _parse_list_edits(raw: Any, *, where: str) -> dict[str, ListParameterEdit]:
-    """Parse a probe's ``list_edits`` JSON object into declared edits."""
-    if raw is None:
-        return {}
+    """Parse a probe's ``list_edits`` JSON object into declared edits.
+
+    An omitted ``list_edits`` reaches here as ``{}``; ``null`` is refused like
+    any other non-object.
+    """
     if not isinstance(raw, Mapping):
         raise ValueError(f"{where}: list_edits must be a JSON object.")
     edits: dict[str, ListParameterEdit] = {}

@@ -25,8 +25,13 @@ These tests pin, against the installed engine:
   resolves to the engine's baseline list with only that item changed;
 - the reform ``_build_reform`` returns holds the resolved list inside its
   bounded period and the baseline outside it, survives the repeated application
-  the engine's own constructors perform, and refuses a system whose list
+  the engine's own constructors perform (``CountryTaxBenefitSystem`` and
+  ``Simulation``), extends an earlier application of the same edit over an
+  overlapping period, and refuses a system where any stretch of the period
   already differs from the baseline it was resolved against;
+- an edit that starts on or before a list's first breakpoint at the
+  constructor's first reform pass is refused, at resolution and at apply time,
+  because the engine backdates that first value after applying reforms;
 - edits that no longer fit the engine fail loudly, and the pure resolver agrees
   with the list the engine-applied reform holds (a differential property);
 - each source/deduction probe moves only its own leaf on a household that also
@@ -39,10 +44,13 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+import microcosm.build.us_runtime.reform_coverage_smoke as smoke_module
+import microcosm.build.us_runtime.release_input_coverage as coverage_module
 from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 from microcosm.build.us_runtime.release_input_coverage import (
     ListParameterEdit,
     ReformCoverageProbe,
+    list_parameter_baseline,
     resolve_list_parameter_edit,
     resolve_probe_parameter_changes,
     us_release_reform_coverage_probes,
@@ -79,7 +87,10 @@ _LIST_PARAMETERS = (
     _SNAP_UNEARNED,
     "gov.usda.snap.income.sources.unearned_spm_unit",
     "gov.usda.snap.income.deductions.allowed",
+    "gov.irs.investment.income.sources",
 )
+_QBI = "gov.irs.deductions.qbi.income_definition"
+_ALD = "gov.irs.ald.deductions"
 
 
 def _probes():
@@ -107,9 +118,11 @@ def _ids(cases):
     return [f"{probe_id}-{path}" for probe_id, path, _ in cases]
 
 
-def _probe_with_edit(path: str, edit: ListParameterEdit) -> ReformCoverageProbe:
+def _probe_with_edit(
+    path: str, edit: ListParameterEdit, probe_id: str = "list_edit_probe"
+) -> ReformCoverageProbe:
     return ReformCoverageProbe(
-        id="list_edit_probe",
+        id=probe_id,
         name="A list edit under test",
         parameter_changes={},
         list_edits={path: edit},
@@ -293,18 +306,203 @@ def test_list_edit_reform_refuses_a_list_changed_under_it(system) -> None:
         CountryTaxBenefitSystem(reform=(readds_tanf, reform))
 
 
-def test_unchanged_list_at_a_breakpoint_does_not_split_an_edit(system) -> None:
-    # The QBI income definition has a 2018-01-01 breakpoint that restates the
-    # same list, so an edit spanning it still has one baseline to edit.
-    path = "gov.irs.deductions.qbi.income_definition"
-    parameter = system.parameters.get_child(path)
-    assert "2018-01-01" in {str(value.instant_str) for value in parameter.values_list}
-    assert parameter("2017-01-01") == parameter("2018-01-01")
-    edit = ListParameterEdit("2017-01-01.2018-12-31", remove=("farm_rent_income",))
+@pytest.mark.parametrize(
+    ("probe_id", "path", "edit"),
+    _one_list_edit_per_parameter(),
+    ids=_ids(_one_list_edit_per_parameter()),
+)
+def test_list_edit_reform_builds_a_simulation(
+    system, probe_id: str, path: str, edit: ListParameterEdit
+) -> None:
+    # Simulation(reform=...) builds CountryTaxBenefitSystem(reform=...) (two
+    # applications) and then applies the reform set once more.
+    from policyengine_us import Simulation
 
-    resolved = resolve_probe_parameter_changes(_probe_with_edit(path, edit))
-    assert resolved[path][edit.period] == [
-        item for item in parameter("2017-01-01") if item != "farm_rent_income"
+    reform = _build_reform(_probes()[probe_id])
+    simulation = Simulation(
+        situation=_snap_household("child_support_received", 0.0, 0.0), reform=reform
+    )
+
+    _assert_edit_holds_only_inside_its_period(
+        system,
+        simulation.tax_benefit_system,
+        path,
+        edit,
+        reform.resolved_list_edits[path],
+    )
+
+
+def test_overlapping_applications_of_one_edit_cover_the_union(system) -> None:
+    # Sol review of microcosm#1197, finding 1: each stretch of the period is
+    # checked on its own, so an earlier application of the same edit over an
+    # overlapping period is accepted (in either order) and the two together
+    # hold the resolved list over the union of their periods.
+    from policyengine_us import CountryTaxBenefitSystem
+
+    item = "child_support_received"
+    first = _build_reform(
+        _probe_with_edit(
+            _SNAP_UNEARNED,
+            ListParameterEdit("2024-01-01.2024-06-30", remove=(item,)),
+            "first_half",
+        )
+    )
+    second = _build_reform(
+        _probe_with_edit(
+            _SNAP_UNEARNED,
+            ListParameterEdit("2024-04-01.2024-12-31", remove=(item,)),
+            "april_on",
+        )
+    )
+    union = ListParameterEdit("2024-01-01.2024-12-31", remove=(item,))
+    resolved = first.resolved_list_edits[_SNAP_UNEARNED]
+    assert resolved == second.resolved_list_edits[_SNAP_UNEARNED]
+    assert item not in resolved
+
+    for reformed in (
+        second(first(system)),
+        first(second(system)),
+        CountryTaxBenefitSystem(reform=(first, second)),
+    ):
+        _assert_edit_holds_only_inside_its_period(
+            system, reformed, _SNAP_UNEARNED, union, resolved
+        )
+        edited = reformed.parameters.get_child(_SNAP_UNEARNED)
+        for day in ("2024-03-31", "2024-04-01", "2024-06-30", "2024-07-01"):
+            assert list(edited(day)) == resolved, day
+
+
+def test_overlapping_different_edit_is_refused_at_the_first_stretch_it_changed(
+    system,
+) -> None:
+    first = _build_reform(
+        _probe_with_edit(
+            _SNAP_UNEARNED,
+            ListParameterEdit(
+                "2024-01-01.2024-06-30", remove=("workers_compensation",)
+            ),
+            "first_half",
+        )
+    )
+    second = _build_reform(
+        _probe_with_edit(
+            _SNAP_UNEARNED,
+            ListParameterEdit(
+                "2024-04-01.2024-12-31", remove=("child_support_received",)
+            ),
+            "april_on",
+        )
+    )
+
+    # From April to June the list already lacks workers_compensation, which
+    # the second edit's resolution would put back.
+    with pytest.raises(
+        ValueError,
+        match=r"^reform-coverage probe 'april_on': .* from 2024-04-01, inside "
+        r"2024-04-01\.2024-12-31; the resolved list would revert",
+    ):
+        second(first(system))
+
+
+@pytest.mark.parametrize(
+    "period",
+    ["2015-01-01.2015-12-31", "2017-01-01.2017-12-31", "2018-01-01.2018-12-31"],
+)
+def test_edit_reaching_a_backdated_first_value_is_refused(period: str) -> None:
+    # Sol review of microcosm#1197, finding 2: CountryTaxBenefitSystem applies
+    # reforms before it backdates each parameter's first value (to 2015 in
+    # PolicyEngine-US 2.2.1). The QBI income definition first appears on
+    # 2018-01-01 at that first pass, so an edit starting on or before it would
+    # become the first value and be backdated outside its period. Resolution
+    # refuses it before any system is built.
+    assert coverage_module._installed_parameter_stages()[0][_QBI] == "2018-01-01"
+    probe = _probe_with_edit(
+        _QBI, ListParameterEdit(period, remove=("farm_rent_income",))
+    )
+    refusal = (
+        r"starts on or before 2018-01-01, the list's first breakpoint when "
+        r"the installed engine first applies reforms"
+    )
+
+    with pytest.raises(
+        ValueError, match=rf"^reform-coverage probe '{probe.id}': .*{refusal}"
+    ):
+        resolve_probe_parameter_changes(probe)
+    with pytest.raises(ValueError, match=refusal):
+        _build_reform(probe)
+
+
+def test_constructors_refuse_an_edit_that_reaches_the_first_value(
+    system, monkeypatch
+) -> None:
+    # The apply-time check holds even when a resolver reads only the finished
+    # tree, where 2017 is defined (backdated): the reform applies to the
+    # finished system, but both constructors refuse it at their first pass
+    # rather than let backdating carry the edited list back to 2015.
+    from policyengine_us import CountryTaxBenefitSystem, Simulation
+
+    monkeypatch.setattr(
+        smoke_module,
+        "installed_list_parameter_baseline",
+        lambda path, edit: list_parameter_baseline(system.parameters, path, edit),
+    )
+    edit = ListParameterEdit("2017-01-01.2017-12-31", remove=("farm_rent_income",))
+    reform = _build_reform(_probe_with_edit(_QBI, edit))
+    _assert_edit_holds_only_inside_its_period(
+        system, reform(system), _QBI, edit, reform.resolved_list_edits[_QBI]
+    )
+
+    refusal = (
+        r"starts on or before 2018-01-01, the list's first breakpoint in the "
+        r"tree it is read from"
+    )
+    with pytest.raises(ValueError, match=refusal):
+        CountryTaxBenefitSystem(reform=(reform,))
+    with pytest.raises(ValueError, match=refusal):
+        Simulation(
+            situation=_snap_household("child_support_received", 0.0, 0.0),
+            reform=reform,
+        )
+
+
+def test_edit_after_a_backdated_first_value_holds_only_inside_its_period(
+    system,
+) -> None:
+    # Past the first breakpoint both constructors apply the edit to the same
+    # baseline it resolved on, and the backdated years keep that baseline.
+    from policyengine_us import CountryTaxBenefitSystem, Simulation
+
+    edit = ListParameterEdit("2019-01-01.2019-12-31", remove=("farm_rent_income",))
+    reform = _build_reform(_probe_with_edit(_QBI, edit))
+    resolved = reform.resolved_list_edits[_QBI]
+    simulation = Simulation(
+        situation=_snap_household("child_support_received", 0.0, 0.0), reform=reform
+    )
+    baseline = system.parameters.get_child(_QBI)
+
+    for reformed in (
+        CountryTaxBenefitSystem(reform=(reform,)),
+        simulation.tax_benefit_system,
+    ):
+        _assert_edit_holds_only_inside_its_period(
+            system, reformed, _QBI, edit, resolved
+        )
+        edited = reformed.parameters.get_child(_QBI)
+        for day in ("2015-01-01", "2016-06-01", "2018-01-01", "2018-12-31"):
+            assert edited(day) == baseline(day), day
+
+
+def test_unchanged_list_at_a_breakpoint_does_not_split_an_edit(system) -> None:
+    # The above-the-line deduction list has a 2026-01-01 breakpoint that
+    # restates the 2021 list, so an edit spanning it still has one baseline.
+    parameter = system.parameters.get_child(_ALD)
+    assert "2026-01-01" in {str(value.instant_str) for value in parameter.values_list}
+    assert parameter("2025-01-01") == parameter("2026-01-01")
+    edit = ListParameterEdit("2025-01-01.2026-12-31", remove=("educator_expense",))
+
+    resolved = resolve_probe_parameter_changes(_probe_with_edit(_ALD, edit))
+    assert resolved[_ALD][edit.period] == [
+        item for item in parameter("2025-01-01") if item != "educator_expense"
     ]
 
 
@@ -365,14 +563,18 @@ def test_list_edit_that_does_not_fit_the_engine_fails_loudly(
 
 
 def _constant_years(system, path: str) -> list[int]:
-    # Years whose list holds one non-empty value all year: no breakpoint after
-    # 1 January and on or before 31 December.
+    # Years whose list holds one non-empty value all year (no breakpoint after
+    # 1 January and on or before 31 December) and that start after the list's
+    # first breakpoint at the constructor's first reform pass, so an edit over
+    # the year can be scored.
     parameter = system.parameters.get_child(path)
     breakpoints = {str(value.instant_str) for value in parameter.values_list}
+    first = coverage_module._installed_parameter_stages()[0][path]
     return [
         year
         for year in range(2015, 2031)
-        if parameter(f"{year}-01-01")
+        if f"{year}-01-01" > first
+        and parameter(f"{year}-01-01")
         and not any(
             f"{year}-01-01" < instant <= f"{year}-12-31" for instant in breakpoints
         )

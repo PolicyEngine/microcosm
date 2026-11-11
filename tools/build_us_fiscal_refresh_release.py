@@ -312,6 +312,7 @@ from microcosm.build.us_runtime.population_structure_holdout import (
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
+from microcosm.build.us_runtime.reform_coverage_smoke import RECORDS_REQUESTS_ONLY
 from microcosm.build.us_runtime.reform_validation import (
     US_RELEASE_SPM_SELECTION,
     default_baseline_level_specs,
@@ -4827,7 +4828,10 @@ def _record_post_export_requests(
     logs every baseline request, and each ``simulate(reform)`` a recorder of
     its own. The consumers ask for the same keys whatever values they get
     back, and the served baseline refuses any key this dry run did not see,
-    so a value-dependent request cannot slip past the plan.
+    so a value-dependent request cannot slip past the plan. ``simulate``
+    carries ``RECORDS_REQUESTS_ONLY``, so the reform-coverage smoke gate hands
+    it each probe instead of building the probe's reform, and the dry run
+    resolves no list edit against an engine.
 
     When the consumer runs for real, each key a reformed simulation is first
     asked for is one batched pass (``_BatchedPostExportReform``), so the pass
@@ -4844,6 +4848,7 @@ def _record_post_export_requests(
         reform_keys.append({})
         return _RecordingPostExportSimulation(reform_keys[-1])
 
+    setattr(simulate, RECORDS_REQUESTS_ONLY, True)
     consumer(simulate)
     return _ascending_period_plan(keys), sum(len(asked) for asked in reform_keys)
 

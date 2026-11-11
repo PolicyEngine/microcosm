@@ -31,18 +31,25 @@ from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.release_input_coverage import (
     ListParameterEdit,
     ReformCoverageProbe,
+    check_resolved_list_edit_target,
     installed_list_parameter_baseline,
-    list_parameter_baseline,
     resolve_probe_parameter_changes,
     us_release_reform_coverage_probes,
 )
 
 __all__ = [
+    "RECORDS_REQUESTS_ONLY",
     "us_reform_coverage_smoke_gate",
 ]
 
 # simulate(reform_or_None) -> object with .calculate(measure, period).sum()
 SimulateFn = Callable[[Any], Any]
+
+#: Set to ``True`` on a ``simulate`` that only records the keys it is asked
+#: for and never applies a reform (the release tool's post-export plan dry
+#: run). The gate then passes it each probe in place of the probe's built
+#: reform, so recording resolves no list edit and needs no engine.
+RECORDS_REQUESTS_ONLY = "records_requests_only"
 
 
 def _weighted_total(simulation: Any, measure: str, period: int) -> float:
@@ -56,10 +63,11 @@ def _build_reform(probe: ReformCoverageProbe) -> Any:
     A list edit resolves against the installed PolicyEngine-US baseline here,
     so an edit that no longer fits that baseline fails before anything is
     scored. The returned reform also re-reads each edited list from the system
-    it is applied to, over the edit's whole period, and refuses to apply
-    unless that list is the baseline the edit was resolved against or already
-    the reform's own resolution, so the resolved list can only replace the
-    baseline it was derived from.
+    it is applied to, stretch by stretch over the edit's period, and refuses
+    to apply unless every stretch holds the baseline the edit was resolved
+    against or already the reform's own resolution
+    (:func:`check_resolved_list_edit_target`), so the resolved list can only
+    replace the baseline it was derived from.
 
     Raises:
         ValueError: Naming the probe, if a list edit does not fit the installed
@@ -101,23 +109,23 @@ def _build_reform(probe: ReformCoverageProbe) -> Any:
         def apply(self) -> None:
             # PolicyEngine-US applies a reform set more than once while it
             # builds a system (CountryTaxBenefitSystem applies it before and
-            # after backdating parameters), so a list that already holds this
-            # reform's resolution is re-applied as a no-op.
+            # after backdating parameters, and a Simulation once more), so a
+            # stretch that already holds this reform's resolution is accepted
+            # and rewritten unchanged. Every other stretch must hold the
+            # baseline the edit resolved on.
             for path, edit in list_edits.items():
                 try:
-                    applied_to = list_parameter_baseline(self.parameters, path, edit)
+                    check_resolved_list_edit_target(
+                        self.parameters,
+                        path,
+                        edit,
+                        baseline=baselines[path],
+                        resolved=resolved_lists[path],
+                    )
                 except ValueError as error:
                     raise ValueError(
                         f"reform-coverage probe {probe_id!r}: {error}"
                     ) from error
-                if applied_to not in (baselines[path], resolved_lists[path]):
-                    raise ValueError(
-                        f"reform-coverage probe {probe_id!r}: {path} was resolved "
-                        f"against the baseline {baselines[path]} but the system "
-                        f"it is applied to holds {applied_to} over "
-                        f"{edit.period}; the resolved list would revert that "
-                        "difference."
-                    )
             resolved.apply(self)
 
     return _ResolvedListEdits
@@ -143,7 +151,10 @@ def us_reform_coverage_smoke_gate(
     Args:
         simulate: ``simulate(None)`` builds the baseline; ``simulate(reform)``
             builds the reformed simulation. Each result answers
-            ``.calculate(measure, period).sum()`` as a weighted total.
+            ``.calculate(measure, period).sum()`` as a weighted total. A
+            ``simulate`` whose :data:`RECORDS_REQUESTS_ONLY` attribute is true
+            only records requests: it receives each probe in place of the
+            probe's reform, and no reform is built.
         probes: Probes to run. Defaults to the shipped manifest's probe set.
         period: Default period for probes without a probe-specific period.
         name: Gate name for the manifest.
@@ -161,11 +172,12 @@ def us_reform_coverage_smoke_gate(
             "gate would pass vacuously."
         )
 
+    records_requests_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
     baseline = simulate(None)
     failures: list[str] = []
     results: dict[str, Any] = {}
     for probe in probes:
-        reform = _build_reform(probe)
+        reform = probe if records_requests_only else _build_reform(probe)
         reformed = simulate(reform)
         probe_period = int(probe.period if probe.period is not None else period)
         baseline_total = _weighted_total(baseline, probe.budget_measure, probe_period)

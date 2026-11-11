@@ -35,6 +35,7 @@ _SHIPPED_LIST_EDIT_PROBE_IDS = frozenset(
         "workers_compensation_snap_exclusion",
         "educator_expense_ald_abolition",
         "alimony_expense_ald_abolition",
+        "niit_passive_pass_through_exclusion",
     }
 )
 
@@ -371,6 +372,44 @@ class TestReformProbeListEdits:
 
 
 class TestReformCoverageSmokeGate:
+    @pytest.mark.parametrize("flag", [True, False], ids=["recording", "scoring"])
+    def test_recording_simulate_gets_probes_and_builds_no_reform(
+        self, monkeypatch, flag
+    ) -> None:
+        # Sol review of microcosm#1197, finding 3: the post-export plan dry run
+        # flags its simulate as RECORDS_REQUESTS_ONLY, so the gate builds no
+        # reform (and resolves no list edit) while recording; a simulate
+        # without the flag still gets each probe's built reform.
+        built: list[str] = []
+
+        def build(probe):
+            built.append(probe.id)
+            return f"REFORM:{probe.id}"
+
+        monkeypatch.setattr(smoke_module, "_build_reform", build)
+        received: list[object] = []
+
+        def simulate(reform):
+            received.append(reform)
+            return _Sim(4.16e10 if reform is not None else 4.0e10)
+
+        if flag:
+            setattr(simulate, smoke_module.RECORDS_REQUESTS_ONLY, True)
+        probes = [_probe(), _list_edit_probe()]
+        result = us_reform_coverage_smoke_gate(
+            simulate=simulate, probes=probes, period=2024
+        )
+
+        assert received[0] is None
+        if flag:
+            assert built == []
+            assert received[1:] == probes
+            recorded = result.details["results"][_list_edit_probe().id]
+            assert recorded["list_edits"][_SNAP_UNEARNED_SOURCES]["resolved"] is None
+        else:
+            assert built == [probe.id for probe in probes]
+            assert received[1:] == [f"REFORM:{probe.id}" for probe in probes]
+
     def test_zero_bound_reform_fails(self, monkeypatch) -> None:
         # Case 5: with the asset inputs absent, everyone already passes the SSI
         # resource test, so raising the limit moves nothing — baseline and reform
@@ -1412,7 +1451,7 @@ class TestShippedManifest:
             "gov.hhs.tanf.non_cash.tx_additional_vehicle_exemption"
         }
 
-    def test_shipped_manifest_is_schema_two_with_exactly_nine_list_edit_probes(
+    def test_shipped_manifest_is_schema_two_with_exactly_ten_list_edit_probes(
         self,
     ) -> None:
         raw = _shipped_payload()
@@ -1666,6 +1705,38 @@ class TestManifestLoaderListEdits:
             )
 
         assert f"probe {self._PROBE_ID!r}" in str(raised.value)
+
+    @pytest.mark.parametrize("scalar", [False, True], ids=["list_only", "mixed"])
+    def test_null_list_edits_are_refused(self, tmp_path, scalar) -> None:
+        # Sol review of microcosm#1197, finding 4: an omitted list_edits means
+        # none, but null is malformed. Read as {}, a mixed probe would load
+        # with only its scalar changes and silently drop its list edit.
+        def mutate(payload: dict) -> None:
+            raw_probe = _raw_probe(payload, self._PROBE_ID)
+            raw_probe["list_edits"] = None
+            if scalar:
+                raw_probe["parameter_changes"] = {
+                    "gov.irs.deductions.standard.amount.SINGLE": {_TAX_YEAR_2024: 1.0}
+                }
+
+        with pytest.raises(
+            ValueError, match="list_edits must be a JSON object"
+        ) as raised:
+            _load_mutated_manifest(tmp_path, mutate)
+
+        assert f"probe {self._PROBE_ID!r}" in str(raised.value)
+
+    def test_omitted_list_edits_load_as_none(self, tmp_path) -> None:
+        def mutate(payload: dict) -> None:
+            raw_probe = _raw_probe(payload, self._PROBE_ID)
+            del raw_probe["list_edits"]
+            raw_probe["parameter_changes"] = {
+                "gov.irs.deductions.standard.amount.SINGLE": {_TAX_YEAR_2024: 1.0}
+            }
+
+        manifest = _load_mutated_manifest(tmp_path, mutate)
+        (probe,) = [probe for probe in manifest.probes if probe.id == self._PROBE_ID]
+        assert probe.list_edits == {}
 
     def test_schema_two_manifest_that_pins_a_list_is_refused(self, tmp_path) -> None:
         # Bumping the version by hand without converting a pinned list to an

@@ -8,14 +8,20 @@ TANF and the probes scored wrong-signed. A probe now declares only the items it
 removes from or adds to a list (:class:`ListParameterEdit`), and the edit is
 resolved against the installed engine's baseline when the reform is built.
 
-These properties pin that resolution for every input, not only for the nine
+These properties pin that resolution for every input, not only for the ten
 shipped list-edit probes:
 
 - resolution is the baseline minus ``remove`` plus ``add``: kept items stay in
-  baseline order, added items follow in declared order, and every occurrence
-  of a removed item goes;
-- the inverse edit undoes an edit up to order, and re-applying an edit to its
-  own result always raises, so a double application is never silent;
+  baseline order with their multiplicity, added items follow once each in
+  declared order, and every occurrence of a removed item goes. On a baseline
+  without repeated items the result therefore has one entry per item and
+  ``len(baseline) - len(remove) + len(add)`` entries; a repeated removed item
+  shortens it by every occurrence;
+- the inverse edit always fits the result. On a baseline without repeated
+  items it restores the baseline up to order (removed items come back at the
+  end); with repeats it restores the item set, each removed item once;
+- re-applying an edit to its own result always raises, so a double
+  application is never silent;
 - an edit that no longer fits its baseline raises, naming the path and exactly
   the offending items, and a probe's resolution names the probe;
 - ``resolve_probe_parameter_changes`` merges the resolved lists with the
@@ -24,7 +30,12 @@ shipped list-edit probes:
   periods and well-formed item tuples;
 - the manifest loader round-trips any valid ``list_edits``;
 - reading a baseline from a parameter tree shaped like policyengine-core's
-  succeeds exactly when the list is constant over the edit period.
+  succeeds exactly when the edit starts after the list's first breakpoint and
+  the list is constant over the edit period; the stretches read over a period
+  reproduce the value on every day of it;
+- a resolved edit may be applied over a period exactly when every stretch of
+  it holds the baseline or the resolution, and a refusal names the first
+  stretch that holds anything else.
 
 Nothing here imports PolicyEngine-US: baselines come from injected callables
 or from an engine-free stub parameter tree.
@@ -49,7 +60,9 @@ from microcosm.build.us_runtime.release_input_coverage import (
     US_RELEASE_INPUT_COVERAGE_RESOURCE,
     ListParameterEdit,
     ReformCoverageProbe,
+    check_resolved_list_edit_target,
     list_parameter_baseline,
+    list_parameter_pieces,
     load_release_input_coverage_manifest,
     resolve_list_parameter_edit,
     resolve_probe_parameter_changes,
@@ -123,12 +136,13 @@ def _baseline_and_edit(draw, *, repeats: bool = False):
 # --- A-D: resolution ------------------------------------------------------
 
 
-# Resolution keeps every baseline item it does not remove, in baseline order,
-# then appends the added items in their declared order: the result is the
-# baseline set minus ``remove`` plus ``add``, with one entry per item and a
-# length of len(baseline) - len(remove) + len(add). A tuple baseline resolves
-# like a list, and neither the baseline argument nor the result aliases the
-# other.
+# On a baseline without repeated items, resolution keeps every item it does not
+# remove, in baseline order, then appends the added items in their declared
+# order: the result is the baseline set minus ``remove`` plus ``add``, with one
+# entry per item and a length of len(baseline) - len(remove) + len(add). (With
+# repeats the length formula fails; see the next property.) A tuple baseline
+# resolves like a list, and neither the baseline argument nor the result
+# aliases the other.
 @_PURE
 @given(case=_baseline_and_edit())
 def test_resolution_is_the_baseline_minus_remove_plus_add(case) -> None:
@@ -153,7 +167,9 @@ def test_resolution_is_the_baseline_minus_remove_plus_add(case) -> None:
 
 
 # Every occurrence of a removed item goes and every kept item keeps its
-# multiplicity, so the sequence formula holds for baselines with repeats too.
+# multiplicity, so the sequence formula holds for baselines with repeats too,
+# though the length formula does not: removing "a" from ["a", "a", "b"] leaves
+# ["b"].
 @_PURE
 @given(case=_baseline_and_edit(repeats=True))
 def test_resolution_drops_every_occurrence_of_a_removed_item(case) -> None:
@@ -793,9 +809,10 @@ def _tree(schedule: dict) -> _StubNode:
 
 
 #: Dates for breakpoint schedules: a narrow range, so edit periods often
-#: straddle breakpoints. Every schedule has a breakpoint at its floor.
-_FLOOR = date(2020, 1, 1)
-_SCHEDULE_DATES = st.dates(min_value=_FLOOR, max_value=date(2027, 12, 31))
+#: straddle breakpoints. Every schedule has its first breakpoint at the floor,
+#: before any drawn date, so drawn edits start after it.
+_FLOOR = date(2019, 1, 1)
+_SCHEDULE_DATES = st.dates(min_value=date(2020, 1, 1), max_value=date(2027, 12, 31))
 
 
 @st.composite
@@ -896,7 +913,8 @@ def test_constant_baseline_is_the_value_at_start(case, data) -> None:
     edit=_edits(),
 )
 def test_non_list_value_at_start_raises(value, edit) -> None:
-    tree = _tree({"1990-01-01": value})
+    # The breakpoint precedes every drawn period (from 1990-01-01).
+    tree = _tree({"1989-12-31": value})
     with pytest.raises(ValueError, match="is not a list") as excinfo:
         list_parameter_baseline(tree, "gov.list", edit)
     assert str(excinfo.value).startswith("gov.list: ")
@@ -986,3 +1004,152 @@ def test_baseline_read_refuses_nodes_and_unknown_paths(case, unknown, edit) -> N
     with pytest.raises(ValueError) as excinfo:
         list_parameter_baseline(tree, unknown, edit)
     assert str(excinfo.value).startswith(f"{unknown}: not a parameter of the engine")
+
+
+# --- J: stretches, the first breakpoint and the apply-time check ----------
+
+
+def _expected_pieces(schedule: dict, edit: ListParameterEdit) -> list:
+    pieces = [(edit.start, _value_on(schedule, edit.start))]
+    for instant in sorted(i for i in schedule if edit.start < i <= edit.stop):
+        if schedule[instant] != pieces[-1][1]:
+            pieces.append((instant, schedule[instant]))
+    return pieces
+
+
+# The stretches read over a period are the start's value and every breakpoint
+# inside the period where the value changes, in date order, and they
+# reproduce the parameter's value on every day of the period.
+@_PURE
+@given(case=_list_schedules(), data=st.data())
+def test_pieces_reproduce_the_value_on_every_day_of_the_period(case, data) -> None:
+    schedule, edit = case
+    pieces = list_parameter_pieces(_tree(schedule), "gov.list", edit)
+
+    assert pieces == _expected_pieces(schedule, edit)
+    assert all(
+        earlier[1] != later[1]
+        for earlier, later in zip(pieces, pieces[1:], strict=False)
+    )
+    day = data.draw(
+        st.dates(
+            min_value=date.fromisoformat(edit.start),
+            max_value=date.fromisoformat(edit.stop),
+        )
+    ).isoformat()
+    holding = [value for instant, value in pieces if instant <= day][-1]
+    assert holding == _value_on(schedule, day)
+
+
+# Sol review of microcosm#1197, finding 2. PolicyEngine-US applies reforms
+# before it backdates each parameter's first value, so an edit that starts on
+# or before the first breakpoint would become the first value and be
+# backdated outside its period. Every reader refuses it, naming that
+# breakpoint, before reading any value.
+@_PURE
+@given(case=_list_schedules(), data=st.data())
+def test_edit_starting_on_or_before_the_first_breakpoint_is_refused(case, data) -> None:
+    schedule, _ = case
+    first = min(schedule)
+    start = data.draw(
+        st.dates(min_value=date(1990, 1, 1), max_value=date.fromisoformat(first))
+    )
+    stop = data.draw(st.dates(min_value=start, max_value=date(2027, 12, 31)))
+    edit = ListParameterEdit(f"{start.isoformat()}.{stop.isoformat()}", add=("x",))
+    tree = _tree(schedule)
+    baseline = _value_on(schedule, first)
+    readers = (
+        lambda: list_parameter_pieces(tree, "gov.list", edit),
+        lambda: list_parameter_baseline(tree, "gov.list", edit),
+        lambda: check_resolved_list_edit_target(
+            tree, "gov.list", edit, baseline=baseline, resolved=[*baseline, "x"]
+        ),
+    )
+    for read in readers:
+        with pytest.raises(ValueError) as excinfo:
+            read()
+        message = str(excinfo.value)
+        assert message.startswith(
+            f"gov.list: the list edit period {edit.period} starts on or before "
+            f"{first}, the list's first breakpoint"
+        )
+        assert f"Start the edit after {first}." in message
+
+
+@st.composite
+def _targets(draw):
+    """A baseline, its resolution and a schedule built from them and others.
+
+    Each breakpoint holds the baseline, the resolution, another list (the
+    baseline in another order, or with an item added), or a non-list.
+    """
+    baseline = draw(st.lists(_NAMES, unique=True, min_size=1, max_size=5))
+    edit = ListParameterEdit(
+        period=draw(_periods(_SCHEDULE_DATES)),
+        remove=(draw(st.sampled_from(baseline)),),
+    )
+    resolved = resolve_list_parameter_edit("gov.list", edit, baseline)
+    others = [[*baseline, "other_item"], None, 0, "text"]
+    if len(baseline) > 1:
+        others.append(list(reversed(baseline)))
+    palette = [baseline, resolved, *others]
+    instants = {_FLOOR} | set(draw(st.lists(_SCHEDULE_DATES, max_size=6)))
+    schedule = {
+        instant.isoformat(): copy.deepcopy(draw(st.sampled_from(palette)))
+        for instant in instants
+    }
+    return schedule, edit, baseline, resolved
+
+
+# Sol review of microcosm#1197, finding 1. Applying a resolved edit writes the
+# resolution over the whole period, which is safe exactly when every stretch
+# already holds the baseline or the resolution. Each stretch is judged on its
+# own, so an earlier application of the same edit over an overlapping period
+# is accepted; anything else is refused at the first stretch that holds it.
+@_PURE
+@given(case=_targets())
+def test_target_check_accepts_exactly_baseline_or_resolved_stretches(case) -> None:
+    schedule, edit, baseline, resolved = case
+    pieces = _expected_pieces(schedule, edit)
+    offending = [
+        (instant, value)
+        for instant, value in pieces
+        if not isinstance(value, list) or value not in (baseline, resolved)
+    ]
+
+    def check():
+        check_resolved_list_edit_target(
+            _tree(schedule), "gov.list", edit, baseline=baseline, resolved=resolved
+        )
+
+    if not offending:
+        check()
+        return
+    with pytest.raises(ValueError) as excinfo:
+        check()
+    instant, value = offending[0]
+    message = str(excinfo.value)
+    assert message.startswith(f"gov.list was resolved against the baseline {baseline}")
+    assert f"holds {value!r} from {instant}, inside {edit.period};" in message
+
+
+def test_target_check_accepts_an_overlapping_earlier_application() -> None:
+    # Remove "tanf" over January to June; an edit removing it from April on
+    # finds April to June already resolved and July on still the baseline.
+    baseline, resolved = ["wages", "tanf"], ["wages"]
+    tree = _tree(
+        {"2020-01-01": baseline, "2024-01-01": resolved, "2024-07-01": baseline}
+    )
+    edit = ListParameterEdit("2024-04-01.2024-12-31", remove=("tanf",))
+
+    assert list_parameter_pieces(tree, "gov.list", edit) == [
+        ("2024-04-01", resolved),
+        ("2024-07-01", baseline),
+    ]
+    check_resolved_list_edit_target(
+        tree, "gov.list", edit, baseline=baseline, resolved=resolved
+    )
+    # The whole-period baseline read still refuses: resolution needs one
+    # baseline, while applying needs only that each stretch fits.
+    with pytest.raises(ValueError, match="changes at 2024-07-01"):
+        list_parameter_baseline(tree, "gov.list", edit)

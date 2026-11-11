@@ -354,7 +354,10 @@ enforces this). Probe discipline:
   (or `"add"` to reactivate an item). The list resolves against the
   installed PolicyEngine-US baseline when the reform is built. Resolution
   fails loudly if a removed item is gone, an added item is already there,
-  or the baseline changes inside the period. The loader refuses a whole list
+  the baseline changes inside the period, or the period starts on or before
+  the list's first breakpoint at the engine's first reform pass (the
+  constructor backdates that first value after applying reforms, so the edit
+  would leak into earlier years; QBI's income definition starts 2018-01-01). The loader refuses a whole list
   pinned in `parameter_changes`: pinned copies silently revert later engine
   changes. On 2026-09-28 the pinned SNAP source lists re-added TANF after
   PolicyEngine-US 2.2.1 moved it to `unearned_spm_unit`.
