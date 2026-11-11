@@ -754,7 +754,9 @@ def test_exclusion_receipt_lists_the_ids_each_rule_acts_on(monkeypatch) -> None:
         "all_vintage_reviewed_exclusion": "dropped",
         "m_chip_state_chip_enrollment": "dropped",
         "allowlisted_vintage_bypass": "allowed",
+        "soi_misplaced_row_merge": "merged",
     }
+    assert rules["soi_misplaced_row_merge"]["source_record_ids"] == []
     for name, ids in expected.items():
         assert rules[name]["source_record_ids"] == ids, name
     assert rules["all_vintage_reviewed_exclusion"]["entries"] == sorted(
@@ -888,6 +890,18 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
         ]
     )
     assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == []
+    # The Table 2.5 merge (microcosm#1577) acts on its four TY2023 rows only.
+    merge_rule = rules["soi_misplaced_row_merge"]
+    assert merge_rule["source_record_ids"] == sorted(
+        name
+        for merge in fiscal_targets.US_SOI_MISPLACED_ROW_MERGES
+        for name in merge.member_names
+    )
+    assert len(merge_rule["source_record_ids"]) == 4
+    assert all(".ty2023." in name for name in merge_rule["source_record_ids"])
+    assert [entry["merged_target"] for entry in merge_rule["merges"]] == [
+        merge.merged_name for merge in fiscal_targets.US_SOI_MISPLACED_ROW_MERGES
+    ]
 
 
 def test_pinned_feed_national_state_surface_restores_the_fences(

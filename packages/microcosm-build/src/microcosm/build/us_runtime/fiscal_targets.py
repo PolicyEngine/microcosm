@@ -884,13 +884,15 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
 class SoiRowMerge:
     """Published SOI rows of one column that bind only as their sum.
 
-    Where IRS prints part of one cell in a neighbouring row of the same
-    column, the column reconciles with the table's all-returns column only
-    over those rows together. ``_merge_misplaced_soi_rows`` then replaces the
-    rows' targets with one target over their joint AGI range, valued at
-    their sum, before any uprating. The entry holds while every row carries
-    its published value: a feed that changes one, or carries one without the
-    others, stops the compile so that a person reviews the entry again.
+    Where IRS prints a cell in a neighbouring row of the same column, the
+    column reconciles with the table's all-returns column only over those
+    rows together. ``_merge_misplaced_soi_rows`` then replaces the rows'
+    targets with one target over their joint AGI range, valued at their sum,
+    before any uprating. The entry holds while every row carries its
+    published value. A feed that carries every row but changes a value, or
+    carries some rows with one at its published value, stops the compile so
+    that a person reviews the entry again. A feed that carries some rows,
+    none at its published value, is another feed and passes unchanged.
     """
 
     record_set_id: str
@@ -929,7 +931,11 @@ _TABLE_2_5_TY2023_MISPLACED_CELL = (
     "printed the $30,000 to $35,000 cell in the $25,000 to $30,000 row. Bound "
     "apart, the two cells would move three-or-more EITC down an AGI row; "
     "bound as one $25,000 to $35,000 cell they hold what the column publishes "
-    "for the two rows. TY2022's workbook reconciles within 1 return and "
+    "for the two rows. Row totals cannot say which child column holds the "
+    "$20,000 to $25,000 row's 1,187 returns, 0.3% of that row's 407,149 "
+    "three-or-more returns, so the entry leaves that row as published; the "
+    "merged row's four columns then fall 1,186 returns and $296,000 short of "
+    "the all-returns columns. TY2022's workbook reconciles within 1 return and "
     "$1,000 in every row. Evidence: PolicyEngine/microcosm#989's "
     "zero_target_audit.json (workbook_check) and the 2026-10-14 comment on "
     "PolicyEngine/microcosm#1235."
@@ -1261,6 +1267,11 @@ def us_fiscal_target_exclusion_receipt(
       at ``target_period`` that are another vintage of an excluded cell and
       carry a reviewed ``US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`` entry
       (allowed).
+    - ``soi_misplaced_row_merge``: facts whose id names a row of a
+      ``US_SOI_MISPLACED_ROW_MERGES`` entry (merged: the compile binds the
+      entry's rows as one target at their sum, or stops, as
+      ``_merge_misplaced_soi_rows`` says). The rule lists each entry with its
+      reviewed values and evidence.
 
     It replays the compiler's fact filter and latest-vintage selection, so pass
     the same ``target_period`` and crosswalk as the compile. Like the compile,
@@ -1276,10 +1287,16 @@ def us_fiscal_target_exclusion_receipt(
     reviewed: set[str] = set()
     all_vintage: set[str] = set()
     m_chip: set[str] = set()
+    merge_rows = {
+        name for merge in US_SOI_MISPLACED_ROW_MERGES for name in merge.member_names
+    }
+    merged: set[str] = set()
     for fact in materialized_facts:
         source_record_id = _source_record_id(fact)
         if not source_record_id:
             continue
+        if source_record_id in merge_rows:
+            merged.add(source_record_id)
         if _is_all_vintage_support_exclusion(source_record_id):
             all_vintage.add(source_record_id)
         elif source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
@@ -1331,6 +1348,20 @@ def us_fiscal_target_exclusion_receipt(
                     for source_record_id, keys in sorted(allowed.items())
                 ],
                 "source_record_ids": sorted(allowed),
+            },
+            "soi_misplaced_row_merge": {
+                "action": "merged",
+                "scope": "the rows of each reviewed SOI row merge",
+                "merges": [
+                    {
+                        "merged_target": merge.merged_name,
+                        "source_record_ids": list(merge.member_names),
+                        "published_values": list(merge.published_values),
+                        "reason": merge.reason,
+                    }
+                    for merge in US_SOI_MISPLACED_ROW_MERGES
+                ],
+                "source_record_ids": sorted(merged),
             },
         },
     }
@@ -1566,10 +1597,11 @@ def _merge_misplaced_soi_rows(
 
     A merge applies when every member row is in the registry at its published
     value; the merged target takes the place of the first member the registry
-    lists. A member at another value, or one member at its published value
-    without the others, raises, because the feed no longer matches what a
-    person reviewed. A registry holding some members, none at its published
-    value, is a different feed (a test registry, say) and stays as it is.
+    lists. A registry that holds every member with one at another value
+    raises, as does one that holds some members with one at its published
+    value, because the feed no longer matches what a person reviewed. A
+    registry that holds some members, none at its published value, is a
+    different feed (a test registry, say) and stays as it is.
     """
 
     specs = list(registry.specs)
@@ -1604,7 +1636,7 @@ def _apply_soi_row_merge(
         if len(matches) > 1:
             raise ValueError(
                 f"SOI row merge {merge.merged_name!r}: {len(matches)} targets "
-                f"are named {name!r}; a member must be one target."
+                f"share the name {name!r}; a member must be one target."
             )
     members = [found[name][0] if found[name] else None for name in names]
     present = [spec for spec in members if spec is not None]
@@ -2942,20 +2974,28 @@ def _coarsened_eitc_agi_totals(
     """Each source period's uprating groups, coarsened to its Table 2.5 rows.
 
     Keyed by (kind, source period), over the active AGI totals that period's
-    rows may use (none older than the period).
+    rows may use (none older than the period). Only rows that uprating will
+    scale count. A row is a leaf when it holds no other row of its child
+    split (its ``ledger_layout_record_set_id``), as each split's AGI bins do
+    and its all-AGI total does not.
     """
 
-    rows: dict[tuple[str, str], set[tuple[float, float]]] = {}
+    rows: dict[tuple[str, str], dict[str, set[tuple[float, float]]]] = {}
     for spec in registry.specs:
         if not _is_eitc_decomposition_spec(spec):
+            continue
+        if spec.metadata.get("requires_total_eitc_uprating") != "true":
             continue
         kind = _eitc_total_kind(spec)
         if kind is None:
             continue
         key = (kind, spec.metadata.get("source_period", ""))
-        rows.setdefault(key, set()).add(_bounds_from_metadata(spec))
+        split = spec.metadata.get("ledger_layout_record_set_id", "")
+        rows.setdefault(key, {}).setdefault(split, set()).add(
+            _bounds_from_metadata(spec)
+        )
     coarsened: dict[tuple[str, str], tuple[_EitcAgiTotal, ...]] = {}
-    for (kind, source_period), bounds in sorted(rows.items()):
+    for (kind, source_period), splits in sorted(rows.items()):
         source_period_key = _period_key_from_value(source_period)
         groups = tuple(
             total
@@ -2964,36 +3004,80 @@ def _coarsened_eitc_agi_totals(
         )
         coarsened[(kind, source_period)] = _coarsen_eitc_agi_groups(
             groups,
-            bounds,
+            {bounds for split_rows in splits.values() for bounds in split_rows},
+            leaves={
+                bounds
+                for split_rows in splits.values()
+                for bounds in _leaf_bounds(split_rows)
+            },
             label=f"{kind} EITC source period {source_period!r}",
         )
     return coarsened
+
+
+def _leaf_bounds(rows: set[tuple[float, float]]) -> set[tuple[float, float]]:
+    """The rows that hold no other row of the set."""
+
+    return {
+        row
+        for row in rows
+        if not any(
+            other != row and _contains_bounds(row[0], row[1], other[0], other[1])
+            for other in rows
+        )
+    }
 
 
 def _coarsen_eitc_agi_groups(
     groups: Iterable[_EitcAgiTotal],
     rows: Iterable[tuple[float, float]],
     *,
+    leaves: Iterable[tuple[float, float]] = (),
     label: str = "EITC",
 ) -> tuple[_EitcAgiTotal, ...]:
-    """Merge AGI uprating groups until no source row straddles one.
+    """Merge AGI uprating groups until each source row has a group's factor.
 
-    A row straddles a group when the two overlap and neither holds the
-    other. Such a row has no group of its own, and each group it straddles
-    holds only part of it, so the group's source total misses EITC that its
-    control counts and every row uprated by that group takes a wrong factor.
-    For each straddling row, this merges every group that overlaps the row
+    A group's factor divides its control by the Table 2.5 EITC of the rows
+    inside it, so a row whose EITC lands in no single group leaves that
+    EITC out of every group it touches: those groups' source totals miss
+    EITC their controls count, and every row they uprate takes a wrong
+    factor. Two kinds of row do that:
+
+    - a row that straddles a group, meaning the two overlap and neither
+      holds the other;
+    - a leaf (a row that holds no other row of its child split, passed in
+      ``leaves``) that no one group holds, even one that holds two or more
+      groups exactly. A row with rows of its own split inside it, such as a
+      split's all-AGI total, may hold several groups: the rows inside it
+      carry its EITC into each group.
+
+    For each such row, this merges every group that overlaps the row
     without holding it into one group over their joint range, which then
-    holds the row; it repeats until no row straddles a group. Groups no row
-    straddles come back unchanged, so a feed whose rows nest in its groups
-    keeps its groups. Raises when the groups to merge do not tile one
-    interval, or when no merge can give a row a group.
+    holds the row; it repeats until no row needs a merge. Groups no row
+    needs come back unchanged, so a feed whose rows nest in its groups keeps
+    its groups. Raises when the groups to merge leave a gap inside the row,
+    or when the merge would duplicate another active total.
+
+    A row that runs past the groups' range (their lowest lower bound to
+    their highest upper bound) can't sit in any merge of them, so this
+    leaves it alone, and uprating gives it the all-returns factor as it did
+    before groups merged. A group such a row overlaps still misses its EITC.
+    Filing-season bins tile all AGI, so no Table 2.5 row does that today.
     """
 
-    row_bounds = sorted(set(rows))
+    leaf_bounds = set(leaves)
     current = sorted(groups, key=lambda total: (total.lower, total.upper))
+    if not current:
+        return ()
+    range_lower = min(total.lower for total in current)
+    range_upper = max(total.upper for total in current)
+    row_bounds = sorted(
+        bounds
+        for bounds in set(rows) | leaf_bounds
+        if _contains_bounds(range_lower, range_upper, *bounds)
+    )
     while True:
-        straddled = _first_straddled_row(current, row_bounds)
+        straddled = _first_row_without_one_group(current, row_bounds, leaf_bounds)
         if straddled is None:
             return tuple(current)
         lower, upper = straddled
@@ -3011,7 +3095,7 @@ def _coarsen_eitc_agi_groups(
         ):
             raise ValueError(
                 f"{label}: source row [{_format_bound(lower)}, "
-                f"{_format_bound(upper)}) straddles AGI uprating groups "
+                f"{_format_bound(upper)}) spans AGI uprating groups "
                 + ", ".join(
                     f"[{_format_bound(total.lower)}, {_format_bound(total.upper)})"
                     for total in touched
@@ -3039,19 +3123,31 @@ def _coarsen_eitc_agi_groups(
         )
 
 
-def _first_straddled_row(
+def _first_row_without_one_group(
     groups: list[_EitcAgiTotal],
     rows: list[tuple[float, float]],
+    leaves: set[tuple[float, float]],
 ) -> tuple[float, float] | None:
+    """The first row that straddles a group, or leaf no one group holds."""
+
     for lower, upper in rows:
-        for total in groups:
-            if (
-                total.lower < upper
-                and lower < total.upper
-                and not _contains_bounds(total.lower, total.upper, lower, upper)
-                and not _contains_bounds(lower, upper, total.lower, total.upper)
-            ):
+        overlapping = [
+            total for total in groups if total.lower < upper and lower < total.upper
+        ]
+        held = any(
+            _contains_bounds(total.lower, total.upper, lower, upper)
+            for total in overlapping
+        )
+        if (lower, upper) in leaves:
+            if overlapping and not held:
                 return (lower, upper)
+            continue
+        if any(
+            not _contains_bounds(total.lower, total.upper, lower, upper)
+            and not _contains_bounds(lower, upper, total.lower, total.upper)
+            for total in overlapping
+        ):
+            return (lower, upper)
     return None
 
 

@@ -231,42 +231,43 @@ def _uprating_groups(
     """Map each AGI uprating group to the (split, row id) pairs the compile
     uprates in it.
 
-    The groups start as the filing-season bins. A bound row that crosses a
-    group edge without starting and ending on edges (the merged $25,000 to
-    $35,000 row crosses the $30,000 edge) removes the edges inside it, until
-    no row does. A row then sits in the narrowest group that contains it or,
-    when the groups run finer (Table 2.5's $50,000-and-over bin), in its own
-    interval, which the groups inside it cover. The compile merges groups
-    rather than removing edges; the two give the same groups when the
-    filing-season bins tile AGI, which
+    The groups start as the filing-season bins. Every bound row here other
+    than a split's total is a leaf of its split (no other row of the split
+    sits inside it), and a leaf takes one group's factor only if one group
+    holds it, so each such row removes every group edge strictly inside it:
+    the merged $25,000 to $35,000 row removes the $30,000 edge, and Table
+    2.5's $50,000-and-over bin removes the edges above $50,000. Each row then
+    sits in one group. The compile merges groups rather than removing edges;
+    the two give the same groups when the filing-season bins tile AGI, which
     ``test_filing_season_agi_bins_sum_to_the_filing_season_total`` checks.
     """
 
     season = [_agi_bounds(fact) for fact in _filing_season_bins(kind).values()]
-    edges = sorted({bound for bounds in season for bound in bounds})
     rows = [
         (split, row_id, bounds)
         for split, split_rows in _bound_rows(kind).items()
         for row_id, (bounds, _) in split_rows.items()
         if row_id != "total"
     ]
-    changed = True
-    while changed:
-        changed = False
-        for _, _, (lower, upper) in rows:
-            inside = [edge for edge in edges if lower < edge < upper]
-            if inside and not (lower in edges and upper in edges):
-                edges = [edge for edge in edges if edge not in inside]
-                changed = True
+    for split, split_rows in _bound_rows(kind).items():
+        bins = [
+            bounds for row_id, (bounds, _) in split_rows.items() if row_id != "total"
+        ]
+        assert not [
+            (outer, inner)
+            for outer in bins
+            for inner in bins
+            if outer != inner and _inside(inner, outer)
+        ], f"{split}: a bin holds another bin, so not every bin is a leaf"
+    edges = sorted(
+        bound
+        for bound in {bound for bounds in season for bound in bounds}
+        if not any(lower < bound < upper for _, _, (lower, upper) in rows)
+    )
     coarsened = list(zip(edges, edges[1:], strict=False))
     groups: dict[tuple[float, float], list[tuple[str, str]]] = {}
     for split, row_id, bounds in rows:
-        containing = [group for group in coarsened if _inside(bounds, group)]
-        group = (
-            min(containing, key=lambda item: item[1] - item[0])
-            if containing
-            else bounds
-        )
+        (group,) = [group for group in coarsened if _inside(bounds, group)]
         groups.setdefault(group, []).append((split, row_id))
     return groups
 
