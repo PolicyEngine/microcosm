@@ -7,6 +7,11 @@ which variable a fact binds, in what mode, over which universe, whether it
 binds at all — is a consumer decision and lives here. This is the procedure
 for the US pipeline, in the order that avoids the known failure modes.
 
+The default US build also binds national ACS 2024 household composition and
+IRS SOI Table 1.3 filing-status constraints. See [the household and filing-status
+guide](us-household-type-targets.md) for the cells, exclusions, group-quarters
+treatment and the existing SOI tax-unit universe.
+
 ## What may never become a target
 
 Before minting anything, apply the rule (doctrine, Max 2026-08-02):

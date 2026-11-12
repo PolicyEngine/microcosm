@@ -4734,6 +4734,28 @@ def test_reported_coverage_vintage_gate_receipt_is_written(tmp_path) -> None:
     builder._refuse_certified_release_dir_reuse(release_dir)
 
 
+def test_every_release_solver_can_fit_the_acs_household_total() -> None:
+    """A fixed table-row mass also counts ACS group-quarters placeholders."""
+    import ast
+
+    builder = _load_builder_module()
+    assert builder.US_FISCAL_CALIBRATION_MASS == builder.FREE_MASS == "free"
+    tree = ast.parse(inspect.getsource(builder._main))
+    solver_names = {"calibrate", "calibrate_l0_refit", "calibrate_exact_k_ladder"}
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in solver_names
+    ]
+    assert {node.func.id for node in calls} == solver_names
+    for call in calls:
+        mass = next(keyword.value for keyword in call.keywords if keyword.arg == "mass")
+        assert isinstance(mass, ast.Name)
+        assert mass.id == "US_FISCAL_CALIBRATION_MASS"
+
+
 def test_base_population_scale_gate_rejects_underweighted_base(small_frame) -> None:
     builder = _load_builder_module()
 
@@ -4742,7 +4764,8 @@ def test_base_population_scale_gate_rejects_underweighted_base(small_frame) -> N
     assert not gate.passed
     assert gate.name == "base_population_scale"
     assert gate.details["population"] == 6000.0
-    assert "mass='conserve'" in gate.failures[0]
+    assert gate.details["calibration_mass_policy"] == "free"
+    assert "national-scale base H5" in gate.failures[0]
 
 
 def test_base_population_scale_gate_accepts_national_scale_base(small_frame) -> None:

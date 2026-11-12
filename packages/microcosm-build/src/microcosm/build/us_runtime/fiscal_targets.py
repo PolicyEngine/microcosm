@@ -34,6 +34,9 @@ from microcosm.build.us_runtime.fsa_student_loan_targets import (
     apply_fsa_student_loan_plan,
     plan_fsa_student_loan_targets,
 )
+from microcosm.build.us_runtime.household_type_targets import (
+    HOUSEHOLD_TYPE_MATERIALIZER,
+)
 from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
     enforce_period_contract,
@@ -74,6 +77,8 @@ __all__ = [
     "SimpleTaxExpenditureReform",
     "compile_us_fiscal_target_registry",
     "us_fiscal_target_exclusion_receipt",
+    "household_type_fact_exclusion_reason",
+    "soi_filing_status_fact_exclusion_reason",
 ]
 
 TaxExpenditureReformKind = Literal["neutralize_variable"]
@@ -3150,6 +3155,13 @@ def _reference_from_ledger_fact(
     if source_name == "census_stc":
         return _state_income_tax_reference_from_fact(fact, target_period=target_period)
     if source_name == "census_acs":
+        if _str_at(fact, "layout", "record_set_id") in (
+            ACS_HOUSEHOLD_TYPE_RECORD_SET_IDS
+        ):
+            return _household_type_reference_from_fact(
+                fact,
+                target_period=target_period,
+            )
         if _geography_level(fact) != "congressional_district":
             return None
         return _population_age_reference_from_fact(
@@ -3184,11 +3196,121 @@ def _reference_from_ledger_fact(
     return _direct_reference_from_fact(fact, target_period=target_period)
 
 
+ACS_HOUSEHOLD_TYPE_RECORD_SET_IDS = frozenset(
+    f"census_acs.acs1_2024.{table}.{geography}"
+    for table in ("b11001", "b11003")
+    for geography in ("national", "state")
+)
+
+# Bind one independent national partition, leaving the within-family age
+# splits and the implied cells as reviewed exclusions (microcosm#880).
+_ACS_HOUSEHOLD_TYPE_BOUND_MEASURES = frozenset(
+    {
+        "B11001_001E",
+        "B11001_003E",
+        "B11001_005E",
+        "B11001_006E",
+        "B11001_008E",
+        "B11003_003E",
+        "B11003_010E",
+        "B11003_016E",
+    }
+)
+
+
+def household_type_fact_exclusion_reason(fact: object) -> str | None:
+    """Explain every unbound ACS 2024 B11001/B11003 feed cell."""
+
+    if _str_at(fact, "layout", "record_set_id") not in (
+        ACS_HOUSEHOLD_TYPE_RECORD_SET_IDS
+    ):
+        return None
+    if _geography_id(fact) == "0400000US72":
+        return "Puerto Rico is outside the United States household universe."
+    if _dimensions(fact).get("statistic") != "estimate":
+        return "ACS margins of error describe uncertainty, not calibration levels."
+    if _geography_level(fact) != "country":
+        return (
+            "State household-type cells await a separately reviewed state calibration."
+        )
+    if _geography_id(fact) != "0100000US":
+        return "Only the United States national household universe binds."
+    if (
+        _str_at(fact, "period", "type") != "calendar_year"
+        or str(_period_value(fact)) != "2024"
+    ):
+        return "These household-type record sets bind only their 2024 calendar year."
+    measure_id = _measure_id(fact)
+    if measure_id in _ACS_HOUSEHOLD_TYPE_BOUND_MEASURES:
+        return None
+    if measure_id.startswith("B11003_") and measure_id[7:10] in {
+        "004",
+        "005",
+        "006",
+        "011",
+        "012",
+        "013",
+        "017",
+        "018",
+        "019",
+    }:
+        return "Own-child age splits await a separately reviewed calibration."
+    return "This household-type cell is implied by the bound national partition."
+
+
+def _household_type_reference_from_fact(
+    fact: object,
+    *,
+    target_period: int | str,
+) -> LedgerTargetReference | None:
+    if household_type_fact_exclusion_reason(fact) is not None:
+        return None
+    dimensions = _dimensions(fact)
+    source_record_id = _source_record_id(fact)
+    if not source_record_id or not dimensions.get("household_type"):
+        return None
+    return LedgerTargetReference(
+        name=source_record_id,
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure=source_record_id,
+        period=target_period,
+        family="census_households",
+        metadata={
+            "materializer": HOUSEHOLD_TYPE_MATERIALIZER,
+            "measure_mode": "indicator_sum",
+            "source_measure_id": _measure_id(fact),
+            "source_period": str(_period_value(fact)),
+            "target_period": str(target_period),
+            "target_role": "household_type",
+            "statistic": "estimate",
+            "household_type": str(dimensions["household_type"]),
+            "own_children": str(dimensions.get("own_children", "all")),
+        },
+        hierarchy=_us_hierarchy_seed("census_acs", "household_count"),
+    )
+
+
+def soi_filing_status_fact_exclusion_reason(fact: object) -> str | None:
+    """Keep Table 1.3's totals out of its bound filing-status partition."""
+
+    record_set = _str_at(fact, "layout", "record_set_id")
+    if not record_set.startswith("irs_soi.ty2023.table_1_3.filing_status_"):
+        return None
+    if _dimensions(fact).get("filing_status") == "all":
+        if _measure_id(fact) in {"return_count", "adjusted_gross_income"}:
+            return "Table 1.3's all-status cell repeats the bound Table 1.2 all-returns cell."
+        return "Table 1.3's all-status CTC cell is implied by its four bound filing statuses."
+    return None
+
+
 def _soi_reference_from_fact(
     fact: object,
     *,
     target_period: int | str,
 ) -> LedgerTargetReference | None:
+    if soi_filing_status_fact_exclusion_reason(fact) is not None:
+        return None
     geography_level = _geography_level(fact)
     if geography_level not in {"country", "state", "congressional_district"}:
         return None
