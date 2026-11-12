@@ -2051,8 +2051,11 @@ def _rare_carriers_certain_frame(
     (``receipt_counts``, microcosm#1164): rounded, or "<3" and "3-9" in bands.
     The rows taken for a rare output and the rows sampled fill the frame, so
     the sampled count is the frame's rows less the rounded carrier count and
-    the pair gives nothing back by difference. Each output's share of the
-    tape's carriers the frame keeps is floored to the hundredth.
+    the pair gives nothing back by difference. Where the carrier count prints
+    as a band, the sampled count sits within nine of the frame's rows, and any
+    rounding of it beside them would narrow the band, so it is left out
+    (``None``). Each output's share of the tape's carriers the frame keeps is
+    floored to the hundredth.
 
     Returns:
         ``(frame, design weights, receipt)``.
@@ -2111,9 +2114,7 @@ def _rare_carriers_certain_frame(
         "rare_outputs": rare,
         "rows_carrying_a_rare_output": carrier_rows,
         "rows_sampled_in_proportion_to_fact": (
-            int(len(selected)) - carrier_rows
-            if isinstance(carrier_rows, int)
-            else rounded_count(budget)
+            int(len(selected)) - carrier_rows if isinstance(carrier_rows, int) else None
         ),
         "sampled_rows_taken_with_certainty": rounded_count(
             int((inclusion[chosen] >= 1.0).sum())

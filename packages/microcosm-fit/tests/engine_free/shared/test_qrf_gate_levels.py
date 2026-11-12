@@ -292,9 +292,16 @@ def test_level_columns_are_checked() -> None:
 
 
 def _four_categories(
-    seed: int, shares: tuple[float, ...] = (0.55, 0.25, 0.15, 0.05), n: int = 12_000
+    seed: int,
+    shares: tuple[float, ...] = (0.55, 0.25, 0.15, 0.05),
+    n: int = 12_000,
+    category_weights: tuple[float, ...] = (1.0, 1.0, 1.0, 1.0),
 ) -> tuple[pd.DataFrame, list[str]]:
-    """A four-level categorical, one-hot, whose levels carry at different rates."""
+    """A four-level categorical, one-hot, whose levels carry at different rates.
+
+    ``shares`` sets each category's share of the rows and ``category_weights``
+    scales its rows' weights, so the heaviest category need not be the commonest.
+    """
     rng = np.random.default_rng(seed)
     category = rng.choice(4, size=n, p=list(shares))
     carrier = rng.random(n) < np.array([0.02, 0.06, 0.15, 0.45])[category]
@@ -304,7 +311,7 @@ def _four_categories(
     for k in range(4):
         table[f"cat_{k}"] = (category == k).astype(np.float64)
     table["target"] = np.where(carrier, rng.lognormal(3.0, 0.5, n), 0.0)
-    table["weight"] = rng.uniform(0.5, 1.5, n)
+    table["weight"] = rng.uniform(0.5, 1.5, n) * np.asarray(category_weights)[category]
     return table, ["x0", "x1", "x2", "cat_0", "cat_1", "cat_2", "cat_3"]
 
 
@@ -393,6 +400,26 @@ def test_the_receipt_names_the_same_levels_whatever_the_category_mix(
             "thin_levels": [],
         }
     }
+
+
+def test_the_reference_is_the_heaviest_category_not_the_commonest() -> None:
+    # Category 0 holds most of the rows, but category 2 holds most of the
+    # weight: the reference goes by weight, not by row count or position.
+    table, columns = _four_categories(seed=63, category_weights=(1.0, 1.0, 8.0, 1.0))
+    weight = table["weight"].to_numpy()
+    rows = [int(table[name].sum()) for name in _CATEGORIES]
+    masses = [
+        float(weight[table[name].to_numpy() == 1.0].sum()) for name in _CATEGORIES
+    ]
+    assert int(np.argmax(rows)) == 0 and int(np.argmax(masses)) == 2
+    fitted = RegimeGatedQRF(
+        n_estimators=4,
+        seed=9,
+        gate_calibration=GateCalibration.CROSS_FITTED_BALANCED,
+        gate_level_columns=(_CATEGORIES,),
+    ).fit(table, columns, ["target"], weights="weight")
+    assert fitted.gate_levels() == {"target": ("cat_0=1", "cat_1=1", "cat_3=1")}
+    assert fitted.gate_level_reports()["target"]["reference_levels"] == ["cat_2=1"]
 
 
 def test_a_thin_category_shares_the_reference_and_is_named() -> None:

@@ -20,6 +20,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_BELOW_TEN_BAND,
     UK_WITHHELD,
     floored_share,
     rounded_count,
@@ -87,9 +88,12 @@ def test_the_frame_holds_every_rare_carrier_once_at_the_tape_incidence() -> None
         + receipt["rows_sampled_in_proportion_to_fact"]
         == size
     )
-    assert receipt["sampled_rows_taken_with_certainty"] in (0, UK_WITHHELD) or (
-        receipt["sampled_rows_taken_with_certainty"]
-        == rounded_count(receipt["sampled_rows_taken_with_certainty"])
+    # Every record the capped inclusion takes for certain is drawn, so the
+    # count is known exactly before rounding.
+    rest = (tape[RARE] == 0).to_numpy()
+    inclusion = _capped_inclusion(tape["FACT"].to_numpy()[rest], size - carriers)
+    assert receipt["sampled_rows_taken_with_certainty"] == rounded_count(
+        int((inclusion >= 1.0).sum())
     )
     assert isinstance(receipt["kish_effective_rows"], int)
     # Every rare carrier is kept; a sampled output keeps a share of its carriers.
@@ -121,6 +125,35 @@ def test_the_frame_holds_every_rare_carrier_once_at_the_tape_incidence() -> None
     # A common output is estimated, not exact: within a few percent here.
     estimate = (weights * frame[COMMON].to_numpy()).sum()
     assert abs(estimate / (fact * tape[COMMON].to_numpy()).sum() - 1.0) < 0.05
+
+
+@pytest.mark.parametrize(
+    ("kept_carriers", "band"), [(2, UK_WITHHELD), (7, UK_BELOW_TEN_BAND)]
+)
+def test_the_receipt_bands_small_counts_and_leaves_out_the_sampled_rows(
+    kept_carriers: int, band: str
+) -> None:
+    tape = _tape()
+    rare_rows = np.flatnonzero((tape[RARE] != 0).to_numpy())
+    tape.loc[rare_rows[kept_carriers:], RARE] = 0.0
+    # Five other records weigh enough that the capped inclusion takes them for
+    # certain.
+    heavy = np.flatnonzero((tape[RARE] == 0).to_numpy())[:5]
+    tape.loc[heavy, "FACT"] = 1e7
+    size = 4_055  # not a multiple of a hundred
+    frame, _, receipt = _rare_carriers_certain_frame(tape, size=size, seed=9)
+
+    assert receipt["rows"] == size == len(frame)
+    assert receipt["rare_outputs"] == [RARE]
+    assert receipt["rows_carrying_a_rare_output"] == band
+    # Beside a banded carrier count the sampled count sits within nine of the
+    # frame's rows, and any rounding of it would narrow the band: left out.
+    assert receipt["rows_sampled_in_proportion_to_fact"] is None
+    rest = (tape[RARE] == 0).to_numpy()
+    inclusion = _capped_inclusion(tape["FACT"].to_numpy()[rest], size - kept_carriers)
+    assert int((inclusion >= 1.0).sum()) == 5
+    assert receipt["sampled_rows_taken_with_certainty"] == UK_BELOW_TEN_BAND
+    assert receipt["tape_carriers_kept_share"][RARE] == 1.0
 
 
 def test_the_frame_draw_is_seeded() -> None:
