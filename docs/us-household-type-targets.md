@@ -85,7 +85,8 @@ partition replaces these two aggregates. This corrects the design's missing
 overlap and explains why the net count increase is 22 rather than 24.
 The profile gate now requires all four national Table 1.3 CTC amount cells.
 The existing CTC critical-fit selectors cover each new status count and
-amount, retaining their 15% limit and the older names for historical releases.
+amount, retaining their default 15% tolerance, the existing incumbent-improvement
+rule and the older names for historical releases.
 Other pre-existing SOI vintage choices stay outside this change.
 
 ## Materializer and household universe

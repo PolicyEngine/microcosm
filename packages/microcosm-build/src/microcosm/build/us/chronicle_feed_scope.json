@@ -2,9 +2,9 @@
  "version": 1,
  "country": "us",
  "source_repo": "PolicyEngine/chronicle",
- "source_commit": "41b2fb2b864a28c0eda03322b77a97ef147dfa3c",
- "rule": "The (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl, plus the 51 TY2023 Historic Table 2 state AGI-band record sets (irs_soi.ty2023.historic_table_2.state_agi.<st>, microcosm#940), plus the three BEA NIPA Table 7.8 line 17 (B4923C) record sets (bea_nipa.cy<year>.private_group_health_insurance, 2023 to 2025, microcosm#454), plus the 66 Federal Student Aid loan portfolio record sets of the six packages/ed_fsa packages (ed_fsa.*, chronicle#347, microcosm#1357), each one quarter-end month from 2025-12 to 2026-06 and built at 2026, the only year their manifests carry a file for; each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
- "pair_count": 706,
+ "source_commit": "60266a3088319c909cf7fc89c9d00d3b055dc6e1",
+ "rule": "The (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl, plus the 51 TY2023 Historic Table 2 state AGI-band record sets (irs_soi.ty2023.historic_table_2.state_agi.<st>, microcosm#940), plus the three BEA NIPA Table 7.8 line 17 (B4923C) record sets (bea_nipa.cy<year>.private_group_health_insurance, 2023 to 2025, microcosm#454), plus the 66 Federal Student Aid loan portfolio record sets of the six packages/ed_fsa packages (ed_fsa.*, chronicle#347, microcosm#1357), each one quarter-end month from 2025-12 to 2026-06 and built at 2026, the only year their manifests carry a file for; plus ACS 2024 1-year B11001 and B11003 national and state record sets (four calendar_year 2024 pairs built at 2024), and IRS SOI Table 1.3 filing-status returns, AGI, CTC returns and CTC amount (four tax_year 2023 pairs built at 2023), microcosm#880; each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
+ "pair_count": 714,
  "runs": {
   "2020": [
    "packages/bea/nipa_total_wages_salaries",
@@ -47,6 +47,7 @@
    "packages/irs_soi/state_2022",
    "packages/irs_soi/table_1_1",
    "packages/irs_soi/table_1_2",
+   "packages/irs_soi/table_1_3",
    "packages/irs_soi/table_1_4",
    "packages/irs_soi/table_2_1",
    "packages/irs_soi/table_2_5",
@@ -58,6 +59,10 @@
    "packages/bea/nipa_private_group_health_insurance",
    "packages/bea/nipa_total_wages_salaries",
    "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "packages/census/acs1_b11001_national_2024",
+   "packages/census/acs1_b11001_state_2024",
+   "packages/census/acs1_b11003_national_2024",
+   "packages/census/acs1_b11003_state_2024",
    "packages/census/pep_2024_national_age_sex",
    "packages/census/pep_2024_state_age_sex",
    "packages/cms_aca/oep_state_level",
@@ -1723,6 +1728,38 @@
    "package_id": "census-b01001-female-age-2023",
    "package": "packages/census/b01001_female_15_44_2023",
    "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2024.b11001.national",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs1-b11001-national-2024",
+   "package": "packages/census/acs1_b11001_national_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs1_2024.b11001.state",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs1-b11001-state-2024",
+   "package": "packages/census/acs1_b11001_state_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs1_2024.b11003.national",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs1-b11003-national-2024",
+   "package": "packages/census/acs1_b11003_national_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_acs.acs1_2024.b11003.state",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-acs1-b11003-state-2024",
+   "package": "packages/census/acs1_b11003_state_2024",
+   "build_year": 2024
   },
   {
    "record_set_id": "census_pep.cy2024.national_resident_population_age",
@@ -5370,6 +5407,38 @@
    "period_value": "2023",
    "package_id": "soi-table-1-2",
    "package": "packages/irs_soi/table_1_2",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_1_3.filing_status_agi",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-1-3",
+   "package": "packages/irs_soi/table_1_3",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_1_3.filing_status_ctc_amount",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-1-3",
+   "package": "packages/irs_soi/table_1_3",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_1_3.filing_status_ctc_returns",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-1-3",
+   "package": "packages/irs_soi/table_1_3",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_1_3.filing_status_returns",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-1-3",
+   "package": "packages/irs_soi/table_1_3",
    "build_year": 2023
   },
   {

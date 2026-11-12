@@ -322,7 +322,7 @@ class TestShippedManifest:
         assert int(manifest.reference["reviewed_exclusions"]) == len(
             manifest.reviewed_exclusions
         )
-        assert len(manifest.compiled_families) == 32
+        assert len(manifest.compiled_families) == 34
         # 53, plus the 11 ed_fsa families of the 41b2fb2b feed (microcosm#1074).
         assert len(manifest.reviewed_exclusions) == 64
 
