@@ -184,7 +184,7 @@ def test_failure_leaves_an_earlier_successful_bundle_unchanged(tmp_path, monkeyp
     } == previous
 
 
-def test_interrupt_preserves_local_evidence_without_waiting_or_staging(
+def test_interrupt_preserves_local_evidence_without_uploading_or_staging(
     tmp_path, monkeypatch
 ):
     args = fixture(tmp_path)
@@ -216,7 +216,8 @@ def test_interrupt_preserves_local_evidence_without_waiting_or_staging(
         full_build_cli._run_with_graph_publication(
             interrupt, None, args, telemetry=None, attempt=None, record={}
         )
-    assert waits == [0]
+    # No upload is queued, so there is nothing to wait for.
+    assert waits == []
     bundle = args.attempt_evidence / orrery_publication.FAILURE_BUNDLE_DIRECTORY
     assert (bundle / "graph.orrery.json").is_file()
 
