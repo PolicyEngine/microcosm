@@ -4,7 +4,7 @@ docs/release-contract.md defines the release contract, C1 to C5. These fixtures
 freeze two of its parts in bytes, the way ``generate_staging_contract_fixtures.py``
 freezes the staging documents that calibration-diagnostics byte-checks. Each
 golden comes from the writer that produces the same file in a real build, and
-``writers.json`` names that writer for every fixture file.
+``writers.json`` names that writer for every file ``SHA256SUMS`` lists.
 
 C1, the release manifest
 ------------------------
@@ -71,14 +71,16 @@ stage; its study number and conditions are the live constants of
 
 Some values are live on purpose. ``c1/inventory.json`` and ``c5/registry.json``
 freeze the contract's constants and the registry. The US manifests carry what
-the US builder writes into every build: the layout of ``_build_manifests`` and
-``rewrite_release_dir``, the gate-evidence keys
+the US builder writes for this generator's call, which passes
+``_build_manifests`` only its required arguments and a staging block: the
+layout of ``_build_manifests`` and ``rewrite_release_dir``, the gate-evidence keys
 (``US_RELEASE_GATE_EVIDENCE_FILES``), the documented-absent inputs
 (``US_DOCUMENTED_ABSENT_INPUTS``), the calibration diagnostics' schema version
 (``CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION``), the fiscal-target exclusion
 receipt's key, the dataset and calibration keys and file names, and the
 repository id. A pull request that changes one of those regenerates the
-fixtures.
+fixtures. A real build also writes its timing, its ledger provenance and its
+optional gate blocks, and the fixtures freeze none of those.
 
 What the fixtures omit
 ----------------------
