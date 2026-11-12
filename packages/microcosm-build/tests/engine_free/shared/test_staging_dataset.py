@@ -671,9 +671,11 @@ def test_the_first_failed_attempt_after_the_commit_ends_the_wait(tmp_path, capsy
     assert staged.collector_receipt["error_code"] == "COLLECTOR_UNAVAILABLE"
     assert (
         f"warning: the collector had not accepted the submissions of the staged "
-        f"dataset bundle staged/{RUN_ID} when the build stopped waiting "
-        "(COLLECTOR_UNAVAILABLE); the emitter keeps them queued, and it or the "
-        "next emitter started on this machine sends them." in capsys.readouterr().err
+        f"dataset bundle staged/{RUN_ID} when the wait ended "
+        "(COLLECTOR_UNAVAILABLE); the emitter keeps them queued on this machine, "
+        "and an emitter running here later sends them. Until then, leave "
+        "unchanged any of their files the emitter did not copy at hand-over."
+        in capsys.readouterr().err
     )
 
 
@@ -713,12 +715,15 @@ def test_a_skipped_collector_receipt_is_a_warning_and_the_bundle_stays_staged(
         f"warning: the collector receives nothing of the staged dataset bundle "
         f"staged/{RUN_ID}: {explanation} ({code})." in warning
     )
-    # Submissions use the Hugging Face credential: a collector token given
-    # in the environment only sends telemetry, so the advice never says to
-    # set one.
+    # Submissions use the Hugging Face credential, which an emitter given a
+    # collector token never reads, and a given token only sends telemetry:
+    # the advice is to unset the variables, never to complete them.
     advice = (
-        "Collector submissions use the Hugging Face credential; a collector "
-        "token given in MICROCOSM_COLLECTOR_TOKEN only sends telemetry."
+        "Collector submissions use the Hugging Face credential, and an emitter "
+        "given a collector token uses that token instead, which only sends "
+        "telemetry: unset MICROCOSM_COLLECTOR_TOKEN, "
+        "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and MICROCOSM_COLLECTOR_ORIGIN "
+        "for a staging or publication that should reach the collector."
     )
     assert (advice in warning) is (code == "COLLECTOR_SETTINGS_REFUSED")
     assert "set together" not in warning
@@ -752,9 +757,10 @@ def test_submissions_not_accepted_when_the_wait_ends_stay_queued(tmp_path, capsy
     warning = capsys.readouterr().err
     assert (
         f"warning: the collector had not accepted the submissions of the staged "
-        f"dataset bundle staged/{RUN_ID} when the build stopped waiting "
-        "(COLLECTOR_UNAVAILABLE); the emitter keeps them queued, and it or the "
-        "next emitter started on this machine sends them." in warning
+        f"dataset bundle staged/{RUN_ID} when the wait ended "
+        "(COLLECTOR_UNAVAILABLE); the emitter keeps them queued on this machine, "
+        "and an emitter running here later sends them. Until then, leave "
+        "unchanged any of their files the emitter did not copy at hand-over." in warning
     )
 
 
@@ -795,6 +801,22 @@ def test_a_submission_the_collector_turned_down_is_a_warning(
 
     assert staged.delivery["status"] == "uploaded"
     assert f"warning: {warned}" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("status", ["succeeded", "skipped"])
+def test_no_wait_is_announced_when_the_first_receipt_is_settled(
+    tmp_path, capsys, status
+):
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[{"status": status, "attempts": 1}],
+    )
+
+    _stage(bundle, emitter, collector=PROVENANCE)
+
+    assert len(emitter.collector_receipt_requests) == 1
+    assert "waiting up to" not in capsys.readouterr().err.split("upload...")[-1]
 
 
 def test_an_emitter_that_stops_answering_ends_the_wait(tmp_path, capsys):

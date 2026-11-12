@@ -487,8 +487,8 @@ def test_a_modal_runs_copied_back_outputs_are_staged_by_the_re_stage_command(
     # submissions stay queued.
     assert (
         f"warning: the collector had not accepted the submissions of the staged "
-        f"dataset bundle {PREFIX} when the build stopped waiting "
-        "(COLLECTOR_UNAVAILABLE)" in capsys.readouterr().err
+        f"dataset bundle {PREFIX} when the wait ended (COLLECTOR_UNAVAILABLE)"
+        in capsys.readouterr().err
     )
 
 

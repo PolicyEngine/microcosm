@@ -270,6 +270,25 @@ def test_the_collector_receipt_is_asked_for_by_the_emitters_hand_over_id(
     assert outcome.collector_receipt["status"] == "succeeded"
 
 
+def test_a_receipt_without_a_hand_over_id_falls_back_to_the_requests_own(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    clock: Clock,
+) -> None:
+    client = FakeEmitterClient(
+        release_receipts=[{"handover_id": ""}],
+        collector_receipts=[{"status": "succeeded", "attempts": 1}],
+    )
+
+    outcome = release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client
+    )
+
+    (request,) = client.release_requests
+    assert client.collector_receipt_requests == [request.handover_id()]
+    assert outcome.collector_receipt["status"] == "succeeded"
+
+
 def test_a_published_build_the_emitter_has_no_collector_row_for_is_not_waited_for(
     national: Path,
     artifact_root: Path,  # noqa: F811
