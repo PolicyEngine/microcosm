@@ -552,20 +552,17 @@ def test_tenure_shares_read_the_level_asked_for() -> None:
     assert receipt["areas_with_tenure"] == 1 and receipt["level"] == "msoa"
 
 
-def test_the_library_copies_agree_with_the_stock_tool(tmp_path) -> None:
-    """The stock tool moves onto the library once its rebuild is byte-checked
-    (microcosm#1524); until then the library's copies must agree with it."""
+def test_the_stock_tool_keeps_its_private_names_on_the_shared_code(tmp_path) -> None:
+    """The home-stock tool moved onto the shared code (microcosm#1524) once a
+    rebuild of its resources from the pinned inputs matched every committed
+    byte; tests and tools still reach it by its old private names."""
+    from microcosm.build import pinned_inputs
+
     tool = _load_tool("build_uk_high_value_home_stock")
-    facts = [
-        _tenure_fact("local_authority", "E06000001", "all_households", 100.0),
-        _tenure_fact("local_authority", "E06000001", "social_rent", 20.0),
-        _tenure_fact("local_authority", "E06000001", "owned_outright", 30.0),
-        _tenure_fact("local_authority", "E06000001", "owned_mortgage", 25.0),
-        _tenure_fact("local_authority", "E06000002", "all_households", 10.0),
-        _tenure_fact("local_authority", "E06000002", "social_rent", 10.0),
-        _tenure_fact("msoa", "E02000001", "all_households", 50.0),
-    ]
-    assert tool._tenure_shares(facts) == hv.tenure_shares(facts)
+    assert tool._manifest_files is pinned_inputs.manifest_files
+    assert tool._verify_pin is pinned_inputs.verify_pinned_file
+    assert tool._registration is pinned_inputs.registration
+    assert tool._spec_id is tool.hv.fact_spec_id
     for name in (
         "TENURE_OWNER_SPEC_IDS",
         "TENURE_SPEC_PREFIX",
@@ -573,14 +570,30 @@ def test_the_library_copies_agree_with_the_stock_tool(tmp_path) -> None:
         "TENURE_SOCIAL_SPEC_ID",
     ):
         assert getattr(tool, name) == getattr(hv, name)
-    assert tool._dwelling_cache_path(tmp_path, _PPD_PINS, 202512) == (
-        tmp_path
-        / hv.dwelling_cache_name(
-            _PPD_PINS, stock_yyyymm=202512, method=tool.METHOD_VERSION
-        )
+    facts = [
+        _tenure_fact("local_authority", "E06000001", "all_households", 100.0),
+        _tenure_fact("local_authority", "E06000001", "social_rent", 20.0),
+        _tenure_fact("local_authority", "E06000001", "owned_outright", 30.0),
+        _tenure_fact("msoa", "E02000001", "all_households", 50.0),
+    ]
+    assert tool._tenure_shares(facts) == hv.tenure_shares(facts)
+    # Its pinned NSPL is the one the committed stock was built on, so the
+    # cache under the old name stands for it.
+    assert tool._committed_nspl_sha256() == (
+        "f5d86a518d360cad67f0304f25574d3ce619f242d9ea6385a120abab7c15b15c"
     )
-    path = _ppd_csv(tmp_path)
-    files = {"2020": {"filename": path.name}}
+    path, status = tool._dwelling_cache_path(
+        tmp_path, _PPD_PINS, 202512, nspl_sha256="cc" * 32
+    )
+    assert status == "absent"
+    assert path.name == hv.dwelling_cache_name(
+        _PPD_PINS,
+        stock_yyyymm=202512,
+        method=tool.METHOD_VERSION,
+        nspl_sha256="cc" * 32,
+    )
+    ppd = _ppd_csv(tmp_path)
+    files = {"2020": {"filename": ppd.name}}
     ours, our_receipts = hv.build_dwelling_table(
         tmp_path, files, _postcode_index(), stock_yyyymm=202512
     )
