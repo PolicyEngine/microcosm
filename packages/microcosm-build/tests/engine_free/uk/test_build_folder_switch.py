@@ -932,13 +932,13 @@ def test_delete_old_layout_without_write_lists_the_old_files_and_changes_nothing
     assert exit_code == 0, error_output
     expected = old_layout_files(hub.files_at())
     # The root dataset files and every file directly in a release folder,
-    # including the June 2023 build's own release folder.
+    # including the June 2023 build's own release folder. (The dense build
+    # was only ever under its tag, so its release folder is not on main.)
     assert {
         "microcosm_uk_2024_25.h5",
         "microcosm_uk_2024_25_calibration.npz",
         "populace_uk_2023.h5",
         f"releases/{NATIONAL}/release_manifest.json",
-        f"releases/{DENSE}/release_manifest.json",
         JUNE_2023_MANIFEST,
     } <= expected
     assert report.get("delete") == sorted(expected)
@@ -1025,8 +1025,12 @@ def test_delete_old_layout_refuses_while_a_pointer_file_is_there(hub, capsys):
     exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
 
     assert exit_code == 1, error_output
-    assert any("latest.json" in problem for problem in report.get("problems", []))
+    assert "latest.json is a pointer file" in error_output
     assert (hub.main, len(hub.made)) == (head, commits)
+    # Without --write the report lists the problem too.
+    exit_code, report, _ = run_step(hub, capsys, DELETE_STEP)
+    assert exit_code == 1
+    assert any("latest.json" in problem for problem in report.get("problems", []))
 
 
 def test_delete_old_layout_refuses_a_build_folder_the_record_does_not_list(hub, capsys):
@@ -1042,8 +1046,13 @@ def test_delete_old_layout_refuses_a_build_folder_the_record_does_not_list(hub, 
     exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
 
     assert exit_code == 1, error_output
-    assert any(unlisted in problem for problem in report.get("problems", []))
+    assert f"{unlisted}/ is a build folder" in error_output
     assert (hub.main, len(hub.made)) == (head, commits)
+    exit_code, report, _ = run_step(hub, capsys, DELETE_STEP)
+    assert exit_code == 1
+    assert any(unlisted in problem for problem in report.get("problems", []))
+    # Its files are not in the deletion list.
+    assert not any(path.startswith(f"{unlisted}/") for path in report["delete"])
 
 
 def test_delete_old_layout_again_finds_nothing_to_delete(hub, capsys):

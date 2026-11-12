@@ -609,8 +609,9 @@ into `microcosm-us-2024-annual`, carrying its base national build's files
 calibrated national build, not yet a source enrichment.
 
 **The switch.** `microcosm.build.build_folder_switch` moves a repository over,
-once, in two steps. Each step only reads the repository and prints, as JSON,
-what it would do, unless given `--write`:
+once, in two steps, and a third step later deletes what the old layout left
+on `main`. Each step only reads the repository and prints, as JSON, what it
+would do, unless given `--write`:
 
 ```bash
 # 1. Copy each tagged build into its folder, one commit per build; run it
@@ -623,6 +624,9 @@ uv run python -m microcosm.build.build_folder_switch switch <owner/repository> \
   [--include <tag>=<release>] [--exclude <tag>] \
   [--retire-pointer <latest file>] [--current <release>=<build>] \
   [--default <release>] [--finished-branch <release-staging/ branch>] [--write]
+# 3. Later, in one commit, delete the old layout's files from main.
+uv run python -m microcosm.build.build_folder_switch delete-old-layout \
+  <owner/repository> [--write]
 ```
 
 Run the switch step only while nobody publishes to the repository, and give
@@ -650,7 +654,26 @@ branch for a build that is already tagged, but one older than 2026-09-23
 runs (the US leftover branch is one), so name a branch only while nobody
 publishes. Each build keeps the date of its
 tagged commit as `published_at`, and each pointer file's build becomes its
-release's current build. The module's docstring describes both steps in full.
+release's current build.
+
+After the switch, `main` still holds the tagged layout's files: those each
+tagged build overwrote directly in `releases/<release>/`, each
+release-per-build tag's `releases/<tag>/` folder (every US build, the June
+2023 UK build and builds the switch did not move), and the dataset files
+(`.h5`, `.hdf5`, `.npz`) at the repository's root. The `delete-old-layout`
+step deletes all of them in one commit, so build folders and `releases.json`
+are the only layout. It keeps `releases.json`, every build folder it lists,
+the other root files (`.gitattributes`, `README.md`) and every directory
+outside `releases/`, such as the UK repository's `staged/`. It refuses a
+repository without `releases.json` or with a `latest*.json` file, and a build
+folder `releases.json` does not list, which it never deletes. It runs the
+emitter interface's repository and commit checks on what remains, and takes
+none of the other steps' options. Every old build stays readable at its tag,
+which is where Microcosm's tag references read it, but anything that reads
+those paths from `main` stops finding them, so run it only once nothing does.
+The commit removes the files from `main` only: their large (LFS) objects stay
+in the repository's history. A second run finds nothing to delete. The
+module's docstring describes all three steps in full.
 
 `microcosm-publish-release-build` publishes only the two manifests, the
 artifacts the release manifest declares and the checksum ledger. The US
