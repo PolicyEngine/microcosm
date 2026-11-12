@@ -482,8 +482,12 @@ build the directory's Logbook spool rows name, else the run ID, with a note.
 A retried output directory keeps an earlier attempt's row beside the new
 one, and the spool names rows by digest, so rows that name more than one
 build stop the command before its emitter starts, asking for `--build-id`,
-when nothing else records the build. Without `--run-id` or a staged record,
-the bundle is staged under that build ID too. The release comes from
+when nothing else records the build. Without `--run-id`, the bundle is
+staged under the run ID of the manifest's staged record, else the one
+`staged_manifest.json` records (a build staged under `--staging-run-id` and
+interrupted before its record was written keeps that run), else that build
+ID; so `--local-only` stops on such rows too, unless `--run-id` names the
+run. The release comes from
 the manifest's `release_id`. A hand-over it resumes keeps what the build
 named. A build ID the interface refuses stops the command before its emitter
 starts.
