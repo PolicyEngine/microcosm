@@ -249,7 +249,51 @@ def test_a_published_build_waits_until_the_collector_accepts_its_submissions(
         "error_code": None,
     }
     assert outcome.succeeded
-    assert "warning" not in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert (
+        f"build {UK_NATIONAL_BUILD} of {UK_NATIONAL_RELEASE_ID} is on Hugging Face; "
+        "waiting up to 10 minutes for the collector to accept its submissions..." in err
+    )
+    assert "warning" not in err
+
+
+def test_the_collector_receipt_is_asked_for_by_the_emitters_hand_over_id(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    clock: Clock,
+) -> None:
+    """The emitter keeps the collector row under the hand-over ID its receipt
+    names, so that is the ID the command asks about."""
+    emitter_handover_id = "f" * 32
+    client = FakeEmitterClient(
+        release_receipts=[{"handover_id": emitter_handover_id}],
+        collector_receipts=[{"status": "succeeded", "attempts": 1}],
+    )
+
+    outcome = release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client
+    )
+
+    assert client.collector_receipt_requests == [emitter_handover_id]
+    assert outcome.collector_receipt["status"] == "succeeded"
+
+
+def test_a_published_build_the_emitter_has_no_collector_row_for_is_not_waited_for(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+    clock: Clock,
+) -> None:
+    client = FakeEmitterClient()
+
+    outcome = release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client
+    )
+
+    assert len(client.collector_receipt_requests) == 1
+    assert clock.slept == []
+    assert outcome.collector_receipt is None
+    assert outcome.as_json()["collector_submission"] is None
+    assert outcome.succeeded
 
 
 def test_refused_collector_settings_are_reported_and_the_publication_succeeds(

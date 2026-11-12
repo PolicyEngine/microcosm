@@ -35,7 +35,7 @@ database or network request:
 - ``collector_submission_receipt`` answers ``None``, as an emitter does
   whose collector submissions are off, unless ``collector_receipts`` scripts
   the answers for every hand-over (each ask takes the next one; the last one
-  repeats).
+  repeats; ``None`` stands for an emitter that does not answer).
 
 The emitter's own tests cover the process, its queues and the Hub.
 """
@@ -198,7 +198,7 @@ class FakeEmitterClient:
         deliver: bool = True,
         answer_receipts: bool = True,
         release_receipts: Sequence[Mapping[str, Any]] | None = None,
-        collector_receipts: Sequence[Mapping[str, Any]] | None = None,
+        collector_receipts: Sequence[Mapping[str, Any] | None] | None = None,
     ) -> None:
         self._modules = frozenset(modules)
         self.accept_run_files = accept_run_files
@@ -779,7 +779,9 @@ class FakeEmitterClient:
         answers = self._collector_answers.setdefault(
             handover_id,
             [
-                {
+                None
+                if receipt is None
+                else {
                     "handover_id": handover_id,
                     "destination": "collector",
                     "status": "pending",
@@ -791,7 +793,8 @@ class FakeEmitterClient:
                 for receipt in self.collector_receipts
             ],
         )
-        return dict(answers.pop(0) if len(answers) > 1 else answers[0])
+        answer = answers.pop(0) if len(answers) > 1 else answers[0]
+        return None if answer is None else dict(answer)
 
     def close(self) -> None:
         self.calls.append("close")

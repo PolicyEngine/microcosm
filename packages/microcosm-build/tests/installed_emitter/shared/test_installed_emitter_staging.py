@@ -419,7 +419,10 @@ def test_the_installed_emitter_uploads_the_bundle_in_one_commit(
 
 
 def test_a_modal_runs_copied_back_outputs_are_staged_by_the_re_stage_command(
-    tmp_path: Path, stand_in_hub: StandInHub, installed_emitter: InstalledEmitter
+    tmp_path: Path,
+    stand_in_hub: StandInHub,
+    installed_emitter: InstalledEmitter,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """After ``modal volume get``, the UK re-stage command checks the build
     manifest and the outputs against the stage's receipt, starts the installed
@@ -478,6 +481,15 @@ def test_a_modal_runs_copied_back_outputs_are_staged_by_the_re_stage_command(
     )
     assert staged["run_id"] == RUN_ID
     assert manifest["staged_dataset_handover"]["run_dir"] == str(copied.resolve())
+    # The hand-over names the build, so after the commit the command waited
+    # for the collector. The fixture's collector port is closed: the first
+    # attempt after the commit failed, which ended the wait, and the
+    # submissions stay queued.
+    assert (
+        f"warning: the collector had not accepted the submissions of the staged "
+        f"dataset bundle {PREFIX} when the build stopped waiting "
+        "(COLLECTOR_UNAVAILABLE)" in capsys.readouterr().err
+    )
 
 
 def test_a_commit_on_a_moved_head_is_refused_then_made_on_the_new_head(

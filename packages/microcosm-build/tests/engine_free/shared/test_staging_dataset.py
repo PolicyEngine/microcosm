@@ -633,7 +633,13 @@ def test_a_described_bundle_waits_until_the_collector_accepts_its_submissions(
     assert clock.slept == [staging_dataset.RECEIPT_POLL_SECONDS] * 2
     assert staged.collector_receipt is not None
     assert staged.collector_receipt["status"] == "awaiting_final_status"
-    assert "warning" not in capsys.readouterr().err
+    err = capsys.readouterr().err
+    # The build says what it waits for, since the bundle has already landed.
+    assert (
+        f"the staged dataset bundle staged/{RUN_ID} is on Hugging Face; waiting "
+        "up to 10 minutes for the collector to accept its submissions..." in err
+    )
+    assert "warning" not in err
 
 
 def test_the_first_failed_attempt_after_the_commit_ends_the_wait(tmp_path, capsys):
@@ -683,7 +689,7 @@ def test_the_first_failed_attempt_after_the_commit_ends_the_wait(tmp_path, capsy
             "COLLECTOR_FOLDER_TOO_LONG",
             "its Hugging Face folder is longer than the collector accepts",
         ),
-        ("NOT_STAGED_ON_HUGGING_FACE", "Hugging Face refused it"),
+        ("NOT_STAGED_ON_HUGGING_FACE", "its Hugging Face upload failed or was refused"),
         ("A_CODE_FROM_A_LATER_EMITTER", "the emitter skipped them"),
     ],
 )
@@ -707,6 +713,15 @@ def test_a_skipped_collector_receipt_is_a_warning_and_the_bundle_stays_staged(
         f"warning: the collector receives nothing of the staged dataset bundle "
         f"staged/{RUN_ID}: {explanation} ({code})." in warning
     )
+    # Submissions use the Hugging Face credential: a collector token given
+    # in the environment only sends telemetry, so the advice never says to
+    # set one.
+    advice = (
+        "Collector submissions use the Hugging Face credential; a collector "
+        "token given in MICROCOSM_COLLECTOR_TOKEN only sends telemetry."
+    )
+    assert (advice in warning) is (code == "COLLECTOR_SETTINGS_REFUSED")
+    assert "set together" not in warning
 
 
 def test_submissions_not_accepted_when_the_wait_ends_stay_queued(tmp_path, capsys):
@@ -758,6 +773,13 @@ def test_submissions_not_accepted_when_the_wait_ends_stay_queued(tmp_path, capsy
             f"the submissions of the staged dataset bundle staged/{RUN_ID} to the "
             "collector failed (COLLECTOR_REFUSED_422).",
         ),
+        (
+            "timed_out",
+            "FINAL_STATUS_TIMED_OUT",
+            "the collector gave no final status for the submissions of the staged "
+            f"dataset bundle staged/{RUN_ID} within a day of accepting them "
+            "(FINAL_STATUS_TIMED_OUT).",
+        ),
     ],
 )
 def test_a_submission_the_collector_turned_down_is_a_warning(
@@ -773,6 +795,45 @@ def test_a_submission_the_collector_turned_down_is_a_warning(
 
     assert staged.delivery["status"] == "uploaded"
     assert f"warning: {warned}" in capsys.readouterr().err
+
+
+def test_an_emitter_that_stops_answering_ends_the_wait(tmp_path, capsys):
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[{"status": "pending", "attempts": 1}, None],
+    )
+
+    staged = _stage(bundle, emitter, collector=PROVENANCE)
+
+    assert len(emitter.collector_receipt_requests) == 2
+    assert staged.collector_receipt["status"] == "pending"
+    assert "the collector had not accepted the submissions" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("attempts", [None, "1"], ids=["missing", "text"])
+def test_a_receipt_without_a_usable_attempt_count_waits_the_whole_time(
+    tmp_path, attempts
+):
+    bundle = _bundle(tmp_path)
+    receipt = {
+        "status": "pending",
+        "error_code": "COLLECTOR_UNAVAILABLE",
+        "attempts": attempts,
+    }
+    emitter = FakeEmitterClient(hub_api=FakeHub(tmp_path), collector_receipts=[receipt])
+    clock = Clock()
+
+    staging_dataset.stage_bundle(
+        bundle,
+        emitter=emitter,
+        repository=REPOSITORY,
+        clock=clock,
+        sleep=clock.sleep,
+        collector=PROVENANCE,
+    )
+
+    assert sum(clock.slept) == 600
 
 
 def test_a_bundle_that_has_not_landed_is_asked_about_once_and_not_waited_for(
