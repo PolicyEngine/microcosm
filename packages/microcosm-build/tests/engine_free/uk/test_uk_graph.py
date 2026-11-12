@@ -1142,7 +1142,6 @@ _KERNEL_CORE_NAMES: dict[tuple[str, str], str] = {
         item: GRAPH_RECORD_REASONS[item]
         for item in (
             ("microcosm.graph.decl", "ArtifactType"),
-            ("microcosm.graph.decl", "ArtifactOutput"),
             ("microcosm.graph.decl", "StructuralDelta"),
             ("microcosm.graph.kernel", "KernelRole"),
             ("microcosm.graph.kernel", "Capabilities"),
@@ -1175,8 +1174,9 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
         "microcosm.build.uk_runtime.graph_evidence",
         "require_uk_spine_gate_admission",
     ): (
-        "refuses a node unless the spine gates admitted its input; the dense "
-        "sample node calls it before it computes anything"
+        "refuses a node unless the spine gates admitted its input; the spine "
+        "stage after the assembled gate and the dense measures call it before "
+        "they compute anything"
     ),
     (
         "microcosm.build.uk_runtime.graph_terminal",
@@ -1281,21 +1281,22 @@ _KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
     },
     ("microcosm.build.uk_runtime.geographic_clones", "ladder_clone_index_column"): (
         "names the geographic clone index columns. geographic_expand writes "
-        "them on every spine from microcosm#931 group (b) on, and the dense "
-        "expand on a spine built before it, and both keys hash "
-        "geographic_clones: geographic_expand counts by lineage, and "
-        "uk.full.expand@1 hashes it beside rowwise_dataset. The national "
+        "them on every spine from microcosm#931 group (b) on, and its key "
+        "hashes geographic_clones, since it counts by lineage. The national "
         "gates, whose support-family fold reads them on the national frame, "
-        "hash it too. The calibrated gates' support-family fold reads the "
-        "household's on the dense frame, and the dense line expands only a "
-        "spine without them until group (c), so their key chains on the "
-        "expand's. The dense measures read it only to split their frame into "
-        "the engine blocks their engine_blocks parameter asks for, and refuse "
-        "a frame without it; their population is the expand's, so their key "
-        "chains on it too. The national problem resolves its measures in one "
-        "block, which never reads it (full_measure._engine_block_frames; "
-        "checked); its early refusal of a clone-first spine reads it only "
-        "through refuse_clone_first_national_spine, a refusal-only helper"
+        "hash it too. The dense line builds on the spine's version as it "
+        "stands (microcosm#931): the calibrated gates' support-family fold "
+        "reads the household's on the dense frame, and the dense measures "
+        "read it only to split their frame into the engine blocks their "
+        "engine_blocks parameter asks for, and refuse a frame without it. "
+        "Their population is the spine's version, so their keys chain on "
+        "geographic_expand's on a composed spine, and on the bound "
+        "checkpoint's on a bound one, whose kernel hashes geographic_clones "
+        "for the clone count it holds its sidecar's to. The national problem "
+        "resolves its measures in one block, which never reads it "
+        "(full_measure._engine_block_frames; checked); its early refusal of a "
+        "clone-first spine reads it only through "
+        "refuse_clone_first_national_spine, a refusal-only helper"
     ),
 }
 #: Where the kernel rule stops, each with why a kernel that names the
@@ -2296,25 +2297,24 @@ def _kernel_rule_walks() -> MappingProxyType:
 
 def test_the_kernel_rule_sees_every_kernel_the_uk_runtime_defines() -> None:
     """The kernels the rule enumerates are every kernel class the UK runtime
-    and the shared atomic geography define, so a new one cannot escape it,
-    and the gate batteries' and whole-registry kernels are among them, each
-    listed once (microcosm#931)."""
+    defines, so a new one cannot escape it, and the gate batteries' and
+    whole-registry kernels are among them, each listed once (microcosm#931).
+    The shared atomic-geography kernels are not the UK's: a geography-first
+    spine assigns its areas in its own stages, and the dense line, which ran
+    them, takes its areas from the spine (microcosm#931)."""
     from microcosm.build import graph_atomic_geography
     from microcosm.build.uk_runtime import graph_kernels
 
     files = sorted(Path(graph_kernels.__file__).parent.glob("*.py"))
-    files.append(Path(graph_atomic_geography.__file__))
     defined = kernel_classes_defined(
-        (
-            graph_atomic_geography.__name__
-            if path.stem == "graph_atomic_geography"
-            else f"{graph_kernels.__package__}.{path.stem}",
-            path,
-        )
-        for path in files
+        (f"{graph_kernels.__package__}.{path.stem}", path) for path in files
     )
     kernels = _uk_graph_kernels()
     assert {type(kernel) for kernel in kernels.values()} == defined
+    shared = kernel_classes_defined(
+        [(graph_atomic_geography.__name__, Path(graph_atomic_geography.__file__))]
+    )
+    assert shared and not shared & {type(kernel) for kernel in kernels.values()}
     listed = (set(_GATE_BATTERY_KERNELS), set(_WHOLE_REGISTRY_KERNELS))
     for table in listed:
         assert table <= set(kernels)
@@ -2396,12 +2396,13 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     )
     assert found.met == set(_KERNEL_STOPS), sorted(found.met ^ set(_KERNEL_STOPS))
     # The clone index columns' reason for the measures. The dense measures'
-    # population is the expand's: append_uk_target_nodes defaults it, and the
-    # full build leaves the default. The national problem resolves its
-    # measures in one block, and the engine blocks return a one-block frame
-    # before they read the columns' name.
+    # population is the spine's version (microcosm#931):
+    # append_uk_target_nodes takes it with no default, and the full build
+    # passes it. The national problem resolves its measures in one block, and
+    # the engine blocks return a one-block frame before they read the
+    # columns' name.
     population = inspect.signature(graph_targets.append_uk_target_nodes).parameters
-    assert population["population"].default == "uk.full.expand"
+    assert population["population"].default is inspect.Parameter.empty
     # And the premises of their reason for the writers. On the spine, the
     # geographic expansion alone writes the clone index columns, and its key
     # hashes geographic_clones; the spine build installs it at the clone count
@@ -2423,9 +2424,13 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     assert geographic_clones.__name__ in hashed_module_names(expand, graph_kernels)
     assert spine_build._GEOGRAPHIC_CLONES == 1
     # The national gates fold the national frame, which carries the columns
-    # from a clone-first spine, so their key hashes the leaf.
+    # from a clone-first spine, so their key hashes the leaf; so does the
+    # bound checkpoint's, which counts the frame's clones.
     national_gates = kernels["uk.full.national-gates@1"]
     assert geographic_clones.__name__ in _hashed_modules(national_gates)
+    assert geographic_clones.__name__ in _hashed_modules(
+        kernels["uk.full.bound_spine@1"]
+    )
 
     def calls(module, name: str) -> list:
         tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
@@ -2438,8 +2443,7 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
 
     appending = calls(graph_build, "append_uk_target_nodes")
     assert appending and all(
-        "population" not in {keyword.arg for keyword in call.keywords}
-        for call in appending
+        "population" in {keyword.arg for keyword in call.keywords} for call in appending
     )
     resolving = calls(graph_national, "resolve_uk_full_measures")
     assert resolving and all(
@@ -2461,22 +2465,14 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     assert all(
         "ladder_clone_index_column" not in statement for statement in statements[:one]
     )
-    # The dense population kernels that share _PopulationKernel's hash
-    # (sample, normalize, expand, locations, geography mapping, pool and
-    # gate) mint their clones through rowwise_geography's helpers.
-    shared = [
-        kernel
-        for kernel in kernels.values()
-        if type(kernel).implementation_hash
-        is graph_population._PopulationKernel.implementation_hash
-    ]
-    assert {kernel.ref for kernel in shared} >= {
-        "uk.full.sample@1",
-        "uk.full.expand@1",
-        "uk.full.geography_gate@1",
-    }
-    for kernel in shared:
-        assert rowwise_geography.__name__ in _hashed_modules(kernel), kernel.ref
+    # The dense line mints no clone of its own (microcosm#931): its one
+    # population kernel, the keep-all pool checkpoint, hashes neither the
+    # clone helpers nor the leaf.
+    pool = kernels["uk.full.pool@1"]
+    assert type(pool) is graph_population.UKPoolCheckpointKernel
+    assert not {rowwise_geography.__name__, geographic_clones.__name__} & set(
+        _hashed_modules(pool)
+    )
 
 
 def test_each_gate_battery_phase_keys_on_its_own_reach() -> None:
@@ -3316,8 +3312,11 @@ def test_no_spine_or_national_line_kernel_hashes_the_source_codecs() -> None:
     the spine through it, and no kernel of the national line, whose root is
     the bound spine checkpoint, hashes it either: each kernel the national
     graph's nodes run, read from that graph, and the readback of its output.
-    The atomic geography kernels, which read their sources' bytes through it,
-    do."""
+    The shared atomic geography kernels, which read their sources' bytes
+    through it, do; the UK registers none of them, since a geography-first
+    spine assigns its areas in its own stages and the dense line takes them
+    from it (microcosm#931)."""
+    from microcosm.build.graph_atomic_geography import AtomicSupportImportKernel
     from microcosm.build.uk_runtime import graph_national
     from microcosm.build.uk_runtime.graph_build import bound_spine_graph
     from microcosm.build.uk_runtime.national_doctrine import uk_doctrine_with_overrides
@@ -3348,7 +3347,8 @@ def test_no_spine_or_national_line_kernel_hashes_the_source_codecs() -> None:
     kernels = _uk_graph_kernels()
     for ref in sorted(line | {graph_national.UKNationalReadbackKernel.ref}):
         assert codecs.__name__ not in _hashed_modules(kernels[ref]), ref
-    assert codecs.__name__ in _hashed_modules(kernels["geography.support_import@1"])
+    assert AtomicSupportImportKernel.ref not in kernels
+    assert codecs.__name__ in _hashed_modules(AtomicSupportImportKernel())
 
 
 def test_the_frame_totals_the_uk_corrections_target_are_numpys_sums() -> None:

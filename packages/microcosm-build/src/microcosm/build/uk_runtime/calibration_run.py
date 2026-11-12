@@ -61,6 +61,7 @@ from microcosm.build.uk_runtime.gate_scopes import (
     UK_SPINE_GATE_SCOPE,
     uk_scoped_gate_manifest,
 )
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 
 # Moved to ledger_surface, which the UK target kernels hash, so an edit
 # elsewhere in this module no longer re-keys them (microcosm#1492). Kept
@@ -425,6 +426,14 @@ def _assert_spine_sidecar_binds_frame(
     sidecar: Mapping[str, object],
     frame: Frame,
 ) -> None:
+    """Refuse a sidecar that describes another frame than the one bound.
+
+    The row counts, the household weight kind and total, and the geographic
+    clone count K (microcosm#931): a sidecar written before the spine recorded
+    its K describes a spine of one clone, and the frame's K is counted from
+    its clone index (``geographic_clone_count``). The refusals print counts,
+    the weight kind and total and K, never an id or a value of a row.
+    """
     expected_counts = sidecar.get("entity_row_counts")
     actual_counts = {entity: int(len(frame.table(entity))) for entity in frame.entities}
     if expected_counts != actual_counts:
@@ -447,6 +456,15 @@ def _assert_spine_sidecar_binds_frame(
         raise ValueError(
             "input H5 build sidecar household_weight_total mismatch: "
             f"sidecar {expected_total!r}, frame {actual_total!r}"
+        )
+    expected_clones = sidecar.get("geographic_clone_count", 1)
+    actual_clones = geographic_clone_count(
+        frame.table("household"), stage="The bound spine"
+    )
+    if type(expected_clones) is not int or expected_clones != actual_clones:
+        raise ValueError(
+            "input H5 build sidecar geographic_clone_count mismatch: "
+            f"sidecar {expected_clones!r}, frame {actual_clones!r}"
         )
 
 
@@ -538,6 +556,16 @@ def spine_provenance_from_sidecar(
         # Empty for a spine built before the marker; the release assemblers
         # rederive it from the stages either way (microcosm#1095).
         "spi_public_use_tape": dict(sidecar.get("spi_public_use_tape") or {}),
+        # What the dense line takes from the spine it binds (microcosm#931):
+        # its clone count K (one where a sidecar predates the record), its
+        # geography binding (empty before the spine assigned areas), its
+        # sampling receipt (none at f100) and its release posture.
+        "geographic_clone_count": sidecar.get("geographic_clone_count", 1),
+        "geography": dict(sidecar.get("geography") or {}),
+        "sampling": (
+            None if sidecar.get("sampling") is None else dict(sidecar["sampling"])
+        ),
+        "release_posture": sidecar.get("release_posture"),
     }
 
 

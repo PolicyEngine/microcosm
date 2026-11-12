@@ -331,17 +331,11 @@ def test_graph_export_continuation_reuses_numerics_and_validates_recreated_file(
 
 @pytest.mark.parametrize("households", [None, 2])
 def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
-    from microcosm.build.uk_runtime.atomic_area_support import (
-        uk_atomic_assignment_definition,
-    )
     from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
     from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
     from microcosm.build.uk_runtime.graph_calibration import UKGraphCalibrationConfig
     from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
     from microcosm.graph import compile_graph
-    from test_support.microcosm_build.uk_atomic_support_fixtures import (
-        toy_support_payloads,
-    )
 
     raw = uk_spine_graph(source_mode="split")
     config = UKFullBuildConfig(
@@ -351,9 +345,6 @@ def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
     full = uk_full_graph(
         config,
         spine=raw,
-        atomic_geography_definition=uk_atomic_assignment_definition(
-            toy_support_payloads(), seed=config.seed
-        ),
     )
     graph = append_uk_full_gate_nodes(
         full.graph,
@@ -826,24 +817,15 @@ def test_holdout_kernel_records_an_unrequested_holdout(monkeypatch):
 
 
 def test_full_gate_nodes_skip_the_holdout_unless_requested():
-    from microcosm.build.uk_runtime.atomic_area_support import (
-        uk_atomic_assignment_definition,
-    )
     from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
     from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
     from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
-    from test_support.microcosm_build.uk_atomic_support_fixtures import (
-        toy_support_payloads,
-    )
 
     raw = uk_spine_graph(source_mode="split")
     config = UKFullBuildConfig(calibration_year=2025)
     full = uk_full_graph(
         config,
         spine=raw,
-        atomic_geography_definition=uk_atomic_assignment_definition(
-            toy_support_payloads(), seed=config.seed
-        ),
     )
     common = {
         "calibration": full.calibration,
@@ -861,15 +843,9 @@ def test_full_gate_nodes_skip_the_holdout_unless_requested():
 
 
 def _gate_nodes(**extra):
-    from microcosm.build.uk_runtime.atomic_area_support import (
-        uk_atomic_assignment_definition,
-    )
     from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
     from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
     from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
-    from test_support.microcosm_build.uk_atomic_support_fixtures import (
-        toy_support_payloads,
-    )
 
     raw = uk_spine_graph(source_mode="split")
     config = UKFullBuildConfig(calibration_year=2025)
@@ -877,9 +853,6 @@ def _gate_nodes(**extra):
         config,
         spine=raw,
         review_date="2026-09-10",
-        atomic_geography_definition=uk_atomic_assignment_definition(
-            toy_support_payloads(), seed=config.seed
-        ),
     )
     return append_uk_full_gate_nodes(
         full.graph,
@@ -1607,3 +1580,34 @@ def test_each_full_gate_node_carries_its_own_phase_code() -> None:
         assert params["phase"] == phase
         assert {key for key in params if key.endswith("_code")} == {f"{phase}_code"}
         assert params[f"{phase}_code"] == UK_FULL_GATE_PHASE_CODE[phase]()
+
+
+@pytest.mark.parametrize("clones", [1, 3])
+def test_what_a_geography_first_spine_adds_to_the_export_is_allow_listed(clones):
+    """The dense line exports the bound spine as it stands (microcosm#931):
+    every column the spine's clones, keys and areas add to the surface the
+    export-surface gate reads is reviewed in UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+    so the gate needs no list change (the dense allow-list pin)."""
+    from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
+    from microcosm.build.uk_runtime.terminal_gates import (
+        UK_ALLOWED_EXTRA_EXPORT_COLUMNS,
+        uk_export_candidate_columns,
+    )
+    from test_support.microcosm_build.uk_full_population_graph import (
+        source_frame,
+        spine_frame,
+    )
+
+    before = uk_export_candidate_columns(uk_release_export_frame(source_frame()))
+    after = uk_export_candidate_columns(uk_release_export_frame(spine_frame(clones)))
+    added = after - before
+    assert {
+        "household.household_clone_index",
+        "household.geography_household_key",
+        "household.atomic_area_code",
+        "household.local_authority",
+        "household.in_rural_fuel_duty_relief_area",
+    } <= added
+    assert added <= set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS), sorted(
+        added - set(UK_ALLOWED_EXTRA_EXPORT_COLUMNS)
+    )

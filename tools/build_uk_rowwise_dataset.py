@@ -8,6 +8,12 @@ seam. The driver clones the entity tables, assigns each household a finest
 available geography row (the ratified OA ladder, or the crosswalk sampler as
 the coverage-check path), and writes diagnostics that prove coverage, weight
 preservation, and per-area support.
+
+It serves spines without geographic clone indices. A clone-first spine
+carries its clones already and is refused here, at any clone count; the dense
+graph (``microcosm-build-uk --release-role dense``) builds on a
+geography-first spine as it stands, its clones and areas included
+(microcosm#931).
 """
 
 from __future__ import annotations

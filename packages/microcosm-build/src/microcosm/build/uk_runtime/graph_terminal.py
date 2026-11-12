@@ -1886,12 +1886,6 @@ def rowwise_candidate_manifest_from_graph(
     holdout = json.loads(
         _graph_payload(final_manifest, store, "uk.full.holdout", "holdout")
     )
-    geography_gate = json.loads(
-        _graph_payload(final_manifest, store, "uk.full.geography_gate", "gate")
-    )
-    sampling = json.loads(
-        _graph_payload(final_manifest, store, "uk.full.sample", "sampling")
-    )["receipt"]
     size_receipt = _optional_graph_json(
         final_manifest, store, "uk.full.size_refit", "size"
     )
@@ -1901,17 +1895,33 @@ def rowwise_candidate_manifest_from_graph(
         )
         or {}
     )
-    # The request's geography binding (assignment mode, definition digest,
-    # support pins, identity column, stream) travels in the export descriptor.
+    # The request's bindings travel in the export descriptor: the spine the
+    # build binds (its clone count, its sampling and its release posture) and
+    # the spine's geography binding (assignment, identity column, definition
+    # digest, support pins, stream, register and clone count), since the
+    # dense line takes its pool, sampling and areas from the spine
+    # (microcosm#931). The ladder gate is the descriptor's own geography
+    # integrity check, on the calibrated release frame.
     export_descriptor = (
         _optional_graph_json(
             final_manifest, store, "uk.full.export.prepare", "export_descriptor"
         )
         or {}
     )
-    geography_binding = dict(
-        (export_descriptor.get("bindings") or {}).get("geography") or {}
-    )
+    request_bindings = dict(export_descriptor.get("bindings") or {})
+    geography_binding = dict(request_bindings.get("geography") or {})
+    spine_binding = dict(request_bindings.get("spine") or {})
+    if not isinstance(spine_binding.get("sampling"), Mapping):
+        raise ValueError(
+            "The export descriptor's request binds no spine sampling: the dense "
+            "line's rung is its spine's (microcosm#931)."
+        )
+    sampling = dict(spine_binding["sampling"])
+    spine_fraction = float(sampling["fraction"])
+    ladder_gate = {
+        **dict(export_descriptor.get("geography_integrity") or {}),
+        "phase": "post_calibration",
+    }
     enforcement = dict(gate_document["enforcement"])
     gate_rows = _gate_rows(gate_document)
     local_scope = {
@@ -1935,7 +1945,7 @@ def rowwise_candidate_manifest_from_graph(
     )
     size_drift = size_doctrine_drift(args)
     releasable, release_posture = release_verdict(
-        sample_fraction=args.sample_fraction,
+        sample_fraction=spine_fraction,
         engine_blocks=args.engine_blocks,
         release_blocking_gates_passed=bool(
             enforcement["release_blocking_gates_passed"]
@@ -2005,8 +2015,7 @@ def rowwise_candidate_manifest_from_graph(
             "uk.full.gates.calibrated",
             "uk.full.holdout",
             "uk.full.package",
-            "uk.full.sample",
-            "uk.full.geography_gate",
+            "uk.full.export.prepare",
             "uk.full.size_refit",
             "uk.full.spine_checkpoint",
         }
@@ -2060,8 +2069,8 @@ def rowwise_candidate_manifest_from_graph(
         "sampling": dict(sampling),
         "rung_surface": {
             **dict(bindings.get("rung_surface", {})),
-            "rung": UK_SAMPLE_RUNG_TOKENS[float(args.sample_fraction)],
-            "fraction": float(args.sample_fraction),
+            "rung": UK_SAMPLE_RUNG_TOKENS[spine_fraction],
+            "fraction": spine_fraction,
             "unreachable_check": "completed",
         },
         "outputs": {
@@ -2087,20 +2096,20 @@ def rowwise_candidate_manifest_from_graph(
                 ].nunique()
             ),
             "missing_geography_rows": 0,
-            "ladder_gate": {**geography_gate, "phase": "post_calibration"},
+            "ladder_gate": dict(ladder_gate),
             "assignment": geography_binding,
         },
-        "gate": {**geography_gate, "phase": "post_calibration"},
+        "gate": dict(ladder_gate),
         "weights": {
             "household_weight_kind": weight_kind,
             "household_weight_kind_chain": [
                 {"stage": "staging", "kind": "importance"},
                 *(
                     []
-                    if float(args.sample_fraction) == 1.0
+                    if spine_fraction == 1.0
                     else [{"stage": "sample", "kind": "importance"}]
                 ),
-                {"stage": "ladder_clone", "kind": "importance"},
+                {"stage": "geographic_expand", "kind": "importance"},
                 {"stage": "rowwise_calibration", "kind": weight_kind},
             ],
             "mass_log_records_before_calibration": len(frame.mass_log) - 1,

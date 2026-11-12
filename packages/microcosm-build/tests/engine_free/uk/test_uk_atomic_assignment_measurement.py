@@ -87,6 +87,34 @@ def _pool(
     return table
 
 
+def test_the_graph_route_refuses_now_the_spine_draws_the_areas(harness, tmp_path):
+    """The dense line no longer samples, clones or draws areas (microcosm#931),
+    so the tool's graph route, which ran the dense line's geography nodes,
+    refuses before it prepares anything, pointing at the spine's own draw.
+    Its command refuses the same way before it reads any input: every path
+    below is absent."""
+    with pytest.raises(ValueError) as refused:
+        harness.run_cell(None, law="keyed", k=1)
+    assert str(refused.value) == harness.GRAPH_ROUTE_REFUSAL
+    assert "atomic_area_assign" in str(refused.value)
+    assert "microcosm#931" in str(refused.value)
+    absent = tmp_path / "absent"
+    with pytest.raises(ValueError) as command:
+        harness.main(
+            [
+                *("--input-h5", str(absent / "spine.h5")),
+                *("--ladder", str(absent / "ladder.npz")),
+                *("--supports-dir", str(absent / "supports")),
+                *("--ledger-facts", str(absent / "ledger")),
+                *("--graph-store", str(absent / "store")),
+                *("--evidence-out", str(absent / "evidence")),
+                *("--provenance-json", str(absent / "provenance.json")),
+            ]
+        )
+    assert str(command.value) == harness.GRAPH_ROUTE_REFUSAL
+    assert not absent.exists()
+
+
 def _assigned(table, definition, supports):
     assigned = pd.concat(
         [table, geo.assign_atomic(table, definition, supports)], axis=1

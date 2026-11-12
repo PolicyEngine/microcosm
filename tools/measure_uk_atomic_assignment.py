@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Measure the UK geography assignment before and after the atomic operators.
 
-Runs the canonical full-build preparation (``full_build_cli.prepare_full_build``)
-on a bound spine checkpoint and executes the one declared graph through
-``uk.full.geography_gate`` for every cell of the grid
-{legacy sequential ladder draw, identity-keyed single-stage draw} x {K}; the
-same pool sample and expansion nodes serve both laws at a given K. Per cell it
-records, at design weights and with no solve:
+Its graph route ran the canonical full-build preparation
+(``full_build_cli.prepare_full_build``) on a bound spine checkpoint and
+executed the one declared graph through ``uk.full.geography_gate`` for every
+cell of the grid {legacy sequential ladder draw, identity-keyed single-stage
+draw} x {K}. The dense line no longer samples, clones or draws areas: it takes
+them from a geography-first spine (microcosm#931), so the route refuses
+(:func:`run_cell`) until the tool measures the spine's own draw, its
+``atomic_area_assign`` stage. Its measurement functions are unchanged. Per
+cell it recorded, at design weights and with no solve:
 
 * analytic expected rows per constituency and local authority (the legacy
   two-stage expectation from ``expected_uk_ladder_area_support``; the
@@ -47,7 +50,6 @@ import json
 import math
 import resource
 import sys
-import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -55,11 +57,9 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build import atomic_geography as geo
-from microcosm.build.uk_runtime import full_build_cli as cli
 from microcosm.build.uk_runtime.atomic_area_support import (
     ASSIGNMENT_COLUMNS,
     IDENTITY_COLUMN,
-    SOURCES,
     SYSTEMS,
 )
 from microcosm.build.uk_runtime.geography_ladder import (
@@ -75,7 +75,7 @@ from microcosm.build.uk_runtime.local_rowwise import uk_ladder_area_support_summ
 from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
 from microcosm.build.uk_runtime.size_evaluation import area_support_tables
-from microcosm.graph import ContentStore, compile_graph, run_graph
+from microcosm.graph import ContentStore
 
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _UK = _REPOSITORY / "packages/microcosm-build/src/microcosm/build/uk"
@@ -91,8 +91,14 @@ GEOGRAPHY_NODES = (
     "uk.full.geography_mapping",
     "uk.full.geography_gate",
 )
-SUPPORT_LABELS = dict(zip(SYSTEMS, ("ew", "scotland", "ni"), strict=True))
 CLONE = ladder_clone_index_column("household")
+#: Why the graph route refuses (microcosm#931); it names no input.
+GRAPH_ROUTE_REFUSAL = (
+    "The dense line no longer samples, clones or draws areas: it takes them "
+    "from a geography-first spine (microcosm#931), so this tool's graph route, "
+    "which ran the dense line's geography nodes, is refused until it measures "
+    "the spine's own draw, the atomic_area_assign stage."
+)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -149,102 +155,14 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _support_arguments(args: argparse.Namespace) -> list[str]:
-    pins = {}
-    if not args.no_pin_supports:
-        register = json.loads(args.provenance_json.read_text(encoding="utf-8"))
-        pins = {system: register["supports"][system]["sha256"] for system in SYSTEMS}
-    arguments = []
-    for system in SYSTEMS:
-        label = SUPPORT_LABELS[system]
-        arguments += [
-            f"--atomic-support-{label}",
-            str(args.supports_dir / f"{SOURCES[system]}.npz"),
-        ]
-        if system in pins:
-            arguments += [f"--atomic-support-sha256-{label}", pins[system]]
-    return arguments
-
-
-def _build_arguments(args: argparse.Namespace, *, law: str, k: int) -> list[str]:
-    arguments = [
-        "--input-h5",
-        str(args.input_h5),
-        "--ladder",
-        str(args.ladder),
-        "--ledger-facts",
-        str(args.ledger_facts),
-        "--out",
-        str(args.out or args.graph_store / "out"),
-        "--n-clones",
-        str(k),
-        "--seed",
-        str(args.seed),
-        "--sample-fraction",
-        str(args.sample_fraction),
-        "--sample-seed",
-        str(args.sample_seed),
-        "--expected-constituency-vintage",
-        args.expected_constituency_vintage,
-        "--graph-store",
-        str(args.graph_store),
-    ]
-    for flag, value in (
-        ("--input-sidecar", args.input_sidecar),
-        ("--input-spine-gates", args.input_spine_gates),
-        ("--input-sha256", args.input_sha256),
-        ("--ladder-sha256", args.ladder_sha256),
-        ("--calibration-year", args.calibration_year),
-    ):
-        if value is not None:
-            arguments += [flag, str(value)]
-    if law == "legacy":
-        arguments += ["--geography-assignment", "legacy"]
-    else:
-        arguments += ["--geography-assignment", "atomic", *_support_arguments(args)]
-    return arguments
-
-
-def _through_gates(graph):
-    """The ancestor-closed subgraph ending at both geography gates.
-
-    The shared ``uk.full.geography.gate`` is consumed by ``uk.full.pool``, not
-    by the UK distribution gate, so ``_through`` on the UK gate alone would
-    leave it out; both verdicts and both wall times are measured here.
-    """
-    endpoints = [
-        node.id
-        for node in graph.nodes
-        if node.id in {"uk.full.geography_gate", "uk.full.geography.gate"}
-    ]
-    needed = set()
-    for endpoint in endpoints:
-        needed.update(node.id for node in cli._through(graph, endpoint).nodes)
-    from dataclasses import replace
-
-    return replace(graph, nodes=tuple(n for n in graph.nodes if n.id in needed))
-
-
 def run_cell(args: argparse.Namespace, *, law: str, k: int):
-    """Prepare and execute the production graph through the UK geography gate."""
-    prepared = cli.prepare_full_build(
-        cli.parse_args(_build_arguments(args, law=law, k=k))
-    )
-    graph = _through_gates(prepared.full.graph)
-    started = time.perf_counter()
-    manifest = run_graph(
-        compile_graph(graph),
-        sources=prepared.sources,
-        store=ContentStore(args.graph_store),
-        kernels=prepared.kernels,
-        resume="auto",
-        retain_populations=("uk.full.expand",),
-    )
-    wall = time.perf_counter() - started
-    population = manifest.population("uk.full.expand")
-    household = population.table("household").copy()
-    household["household_weight"] = population.weights_for("household").values
-    return prepared, manifest, household, wall
+    """The graph route through the dense line's geography gate: refused.
+
+    The dense line's geography nodes retired with its area draw
+    (:data:`GRAPH_ROUTE_REFUSAL`); the measurement functions below still take
+    a household table and the definition and supports it was drawn on.
+    """
+    raise ValueError(GRAPH_ROUTE_REFUSAL)
 
 
 # --- expectations -----------------------------------------------------------
@@ -656,6 +574,9 @@ def _peak_rss_bytes() -> int:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
+    # The graph route refuses before the tool reads any input (microcosm#931);
+    # what follows is the receipt the re-pointed tool writes again.
+    raise ValueError(GRAPH_ROUTE_REFUSAL)
     ladder = load_uk_oa_ladder(args.ladder)
     area_regions = _area_regions(ladder)
     exclusions = json.loads((_UK / "local_area_support_exclusions.json").read_text())[

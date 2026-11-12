@@ -81,7 +81,6 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
         str(ladder_path),
         "--ladder-sha256",
         hashlib.sha256(ladder_path.read_bytes()).hexdigest(),
-        *_toy_support_flags(tmp_path),
         "--ledger-facts",
         str(tmp_path / "ledger"),
         "--ledger-facts-sha256",
@@ -90,8 +89,6 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
         feed.manifest_sha256,
         "--out",
         str(output_dir),
-        "--n-clones",
-        "2",
         "--seed",
         "7",
         "--dry-run",
@@ -100,7 +97,9 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
     assert cli.main(argv) == 0
     plan = json.loads(capsys.readouterr().out)
     assert plan["default_scope"] == "all_geographies"
-    assert plan["configuration"]["n_clones"] == 2
+    # The spine's clone count, one for a spine without the clone index
+    # (microcosm#931).
+    assert plan["configuration"]["n_clones"] == 1
     assert plan["configuration"]["seed"] == 7
     assert plan["configuration"]["calibration"]["epochs"] == 2000
     assert plan["configuration"]["target_families"] is None
@@ -111,11 +110,13 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
     }
     assert not output_dir.exists()
     assert not (output_dir / "logbook-spool").exists()
-    # --candidate-clone-counts plans one inventory per requested K.
-    assert cli.main([*argv, "--candidate-clone-counts", "1,2"]) == 0
-    inventories = json.loads(capsys.readouterr().out)
-    assert [item["n_clones"] for item in inventories] == [1, 2]
-    assert [item["configuration"]["n_clones"] for item in inventories] == [1, 2]
+    # A bound spine's K is fixed: candidate clone counts plan spine requests
+    # only (microcosm#931), and --n-clones only asserts the spine's K.
+    with pytest.raises(ValueError, match="--candidate-clone-counts with --input-h5"):
+        cli.main([*argv, "--candidate-clone-counts", "1,2"])
+    with pytest.raises(ValueError, match="differs from the bound spine's"):
+        cli.main([*argv, "--n-clones", "2"])
+    capsys.readouterr()
     # --households-only narrows the selection node to the census family.
     assert cli.main([*argv, "--households-only"]) == 0
     plan = json.loads(capsys.readouterr().out)
@@ -135,31 +136,39 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
 
 
 def test_candidate_clone_count_planning_is_dry_run_only(tmp_path) -> None:
+    """Candidate clone counts plan spine requests, in a dry run only; a bound
+    spine's K is fixed, so they are refused on one (microcosm#931)."""
     builder = _load_builder_module()
+    request = tmp_path / "request.json"
+    request.write_text(json.dumps(["--smoke"]))
+    common = [
+        "--release-role",
+        "dense",
+        "--ladder",
+        str(tmp_path / "missing.npz"),
+        "--out",
+        str(tmp_path / "out"),
+        "--candidate-clone-counts",
+        "1,2,4",
+        "--ladder-sha256",
+        "0" * 64,
+        "--ledger-facts",
+        str(tmp_path / "ledger"),
+        "--ledger-facts-sha256",
+        "0" * 64,
+        "--ledger-manifest-sha256",
+        "0" * 64,
+    ]
     with pytest.raises(ValueError, match="only with --dry-run"):
+        builder.main(["--spine-request", str(request), *common])
+    with pytest.raises(ValueError, match="--candidate-clone-counts with --input-h5"):
         builder.main(
             [
                 "--input-h5",
                 str(tmp_path / "missing.h5"),
-                "--release-role",
-                "dense",
-                "--ladder",
-                str(tmp_path / "missing.npz"),
-                "--out",
-                str(tmp_path / "out"),
-                "--candidate-clone-counts",
-                "1,2,4",
-                *_SUPPORT_FLAGS,
                 "--input-sha256",
                 "0" * 64,
-                "--ladder-sha256",
-                "0" * 64,
-                "--ledger-facts",
-                str(tmp_path / "ledger"),
-                "--ledger-facts-sha256",
-                "0" * 64,
-                "--ledger-manifest-sha256",
-                "0" * 64,
+                *common,
             ]
         )
 
@@ -286,21 +295,20 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
         pin,
         "--out",
         str(tmp_path / "out"),
-        *_SUPPORT_FLAGS,
-        *_SUPPORT_PINS,
         "--release-candidate",
     ]
     # The doctrine defaults are the release posture: nothing to refuse.
     args = builder._parse_args(base)
     builder._validate_cli_args(args)
-    assert args.n_clones == builder.UK_ROWWISE_DENSE_POSTURE.clone_count == 15
+    # The clone count is the spine's, read at preparation (microcosm#931);
+    # the doctrine's stays in the recorded bounds.
+    assert args.n_clones is None
+    assert builder.UK_ROWWISE_DENSE_POSTURE.clone_count == 15
     assert args.epochs == builder.UK_ROWWISE_DENSE_POSTURE.epochs == 2000
     assert args.target_weight_rule == "nation_grain_family_equal_sqrt_count"
 
     with pytest.raises(ValueError, match=r"--epochs != doctrine 2000"):
         builder._validate_cli_args(builder._parse_args([*base, "--epochs", "512"]))
-    with pytest.raises(ValueError, match=r"--n-clones != doctrine 15"):
-        builder._validate_cli_args(builder._parse_args([*base, "--n-clones", "10"]))
     with pytest.raises(ValueError, match=r"--target-weight-rule"):
         builder._validate_cli_args(
             builder._parse_args([*base, "--target-weight-rule", "uniform"])
@@ -705,7 +713,7 @@ def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
         monkeypatch,
         write_access=access(credential="missing", reachable=None, can_write=None),
     )
-    with pytest.raises(ValueError, match="only with --dry-run"):
+    with pytest.raises(ValueError, match="--candidate-clone-counts with --input-h5"):
         builder.main(
             _build_args(
                 input_h5, ladder_path, flags, out, "--candidate-clone-counts", "2,3"
@@ -729,12 +737,13 @@ def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
     builder = _load_builder_module()
     dense = builder._parse_args(_dense_argv(tmp_path))
     posture = builder.UK_ROWWISE_DENSE_POSTURE
-    assert (dense.n_clones, dense.seed, dense.epochs, dense.learning_rate) == (
-        posture.clone_count,
+    assert (dense.seed, dense.epochs, dense.learning_rate) == (
         posture.seed,
         posture.epochs,
         posture.learning_rate,
     )
+    # The dense line's clone count is its spine's (microcosm#931).
+    assert dense.n_clones is None
     assert dense.target_weight_rule == "nation_grain_family_equal_sqrt_count"
     assert dense.expected_constituency_vintage == "2024_pcon"
     assert dense.staging_upload_interval_seconds == 300.0
@@ -788,7 +797,6 @@ def test_dense_role_requires_the_ladder(tmp_path) -> None:
         (["--ladder-sha256", "3" * 64], "--ladder-sha256"),
         (["--expected-constituency-vintage", "2024_pcon"], "--expected-constituency"),
         (["--source-year", "2023"], "--source-year"),
-        (["--source-lineage-modulus", "7"], "--source-lineage-modulus"),
         (["--n-clones", "15"], "--n-clones"),
         (["--candidate-clone-counts", "2,4", "--dry-run"], "--candidate-clone-counts"),
         (["--engine-blocks", "2"], "--engine-blocks"),

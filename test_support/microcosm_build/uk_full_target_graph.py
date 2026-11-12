@@ -1,6 +1,8 @@
 """Synthetic target inputs, the preflight kernel and the full-graph build
 helper shared by the engine-free and engine halves of the target-graph
-tests."""
+tests. The full graph is built on the bound-spine stand-in
+(``uk_full_population_graph.spine_graph``): the dense line takes its clones,
+areas and sampling from the spine (microcosm#931)."""
 
 # ruff: noqa: F401
 
@@ -18,9 +20,6 @@ from microcosm.build.uk_runtime import (
     geography_ladder,
     graph_targets,
     ledger_targets,
-)
-from microcosm.build.uk_runtime.atomic_area_support import (
-    uk_atomic_assignment_definition,
 )
 from microcosm.build.uk_runtime.graph_build import (
     UKFullBuildConfig,
@@ -48,17 +47,13 @@ from microcosm.graph import (
     compile_graph,
     run_graph,
 )
-from test_support.microcosm_build.uk_atomic_support_fixtures import (
-    toy_support_sources,
-    write_toy_supports,
-)
 from test_support.microcosm_build.uk_full_calibration_graph import (
     preflight_payload,
 )
 from test_support.microcosm_build.uk_full_population_graph import (
-    SOURCE_VINTAGE,
     Source,
-    graph_and_registry,
+    spine_frame,
+    spine_graph,
 )
 from test_support.microcosm_build.uk_ladder_rowwise_clone import (
     toy_ladder as toy_ladder,
@@ -252,14 +247,10 @@ def build(
     dataset_households=None,
     resume="auto",
     forbid_execution=False,
-    geography_assignment="atomic",
 ):
-    primitive, _ = graph_and_registry(1)
-    base = Graph(
-        "uk",
-        tuple(s for s in primitive.sources if s.name == "fixture"),
-        (primitive.node("source"),),
-    )
+    """Build the full graph on the bound-spine stand-in at ``n_clones``
+    geographic clones, through the problem; return the composed graph, the
+    manifest and the decoded problem."""
     config = UKFullBuildConfig(
         calibration_year=2026,
         time_period="2023",
@@ -267,23 +258,14 @@ def build(
         n_clones=n_clones,
         geography_levels=levels,
         seed=seed,
-        geography_assignment=geography_assignment,
-        source_vintage=SOURCE_VINTAGE,
         calibration=UKGraphCalibrationConfig(
             epochs=8, seed=seed, dataset_households=dataset_households
         ),
     )
-    payloads, support_paths = write_toy_supports(tmp_path / "supports")
-    definition = (
-        uk_atomic_assignment_definition(payloads, seed=seed)
-        if geography_assignment == "atomic"
-        else None
-    )
     full = uk_full_graph(
         config,
-        spine=base,
+        spine=spine_graph(n_clones),
         spine_population="source",
-        atomic_geography_definition=definition,
     )
     preflight = Node(
         "fixture.preflight",
@@ -341,11 +323,6 @@ def build(
             "fixture": ladder_path,
             "uk_ladder": ladder_path,
             "uk_ledger_facts": ladder_path,
-            **(
-                toy_support_sources(support_paths)
-                if geography_assignment == "atomic"
-                else {}
-            ),
         },
         store=store,
         kernels=registry,

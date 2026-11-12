@@ -493,11 +493,68 @@ K_SENSITIVE_CONSTANTS: tuple[KSensitiveConstant, ...] = (
         counts="rows",
         treatment="later",
         reason=(
-            "a terminal gate: the national and dense builds that run it refuse "
-            "a clone-first spine until #931 group (c)"
+            "a terminal gate: the national line refuses a clone-first spine, "
+            "and the dense line builds only on a geography-first one, which "
+            "no packaged spine is yet; its rows are taken up with the dense "
+            "line's clone count pin, later in #931"
         ),
         gate_parameters=frozenset(
             {("uk_zero_weight_strata", "maximum_zero_weight_rows")}
+        ),
+    ),
+    KSensitiveConstant(
+        name="local area support rows",
+        where="the local area support gate's minimum_rows",
+        read=lambda: next(
+            gate["parameters"]["minimum_rows"]
+            for gate in _gates()
+            if gate["id"] == "uk_local_area_support"
+        ),
+        value=50,
+        counts="rows",
+        treatment="kept",
+        reason=(
+            "the rows each area must hold on the dense pool, which is the "
+            "bound spine with its K clones (#931), so an area holds K times "
+            "its rows at one clone; releases run at the doctrine's K = 15 "
+            "only, the count the floor was set at"
+        ),
+    ),
+    KSensitiveConstant(
+        name="local area support ESS",
+        where="the local area support gate's minimum_effective_sample_size",
+        read=lambda: next(
+            gate["parameters"]["minimum_effective_sample_size"]
+            for gate in _gates()
+            if gate["id"] == "uk_local_area_support"
+        ),
+        value=50.0,
+        counts="rows",
+        treatment="kept",
+        reason=(
+            "each area's effective sample size over its household rows on the "
+            "dense pool, where a source's K clones are K rows at 1 / K of its "
+            "weight, so it grows with K as the row floor does; releases run "
+            "at the doctrine's K = 15 only, the count the floor was set at"
+        ),
+    ),
+    KSensitiveConstant(
+        name="local area support sources",
+        where="the local area support gate's minimum_distinct_sources",
+        read=lambda: next(
+            gate["parameters"]["minimum_distinct_sources"]
+            for gate in _gates()
+            if gate["id"] == "uk_local_area_support"
+        ),
+        value=50,
+        counts="source count",
+        treatment="kept",
+        reason=(
+            "the distinct true sources each area must hold: a source counts "
+            "once in an area however many of its clones land there, but its "
+            "K clones are placed apart, so an area meets more sources as K "
+            "grows; releases run at the doctrine's K = 15 only, the count the "
+            "floor was set at"
         ),
     ),
 )

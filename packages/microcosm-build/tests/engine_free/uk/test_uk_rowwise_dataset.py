@@ -268,3 +268,91 @@ def test_clone_uk_dataset_h5_roundtrip(tmp_path) -> None:
         assert len(store["household"]) == 4
         assert len(store["person"]) == 6
         assert len(store["benunit"]) == 4
+
+
+# --- the row-wise lane on a clone-first spine (microcosm#931) ----------------------
+
+
+def _clone_first_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """The toy tables as a clone-first spine at one clone: the clone indices
+    and household source columns its geographic_expand stage writes."""
+
+    from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
+
+    tables = {
+        "person": person_frame(),
+        "benunit": benunit_frame(),
+        "household": household_frame(),
+    }
+    for entity, table in tables.items():
+        table[ladder_clone_index_column(entity)] = 0
+    household = tables["household"]
+    household["source_household_id"] = household["household_id"]
+    household["source_year"] = 2023
+    household["source_household_key"] = [
+        f"2023:{source}" for source in household["source_household_id"]
+    ]
+    return tables["person"], tables["benunit"], household
+
+
+@pytest.mark.parametrize("n_clones", [1, 2])
+def test_the_rowwise_pool_refuses_a_clone_first_spine_at_any_clone_count(
+    n_clones: int,
+) -> None:
+    """The lane's expansion clones a spine itself, so it refuses a spine that
+    carries geographic_expand's clone index, at one clone as at more, pointing
+    at the dense graph, which builds on such a spine as it stands; never the
+    overflow refusal, and no later group is promised (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.rowwise_dataset import expand_uk_geographic_pool
+
+    person, benunit, household = _clone_first_tables()
+    with pytest.raises(ValueError) as caught:
+        expand_uk_geographic_pool(
+            person=person,
+            benunit=benunit,
+            household=household,
+            n_clones=n_clones,
+            source_year=2023,
+        )
+    message = str(caught.value)
+    assert message == (
+        "input person table already carries the reserved in-memory clone column "
+        "'person_clone_index'; the ladder clone owns that name. A clone-first "
+        "spine, whose geographic_expand stage writes it, carries its geographic "
+        "clones already: the dense graph builds on a geography-first spine as it "
+        "stands (microcosm#931), and this clone refuses one at any n_clones."
+    )
+    assert "group (c)" not in message
+    assert "overflow" not in message
+
+
+def test_the_rowwise_lineage_defaults_only_without_the_clone_index() -> None:
+    """The lane defaults a household's source columns from its own ids only on
+    a spine without the geographic clone index; on a clone-first spine its
+    geographic_expand stage writes them, and a table carrying the index
+    without them is refused by column name (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.rowwise_dataset import _attach_source_lineage
+
+    household = pd.DataFrame({"household_id": [1, 2]})
+    defaulted = _attach_source_lineage(household.copy(), source_year=2023)
+    assert defaulted["source_household_id"].tolist() == [1, 2]
+    assert defaulted["source_year"].tolist() == [2023, 2023]
+    assert defaulted["source_household_key"].tolist() == ["2023:1", "2023:2"]
+
+    cloned = household.assign(household_clone_index=[0, 1], source_household_id=[1, 1])
+    with pytest.raises(ValueError) as caught:
+        _attach_source_lineage(cloned.copy(), source_year=2023)
+    assert str(caught.value) == (
+        "The household table carries 'household_clone_index' but not "
+        "['source_year', 'source_household_key']: on the clone-first spine "
+        "geographic_expand writes every household's source columns, and a "
+        "clone's own ids are never taken for its source (microcosm#931)."
+    )
+    complete = cloned.assign(
+        source_year=[2023, 2023], source_household_key=["2023:1", "2023:1"]
+    )
+    pd.testing.assert_frame_equal(
+        _attach_source_lineage(complete.copy(), source_year=2023), complete
+    )

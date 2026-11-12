@@ -2,10 +2,10 @@
 
 G1b of the clone-first plan runs right after the geographic expansion
 (:mod:`~microcosm.build.uk_runtime.geographic_expand`). It gives every
-household the key the area assignment draws on, ``geography_household_key``,
-as the dense line's ``uk.full.identity`` writes it: ``household_draw_key``
-over the FRS source, the household's FRS vintage, its true source and its
-copy path.
+household the key the area assignment draws on, ``geography_household_key``:
+``household_draw_key`` over the FRS source, the household's FRS vintage, its
+true source and its copy path, the key the dense line's own identity node gave
+its pool before the dense line took its clones from the spine (microcosm#931).
 
 - **Path.** The shared reader (``source_lineage.copy_paths`` on
   ``household_lineage.UK_COPY_LINEAGE``) reads it from the lineage columns,
@@ -15,15 +15,15 @@ copy path.
   ``source_year`` (:func:`frs_vintages_by_source_year`). A year it pins no
   vintage for is refused.
 - **Dtype.** The key is written in the graph's ``string`` dtype (pandas'
-  ``StringDtype("python")``), as ``uk.full.identity`` writes it, so it is not
-  a legacy object-string column. The step names the dtype itself, as
-  ``atomic_household_lineage`` does, rather than through the graph's token
-  table: a stage's transform computes through the Frame's modules alone, never
-  the executor's.
+  ``StringDtype("python")``), the dtype the graph stores a ``string`` cell
+  at, so it is not a legacy object-string column. The step names the dtype
+  itself, as ``atomic_household_lineage`` does, rather than through the
+  graph's token table: a stage's transform computes through the Frame's
+  modules alone, never the executor's.
 
-So clone 0's key is the key the dense identity gives the same base household,
-clone ``k``'s the key it gives that household's clone ``k``, and growing K
-never changes an existing household's key.
+So clone 0's key is the key the same rule gives the base household, clone
+``k``'s the key it gives that household's clone ``k``, and growing K never
+changes an existing household's key.
 
 Refusals give counts, columns, dtypes and declared constants only, never a
 key, an id or a year of a row. The evidence gives the distinct source
@@ -85,9 +85,8 @@ __all__ = [
 ]
 
 GEOGRAPHIC_IDENTITY_STAGE_NAME = "geographic_identity"
-#: The source every key names: the dense line's identity source (the default
-#: ``identity_source`` of ``graph_population.append_uk_population_nodes``), so
-#: clone 0 keys as the dense line keys a base household.
+#: The source every key names: the FRS, as the dense line's own identity node
+#: named it before the dense line took its keys from the spine (microcosm#931).
 GEOGRAPHIC_IDENTITY_SOURCE = "frs"
 #: The household columns the step reads.
 GEOGRAPHIC_IDENTITY_INPUTS = (
@@ -131,9 +130,9 @@ def frs_vintages_by_source_year(
     ``source_year`` from the frame's time period, the release's base year, as
     the SPI support channel did before that stage took the column over (and
     still does on a household table without the clone index). So both years
-    map to the vintage (one year when they are equal), as the dense identity
-    keys every household with it; any other year maps to none. ``release``
-    defaults to the packaged pin.
+    map to the vintage (one year when they are equal), and every household's
+    key names it; any other year maps to none. ``release`` defaults to the
+    packaged pin.
     """
 
     release = load_uk_frs_release() if release is None else release

@@ -8,7 +8,6 @@ it never loads a historical candidate H5 or creates a second execution graph.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
 from dataclasses import replace
 from datetime import date
 from typing import TYPE_CHECKING
@@ -172,13 +171,12 @@ def build_uk_country_graph(
     gate_review_date: date | None = None,
     release_candidate: bool = False,
     skip_holdout: bool = True,
-    atomic_geography_definition: Mapping | None = None,
 ) -> UKFullGraph:
     """Compile the canonical full graph; default target scope is all geographies.
 
-    ``atomic_geography_definition`` is the UK assignment declaration over the
-    admitted support bytes (``uk_atomic_assignment_definition``), required
-    while the config's ``geography_assignment`` is ``atomic`` (the default).
+    The dense line runs on the declared spine's version as it stands: the
+    spine's clones, areas and sampling are the build's, so the config's clone
+    count must be the spine's (one for the declared spine; microcosm#931).
     ``gate_review_date`` is the calibrated gates' clock, by default the solve
     clock ``review_date`` (microcosm#1301).
     """
@@ -218,7 +216,6 @@ def build_uk_country_graph(
         config,
         spine=spine,
         review_date=review_date.isoformat(),
-        atomic_geography_definition=atomic_geography_definition,
     )
     graph = append_uk_full_gate_nodes(
         full.graph,

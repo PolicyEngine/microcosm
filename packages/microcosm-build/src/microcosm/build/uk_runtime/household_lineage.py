@@ -1,14 +1,13 @@
 """The ordered clone path of every post-clone UK household, from its lineage columns.
 
-The geography identity kernel keys each pool household on its source id and
-its explicit clone path (microcosm#931); the post-geography property node
-(microcosm#1240) needs the same path without the geographic clone branch, so
-that every pool clone of one spine household shares one key. Both read the
-path through this module, which validates the lineage columns once and never
-infers a branch from ids, weights or values. The UK's copy lineage is declared
-here (:data:`UK_COPY_LINEAGE`) for the shared readers in
-``microcosm.build.source_lineage``: the receipts' true sources and the
-FRS-trained fits' collapse of geographic clones read it too, and
+The spine's ``geographic_identity`` stage keys each household on its source id
+and its explicit clone path, and the dense line keys no household of its own
+(microcosm#931). The copy take-up stages read the same path through
+:func:`uk_household_clone_paths`, which validates the lineage columns once and
+never infers a branch from ids, weights or values. The UK's copy lineage is
+declared here (:data:`UK_COPY_LINEAGE`) for the shared readers in
+``microcosm.build.source_lineage``: the geography identity, the receipts' true
+sources and the FRS-trained fits' collapse of geographic clones read it, and
 :func:`geographic_fold_receipt` records how a fit's fold met its survey
 records.
 """
@@ -47,13 +46,14 @@ __all__ = [
     "uk_household_clone_paths",
 ]
 
-#: Lineage columns the post-clone household identity is keyed on. The support
-#: channel, the CGT support split's copy flag and index (microcosm#1045), the
-#: high-value home support copy flag and index (microcosm#1240) and the clone
-#: flags come from the spine stages. So do the source id and the geographic
-#: clone index, which the spine's ``geographic_expand`` stage writes
-#: (microcosm#931); on a spine built before that stage, ``uk.full.expand``
-#: writes the index. Calibration K, weights and remapped ids are not inputs.
+#: Lineage columns a post-clone household's clone path is read from. The
+#: support channel, the CGT support split's copy flag and index
+#: (microcosm#1045), the high-value home support copy flag and index
+#: (microcosm#1240) and the clone flags come from the spine stages. So do the
+#: source id and the geographic clone index, which the spine's
+#: ``geographic_expand`` stage writes (microcosm#931); a spine built before
+#: that stage carries no index. Calibration K, weights and remapped ids are
+#: not inputs.
 HIGH_VALUE_SUPPORT_COPY_COLUMN = "household_is_high_value_support_copy"
 HIGH_VALUE_SUPPORT_INDEX_COLUMN = "high_value_support_copy_index"
 UK_HOUSEHOLD_LINEAGE_COLUMNS: tuple[str, ...] = (
@@ -66,12 +66,6 @@ UK_HOUSEHOLD_LINEAGE_COLUMNS: tuple[str, ...] = (
     "household_is_cgt_residential_clone",
     "cgt_residential_clone_index",
     ladder_clone_index_column("household"),
-)
-#: The two optional columns the high-value support stage adds (microcosm#1240);
-#: a spine built before that stage carries neither and keys as before.
-UK_OPTIONAL_LINEAGE_COLUMNS: tuple[str, ...] = (
-    HIGH_VALUE_SUPPORT_COPY_COLUMN,
-    HIGH_VALUE_SUPPORT_INDEX_COLUMN,
 )
 GEOGRAPHIC_SUPPORT_BRANCH = "geographic_support"
 #: The evidence key under which a stage whose fit folds geographic clones
@@ -154,17 +148,20 @@ def uk_household_clone_paths(
     required = [c for c in UK_HOUSEHOLD_LINEAGE_COLUMNS if c != clone_column]
     missing = [c for c in required if c not in household]
     if missing:
-        raise ValueError(f"Geography identity lacks lineage column(s) {missing}.")
+        raise ValueError(
+            f"The household table lacks lineage column(s) {missing} that "
+            "its clone paths are read from."
+        )
     present = [
         column
         for column in (UK_COPY_LINEAGE.source, *UK_COPY_LINEAGE.copy_columns)
         if column in household
     ]
     if household.loc[:, present].isna().any().any():
-        raise ValueError("Geography identity refuses null lineage values.")
+        raise ValueError("Household clone paths refuse null lineage values.")
     for column in _INT64_LINEAGE_COLUMNS:
         if column in household and household[column].dtype != np.dtype("int64"):
-            raise ValueError(f"Geography identity requires an int64 {column}.")
+            raise ValueError(f"Household clone paths require an int64 {column}.")
     sources, paths = copy_paths(household, UK_COPY_LINEAGE, require=_REQUIRED_BRANCHES)
     return [int(source) for source in sources], paths
 

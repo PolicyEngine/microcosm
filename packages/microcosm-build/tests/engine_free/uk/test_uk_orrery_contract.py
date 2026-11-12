@@ -78,7 +78,6 @@ def test_complete_dense_and_size_declarations_fit_existing_export_limits(househo
     full = uk_full_graph(
         UKFullBuildConfig(
             calibration_year=2025,
-            geography_assignment="legacy",
             calibration=UKGraphCalibrationConfig(dataset_households=households),
         ),
         spine=spine,
@@ -103,11 +102,12 @@ def test_complete_dense_and_size_declarations_fit_existing_export_limits(househo
     # Every maintained operation is explicitly rostered; nothing falls through.
     groups = {group["id"]: group for group in contract["groups"]}
     assert "other" not in groups
+    # The dense line samples, expands, keys and places nothing of its own
+    # (microcosm#931): no geography group, and the pool alone in its group.
     assert set(groups) == {
         "sources",
         "enrichment",
         "population",
-        "geography",
         "targets",
         "calibration",
         "checks",
@@ -116,9 +116,7 @@ def test_complete_dense_and_size_declarations_fit_existing_export_limits(househo
     assert set(groups["enrichment"]["operations"]) == {
         node.id for node in spine.nodes if not node.id.startswith("spine.gates.")
     }
-    assert {"uk.full.pool", "uk.full.expand", "uk.full.expand.owned"} <= set(
-        groups["population"]["operations"]
-    )
+    assert groups["population"]["operations"] == ["uk.full.pool"]
     assert set(groups["checks"]["operations"]) >= {
         "spine.gates.assembled",
         "uk.full.gates.preflight",
@@ -139,47 +137,49 @@ def test_complete_dense_and_size_declarations_fit_existing_export_limits(househo
         )
 
 
-#: The dense line's localisation nodes, retired with their flags (#931): the
-#: dense line takes home values, BRMAs, private rents and fuel-relief flags
-#: from the spine.
+#: The dense line's own nodes retired in #931: its localisation nodes, with
+#: their flags, and its sample, expansion, identity and area nodes. The dense
+#: line takes home values, BRMAs, private rents and fuel-relief flags, and its
+#: clones, keys, areas and sampling, from the spine.
 _RETIRED_DENSE_NODES = (
     "uk.full.geography.brma",
     "uk.full.geography.rfdr",
     "uk.full.private_rent",
     "uk.full.property.value",
     "uk.full.property.band",
+    "uk.full.sample",
+    "uk.full.normalize",
+    "uk.full.expand",
+    "uk.full.expand.owned",
+    "uk.full.identity",
+    "uk.full.locations",
+    "uk.full.geography_mapping",
+    "uk.full.geography_gate",
+    "uk.full.geography.assign",
+    "uk.full.geography.derive",
+    "uk.full.geography.local_authority",
+    "uk.full.geography.gate",
 )
 
 
 def test_the_dense_line_composes_and_rosters_no_localisation_node():
-    """The atomic dense graph composes none of the retired nodes and neither
-    declares nor reads their resources, and the roster names none of them."""
+    """The dense graph composes none of the retired nodes and neither
+    declares nor reads their resources or the atomic-area supports, and the
+    roster names none of them."""
     from microcosm.build.uk_runtime import (
         brma_area_layer,
         private_rent_localisation,
         property_localisation,
         rfdr_area_layer,
     )
-    from microcosm.build.uk_runtime.atomic_area_support import (
-        uk_atomic_assignment_definition,
-    )
-    from test_support.microcosm_build.uk_atomic_support_fixtures import (
-        toy_support_payloads,
-    )
+    from microcosm.build.uk_runtime.atomic_area_support import SOURCES
 
     spine = add_uk_spine_gate_nodes(
         uk_spine_graph(source_mode="split"),
         spec=load_country_spec("uk"),
         engine_identity="declaration-only",
     )
-    config = UKFullBuildConfig(calibration_year=2025)
-    full = uk_full_graph(
-        config,
-        spine=spine,
-        atomic_geography_definition=uk_atomic_assignment_definition(
-            toy_support_payloads(), seed=config.seed
-        ),
-    )
+    full = uk_full_graph(UKFullBuildConfig(calibration_year=2025), spine=spine)
     graph = append_uk_full_gate_nodes(
         full.graph,
         calibration=full.calibration,
@@ -200,6 +200,7 @@ def test_the_dense_line_composes_and_rosters_no_localisation_node():
         private_rent_localisation.QUANTILES_SOURCE,
         private_rent_localisation.COUNTS_SOURCE,
         rfdr_area_layer.RFDR_AREA_LAYER_SOURCE,
+        *SOURCES.values(),
     }
     assert not {name for node in dense for name in node.sources} & resources
     assert not {source.name for source in graph.sources} & resources

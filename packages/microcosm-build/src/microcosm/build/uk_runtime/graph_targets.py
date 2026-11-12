@@ -65,7 +65,6 @@ from .full_problem import build_uk_full_local_problem
 from .full_targets import CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes
 from .geography_ladder import load_uk_oa_ladder, uk_area_region_codes
 from .graph_population import (
-    GEOGRAPHY_GATE_TYPE,
     context_frame,
     population_columns,
     population_slices,
@@ -533,11 +532,14 @@ class UKFullMeasureKernel(_TargetKernel):
         ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
-        gate = json.loads(context.artifacts["geography_gate"].payload)
-        if not gate["passed"]:
-            raise ValueError(
-                "Geography integrity gate failed: " + "; ".join(gate["failures"])
-            )
+        from .graph_evidence import require_uk_spine_gate_admission
+
+        # The spine's transferred gates admit the measures before they read
+        # the spine's version, where the composed spine declares them
+        # (microcosm#931). The dense line's own geography gate retired with
+        # its area draw; the spine's geography gates, registered later in
+        # #931, check the areas.
+        require_uk_spine_gate_admission(context)
         frame = context_frame(context)
         full = json.loads(context.artifacts["surface"].payload)
         selected = registry_from_payload(
@@ -866,7 +868,7 @@ class UKFullProblemKernel(_TargetKernel):
 def append_uk_target_nodes(
     graph: Graph,
     *,
-    population: str = "uk.full.expand",
+    population: str,
     calibration_year: int,
     time_period: str,
     geography_levels: tuple[str, ...] | None = None,
@@ -877,7 +879,13 @@ def append_uk_target_nodes(
     optional_sources: tuple[str, ...] = (),
     review_date: str | None = None,
 ) -> Graph:
-    """Default all geographies. Scope is independent of K, k and solver outcomes."""
+    """Default all geographies. Scope is independent of K, k and solver outcomes.
+
+    ``population`` is the spine's version the targets read, the full build's
+    pool (microcosm#931). Where the graph declares the spine's transferred
+    gates, the measures take their admission: they refuse to read the version
+    unless that stored report admits it.
+    """
 
     if geography_levels is not None and not geography_levels:
         raise ValueError("An explicit geography selector must contain levels.")
@@ -887,6 +895,20 @@ def append_uk_target_nodes(
     slices = population_slices(cells)
     compile_sources = ("uk_ladder", "uk_ledger_facts", *optional_sources)
     common = {"time_period": time_period}
+    spine_gate_inputs: tuple[ArtifactInput, ...] = ()
+    spine_gate_params: dict[str, object] = {}
+    if any(node.id == "spine.gates.transferred" for node in graph.nodes):
+        from .graph_evidence import SPINE_GATE_REPORT_TYPE
+
+        gate = graph.node("spine.gates.transferred")
+        spine_gate_inputs = (
+            ArtifactInput("spine_gate", gate.id, "gate_report", SPINE_GATE_REPORT_TYPE),
+        )
+        spine_gate_params = {
+            "spine_gate_phase": "transferred",
+            "spine_gate_release_candidate": bool(gate.params["release_candidate"]),
+            "spine_gate_synthetic_smoke": bool(gate.params["synthetic_smoke"]),
+        }
     review_date = date.today().isoformat() if review_date is None else review_date
     date.fromisoformat(review_date)
     # The solve fingerprint, as the target kernels hash it (microcosm#1301).
@@ -928,17 +950,8 @@ def append_uk_target_nodes(
             UKFullMeasureKernel.ref,
             population=population,
             inputs=slices,
-            params={**common, "engine_blocks": engine_blocks},
-            artifact_inputs=(
-                surface,
-                selection,
-                ArtifactInput(
-                    "geography_gate",
-                    "uk.full.geography_gate",
-                    "gate",
-                    GEOGRAPHY_GATE_TYPE,
-                ),
-            ),
+            params={**common, "engine_blocks": engine_blocks, **spine_gate_params},
+            artifact_inputs=(surface, selection, *spine_gate_inputs),
             artifact_outputs=(ArtifactOutput("measures", MEASURE_TYPE),),
             description="Evaluate selected measures and compile temporary national contributions.",
         ),

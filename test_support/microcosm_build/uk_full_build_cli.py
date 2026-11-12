@@ -1,7 +1,9 @@
 """Synthetic dense full-build fixtures for the canonical UK CLI: the
 kernel stand-ins, payload builders, the prepared build, the stand-in spine
-roster and the ``graph_dense_bundle`` runner the release pre-flight and
-assembler tests feed."""
+roster and binding, and the ``graph_dense_bundle`` runner the release
+pre-flight and assembler tests feed. The dense line takes its clones,
+sampling and areas from the spine it binds (microcosm#931), so the synthetic
+preparation binds a stand-in spine as the real one does."""
 
 # ruff: noqa: F401
 
@@ -44,10 +46,6 @@ from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, UKFullGrap
 from microcosm.build.uk_runtime.graph_calibration import (
     SIZE_RECEIPT_TYPE,
     UKCalibrationNodes,
-)
-from microcosm.build.uk_runtime.graph_population import (
-    GEOGRAPHY_GATE_TYPE,
-    POPULATION_RECEIPT_TYPE,
 )
 from microcosm.build.uk_runtime.graph_targets import (
     TARGET_SELECTION_TYPE,
@@ -93,26 +91,57 @@ from test_support.paths import paths_for
 PIN = "0" * 64
 
 #: Synthetic atomic-area support pins (microcosm#932): the digests the
-#: synthetic prepared build binds as its geography assignment and the ones
+#: synthetic spine's geography binding carries and the ones
 #: :func:`patch_support_register` registers, so a synthetic release candidate
 #: passes the register check the way a real one passes on ``sources.yaml``.
-#: They are the ``RELEASE_PINS`` digests.
 SYNTHETIC_SUPPORT_PINS = {
     "uk_ew_output_area_2021": {"sha256": "c" * 64, "size_bytes": 1828698},
     "uk_scotland_output_area_2022": {"sha256": "d" * 64, "size_bytes": 440439},
     "uk_ni_data_zone_2021": {"sha256": "e" * 64, "size_bytes": 44638},
 }
+#: The synthetic spine's geographic clone count: the local doctrine's, at which
+#: a dense release builds (microcosm#931).
+SYNTHETIC_SPINE_CLONES = 15
 
 
-def synthetic_geography_binding() -> dict:
-    """The request's geography binding as ``_prepare_geography`` shapes it."""
+def synthetic_geography_binding(clones: int = SYNTHETIC_SPINE_CLONES) -> dict:
+    """The spine's geography binding as the dense preparation records it: the
+    stand-in sidecar's ``geography`` block with the spine's clone count."""
+    return {**synthetic_spine_geography(), "geographic_clone_count": int(clones)}
+
+
+def synthetic_spine_binding(
+    clones: int = SYNTHETIC_SPINE_CLONES,
+    *,
+    release_candidate: bool = False,
+    fraction: float = 1.0,
+) -> dict:
+    """The stand-in spine the synthetic preparation binds, as the request
+    bindings record it: ``clones`` geographic clones at the ``fraction`` rung
+    (drawn at the default seed below f100)."""
+    from microcosm.build.uk_runtime.national_sampling import (
+        UK_SAMPLE_RUNG_TOKENS,
+        UK_SAMPLE_SEED_DEFAULT,
+    )
+
+    sampled = float(fraction) != 1.0
     return {
-        "assignment": "atomic",
-        "definition_sha256": "f" * 64,
-        "support_pins": {k: dict(v) for k, v in SYNTHETIC_SUPPORT_PINS.items()},
-        "identity": "geography_household_key",
-        "stream": ["sha256-u53-v1", "uk-post-clone-atomic-area-v1"],
+        "geographic_clone_count": int(clones),
+        "sampling": {
+            "fraction": float(fraction),
+            "seed": UK_SAMPLE_SEED_DEFAULT if sampled else None,
+            "sampled": sampled,
+            "rung_token": UK_SAMPLE_RUNG_TOKENS[float(fraction)],
+        },
+        "release_posture": "release_candidate" if release_candidate else "development",
     }
+
+
+def bind_synthetic_spine(args, build) -> None:
+    """Make ``args``' clone count and sampling the synthetic spine's, as the
+    real preparation makes them the bound spine's (microcosm#931); for tests
+    that execute a synthetic build without preparing it."""
+    cli._bind_spine_arguments(args, build.bindings["spine"])
 
 
 def patch_support_register(monkeypatch, pins=None) -> None:
@@ -179,23 +208,6 @@ STEM = "microcosm_uk_2024_25_local"
 #: its local gate report with it.
 SIGNING_KEY_ENV = gate_signing_key_env("uk")
 TEST_SIGNING_KEY = base64.b64encode(b"\x05" * 32).decode()
-SUPPORT_ARGUMENTS = (
-    "--atomic-support-ew",
-    "supports/ew.npz",
-    "--atomic-support-scotland",
-    "supports/scotland.npz",
-    "--atomic-support-ni",
-    "supports/ni.npz",
-)
-#: Synthetic support digests: a release candidate must pin all three.
-RELEASE_PINS = (
-    "--atomic-support-sha256-ew",
-    "c" * 64,
-    "--atomic-support-sha256-scotland",
-    "d" * 64,
-    "--atomic-support-sha256-ni",
-    "e" * 64,
-)
 
 _TEST_PATHS = paths_for("microcosm-build")
 
@@ -216,8 +228,6 @@ def arguments(
     *extra,
     role="dense",
     staging="--no-staging",
-    supports=SUPPORT_ARGUMENTS,
-    release_pins=None,
 ):
     """A dense request over stand-in input files, with staging disabled.
 
@@ -225,12 +235,7 @@ def arguments(
     preparation would both accept them; the Ledger pins are synthetic
     because these tests never compile targets. ``staging=None`` passes no
     staging switch at all, which is the remote (``local_and_remote``) mode.
-    The atomic-area supports are unread stand-in paths (these tests stub the
-    preparation) and a ``--release-candidate`` request gets the synthetic
-    support pins unless ``release_pins`` says otherwise.
     """
-    if release_pins is None:
-        release_pins = RELEASE_PINS if "--release-candidate" in extra else ()
     spine = tmp_path / "spine.h5"
     ladder = tmp_path / "ladder.npz"
     return _PARSE_ARGS(
@@ -245,8 +250,6 @@ def arguments(
             str(ladder),
             "--ladder-sha256",
             _placeholder(ladder, b"ladder stand-in"),
-            *supports,
-            *release_pins,
             "--ledger-facts",
             str(tmp_path / "ledger"),
             "--ledger-facts-sha256",
@@ -760,38 +763,6 @@ class Targets(Evidence):
         )
 
 
-class Population(Evidence):
-    """The sampling receipt and the geography gate of the pool."""
-
-    ref = "uk.test.cli-population@1"
-
-    def run(self, context):
-        return KernelResult(
-            artifacts={
-                "sampling": canonical_json(
-                    {
-                        "receipt": {
-                            "fraction": 1.0,
-                            "seed": 578,
-                            "sampled": False,
-                            "pre_household_count": 2,
-                            "post_household_count": 2,
-                            "rung_token": "f100",
-                        }
-                    }
-                ),
-                "gate": canonical_json(
-                    {
-                        "name": "uk_local_geography_ladder",
-                        "passed": True,
-                        "failures": [],
-                        "details": {},
-                    }
-                ),
-            }
-        )
-
-
 class Certification(Evidence):
     ref = "uk.test.cli-certification@1"
 
@@ -867,12 +838,16 @@ def run_dense_main(
             release_candidate="--release-candidate" in extra,
             size_households=households,
             rotated_holdout="--rotated-holdout" in extra,
+            clones=_asserted_clones(args),
         )
         if build is None
         else build
     )
 
     def prepare(args, *, telemetry=None, attempt=None):
+        # The real preparation makes the run's clone count and sampling the
+        # bound spine's before anything records them (microcosm#931).
+        bind_synthetic_spine(args, build)
         if on_prepare is not None:
             on_prepare(args, telemetry)
         return build
@@ -881,6 +856,15 @@ def run_dense_main(
     monkeypatch.setattr(cli, "prepare_full_build", prepare)
     monkeypatch.setattr(sys.modules[__name__], "ENGINE_BLOCKS", int(args.engine_blocks))
     return cli.main([]), args.out
+
+
+def _asserted_clones(args) -> int:
+    """The stand-in spine's clone count: the request's asserted --n-clones,
+    else the doctrine's, so the synthetic spine is built at the K a request
+    asserts."""
+    if "n_clones" in getattr(args, "_explicit_arguments", frozenset()):
+        return int(args.n_clones)
+    return SYNTHETIC_SPINE_CLONES
 
 
 def graph_dense_bundle(tmp_path, monkeypatch, *extra, staging="--no-staging") -> Path:
@@ -901,12 +885,24 @@ def prepared(
     release_candidate=False,
     size_households=None,
     rotated_holdout=False,
+    clones=SYNTHETIC_SPINE_CLONES,
+    spine_fraction=1.0,
 ):
     """The synthetic prepared build; its gate nodes evaluate in the request's
     posture (``release_candidate``), as the real gate nodes do. A sized
     request (``size_households``) adds a stand-in size refit receipt. The
     holdout is measured only when the request opted in (``rotated_holdout``,
-    microcosm#1301); otherwise the holdout node records the skip marker."""
+    microcosm#1301); otherwise the holdout node records the skip marker. It
+    binds a stand-in spine of ``clones`` geographic clones at the
+    ``spine_fraction`` rung, as the request bindings record the spine
+    (microcosm#931)."""
+    request = {
+        "target_scope": "all",
+        "spine": synthetic_spine_binding(
+            clones, release_candidate=release_candidate, fraction=spine_fraction
+        ),
+        "geography": synthetic_geography_binding(clones),
+    }
     # Only a release-candidate request adds the parameter, so every other
     # synthetic build keeps its node keys; likewise the holdout opt-in.
     posture = {"release_candidate": True} if release_candidate else {}
@@ -983,8 +979,9 @@ def prepared(
                 ArtifactOutput("selection", TARGET_SELECTION_TYPE),
             ),
         ),
-        # The manifest projection reads the compiled surface, the ordered
-        # problem, the sampling receipt and the geography gate.
+        # The manifest projection reads the compiled surface and the ordered
+        # problem; the spine binding and the ladder gate come from the export
+        # descriptor.
         Node(
             "uk.full.target_compilation",
             Targets.ref,
@@ -1001,24 +998,6 @@ def prepared(
             artifact_outputs=(
                 ArtifactOutput("surface", TARGET_SURFACE_TYPE),
                 ArtifactOutput("problem", PROBLEM_TYPE),
-            ),
-        ),
-        Node(
-            "uk.full.sample",
-            Population.ref,
-            population=root.id,
-            artifact_outputs=(
-                ArtifactOutput("sampling", POPULATION_RECEIPT_TYPE),
-                ArtifactOutput("gate", GEOGRAPHY_GATE_TYPE),
-            ),
-        ),
-        Node(
-            "uk.full.geography_gate",
-            Population.ref,
-            population=root.id,
-            artifact_outputs=(
-                ArtifactOutput("sampling", POPULATION_RECEIPT_TYPE),
-                ArtifactOutput("gate", GEOGRAPHY_GATE_TYPE),
             ),
         ),
     ]
@@ -1058,15 +1037,6 @@ def prepared(
                     TARGET_SURFACE_TYPE,
                 ),
                 ArtifactInput("problem", "uk.full.problem", "problem", PROBLEM_TYPE),
-                ArtifactInput(
-                    "sampling", "uk.full.sample", "sampling", POPULATION_RECEIPT_TYPE
-                ),
-                ArtifactInput(
-                    "geography_gate",
-                    "uk.full.geography_gate",
-                    "gate",
-                    GEOGRAPHY_GATE_TYPE,
-                ),
             ),
         )
         if node.id == "uk.full.gates.calibrated"
@@ -1077,7 +1047,7 @@ def prepared(
     graph = add_uk_export_preparation(
         graph,
         population=root.id,
-        bindings={"target_scope": "all", "geography": synthetic_geography_binding()},
+        bindings=request,
         solve_year=2025,
         artifact_inputs=(
             ArtifactInput(
@@ -1091,14 +1061,21 @@ def prepared(
     calibration = UKCalibrationNodes(
         (), root.id, "unused", "unused", "unused", None, "unused"
     )
-    full = UKFullGraph(graph, calibration, UKFullBuildConfig(calibration_year=2025))
+    full = UKFullGraph(
+        graph,
+        calibration,
+        UKFullBuildConfig(
+            calibration_year=2025,
+            n_clones=int(clones),
+            source_sample_fraction=float(spine_fraction),
+        ),
+    )
     kernels = KernelRegistry()
     for kernel in (
         Fixture(),
         Evidence(),
         Holdout(),
         Targets(),
-        Population(),
         SizeReceipt(),
         Certification(),
     ):
@@ -1129,7 +1106,7 @@ def prepared(
         full,
         kernels,
         {"fixture": fixture},
-        {"target_scope": "all"},
+        request,
         pins=pins,
         inputs=inputs,
     )
