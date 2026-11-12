@@ -19,6 +19,9 @@ from microcosm.build.us_runtime.acs_transfer import (
     AcsTransferPattern,
 )
 from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.prior_year_income import (
+    US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN,
+)
 from microcosm.build.us_runtime.puma_ladder import UsPumaLadder
 from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -743,6 +746,68 @@ def _test_puma_ladder() -> UsPumaLadder:
             },
         },
     )
+
+
+def test__given_a_base_with_the_prior_year_wage__then_the_pool_leaves_it_out(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """No ACS transfer target fills the wage, so no pooled row holds a gap."""
+
+    base = _base_donor_frame()
+    wages = [30_000.0, 0.0, 12_000.0, 0.0]
+    base.person[US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN] = wages
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (_raw_acs_frame(), {}),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        base,
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        chunksize=2,
+        acs_share=0.25,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        seed=4,
+        n_estimators=2,
+    )
+
+    person = result.frame.table("person")
+    assert US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN not in person
+    assert len(person) == 6
+    assert result.provenance["dropped_base_person_columns"] == [
+        US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN
+    ]
+    assert base.person[US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN].tolist() == wages
+    assert (
+        result.frame.weights_for("household").total
+        == base.weights_for("household").total
+    )
+    json.dumps(result.provenance, allow_nan=False)
+
+
+def test__given_a_base_without_the_prior_year_wage__then_provenance_omits_the_drop(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda actual_source, *, chunksize: (_raw_acs_frame(), {}),
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        _base_donor_frame(),
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        chunksize=2,
+        acs_share=0.25,
+        target_families={"person": {"tax_detail": ("qualified_dividend_income",)}},
+        seed=4,
+        n_estimators=2,
+    )
+
+    assert "dropped_base_person_columns" not in result.provenance
 
 
 def _base_donor_frame() -> Frame:

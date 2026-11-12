@@ -16,6 +16,9 @@ def test_policyengine_17646_input_and_dependency_contract() -> None:
         "self_employment_income_last_year",
     ]
     assert system.variables["tax_unit_earned_income_last_year"].entity.key == "tax_unit"
+    # The stage keeps the wage under a name the engine does not define, so the
+    # writer stores it and no rule reads it.
+    assert not set(US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS) & set(engine.variables())
 
 def test_export_ready_support_persists_inputs_and_excludes_formula_owned_wage(
     monkeypatch: pytest.MonkeyPatch,
@@ -35,3 +38,7 @@ def test_export_ready_support_persists_inputs_and_excludes_formula_owned_wage(
     assert "self_employment_income_last_year" in person
     assert "previous_year_income_available" in person
     assert "employment_income_last_year" not in person
+    np.testing.assert_array_equal(
+        person[US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN].to_numpy(),
+        result.table("person")[US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN].to_numpy(),
+    )

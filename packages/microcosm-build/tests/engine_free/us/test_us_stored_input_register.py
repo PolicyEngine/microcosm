@@ -31,8 +31,8 @@ def test_every_register_entry_is_a_named_producer_column():
     base-spine tag of every US entity, the pooled-source provenance columns,
     microunit's two tax-unit construction columns, the PUF capital-gains tail
     provenance columns, the ACS-native acs_ amounts and acs_pums's puma_geoid
-    alias, plus the two pending engine-input families: the parent ids and the
-    federal student loan inputs."""
+    alias, plus the two pending engine-input families (the parent ids and the
+    federal student loan inputs) and the auxiliary prior-year wage."""
 
     support = {
         column(entity)
@@ -65,9 +65,10 @@ def test_every_register_entry_is_a_named_producer_column():
         | {COUNTY_FIPS_2023_COLUMN}
         | set(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS)
         | set(US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS)
+        | set(US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS)
     )
     assert len(_ACS_NATIVE_AMOUNTS) == 6
-    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1 + 2 + 1 + 4
+    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1 + 2 + 1 + 4 + 1
 
 
 def test_every_register_reason_names_where_its_column_comes_from():
@@ -105,6 +106,10 @@ def test_every_register_reason_names_where_its_column_comes_from():
             column: "US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS"
             for column in US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS
         },
+        US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN: (
+            "microcosm.build.us_runtime.prior_year_income "
+            "(US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN)"
+        ),
     }
     for column, owner in expected_owner.items():
         assert owner in US_STORED_NON_VARIABLE_COLUMNS[column], column
@@ -734,4 +739,29 @@ def test_an_ungraded_gate_names_its_reason_even_without_a_message(
             payload, engine_label="policyengine-us 2.2.1", evidence_tier=True
         )
         == []
+    )
+
+
+def test_the_auxiliary_columns_are_flagged_and_registered():
+    """An auxiliary column is a register entry whose reason says so, and the
+    prior-year wage is the only one. Its reason names the formula-owned
+    variable it stands beside, so a reader learns why the stage renames it."""
+
+    assert set(US_AUXILIARY_STORED_COLUMNS) == set(
+        US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS
+    )
+    for column, reason in US_AUXILIARY_STORED_COLUMNS.items():
+        assert US_STORED_NON_VARIABLE_COLUMNS[column] == reason
+        assert reason.startswith("Auxiliary: ")
+        assert "no rule reads it" in reason
+    assert (
+        "employment_income_last_year with its own formula"
+        in (US_AUXILIARY_STORED_COLUMNS[US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN])
+    )
+    non_auxiliary = set(US_STORED_NON_VARIABLE_COLUMNS) - set(
+        US_AUXILIARY_STORED_COLUMNS
+    )
+    assert not any(
+        US_STORED_NON_VARIABLE_COLUMNS[column].startswith("Auxiliary")
+        for column in non_auxiliary
     )

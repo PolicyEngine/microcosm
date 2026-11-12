@@ -528,6 +528,8 @@ from microcosm.build.us_runtime.prior_year_income import (
     PRIOR_YEAR_INCOME_ARCHIVED_PUF_IMPUTATION_URL,
     PRIOR_YEAR_INCOME_ARCHIVED_PUF_OUTPUTS_URL,
     PRIOR_YEAR_INCOME_ARCHIVED_PUF_SPLICE_URL,
+    US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN,
+    US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS,
     US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS,
     US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS,
     US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
@@ -541,6 +543,7 @@ from microcosm.build.us_runtime.prior_year_income import (
     us_prior_year_income_stage_spec,
     us_prior_year_income_summary,
     with_us_prior_year_income_inputs,
+    without_us_prior_year_income_auxiliary_columns,
 )
 from microcosm.build.us_runtime.public_assistance_type_source import (
     ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS,
@@ -1852,6 +1855,8 @@ __all__ = [
     "PRIOR_YEAR_INCOME_ARCHIVED_PUF_IMPUTATION_URL",
     "PRIOR_YEAR_INCOME_ARCHIVED_PUF_OUTPUTS_URL",
     "PRIOR_YEAR_INCOME_ARCHIVED_PUF_SPLICE_URL",
+    "US_PRIOR_YEAR_EMPLOYMENT_INCOME_COLUMN",
+    "US_PRIOR_YEAR_INCOME_AUXILIARY_COLUMNS",
     "US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS",
     "US_PRIOR_YEAR_INCOME_NONCONSTANT_PERSON_COLUMNS",
     "US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS",
@@ -1865,6 +1870,7 @@ __all__ = [
     "us_prior_year_income_stage_spec",
     "us_prior_year_income_summary",
     "with_us_prior_year_income_inputs",
+    "without_us_prior_year_income_auxiliary_columns",
     "derive_us_immigration_status_from_manifest",
     "us_immigration_composition_gate",
     "us_immigration_composition_summary",
