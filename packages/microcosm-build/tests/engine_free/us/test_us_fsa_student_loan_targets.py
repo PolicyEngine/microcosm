@@ -600,12 +600,15 @@ def _exported_fsa_diagnostics(tmp_path) -> dict:
     registry = _registry()
     base = _frame()
     tables = {entity: base.table(entity) for entity in base.entities}
-    tables["household"] = tables["household"].assign(
-        **{
+    household = tables["household"]
+    measures = pd.DataFrame(
+        {
             spec.measure: fsa_student_loan_household_values(base, spec.metadata)
             for spec in registry.specs
-        }
+        },
+        index=household.index,
     )
+    tables["household"] = pd.concat([household, measures], axis=1)
     frame = Frame(tables, US_SCHEMA, {"household": base.weights_for("household")})
     result = calibrate(frame, registry.to_target_set(), epochs=2, seed=0)
     path = tmp_path / "calibration_diagnostics.json"
