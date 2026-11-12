@@ -343,15 +343,20 @@
       "dwp.pip.cases_east_of_england_mobility_standard": "dwp.pip",
       "dwp.pip.cases_england": "dwp.pip",
       "dwp.pip.cases_england_aged_16_to_19": "dwp.pip",
+      "dwp.pip.cases_england_aged_16_to_24": "dwp.pip",
       "dwp.pip.cases_england_aged_20_to_24": "dwp.pip",
       "dwp.pip.cases_england_aged_25_to_29": "dwp.pip",
+      "dwp.pip.cases_england_aged_25_to_34": "dwp.pip",
       "dwp.pip.cases_england_aged_30_to_34": "dwp.pip",
       "dwp.pip.cases_england_aged_35_to_39": "dwp.pip",
+      "dwp.pip.cases_england_aged_35_to_49": "dwp.pip",
       "dwp.pip.cases_england_aged_40_to_44": "dwp.pip",
       "dwp.pip.cases_england_aged_45_to_49": "dwp.pip",
       "dwp.pip.cases_england_aged_50_to_54": "dwp.pip",
+      "dwp.pip.cases_england_aged_50_to_64": "dwp.pip",
       "dwp.pip.cases_england_aged_55_to_59": "dwp.pip",
       "dwp.pip.cases_england_aged_60_to_64": "dwp.pip",
+      "dwp.pip.cases_england_aged_65_and_over": "dwp.pip",
       "dwp.pip.cases_england_aged_65_to_69": "dwp.pip",
       "dwp.pip.cases_england_aged_70_to_74": "dwp.pip",
       "dwp.pip.cases_england_aged_75_and_over": "dwp.pip",
@@ -468,8 +473,12 @@
       "dwp.uc.payment_distribution_lone_parent": "dwp.universal_credit",
       "dwp.uc.payment_distribution_single": "dwp.universal_credit",
       "dwp.uc.people_aged_16_to_21": "dwp.universal_credit",
+      "dwp.uc.people_aged_16_to_21_no_work_requirements": "dwp.universal_credit",
+      "dwp.uc.people_aged_16_to_21_other_regimes": "dwp.universal_credit",
       "dwp.uc.people_aged_16_to_24": "dwp.universal_credit",
       "dwp.uc.people_aged_22_to_24": "dwp.universal_credit",
+      "dwp.uc.people_aged_22_to_24_no_work_requirements": "dwp.universal_credit",
+      "dwp.uc.people_aged_22_to_24_other_regimes": "dwp.universal_credit",
       "dwp.uc.scotland_households_child_under_1": "dwp.universal_credit",
       "dwp.uc.two_child_limit.children_affected": "dwp.universal_credit_two_child_limit",
       "dwp.uc.two_child_limit.children_claimant_pip": "dwp.universal_credit_two_child_limit",
@@ -709,6 +718,8 @@
       "ons.occupation.professional_by_region": "ons.employment",
       "ons.occupation.sales_and_customer_service_by_region": "ons.employment",
       "ons.occupation.skilled_trades_by_region": "ons.employment",
+      "ons.paye_rti.employees_aged_0_to_17": "ons.employment",
+      "ons.paye_rti.employees_aged_18_to_24": "ons.employment",
       "ons.population.age_0": "ons.population",
       "ons.population.age_0_9_by_region": "ons.population",
       "ons.population.age_1": "ons.population",
@@ -792,8 +803,10 @@
       "ons.public_sector_employment": "ons.employment",
       "ons.savings_interest_income": "ons.national_accounts",
       "orr.rail_government_support": "orr.rail_industry_finance",
+      "scotgov.adp.caseload_scotland": "scotgov.social_security",
       "scotgov.bus.government_support": "scotgov.local_bus_finances",
       "scotgov.bus.passenger_revenue": "scotgov.local_bus_finances",
+      "scotgov.carer_support_payment.in_payment_scotland": "scotgov.social_security",
       "scotgov.council_tax_stock.band_a": "scotgov.council_tax_stock",
       "scotgov.council_tax_stock.band_b": "scotgov.council_tax_stock",
       "scotgov.council_tax_stock.band_c": "scotgov.council_tax_stock",
@@ -916,15 +929,20 @@
       "dwp.pip.cases_east_of_england_mobility_standard": "PIP cases with entitlement, East of England, mobility standard",
       "dwp.pip.cases_england": "PIP cases with entitlement, England",
       "dwp.pip.cases_england_aged_16_to_19": "PIP cases with entitlement, England, aged 16 to 19",
+      "dwp.pip.cases_england_aged_16_to_24": "PIP cases with entitlement, England, aged 16 to 24",
       "dwp.pip.cases_england_aged_20_to_24": "PIP cases with entitlement, England, aged 20 to 24",
       "dwp.pip.cases_england_aged_25_to_29": "PIP cases with entitlement, England, aged 25 to 29",
+      "dwp.pip.cases_england_aged_25_to_34": "PIP cases with entitlement, England, aged 25 to 34",
       "dwp.pip.cases_england_aged_30_to_34": "PIP cases with entitlement, England, aged 30 to 34",
       "dwp.pip.cases_england_aged_35_to_39": "PIP cases with entitlement, England, aged 35 to 39",
+      "dwp.pip.cases_england_aged_35_to_49": "PIP cases with entitlement, England, aged 35 to 49",
       "dwp.pip.cases_england_aged_40_to_44": "PIP cases with entitlement, England, aged 40 to 44",
       "dwp.pip.cases_england_aged_45_to_49": "PIP cases with entitlement, England, aged 45 to 49",
       "dwp.pip.cases_england_aged_50_to_54": "PIP cases with entitlement, England, aged 50 to 54",
+      "dwp.pip.cases_england_aged_50_to_64": "PIP cases with entitlement, England, aged 50 to 64",
       "dwp.pip.cases_england_aged_55_to_59": "PIP cases with entitlement, England, aged 55 to 59",
       "dwp.pip.cases_england_aged_60_to_64": "PIP cases with entitlement, England, aged 60 to 64",
+      "dwp.pip.cases_england_aged_65_and_over": "PIP cases with entitlement, England, aged 65 and over",
       "dwp.pip.cases_england_aged_65_to_69": "PIP cases with entitlement, England, aged 65 to 69",
       "dwp.pip.cases_england_aged_70_to_74": "PIP cases with entitlement, England, aged 70 to 74",
       "dwp.pip.cases_england_aged_75_and_over": "PIP cases with entitlement, England, aged 75 and over",
@@ -1041,8 +1059,12 @@
       "dwp.uc.payment_distribution_lone_parent": "Payment distribution lone parent",
       "dwp.uc.payment_distribution_single": "Payment distribution single",
       "dwp.uc.people_aged_16_to_21": "Universal Credit people aged 16 to 21",
+      "dwp.uc.people_aged_16_to_21_no_work_requirements": "Universal Credit people aged 16 to 21, no work requirements",
+      "dwp.uc.people_aged_16_to_21_other_regimes": "Universal Credit people aged 16 to 21, other conditionality regimes",
       "dwp.uc.people_aged_16_to_24": "Universal Credit people aged 16 to 24",
       "dwp.uc.people_aged_22_to_24": "Universal Credit people aged 22 to 24",
+      "dwp.uc.people_aged_22_to_24_no_work_requirements": "Universal Credit people aged 22 to 24, no work requirements",
+      "dwp.uc.people_aged_22_to_24_other_regimes": "Universal Credit people aged 22 to 24, other conditionality regimes",
       "dwp.uc.scotland_households_child_under_1": "Scotland households child under 1",
       "dwp.uc.two_child_limit.children_affected": "Children affected",
       "dwp.uc.two_child_limit.children_claimant_pip": "Children claimant Personal Independence Payment",
@@ -1282,6 +1304,8 @@
       "ons.occupation.professional_by_region": "Professional occupations in employment by region",
       "ons.occupation.sales_and_customer_service_by_region": "Sales and customer service occupations in employment by region",
       "ons.occupation.skilled_trades_by_region": "Skilled trades occupations in employment by region",
+      "ons.paye_rti.employees_aged_0_to_17": "Payrolled employees aged 0 to 17 (PAYE RTI)",
+      "ons.paye_rti.employees_aged_18_to_24": "Payrolled employees aged 18 to 24 (PAYE RTI)",
       "ons.population.age_0": "Age 0",
       "ons.population.age_0_9_by_region": "Age 0 9 by region",
       "ons.population.age_1": "Age 1",
@@ -1365,8 +1389,10 @@
       "ons.public_sector_employment": "Public sector employment",
       "ons.savings_interest_income": "Savings interest income",
       "orr.rail_government_support": "Net operational government support, all sources (Great Britain)",
+      "scotgov.adp.caseload_scotland": "Adult Disability Payment caseload, Scotland",
       "scotgov.bus.government_support": "Government support",
       "scotgov.bus.passenger_revenue": "Passenger revenue",
+      "scotgov.carer_support_payment.in_payment_scotland": "Carer Support Payment caseload in payment, Scotland",
       "scotgov.council_tax_stock.band_a": "Band a",
       "scotgov.council_tax_stock.band_b": "Band b",
       "scotgov.council_tax_stock.band_c": "Band c",
@@ -5499,9 +5525,10 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.scottish_income_tax.nsnd_outturn",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
       },
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "value_operation": "sum",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
@@ -5526,7 +5553,9 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.scottish_income_tax.nsnd_taxpayers",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
       },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
@@ -25240,6 +25269,86 @@
       "value_operation": "calendar_year_window"
     },
     {
+      "name": "scotgov.adp.caseload_scotland",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_concept": [
+          "scotgov.adp_caseload"
+        ],
+        "source_measure_id": "caseload",
+        "groupby_dimension": "scotgov.adp_month",
+        "dimensions": [
+          "case_route"
+        ],
+        "dimension_values": {
+          "case_route": "all"
+        },
+        "entity_name": "person",
+        "geography_id": "S92000003",
+        "period_type": "month",
+        "period_value": [
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "scotgov/adp/caseload_scotland",
+      "family": "scotgov_social_security_caseload",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.adp.caseload_scotland",
+        "measure_kind": "prepared_column"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "scotgov.carer_support_payment.in_payment_scotland",
+      "ledger_selector": {
+        "source_name": "scotgov",
+        "source_concept": [
+          "scotgov.carer_support_payment_caseload"
+        ],
+        "source_measure_id": "in_payment",
+        "groupby_dimension": "scotgov.carer_support_payment_month",
+        "dimensions": [
+          "carer_support_payment_status",
+          "case_route"
+        ],
+        "dimension_values": {
+          "carer_support_payment_status": "in_payment",
+          "case_route": "all"
+        },
+        "entity_name": "person",
+        "geography_id": "S92000003",
+        "period_type": "month",
+        "period_value": [
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "scotgov/carer_support_payment/in_payment_scotland",
+      "family": "scotgov_social_security_caseload",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "scotgov.carer_support_payment.in_payment_scotland",
+        "measure_kind": "prepared_column"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
       "name": "ons.savings_interest_income",
       "ledger_selector": {
         "source_name": "ons",
@@ -27455,6 +27564,576 @@
           "dimension_values": {
             "age_bands_and_single_year": 24,
             "conditionality_regime": "all"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.uc.people_aged_16_to_21_no_work_requirements",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.people_on_universal_credit"
+        ],
+        "source_measure_id": "people",
+        "groupby_dimension": "dwp.uc_people_country_age_conditionality_regime",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "conditionality_regime"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21
+          ],
+          "conditionality_regime": "No work requirements"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/uc/people_aged_16_to_21_no_work_requirements",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.people_aged_16_to_21_no_work_requirements",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 16,
+            "conditionality_regime": "No work requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 17,
+            "conditionality_regime": "No work requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "No work requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "No work requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "No work requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "No work requirements"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.uc.people_aged_16_to_21_other_regimes",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.people_on_universal_credit"
+        ],
+        "source_measure_id": "people",
+        "groupby_dimension": "dwp.uc_people_country_age_conditionality_regime",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "conditionality_regime"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            16,
+            17,
+            18,
+            19,
+            20,
+            21
+          ],
+          "conditionality_regime": [
+            "Searching for work",
+            "Working - with requirements",
+            "Working - no requirements",
+            "Planning for work",
+            "Preparing for work",
+            "Unknown or missing regime"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/uc/people_aged_16_to_21_other_regimes",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.people_aged_16_to_21_other_regimes",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 16,
+            "conditionality_regime": "Searching for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 16,
+            "conditionality_regime": "Working - with requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 16,
+            "conditionality_regime": "Working - no requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 16,
+            "conditionality_regime": "Planning for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 16,
+            "conditionality_regime": "Preparing for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 17,
+            "conditionality_regime": "Searching for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 17,
+            "conditionality_regime": "Working - with requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 17,
+            "conditionality_regime": "Working - no requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 17,
+            "conditionality_regime": "Planning for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 17,
+            "conditionality_regime": "Preparing for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "Searching for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "Working - with requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "Working - no requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "Planning for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "Preparing for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 18,
+            "conditionality_regime": "Unknown or missing regime"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "Searching for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "Working - with requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "Working - no requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "Planning for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "Preparing for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 19,
+            "conditionality_regime": "Unknown or missing regime"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "Searching for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "Working - with requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "Working - no requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "Planning for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "Preparing for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 20,
+            "conditionality_regime": "Unknown or missing regime"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "Searching for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "Working - with requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "Working - no requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "Planning for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "Preparing for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 21,
+            "conditionality_regime": "Unknown or missing regime"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.uc.people_aged_22_to_24_no_work_requirements",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.people_on_universal_credit"
+        ],
+        "source_measure_id": "people",
+        "groupby_dimension": "dwp.uc_people_country_age_conditionality_regime",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "conditionality_regime"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            22,
+            23,
+            24
+          ],
+          "conditionality_regime": "No work requirements"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/uc/people_aged_22_to_24_no_work_requirements",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.people_aged_22_to_24_no_work_requirements",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "No work requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "No work requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "No work requirements"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.uc.people_aged_22_to_24_other_regimes",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.people_on_universal_credit"
+        ],
+        "source_measure_id": "people",
+        "groupby_dimension": "dwp.uc_people_country_age_conditionality_regime",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "conditionality_regime"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            22,
+            23,
+            24
+          ],
+          "conditionality_regime": [
+            "Searching for work",
+            "Working - with requirements",
+            "Working - no requirements",
+            "Planning for work",
+            "Preparing for work",
+            "Unknown or missing regime"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/uc/people_aged_22_to_24_other_regimes",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.people_aged_22_to_24_other_regimes",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "Searching for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "Working - with requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "Working - no requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "Planning for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "Preparing for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 22,
+            "conditionality_regime": "Unknown or missing regime"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "Searching for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "Working - with requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "Working - no requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "Planning for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "Preparing for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 23,
+            "conditionality_regime": "Unknown or missing regime"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "Searching for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "Working - with requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "Working - no requirements"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "Planning for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "Preparing for work"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 24,
+            "conditionality_regime": "Unknown or missing regime"
           }
         }
       ]
@@ -50912,6 +51591,335 @@
       "value_operation": "monthly_window_average"
     },
     {
+      "name": "dwp.pip.cases_england_aged_16_to_24",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "16-19",
+            "20-24"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_16_to_24",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_16_to_24",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "16-19"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "20-24"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_25_to_34",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "25-29",
+            "30-34"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_25_to_34",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_25_to_34",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "25-29"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "30-34"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_35_to_49",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "35-39",
+            "40-44",
+            "45-49"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_35_to_49",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_35_to_49",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "35-39"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "40-44"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "45-49"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_50_to_64",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "50-54",
+            "55-59",
+            "60-64"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_50_to_64",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_50_to_64",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "50-54"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "55-59"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "60-64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_65_and_over",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "65-69",
+            "70-74",
+            "75-79"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_65_and_over",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_65_and_over",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "65-69"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "70-74"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "75-79"
+          }
+        }
+      ]
+    },
+    {
       "name": "dwp.pip.cases_wales",
       "ledger_selector": {
         "source_name": "dwp",
@@ -59620,6 +60628,96 @@
       },
       "period_match_policy": "source_window",
       "value_operation": "quarterly_window_average"
+    },
+    {
+      "name": "ons.paye_rti.employees_aged_0_to_17",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.paye_rti_payrolled_employees",
+        "source_measure_id": "employees_0_to_17",
+        "groupby_dimension": "ons.paye_rti_month",
+        "dimensions": [
+          "age_band",
+          "seasonal_adjustment"
+        ],
+        "dimension_values": {
+          "age_band": "0_to_17",
+          "seasonal_adjustment": "not_seasonally_adjusted"
+        },
+        "entity_name": "person",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "ons/paye_rti/employees_aged_0_to_17",
+      "family": "ons_employment",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.paye_rti.employees_aged_0_to_17",
+        "measure_kind": "prepared_column"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "ons.paye_rti.employees_aged_18_to_24",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.paye_rti_payrolled_employees",
+        "source_measure_id": "employees_18_to_24",
+        "groupby_dimension": "ons.paye_rti_month",
+        "dimensions": [
+          "age_band",
+          "seasonal_adjustment"
+        ],
+        "dimension_values": {
+          "age_band": "18_to_24",
+          "seasonal_adjustment": "not_seasonally_adjusted"
+        },
+        "entity_name": "person",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "ons/paye_rti/employees_aged_18_to_24",
+      "family": "ons_employment",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.paye_rti.employees_aged_18_to_24",
+        "measure_kind": "prepared_column"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
     }
   ]
 }

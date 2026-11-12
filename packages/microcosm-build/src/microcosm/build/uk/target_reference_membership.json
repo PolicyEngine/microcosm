@@ -1,11 +1,11 @@
 {
-  "source_fact_feed": "chronicle-uk-8045b13-consumer-facts",
+  "source_fact_feed": "chronicle-uk-81caed7-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1734,
-  "contract_target_count": 578,
-  "active_reference_count": 1697,
+  "candidate_count": 1747,
+  "contract_target_count": 591,
+  "active_reference_count": 1710,
   "status_counts": {
-    "active": 1697,
+    "active": 1710,
     "signed_excluded": 37
   },
   "geography_pins": {
@@ -1983,6 +1983,14 @@
       "geography_level": "country",
       "geography_id": "S92000003"
     },
+    "scotgov.adp.caseload_scotland": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
+    "scotgov.carer_support_payment.in_payment_scotland": {
+      "geography_level": "country",
+      "geography_id": "S92000003"
+    },
     "ons.savings_interest_income": {
       "geography_level": "country",
       "geography_id": "K02000001"
@@ -2284,6 +2292,22 @@
       "geography_id": "K03000001"
     },
     "dwp.uc.people_aged_22_to_24": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.people_aged_16_to_21_no_work_requirements": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.people_aged_16_to_21_other_regimes": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.people_aged_22_to_24_no_work_requirements": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.people_aged_22_to_24_other_regimes": {
       "geography_level": "country",
       "geography_id": "K03000001"
     },
@@ -4635,6 +4659,26 @@
       "geography_level": "country",
       "geography_id": "E92000001"
     },
+    "dwp.pip.cases_england_aged_16_to_24": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_25_to_34": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_35_to_49": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_50_to_64": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_65_and_over": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
     "dwp.pip.cases_wales": {
       "geography_level": "country",
       "geography_id": "W92000004"
@@ -5804,6 +5848,14 @@
       "geography_id": "K02000001"
     },
     "ons.neet.people_aged_16_to_24": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.paye_rti.employees_aged_0_to_17": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.paye_rti.employees_aged_18_to_24": {
       "geography_level": "country",
       "geography_id": "K02000001"
     }
@@ -7081,10 +7133,7 @@
     {
       "name": "hmrc.scottish_income_tax.nsnd_outturn",
       "from": "2024",
-      "to": "2025",
-      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
-      "factor": "1.04119828372843",
-      "value_before_uprating": "18635000000.0"
+      "to": "2025"
     },
     {
       "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
@@ -15369,14 +15418,9 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 19402730017.279205,
+          "resolved_value": 18635000000.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f04aad22c7ef0c5d5d0d6064",
-          "uprating": {
-            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
-            "factor": "1.04119828372843",
-            "value_before_uprating": "18635000000.0"
-          }
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f04aad22c7ef0c5d5d0d6064"
         }
       ]
     },
@@ -21736,6 +21780,38 @@
         }
       ]
     },
+    "scotgov.adp.caseload_scotland": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "scotgov.adp.caseload_scotland",
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 6,
+          "matched_fact_count_in_source_window": 6,
+          "resolved_period": 2025,
+          "resolved_value": 490779.1666666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7ae6cb340ff6e5eae4b95194"
+        }
+      ]
+    },
+    "scotgov.carer_support_payment.in_payment_scotland": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "scotgov.carer_support_payment.in_payment_scotland",
+          "status": "active",
+          "matched_fact_count_overall": 6,
+          "matched_fact_count_at_or_before_period": 6,
+          "matched_fact_count_in_source_window": 6,
+          "resolved_period": 2025,
+          "resolved_value": 97737.5,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bfd12a1efbc86bd707a13696"
+        }
+      ]
+    },
     "ons.savings_interest_income": {
       "status": "active",
       "candidates": [
@@ -22940,6 +23016,70 @@
           "resolved_value": 375967.75,
           "resolved_fact_period": "2025-11",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ea8ee2e36ab0a4b64af8b01f"
+        }
+      ]
+    },
+    "dwp.uc.people_aged_16_to_21_no_work_requirements": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.people_aged_16_to_21_no_work_requirements",
+          "status": "active",
+          "matched_fact_count_overall": 24,
+          "matched_fact_count_at_or_before_period": 24,
+          "matched_fact_count_in_source_window": 24,
+          "resolved_period": 2025,
+          "resolved_value": 137557.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3883044f071efe4e0ca05625"
+        }
+      ]
+    },
+    "dwp.uc.people_aged_16_to_21_other_regimes": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.people_aged_16_to_21_other_regimes",
+          "status": "active",
+          "matched_fact_count_overall": 136,
+          "matched_fact_count_at_or_before_period": 136,
+          "matched_fact_count_in_source_window": 136,
+          "resolved_period": 2025,
+          "resolved_value": 249061.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_540ad44e8734cf2690dff346"
+        }
+      ]
+    },
+    "dwp.uc.people_aged_22_to_24_no_work_requirements": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.people_aged_22_to_24_no_work_requirements",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 157008.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0b5d7890289fbffd679169fc"
+        }
+      ]
+    },
+    "dwp.uc.people_aged_22_to_24_other_regimes": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.people_aged_22_to_24_other_regimes",
+          "status": "active",
+          "matched_fact_count_overall": 72,
+          "matched_fact_count_at_or_before_period": 72,
+          "matched_fact_count_in_source_window": 72,
+          "resolved_period": 2025,
+          "resolved_value": 218958.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5b6a25b560072c0fbc1e0e63"
         }
       ]
     },
@@ -33709,6 +33849,86 @@
         }
       ]
     },
+    "dwp.pip.cases_england_aged_16_to_24": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_16_to_24",
+          "status": "active",
+          "matched_fact_count_overall": 8,
+          "matched_fact_count_at_or_before_period": 8,
+          "matched_fact_count_in_source_window": 8,
+          "resolved_period": 2025,
+          "resolved_value": 384149.5,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_17208aede97edb6ccb044cc1"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_25_to_34": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_25_to_34",
+          "status": "active",
+          "matched_fact_count_overall": 8,
+          "matched_fact_count_at_or_before_period": 8,
+          "matched_fact_count_in_source_window": 8,
+          "resolved_period": 2025,
+          "resolved_value": 419039.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_61c24ed989a3854af6e55958"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_35_to_49": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_35_to_49",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 780871.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8a22a30fafd3419318b35a43"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_50_to_64": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_50_to_64",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 1244108.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8da78c54f224c99c1512c2b4"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_65_and_over": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_65_and_over",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 662046.75,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7f79fa0fbf04a40e949d8475"
+        }
+      ]
+    },
     "dwp.pip.cases_wales": {
       "status": "active",
       "candidates": [
@@ -37643,6 +37863,38 @@
           "resolved_value": 943415.518223629,
           "resolved_fact_period": "2025-Q4",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5f4d94ba40c6e45b062995ee"
+        }
+      ]
+    },
+    "ons.paye_rti.employees_aged_0_to_17": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.paye_rti.employees_aged_0_to_17",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 438614.5833333333,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_efdf6a1311c270a2a6055e4d"
+        }
+      ]
+    },
+    "ons.paye_rti.employees_aged_18_to_24": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.paye_rti.employees_aged_18_to_24",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 3441394.4166666665,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_569f37e19583cbcc489dbf2e"
         }
       ]
     }
