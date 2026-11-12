@@ -770,6 +770,16 @@ def test_restaging_a_national_build_records_the_bundle_its_emitter_delivered(
     (handed_over,) = queue.jobs
     # The build record changed after the hand-over.
     (job,) = queue.jobs.values()
+    # The hand-over names the build for the collector: its attempt ID and the
+    # release it is a candidate for.
+    from microcosm_emitter_interface import CollectorProvenance
+
+    assert job["request"].collector == CollectorProvenance(
+        country_code="UK",
+        build_id=run_id,
+        licensed_data=True,
+        release="microcosm-uk-2024-25-national",
+    )
     assert (
         job["copied"]["build_record.json"] != (out / "build_record.json").read_bytes()
     )
