@@ -240,7 +240,5 @@ At commit `3ccae300a`, a run applied fourteen mutants to
 14. overflow left to warn.
 
 That run's script patched a checkout in place, so this folder does not hold
-it. A rerun of these mutants at the pull request's head belongs to the
-Microcosm hub session that adopted the pull request. The hub keeps that record
-in its own `review-mutation.md`, outside this repository, and this folder
-claims no result from it.
+it. The pull request's description reports a later mutation pass, and this
+folder holds no log of either run.

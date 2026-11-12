@@ -8460,11 +8460,11 @@ def _qrf_single_record_measurements(
 
     A sparse output reuses the values and weights the gate checked. For a
     dense output the gate loop stored only the entity, so this reads the
-    column from the frame again, with the loop's two conversion statements,
-    and holds a dense column's converted values only until the next dense
-    output's replace them. A dense output resolves its entity's weights
-    here, since the gate never weighs one, and reuses weights that a sparse
-    output of the same entity already resolved. Any
+    column from the frame again, with the loop's two conversion statements.
+    A dense column's converted values stay in local names: this stores them
+    in no mapping and returns none of them. A dense output resolves its
+    entity's weights here, since the gate never weighs one, and reuses
+    weights that a sparse output of the same entity already resolved. Any
     ``Exception``, from reading a dense column, from resolving weights or
     from measuring, lists the output under ``unmeasured`` with the reason
     :func:`_unmeasured_reason` builds, so no ``Exception`` from an output

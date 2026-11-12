@@ -3541,11 +3541,11 @@ def single_record_concentration(
         Scaling every weight by a power of two scales ``top_1_weight`` by it
         and leaves both shares unchanged, exactly, as long as no product or
         sum overflows or underflows (a property pins factors from ``2**-20``
-        to ``2**20``). Any other positive factor can round each mass
-        differently: it leaves both shares unchanged to float rounding (a
-        property pins 1e-9 relative for factors from 1e-3 to 1e3) and can
-        move ``top_1_weight`` to another record whose mass ties the largest
-        to within rounding.
+        to ``2**20``). Under the same condition, any other positive factor
+        can round each mass differently: it leaves both shares unchanged to
+        float rounding (a property pins 1e-9 relative for factors from 1e-3
+        to 1e3) and can move ``top_1_weight`` to another record whose mass
+        ties the largest to within rounding.
 
     Raises:
         ValueError: If ``top_k`` falls below 1 or the values and weights do
