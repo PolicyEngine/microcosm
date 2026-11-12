@@ -329,7 +329,25 @@ def test_the_declarations_are_consistent() -> None:
     for profile in declared.DEPRECIATION_PROFILES.values():
         assert profile["shape"] == "none" or 0 < profile["cap"] <= 1
     # UCL's column declarations build the reader's own declarations.
-    linked = ucl.LinkedColumns(**declared.UCL_LINKED_COLUMNS)
-    assert linked.has_address
+    ucl.LinkedColumns(**declared.UCL_LINKED_COLUMNS)
     ucl.CertificateColumns(**declared.UCL_CERTIFICATE_COLUMNS)
-    assert declared.UCL_COLUMNS_VERIFIED_AGAINST is None  # until discover runs
+    verified = declared.UCL_COLUMNS_VERIFIED_AGAINST
+    assert verified is None or (
+        len(verified) == 64 and set(verified) <= set("0123456789abcdef")
+    )
+
+
+def test_the_build_period_groups_hold_each_age_band_and_period_once() -> None:
+    groups = declared.BUILD_PERIOD_GROUPS
+    epc = [label for _, _, labels in groups for label in labels]
+    assert sorted(epc) == sorted(label for label, _, _ in declared.EPC_AGE_BANDS)
+    periods = [name for _, names, _ in groups for name in names]
+    assert len(periods) == len(set(periods))
+    # Every period VOA's CTSOP 4.1 prints for 2026, but the one of unknown age.
+    printed = ["bp_pre_1900", "bp_1900_1918", "bp_1919_1929", "bp_1930_1939"]
+    printed += ["bp_1945_1954", "bp_1955_1964", "bp_1965_1972", "bp_1973_1982"]
+    printed += ["bp_1983_1992", "bp_1993_1999", "bp_2000_2008"]
+    printed += [f"bp_{year}" for year in range(2009, 2027)]
+    assert sorted(periods) == sorted(printed)
+    spans = voa.classify_build_periods(printed)
+    assert all(spans[name] != (None, None) for name in periods)

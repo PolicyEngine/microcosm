@@ -93,6 +93,24 @@ EPC_AGE_BANDS: tuple[tuple[str, int, int], ...] = (
     ("2007-2011", 2007, 2011),
     ("2012 onwards", 2012, 2023),
 )
+#: Build-period groups for the variant that post-stratifies by build
+#: period: each group holds VOA's CTSOP 4.1 periods and the EPC's age bands
+#: whose years mostly fall in it. Their boundaries meet only in places, so
+#: some edges are approximate (the EPC's 1950-1954 counts with 1955-1966,
+#: and 1996-1999 with 2000 onwards). VOA's period of unknown age joins none.
+BUILD_PERIOD_GROUPS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+    ("before 1900", ("bp_pre_1900",), ("before 1900",)),
+    ("1900-1929", ("bp_1900_1918", "bp_1919_1929"), ("1900-1929",)),
+    ("1930-1954", ("bp_1930_1939", "bp_1945_1954"), ("1930-1949",)),
+    ("1955-1966", ("bp_1955_1964",), ("1950-1966",)),
+    ("1965-1982", ("bp_1965_1972", "bp_1973_1982"), ("1967-1975", "1976-1982")),
+    ("1983-1999", ("bp_1983_1992", "bp_1993_1999"), ("1983-1990", "1991-1995")),
+    (
+        "2000 onwards",
+        ("bp_2000_2008", *(f"bp_{year}" for year in range(2009, 2027))),
+        ("1996-2002", "2003-2006", "2007-2011", "2012 onwards"),
+    ),
+)
 #: The linked file's columns by role. UNVERIFIED: the names follow Price
 #: Paid's and the EPC's own field names; the discover stage checks them.
 UCL_LINKED_COLUMNS: dict[str, str | None] = {

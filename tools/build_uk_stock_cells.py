@@ -646,6 +646,7 @@ class Stock:
     type_shares: np.ndarray  # msoa × band × type
     period_shares: np.ndarray  # msoa × band × period
     period_spans: tuple
+    group_shares: np.ndarray  # msoa × band × declared build-period group
     la_all_properties: np.ndarray  # authority
     engwal_all_properties: float
     receipts: dict
@@ -687,6 +688,27 @@ def _stock(args, geo: Geography, to_roster, to_alias) -> Stock:
     totals = period_counts.sum(axis=2, keepdims=True)
     with np.errstate(divide="ignore", invalid="ignore"):
         period_shares = np.where(totals > 0, period_counts / totals, 0.0)
+    # The declared build-period groups, over the periods of known age.
+    group_of_period = {
+        name: g
+        for g, (_, names, _) in enumerate(declared.BUILD_PERIOD_GROUPS)
+        for name in names
+    }
+    ungrouped = [
+        name
+        for name, span in zip(periods.periods, periods.spans, strict=True)
+        if name not in group_of_period and span != (None, None)
+    ]
+    if ungrouped:
+        raise ValueError(f"CTSOP 4.1 periods in no declared group: {ungrouped}")
+    groups = len(declared.BUILD_PERIOD_GROUPS)
+    group_counts = np.zeros((*period_counts.shape[:2], groups))
+    for k, name in enumerate(periods.periods):
+        if name in group_of_period:
+            group_counts[..., group_of_period[name]] += period_counts[..., k]
+    group_totals = group_counts.sum(axis=2, keepdims=True)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        group_shares = np.where(group_totals > 0, group_counts / group_totals, 0.0)
     receipts = {
         "msoas_in_support": int(len(geo.msoa_codes)),
         "msoas_without_ctsop1_1_row": int((rows < 0).sum()),
@@ -707,6 +729,7 @@ def _stock(args, geo: Geography, to_roster, to_alias) -> Stock:
         type_shares=shares,
         period_shares=period_shares,
         period_spans=periods.spans,
+        group_shares=group_shares,
         la_all_properties=la_all,
         engwal_all_properties=float(engwal.all_properties.sum()),
         receipts=receipts,
@@ -867,17 +890,16 @@ def _homes(
     )
 
 
-def _period_of_age_band(spans: Sequence[tuple]) -> np.ndarray:
-    """Each EPC age band's VOA build period: the one that holds its middle year."""
-    out = np.full(len(declared.EPC_AGE_BANDS), -1, dtype=np.int64)
-    for index, (_, first, last) in enumerate(declared.EPC_AGE_BANDS):
-        middle = (first + last) / 2
-        for period, (start, end) in enumerate(spans):
-            if (start is None and end is None) or end is None:
-                continue
-            if (start is None or start <= middle) and middle <= end:
-                out[index] = period
-                break
+def _group_of_age_band() -> np.ndarray:
+    """Each EPC age band's declared build-period group."""
+    labels = [label for label, _, _ in declared.EPC_AGE_BANDS]
+    out = np.full(len(labels), -1, dtype=np.int64)
+    for group, (_, _, bands) in enumerate(declared.BUILD_PERIOD_GROUPS):
+        for label in bands:
+            out[labels.index(label)] = group
+    if (out < 0).any():
+        missing = [labels[i] for i in np.flatnonzero(out < 0)]
+        raise ValueError(f"EPC age bands in no build-period group: {missing}")
     return out
 
 
@@ -915,10 +937,10 @@ def _assign(homes: Homes, stock: Stock, tenure: Tenure, *, strata: str) -> Assig
         groups = homes.msoa
         eligible = np.ones(len(groups), dtype=bool)
     elif strata == "build_period":
-        periods = stock.period_shares.shape[2]
-        quota = (private[:, :, None] * stock.period_shares).transpose(0, 2, 1)
+        periods = stock.group_shares.shape[2]
+        quota = (private[:, :, None] * stock.group_shares).transpose(0, 2, 1)
         quota = quota.reshape(msoas * periods, bands)
-        lookup = _period_of_age_band(stock.period_spans)
+        lookup = _group_of_age_band()
         period = np.where(
             homes.age_band >= 0, lookup[np.maximum(homes.age_band, 0)], -1
         )

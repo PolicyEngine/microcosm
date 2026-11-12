@@ -252,13 +252,14 @@ def _world(root: Path) -> list[str]:
     band_mix = np.array([0.22, 0.3, 0.24, 0.14, 0.1, 0, 0, 0, 0])
     ctsop1, ctsop3, ctsop4 = [], [], []
     type_mix = {"D": 0.22, "S": 0.3, "T": 0.24, "F": 0.24}
+    # A selection of VOA's own period columns (CTSOP 4.1 prints 30).
     periods = [
         "bp_pre_1900",
         "bp_1900_1918",
-        "bp_1919_1944",
-        "bp_1945_1972",
-        "bp_1973_1999",
-        "bp_2000_2008",
+        "bp_1919_1929",
+        "bp_1930_1939",
+        "bp_1965_1972",
+        "bp_1983_1992",
         "bp_2009",
         "bp_unkw",
     ]
