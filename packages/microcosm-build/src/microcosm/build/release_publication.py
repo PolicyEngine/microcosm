@@ -56,7 +56,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from microcosm_emitter_interface import (
     PromoteBuild,
@@ -107,9 +107,14 @@ __all__ = [
 #: (``REQUEST_EXPIRED``), so the wait covers that hour and the longest
 #: upload.
 PUBLICATION_WAIT_SECONDS = 3 * 3600.0
-#: How long the command waits for a promotion or a withdrawal, which change
-#: only ``releases.json``.
+#: How long the command waits for a promotion, which changes only
+#: ``releases.json``.
 PROMOTION_WAIT_SECONDS = 300.0
+#: How long the withdraw command waits; a withdrawal also changes only
+#: ``releases.json``.
+WITHDRAWAL_WAIT_SECONDS = PROMOTION_WAIT_SECONDS
+#: The three release changes a command hands to the emitter.
+type ReleaseChangeKind = Literal["publish", "promote", "withdraw"]
 #: What the emitter's refusal codes mean for the operator, where its own
 #: message does not say what to do next.
 _REFUSAL_ADVICE = {
@@ -131,13 +136,8 @@ _REFUSAL_ADVICE = {
     ),
     "WITHDRAWING_CURRENT_BUILD": (
         "A release's current build cannot be withdrawn: make another build "
-        "current first (microcosm-publish-release-build <its release "
+        "current first (microcosm-publish-release-build <that build's release "
         "directory> --promote), then withdraw this one."
-    ),
-    "BUILD_NOT_LISTED": (
-        "The repository's releases.json does not list that build of that "
-        "release; check the names, which are its folder releases/<release>/"
-        "<build>/."
     ),
     "CURRENT_WITHDRAWN": (
         "The build has been withdrawn, so it cannot be made current."
@@ -145,6 +145,19 @@ _REFUSAL_ADVICE = {
     "REQUEST_EXPIRED": (
         "The change was still waiting an hour after it was handed over, so "
         "the emitter dropped it; run the command again."
+    ),
+}
+#: Advice that depends on the change as well as the code.
+_CHANGE_ADVICE: dict[tuple[str, str], str] = {
+    ("withdraw", "BUILD_NOT_LISTED"): (
+        "The repository's releases.json does not list that build of that "
+        "release; check the names, which are its folder releases/<release>/"
+        "<build>/."
+    ),
+    ("promote", "BUILD_NOT_LISTED"): (
+        "The repository's releases.json does not list this build: it has not "
+        "been published, or its publication has not landed yet. Publish it "
+        "first, or run the publish command again to see whether it landed."
     ),
 }
 #: Why the command refuses with ``HF_HUB_OFFLINE`` or ``TRANSFORMERS_OFFLINE``
@@ -208,11 +221,15 @@ class ReleasePublication:
     wanted_current: bool
     receipt: ReleaseReceipt
     problem: str | None = None
-    change: str = "publish"
+    change: ReleaseChangeKind = "publish"
 
     @property
     def withdrawn(self) -> bool:
-        """Whether a withdrawal landed: the build is withdrawn."""
+        """Whether this change was a withdrawal that landed.
+
+        A publication or promotion says nothing about whether the build was
+        withdrawn since; :meth:`as_json` reports that as unknown.
+        """
         return self.change == "withdraw" and self.published
 
     @property
@@ -244,7 +261,9 @@ class ReleasePublication:
                 "again later to see whether it landed."
             )
         if status == "refused":
-            advice = _REFUSAL_ADVICE.get(str(code))
+            advice = _CHANGE_ADVICE.get(
+                (self.change, str(code)), _REFUSAL_ADVICE.get(str(code))
+            )
             reason = self.receipt.get("message") or code
             return f"The emitter refused it ({code}): {reason}" + (
                 f" {advice}" if advice else ""
@@ -274,7 +293,7 @@ class ReleasePublication:
             "release": self.release,
             "build": self.build,
             "status": self.receipt["status"],
-            "withdrawn": self.withdrawn,
+            "withdrawn": self.withdrawn if self.change == "withdraw" else None,
             "current": self.current,
             "current_build": self.receipt.get("current"),
             "error_code": self.receipt.get("error_code"),
@@ -303,6 +322,13 @@ def _hand_over(
             emitter_task="the emitter, which commits it",
             proof="the change itself",
         )
+        kind: ReleaseChangeKind
+        if isinstance(change, PublishRelease):
+            kind = "publish"
+        elif isinstance(change, WithdrawBuild):
+            kind = "withdraw"
+        else:
+            kind = "promote"
         if problem is not None:
             receipt = unavailable_release_receipt(change)
         elif isinstance(change, PublishRelease):
@@ -314,13 +340,6 @@ def _hand_over(
     finally:
         if owned:
             emitter.close()
-    kind = (
-        "publish"
-        if isinstance(change, PublishRelease)
-        else "withdraw"
-        if isinstance(change, WithdrawBuild)
-        else "promote"
-    )
     return ReleasePublication(
         repository=change.repository,
         release=change.release,
@@ -557,7 +576,7 @@ def withdraw_release_build(
     build: str,
     *,
     client: ReleaseEmitter | None = None,
-    wait_seconds: float = PROMOTION_WAIT_SECONDS,
+    wait_seconds: float = WITHDRAWAL_WAIT_SECONDS,
 ) -> ReleasePublication:
     """Withdraw a published build: set its ``withdrawn`` flag in ``releases.json``.
 
@@ -595,10 +614,10 @@ def _withdraw_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--wait-seconds",
         type=float,
-        default=PROMOTION_WAIT_SECONDS,
+        default=WITHDRAWAL_WAIT_SECONDS,
         help=(
             "How long to wait for the change to land or be refused (default "
-            f"{PROMOTION_WAIT_SECONDS:.0f})."
+            f"{WITHDRAWAL_WAIT_SECONDS:.0f})."
         ),
     )
     return parser

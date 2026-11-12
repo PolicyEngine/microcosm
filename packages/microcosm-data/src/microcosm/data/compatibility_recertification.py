@@ -3098,7 +3098,6 @@ def require_parent_publication(
       byte for byte the parent's published ones. The release manifest pins
       every parent artifact's digest, so this anchors the whole lineage, and
       a child is never published before its parent;
-    - a build-folder parent is listed in ``releases.json`` and not withdrawn;
     - every parent artifact is on the Hub with the pinned digest (an LFS
       file's SHA-256, or the git blob id of the carried bytes): in a build
       folder, every file in that folder; at a tag, each carried release file
@@ -3107,6 +3106,8 @@ def require_parent_publication(
       locally; at a tag this is what stops a root artifact moved into the
       release directory from publishing as a release file. The child's copy
       of the H5 is read from ``artifact_root`` under its own name.
+    - last, a build-folder parent is listed in ``releases.json`` and not
+      withdrawn.
 
     ``api`` needs ``hf_hub_download`` and ``get_paths_info``. Absence and
     difference both refuse. A transient Hub failure propagates.

@@ -166,8 +166,9 @@ def build_refusal(record: ReleasesRecord, *, release: str, build: str) -> str | 
 
     The record must list the build, and the build must not be withdrawn. A
     withdrawn build stays in its folder and loads only when ``build=`` pins
-    it; anything that builds on it, such as a recertification or an annual
-    projection, refuses it.
+    it; a compatibility recertification and an annual projection refuse it
+    as their parent or base (:func:`microcosm.data.build_folder_manifests.
+    require_offered_build`).
     """
     entry = record.releases.get(release)
     if entry is None:

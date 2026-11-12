@@ -136,7 +136,8 @@ changes what `microcosm.data.load("us")` loads.
    the Hub, from its folder at `main`, and refuses unless its dataset has the
    base-year H5's file name and SHA-256, and every other file it declares,
    apart from the manifests and `sha256sums.txt`, is in the annual build's
-   manifest with the same path and SHA-256. A Hub that cannot be asked (a
+   manifest with the same path and SHA-256, and unless `releases.json` lists
+   the base build and has not withdrawn it. A Hub that cannot be asked (a
    403, or a server error after retries) stops the command with that error.
    Publishing does not make the build
    current. To make it the annual release's current build, run the printed
