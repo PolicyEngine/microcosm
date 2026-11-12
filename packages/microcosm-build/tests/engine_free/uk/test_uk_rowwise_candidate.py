@@ -94,15 +94,6 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
         "2",
         "--seed",
         "7",
-        # microcosm#1240: the fixture frame carries no housing columns, so the
-        # dry run keeps the spine's values rather than planning the value and
-        # band nodes.
-        "--property-localisation",
-        "none",
-        # microcosm#1262: nor a BRMA column, so the dry run keeps the spine's
-        # regional draw rather than planning the area-BRMA node.
-        "--brma-localisation",
-        "none",
         "--dry-run",
         "--no-staging",
     ]

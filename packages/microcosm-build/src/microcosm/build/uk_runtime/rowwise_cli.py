@@ -1077,18 +1077,10 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         if _geography_assignment(args) == "legacy":
             # The release line is the identity-keyed atomic assignment.
             refused.append("--geography-assignment legacy")
-        if getattr(args, "property_localisation", "price_paid") == "none":
-            # The release line localises home values and bands (microcosm#1240).
-            refused.append("--property-localisation none")
-        if getattr(args, "brma_localisation", "area") == "none":
-            # The release line reads BRMAs off the assigned area (microcosm#1262).
-            refused.append("--brma-localisation none")
-        if getattr(args, "private_rent_localisation", "brma_list") == "none":
-            # The release line re-draws private rents from the area's list.
-            refused.append("--private-rent-localisation none")
-        if getattr(args, "rfdr_localisation", "area") == "none":
-            # The release line flags its Rural Fuel Duty Relief areas (#1418).
-            refused.append("--rfdr-localisation none")
+        # A dense build takes its home values, BRMAs, private rents and
+        # fuel-relief flags from the spine, and spine_posture requires the
+        # spine stages that set them before the build pins or reads any other
+        # input (microcosm#931), so no flag turns them off.
         target_levels = getattr(args, "target_geographies", None)
         if target_levels is not None and not set(target_levels) & {
             "constituency",

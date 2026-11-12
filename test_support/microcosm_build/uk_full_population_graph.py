@@ -61,9 +61,9 @@ def source_frame():
     household["cgt_support_copy_index"] = np.zeros(len(household), dtype="int64")
     household["household_is_cgt_residential_clone"] = False
     household["cgt_residential_clone_index"] = np.zeros(len(household), dtype="int64")
-    # microcosm#1240: the housing columns the post-geography property nodes
-    # read and rewrite; one owner per region with a positive value, the
-    # Scottish household a renter, the Northern Irish one an owner at zero.
+    # The spine's housing columns: one owner per region with a positive
+    # value, the Scottish household a renter, the Northern Irish one an owner
+    # at zero.
     household["tenure_type"] = pd.array(
         ["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE", "RENT_PRIVATELY", "OWNED_OUTRIGHT"][
             : len(household)
@@ -79,14 +79,12 @@ def source_frame():
     household["council_tax_band"] = pd.array(
         ["D", "C", "B", "D"][: len(household)], dtype="string"
     )
-    # microcosm#1262: the spine's regional BRMA draw, which the area-BRMA node
-    # replaces outside Northern Ireland.
+    # The spine's BRMA draw.
     household["brma"] = pd.array(
         ["MAIDSTONE", "MAIDSTONE", "MAIDSTONE", "BELFAST"][: len(household)],
         dtype="string",
     )
-    # The Scottish household is the toy's one private renter; the private-rent
-    # node re-draws its rent from its area's toy list.
+    # The Scottish household is the toy's one private renter.
     household["rent"] = np.asarray(
         [0.0, 0.0, 9_000.0, 0.0][: len(household)], dtype="float64"
     )
@@ -149,11 +147,6 @@ def graph_and_registry(
     geography_assignment="legacy",
     definition=None,
     seed=7,
-    property_localisation_mode="none",
-    brma_localisation_mode="none",
-    private_rent_localisation_mode="none",
-    rfdr_localisation_mode="none",
-    full_scale=True,
 ):
     graph = append_uk_population_nodes(
         Graph(
@@ -170,11 +163,6 @@ def graph_and_registry(
         geography_assignment=geography_assignment,
         atomic_geography_definition=definition,
         source_vintage=SOURCE_VINTAGE if geography_assignment == "atomic" else None,
-        property_localisation_mode=property_localisation_mode,
-        brma_localisation_mode=brma_localisation_mode,
-        private_rent_localisation_mode=private_rent_localisation_mode,
-        rfdr_localisation_mode=rfdr_localisation_mode,
-        full_scale=full_scale,
     )
     registry = KernelRegistry()
     registry.register(Source())

@@ -34,7 +34,6 @@ import numpy as np
 
 __all__ = [
     "BRMA_AREA_LAYER_SOURCE",
-    "BRMA_LOCALISATION_MODES",
     "GRAINS",
     "KIND",
     "METHOD_VERSION",
@@ -54,9 +53,6 @@ SCHEMA_VERSION = 1
 METHOD_VERSION = "uk-brma-area-layer-v1"
 #: Graph source name of the committed layer bytes.
 BRMA_AREA_LAYER_SOURCE = "uk_brma_area_layer"
-#: ``area`` reads each placed Great Britain household's BRMA off its assigned
-#: area; ``none`` leaves the spine's regional draw on every clone.
-BRMA_LOCALISATION_MODES = ("none", "area")
 NI_SYSTEM = "uk_ni_data_zone_2021"
 
 

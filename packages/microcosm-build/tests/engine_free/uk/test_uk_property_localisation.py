@@ -9,25 +9,12 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import property_localisation as pl
-from microcosm.build.uk_runtime.atomic_area_support import (
-    uk_atomic_assignment_definition,
-)
 from microcosm.build.uk_runtime.household_lineage import (
     uk_household_clone_paths,
     without_geographic_branch,
 )
-from microcosm.graph import ContentStore, compile_graph, run_graph
 from test_support.microcosm_build.uk_atomic_support_fixtures import (
     toy_property_resources,
-    toy_support_sources,
-    write_toy_property_resources,
-    write_toy_supports,
-)
-from test_support.microcosm_build.uk_full_population_graph import (
-    graph_and_registry,
-)
-from test_support.microcosm_build.uk_ladder_rowwise_clone import (
-    toy_ladder as toy_ladder,
 )
 
 STREAM = ("sha256-u53-v1", pl.PROPERTY_STREAM_EXPERIMENT, 0, 7)
@@ -406,79 +393,3 @@ def test_spine_keys_drop_the_geographic_branch_only() -> None:
     assert spine[0] == spine[1] == ()
     keys = pl.spine_household_keys(household, source="frs", source_vintage="v")
     assert keys[0] == keys[1] != keys[2]
-
-
-# ----------------------------------------------------------------------------
-# Graph
-
-
-@pytest.mark.parametrize("k", [1, 3])
-def test_property_nodes_rewrite_values_and_bands_per_clone_and_replay(
-    k, toy_ladder, tmp_path
-) -> None:
-    _, ladder_path = toy_ladder
-    payloads, paths = write_toy_supports(tmp_path / "supports")
-    resource_paths = write_toy_property_resources(tmp_path / "property")
-    definition = uk_atomic_assignment_definition(payloads, seed=7)
-    graph, registry = graph_and_registry(
-        k,
-        geography_assignment="atomic",
-        definition=definition,
-        property_localisation_mode="price_paid",
-    )
-    compiled = compile_graph(graph)
-    order = compiled.order
-    assert order.index("uk.full.geography.derive") < order.index(
-        "uk.full.property.value"
-    )
-    assert order.index("uk.full.property.value") < order.index("uk.full.property.band")
-    assert order.index("uk.full.property.band") < order.index("uk.full.geography_gate")
-    sources = {
-        "uk_ladder": ladder_path,
-        "fixture": ladder_path,
-        **toy_support_sources(paths),
-        **resource_paths,
-    }
-    store = ContentStore(tmp_path / "store")
-    first = run_graph(compiled, sources=sources, store=store, kernels=registry)
-    household = first.population("uk.full.expand").table("household")
-    value_receipt = first.nodes["uk.full.property.value"].receipt
-    band_receipt = first.nodes["uk.full.property.band"].receipt
-    england_wales = household["constituency_code"].astype(str).str[0].isin(["E", "W"])
-    owners = household["tenure_type"].isin(
-        ["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE"]
-    ) & (household["main_residence_value"] > 0)
-    # Every England-and-Wales owner clone reads its value off the toy knots.
-    rewritten = household[england_wales & owners]
-    assert len(rewritten) == 2 * k and value_receipt["rows_rewritten"] == 2 * k
-    assert (rewritten["main_residence_value"] >= 100_000).all()
-    assert (rewritten["main_residence_value"] <= 2_000_000).all()
-    # Clones of one spine household share one uniform, so one value.
-    per_source = rewritten.groupby("source_household_id")[
-        "main_residence_value"
-    ].nunique()
-    assert (per_source == 1).all()
-    # Scotland and Northern Ireland keep the spine's values and bands.
-    untouched = household[~england_wales]
-    assert set(untouched["main_residence_value"]) <= {0.0}
-    assert band_receipt["rows_untouched_outside_england_wales"] == len(untouched)
-    assert band_receipt["monotone_violations"] == 0
-    assert set(household.loc[england_wales, "council_tax_band"]) <= set("ABCDEFGH")
-    assert value_receipt["weights"] == "unchanged"
-    _, fresh = graph_and_registry(
-        k,
-        geography_assignment="atomic",
-        definition=definition,
-        property_localisation_mode="price_paid",
-    )
-    replay = run_graph(
-        compiled, sources=sources, store=store, kernels=fresh, resume="require"
-    )
-    assert all(receipt.hit for receipt in replay.nodes.values())
-
-
-def test_property_localisation_needs_the_atomic_assignment() -> None:
-    with pytest.raises(ValueError, match="atomic geography assignment"):
-        graph_and_registry(
-            1, geography_assignment="legacy", property_localisation_mode="price_paid"
-        )

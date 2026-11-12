@@ -1110,7 +1110,8 @@ class TestUKCountryPackage:
             "hmrc_stamp_tax_facts.json",
             "hmrc_isa_statistics_facts.json",
             "hmrc_benefits_in_kind_facts.json",
-            # microcosm#1095: dense builds only, uk_runtime.property_localisation.
+            # microcosm#1095: no build reads it since the dense band node
+            # retired (#931); uk_runtime.property_localisation keeps its loader.
             "scotgov_chargeable_dwellings_by_band.json",
             # microcosm#1095 S2(a): frs_council_tax's Scottish level.
             "scotgov_band_d_liability_facts.json",
@@ -1303,7 +1304,8 @@ class TestExistingPackagesGeneralize:
             "hmrc_stamp_tax_facts.json",
             "hmrc_isa_statistics_facts.json",
             "hmrc_benefits_in_kind_facts.json",
-            # microcosm#1095: dense builds only, uk_runtime.property_localisation.
+            # microcosm#1095: no build reads it since the dense band node
+            # retired (#931); uk_runtime.property_localisation keeps its loader.
             "scotgov_chargeable_dwellings_by_band.json",
             # microcosm#1095 S2(a): frs_council_tax's Scottish level.
             "scotgov_band_d_liability_facts.json",
