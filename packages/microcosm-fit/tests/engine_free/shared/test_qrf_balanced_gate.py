@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from microcosm.fit import GateCalibration, GateOutcome, RegimeGatedQRF
+from microcosm.fit import GateCalibration, GateOutcome, RegimeGatedQRF, qrf
 from microcosm.fit.qrf import _class_balanced_weights, _cross_fit_gate
 
 
@@ -86,6 +87,41 @@ def test_the_balanced_gate_ranks_a_very_rare_class_and_keeps_its_rate() -> None:
     held_weights = held_out["weight"].to_numpy(dtype=np.float64)
     drawn = (held_weights * balanced.predict_proba(held_features)[:, 1]).sum()
     assert 0.5 < drawn / (rate * held_weights.sum()) < 2.0
+
+
+@pytest.mark.parametrize("seed", [11, 13, 17])
+def test_the_balanced_gate_holds_each_class_s_rate_exactly_out_of_fold(
+    monkeypatch: pytest.MonkeyPatch, seed: int
+) -> None:
+    # The calibration is fitted on the fold gates' out-of-fold scores at the
+    # rows' own weights, so there the mapped probabilities' weighted mean is
+    # each class's weighted rate to the balance tolerance, not roughly.
+    table, columns = _very_rare_carriers(seed=seed)
+    features = table[columns].to_numpy(dtype=np.float64)
+    labels = (table["target"].to_numpy() != 0.0).astype(np.int64)
+    weights = table["weight"].to_numpy(dtype=np.float64)
+    captured: dict[str, object] = {}
+    calibrate = qrf._fit_gate_calibration
+
+    def recording(log_proba, label_index, calibration_weights):
+        result = calibrate(log_proba, label_index, calibration_weights)
+        captured.update(
+            log_proba=log_proba,
+            label_index=label_index,
+            weights=calibration_weights,
+            result=result,
+        )
+        return result
+
+    monkeypatch.setattr(qrf, "_fit_gate_calibration", recording)
+    _, outcome = _cross_fit_gate(features, labels, weights, seed=7, balanced=True)
+    assert outcome == GateOutcome.CROSS_FITTED
+
+    slope, offsets, _ = captured["result"]
+    proba = qrf._calibrated_proba(captured["log_proba"], slope, offsets)
+    w = np.asarray(captured["weights"])
+    onehot = np.eye(proba.shape[1])[captured["label_index"]]
+    np.testing.assert_allclose(w @ proba / w.sum(), w @ onehot / w.sum(), atol=1e-6)
 
 
 def test_the_model_takes_the_balanced_calibration_and_names_its_outcome() -> None:

@@ -10,8 +10,11 @@ from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.qrf_gates import (
     declared_gate_calibration,
     declared_gate_level_columns,
+    gate_level_reports,
+    gate_level_settings_receipt,
     gate_levels,
     gate_outcomes,
+    pooled_gate_level_reports,
     pooled_gate_levels,
     pooled_gate_outcomes,
 )
@@ -44,15 +47,29 @@ class _Fitted:
         self,
         outcomes: dict[str, str | None],
         levels: dict[str, tuple[str, ...]] | None = None,
+        reports: dict[str, dict[str, object]] | None = None,
     ) -> None:
         self._outcomes = outcomes
         self._levels = levels or {}
+        self._reports = reports or {}
 
     def gate_outcomes(self) -> dict[str, str | None]:
         return dict(self._outcomes)
 
     def gate_levels(self) -> dict[str, tuple[str, ...]]:
         return dict(self._levels)
+
+    def gate_level_reports(self) -> dict[str, dict[str, object]]:
+        return dict(self._reports)
+
+
+def _report(fit: str, levels, references, thin) -> dict[str, object]:
+    return {
+        "fit": fit,
+        "levels": list(levels),
+        "reference_levels": list(references),
+        "thin_levels": thin,
+    }
 
 
 def test_the_gated_uk_fits_declare_the_cross_fitted_gate() -> None:
@@ -119,6 +136,58 @@ def test_gate_levels_name_each_target_s_offset_levels_or_count_them() -> None:
         "fit:b": {"x=1": 1},
     }
     assert pooled_gate_levels("fit", []) == {}
+
+
+def test_level_reports_name_each_fit_s_outcome_and_count_them_over_folds() -> None:
+    folds = [
+        _Fitted(
+            {},
+            reports={
+                "a": _report("offsets", ["x=1", "y_b=1"], ["x=0", "y_a=1"], ["y_c=1"]),
+                "b": _report("no_supported_level", [], ["x=0"], {"count": 400}),
+            },
+        ),
+        _Fitted(
+            {},
+            reports={
+                "a": _report("balance_not_met", ["x=1"], ["x=0", "y_a=1"], []),
+                "b": _report("no_supported_level", [], ["x=0"], ["x=1"]),
+            },
+        ),
+    ]
+    assert gate_level_reports("fit", folds[0]) == {
+        "fit:a": _report("offsets", ["x=1", "y_b=1"], ["x=0", "y_a=1"], ["y_c=1"]),
+        "fit:b": _report("no_supported_level", [], ["x=0"], {"count": 400}),
+    }
+    assert pooled_gate_level_reports("fit", folds) == {
+        "fit:a": {
+            "fit": {"balance_not_met": 1, "offsets": 1},
+            "levels": {"x=1": 2, "y_b=1": 1},
+            "reference_levels": {"x=0": 2, "y_a=1": 2},
+            "thin_levels": {"y_c=1": 1},
+        },
+        "fit:b": {
+            "fit": {"no_supported_level": 2},
+            "levels": {},
+            "reference_levels": {"x=0": 2},
+            "thin_levels": {"x=1": 1},
+            "thin_levels_counted": 400,
+        },
+    }
+    # A fit without level reports (an in-sample model, a test double) adds none.
+    assert gate_level_reports("fit", SimpleNamespace()) == {}
+    assert pooled_gate_level_reports("fit", []) == {}
+
+
+def test_the_level_settings_receipt_is_the_fit_s() -> None:
+    from microcosm.fit import gate_level_settings
+
+    assert gate_level_settings_receipt() == gate_level_settings()
+    assert set(gate_level_settings_receipt()) == {
+        "min_rows_per_sign_class",
+        "ridge",
+        "balance_tolerance",
+    }
 
 
 def test_an_undeclared_or_unmatched_operation_keeps_the_in_sample_gate() -> None:

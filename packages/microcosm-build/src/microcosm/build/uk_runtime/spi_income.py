@@ -55,8 +55,11 @@ from microcosm.build.uk_runtime.pension_coherence import (
 )
 from microcosm.build.uk_runtime.qrf_gates import (
     UK_DEFAULT_GATE_CALIBRATION,
+    gate_level_reports,
+    gate_level_settings_receipt,
     gate_levels,
     gate_outcomes,
+    pooled_gate_level_reports,
     pooled_gate_levels,
     pooled_gate_outcomes,
 )
@@ -65,6 +68,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_WITHHELD,
     distinct_count,
     extreme_count,
+    floored_share,
     rounded_count,
     small_cell_share,
     source_household_ids,
@@ -1988,9 +1992,14 @@ def impute_uk_spi_income_support(
         gate_levels=(
             {
                 "declared": list(stage1_gate_level_columns),
+                "settings": gate_level_settings_receipt(),
                 "offset_levels": {
                     **gate_levels(SPI_DONOR_FIT_NAME, stage1),
                     **pooled_gate_levels(SPI_TRANSPORT_FIT_NAME, reference_fits),
+                },
+                "level_fits": {
+                    **gate_level_reports(SPI_DONOR_FIT_NAME, stage1),
+                    **pooled_gate_level_reports(SPI_TRANSPORT_FIT_NAME, reference_fits),
                 },
             }
             if stage1_level_columns
@@ -2038,6 +2047,13 @@ def _rare_carriers_certain_frame(
     repeats. Rows keep the tape's order. A tape with no more records than
     ``size`` is the frame, whole, at FACT.
 
+    The receipt counts tape records as every stage receipt does
+    (``receipt_counts``, microcosm#1164): rounded, or "<3" and "3-9" in bands.
+    The rows taken for a rare output and the rows sampled fill the frame, so
+    the sampled count is the frame's rows less the rounded carrier count and
+    the pair gives nothing back by difference. Each output's share of the
+    tape's carriers the frame keeps is floored to the hundredth.
+
     Returns:
         ``(frame, design weights, receipt)``.
     """
@@ -2050,14 +2066,17 @@ def _rare_carriers_certain_frame(
             fact,
             {
                 "design": SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN,
-                "rows": int(len(donor)),
+                "rows": rounded_count(len(donor)),
                 "whole_tape": True,
             },
         )
     rare: list[str] = []
     certain = np.zeros(len(donor), dtype=bool)
-    for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
-        carrier = donor[column].to_numpy(dtype=np.float64) != 0.0
+    carriers = {
+        column: donor[column].to_numpy(dtype=np.float64) != 0.0
+        for column in SPI_INCOME_QRF_OUTPUT_COLUMNS
+    }
+    for column, carrier in carriers.items():
         if 0 < int(carrier.sum()) < SPI_DONOR_RARE_CARRIER_SHARE * size:
             rare.append(column)
             certain |= carrier
@@ -2083,18 +2102,37 @@ def _rare_carriers_certain_frame(
     weights[rest[chosen]] = fact[rest[chosen]] / inclusion[chosen]
     selected = np.flatnonzero(weights > 0.0)
     frame_weights = weights[selected]
+    kept = weights > 0.0
+    carrier_rows = rounded_count(int(certain.sum()))
     receipt: dict[str, object] = {
         "design": SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN,
         "rows": int(len(selected)),
         "rare_carrier_share_of_rows": SPI_DONOR_RARE_CARRIER_SHARE,
         "rare_outputs": rare,
-        "rows_carrying_a_rare_output": int(certain.sum()),
-        "rows_sampled_in_proportion_to_fact": int(budget),
-        "sampled_rows_taken_with_certainty": int((inclusion[chosen] >= 1.0).sum()),
-        "weight_total_over_tape_fact_total": float(frame_weights.sum() / fact.sum()),
-        "kish_effective_rows": float(
-            frame_weights.sum() ** 2 / (frame_weights**2).sum()
+        "rows_carrying_a_rare_output": carrier_rows,
+        "rows_sampled_in_proportion_to_fact": (
+            int(len(selected)) - carrier_rows
+            if isinstance(carrier_rows, int)
+            else rounded_count(budget)
         ),
+        "sampled_rows_taken_with_certainty": rounded_count(
+            int((inclusion[chosen] >= 1.0).sum())
+        ),
+        "weight_total_over_tape_fact_total": float(frame_weights.sum() / fact.sum()),
+        "kish_effective_rows": rounded_count(
+            int(round(frame_weights.sum() ** 2 / (frame_weights**2).sum()))
+        ),
+        # Each output's share of the tape's carriers the frame keeps: one for a
+        # rare output, and for a sampled one more than the bootstrap's, since no
+        # record repeats (microcosm#1276, part A).
+        "tape_carriers_kept_share": {
+            column: (
+                floored_share(int((carrier & kept).sum()) / int(carrier.sum()))
+                if carrier.any()
+                else None
+            )
+            for column, carrier in carriers.items()
+        },
     }
     return donor.iloc[selected].reset_index(drop=True), frame_weights, receipt
 
@@ -3515,18 +3553,19 @@ def _check_gate_level_columns(declared: Sequence[str]) -> None:
 
 def _encoded_gate_level_columns(
     declared: Sequence[str], encoded_columns: Sequence[str]
-) -> tuple[str, ...]:
+) -> tuple[str | tuple[str, ...], ...]:
     """The encoded predictor columns behind stage 1's ``gate_level_columns``.
 
     A numeric predictor is its own column. A categorical one is every one-hot
-    column :func:`_encode_predictor_frames` made of it, so each of its levels,
-    the composite records' age band among them, can hold offsets of its own;
-    the gate's calibration skips a thin level and the reference level.
+    column :func:`_encode_predictor_frames` made of it, passed as one group, so
+    each of its levels, the composite records' age band among them, can hold
+    offsets of its own while its heaviest level is the reference, chosen where
+    the weights are known; the gate's calibration skips a thin level.
     """
 
     _check_gate_level_columns(declared)
     encoded = list(encoded_columns)
-    out: list[str] = []
+    out: list[str | tuple[str, ...]] = []
     for column in declared:
         if column in SPI_STAGE1_CATEGORICAL_PREDICTORS:
             levels = [
@@ -3541,7 +3580,9 @@ def _encoded_gate_level_columns(
             raise ValueError(
                 f"SPI stage-1 gate level column {column!r} has no encoded predictor."
             )
-        out.extend(levels)
+        out.append(
+            tuple(levels) if column in SPI_STAGE1_CATEGORICAL_PREDICTORS else levels[0]
+        )
     return tuple(out)
 
 

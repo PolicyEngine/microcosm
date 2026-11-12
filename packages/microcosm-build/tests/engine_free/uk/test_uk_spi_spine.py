@@ -337,11 +337,17 @@ class _FakeQRF:
         n_estimators: int,
         seed: int,
         gate_calibration: str = "in_sample",
-        gate_level_columns: tuple[str, ...] = (),
+        gate_level_columns: tuple[str | tuple[str, ...], ...] = (),
     ) -> None:
         self.seed = seed
         self.gate_calibration = gate_calibration
         self.gate_level_columns = tuple(gate_level_columns)
+        # One-hot groups flattened, for the checks on what each forest got.
+        self.level_column_names = tuple(
+            name
+            for entry in self.gate_level_columns
+            for name in ((entry,) if isinstance(entry, str) else entry)
+        )
         self.targets: tuple[str, ...] = ()
         self.weight_kind = "unknown"
         type(self).instances.append(self)
@@ -367,10 +373,23 @@ class _FakeQRF:
 
     def gate_levels(self):
         # Every declared level column gets an offset on the first target only.
-        levels = tuple(f"{column}=1" for column in self.gate_level_columns)
+        levels = tuple(f"{column}=1" for column in self.level_column_names)
         return {
             target: levels if position == 0 else ()
             for position, target in enumerate(self.targets)
+        }
+
+    def gate_level_reports(self):
+        if not self.gate_level_columns:
+            return {}
+        return {
+            target: {
+                "fit": "offsets" if position == 0 else "no_supported_level",
+                "levels": list(levels),
+                "reference_levels": [],
+                "thin_levels": [],
+            }
+            for position, (target, levels) in enumerate(self.gate_levels().items())
         }
 
     def sign_classes(self, target):
@@ -774,10 +793,17 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
     assert set(by_fit) == {"stage1", "reference", "stage2"}
     for label in ("stage1", "reference"):
         for fit in by_fit[label]:
-            columns = fit.gate_level_columns
-            assert {"has_pay", "has_trade"} <= set(columns)
-            assert any(column.startswith("spi_age_band_") for column in columns)
-            assert any(column.startswith("main_source_") for column in columns)
+            # The binaries go as columns, each categorical's one-hots as a group.
+            plain = [e for e in fit.gate_level_columns if isinstance(e, str)]
+            grouped = [e for e in fit.gate_level_columns if not isinstance(e, str)]
+            assert plain == ["has_pay", "has_trade"]
+            assert [group[0].rsplit("_", 1)[0] for group in grouped] == [
+                "spi_age_band",
+                "main_source",
+            ]
+            names = fit.level_column_names
+            assert any(column.startswith("spi_age_band_") for column in names)
+            assert any(column.startswith("main_source_") for column in names)
     assert all(not fit.gate_level_columns for fit in by_fit["stage2"])
     # The levels they got are in the evidence.
     gate_level_evidence = path_transform.checkpoint_metadata()["evidence"][
@@ -792,6 +818,15 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
     offsets = gate_level_evidence["offset_levels"]
     assert any(key.startswith("uk_spi_2022_23_income:") for key in offsets)
     assert any(key.startswith("uk_frs_reference_conditional:") for key in offsets)
+    # So does what each level fit came to, and the settings behind them.
+    fits = gate_level_evidence["level_fits"]
+    assert any(key.startswith("uk_spi_2022_23_income:") for key in fits)
+    assert any(key.startswith("uk_frs_reference_conditional:") for key in fits)
+    assert set(gate_level_evidence["settings"]) == {
+        "min_rows_per_sign_class",
+        "ridge",
+        "balance_tolerance",
+    }
 
 
 def test_income_stage_parameters_accept_the_committed_manifest() -> None:

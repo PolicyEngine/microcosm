@@ -9,13 +9,15 @@ record that in their evidence under :data:`UK_GATE_OUTCOMES_EVIDENCE`, so a
 target that kept the in-sample gate or fell back to the class rates is seen.
 An operation may also name ``gate_level_columns``, predictors whose levels a
 cross-fitted calibration offsets on their own (microcosm#1276); the levels each
-gate got are recorded under :data:`UK_GATE_LEVELS_EVIDENCE`.
+gate got, what each level fit came to and the settings behind them are recorded
+under :data:`UK_GATE_LEVELS_EVIDENCE`.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from importlib import import_module
 from typing import Any
 
 from microcosm.build.source_manifest import SourceStageSpec
@@ -105,6 +107,64 @@ def pooled_gate_levels(fit_name: str, fits: Sequence[Any]) -> dict[str, dict[str
         for key, levels in gate_levels(fit_name, fitted).items():
             counts.setdefault(key, Counter()).update(levels)
     return {key: dict(sorted(count.items())) for key, count in counts.items()}
+
+
+def gate_level_settings_receipt() -> dict[str, float | int]:
+    """The level calibration's fixed settings (rows per class, ridge, tolerance)."""
+
+    return dict(import_module("microcosm.fit").gate_level_settings())
+
+
+def gate_level_reports(fit_name: str, fitted: Any) -> dict[str, dict[str, object]]:
+    """``{"<fit_name>:<target>": report}`` for each target fitted with level columns.
+
+    The report (:meth:`~microcosm.fit.FittedRegimeGatedQRF.gate_level_reports`)
+    names what the level fit came to, including a fit tried and dropped for
+    missing its balance, the levels it offset or tried, each column's reference
+    and the levels too thin for offsets of their own.
+    """
+
+    reports = getattr(fitted, "gate_level_reports", None)
+    if reports is None:
+        return {}
+    return {f"{fit_name}:{target}": report for target, report in reports().items()}
+
+
+def pooled_gate_level_reports(
+    fit_name: str, fits: Sequence[Any]
+) -> dict[str, dict[str, object]]:
+    """Per target, :func:`gate_level_reports` counted over fits of the same targets.
+
+    For the folds of a cross-fitted reference: how many folds' level fits came
+    to each outcome, and how many named each level as offset or tried, as a
+    reference and as thin. Thin levels a report only counted add to a count.
+    """
+
+    pooled: dict[str, dict[str, Counter[str]]] = {}
+    thin_counted: Counter[str] = Counter()
+    for fitted in fits:
+        for key, report in gate_level_reports(fit_name, fitted).items():
+            entry = pooled.setdefault(
+                key,
+                {
+                    name: Counter()
+                    for name in ("fit", "levels", "reference_levels", "thin_levels")
+                },
+            )
+            entry["fit"][str(report["fit"])] += 1
+            entry["levels"].update(report["levels"])
+            entry["reference_levels"].update(report["reference_levels"])
+            thin = report["thin_levels"]
+            if isinstance(thin, Mapping):
+                thin_counted[key] += int(thin["count"])
+            else:
+                entry["thin_levels"].update(thin)
+    out: dict[str, dict[str, object]] = {}
+    for key, entry in pooled.items():
+        out[key] = {name: dict(sorted(count.items())) for name, count in entry.items()}
+        if thin_counted[key]:
+            out[key]["thin_levels_counted"] = thin_counted[key]
+    return out
 
 
 def gate_outcomes(fit_name: str, fitted: Any) -> dict[str, str]:

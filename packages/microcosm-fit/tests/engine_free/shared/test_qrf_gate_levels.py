@@ -19,7 +19,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.fit import GateCalibration, GateOutcome, RegimeGatedQRF
+from microcosm.fit import (
+    GateCalibration,
+    GateLevelFit,
+    GateOutcome,
+    RegimeGatedQRF,
+    gate_level_settings,
+    qrf,
+)
 from microcosm.fit.qrf import (
     _GATE_LEVEL_MIN_ROWS,
     _cross_fit_gate,
@@ -118,6 +125,10 @@ def test_levels_skip_the_reference_and_thin_levels() -> None:
     levels = _select_gate_levels(features, labels, None, (0, 1))
     assert levels.positions == (0,)
     assert levels.values == (1.0,)
+    # The receipt keeps the reference and the thin level; a constant column has
+    # no levels to name.
+    assert levels.references == ((0, 0.0),)
+    assert levels.thin == ((0, 2.0),)
 
     # A level whose carriers weigh nothing gets no offset either.
     weights = np.ones(n)
@@ -278,3 +289,195 @@ def test_level_columns_are_checked() -> None:
     )
     with pytest.raises(ValueError, match="checkpointed QRF chain"):
         chained.start_chain(table, ["x0", "level"], ["target"], weights="weight")
+
+
+def _four_categories(
+    seed: int, shares: tuple[float, ...] = (0.55, 0.25, 0.15, 0.05), n: int = 12_000
+) -> tuple[pd.DataFrame, list[str]]:
+    """A four-level categorical, one-hot, whose levels carry at different rates."""
+    rng = np.random.default_rng(seed)
+    category = rng.choice(4, size=n, p=list(shares))
+    carrier = rng.random(n) < np.array([0.02, 0.06, 0.15, 0.45])[category]
+    x = rng.normal(size=(n, 3))
+    x[carrier, 0] += 1.0
+    table = pd.DataFrame(x, columns=["x0", "x1", "x2"])
+    for k in range(4):
+        table[f"cat_{k}"] = (category == k).astype(np.float64)
+    table["target"] = np.where(carrier, rng.lognormal(3.0, 0.5, n), 0.0)
+    table["weight"] = rng.uniform(0.5, 1.5, n)
+    return table, ["x0", "x1", "x2", "cat_0", "cat_1", "cat_2", "cat_3"]
+
+
+_CATEGORIES = ("cat_0", "cat_1", "cat_2", "cat_3")
+
+
+def _gate_inputs(table: pd.DataFrame, columns: list[str]):
+    features = table[columns].to_numpy(dtype=np.float64)
+    labels = (table["target"].to_numpy() != 0.0).astype(np.int64)
+    return features, labels, table["weight"].to_numpy(dtype=np.float64)
+
+
+def test_a_one_hot_categorical_offsets_every_category_but_its_heaviest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    table, columns = _four_categories(seed=51)
+    features, labels, weights = _gate_inputs(table, columns)
+    captured: dict[str, object] = {}
+    fit_levels = qrf._fit_gate_level_calibration
+
+    def recording(log_proba, label_index, calibration_weights, design):
+        result = fit_levels(log_proba, label_index, calibration_weights, design)
+        captured.update(
+            log_proba=log_proba,
+            label_index=label_index,
+            weights=calibration_weights,
+            design=design,
+            result=result,
+        )
+        return result
+
+    monkeypatch.setattr(qrf, "_fit_gate_level_calibration", recording)
+    gate, outcome = _cross_fit_gate(
+        features,
+        labels,
+        weights,
+        seed=4,
+        balanced=True,
+        level_positions=((3, 4, 5, 6),),
+    )
+    assert outcome == GateOutcome.CROSS_FITTED
+    # The heaviest category is the reference; the other three are offset.
+    assert gate.levels is not None
+    assert (gate.levels.positions, gate.levels.values) == ((4, 5, 6), (1.0, 1.0, 1.0))
+    assert gate.level_fit is not None
+    assert gate.level_fit.status == GateLevelFit.OFFSETS
+    assert gate.level_fit.levels.references == ((3, 1.0),)
+    assert gate.level_fit.levels.thin == ()
+    # Identified without the ridge: the class offset and the indicators have
+    # full column rank.
+    design = np.asarray(captured["design"])
+    stacked = np.column_stack([np.ones(len(design)), design])
+    assert np.linalg.matrix_rank(stacked) == stacked.shape[1]
+    slope, offsets, level_offsets, ok = captured["result"]
+    assert ok
+    logits = (
+        slope * np.asarray(captured["log_proba"]) + offsets + design @ level_offsets
+    )
+    proba = np.exp(logits - logits.max(axis=1, keepdims=True))
+    proba /= proba.sum(axis=1, keepdims=True)
+    onehot = np.eye(2)[np.asarray(captured["label_index"])]
+    w = np.asarray(captured["weights"])
+    for k in range(4):
+        member = features[:, 3 + k] == 1.0
+        calibrated, rate = _level_rates(proba, onehot, w, member)
+        np.testing.assert_allclose(calibrated, rate, atol=1e-5)
+
+
+@pytest.mark.parametrize("shares", [(0.6, 0.2, 0.15, 0.05), (0.4, 0.3, 0.2, 0.1)])
+def test_the_receipt_names_the_same_levels_whatever_the_category_mix(
+    shares: tuple[float, ...],
+) -> None:
+    table, columns = _four_categories(seed=53, shares=shares)
+    fitted = RegimeGatedQRF(
+        n_estimators=4,
+        seed=9,
+        gate_calibration=GateCalibration.CROSS_FITTED_BALANCED,
+        gate_level_columns=(_CATEGORIES,),
+    ).fit(table, columns, ["target"], weights="weight")
+    assert fitted.gate_levels() == {"target": ("cat_1=1", "cat_2=1", "cat_3=1")}
+    assert fitted.gate_level_reports() == {
+        "target": {
+            "fit": GateLevelFit.OFFSETS,
+            "levels": ["cat_1=1", "cat_2=1", "cat_3=1"],
+            "reference_levels": ["cat_0=1"],
+            "thin_levels": [],
+        }
+    }
+
+
+def test_a_thin_category_shares_the_reference_and_is_named() -> None:
+    table, columns = _four_categories(seed=55, shares=(0.6, 0.25, 0.147, 0.003))
+    features, labels, weights = _gate_inputs(table, columns)
+    cat_3 = features[:, 6] == 1.0
+    assert int((cat_3 & (labels == 1)).sum()) < _GATE_LEVEL_MIN_ROWS
+    gate, _ = _cross_fit_gate(
+        features,
+        labels,
+        weights,
+        seed=4,
+        balanced=True,
+        level_positions=((3, 4, 5, 6),),
+    )
+    assert gate.levels is not None and gate.levels.positions == (4, 5)
+    assert gate.level_fit.levels.thin == ((6, 1.0),)
+
+
+def test_a_level_fit_that_misses_its_balance_is_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fit_levels = qrf._fit_gate_level_calibration
+
+    def failing(*args):
+        slope, offsets, level_offsets, _ = fit_levels(*args)
+        return slope, offsets, level_offsets, False
+
+    monkeypatch.setattr(qrf, "_fit_gate_level_calibration", failing)
+    table, columns = _four_categories(seed=57)
+    fitted = RegimeGatedQRF(
+        n_estimators=4,
+        seed=9,
+        gate_calibration=GateCalibration.CROSS_FITTED_BALANCED,
+        gate_level_columns=(_CATEGORIES,),
+    ).fit(table, columns, ["target"], weights="weight")
+    # The gate keeps the calibration without levels, and the receipt says the
+    # level fit was tried and dropped rather than showing an empty level list.
+    assert fitted.gate_outcomes() == {"target": GateOutcome.CROSS_FITTED}
+    assert fitted.gate_levels() == {"target": ()}
+    assert fitted.gate_level_reports()["target"] == {
+        "fit": GateLevelFit.BALANCE_NOT_MET,
+        "levels": ["cat_1=1", "cat_2=1", "cat_3=1"],
+        "reference_levels": ["cat_0=1"],
+        "thin_levels": [],
+    }
+    assert fitted._target_models["target"].gate.levels is None
+
+
+def test_a_gate_with_no_supported_level_says_so() -> None:
+    table = _composite_like(seed=59, n=4_000)
+    fitted = RegimeGatedQRF(
+        n_estimators=2,
+        seed=9,
+        gate_calibration=GateCalibration.CROSS_FITTED_BALANCED,
+        gate_level_columns=("x1",),
+    ).fit(table, ["x0", "x1", "level"], ["target"], weights="weight")
+    report = fitted.gate_level_reports()["target"]
+    assert report["fit"] == GateLevelFit.NO_SUPPORTED_LEVEL
+    assert report["levels"] == []
+    # A continuous column's thousands of one-row levels are counted, not listed.
+    assert report["thin_levels"] == {"count": 4_000 - 1}
+    assert fitted.gate_levels() == {"target": ()}
+
+
+def test_level_groups_are_checked() -> None:
+    with pytest.raises(ValueError, match="non-empty group"):
+        RegimeGatedQRF(
+            gate_calibration=GateCalibration.CROSS_FITTED, gate_level_columns=((),)
+        )
+    with pytest.raises(ValueError, match="repeats a column"):
+        RegimeGatedQRF(
+            gate_calibration=GateCalibration.CROSS_FITTED,
+            gate_level_columns=(("cat_0", "cat_1"), "cat_1"),
+        )
+    table, columns = _four_categories(seed=61, n=2_000)
+    table["cat_1"] = table["cat_0"]  # two levels marked on the same rows
+    features, labels, weights = _gate_inputs(table, columns)
+    with pytest.raises(ValueError, match="mark at most one level"):
+        _select_gate_levels(features, labels, weights, ((3, 4, 5, 6),))
+
+
+def test_the_level_settings_are_recorded() -> None:
+    assert gate_level_settings() == {
+        "min_rows_per_sign_class": _GATE_LEVEL_MIN_ROWS,
+        "ridge": qrf._GATE_LEVEL_RIDGE,
+        "balance_tolerance": qrf._GATE_LEVEL_BALANCE_TOLERANCE,
+    }

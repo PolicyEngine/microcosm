@@ -19,6 +19,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_WITHHELD,
+    floored_share,
+    rounded_count,
+)
 from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_FRAME_FACT_BOOTSTRAP,
     SPI_DONOR_FRAME_FIT_WEIGHT,
@@ -74,7 +79,27 @@ def test_the_frame_holds_every_rare_carrier_once_at_the_tape_incidence() -> None
 
     assert len(frame) == size == receipt["rows"]
     assert receipt["rare_outputs"] == [RARE]
-    assert receipt["rows_carrying_a_rare_output"] == carriers
+    # Counts of tape records are rounded as every receipt's are, and the two
+    # that fill the frame sum to its rows, so neither gives the other back.
+    assert receipt["rows_carrying_a_rare_output"] == rounded_count(carriers)
+    assert (
+        receipt["rows_carrying_a_rare_output"]
+        + receipt["rows_sampled_in_proportion_to_fact"]
+        == size
+    )
+    assert receipt["sampled_rows_taken_with_certainty"] in (0, UK_WITHHELD) or (
+        receipt["sampled_rows_taken_with_certainty"]
+        == rounded_count(receipt["sampled_rows_taken_with_certainty"])
+    )
+    assert isinstance(receipt["kish_effective_rows"], int)
+    # Every rare carrier is kept; a sampled output keeps a share of its carriers.
+    kept = receipt["tape_carriers_kept_share"]
+    assert kept[RARE] == 1.0
+    assert 0.0 < kept[COMMON] < 1.0
+    assert kept[COMMON] == floored_share(kept[COMMON])
+    assert {column for column, share in kept.items() if share is None} == set(
+        SPI_INCOME_QRF_OUTPUT_COLUMNS
+    ) - {RARE, COMMON}
     # Every carrier is in the frame, once, at its own FACT.
     in_frame = frame[RARE] != 0
     assert int(in_frame.sum()) == carriers
@@ -112,6 +137,8 @@ def test_a_tape_no_larger_than_the_frame_is_the_frame() -> None:
     tape = _tape(n=300)
     frame, weights, receipt = _rare_carriers_certain_frame(tape, size=4_000, seed=9)
     assert len(frame) == 300 and receipt["whole_tape"] is True
+    # The tape's own record count is rounded, as every count of records is.
+    assert receipt["rows"] == rounded_count(300)
     np.testing.assert_array_equal(weights, tape["FACT"].to_numpy())
 
 
@@ -181,17 +208,20 @@ def test_gate_level_columns_take_every_one_hot_level_of_a_categorical() -> None:
     levels = _encoded_gate_level_columns(
         ("spi_age_band", "main_source", "has_pay", "has_trade"), encoded.columns
     )
+    # A categorical's one-hot columns go as one group, so the gate picks its
+    # heaviest level as the reference where the weights are known.
     assert levels == (
-        "spi_age_band_-1.0",
-        "spi_age_band_1.0",
-        "spi_age_band_2.0",
-        "main_source_pay",
-        "main_source_pension",
-        "main_source_trade",
+        ("spi_age_band_-1.0", "spi_age_band_1.0", "spi_age_band_2.0"),
+        ("main_source_pay", "main_source_pension", "main_source_trade"),
         "has_pay",
         "has_trade",
     )
-    assert set(levels) <= set(encoded.columns)
+    names = [
+        name
+        for level in levels
+        for name in ((level,) if isinstance(level, str) else level)
+    ]
+    assert set(names) <= set(encoded.columns)
     assert _encoded_gate_level_columns((), encoded.columns) == ()
 
 
