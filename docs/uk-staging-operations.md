@@ -467,14 +467,16 @@ receipt.
 > wrote". If that has happened, fetch the run again with `modal volume get`.
 
 The re-stage command names the build for the collector as the build does
-(see above). It takes the build ID from `--build-id`, else the manifest's
-`build_id` (a national build records it), else the `release_id` the
-registered local gate report records (a dense build's attempt ID, as the
-dense release assembler reads it), else the one build the directory's
-Logbook spool rows name, else the run ID, with a note. A retried output
-directory keeps an earlier attempt's row beside the new one, and the spool
-names rows by digest, so rows that name more than one build stop the command
-before its emitter starts, asking for `--build-id`. The release comes from
+(see above). It takes the build ID from the manifest's `build_id` (a
+national build records it), else the `release_id` the registered local gate
+report records (a dense build's attempt ID, as the dense release assembler
+reads it), else `--build-id`, which may not contradict either, else the one
+build the directory's Logbook spool rows name, else the run ID, with a note.
+A retried output directory keeps an earlier attempt's row beside the new
+one, and the spool names rows by digest, so rows that name more than one
+build stop the command before its emitter starts, asking for `--build-id`,
+when nothing else records the build. Without `--run-id` or a staged record,
+the bundle is staged under that build ID too. The release comes from
 the manifest's `release_id`. A hand-over it resumes keeps what the build
 named. A build ID the interface refuses stops the command before its emitter
 starts.
