@@ -9,6 +9,10 @@ household's from ``uk.full.spine_checkpoint``: a matched before and after for
 to their spine household by the key the rent node ranks with
 (``property_localisation.spine_household_keys``).
 
+Both nodes retired from the dense line in microcosm#931 group (c), which moves
+BRMAs and private rents into the spine's own stages, so the tool reads only
+dense runs built before then.
+
 The table is licensed output. It stays in the run's audit directory, outside
 every git work tree, which the tool checks before it loads anything. Loading
 the pool frame takes about 15 GB of memory, so run this when no build is

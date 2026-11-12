@@ -2,9 +2,12 @@
 
 ``uk.full.geography.brma`` reads each placed Great Britain household's BRMA
 off its assigned area, and ``uk.full.private_rent`` redraws each private
-renter's rent from that BRMA's list of rents. This tool measures one build,
-and a control build when one is given, so that the PR's receipts and signed
-entries rest on measured figures rather than on a gate:
+renter's rent from that BRMA's list of rents. Both nodes retired from the
+dense line in microcosm#931 group (c), which moves BRMAs and private rents
+into the spine's own stages, so the tool reads only dense runs built before
+then. It measures one build, and a control build when one is given, so that
+the PR's receipts and signed entries rest on measured figures rather than on
+a gate:
 
 - **Rent rows.** The bound ``ons.rent.private_rent`` (local authority) and
   ``ons.rent.private_rent_brma`` (Scottish BRMA) rows at the problem's design

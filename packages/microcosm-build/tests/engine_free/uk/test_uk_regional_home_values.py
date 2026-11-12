@@ -13,14 +13,6 @@ import pytest
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime import property_localisation
 from microcosm.build.uk_runtime import regional_home_values as rhv
-from microcosm.build.uk_runtime.atomic_area_support import (
-    uk_atomic_assignment_definition,
-)
-from microcosm.build.uk_runtime.graph_kernels import UKClaimKernel
-from microcosm.build.uk_runtime.graph_population import (
-    append_uk_population_nodes,
-    register_uk_population_kernels,
-)
 from microcosm.build.uk_runtime.household_lineage import HIGH_VALUE_SUPPORT_COPY_COLUMN
 from microcosm.build.uk_runtime.national_frame import (
     UK_RELEASE_EXPORT_DROPPED_COLUMNS,
@@ -28,30 +20,7 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.receipt_counts import support_band
 from microcosm.frame import Frame, WeightKind
-from microcosm.graph import (
-    ContentStore,
-    Graph,
-    KernelRegistry,
-    KernelResult,
-    SourceRef,
-    compile_graph,
-    run_graph,
-)
-from test_support.microcosm_build.uk_atomic_support_fixtures import (
-    toy_support_sources,
-    write_toy_property_resources,
-    write_toy_supports,
-)
 from test_support.microcosm_build.uk_clone_first_frames import clone_first_frame
-from test_support.microcosm_build.uk_full_population_graph import (
-    SOURCE_VINTAGE,
-    Source,
-    source_frame,
-    source_node,
-)
-from test_support.microcosm_build.uk_ladder_rowwise_clone import (
-    toy_ladder as toy_ladder,
-)
 
 _REGIONS = ("LONDON", "NORTH_EAST", "WALES", "SCOTLAND", "NORTHERN_IRELAND")
 
@@ -128,7 +97,7 @@ def test_england_and_wales_owners_take_their_regions_distribution() -> None:
     assert not np.allclose(
         after["main_residence_value"].to_numpy()[target], value[target]
     )
-    # The replaced value is kept for the dense node to rank on.
+    # The replaced value is kept in the rank-basis column.
     np.testing.assert_array_equal(after[rhv.RANK_BASIS_COLUMN].to_numpy(), value)
     # Wealth moves by the value's change.
     np.testing.assert_allclose(
@@ -173,105 +142,6 @@ def test_the_wales_map_uses_the_knots_country_code() -> None:
     assert "SCOTLAND" not in rhv.FRS_REGION_TO_KNOTS_REGION
     assert "NORTHERN_IRELAND" not in rhv.FRS_REGION_TO_KNOTS_REGION
     assert len(rhv.FRS_REGION_TO_KNOTS_REGION) == 10
-
-
-class _FrameSource(Source):
-    """The toy source kernel, returning a given frame."""
-
-    def __init__(self, frame) -> None:
-        self._frame = frame
-
-    def run(self, context):
-        return KernelResult(frame=self._frame)
-
-
-def _dense_frame(*, rank_basis=None, value=None):
-    """The toy dense source with two London owners, so a value can flip a rank."""
-
-    base = source_frame()
-    tables = {entity: base.table(entity).copy() for entity in base.entities}
-    household = tables["household"]
-    household["region"] = pd.array(
-        ["LONDON", "LONDON", "SCOTLAND", "NORTHERN_IRELAND"], dtype="string"
-    )
-    basis = np.array([400_000.0, 250_000.0, 0.0, 0.0])
-    household["main_residence_value"] = basis
-    if rank_basis is not None:
-        household[property_localisation.RANK_BASIS_COLUMN] = rank_basis
-        household["main_residence_value"] = value
-        household["property_wealth"] = household["property_wealth"] + (value - basis)
-    return Frame(
-        tables,
-        base.schema,
-        {"household": base.weights_for("household")},
-        base.strata,
-        mass_log=base.mass_log,
-        metadata=base.metadata,
-    )
-
-
-def _dense_households(frame, directory, ladder_path):
-    payloads, paths = write_toy_supports(directory / "supports")
-    resource_paths = write_toy_property_resources(directory / "property")
-    graph = append_uk_population_nodes(
-        Graph("uk", (SourceRef("fixture", "raw-bytes-v1"),), (source_node(frame),)),
-        population="source",
-        time_period="2023",
-        weight_kind="importance",
-        n_clones=1,
-        seed=7,
-        source_year=2023,
-        geography_assignment="atomic",
-        atomic_geography_definition=uk_atomic_assignment_definition(payloads, seed=7),
-        source_vintage=SOURCE_VINTAGE,
-        property_localisation_mode="price_paid",
-    )
-    registry = KernelRegistry()
-    registry.register(_FrameSource(frame))
-    registry.register(UKClaimKernel())
-    register_uk_population_kernels(registry)
-    run = run_graph(
-        compile_graph(graph),
-        sources={
-            "uk_ladder": ladder_path,
-            "fixture": ladder_path,
-            **toy_support_sources(paths),
-            **resource_paths,
-        },
-        store=ContentStore(directory / "store"),
-        kernels=registry,
-    )
-    household = run.population("uk.full.expand").table("household")
-    return household[["household_id", "main_residence_value", "property_wealth"]]
-
-
-def test_the_dense_line_does_not_move_with_the_regional_values(
-    toy_ladder, tmp_path
-) -> None:
-    _, ladder_path = toy_ladder
-    basis = np.array([400_000.0, 250_000.0, 0.0, 0.0])
-    # The regional stage swaps the two London owners' order.
-    regional = np.array([200_000.0, 500_000.0, 0.0, 0.0])
-    before = _dense_households(_dense_frame(), tmp_path / "before", ladder_path)
-    after = _dense_households(
-        _dense_frame(rank_basis=basis, value=regional), tmp_path / "after", ladder_path
-    )
-    # The value node receives the replaced value through its slice, so the
-    # dense line's values and wealth are those it had before the stage.
-    pd.testing.assert_frame_equal(
-        before.reset_index(drop=True), after.reset_index(drop=True)
-    )
-    # Ranking on the regional values instead would move them: the test is
-    # sensitive to the basis the node reads.
-    moved = _dense_households(
-        _dense_frame(rank_basis=regional, value=regional),
-        tmp_path / "moved",
-        ladder_path,
-    )
-    assert not np.allclose(
-        before["main_residence_value"].to_numpy(),
-        moved["main_residence_value"].to_numpy(),
-    )
 
 
 def test_the_rank_basis_refuses_a_declaration_mismatch() -> None:
