@@ -13,6 +13,13 @@ decomposition uprating reads:
   (``25inweek47.xlsx``, sha256 5b8f0573...): EITC returns and amount in 16 AGI
   bins and in total.
 
+TY2023's three-or-more-children column prints its $30,000 to $35,000 cell
+(0 returns, $0) in the $25,000 to $30,000 row, so the compile binds the two
+rows as one $25,000 to $35,000 row (``US_SOI_MISPLACED_ROW_MERGES``), and the
+filing season's $25,000 to $30,000 and $30,000 to $40,000 bins as one
+uprating group. The tests below read the source rows as the compile binds
+them.
+
 The pinned-feed tests in ``test_us_fiscal_targets.py`` skip in CI, which has no
 feed. These run everywhere, so the halving that microcosm#1227 fixed cannot
 come back unnoticed: the compile summed each split's AGI bins and its total row
@@ -44,6 +51,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+from dataclasses import replace
 
 import pytest
 from hypothesis import HealthCheck, given, settings
@@ -88,6 +96,11 @@ _IRS_TY2023_CHILD_SHARES = {
     "one_qualifying_child": 0.36,
     "two_qualifying_children": 0.24,
     "three_or_more_qualifying_children": 0.13,
+}
+# split -> (member AGI row ids, merged row id) for the rows the compile binds
+# as one; see the module docstring.
+_MERGED_ROWS = {
+    "three_or_more_qualifying_children": (("25k_to_30k", "30k_to_35k"), "25k_to_35k"),
 }
 _PUBLISHED_TOLERANCE = 0.10
 _SHARE_TOLERANCE = 0.015
@@ -178,8 +191,29 @@ def _compiled_real() -> dict[str, object]:
     return _compile(_feed_rows())
 
 
+def _bound_rows(kind: str) -> dict[str, dict[str, tuple[tuple[float, float], float]]]:
+    """split -> AGI row id -> (AGI bounds, source value), as the compile binds
+    the rows: each split's 28 bins and total row, with a merged row in place of
+    its members."""
+
+    bound: dict[str, dict[str, tuple[tuple[float, float], float]]] = {}
+    for split, rows in _split_rows(kind).items():
+        split_rows = {
+            row_id: (_agi_bounds(fact), fact["value"]) for row_id, fact in rows.items()
+        }
+        if split in _MERGED_ROWS:
+            members, merged = _MERGED_ROWS[split]
+            parts = [split_rows.pop(row_id) for row_id in members]
+            split_rows[merged] = (
+                (parts[0][0][0], parts[-1][0][1]),
+                sum(value for _, value in parts),
+            )
+        bound[split] = split_rows
+    return bound
+
+
 def _compiled_split_rows(by_name, kind: str) -> dict[str, dict[str, object]]:
-    """split -> AGI row id -> compiled spec, for every Table 2.5 child row."""
+    """split -> AGI row id -> compiled spec, for every bound Table 2.5 row."""
 
     measure = _KINDS[kind][0]
     return {
@@ -187,32 +221,54 @@ def _compiled_split_rows(by_name, kind: str) -> dict[str, dict[str, object]]:
             row_id: by_name[f"{_CHILD_RECORD_SET}{split}.{row_id}.{measure}"]
             for row_id in rows
         }
-        for split, rows in _split_rows(kind).items()
+        for split, rows in _bound_rows(kind).items()
     }
 
 
-def _uprating_groups(kind: str) -> dict[tuple[float, float], list[str]]:
-    """Map each AGI uprating group to the Table 2.5 bins the compile uprates in it.
+def _uprating_groups(
+    kind: str,
+) -> dict[tuple[float, float], list[tuple[str, str]]]:
+    """Map each AGI uprating group to the (split, row id) pairs the compile
+    uprates in it.
 
-    The compile puts a bin in the narrowest filing-season bin that contains it,
-    or, when the filing-season bins run finer (Table 2.5's $50,000-and-over
-    bin), in the bin's own interval, which the filing-season bins inside it
-    cover.
+    The groups start as the filing-season bins. Every bound row here other
+    than a split's total is a leaf of its split (no other row of the split
+    sits inside it), and a leaf takes one group's factor only if one group
+    holds it, so each such row removes every group edge strictly inside it:
+    the merged $25,000 to $35,000 row removes the $30,000 edge, and Table
+    2.5's $50,000-and-over bin removes the edges above $50,000. Each row then
+    sits in one group. The compile merges groups rather than removing edges;
+    the two give the same groups when the filing-season bins tile AGI, which
+    ``test_filing_season_agi_bins_sum_to_the_filing_season_total`` checks.
     """
 
     season = [_agi_bounds(fact) for fact in _filing_season_bins(kind).values()]
-    groups: dict[tuple[float, float], list[str]] = {}
-    for row_id, fact in next(iter(_split_rows(kind).values())).items():
-        if row_id == "total":
-            continue
-        bounds = _agi_bounds(fact)
-        containing = [group for group in season if _inside(bounds, group)]
-        group = (
-            min(containing, key=lambda item: item[1] - item[0])
-            if containing
-            else bounds
-        )
-        groups.setdefault(group, []).append(row_id)
+    rows = [
+        (split, row_id, bounds)
+        for split, split_rows in _bound_rows(kind).items()
+        for row_id, (bounds, _) in split_rows.items()
+        if row_id != "total"
+    ]
+    for split, split_rows in _bound_rows(kind).items():
+        bins = [
+            bounds for row_id, (bounds, _) in split_rows.items() if row_id != "total"
+        ]
+        assert not [
+            (outer, inner)
+            for outer in bins
+            for inner in bins
+            if outer != inner and _inside(inner, outer)
+        ], f"{split}: a bin holds another bin, so not every bin is a leaf"
+    edges = sorted(
+        bound
+        for bound in {bound for bounds in season for bound in bounds}
+        if not any(lower < bound < upper for _, _, (lower, upper) in rows)
+    )
+    coarsened = list(zip(edges, edges[1:], strict=False))
+    groups: dict[tuple[float, float], list[tuple[str, str]]] = {}
+    for split, row_id, bounds in rows:
+        (group,) = [group for group in coarsened if _inside(bounds, group)]
+        groups.setdefault(group, []).append((split, row_id))
     return groups
 
 
@@ -318,9 +374,11 @@ def test_compiled_total_rows_sum_to_the_filing_season_and_irs_published(
     """The regression for microcosm#1227 on real data. Each total row takes
     one factor, the filing-season EITC over the source total rows (23,837,149
     / 24,439,936 and $69,041,650,000 / $66,269,999,000), so the four total rows
-    add to the filing season's AGI bins, as their 112 compiled bins do, and to
+    add to the filing season's AGI bins, as their 111 compiled bins do, and to
     within 10% of IRS's published TY2024 EITC (about 24 million returns and
-    $69.6 billion; the compiled values are 0.7% and 0.8% below)."""
+    $69.6 billion; the compiled values are 0.7% and 0.8% below). The bins are
+    the 112 Table 2.5 child rows less one: the three-or-more split's two
+    misplaced rows compile as one."""
 
     by_name = _compiled_real()
     compiled = _compiled_split_rows(by_name, kind)
@@ -335,7 +393,7 @@ def test_compiled_total_rows_sum_to_the_filing_season_and_irs_published(
         for row_id, spec in rows.items()
         if row_id != "total"
     ]
-    assert len(bins) == 4 * 28
+    assert len(bins) == 4 * 28 - 1
     assert sum(spec.value for spec in totals.values()) == pytest.approx(
         active, rel=1e-12
     )
@@ -353,6 +411,152 @@ def test_compiled_total_rows_sum_to_the_filing_season_and_irs_published(
     assert compiled_total == pytest.approx(
         _IRS_PUBLISHED[2024][kind], rel=_PUBLISHED_TOLERANCE
     )
+
+
+def test_merged_rows_match_the_reviewed_declaration_and_the_fixture() -> None:
+    """``_MERGED_ROWS`` names the rows ``US_SOI_MISPLACED_ROW_MERGES``
+    declares, and the fixture carries each member at the value the declaration
+    reviewed. The $30,000 to $35,000 three-or-more cell prints 0 returns and
+    $0 between 407,149 returns ($2,919,017,000) at $20,000 to $25,000 and
+    312,506 ($1,408,203,000) at $35,000 to $40,000, while the $25,000 to
+    $30,000 cell holds 635,160 returns ($3,812,252,000)."""
+
+    from microcosm.build.us_runtime.fiscal_targets import US_SOI_MISPLACED_ROW_MERGES
+
+    declared = {
+        (merge.record_set_id, merge.measure_id): merge
+        for merge in US_SOI_MISPLACED_ROW_MERGES
+    }
+    assert set(declared) == {
+        (f"{_CHILD_RECORD_SET}{split}", measure)
+        for split in _MERGED_ROWS
+        for measure, _ in _KINDS.values()
+    }
+    neighbours = {
+        "returns": (407_149, 312_506),
+        "amount": (2_919_017_000, 1_408_203_000),
+    }
+    for kind, (measure, _) in _KINDS.items():
+        for split, (members, merged_id) in _MERGED_ROWS.items():
+            merge = declared[(f"{_CHILD_RECORD_SET}{split}", measure)]
+            assert merge.source_row_ids == members
+            assert merge.merged_row_id == merged_id
+            rows = _split_rows(kind)[split]
+            assert (
+                tuple(rows[row_id]["value"] for row_id in members)
+                == merge.published_values
+            )
+            assert rows["30k_to_35k"]["value"] == 0
+            assert (
+                rows["20k_to_25k"]["value"],
+                rows["35k_to_40k"]["value"],
+            ) == neighbours[kind]
+
+
+_IDENTITY_KEYS = frozenset(
+    {
+        "ledger_source_record_id",
+        "ledger_fact_key",
+        "ledger_aggregate_fact_key",
+        "ledger_semantic_fact_key",
+        "ledger_legacy_fact_key",
+        "ledger_dimension_set_key",
+        "ledger_universe_constraint_set_key",
+        "ledger_fact_label",
+    }
+)
+
+
+@pytest.mark.parametrize("kind", sorted(_KINDS))
+def test_compiled_merged_row_takes_the_joined_group_s_factor(kind: str) -> None:
+    """The compile drops the two misplaced rows and binds one $25,000 to
+    $35,000 row at their sum, uprated by the filing season's $25,000 to
+    $40,000 EITC over every split's Table 2.5 EITC in that range. The row
+    names its members and carries none of their per-fact identities."""
+
+    by_name = _compiled_real()
+    measure = _KINDS[kind][0]
+    split = "three_or_more_qualifying_children"
+    members, merged_id = _MERGED_ROWS[split]
+    member_ids = [
+        f"{_CHILD_RECORD_SET}{split}.{row_id}.{measure}" for row_id in members
+    ]
+    assert not [name for name in member_ids if name in by_name]
+    spec = by_name[f"{_CHILD_RECORD_SET}{split}.{merged_id}.{measure}"]
+
+    season = _filing_season_bins(kind)
+    group_active = season["25k_to_30k"]["value"] + season["30k_to_40k"]["value"]
+    group_source = sum(
+        value
+        for rows in _bound_rows(kind).values()
+        for bounds, value in rows.values()
+        if _inside(bounds, (25_000.0, 40_000.0))
+    )
+    factor = group_active / group_source
+    source_value = sum(_split_rows(kind)[split][row_id]["value"] for row_id in members)
+    assert spec.value == pytest.approx(source_value * factor, rel=1e-12)
+    metadata = spec.metadata
+    assert float(metadata["uprating_factor"]) == pytest.approx(factor, rel=1e-12)
+    assert (
+        metadata["uprating_agi_lower_bound"],
+        metadata["uprating_agi_upper_bound"],
+    ) == ("25000", "40000")
+    assert metadata["uprating_index_source_record_ids"] == ",".join(
+        _record_id(season[row_id]) for row_id in ("25k_to_30k", "30k_to_40k")
+    )
+    assert (metadata["agi_lower_bound"], metadata["agi_upper_bound"]) == (
+        "25000.0",
+        "35000.0",
+    )
+    agi_filter = "ledger_filter_us:statutes/26/62#adjusted_gross_income"
+    assert (
+        metadata[f"{agi_filter}_lower_bound"],
+        metadata[f"{agi_filter}_upper_bound"],
+    ) == ("25000", "35000")
+    assert metadata["ledger_filter_income_range"] == merged_id
+    assert metadata["ledger_layout_groupby_value_id"] == merged_id
+    assert metadata["ledger_layout_groupby_value_label"] == "$25,000 under $35,000"
+    assert metadata["derived_operation"] == "sum_of_misplaced_soi_rows"
+    assert metadata["derived_source_record_ids"] == ",".join(member_ids)
+    assert not _IDENTITY_KEYS & set(metadata)
+    assert {
+        (dimension.id, dimension.value_id, dimension.value_label)
+        for dimension in spec.hierarchy.dimensions
+    } == {
+        ("us:statutes/26/62#adjusted_gross_income", merged_id, "$25,000 under $35,000"),
+        ("income_range", merged_id, "$25,000 under $35,000"),
+    }
+    assert spec.hierarchy.target.id == spec.name == spec.measure
+
+
+def test_compiled_table_2_5_rows_pass_the_materializer_filter_guards() -> None:
+    """The release materializer accepts every compiled Table 2.5 child row's
+    Ledger filters, the merged rows included, and its restated-AGI guard reads
+    the merged rows: an upper bound that disagrees with the compiled one
+    stops it."""
+
+    builder = _load_repo_tool("build_us_fiscal_refresh_release")
+    rows = [
+        spec
+        for name, spec in _compiled_real().items()
+        if name.startswith(_CHILD_RECORD_SET)
+    ]
+    builder._assert_supported_ledger_filter_metadata(rows)
+    merged = [spec for spec in rows if ".25k_to_35k." in spec.name]
+    assert len(merged) == 2
+    for spec in merged:
+        assert builder._unsupported_soi_ledger_filters(spec.metadata) == ()
+        moved = replace(
+            spec,
+            metadata={
+                **spec.metadata,
+                "ledger_filter_us:statutes/26/62#adjusted_gross_income_upper_bound": (
+                    "30000"
+                ),
+            },
+        )
+        with pytest.raises(RuntimeError, match=spec.name):
+            builder._assert_supported_ledger_filter_metadata([moved])
 
 
 def _with_filing_season(
@@ -404,17 +608,20 @@ def test_compiled_agi_bins_and_total_rows_both_sum_to_any_filing_season(values) 
 
     * the four total rows add to the filing season's total, and keep the
       TY2023 child split of the total rows;
-    * the 112 AGI bins add to the same total, and within each uprating AGI
-      group to the filing season's EITC in that group, keeping the group's
+    * the 111 bound AGI rows add to the same total, and within each uprating
+      AGI group to the filing season's EITC in that group, keeping the group's
       TY2023 child split.
 
-    The real layout covers both grouping paths: Table 2.5 bins inside one
-    filing-season bin, and the $50,000-and-over bin, which spans seven."""
+    The real layout covers every grouping path: Table 2.5 bins inside one
+    filing-season bin, the $50,000-and-over bin, which spans seven, and the
+    merged $25,000 to $35,000 row, which joins two filing-season bins into one
+    group."""
 
     by_name = _compile(_with_filing_season(values))
     for kind in _KINDS:
         compiled = _compiled_split_rows(by_name, kind)
         source = _split_rows(kind)
+        bound = _bound_rows(kind)
         season = {
             row_id: (_agi_bounds(fact), values[(kind, row_id)])
             for row_id, fact in _filing_season_bins(kind).items()
@@ -432,25 +639,20 @@ def test_compiled_agi_bins_and_total_rows_both_sum_to_any_filing_season(values) 
             )
 
         bins_total = 0.0
-        for group, row_ids in _uprating_groups(kind).items():
+        for group, members in _uprating_groups(kind).items():
             group_active = sum(
                 value for bounds, value in season.values() if _inside(bounds, group)
             )
-            group_source = sum(
-                source[split][row_id]["value"]
-                for split in _SPLITS
-                for row_id in row_ids
-            )
+            group_source = sum(bound[split][row_id][1] for split, row_id in members)
             group_compiled = 0.0
-            for split in _SPLITS:
-                for row_id in row_ids:
-                    spec = compiled[split][row_id]
-                    assert spec.value == pytest.approx(
-                        source[split][row_id]["value"] * group_active / group_source,
-                        rel=1e-9,
-                        abs=1e-6,
-                    )
-                    group_compiled += spec.value
+            for split, row_id in members:
+                spec = compiled[split][row_id]
+                assert spec.value == pytest.approx(
+                    bound[split][row_id][1] * group_active / group_source,
+                    rel=1e-9,
+                    abs=1e-6,
+                )
+                group_compiled += spec.value
             assert group_compiled == pytest.approx(group_active, rel=1e-9, abs=1e-6)
             bins_total += group_compiled
         assert bins_total == pytest.approx(active, rel=1e-9, abs=1e-6)
@@ -461,8 +663,9 @@ def test_compiled_agi_bins_and_total_rows_both_sum_to_any_filing_season(values) 
 def test_uniform_growth_keeps_each_split_s_bins_summing_to_its_total_row(
     growth: int,
 ) -> None:
-    """When every AGI group's EITC grows by one factor, each split's 28
-    compiled AGI bins add to its compiled total row within twice the source's
+    """When every AGI group's EITC grows by one factor, each split's compiled
+    AGI bins (28, or 27 for three or more children) add to its compiled total
+    row within twice the source's
     rounding allowance (10 returns or $10,000) times the factor.
 
     The compile scales each total row by the filing-season bins' sum over the
@@ -478,21 +681,18 @@ def test_uniform_growth_keeps_each_split_s_bins_summing_to_its_total_row(
     factor = growth / 100
     values: dict[tuple[str, str], float] = {}
     for kind in _KINDS:
-        source = _split_rows(kind)
+        bound = _bound_rows(kind)
         season = {
             row_id: _agi_bounds(fact)
             for row_id, fact in _filing_season_bins(kind).items()
         }
         for row_id in season:
             values[(kind, row_id)] = 0.0
-        for group, row_ids in _uprating_groups(kind).items():
-            group_source = sum(
-                source[split][row_id]["value"]
-                for split in _SPLITS
-                for row_id in row_ids
-            )
+        for group, members in _uprating_groups(kind).items():
+            group_source = sum(bound[split][row_id][1] for split, row_id in members)
             # Put the whole group on one filing-season bin inside it; the
-            # $50,000-and-over group sums its seven filing-season bins.
+            # $50,000-and-over group sums its seven filing-season bins, the
+            # $25,000 to $40,000 group its two.
             first = min(
                 (row_id for row_id, bounds in season.items() if _inside(bounds, group)),
                 key=lambda row_id: season[row_id],

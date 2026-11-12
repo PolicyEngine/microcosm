@@ -754,7 +754,10 @@ def test_exclusion_receipt_lists_the_ids_each_rule_acts_on(monkeypatch) -> None:
         "all_vintage_reviewed_exclusion": "dropped",
         "m_chip_state_chip_enrollment": "dropped",
         "allowlisted_vintage_bypass": "allowed",
+        "soi_misplaced_row_merge": "merged",
     }
+    assert rules["soi_misplaced_row_merge"]["source_record_ids"] == []
+    assert rules["soi_misplaced_row_merge"]["passed_through_source_record_ids"] == []
     for name, ids in expected.items():
         assert rules[name]["source_record_ids"] == ids, name
     assert rules["all_vintage_reviewed_exclusion"]["entries"] == sorted(
@@ -888,22 +891,104 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
         ]
     )
     assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == []
+    # The Table 2.5 merge (microcosm#1577) acts on its four TY2023 rows only.
+    merge_rule = rules["soi_misplaced_row_merge"]
+    assert merge_rule["source_record_ids"] == sorted(
+        name
+        for merge in fiscal_targets.US_SOI_MISPLACED_ROW_MERGES
+        for name in merge.member_names
+    )
+    assert len(merge_rule["source_record_ids"]) == 4
+    assert all(".ty2023." in name for name in merge_rule["source_record_ids"])
+    assert merge_rule["passed_through_source_record_ids"] == []
+    assert [entry["merged_target"] for entry in merge_rule["merges"]] == [
+        merge.merged_name for merge in fiscal_targets.US_SOI_MISPLACED_ROW_MERGES
+    ]
+
+
+def _soi_row_merge_member_fact(
+    merge: fiscal_targets.SoiRowMerge, row_id: str, value: float, *, period: int = 2023
+) -> dict[str, object]:
+    """One row of a reviewed SOI row merge as a Ledger fact. ``period`` other
+    than 2023 gives the same row in another tax year's vintage, under that
+    year's source record id."""
+
+    lower, upper = (1_000 * int(bound.rstrip("k")) for bound in row_id.split("_to_"))
+    record_id = f"{merge.record_set_id}.{row_id}.{merge.measure_id}"
+    assert "ty2023" in record_id
+    return _soi_eitc_child_fact(
+        period,
+        source_record_id=record_id.replace("ty2023", f"ty{period}"),
+        measure_id=merge.measure_id,
+        value=value,
+        income_range=row_id,
+        child_group=merge.record_set_id.rsplit(".", 1)[1],
+        lower=lower,
+        upper=upper,
+    )
+
+
+@pytest.mark.parametrize("carried", ["one", "every", "every_superseded"])
+def test_exclusion_receipt_lists_merge_rows_the_compile_merges(carried) -> None:
+    """The receipt's merge rule follows the compile. A feed that carries
+    every row of a reviewed SOI row merge compiles them as one target (or
+    stops), so the rule lists them as merged. A feed that carries one row,
+    not at its published value, compiles it as it is
+    (``_merge_misplaced_soi_rows``), so the rule lists it as passed through
+    and merges nothing. A feed that also carries a newer vintage of both
+    rows activates that vintage, so the compile never sees the TY2023 rows
+    and the rule lists neither."""
+
+    merge = fiscal_targets.US_SOI_MISPLACED_ROW_MERGES[0]
+    rows = list(zip(merge.source_row_ids, merge.published_values, strict=True))
+    if carried == "one":
+        row_id, published = rows[0]
+        members = [_soi_row_merge_member_fact(merge, row_id, published + 1)]
+        carried_ids = [merge.member_names[0]]
+    else:
+        members = [
+            _soi_row_merge_member_fact(merge, row_id, published)
+            for row_id, published in rows
+        ]
+        carried_ids = sorted(merge.member_names)
+        if carried == "every_superseded":
+            members += [
+                _soi_row_merge_member_fact(merge, row_id, published, period=2024)
+                for row_id, published in rows
+            ]
+
+    rule = us_fiscal_target_exclusion_receipt(
+        [*packaged_reference_facts(), *members], target_period=2024
+    )["rules"]["soi_misplaced_row_merge"]
+
+    if carried == "one":
+        assert rule["source_record_ids"] == []
+        assert rule["passed_through_source_record_ids"] == carried_ids
+    elif carried == "every":
+        assert rule["source_record_ids"] == carried_ids
+        assert rule["passed_through_source_record_ids"] == []
+    else:
+        assert rule["source_record_ids"] == []
+        assert rule["passed_through_source_record_ids"] == []
 
 
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 33,250 compiled targets after
-    Medicaid substitution, 6,102 national_state targets at registry
-    3aa2a0830e7d, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1343 moved the
+    """The release surface on the pinned feed: 33,248 compiled targets after
+    Medicaid substitution, 6,100 national_state targets at surface version
+    6775e22cc90d, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. microcosm#1577 took it from
+    33,250 / 6,102 at 3aa2a0830e7d by merging Table 2.5's misplaced TY2023
+    three-or-more-children cells at $25,000 to $35,000 into one row per
+    measure (US_SOI_MISPLACED_ROW_MERGES). microcosm#1343 moved the
     version from 3fad14f85468 by re-pinning to a feed that gives three
     dimension values one label each (the version hashes hierarchy labels);
     microcosm#1227 moved it from e1f9906bf0e0 by doubling the eight Table
     2.5 EITC child total rows, whose uprating source sum had counted each
     split twice; microcosm#1206 moved it from f96be9f41781 by binding the
     Part B premium target to gross_medicare_part_b_premium_if_enrolled.
-    None of the three changed the counts.
+    None of those three changed the counts.
     The 408 state AGI-band rows of
     microcosm#940 (51 states x 4 bands x 2 measures) took it from 32,842 /
     5,694 at d315c75804ef on the c5e5bf8 feed; before microcosm#956 it was
@@ -911,9 +996,9 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
     (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 33_250
-    assert len(surface.specs) == 6_102
-    assert surface.version == "3aa2a0830e7d"
+    assert len(registry.specs) == 33_248
+    assert len(surface.specs) == 6_100
+    assert surface.version == "6775e22cc90d"
     chip = [
         spec
         for spec in surface.specs
@@ -998,7 +1083,9 @@ def test_pinned_feed_eitc_child_total_rows_count_each_split_once(
     """The four TY2023 Table 2.5 child splits' all-AGI total rows take one
     factor, the TY2024 filing-season AGI bins over the source total rows
     ($69,041,650,000 / $66,269,999,000; 23,837,149 / 24,439,936), so they sum
-    to those bins as the splits' 112 AGI bins do. The source sum used to count
+    to those bins as the splits' 111 AGI bins do (112 rows, less the
+    three-or-more split's two misplaced rows, merged into one). The source
+    sum used to count
     each split's bins and total row both, which halved the factor (0.5209 and
     0.4877) and shipped the total rows at about half their bins."""
     registry, surface, _ = pinned_feed_national_state_surface
@@ -1022,7 +1109,7 @@ def test_pinned_feed_eitc_child_total_rows_count_each_split_once(
         and spec not in totals
     ]
 
-    assert len(bins) == 4 * 28
+    assert len(bins) == 4 * 28 - 1
     assert {spec.name for spec in [*totals, *bins]} <= on_surface
     assert {spec.metadata["uprating_factor"] for spec in totals} == {factor}
     assert {spec.metadata["uprating_agi_lower_bound"] for spec in totals} == {"-inf"}

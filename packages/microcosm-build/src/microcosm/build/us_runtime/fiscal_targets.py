@@ -42,6 +42,7 @@ from microcosm.calibrate import (
     CalibrationHierarchy,
     CalibrationHierarchySeed,
     HierarchyCategory,
+    HierarchyDimension,
     HierarchyNode,
     TargetRegistry,
     TargetSpec,
@@ -60,6 +61,8 @@ __all__ = [
     "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS",
     "US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS",
     "US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES",
+    "US_SOI_MISPLACED_ROW_MERGES",
+    "SoiRowMerge",
     "US_FISCAL_LEDGER_PARITY_REGISTRY",
     "US_FISCAL_LEDGER_PARITY_REPORT",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
@@ -876,6 +879,91 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
     ),
 }
 
+
+@dataclass(frozen=True)
+class SoiRowMerge:
+    """Published SOI rows of one column that bind only as their sum.
+
+    Where IRS prints a cell in a neighbouring row of the same column, the
+    column reconciles with the table's all-returns column only over those
+    rows together. ``_merge_misplaced_soi_rows`` then replaces the rows'
+    targets with one target over their joint AGI range, valued at their sum,
+    before any uprating. The entry holds while every row carries its
+    published value. A feed that carries every row but changes a value, or
+    carries some rows with one at its published value, stops the compile so
+    that a person reviews the entry again. A feed that carries some rows,
+    none at its published value, is another feed and passes unchanged.
+    """
+
+    record_set_id: str
+    measure_id: str
+    source_row_ids: tuple[str, ...]
+    published_values: tuple[float, ...]
+    merged_row_id: str
+    merged_row_label: str
+    reason: str
+
+    @property
+    def member_names(self) -> tuple[str, ...]:
+        return tuple(
+            f"{self.record_set_id}.{row_id}.{self.measure_id}"
+            for row_id in self.source_row_ids
+        )
+
+    @property
+    def merged_name(self) -> str:
+        return f"{self.record_set_id}.{self.merged_row_id}.{self.measure_id}"
+
+
+_TABLE_2_5_TY2023_THREE_PLUS_CHILDREN = (
+    "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children"
+)
+_TABLE_2_5_TY2023_MISPLACED_CELL = (
+    "IRS SOI Publication 1304 Table 2.5, TY2023 (23in25ic.xls, sha256 "
+    "c6a58f637e42e832...): the three-or-more-children column prints 0 "
+    "returns and $0 at $30,000 to $35,000 of AGI, between 407,149 returns at "
+    "$20,000 to $25,000 and 312,506 at $35,000 to $40,000. In every other AGI "
+    "row the four child columns add to the all-returns columns (J, K) within "
+    "1 return and $1,000. At $25,000 to $30,000 they exceed them by 310,212 "
+    "returns and $1,723,778,000; at $30,000 to $35,000 they fall 311,398 "
+    "returns and $1,724,074,000 short; the $20,000 to $25,000 row exceeds "
+    "them by the remaining 1,187 returns and $297,000. IRS appears to have "
+    "printed the $30,000 to $35,000 cell in the $25,000 to $30,000 row. Bound "
+    "apart, the two cells would move three-or-more EITC down an AGI row; "
+    "bound as one $25,000 to $35,000 cell they hold what the column publishes "
+    "for the two rows. Row totals cannot say which child column holds the "
+    "$20,000 to $25,000 row's 1,187 returns, 0.3% of that row's 407,149 "
+    "three-or-more returns, so the entry leaves that row as published; the "
+    "merged row's four columns then fall 1,186 returns and $296,000 short of "
+    "the all-returns columns. TY2022's workbook reconciles within 1 return and "
+    "$1,000 in every row. Evidence: PolicyEngine/microcosm#989's "
+    "zero_target_audit.json (workbook_check) and the 2026-10-14 comment on "
+    "PolicyEngine/microcosm#1235."
+)
+
+#: Reviewed :class:`SoiRowMerge` entries, applied by
+#: ``_merge_misplaced_soi_rows`` before EITC uprating.
+US_SOI_MISPLACED_ROW_MERGES: tuple[SoiRowMerge, ...] = (
+    SoiRowMerge(
+        record_set_id=_TABLE_2_5_TY2023_THREE_PLUS_CHILDREN,
+        measure_id="eitc_returns",
+        source_row_ids=("25k_to_30k", "30k_to_35k"),
+        published_values=(635_160.0, 0.0),
+        merged_row_id="25k_to_35k",
+        merged_row_label="$25,000 under $35,000",
+        reason=_TABLE_2_5_TY2023_MISPLACED_CELL,
+    ),
+    SoiRowMerge(
+        record_set_id=_TABLE_2_5_TY2023_THREE_PLUS_CHILDREN,
+        measure_id="eitc_total",
+        source_row_ids=("25k_to_30k", "30k_to_35k"),
+        published_values=(3_812_252_000.0, 0.0),
+        merged_row_id="25k_to_35k",
+        merged_row_label="$25,000 under $35,000",
+        reason=_TABLE_2_5_TY2023_MISPLACED_CELL,
+    ),
+)
+
 # The register above is keyed by exact source_record_id, and latest-vintage
 # selection activates the newest remaining fact for each target shape, so
 # excluding one vintage of a cell hands its key to the next vintage the feed
@@ -1114,6 +1202,7 @@ def compile_us_fiscal_target_registry(
         registry = apply_fsa_student_loan_plan(
             registry, student_loan_plan, target_period=target_period
         )
+    registry = _merge_misplaced_soi_rows(registry)
     registry = _uprate_cross_period_eitc_decompositions(registry)
     registry = _with_derived_chip_enrollment_targets(registry)
     registry = _without_m_chip_state_chip_enrollment_targets(registry)
@@ -1178,6 +1267,16 @@ def us_fiscal_target_exclusion_receipt(
       at ``target_period`` that are another vintage of an excluded cell and
       carry a reviewed ``US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`` entry
       (allowed).
+    - ``soi_misplaced_row_merge``: the rows of each
+      ``US_SOI_MISPLACED_ROW_MERGES`` entry among the facts latest-vintage
+      selection activates. When those facts hold every row of an entry, the
+      compile binds the rows as one target at their sum or stops, as
+      ``_merge_misplaced_soi_rows`` says, so the rule lists them under
+      ``source_record_ids`` (merged). When they hold only some rows, a
+      compile that finishes leaves those rows as they are (none sits at its
+      published value), and the rule lists them under
+      ``passed_through_source_record_ids``. The rule also lists each entry
+      with its reviewed values and evidence.
 
     It replays the compiler's fact filter and latest-vintage selection, so pass
     the same ``target_period`` and crosswalk as the compile. Like the compile,
@@ -1214,6 +1313,15 @@ def us_fiscal_target_exclusion_receipt(
         )
     ]
     allowed = _check_exclusion_vintage_scope(selected_ids)
+    selected = set(selected_ids)
+    merged: list[str] = []
+    passed_through: list[str] = []
+    for merge in US_SOI_MISPLACED_ROW_MERGES:
+        carried = [name for name in merge.member_names if name in selected]
+        if len(carried) == len(merge.member_names):
+            merged.extend(carried)
+        else:
+            passed_through.extend(carried)
     return {
         "target_period": str(target_period),
         "rules": {
@@ -1248,6 +1356,21 @@ def us_fiscal_target_exclusion_receipt(
                     for source_record_id, keys in sorted(allowed.items())
                 ],
                 "source_record_ids": sorted(allowed),
+            },
+            "soi_misplaced_row_merge": {
+                "action": "merged",
+                "scope": "the rows of each reviewed SOI row merge",
+                "merges": [
+                    {
+                        "merged_target": merge.merged_name,
+                        "source_record_ids": list(merge.member_names),
+                        "published_values": list(merge.published_values),
+                        "reason": merge.reason,
+                    }
+                    for merge in US_SOI_MISPLACED_ROW_MERGES
+                ],
+                "source_record_ids": sorted(merged),
+                "passed_through_source_record_ids": sorted(passed_through),
             },
         },
     }
@@ -1454,6 +1577,248 @@ def _derived_chip_enrollment_metadata(
     return metadata
 
 
+#: Per-fact identity metadata. A merged row is no one Ledger fact, so it
+#: carries none of these; ``derived_source_record_ids`` names its members.
+_SOI_ROW_MERGE_DROPPED_IDENTITY_KEYS = frozenset(
+    {
+        "ledger_source_record_id",
+        "ledger_fact_key",
+        "ledger_aggregate_fact_key",
+        "ledger_semantic_fact_key",
+        "ledger_legacy_fact_key",
+        "ledger_dimension_set_key",
+        "ledger_universe_constraint_set_key",
+        "ledger_fact_label",
+    }
+)
+#: Metadata naming the row, rewritten to the merged row's id or label.
+_SOI_ROW_MERGE_ROW_ID_KEYS = frozenset(
+    {"ledger_filter_income_range", "ledger_layout_groupby_value_id"}
+)
+_SOI_ROW_MERGE_ROW_LABEL_KEYS = frozenset({"ledger_layout_groupby_value_label"})
+
+
+def _merge_misplaced_soi_rows(
+    registry: TargetRegistry,
+    merges: tuple[SoiRowMerge, ...] = US_SOI_MISPLACED_ROW_MERGES,
+) -> TargetRegistry:
+    """Replace each declared :class:`SoiRowMerge` with one summed target.
+
+    A merge applies when every member row is in the registry at its published
+    value; the merged target takes the place of the first member the registry
+    lists. A registry that holds every member with one at another value
+    raises, as does one that holds some members with one at its published
+    value, because the feed no longer matches what a person reviewed. A
+    registry that holds some members, none at its published value, is a
+    different feed (a test registry, say) and stays as it is.
+    """
+
+    specs = list(registry.specs)
+    changed = False
+    for merge in merges:
+        merged = _apply_soi_row_merge(specs, merge)
+        if merged is not None:
+            specs = merged
+            changed = True
+    if not changed:
+        return registry
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _apply_soi_row_merge(
+    specs: list[TargetSpec],
+    merge: SoiRowMerge,
+) -> list[TargetSpec] | None:
+    if len(merge.source_row_ids) < 2 or len(merge.source_row_ids) != len(
+        merge.published_values
+    ):
+        raise ValueError(
+            f"SOI row merge {merge.merged_name!r} needs two or more source rows, "
+            "one published value each."
+        )
+    names = merge.member_names
+    found: dict[str, list[TargetSpec]] = {name: [] for name in names}
+    for spec in specs:
+        if spec.name in found:
+            found[spec.name].append(spec)
+    for name, matches in found.items():
+        if len(matches) > 1:
+            raise ValueError(
+                f"SOI row merge {merge.merged_name!r}: {len(matches)} targets "
+                f"share the name {name!r}; a member must be one target."
+            )
+    members = [found[name][0] if found[name] else None for name in names]
+    present = [spec for spec in members if spec is not None]
+    if not present:
+        return None
+    at_published = [
+        spec is not None and spec.value == published
+        for spec, published in zip(members, merge.published_values, strict=True)
+    ]
+    if len(present) < len(members):
+        if any(at_published):
+            missing = [
+                name for name, spec in zip(names, members, strict=True) if spec is None
+            ]
+            raise ValueError(
+                f"SOI row merge {merge.merged_name!r}: the feed carries "
+                f"{len(present)} of its {len(members)} rows at their published "
+                f"values but not {missing}; review the merge against the feed."
+            )
+        return None
+    if not all(at_published):
+        observed = [spec.value for spec in present]
+        raise ValueError(
+            f"SOI row merge {merge.merged_name!r}: the feed's values {observed} "
+            f"differ from the reviewed {list(merge.published_values)}; IRS may "
+            "have corrected the table, so review the merge against the feed."
+        )
+    if any(spec.name == merge.merged_name for spec in specs):
+        raise ValueError(
+            f"SOI row merge {merge.merged_name!r}: the registry already holds "
+            "a target of that name."
+        )
+    merged_spec = _merged_soi_row_spec(present, merge)
+    member_names = set(names)
+    output: list[TargetSpec] = []
+    placed = False
+    for spec in specs:
+        if spec.name not in member_names:
+            output.append(spec)
+        elif not placed:
+            output.append(merged_spec)
+            placed = True
+    return output
+
+
+def _merged_soi_row_spec(
+    members: list[TargetSpec],
+    merge: SoiRowMerge,
+) -> TargetSpec:
+    first, last = members[0], members[-1]
+    for spec in members[1:]:
+        for field_name in (
+            "entity",
+            "period",
+            "source",
+            "family",
+            "filter",
+            "signed",
+            "notes",
+        ):
+            if getattr(spec, field_name) != getattr(first, field_name):
+                raise ValueError(
+                    f"SOI row merge {merge.merged_name!r}: members disagree on "
+                    f"{field_name}."
+                )
+    for spec in members:
+        if spec.se is not None or spec.tolerance is not None:
+            raise ValueError(
+                f"SOI row merge {merge.merged_name!r}: {spec.name!r} carries a "
+                "standard error or tolerance, which a summed row cannot inherit."
+            )
+    for spec in members:
+        if spec.metadata.get("ledger_layout_record_set_id") != merge.record_set_id:
+            raise ValueError(
+                f"SOI row merge {merge.merged_name!r}: {spec.name!r} is not in "
+                f"record set {merge.record_set_id!r}."
+            )
+        if spec.metadata.get("source_measure_id") != merge.measure_id:
+            raise ValueError(
+                f"SOI row merge {merge.merged_name!r}: {spec.name!r} does not "
+                f"measure {merge.measure_id!r}."
+            )
+    for previous, current in zip(members, members[1:], strict=False):
+        if _bounds_from_metadata(previous)[1] != _bounds_from_metadata(current)[0]:
+            raise ValueError(
+                f"SOI row merge {merge.merged_name!r}: {previous.name!r} and "
+                f"{current.name!r} do not share an AGI bound; members must "
+                "tile one interval in order."
+            )
+    metadata: dict[str, str] = {}
+    for key in sorted({key for spec in members for key in spec.metadata}):
+        if key in _SOI_ROW_MERGE_DROPPED_IDENTITY_KEYS:
+            continue
+        if key in _SOI_ROW_MERGE_ROW_ID_KEYS:
+            metadata[key] = merge.merged_row_id
+            continue
+        if key in _SOI_ROW_MERGE_ROW_LABEL_KEYS:
+            metadata[key] = merge.merged_row_label
+            continue
+        values = {spec.metadata.get(key) for spec in members}
+        if len(values) == 1:
+            value = next(iter(values))
+            if value is not None:
+                metadata[key] = value
+            continue
+        if key.endswith("_lower_bound") and key in first.metadata:
+            metadata[key] = first.metadata[key]
+            continue
+        if key.endswith("_upper_bound") and key in last.metadata:
+            metadata[key] = last.metadata[key]
+            continue
+        raise ValueError(
+            f"SOI row merge {merge.merged_name!r}: members disagree on metadata "
+            f"{key!r} ({sorted(map(str, values))}), which a merge cannot "
+            "reconcile."
+        )
+    metadata["derived_operation"] = "sum_of_misplaced_soi_rows"
+    metadata["derived_source_record_ids"] = ",".join(
+        spec.metadata.get("ledger_source_record_id", spec.name) for spec in members
+    )
+    return replace(
+        first,
+        name=merge.merged_name,
+        measure=merge.merged_name,
+        value=float(sum(spec.value for spec in members)),
+        metadata=metadata,
+        hierarchy=_merged_soi_row_hierarchy(first, members, merge),
+    )
+
+
+def _merged_soi_row_hierarchy(
+    first: TargetSpec,
+    members: list[TargetSpec],
+    merge: SoiRowMerge,
+) -> CalibrationHierarchy | None:
+    hierarchy = first.hierarchy
+    if hierarchy is None:
+        return None
+    member_value_ids = set(merge.source_row_ids)
+    dimensions = []
+    for dimension in hierarchy.dimensions:
+        if dimension.value_id in member_value_ids:
+            dimension = HierarchyDimension(
+                dimension.id,
+                dimension.label,
+                merge.merged_row_id,
+                merge.merged_row_label,
+            )
+        dimensions.append(dimension)
+    for spec in members[1:]:
+        other = spec.hierarchy
+        if other is None or (
+            other.provider,
+            other.category,
+            other.geography,
+            tuple(dimension.id for dimension in other.dimensions),
+        ) != (
+            hierarchy.provider,
+            hierarchy.category,
+            hierarchy.geography,
+            tuple(dimension.id for dimension in hierarchy.dimensions),
+        ):
+            raise ValueError(
+                f"SOI row merge {merge.merged_name!r}: {spec.name!r} sits "
+                "elsewhere in the calibration hierarchy."
+            )
+    return replace(
+        hierarchy,
+        dimensions=tuple(dimensions),
+        target=HierarchyNode(merge.merged_name, hierarchy.target.label),
+    )
+
+
 def _uprate_cross_period_eitc_decompositions(
     registry: TargetRegistry,
 ) -> TargetRegistry:
@@ -1469,6 +1834,7 @@ def _uprate_cross_period_eitc_decompositions(
 
     target_totals = _eitc_active_totals(registry)
     target_agi_totals = _eitc_active_agi_totals(registry)
+    coarsened_agi_totals = _coarsened_eitc_agi_totals(registry, target_agi_totals)
     source_totals = _eitc_source_decomposition_totals(registry)
     source_totals = {
         **_eitc_source_total_fallbacks(registry),
@@ -1483,7 +1849,10 @@ def _uprate_cross_period_eitc_decompositions(
         source_period = spec.metadata.get("source_period", "")
         agi_uprating_group = _eitc_agi_uprating_group(
             spec,
-            target_agi_totals.get(kind or "", ()),
+            coarsened_agi_totals.get(
+                (kind or "", source_period),
+                target_agi_totals.get(kind or "", ()),
+            ),
         )
         if agi_uprating_group is not None:
             source_total = _eitc_source_decomposition_total_for_bounds(
@@ -2605,6 +2974,195 @@ def _eitc_agi_uprating_group(
     if not _covers_interval(contained, lower=spec_lower, upper=spec_upper):
         return None
     return _merge_eitc_agi_totals(contained, lower=spec_lower, upper=spec_upper)
+
+
+def _coarsened_eitc_agi_totals(
+    registry: TargetRegistry,
+    active_agi_totals: Mapping[str, tuple[_EitcAgiTotal, ...]],
+) -> dict[tuple[str, str], tuple[_EitcAgiTotal, ...]]:
+    """Each source period's uprating groups, coarsened to its Table 2.5 rows.
+
+    Keyed by (kind, source period), over the active AGI totals that period's
+    rows may use (none older than the period). Only rows that uprating will
+    scale count. A row is a leaf when it holds no other row of its child
+    split (its ``ledger_layout_record_set_id``), as each split's AGI bins do
+    and its all-AGI total does not.
+    """
+
+    rows: dict[tuple[str, str], dict[str, set[tuple[float, float]]]] = {}
+    for spec in registry.specs:
+        if not _is_eitc_decomposition_spec(spec):
+            continue
+        if spec.metadata.get("requires_total_eitc_uprating") != "true":
+            continue
+        kind = _eitc_total_kind(spec)
+        if kind is None:
+            continue
+        key = (kind, spec.metadata.get("source_period", ""))
+        split = spec.metadata.get("ledger_layout_record_set_id", "")
+        rows.setdefault(key, {}).setdefault(split, set()).add(
+            _bounds_from_metadata(spec)
+        )
+    coarsened: dict[tuple[str, str], tuple[_EitcAgiTotal, ...]] = {}
+    for (kind, source_period), splits in sorted(rows.items()):
+        source_period_key = _period_key_from_value(source_period)
+        groups = tuple(
+            total
+            for total in active_agi_totals.get(kind, ())
+            if _period_not_before(total.period_key, source_period_key)
+        )
+        coarsened[(kind, source_period)] = _coarsen_eitc_agi_groups(
+            groups,
+            {bounds for split_rows in splits.values() for bounds in split_rows},
+            leaves={
+                bounds
+                for split_rows in splits.values()
+                for bounds in _leaf_bounds(split_rows)
+            },
+            label=f"{kind} EITC source period {source_period!r}",
+        )
+    return coarsened
+
+
+def _leaf_bounds(rows: set[tuple[float, float]]) -> set[tuple[float, float]]:
+    """The rows that hold no other row of the set."""
+
+    return {
+        row
+        for row in rows
+        if not any(
+            other != row and _contains_bounds(row[0], row[1], other[0], other[1])
+            for other in rows
+        )
+    }
+
+
+def _coarsen_eitc_agi_groups(
+    groups: Iterable[_EitcAgiTotal],
+    rows: Iterable[tuple[float, float]],
+    *,
+    leaves: Iterable[tuple[float, float]] = (),
+    label: str = "EITC",
+) -> tuple[_EitcAgiTotal, ...]:
+    """Merge AGI uprating groups until each source row has a group's factor.
+
+    A group's factor divides its control by the Table 2.5 EITC of the rows
+    inside it, so a row whose EITC lands in no single group leaves that
+    EITC out of every group it touches: those groups' source totals miss
+    EITC their controls count, and every row they uprate takes a wrong
+    factor. Two kinds of row do that:
+
+    - a row that straddles a group, meaning the two overlap and neither
+      holds the other;
+    - a leaf (a row that holds no other row of its child split, passed in
+      ``leaves``) that no one group holds, even one that holds two or more
+      groups exactly.
+
+    A row with rows of its own split inside it, such as a split's all-AGI
+    total, may hold several groups, because the rows inside it carry its
+    EITC into each group. That holds only while those rows tile it, as
+    Table 2.5's bins tile each split's total. If a split lacks a bin under
+    its total, no group counts that bin's EITC, and the factors of the
+    groups it falls in go wrong without an error.
+
+    For each such row, this merges every group that overlaps the row
+    without holding it into one group over their joint range, which then
+    holds the row; it repeats until no row needs a merge. Groups no row
+    needs come back unchanged, so a feed whose rows nest in its groups keeps
+    its groups. Raises when the groups to merge leave a gap inside the row,
+    or when the merge would duplicate another active total.
+
+    A row that runs past the groups' range (their lowest lower bound to
+    their highest upper bound) can't sit in any merge of them, so this
+    leaves it alone, and uprating gives it the all-returns factor as it did
+    before groups merged. A group such a row overlaps still misses its EITC.
+    Filing-season bins tile all AGI, so no Table 2.5 row does that today.
+    """
+
+    leaf_bounds = set(leaves)
+    current = sorted(groups, key=lambda total: (total.lower, total.upper))
+    if not current:
+        return ()
+    range_lower = min(total.lower for total in current)
+    range_upper = max(total.upper for total in current)
+    row_bounds = sorted(
+        bounds
+        for bounds in set(rows) | leaf_bounds
+        if _contains_bounds(range_lower, range_upper, *bounds)
+    )
+    while True:
+        straddled = _first_row_without_one_group(current, row_bounds, leaf_bounds)
+        if straddled is None:
+            return tuple(current)
+        lower, upper = straddled
+        touched = [
+            total
+            for total in current
+            if total.lower < upper
+            and lower < total.upper
+            and not _contains_bounds(total.lower, total.upper, lower, upper)
+        ]
+        span_lower = min(total.lower for total in touched)
+        span_upper = max(total.upper for total in touched)
+        if len(touched) < 2 or not _covers_interval(
+            touched, lower=span_lower, upper=span_upper
+        ):
+            raise ValueError(
+                f"{label}: source row [{_format_bound(lower)}, "
+                f"{_format_bound(upper)}) spans AGI uprating groups "
+                + ", ".join(
+                    f"[{_format_bound(total.lower)}, {_format_bound(total.upper)})"
+                    for total in touched
+                )
+                + " that do not tile one interval holding it, so no merge of "
+                "groups gives it one control."
+            )
+        merged = _merge_eitc_agi_totals(touched, lower=span_lower, upper=span_upper)
+        if any(
+            (total.lower, total.upper) == (span_lower, span_upper)
+            for total in current
+            if not any(total is other for other in touched)
+        ):
+            raise ValueError(
+                f"{label}: merging AGI uprating groups for source row "
+                f"[{_format_bound(lower)}, {_format_bound(upper)}) gives "
+                f"[{_format_bound(span_lower)}, {_format_bound(span_upper)}), "
+                "which another active total already covers; nested AGI "
+                "totals need a reviewed rule."
+            )
+        current = sorted(
+            [total for total in current if not any(total is t for t in touched)]
+            + [merged],
+            key=lambda total: (total.lower, total.upper),
+        )
+
+
+def _first_row_without_one_group(
+    groups: list[_EitcAgiTotal],
+    rows: list[tuple[float, float]],
+    leaves: set[tuple[float, float]],
+) -> tuple[float, float] | None:
+    """The first row that straddles a group, or leaf no one group holds."""
+
+    for lower, upper in rows:
+        overlapping = [
+            total for total in groups if total.lower < upper and lower < total.upper
+        ]
+        held = any(
+            _contains_bounds(total.lower, total.upper, lower, upper)
+            for total in overlapping
+        )
+        if (lower, upper) in leaves:
+            if overlapping and not held:
+                return (lower, upper)
+            continue
+        if any(
+            not _contains_bounds(total.lower, total.upper, lower, upper)
+            and not _contains_bounds(lower, upper, total.lower, total.upper)
+            for total in overlapping
+        ):
+            return (lower, upper)
+    return None
 
 
 def _merge_eitc_agi_totals(
