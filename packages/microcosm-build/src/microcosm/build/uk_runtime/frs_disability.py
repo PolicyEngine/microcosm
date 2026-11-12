@@ -19,6 +19,8 @@ from microcosm.build.uk_runtime.cgt_structure import (
 )
 from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
 from microcosm.build.uk_runtime.frs_spine import (
+    FRS_CARE_HELPER_BIT,
+    FRS_CARE_LINE_HOURS,
     FRS_CARE_OUTSIDE_BIT,
     FRS_CARE_RECIPIENTS_COLUMN,
     FRS_UC_CARER_ELEMENT_COLUMN,
@@ -71,19 +73,25 @@ YEAR_RULE = "survey_year"
 #: ``cares_for_severely_disabled_person`` (2.177.3, pe-uk#2860), whether the
 #: person a carer cares for gets a benefit that makes them severely disabled for
 #: Carer's Allowance or a qualifying disability benefit for Carer Support
-#: Payment. The engine reads it only where care_hours reach the minimum. It is
-#: true for a carer whose main care recipients (frs_spine.frs_care_recipients)
-#: include a household member with Attendance Allowance, DLA care (Child
-#: Disability Payment's included) at the middle or highest rate, or PIP or Adult
-#: Disability Payment daily living. A carer whose main recipients include
-#: someone outside the household and no such member is drawn at the share, by
-#: design weight, of the in-household carers whose care hours reach the minimum
-#: and who report no Carer's Allowance that have such a member, on an
-#: identity-keyed uniform balanced by weight within the strata of care hours at
-#: or above the minimum and below it, as carers_allowance_take_up drew its pool
-#: before it read this link (María's decision (a) of 2026-10-28). A carer with
-#: care hours and no link in the care tab keeps the engine's default, true;
-#: everyone else is false. Armed Forces Independence Payment is not seen: the
+#: Payment. The engine reads it only where care_hours reach the minimum. The
+#: minimum is per person cared for (frs_spine.FRS_CARE_RECIPIENTS_COLUMN: ICA
+#: Regs 1976 reg. 4(1) and (1A); Vahid's review of microcosm#1583, Should 1;
+#: María's decision of 2026-11-12), so the link reads only the people a carer
+#: gives at least 35 hours a week. It is true for a carer whose recipients at
+#: that line (frs_spine.frs_care_recipients) include a household member with
+#: Attendance Allowance, DLA care (Child Disability Payment's included) at the
+#: middle or highest rate, or PIP or Adult Disability Payment daily living. A
+#: carer whose recipients at the line include someone outside the household
+#: and no such member is drawn at the share, by design weight, of the carers
+#: who give only household members the line, whose care hours reach the
+#: minimum and who report no Carer's Allowance, that give a qualifying member
+#: the line, on an identity-keyed uniform balanced by weight within the strata
+#: of care hours at or above the minimum and below it, as
+#: carers_allowance_take_up drew its pool before it read this link (María's
+#: decision (a) of 2026-10-28). A carer the care tab lists who gives nobody the
+#: line is false, whatever their total hours: care spread over several people
+#: doesn't count. A carer with care hours and no link in the care tab keeps
+#: the engine's default, true; everyone else is false. Armed Forces Independence Payment is not seen: the
 #: FRS can't tell it from other Armed Forces Compensation Scheme payments. The
 #: SPI channel takes the link again on its households from the benefits it
 #: re-imputes (spi_income).
@@ -408,11 +416,18 @@ def uk_dwp_carers_allowance_min_hours(year: int) -> float:
 
 
 class _CarerRoutes(NamedTuple):
-    """Where each person stands on the carer link's routes."""
+    """Where each person stands on the carer link's routes.
+
+    ``carer`` is a person the care tab lists as helping someone;
+    ``household_at_line`` one who gives a household member at least the line,
+    ``outside`` one who gives someone outside the household that, and
+    ``member_qualifies`` one who gives the line to a qualifying member.
+    """
 
     ids: np.ndarray
     households: np.ndarray
     carer: np.ndarray
+    household_at_line: np.ndarray
     outside: np.ndarray
     member_qualifies: np.ndarray
     hours: np.ndarray
@@ -439,8 +454,10 @@ def _carer_routes(person: pd.DataFrame) -> _CarerRoutes:
         zip(households[qualifies].tolist(), numbers[qualifies].tolist(), strict=True)
     )
     member_qualifies = np.zeros(len(person), dtype=bool)
+    household_at_line = np.zeros(len(person), dtype=bool)
     for number in range(1, FRS_CARE_OUTSIDE_BIT):
         holds = ((mask >> number) & 1) == 1
+        household_at_line |= holds
         if holds.any():
             member_qualifies[holds] |= np.asarray(
                 [(int(h), number) in qualifying for h in households[holds]], dtype=bool
@@ -448,7 +465,8 @@ def _carer_routes(person: pd.DataFrame) -> _CarerRoutes:
     return _CarerRoutes(
         ids=ids,
         households=households,
-        carer=mask != 0,
+        carer=((mask >> FRS_CARE_HELPER_BIT) & 1) == 1,
+        household_at_line=household_at_line,
         outside=((mask >> FRS_CARE_OUTSIDE_BIT) & 1) == 1,
         member_qualifies=member_qualifies,
         hours=_amount(person, "care_hours").to_numpy(dtype=float),
@@ -461,17 +479,18 @@ def carer_link_share(
 ) -> tuple[float | None, int]:
     """The share the carer link draws outside carers at, and its households.
 
-    Of the carers who care only within their household, whose care hours reach
-    ``min_hours`` and who report no Carer's Allowance, the share by ``weights``
-    whose main recipients include a qualifying member; None where none of them
+    Of the carers who give the line only to household members, whose care
+    hours reach ``min_hours`` and who report no Carer's Allowance, the share
+    by ``weights`` who give it to a qualifying member; None where none of them
     has weight. The second value is the distinct households that base rests
     on, for the receipt to band.
     """
 
+    _assert_care_line(min_hours)
     routes = _carer_routes(person)
     weights = np.asarray(weights, dtype=float)
     base = (
-        routes.carer
+        routes.household_at_line
         & ~routes.outside
         & (routes.hours >= float(min_hours))
         & ~routes.reported
@@ -508,6 +527,7 @@ def derive_carer_link(
     carry them, and the share the drawn route takes.
     """
 
+    _assert_care_line(min_hours)
     routes = _carer_routes(person)
     weights = np.asarray(weights, dtype=float)
     if share is None:
@@ -516,7 +536,10 @@ def derive_carer_link(
     keys = routes.households if support_keys is None else np.asarray(support_keys)
     linked = routes.carer & routes.member_qualifies
     drawn_route = routes.carer & routes.outside & ~routes.member_qualifies
-    household_route = routes.carer & ~routes.outside
+    household_route = routes.carer & routes.household_at_line & ~routes.outside
+    # Listed in the care tab, but giving nobody the line: care spread over
+    # several people doesn't count (ICA Regs 1976 reg. 4(1A)), so false.
+    nobody_at_line = routes.carer & ~routes.household_at_line & ~routes.outside
     no_link = ~routes.carer & (routes.hours > 0)
     at_line = routes.hours >= float(min_hours)
     draws = stable_identity_uniforms(
@@ -594,10 +617,26 @@ def derive_carer_link(
                 at_line & routes.carer & routes.outside & routes.member_qualifies
             ),
             "outside_drawn": route(at_line & drawn_route),
+            "care_tab_nobody_given_the_line": route(at_line & nobody_at_line),
             "no_link": route(at_line & no_link),
         },
     }
     return link, evidence
+
+
+def _assert_care_line(min_hours: float) -> None:
+    """Refuse an engine minimum the care tab's bands don't mark.
+
+    ``frs_spine`` reads the care tab's bands at :data:`FRS_CARE_LINE_HOURS`,
+    Carer's Allowance's 35 hours a week; another minimum needs them read again.
+    """
+
+    if float(min_hours) != FRS_CARE_LINE_HOURS:
+        raise ValueError(
+            "The carer link reads the care tab's bands at "
+            f"{FRS_CARE_LINE_HOURS:g} hours a week, and the engine's minimum is "
+            f"{float(min_hours):g}: read the bands again at the new line."
+        )
 
 
 #: A3 (f) of the November event-data plan's PR3 (microcosm#1095; María's

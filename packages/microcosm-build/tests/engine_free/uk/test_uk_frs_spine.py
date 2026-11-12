@@ -48,6 +48,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     BENEFIT_CODES,
     BENEFIT_RECIPIENT_RULE,
     BSP_MONTHLY_RATES,
+    FRS_CARE_HELPER_BIT,
     FRS_CARE_OUTSIDE_BIT,
     FRS_CARE_RECIPIENTS_COLUMN,
     FRS_COMPANY_CAR_CARRIER_COLUMNS,
@@ -76,6 +77,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     frs_claimant_or_partner,
     frs_council_tax_band,
     frs_dwp_carer_care_hours,
+    frs_lcwra_proxy,
     frs_uc_carer_element,
     frs_uc_lcw_status,
     parse_frs_uc_claim_start,
@@ -2631,13 +2633,14 @@ def test_a_benefits_table_without_whorec_is_left_as_it_is() -> None:
     assert evidence["rows_moved"] == 0 and evidence["rows_split"] == 0
 
 
-def test_care_recipients_are_the_people_given_the_largest_band() -> None:
-    """Each carer's main recipients: household members by number, outside as one bit (A3).
+def test_care_recipients_are_the_people_given_the_line() -> None:
+    """Each carer's recipients at 35 hours: household members by number, outside as one bit (A3).
 
     Person 1 cares for member 2 at 35-49 hours and for someone outside at 5-9,
-    so member 2 alone is main. Person 3's two recipients share the largest
-    band, so both count. Person 4's row names themself, which is left out, and
-    person 5 helps nobody.
+    so member 2 alone is at the line. Person 3 gives member 2 and someone
+    outside 50-99 hours each, so both count. Every listed carer carries the
+    helper bit. Person 4's row names themself, which is left out, and person 5
+    helps nobody.
     """
 
     care = pd.DataFrame(
@@ -2656,10 +2659,11 @@ def test_care_recipients_are_the_people_given_the_largest_band() -> None:
 
     recipients, evidence = frs_care_recipients(care, person)
 
+    helper = 1 << FRS_CARE_HELPER_BIT
     assert recipients.tolist() == [
-        1 << 2,
+        helper | (1 << 2),
         0,
-        (1 << 2) | (1 << FRS_CARE_OUTSIDE_BIT),
+        helper | (1 << 2) | (1 << FRS_CARE_OUTSIDE_BIT),
         0,
         0,
     ]
@@ -2668,17 +2672,53 @@ def test_care_recipients_are_the_people_given_the_largest_band() -> None:
     assert evidence["household_only"] == "<3"
     assert evidence["both"] == "<3"
     assert evidence["outside_only"] == 0
+    assert evidence["nobody_at_the_line"] == 0
     assert evidence["helpers_not_held"] == 0
 
 
-def test_the_spine_stores_each_carers_main_recipients(tmp_path: Path) -> None:
-    """The fixture's carer holds member 2 alone, whose band is the largest (A3)."""
+def test_care_spread_over_two_people_gives_nobody_the_line() -> None:
+    """Vahid's case (review of microcosm#1583, Should 1): 20-34 hours to each of two members.
+
+    HOURTOT puts the carer at 50-99 hours in all, but the Invalid Care
+    Allowance Regulations 1976 reg. 4(1A) count care for two or more people
+    only where one of them gets 35 hours on their own. So the carer is listed,
+    with the helper bit, and has no recipient at the line. A band that
+    varies at 35 or more (code 10) reaches it; one that varies at 20-34
+    (code 9) doesn't.
+    """
+
+    care = pd.DataFrame(
+        {
+            "household_id": [1, 1, 2, 2],
+            "needper": [2, 3, 2, 15],
+            "wholoo01": [1, 1, 1, 1],
+            "hour01": [4, 4, 9, 10],
+        }
+    )
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003, 2001, 2002]})
+
+    recipients, evidence = frs_care_recipients(care, person)
+
+    helper = 1 << FRS_CARE_HELPER_BIT
+    assert recipients.tolist() == [
+        helper,
+        0,
+        0,
+        helper | (1 << FRS_CARE_OUTSIDE_BIT),
+        0,
+    ]
+    assert evidence["nobody_at_the_line"] == "<3"
+    assert evidence["outside_only"] == "<3"
+
+
+def test_the_spine_stores_each_carers_recipients_at_the_line(tmp_path: Path) -> None:
+    """The fixture's carer gives member 2 alone at least 35 hours (A3)."""
 
     stage = _write_fixture(tmp_path)
     person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
 
     stored = person.set_index("person_id")[FRS_CARE_RECIPIENTS_COLUMN]
-    assert stored.loc[1001] == 1 << 2
+    assert stored.loc[1001] == (1 << FRS_CARE_HELPER_BIT) | (1 << 2)
     assert (stored.drop(index=1001) == 0).all()
 
 
@@ -5158,7 +5198,7 @@ class TestDWPCarerCareHours:
 
     @staticmethod
     def _people(rows) -> pd.DataFrame:
-        return pd.DataFrame(
+        people = pd.DataFrame(
             rows,
             columns=[
                 "person_id",
@@ -5170,6 +5210,99 @@ class TestDWPCarerCareHours:
                 FRS_UC_CARER_ELEMENT_COLUMN,
             ],
         )
+        # The claim's limited capability status sits on the UC row's person,
+        # as frs_uc_lcw_status writes it: NONE on a linked claim here.
+        linked = people[FRS_UC_CARER_ELEMENT_COLUMN].isin(["CARER", "NONE"])
+        people[FRS_UC_LCW_STATUS_COLUMN] = np.where(linked, "NONE", "NOT_LINKED")
+        return people
+
+    @staticmethod
+    def _joint_claim(
+        claimant_hours: float,
+        partner_hours: float,
+        *,
+        status: str = "NONE",
+        claimant_pip: float = 0.0,
+        partner_pip: float = 0.0,
+    ) -> pd.DataFrame:
+        """A joint claim: the UC row's person 1001 with the carer element, partner 1002."""
+
+        return pd.DataFrame(
+            {
+                "person_id": [1001, 1002],
+                "person_benunit_id": [11, 11],
+                "person_household_id": [1, 1],
+                "is_claimant_or_partner": [True, True],
+                "care_hours": [claimant_hours, partner_hours],
+                "carers_allowance_reported": [0.0, 0.0],
+                FRS_UC_CARER_ELEMENT_COLUMN: ["CARER", "NOT_LINKED"],
+                FRS_UC_LCW_STATUS_COLUMN: [status, "NOT_LINKED"],
+                "pip_dl_reported": [claimant_pip, partner_pip],
+            }
+        )
+
+    def test_the_partner_who_reports_more_care_takes_the_line(self) -> None:
+        """Vahid's review of microcosm#1583, Should 2: not always the UC row's person."""
+
+        hours, evidence = frs_dwp_carer_care_hours(self._joint_claim(0.0, 20.0))
+
+        assert hours.tolist() == [0.0, 35.0]
+        assert evidence["raised_the_partner_of_the_uc_rows_person"]["people"] == "<3"
+
+    def test_a_tie_raises_the_uc_rows_person(self) -> None:
+        hours, _ = frs_dwp_carer_care_hours(self._joint_claim(5.0, 5.0))
+
+        assert hours.tolist() == [35.0, 5.0]
+
+    def test_an_lcwra_claim_passes_over_the_claimant_the_proxy_flags(self) -> None:
+        """Vahid's case: the UC row's person gets PIP daily living, the partner cares.
+
+        On a claim DWP records with LCWRA and the carer element, the carer
+        isn't the claimant who holds LCWRA (UC Regs 2013 reg. 29(4)), so the
+        claimant Y1's proxy flags is passed over even with more care hours.
+        """
+
+        flagged = 72.65 * 52
+        hours, evidence = frs_dwp_carer_care_hours(
+            self._joint_claim(20.0, 0.0, status="LCWRA", claimant_pip=flagged)
+        )
+
+        assert hours.tolist() == [20.0, 35.0]
+        assert evidence["lcwra_claims_the_proxy_moved"]["people"] == "<3"
+        assert evidence["lcwra_claims"]["people"] == "<3"
+
+    def test_an_lcwra_claim_the_proxy_flags_whole_keeps_the_hours_rule(self) -> None:
+        both = 72.65 * 52
+        hours, evidence = frs_dwp_carer_care_hours(
+            self._joint_claim(
+                0.0, 20.0, status="LCWRA", claimant_pip=both, partner_pip=both
+            )
+        )
+
+        assert hours.tolist() == [0.0, 35.0]
+        assert evidence["lcwra_claims_the_proxy_flags_every_claimant"]["people"] == "<3"
+
+    def test_the_lcwra_proxy_follows_the_engines_formula(self) -> None:
+        """is_disabled_for_benefits, unless one's own ESA award lacks the support component."""
+
+        people = pd.DataFrame(
+            {
+                "pip_dl_reported": [100.0, 0.0, 0.0, 0.0],
+                "esa_income_reported": [0.0, 100.0, 100.0, 0.0],
+                "esa_includes_support_component": [True, True, False, True],
+            }
+        )
+
+        assert frs_lcwra_proxy(people).tolist() == [True, True, False, False]
+
+    def test_a_claim_without_lcwra_ignores_the_proxy(self) -> None:
+        flagged = 72.65 * 52
+        hours, evidence = frs_dwp_carer_care_hours(
+            self._joint_claim(20.0, 0.0, status="LCW", claimant_pip=flagged)
+        )
+
+        assert hours.tolist() == [35.0, 0.0]
+        assert evidence["lcwra_claims"]["people"] == 0
 
     def test_a_dwp_carer_claim_with_no_carer_at_the_line_takes_35_hours(self) -> None:
         rows = []

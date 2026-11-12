@@ -39,6 +39,8 @@ from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
 
 __all__ = [
+    "FRS_CARE_HELPER_BIT",
+    "FRS_CARE_LINE_HOURS",
     "FRS_CARE_RECIPIENTS_COLUMN",
     "FRS_SPINE_TABLES",
     "FRS_UC_CARER_ELEMENT_COLUMN",
@@ -53,6 +55,7 @@ __all__ = [
     "build_uk_frs_spine_frame",
     "frs_care_recipients",
     "frs_claimant_or_partner",
+    "frs_lcwra_proxy",
     "map_codes",
     "normalize_ids",
     "number",
@@ -330,14 +333,29 @@ FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN = "frs_care_hours_in_household"
 #: is (FRS 2024-25 CARE dictionary, UKDS SN 9563).
 FRS_CARE_HELPER_NUMBERS = tuple(range(1, 15))
 FRS_CARE_OUTSIDE_NEEDPER = tuple(range(15, 23))
-#: Each person's main care recipients as a bitmask: bit n for household member
-#: n among the people given the person's largest weekly band, and bit
-#: FRS_CARE_OUTSIDE_BIT for anyone outside the household among them; 0 for a
-#: person who helps nobody in the care tab. frs_disability reads it to write
-#: cares_for_severely_disabled_person (A3 of the November event-data plan's
-#: PR3, microcosm#1095). It is no engine input and leaves at the release.
+#: Each person's care recipients at Carer's Allowance's line as a bitmask: bit
+#: n for household member n whom the person gives at least
+#: FRS_CARE_LINE_HOURS a week, bit FRS_CARE_OUTSIDE_BIT for anyone outside the
+#: household given that, and bit FRS_CARE_HELPER_BIT for every person the care
+#: tab lists as helping someone; 0 for a person who helps nobody in the care
+#: tab. The line is per person cared for: the Social Security (Invalid Care
+#: Allowance) Regulations 1976 reg. 4(1) need 35 hours a week caring for that
+#: severely disabled person, and reg. 4(1A) counts care for two or more people
+#: only where one of them gets 35 hours, considered without reference to any
+#: other (Vahid's review of microcosm#1583, Should 1; María's decision of
+#: 2026-11-12). UC Regs 2013 reg. 30(1)(a) reads the same conditions into the
+#: carer element, and SSI 2023/302 reg. 5(2) into Carer Support Payment.
+#: frs_disability reads it to write cares_for_severely_disabled_person (A3 of
+#: the November event-data plan's PR3, microcosm#1095). It is no engine input
+#: and leaves at the release.
 FRS_CARE_RECIPIENTS_COLUMN = "frs_care_recipients"
+FRS_CARE_HELPER_BIT = 0
 FRS_CARE_OUTSIDE_BIT = 15
+#: Carer's Allowance's 35 hours a week, the lower edge of HOURTOT's code 5
+#: (35-49 hours): the bands that reach it are codes 5, 6, 7 and 10, so the
+#: line is exact at the care tab's bands. frs_disability refuses an engine
+#: minimum other than this one, which would need the bands read again.
+FRS_CARE_LINE_HOURS = 35.0
 #: DWP's limited capability for work status on a benefit unit's linked
 #: Universal Credit claim: BENEFITS.UCLCW on the UC row, "Limited Capability
 #: for Work Status (Admin UC)", coded 0 None, 1 LCFW Group and 2 LCFWRA Group
@@ -369,17 +387,28 @@ FRS_UC_CARER_ELEMENT_CODES = {0: "NONE", 1: "CARER"}
 #: least 35 hours a week for a severely disabled person, so a linked claim whose
 #: award DWP records with the element has a carer in its benefit unit whatever
 #: the survey's care answers say. Where no claimant or partner of that unit
-#: reports 35 or more care hours or Carer's Allowance, the UC row's person takes
-#: the lower edge of the first band at that line (HOURTOT code 5, 35-49 hours);
-#: frs_disability then holds the unit's carers at the line caring for a severely
-#: disabled person. Claims with no linked record keep the survey's answers.
+#: reports 35 or more care hours or Carer's Allowance, the claimant or partner
+#: who reports more care hours takes the lower edge of the first band at that
+#: line (HOURTOT code 5, 35-49 hours), the UC row's person on a tie (Vahid's
+#: review of microcosm#1583, Should 2; María's decision of 2026-11-12). On a
+#: claim DWP also records with the LCWRA element, a carer with LCWRA gets only
+#: that element (UC Regs 2013 reg. 29(4)), so DWP's record says the carer isn't
+#: the claimant who holds it: a claimant or partner whom Y1's proxy
+#: (is_disabled_for_benefits, which uc_limited_capability keeps on such a claim)
+#: flags is passed over while another isn't. frs_disability then holds the
+#: unit's carers at the line caring for a severely disabled person. Claims with
+#: no linked record keep the survey's answers.
 FRS_DWP_CARER_CARE_HOURS = 35.0
 FRS_DWP_CARER_RULE = (
     "on a linked Universal Credit claim whose award DWP records with a carer "
     "element (frs_uc_carer_element CARER), where no claimant or partner of the "
     "benefit unit reports 35 or more care hours (HOURTOT) or Carer's Allowance, "
-    "the UC row's person takes 35 care hours, the lower edge of HOURTOT's first "
-    "band at the line; other claims and people keep the survey's answers"
+    "the claimant or partner who reports more care hours takes 35 care hours, "
+    "the lower edge of HOURTOT's first band at the line, the UC row's person on "
+    "a tie; on a claim DWP records with LCWRA (frs_uc_lcw_status), one whom the "
+    "LCWRA proxy (is_disabled_for_benefits: any reported disability benefit or "
+    "ESA) flags is passed over while another isn't; other claims and people "
+    "keep the survey's answers"
 )
 
 # FRS adult RENTPROF (question RentProf): whether the rent from other property
@@ -1969,15 +1998,17 @@ def frs_in_household_care_hours(person: pd.DataFrame) -> pd.Series:
 def frs_care_recipients(
     care: pd.DataFrame, person: pd.DataFrame
 ) -> tuple[pd.Series, dict[str, object]]:
-    """Each person's main care recipients, as :data:`FRS_CARE_RECIPIENTS_COLUMN`.
+    """Each person's care recipients at the line, as :data:`FRS_CARE_RECIPIENTS_COLUMN`.
 
     ``care`` is the normalized care tab (``household_id`` from SERNUM) and
     ``person`` the spine's people. A helper's band for each person they help
-    maps to weekly hours as HOURTOT does; the recipients at the helper's
-    largest band are their main ones. A household member helping themself,
-    which the tab shouldn't hold, is left out. The evidence counts carers by
-    where their main recipients live, in the receipts' rounded counts and
-    support bands, never exactly.
+    maps to weekly hours as HOURTOT does; the recipients the helper gives at
+    least :data:`FRS_CARE_LINE_HOURS` are theirs at the line, and every helper
+    the tab lists carries :data:`FRS_CARE_HELPER_BIT`. A household member
+    helping themself, which the tab shouldn't hold, is left out. The evidence
+    counts carers by where their recipients at the line live, and the carers
+    the tab lists who give nobody the line, in the receipts' rounded counts
+    and support bands, never exactly.
     """
 
     people = person["person_id"].astype("int64")
@@ -2006,10 +2037,12 @@ def frs_care_recipients(
     held = set(people.tolist())
     evidence: dict[str, object] = {
         "rule": (
-            "a helper's main care recipients are the people given their largest "
-            "weekly band (CARE.HOUR01 to HOUR14, coded as HOURTOT), household "
-            "members by person number and anyone outside the household as one "
-            "bit"
+            "a helper's care recipients at the line are the people given at "
+            f"least {FRS_CARE_LINE_HOURS:g} hours a week by their weekly band "
+            "(CARE.HOUR01 to HOUR14, coded as HOURTOT), household members by "
+            "person number and anyone outside the household as one bit; every "
+            "helper the tab lists carries bit "
+            f"{FRS_CARE_HELPER_BIT}"
         ),
     }
     if not links:
@@ -2019,33 +2052,46 @@ def frs_care_recipients(
                 "household_only": 0,
                 "outside_only": 0,
                 "both": 0,
+                "nobody_at_the_line": 0,
                 "helpers_not_held": 0,
                 "recipients_not_held": 0,
             }
         )
         return result, evidence
     frame = pd.concat(links, ignore_index=True)
-    largest = frame.groupby("person_id")["hours"].transform("max")
-    main = frame.loc[frame["hours"] == largest]
-    inside = main["needper"].isin(FRS_CARE_HELPER_NUMBERS)
-    outside = main["needper"].isin(FRS_CARE_OUTSIDE_NEEDPER)
-    bits = np.where(inside, main["needper"], FRS_CARE_OUTSIDE_BIT)
-    main = main.assign(bit=bits).loc[inside | outside]
-    masks = main.groupby("person_id")["bit"].agg(
+    frame = frame.loc[
+        frame["needper"].isin(FRS_CARE_HELPER_NUMBERS)
+        | frame["needper"].isin(FRS_CARE_OUTSIDE_NEEDPER)
+    ]
+    at_line = frame.loc[frame["hours"] >= FRS_CARE_LINE_HOURS]
+    inside = at_line["needper"].isin(FRS_CARE_HELPER_NUMBERS)
+    at_line = at_line.assign(
+        bit=np.where(inside, at_line["needper"], FRS_CARE_OUTSIDE_BIT)
+    )
+    line_masks = at_line.groupby("person_id")["bit"].agg(
         lambda column: int(sum(1 << int(bit) for bit in set(column)))
+    )
+    helpers = pd.Index(frame["person_id"].unique())
+    # No recipient bit is the helper bit, so adding the two is their union.
+    masks = (
+        pd.Series(1 << FRS_CARE_HELPER_BIT, index=helpers, dtype="int64")
+        .add(line_masks, fill_value=0)
+        .astype("int64")
     )
     result = people.map(masks).fillna(0).astype("int64")
     result.index = person.index
-    by_carer = main.groupby("person_id").agg(
-        household_id=("household_id", "first"),
+    by_carer = frame.groupby("person_id").agg(household_id=("household_id", "first"))
+    line_routes = at_line.groupby("person_id").agg(
         inside=("needper", lambda column: column.isin(FRS_CARE_HELPER_NUMBERS).any()),
         outside=(
             "needper",
             lambda column: column.isin(FRS_CARE_OUTSIDE_NEEDPER).any(),
         ),
     )
+    by_carer = by_carer.join(line_routes).fillna({"inside": False, "outside": False})
+    by_carer = by_carer.astype({"inside": bool, "outside": bool})
     held_carers = by_carer.loc[by_carer.index.isin(list(held))]
-    recipients = main.loc[main["needper"].isin(FRS_CARE_HELPER_NUMBERS)]
+    recipients = at_line.loc[at_line["needper"].isin(FRS_CARE_HELPER_NUMBERS)]
     recipient_ids = recipients["household_id"] * 1000 + recipients["needper"]
     evidence.update(
         {
@@ -2062,6 +2108,9 @@ def frs_care_recipients(
             ),
             "both": rounded_count(
                 int((held_carers["inside"] & held_carers["outside"]).sum())
+            ),
+            "nobody_at_the_line": rounded_count(
+                int((~held_carers["inside"] & ~held_carers["outside"]).sum())
             ),
             "helpers_not_held": rounded_count(
                 int((~by_carer.index.isin(list(held))).sum())
@@ -2525,11 +2574,14 @@ def frs_dwp_carer_care_hours(
     """``care_hours`` with DWP's UC carer element applied (:data:`FRS_DWP_CARER_RULE`).
 
     ``pe_person`` carries ``care_hours``, ``carers_allowance_reported``,
-    ``is_claimant_or_partner``, the person's benefit unit and household, and
-    :data:`FRS_UC_CARER_ELEMENT_COLUMN`. The evidence gives the claims and the
-    people raised in rounded counts and support bands, withheld where one or
-    two households carry them, split by whether the survey recorded no care or
-    care below the line.
+    ``is_claimant_or_partner``, the person's benefit unit and household,
+    :data:`FRS_UC_CARER_ELEMENT_COLUMN`, :data:`FRS_UC_LCW_STATUS_COLUMN` and
+    the reported benefits the LCWRA proxy reads (:func:`frs_lcwra_proxy`). The
+    evidence gives the claims and the people raised in rounded counts and
+    support bands, withheld where one or two households carry them, split by
+    whether the survey recorded no care or care below the line, with the
+    raises that went to the partner of the UC row's person and the LCWRA
+    claims where the proxy moved the raise or flags every claimant.
     """
 
     hours = pe_person["care_hours"].to_numpy(dtype=np.float64).copy()
@@ -2543,9 +2595,36 @@ def frs_dwp_carer_care_hours(
         > 0
     )
     carer_row = pe_person[FRS_UC_CARER_ELEMENT_COLUMN].astype(str).to_numpy() == "CARER"
+    lcwra_claim = carer_row & (
+        pe_person[FRS_UC_LCW_STATUS_COLUMN].astype(str).to_numpy() == "LCWRA"
+    )
+    proxy = frs_lcwra_proxy(pe_person)
     at_line = adult & ((hours >= FRS_DWP_CARER_CARE_HOURS) | reported)
     covered = np.isin(benunits, benunits[at_line])
-    raised = carer_row & ~covered
+    claimants: dict[object, list[int]] = {}
+    for row in np.flatnonzero(adult):
+        claimants.setdefault(benunits[row], []).append(int(row))
+
+    def more_care(rows: list[int], uc_row: int) -> int:
+        # The one who reports more care hours; the UC row's person, then the
+        # first in row order, on a tie.
+        return max(rows, key=lambda row: (hours[row], row == uc_row))
+
+    raised = np.zeros(len(hours), dtype=bool)
+    proxy_moved = np.zeros(len(hours), dtype=bool)
+    proxy_flags_every_claimant = np.zeros(len(hours), dtype=bool)
+    for uc_row in np.flatnonzero(carer_row & ~covered):
+        uc_row = int(uc_row)
+        rows = claimants.get(benunits[uc_row]) or [uc_row]
+        chosen = more_care(rows, uc_row)
+        if lcwra_claim[uc_row]:
+            unflagged = [row for row in rows if not proxy[row]]
+            if not unflagged:
+                proxy_flags_every_claimant[uc_row] = True
+            elif proxy[chosen]:
+                chosen = more_care(unflagged, uc_row)
+                proxy_moved[uc_row] = True
+        raised[chosen] = True
     before = hours[raised]
     hours[raised] = FRS_DWP_CARER_CARE_HOURS
 
@@ -2573,8 +2652,42 @@ def frs_dwp_carer_care_hours(
         "raised": cell(raised),
         "raised_from_no_care": cell(no_care),
         "raised_from_below_the_line": cell(below),
+        "raised_the_partner_of_the_uc_rows_person": cell(raised & ~carer_row),
+        "lcwra_claims": cell(lcwra_claim & ~covered),
+        "lcwra_claims_the_proxy_moved": cell(proxy_moved),
+        "lcwra_claims_the_proxy_flags_every_claimant": cell(proxy_flags_every_claimant),
     }
     return hours, evidence
+
+
+def frs_lcwra_proxy(pe_person: pd.DataFrame) -> np.ndarray:
+    """policyengine-uk's ``uc_limited_capability_for_WRA`` proxy, on the spine's stored inputs.
+
+    The engine's formula: ``is_disabled_for_benefits``, which frs_disability
+    sets from any reported disability benefit or ESA, unless the person's own
+    ESA award lacks the support component (``esa_includes_support_component``
+    false; it is false only for a person with such an award). Y1
+    (uc_limited_capability) keeps this proxy for the claimants it flags on a
+    claim DWP records with LCWRA.
+    """
+
+    # frs_disability imports this module, so its columns are read here.
+    from microcosm.build.uk_runtime.frs_disability import (
+        UK_DISABILITY_FLAG_REPORTED_COLUMNS,
+    )
+
+    total = np.zeros(len(pe_person), dtype=np.float64)
+    for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS:
+        if column in pe_person:
+            total += (
+                pd.to_numeric(pe_person[column], errors="coerce").fillna(0.0).to_numpy()
+            )
+    support = (
+        pe_person["esa_includes_support_component"].to_numpy(dtype=bool)
+        if "esa_includes_support_component" in pe_person
+        else np.ones(len(pe_person), dtype=bool)
+    )
+    return (total > 0) & support
 
 
 def _frs_uc_admin_claim_status(
