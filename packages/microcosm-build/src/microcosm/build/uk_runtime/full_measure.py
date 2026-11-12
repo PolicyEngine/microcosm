@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime import (
     ladder_clone_index_column,
     materialize_uk_ledger_targets,
 )
+from microcosm.build.uk_runtime.geographic_clones import geographic_clone_count
 from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
 from microcosm.build.uk_runtime.national_frame import uk_time_period
 from microcosm.calibrate.matrix import CalibrationProblem, build_constraint_matrix
@@ -132,12 +133,52 @@ def _without_scratch_paths(value, scratch_dir: Path):
     return value
 
 
-def _engine_block_frames(frame, blocks: int) -> list[tuple[int | None, Frame]]:
-    """The engine blocks: the whole clone, or one scratch frame per clone index."""
+def _require_engine_clone_count(frame, clones: int) -> None:
+    """Refuse a frame that does not hold the ``clones`` geographic clones its
+    node binds (microcosm#931).
+
+    The engine resolves the pool its node binds, the spine's version as it
+    stands with all K of its geographic clones; a frame of another clone
+    count (a part of the pool that misses a clone, say) stands for another
+    population, at one block as at K; the check reads the clone count alone,
+    so a part that keeps every clone index is not refused here. Reads only
+    the household clone index, through
+    :func:`~.geographic_clones.geographic_clone_count`, whose own refusals
+    name the column; the refusal here names the two clone counts, never a
+    row count, an id or a value.
+    """
+
+    held = geographic_clone_count(frame.table("household"), stage="Engine resolution")
+    if held != clones:
+        raise ValueError(
+            "Engine resolution binds the geographic clone count "
+            f"K = {clones}, but its frame's is K = {held}: a frame of another "
+            "clone count is not the pool its node binds (microcosm#931)."
+        )
+
+
+def _engine_block_frames(
+    frame, blocks: int, *, clones: int | None = None
+) -> list[tuple[int | None, Frame]]:
+    """The engine blocks: the whole pool, or one scratch frame per clone index.
+
+    With ``clones``, the spine's geographic clone count K that the calling
+    node binds (microcosm#931), the frame must hold exactly K geographic
+    clones at every block count, one included, and the blocks must be one or
+    K; without it (callers outside the build graph) any frame resolves in one
+    block, and K blocks need K realized clone indices.
+    """
 
     household = frame.table("household")
     if blocks < 1:
         raise ValueError("engine resolution blocks must be positive.")
+    if clones is not None:
+        _require_engine_clone_count(frame, clones)
+        if blocks not in {1, clones}:
+            raise ValueError(
+                "Engine resolution blocks must be one or one per geographic "
+                f"clone, K = {clones} (microcosm#931)."
+            )
     if blocks == 1:
         return [(None, frame)]
     clone_column = ladder_clone_index_column("household")
@@ -810,6 +851,7 @@ def resolve_uk_full_measures(
     band_edge_registry=None,
     resolver_factory=UKMeasureResolver,
     blocks: int = 1,
+    clones: int | None = None,
     local_grains: tuple[str, ...] = ("constituency", "la"),
 ) -> tuple[Any, Any, UKRowwiseNationalRows, dict[str, pd.DataFrame], dict[str, Any]]:
     """Resolve national inputs and local metrics on the cloned frame.
@@ -818,11 +860,14 @@ def resolve_uk_full_measures(
     reviewed escape hatch ``blocks=K`` resolves each clone index separately,
     then rejoins every entity-level prepared column by its stable entity id so
     the full-frame target materialization and single solve retain frame order.
-    The dense role's measures node uses :func:`resolve_uk_full_national_problem`
-    instead, which never materializes the whole pool.
+    ``clones`` is the geographic clone count K the caller binds; with it the
+    frame must hold K clones at every block count (:func:`_engine_block_frames`,
+    microcosm#931). The national line passes one. The dense role's measures
+    node uses :func:`resolve_uk_full_national_problem` instead, which never
+    materializes the whole pool.
     """
 
-    block_frames = _engine_block_frames(frame, blocks)
+    block_frames = _engine_block_frames(frame, blocks, clones=clones)
     representation = _engine_population_representation(frame, block_frames)
     block_shares = _block_pool_shares(representation)
     measure_parts: dict[tuple[str, str], list[pd.Series]] = {}
@@ -1025,6 +1070,7 @@ def resolve_uk_full_national_problem(
     band_edge_registry=None,
     resolver_factory=UKMeasureResolver,
     blocks: int = 1,
+    clones: int | None = None,
     local_grains: tuple[str, ...] = ("constituency", "la"),
 ) -> tuple[
     CalibrationProblem | None,
@@ -1045,9 +1091,12 @@ def resolve_uk_full_national_problem(
     stitched into the pool's household order. Materialization is row-wise
     (band edges come from the compiled register), so the stitched problem is
     the pool's problem. ``None`` when the registry selects no national target.
+    The measures node passes ``clones``, the spine's K, so the frame must hold
+    K geographic clones at every block count (:func:`_engine_block_frames`,
+    microcosm#931).
     """
 
-    block_frames = _engine_block_frames(frame, blocks)
+    block_frames = _engine_block_frames(frame, blocks, clones=clones)
     representation = _engine_population_representation(frame, block_frames)
     block_shares = _block_pool_shares(representation)
     targets = national_registry.to_target_set()

@@ -628,41 +628,113 @@ def test_an_unsized_run_carries_no_refit_penalty(tmp_path: Path) -> None:
     assert any("without a size request" in failure for failure in failures)
 
 
+def _assignment(manifest: dict) -> dict:
+    return manifest["geography"]["assignment"]
+
+
 @pytest.mark.parametrize(
     "mutate, needle",
     [
         (
-            lambda m: m["geography"]["assignment"].__setitem__("assignment", "legacy"),
-            "geography.assignment.assignment is 'legacy', not 'atomic'",
+            lambda m: _assignment(m).__setitem__("assignment", "legacy"),
+            "geography.assignment.assignment is not 'atomic'.",
         ),
         (
-            lambda m: m["geography"]["assignment"]["support_pins"][
+            lambda m: _assignment(m).__setitem__("identity", "household_id"),
+            "geography.assignment.identity is not 'geography_household_key'.",
+        ),
+        (
+            lambda m: _assignment(m).__setitem__("definition_sha256", "F" * 64),
+            "geography.assignment.definition_sha256 is not a SHA-256 hex digest.",
+        ),
+        (
+            lambda m: _assignment(m)["support_pins"][
                 "uk_ni_data_zone_2021"
             ].__setitem__("sha256", "9" * 64),
-            "support_pins.uk_ni_data_zone_2021 is not the registered support",
+            "geography.assignment.support_pins.uk_ni_data_zone_2021 is not the "
+            "registered conditioned support.",
         ),
         (
-            lambda m: m["geography"]["assignment"]["support_pins"][
+            lambda m: _assignment(m)["support_pins"][
                 "uk_ew_output_area_2021"
             ].__setitem__("size_bytes", 1),
-            "support_pins.uk_ew_output_area_2021 is not the registered support",
+            "geography.assignment.support_pins.uk_ew_output_area_2021 is not the "
+            "registered conditioned support.",
         ),
-        (lambda m: m.pop("geography"), "geography.assignment.assignment is None"),
+        (
+            lambda m: _assignment(m)["support_pins"].__setitem__(
+                "uk_other_area_2021", {"sha256": "9" * 64, "size_bytes": 1}
+            ),
+            "geography.assignment.support_pins names a system the register does not.",
+        ),
+        (
+            lambda m: _assignment(m).__setitem__("geographic_clone_count", 7),
+            "geography.assignment.geographic_clone_count is not K = 15.",
+        ),
+        (
+            lambda m: m.pop("geography"),
+            "geography.assignment.assignment is not 'atomic'.",
+        ),
     ],
 )
-def test_preflight_requires_the_registered_atomic_assignment(
+def test_preflight_requires_a_release_geography_binding(
     tmp_path: Path, mutate, needle: str
 ) -> None:
-    """A release candidate is the identity-keyed assignment on the registered
-    supports (microcosm#932 round 1): the pre-flight refuses the legacy law, a
-    pre-#932 manifest with no binding, and a pin that is not the register's."""
+    """A release candidate's areas are its spine's (microcosm#931): the
+    manifest's geography binding must be the identity-keyed atomic law, under
+    a definition its digest names, on the conditioned supports the register
+    lists, at the doctrine's 15 clones. The pre-flight refuses the legacy law,
+    another identity or digest, a pin that is not the register's or a system
+    it does not list, another K and a manifest with no binding, naming the
+    field and never its value."""
     candidate = _good_candidate(tmp_path)
     path = candidate / "rowwise_candidate_manifest.json"
     manifest = json.loads(path.read_text())
     mutate(manifest)
     path.write_text(json.dumps(manifest))
     failures = _load().check_candidate_dir(candidate, today=date(2026, 9, 4))
-    assert any(needle in line for line in failures), failures
+    assert needle in failures, failures
+    assert not any("legacy" in line or "9" * 64 in line for line in failures)
+
+
+def test_preflight_holds_the_binding_and_the_run_to_one_clone_count(
+    tmp_path: Path,
+) -> None:
+    """geography.assignment.geographic_clone_count == parameters.n_clones == 15
+    (microcosm#931): a run at another K fails on both, and a binding whose K
+    is not the run's fails on the binding."""
+    candidate = _good_candidate(tmp_path)
+    path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(path.read_text())
+    assert _assignment(manifest)["geographic_clone_count"] == 15
+    manifest["parameters"]["n_clones"] = 7
+    _assignment(manifest)["geographic_clone_count"] = 7
+    path.write_text(json.dumps(manifest))
+    failures = _load().check_candidate_dir(candidate, today=date(2026, 9, 4))
+    assert "geography.assignment.geographic_clone_count is not K = 15." in failures
+    assert any("n_clones=7" in line for line in failures), failures
+
+
+def test_preflight_refuses_the_base_support_register(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Against sources.yaml itself (microcosm#931): pins equal to the base
+    supports' are refused, since a release's areas are drawn on the
+    conditioned ones, and pins equal to the conditioned supports' pass."""
+    monkeypatch.setattr(country_adapter, "uk_atomic_support_register", _REAL_REGISTER)
+    module = _load()
+
+    def failures_with(label: str, pins: dict) -> list[str]:
+        candidate = _good_candidate(tmp_path / label)
+        path = candidate / "rowwise_candidate_manifest.json"
+        manifest = json.loads(path.read_text())
+        _assignment(manifest)["support_pins"] = pins
+        path.write_text(json.dumps(manifest))
+        return module.check_candidate_dir(candidate, today=date(2026, 9, 4))
+
+    base = failures_with("base", _REAL_REGISTER())
+    assert len([line for line in base if "support_pins" in line]) == 3, base
+    assert failures_with("conditioned", _REAL_REGISTER(conditioned=True)) == []
 
 
 def test_preflight_reads_the_committed_support_register(
@@ -674,7 +746,7 @@ def test_preflight_reads_the_committed_support_register(
     failures = _load().check_candidate_dir(candidate, today=date(2026, 9, 4))
     refused = [line for line in failures if "support_pins" in line]
     assert len(refused) == 3, failures
-    register = _REAL_REGISTER()
+    register = _REAL_REGISTER(conditioned=True)
     assert set(register) == set(synthetic_geography_binding()["support_pins"])
     assert all(
         len(row["sha256"]) == 64 and row["size_bytes"] > 0 for row in register.values()
