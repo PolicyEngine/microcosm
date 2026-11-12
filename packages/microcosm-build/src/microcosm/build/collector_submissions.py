@@ -63,14 +63,18 @@ _SKIPPED_REASONS: Final[Mapping[str, str]] = {
     "NOT_STAGED_ON_HUGGING_FACE": _NOT_ON_HUGGING_FACE,
     "NOT_PUBLISHED_ON_HUGGING_FACE": _NOT_ON_HUGGING_FACE,
 }
-#: Added to a ``COLLECTOR_SETTINGS_REFUSED`` warning. The emitter's
-#: collector session uses a token given in the environment for telemetry
-#: only, so it never makes submissions work.
+#: Added to a ``COLLECTOR_SETTINGS_REFUSED`` warning. An emitter given a
+#: collector token in the environment uses it instead of the Hugging Face
+#: credential, and the token only sends telemetry, so its submissions never
+#: have a credential: the variables are to be unset, not completed.
 _SETTINGS_REFUSED_ADVICE: Final = (
     " The emitter's own warning gives the error type: a collector origin or"
     " development collector it does not trust, or collector-token variables"
-    " it cannot use. Collector submissions use the Hugging Face credential; a"
-    " collector token given in MICROCOSM_COLLECTOR_TOKEN only sends telemetry."
+    " it cannot use. Collector submissions use the Hugging Face credential,"
+    " and an emitter given a collector token uses that token instead, which"
+    " only sends telemetry: unset MICROCOSM_COLLECTOR_TOKEN,"
+    " MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and MICROCOSM_COLLECTOR_ORIGIN for a"
+    " staging or publication that should reach the collector."
 )
 #: A receipt's code, printed only when it has this shape: the emitter's codes,
 #: or the collector's own, which are lower case (``content_mismatch``).
@@ -136,8 +140,10 @@ def _collector_warning(receipt: Mapping[str, Any], subject: str) -> str | None:
         detail = f" ({code})" if code else ""
         return (
             f"the collector had not accepted the submissions of {subject} when "
-            f"the build stopped waiting{detail}; the emitter keeps them queued, "
-            "and it or the next emitter started on this machine sends them."
+            f"the wait ended{detail}; the emitter keeps them queued on this "
+            "machine, and an emitter running here later sends them. Until then, "
+            "leave unchanged any of their files the emitter did not copy at "
+            "hand-over."
         )
     return None
 

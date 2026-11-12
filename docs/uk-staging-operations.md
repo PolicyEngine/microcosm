@@ -258,13 +258,16 @@ not waited for. The build carries on in every case, with a warning when:
 
 - the collector receives nothing (`skipped`): the emitter refused its
   collector settings or the collector-token variables it inherits
-  (`COLLECTOR_SETTINGS_REFUSED`), Hugging Face refused the bundle
-  (`NOT_STAGED_ON_HUGGING_FACE`), or its folder is longer than the collector
-  accepts (`COLLECTOR_FOLDER_TOO_LONG`);
-- the collector rejected the submissions, or they failed, with the code the
-  receipt gives;
-- they were still queued when the build stopped waiting: the emitter, or the
-  next emitter started on this machine, sends them.
+  (`COLLECTOR_SETTINGS_REFUSED`; an emitter given a collector token uses it
+  instead of the Hugging Face credential, and it only sends telemetry, so
+  unset those variables), the bundle's Hugging Face upload failed or was
+  refused (`NOT_STAGED_ON_HUGGING_FACE`), or its folder is longer than the
+  collector accepts (`COLLECTOR_FOLDER_TOO_LONG`);
+- the collector rejected the submissions, they failed, or the collector gave
+  no final status within a day (`timed_out`), with the code the receipt gives;
+- they were still queued when the wait ended: an emitter running on this
+  machine later sends them, and files the emitter did not copy at hand-over
+  must stay unchanged until then.
 
 The staged dataset record (`staged_dataset`) describes the Hugging Face
 upload alone and does not change. A different `collector` block gives the
