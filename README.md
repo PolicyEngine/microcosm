@@ -419,8 +419,8 @@ including Hypothesis properties) run in the normal `uv run pytest` suite.
 ## Releasing & alerts
 
 [The release contract](docs/release-contract.md) (C1 to C5) says what the
-publisher enforces today and what version 1, which the ARCH-1 plan adds, asks
-of every release.
+release validator, the publication commands and the loaders enforce today, and
+what version 1 (ARCH-1, cos d1160) asks of every country's releases.
 
 The [native SPM role source-enrichment lane](docs/us-native-spm-role-source-enrichment.md)
 creates a new US H5 from the exact reviewed BuildP parent, preserves its original

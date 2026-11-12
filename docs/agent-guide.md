@@ -341,11 +341,14 @@ HF_STAGING_READ_TOKEN= bash tools/run_integration_tests.sh
 
 ## The PR-CI / certification boundary
 
-[The release contract](release-contract.md) (C1 to C5) states what the
-publisher enforces today and what version 1, which the ARCH-1 plan adds, asks
-of every country's releases. Change it, its golden fixtures
-(`tools/generate_release_contract_fixtures.py`) and the code that enforces it in
-the same pull request.
+[The release contract](release-contract.md) (C1 to C5) states what the release
+validator, the publication commands and the loaders enforce today, and what
+version 1 (ARCH-1, cos d1160) asks of every country's releases. Change it, its
+golden fixtures (`tools/generate_release_contract_fixtures.py`) and the code
+that enforces it in the same pull request. The US national golden freezes what
+the US fiscal-refresh tool writes for every build, so a pull request that
+changes that tool's manifest layout, `US_RELEASE_GATE_EVIDENCE_FILES` or
+`US_DOCUMENTED_ABSENT_INPUTS` regenerates the fixtures too.
 
 PR CI never receives external writer credentials or touches restricted
 microdata. Same-repository runs may receive the optional read-only
