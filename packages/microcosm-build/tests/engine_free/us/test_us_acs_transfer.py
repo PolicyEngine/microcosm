@@ -2994,14 +2994,16 @@ def test_adult_care_qualifying_rows_fails_closed_on_missing_structure(
 #: The execution contract's SHA-256 before person predictor extensions
 #: existed. Every caller that passes none (the shared plan, the pool lane,
 #: banked checkpoints and the spec projection) must keep these.
+#: microcosm#776 moves all three: the contract carries the discrete
+#: numeric targets, which gain years_since_us_entry.
 _DEFAULT_CONTRACT_SHA256 = (
-    "f6294b47f18f223e757baafa545075c4b9fcea7d168fc59ac38fc7e9352cbb80"
+    "37710521926bb4dc69b4fdd305d0371a81e0156320aae669c4e665f6c90f1715"
 )
 _DECLARED_PLAN_CONTRACT_SHA256 = (
-    "e90a808a1218681a7084d16807f926d5522717556f2b97708e416082a876e0ca"
+    "9ec17804e602e0ce24597110bfbaf09a3165a05182978736427b7f63b4fc2bf8"
 )
 _PREGNANCY_CONTRACT_SHA256 = (
-    "cda751e047f1772b20fb019fab8dc72ea77730e13f76bb671744c51c9dc27fa5"
+    "4b156a6b9bb95ff402315dbcb1be59dcc3ab2513c34f25067d01ef9275928619"
 )
 _EXTENSION_FEATURE = "__acs_transfer_fixture_interest_total"
 _EXTENSION_FAMILIES = {

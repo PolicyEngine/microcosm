@@ -1133,8 +1133,10 @@ def test_gate_fails_on_missing_cells_and_columns() -> None:
     person = _filled().table("person").copy()
     person.loc[person.index[0], YEARS] = np.nan
     missing = acs_local_immigration_signal_gate(_with_person(_filled(), person))
+    # The whole-file composition gate grades the stored clock too (#776).
     assert missing.failures == (
         f"{ASEC_PUF_DONOR_SPINE}: {YEARS} has 1 missing row(s).",
+        f"file: {YEARS}: 1 person(s) have no finite value.",
     )
 
 

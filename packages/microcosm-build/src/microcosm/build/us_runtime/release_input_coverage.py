@@ -197,6 +197,11 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "detailed_industry_recode",
         "major_industry_recode",
         "worked_last_year",
+        # PolicyEngine/microcosm#776: the immigration stage's entry clock.
+        # Without it every person gets the engine default of 5 (past the
+        # federal five-year bar), and policyengine-us#9732 removes that
+        # default, so no national default may ship without it.
+        "years_since_us_entry",
     }
 )
 
