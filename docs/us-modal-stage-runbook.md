@@ -419,7 +419,7 @@ local wall times in this table understate Modal's wall and cost.
 | check | n/a | check | 2 cores, 8 GiB, 30 min timeout | cents |
 | PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores (limit 4), 112 GiB, 4 h 35 min timeout | about $0.84 ($2.52 non-preemptible) |
 | ACS multispine staging (`all`) | 42.4 GB, 7,218 s wall, 103,105 CPU-s | acs-staging | 16 cores (limit 16), 80 GiB, 17 h timeout | about $2.79 ($8.38 non-preemptible) |
-| Route A head-to-head (`score`) | unmeasured aggregate peak; about 80 core-hours estimated locally | head-to-head | 16 cores (limit 16), 192 GiB (limit 192), 5 h 40 min timeout | $38.91 non-preemptible compute through the timeout |
+| Route A head-to-head (`score`) | 10.98 GB peak sampled RSS in a 6-slice local probe of one worker; about 7.7 h estimated on 16 workers | head-to-head | 16 cores (limit 16), 224 GiB (limit 224), 14 h 50 min timeout | $37.75 preemptible compute through the timeout |
 
 The prices are Modal's list prices for standard compute, read from
 [modal.com/pricing](https://modal.com/pricing) on 22 September 2026 and
@@ -1637,17 +1637,23 @@ the engine the d1386 manifest names. The runner registration comes from this che
 pin is immutable: to pick up a later scorer change, update `source.commit`,
 then repeat the local validation and the Modal check.
 
-The stage runs the local comparison's argv with staged paths and
-`--workers 16` added:
+The stage runs the local comparison's argv with staged paths,
+`--workers 16` and `--worker-max-slices 6` added:
 
 ```text
---incumbent X --candidate Y --ledger-facts Z --out-prefix P --maximum-microsim-batch-size 2000 --workers 16
+--incumbent X --candidate Y --ledger-facts Z --out-prefix P --maximum-microsim-batch-size 2000 --worker-max-slices 6 --workers 16
 ```
 
 Only `workers`, `maximum_microsim_batch_size` and `worker_max_slices` are
-plan options. `worker_max_slices` is unset in the d844 plan: the image's
-Python 3.14 patch level decides whether the scorer accepts recycling (it
-refuses below 3.14.7), and the per-slice module release is the memory fix. Every
+plan options. The d844 plan sets `worker_max_slices` to 6, so the stage adds
+`--worker-max-slices 6` and each worker is replaced after six slices. The
+local probe of 11 November 2026 ran six slices of chunk 5 on the d1386
+frame: its traced heap stepped up once at slice 3 and then grew 22 to 45 MB
+per slice, so six slices is the range it measured. The scorer refuses
+recycling on Python below 3.14.7, and the image pins only `3.14`; it
+refuses before it loads either frame, so a too-old image fails in minutes.
+Check mode's receipt records the image's Python in its runner identity:
+confirm 3.14.7 or later there before the paid run. Every
 path flag, `--out-prefix`, the candidate-manifest pin, both spellings of
 each boolean, and the alternative batch-size spelling are runner-owned.
 The builder omits `--age-targets` and `--allow-unaged-dollar-targets`, so
@@ -1668,41 +1674,51 @@ and artifact identity. Do not upload either H5 under an extensionless hash.
 The incumbent is 826,917,837 bytes, the candidate 2,509,287,855 bytes and
 the ledger 164,603,204 bytes.
 
-**Resources and ceiling.** For the first full attempt, class `head-to-head`
-requests 16 physical cores with CPU limit 16 and 192 GiB with memory limit
-192 GiB. The d844 plan uses non-preemptible placement; both class runners
-have `retries=0`. At sixteen workers, 1,030 slices × 4.7 minutes / 16 is
-18,153.75 seconds (about 5 hours 3 minutes). The tool budget is 19,200
-seconds (5 hours 20 minutes), leaving about 1,046 seconds for initialization
-and compute margin. The 20,400-second timeout (5 hours 40 minutes) adds
-the normal 900-second runner reserve and 300 seconds for staging. Slow
-staging reduces the tool's available time; the runner preserves the reserve
-for logs, hashes, mirroring and receipt. The budget estimate including the
-reserve is $38.34.
+**Resources and ceiling.** Class `head-to-head` requests 16 physical
+cores with CPU limit 16 and 224 GiB with memory limit 224 GiB: about 12 GiB
+per worker (the 10 October measurement: 5.45 GiB frame RSS and 2.17 GiB
+pickled) for 16 workers, plus 32 GiB for the parent, which retains the
+original and repaired frames, the runner and spawn serialization. The local
+probe's peak sampled RSS of 10.98 GB for one process sits inside that
+allowance. It was sampled on a loaded Mac, where compressed pages leave RSS
+low, so it is an indication, not a measured aggregate peak. The receipt's
+`peak_rss_bytes` is a child-process peak from `RUSAGE_CHILDREN`, not the
+sum of sixteen workers; use Modal's container memory measurements to assess
+the sizing after the run. Fewer workers reduce aggregate memory exposure
+but cannot prevent one worker exceeding the scorer's 20 GiB RSS guard.
+
+October's sequential run averaged 5.2, 4.7, 6.2, 5.4 and 10.4 minutes per
+2,000-household slice in registry chunks 1 to 5, each of 206 slices (29
+incumbent and 177 candidate). On 16 workers that is about 24,640 seconds of
+scoring. Recycling after six slices respawns about 172 workers; at an
+allowance of 300 seconds each for the engine import and frame load, that
+adds about 3,220 seconds, for an estimate of about 27,860 seconds (7.7
+hours). The probe's own slice times ran under tracemalloc on a loaded host
+and do not measure speed.
+
+The d844 plan runs on preemptible placement; both class runners have
+`retries=0`. Modal restarts a preempted attempt from zero, and the scorer
+has no resume, so the plan's 52,200-second budget (14 hours 30 minutes)
+spans attempts (see "Preemption and restarts"): a restart after up to about
+six and a half hours of a run still completes. The 53,400-second timeout
+(14 hours 50 minutes) adds the normal 900-second runner reserve and 300
+seconds for staging. The budget estimate including the reserve is $37.54.
 
 Using the existing runbook formula and [Modal's list prices](https://modal.com/pricing)
-(checked 10 October 2026), CPU and memory compute through the timeout costs
-`(16 × $0.0000131 + 192 × $0.00000222) × 20,400 × 3 = $38.913408`,
-or **$38.91, below $40**. The CPU and memory limits equal their requests,
-so memory over-use OOM-kills the container instead of increasing the billed
-memory allocation. The function timeout covers staging, tool initialization,
-scoring and runner cleanup. Startup/image work outside that interval, the
-check, storage, timeout-enforcement overshoot and another attempt remain
-outside this compute ceiling; it is not a cap on total Modal account spend.
-
-The independent review's 9–10 GiB per worker is unmeasured. Each worker
-holds a full copy of the repaired frame, and the parent retains the
-original and repaired frames. The 192 GiB limit allows an estimated 160 GiB
-for workers plus 32 GiB for the parent, runner and spawn serialization.
-This is an estimate, not a measured aggregate
-peak. The receipt's `peak_rss_bytes` is a child-process peak from
-`RUSAGE_CHILDREN`, not the sum of sixteen workers; profile representative
-2,000-household slices of the full candidate and use Modal's container
-memory measurements to assess this sizing after the run. Fewer workers
-reduce aggregate memory exposure but cannot prevent one worker exceeding
-the scorer's 20 GiB RSS guard. The stage writes
-scorecards and logs, mirrors `h2h.json` and `h2h.md` first, and has no
-checkpoint/resume state or additional disk/write-probe requirement.
+(checked 10 October 2026), CPU and memory compute through one attempt's
+timeout costs `(16 × $0.0000131 + 224 × $0.00000222) × 53,400 = $37.747392`,
+or **$37.75, below $40**. The same run non-preemptible costs three times
+as much, about $59 for the 7.7-hour estimate alone. The CPU and memory
+limits equal their requests, so memory over-use OOM-kills the container
+instead of increasing the billed memory allocation. The function timeout
+covers staging, tool initialization, scoring and runner cleanup. Startup
+and image work outside that interval, the uncharged part of each preempted
+attempt (up to about two minutes after its last ledger record, plus the
+restart's lock wait of up to 270 seconds), the check, storage and
+timeout-enforcement overshoot remain outside this compute ceiling; it is
+not a cap on total Modal account spend. The stage writes scorecards and
+logs, mirrors `h2h.json` and `h2h.md` first, and has no checkpoint/resume
+state or additional disk/write-probe requirement.
 
 A worker death or RSS-guard failure leaves a failed scorer exit. If the
 runner survives, it writes a **FAILED receipt and logs**; the scorer writes

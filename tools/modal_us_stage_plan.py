@@ -443,23 +443,29 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 BASE = Resources(
     "base", cpu=4.0, memory_mib=112 * 1024, timeout_s=16_500, cpu_limit=4.0
 )
-# Route A's head-to-head: each spawned worker retains a full repaired frame.
-# The independent review's 9-10 GiB/worker is unmeasured: 16 * 10 GiB plus
-# 32 GiB for the parent and headroom, not a measured aggregate peak. At
-# 1,030 slices * 4.7 minutes / 16 workers the tool takes about 18,154 s.
-# 20,400 s leaves staging, the normal 900 s runner reserve and compute margin.
-# CPU and memory are limited to their requests, bounding the non-preemptible
-# execution-time compute estimate at $38.91 for the whole timeout. Exceeding
-# the memory limit kills the container before it can write a final receipt.
-# Other classes retain their reviewed request-only memory behavior: this
-# first scorer attempt has an explicit $40 cap and unmeasured worker peaks.
+# Route A's head-to-head: each spawned worker retains a full repaired frame,
+# about 12 GiB per worker (5.45 GiB frame RSS and 2.17 GiB pickled, measured
+# 2026-10-10). 16 workers * 12 GiB plus 32 GiB for the parent and headroom
+# is 224 GiB. The local memory probe of 2026-11-11 (6 slices of chunk 5 on
+# the d1386 frame, tracemalloc) peaked at 10.98 GB sampled RSS; its traced
+# heap stepped up once at slice 3 and then grew 22-45 MB per slice, so plans
+# recycle each worker after 6 slices (--worker-max-slices), the range the
+# probe covered. October's sequential run averaged 5.2, 4.7, 6.2, 5.4 and
+# 10.4 minutes per slice in registry chunks 1-5, each of 206 slices: about
+# 24,600 s on 16 workers, plus about 3,200 s for 172 worker respawns at
+# 300 s each. The plan runs preemptible with a 52,200 s budget across
+# attempts (see "Preemption and restarts" in the runbook), so it can absorb
+# one restart after more than six hours. CPU and memory are limited to their
+# requests, so one attempt held to its timeout costs $37.75 at list price,
+# under the $40 cap. Exceeding the memory limit kills the container before
+# it can write a final receipt.
 HEAD_TO_HEAD = Resources(
     "head-to-head",
     cpu=16.0,
-    memory_mib=192 * 1024,
-    timeout_s=20_400,
+    memory_mib=224 * 1024,
+    timeout_s=53_400,
     cpu_limit=16.0,
-    memory_limit_mib=192 * 1024,
+    memory_limit_mib=224 * 1024,
 )
 HEAD_TO_HEAD_COST_CAP_USD = 40.0
 # full-staging-a3 (MEASURED): 103,104.6 CPU-s / 7,218.1 wall-s = 14.3
