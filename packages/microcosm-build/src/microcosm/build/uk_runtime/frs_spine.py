@@ -958,7 +958,11 @@ def _assemble_frame(
     pe_person[FRS_UC_CARER_ELEMENT_COLUMN] = frs_uc_carer_element(
         frs["benefits"], pe_person
     )
-    pe_person["care_hours"], dwp_carer_evidence = frs_dwp_carer_care_hours(pe_person)
+    # Every column the LCWRA proxy reads is here after _add_benefits: strict,
+    # so a renamed one is refused rather than read as no benefit.
+    pe_person["care_hours"], dwp_carer_evidence = frs_dwp_carer_care_hours(
+        pe_person, strict=True
+    )
     if evidence is not None:
         evidence["dwp_carer_hours"] = dwp_carer_evidence
     pe_person["uc_is_in_gainful_self_employment"] = uc_gainful_self_employment(
@@ -2569,14 +2573,15 @@ def frs_uc_carer_element(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.
 
 
 def frs_dwp_carer_care_hours(
-    pe_person: pd.DataFrame,
+    pe_person: pd.DataFrame, *, strict: bool = False
 ) -> tuple[np.ndarray, dict[str, object]]:
     """``care_hours`` with DWP's UC carer element applied (:data:`FRS_DWP_CARER_RULE`).
 
     ``pe_person`` carries ``care_hours``, ``carers_allowance_reported``,
     ``is_claimant_or_partner``, the person's benefit unit and household,
     :data:`FRS_UC_CARER_ELEMENT_COLUMN`, :data:`FRS_UC_LCW_STATUS_COLUMN` and
-    the reported benefits the LCWRA proxy reads (:func:`frs_lcwra_proxy`). The
+    the reported benefits the LCWRA proxy reads (:func:`frs_lcwra_proxy`,
+    which ``strict`` makes refuse a missing one). The
     evidence gives the claims and the people raised in rounded counts and
     support bands, withheld where one or two households carry them, split by
     whether the survey recorded no care or care below the line, with the
@@ -2598,7 +2603,7 @@ def frs_dwp_carer_care_hours(
     lcwra_claim = carer_row & (
         pe_person[FRS_UC_LCW_STATUS_COLUMN].astype(str).to_numpy() == "LCWRA"
     )
-    proxy = frs_lcwra_proxy(pe_person)
+    proxy = frs_lcwra_proxy(pe_person, strict=strict)
     at_line = adult & ((hours >= FRS_DWP_CARER_CARE_HOURS) | reported)
     covered = np.isin(benunits, benunits[at_line])
     claimants: dict[object, list[int]] = {}
@@ -2660,7 +2665,7 @@ def frs_dwp_carer_care_hours(
     return hours, evidence
 
 
-def frs_lcwra_proxy(pe_person: pd.DataFrame) -> np.ndarray:
+def frs_lcwra_proxy(pe_person: pd.DataFrame, *, strict: bool = False) -> np.ndarray:
     """policyengine-uk's ``uc_limited_capability_for_WRA`` proxy, on the spine's stored inputs.
 
     The engine's formula: ``is_disabled_for_benefits``, which frs_disability
@@ -2669,6 +2674,13 @@ def frs_lcwra_proxy(pe_person: pd.DataFrame) -> np.ndarray:
     false; it is false only for a person with such an award). Y1
     (uc_limited_capability) keeps this proxy for the claimants it flags on a
     claim DWP records with LCWRA.
+
+    A reported column the frame lacks counts as no benefit, and a missing
+    ``esa_includes_support_component`` as an award with it, which suits a test's
+    partial frame. With ``strict`` (the spine's call, which has every column
+    once ``_add_benefits`` has run) a missing column is refused instead, as the
+    build refuses a missing VAR3, so a renamed column cannot quietly stop the
+    proxy's skip (microcosm#1583's review).
     """
 
     # frs_disability imports this module, so its columns are read here.
@@ -2676,6 +2688,20 @@ def frs_lcwra_proxy(pe_person: pd.DataFrame) -> np.ndarray:
         UK_DISABILITY_FLAG_REPORTED_COLUMNS,
     )
 
+    if strict:
+        missing = [
+            column
+            for column in (
+                *UK_DISABILITY_FLAG_REPORTED_COLUMNS,
+                "esa_includes_support_component",
+            )
+            if column not in pe_person
+        ]
+        if missing:
+            raise ValueError(
+                f"The LCWRA proxy needs the reported benefit columns {missing}, "
+                "which the spine's person table does not carry."
+            )
     total = np.zeros(len(pe_person), dtype=np.float64)
     for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS:
         if column in pe_person:
