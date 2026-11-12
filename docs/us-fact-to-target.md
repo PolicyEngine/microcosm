@@ -48,8 +48,10 @@ surface (`us_runtime/fiscal_targets.py::compile_us_fiscal_target_registry`);
 artifact record count changes L0, not target membership. The pinned
 `census_acs.acs1_2023` family remains a reviewed `survey_derived` exclusion
 because all of its facts are state-grain, while the compiler admits ACS only at
-congressional-district geography
-(`tools/build_us_target_parity_manifest.py::_FAMILY_EXCLUSIONS`).
+congressional-district geography for population-age cells
+(`tools/build_us_target_parity_manifest.py::_FAMILY_EXCLUSIONS`). The separate
+ACS 2024 household-type branch binds national B11001 and B11003 estimates;
+see [the household-type target family](us-household-type-targets.md).
 
 **Corollary: deviations from official poverty metrics are never inherently
 problematic.** A model that corrects benefit underreporting should, all
