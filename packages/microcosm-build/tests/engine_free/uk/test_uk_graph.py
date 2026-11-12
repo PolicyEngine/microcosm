@@ -987,6 +987,8 @@ def test_the_engine_call_scan_sees_any_receiver(tmp_path) -> None:
         ("microcosm.frame.adapters.policyengine_uk_population", False),
         # The adapter builds each simulation's dataset through it.
         ("microcosm.frame.materialize", False),
+        # And the ids each simulation holds (microcosm#931).
+        ("microcosm.frame.adapters.engine_identifiers", False),
     ],
 )
 def test_engine_module_changes_invalidate_every_stage_that_calls_the_engine(

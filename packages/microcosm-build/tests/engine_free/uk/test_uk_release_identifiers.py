@@ -36,6 +36,8 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.weight_year import uk_dataset_year_frame
 from microcosm.frame import WeightKind
+from microcosm.frame.adapters.engine_identifiers import identifier_columns
+from microcosm.frame.adapters.policyengine_uk import UK_ENGINE_IDENTIFIERS, UK_SCHEMA
 from test_support.microcosm_build.uk_graph_terminal import _frame as _ladder_frame
 
 # Two copies of a three-household survey, numbered the way the clone stages
@@ -185,6 +187,19 @@ def test_range_failures_name_the_column_only() -> None:
     ]
     edge["household"]["household_id"] = [1, 2, 3, UK_ENGINE_IDENTIFIER_MAX + 1]
     assert uk_identifier_range_failures(edge) == [f"Written 'household_id' {above}"]
+
+
+def test_the_release_range_is_the_engine_adapters_declared_width() -> None:
+    # The release rule keeps its own ranker and range for the released file,
+    # and the engine adapter declares how policyengine-core stores the same
+    # columns in each simulation (microcosm#931). Until the release rule moves
+    # onto the shared rank step, the two widths are held equal here, and the
+    # range check covers the columns the declaration covers.
+    assert np.iinfo(UK_ENGINE_IDENTIFIERS.stored_dtype).max == UK_ENGINE_IDENTIFIER_MAX
+    above = "has a value above the 32-bit range policyengine-uk stores."
+    assert set(uk_identifier_range_failures(_tables())) == {
+        f"Written {column!r} {above}" for column in identifier_columns(UK_SCHEMA)
+    }
 
 
 def test_the_release_frame_leaves_renumbered_and_loads_back_to_the_build(

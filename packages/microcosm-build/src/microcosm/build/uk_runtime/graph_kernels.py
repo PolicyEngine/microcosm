@@ -35,7 +35,7 @@ from microcosm.fit import qrf as fit_qrf
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 from microcosm.frame import materialize as frame_materialize
 from microcosm.frame import rules as frame_rules
-from microcosm.frame.adapters import engine_population
+from microcosm.frame.adapters import engine_identifiers, engine_population
 from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 from microcosm.frame.adapters import (
     policyengine_uk_population as uk_engine_population_declaration,
@@ -227,12 +227,16 @@ _ENGINE_MODULES = (
 )
 # What else the injected engine computes through when those stages call it:
 # the adapter builds each simulation's dataset through frame.materialize's
-# engine_tables. test_uk_graph derives the group from a second walk, rooted at
-# the PolicyEngineUKEngine the builds inject and followed from the methods the
+# engine_tables, and the ids that simulation holds through engine_identifiers.
+# test_uk_graph derives the group from a second walk, rooted at the
+# PolicyEngineUKEngine the builds inject and followed from the methods the
 # engine stages call on it (microcosm#931). It is kept apart from
-# _ENGINE_MODULES, which no other stage binds, because the SPI spine's three
-# stages and the band donors bind frame.materialize for their own tables.
-_ENGINE_COMPUTE_MODULES = (frame_materialize,)
+# _ENGINE_MODULES, which no other stage binds, because another stage may bind
+# one of its modules for its own tables, which test_uk_graph allows only where
+# the stage's own transform computes through it: the SPI spine's three stages
+# and the band donors bind frame.materialize. No stage reaches
+# engine_identifiers except through the engine.
+_ENGINE_COMPUTE_MODULES = (frame_materialize, engine_identifiers)
 # What every stage that calls the engine binds.
 _ENGINE_STAGE_MODULES = (*_ENGINE_MODULES, *_ENGINE_COMPUTE_MODULES)
 
