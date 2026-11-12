@@ -63,19 +63,27 @@ _SKIPPED_REASONS: Final[Mapping[str, str]] = {
     "NOT_STAGED_ON_HUGGING_FACE": _NOT_ON_HUGGING_FACE,
     "NOT_PUBLISHED_ON_HUGGING_FACE": _NOT_ON_HUGGING_FACE,
 }
-#: Added to a ``COLLECTOR_SETTINGS_REFUSED`` warning. An emitter given a
-#: collector token in the environment uses it instead of the Hugging Face
-#: credential, and the token only sends telemetry, so its submissions never
-#: have a credential: the variables are to be unset, not completed.
-_SETTINGS_REFUSED_ADVICE: Final = (
-    " The emitter's own warning gives the error type: a collector origin or"
-    " development collector it does not trust, or collector-token variables"
-    " it cannot use. Collector submissions use the Hugging Face credential,"
-    " and an emitter given a collector token uses that token instead, which"
-    " only sends telemetry: unset MICROCOSM_COLLECTOR_TOKEN,"
+#: Which credential collector submissions use. An emitter given a collector
+#: token in the environment uses it instead of the Hugging Face credential,
+#: and the token only sends telemetry, so its submissions never have a
+#: credential: the variables are to be unset, not completed.
+_CREDENTIAL_ADVICE: Final = (
+    "Collector submissions use the Hugging Face credential, and an emitter"
+    " given a collector token uses that token instead, which only sends"
+    " telemetry: unset MICROCOSM_COLLECTOR_TOKEN,"
     " MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and MICROCOSM_COLLECTOR_ORIGIN for a"
     " staging or publication that should reach the collector."
 )
+#: Added to a ``COLLECTOR_SETTINGS_REFUSED`` warning.
+_SETTINGS_REFUSED_ADVICE: Final = (
+    " The emitter's own warning gives the error type: a collector origin or"
+    " development collector it does not trust, or collector-token variables"
+    f" it cannot use. {_CREDENTIAL_ADVICE}"
+)
+#: A ``pending`` code: the emitter has no credential for the submissions,
+#: because it was given a telemetry-only collector token or finds no Hugging
+#: Face credential. A later emitter sends them only once it has one.
+_CREDENTIAL_MISSING: Final = "CREDENTIAL_MISSING"
 #: A receipt's code, printed only when it has this shape: the emitter's codes,
 #: or the collector's own, which are lower case (``content_mismatch``).
 _CODE: Final = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
@@ -136,14 +144,22 @@ def _collector_warning(receipt: Mapping[str, Any], subject: str) -> str | None:
             f"the collector gave no final status for the submissions of {subject} "
             f"within a day of accepting them ({shown})."
         )
+    if status == "pending" and code == _CREDENTIAL_MISSING:
+        return (
+            f"the collector had not accepted the submissions of {subject} when "
+            f"the wait ended ({code}): the emitter has no credential to submit "
+            f"them with. {_CREDENTIAL_ADVICE} A build with no Hugging Face "
+            "credential needs HF_TOKEN or `hf auth login`. The emitter keeps them "
+            "queued on this machine for a later emitter that has the credential."
+        )
     if status == "pending":
         detail = f" ({code})" if code else ""
         return (
             f"the collector had not accepted the submissions of {subject} when "
             f"the wait ended{detail}; the emitter keeps them queued on this "
-            "machine, and an emitter running here later sends them. Until then, "
-            "leave unchanged any of their files the emitter did not copy at "
-            "hand-over."
+            "machine, and an emitter running here later sends them. Leave "
+            "unchanged any of their files the emitter did not copy at hand-over "
+            "until the hand-over settles."
         )
     return None
 

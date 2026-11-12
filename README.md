@@ -545,13 +545,11 @@ publication has landed the command waits up to ten minutes for the collector
 to accept them before it closes the emitter. The printed outcome's
 `collector_submission` gives the collector receipt's `status` and
 `error_code`. A collector that receives nothing (`skipped`, for example
-`COLLECTOR_SETTINGS_REFUSED`), submissions that are rejected, fail or time
-out (`timed_out`), and submissions not yet accepted when the wait ends are
-warnings and never fail the command. The collector makes every build of the
-UK national release it receives the UK's latest calibration tree, whether or
-not the build is current in `releases.json`, so a build published without
-`--make-current` is the collector's latest from its publication on, and a
-promotion sends the collector nothing. The calibration diagnostics dashboard posts
+`COLLECTOR_SETTINGS_REFUSED`) or refuses the submissions at intake, and
+submissions not yet accepted when the wait ends, are warnings and never fail
+the command. Once the collector has accepted them, its own processing decides
+whether it builds a tree from them or rejects them (for example
+`provenance_mismatch`); the command doesn't wait for that. The calibration diagnostics dashboard posts
 these releases' Slack alerts from changes to `releases.json`. The UK
 assemblers, the US national builder and the US ACS package stage print the
 exact commands; the UK

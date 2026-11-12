@@ -227,7 +227,7 @@ the new lockfile digest and rerun the tests and wheel checks.
 
 ## Migrating an existing workstation
 
-Install the emitter once with `uv tool install microcosm-emitter` (0.13.0 or
+Install the emitter once with `uv tool install microcosm-emitter` (0.15.0 or
 later; a build does not start an older emitter, says how to upgrade it and
 continues without it). It keeps using the existing spool database,
 `$XDG_CACHE_HOME/microcosm/telemetry/events.sqlite3`, at the same Alembic
@@ -240,7 +240,7 @@ modification. The emitter's README describes the repair for a machine that
 ran an earlier, unreleased build of the hand-over queue. No new credential,
 hosted service or infrastructure is required by this migration.
 
-To upgrade a machine whose emitter is older than 0.13.0, run
-`uv tool install --upgrade 'microcosm-emitter>=0.13.0'`; it also replaces a
+To upgrade a machine whose emitter is older than 0.15.0, run
+`uv tool install --upgrade 'microcosm-emitter>=0.15.0'`; it also replaces a
 version constraint given at install time, which `uv tool upgrade` keeps.
 `microcosm-emitter version` prints the installed release.

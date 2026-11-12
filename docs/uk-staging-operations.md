@@ -263,11 +263,17 @@ not waited for. The build carries on in every case, with a warning when:
   unset those variables), the bundle's Hugging Face upload failed or was
   refused (`NOT_STAGED_ON_HUGGING_FACE`), or its folder is longer than the
   collector accepts (`COLLECTOR_FOLDER_TOO_LONG`);
-- the collector rejected the submissions, they failed, or the collector gave
-  no final status within a day (`timed_out`), with the code the receipt gives;
+- the collector refused the submissions at intake (`rejected` or `failed`),
+  with the code the receipt gives. Once it has accepted them, its own
+  processing decides whether it builds a tree or rejects them, and the build
+  doesn't wait for that; a re-stage that resumes an older hand-over can show
+  that later result, or `timed_out`;
+- the emitter had no credential for them (`CREDENTIAL_MISSING`): it was given
+  a collector token, which only sends telemetry, or found no Hugging Face
+  credential;
 - they were still queued when the wait ended: an emitter running on this
   machine later sends them, and files the emitter did not copy at hand-over
-  must stay unchanged until then.
+  must stay unchanged until the hand-over settles.
 
 The staged dataset record (`staged_dataset`) describes the Hugging Face
 upload alone and does not change. A different `collector` block gives the
