@@ -482,8 +482,11 @@ class TestUKManifest:
         # leaves it to the engine (microcosm#1106); so is
         # tax_free_savings_income under the additive ISA income contract
         # (microcosm#1360), and so are the PIP categories, which the engine
-        # derives from the points the release stores (microcosm#1095, P1).
+        # derives from the points the release stores (microcosm#1095, P1), and
+        # so is the tax credit severe disability flag, which the engine
+        # derives from the disability categories (microcosm#1095, A4).
         engine_derived = [
+            "is_severely_disabled_for_benefits",
             "pip_dl_category",
             "pip_m_category",
             "property_wealth",
@@ -849,7 +852,12 @@ class TestUKManifest:
         since_reference = {"pip_dl_category", "pip_m_category"}
         engine_derived = {gap.variable for gap in load_efrs_engine_derived_exclusions()}
         assert engine_derived == (
-            {"property_wealth", "tax_free_savings_income"} | since_reference
+            {
+                "is_severely_disabled_for_benefits",
+                "property_wealth",
+                "tax_free_savings_income",
+            }
+            | since_reference
         )
         from policyengine_uk import CountryTaxBenefitSystem
 

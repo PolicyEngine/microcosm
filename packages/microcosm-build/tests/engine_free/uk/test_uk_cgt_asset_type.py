@@ -402,6 +402,89 @@ class TestResidentialSolve:
             )
 
 
+class TestSlopeBracket:
+    """The slope search leaves [-12, 12] only where that bracket cannot reach the target."""
+
+    @staticmethod
+    def _band() -> tuple[np.ndarray, np.ndarray]:
+        # One narrow band of gains, as a Table 4.1 band pool is.
+        rng = np.random.default_rng(7)
+        gains = np.exp(rng.uniform(np.log(500_000.0), np.log(999_999.0), 300))
+        return gains, rng.uniform(20.0, 60.0, gains.size)
+
+    @staticmethod
+    def _targets_at(
+        gains: np.ndarray, weights: np.ndarray, *, slope: float
+    ) -> tuple[float, float]:
+        """The count and gains of a logistic of this slope that flags 30% of the weight."""
+        log_gains = np.log(gains) - np.average(np.log(gains), weights=weights)
+        count = 0.3 * float(weights.sum())
+
+        def flagged(intercept: float) -> np.ndarray:
+            return weights / (1.0 + np.exp(-(intercept + slope * log_gains)))
+
+        low, high = -400.0, 400.0
+        for _ in range(200):
+            mid = 0.5 * (low + high)
+            if flagged(mid).sum() < count:
+                low = mid
+            else:
+                high = mid
+        return count, float((flagged(0.5 * (low + high)) * gains).sum())
+
+    @staticmethod
+    def _solve_recording_slopes(
+        monkeypatch: pytest.MonkeyPatch,
+        gains: np.ndarray,
+        weights: np.ndarray,
+        count: float,
+        gains_target: float,
+    ) -> tuple[tuple[float, float, float], list[float]]:
+        tried: list[float] = []
+        solve_a = cgt_asset_type._solve_a
+
+        def recording(*args, **kwargs):
+            tried.append(float(kwargs["b"]))
+            return solve_a(*args, **kwargs)
+
+        monkeypatch.setattr(cgt_asset_type, "_solve_a", recording)
+        solved = solve_residential_logistic(
+            gains, weights, count_target=count, gains_target=gains_target
+        )
+        return solved, tried
+
+    def test_a_target_past_the_default_bracket_solves(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        gains, weights = self._band()
+        count, gains_target = self._targets_at(gains, weights, slope=20.0)
+
+        (a, b, centre), tried = self._solve_recording_slopes(
+            monkeypatch, gains, weights, count, gains_target
+        )
+        probabilities = 1.0 / (1.0 + np.exp(-(a + b * (np.log(gains) - centre))))
+
+        assert b == pytest.approx(20.0, rel=1e-4)
+        assert (weights * probabilities).sum() == pytest.approx(count, rel=1e-6)
+        assert (weights * gains * probabilities).sum() == pytest.approx(
+            gains_target, rel=1e-6
+        )
+        assert max(abs(slope) for slope in tried) > 12.0
+
+    def test_a_target_inside_the_default_bracket_never_leaves_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        gains, weights = self._band()
+        count, gains_target = self._targets_at(gains, weights, slope=6.0)
+
+        (_, b, _), tried = self._solve_recording_slopes(
+            monkeypatch, gains, weights, count, gains_target
+        )
+
+        assert b == pytest.approx(6.0, rel=1e-4)
+        assert max(abs(slope) for slope in tried) <= 12.0
+
+
 class TestTypeWeights:
     def test_reproduces_the_share_targets(self) -> None:
         facts = load_hmrc_cgt_asset_type_facts()

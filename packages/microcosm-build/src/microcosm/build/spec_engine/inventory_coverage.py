@@ -396,8 +396,8 @@ EXPECTED_HASHES = {
     # microcosm#767 moves the seed map, the protocol and the source manifest:
     # the attested immigration kernel gains the humanitarian status draws and
     # the immigration stage gains cited humanitarian stock targets.
-    "seed_map": "4556389f3383a2d2600857cf7117b9306f8f45a9a6231ce2a8fe62bb6a5e388c",
-    "seed_protocol": "0f4550f80efd0273589b533a4a453e74b06aa71b9ed1e08fdc016ef3d9d27fef",
+    "seed_map": "cd298a6bcd682783839d491d7ca52c7c3b327d95fcf922e1c2cb8014998301e5",
+    "seed_protocol": "242fe1cc5872d5a7a8c50d10d4f3973c1bf9795d61e98842b55752f5431e2745",
     "source_manifest": "e9a70a60c3db9250066ee607d5e1fb07cd9d6a54424ab9eb9405f5e65b5a59b8",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
