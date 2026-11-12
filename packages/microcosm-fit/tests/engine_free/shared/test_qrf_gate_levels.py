@@ -201,6 +201,30 @@ def test_a_fitted_model_keeps_each_level_s_rate_on_fresh_rows() -> None:
     assert fitted.gate_levels() == {"target": ("level=1",)}
 
 
+def test_grouped_folds_keep_each_level_s_rate() -> None:
+    # The FRS reference forests fit with each household's members in one fold.
+    columns = ["x0", "x1", "x2", "x3", "level"]
+    table = _composite_like(seed=25)
+    groups = np.arange(len(table)) // 2
+    fitted = RegimeGatedQRF(
+        n_estimators=4,
+        seed=9,
+        gate_calibration=GateCalibration.CROSS_FITTED_BALANCED,
+        gate_level_columns=("level",),
+    ).fit(table, columns, ["target"], weights="weight", groups=groups)
+    assert fitted.gate_outcomes() == {"target": GateOutcome.CROSS_FITTED}
+    assert fitted.gate_levels() == {"target": ("level=1",)}
+
+    gate = fitted._target_models["target"].gate
+    fresh = _composite_like(seed=26)
+    proba = gate.predict_proba(fresh[columns].to_numpy(dtype=np.float64))[:, 1]
+    carrier = fresh["target"].to_numpy() != 0.0
+    for value in (0.0, 1.0):
+        member = fresh["level"].to_numpy() == value
+        ratio = proba[member].mean() / carrier[member].mean()
+        assert 0.8 < ratio < 1.25, (value, ratio)
+
+
 def test_gate_levels_are_empty_without_level_columns() -> None:
     columns = ["x0", "x1", "x2", "x3", "level"]
     table = _composite_like(seed=23, n=2_000)
