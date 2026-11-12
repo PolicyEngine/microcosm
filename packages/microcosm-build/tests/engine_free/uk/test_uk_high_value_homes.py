@@ -407,6 +407,191 @@ def test_read_nspl_keeps_terminated_postcodes_and_dedupes() -> None:
 
 
 # ----------------------------------------------------------------------------
+# Shared with the stock cell builder (microcosm#1524)
+
+
+def test_dwelling_key_keeps_its_golden_values() -> None:
+    """The key is pandas' own hash, so a pandas release could move it and
+    break every join on the cached dwelling table without an error. These
+    values are the ones the 13 October 2026 cache holds (pandas 3.0.3)."""
+    keys = hv.dwelling_key(
+        pd.Series(["ab1 2cd", "AB1 2CD"]),
+        pd.Series(["1", " flat 2 "]),
+        pd.Series([None, "Rose Court"]),
+    )
+    assert keys.dtype == np.uint64
+    assert keys.tolist() == [4926116615690360445, 12585800899197389627]
+
+
+def test_dwelling_key_is_the_price_paid_reduction_key(tmp_path) -> None:
+    frame = hv.read_price_paid_file(
+        _ppd_csv(tmp_path), postcode_index=_postcode_index()
+    )
+    table = pd.read_csv(_ppd_csv(tmp_path), header=None, dtype=str)
+    kept = table[(table[14] == "A") & table[4].isin(list("DSTF"))]
+    assert frame["key"].tolist() == hv.dwelling_key(kept[3], kept[7], kept[8]).tolist()
+
+
+def _old_cache_name(ppd_files, stock_yyyymm, method) -> str:
+    # The home-stock tool's cache name before microcosm#1524.
+    digest = hashlib.sha256()
+    for key in sorted(ppd_files):
+        digest.update(f"{key}:{ppd_files[key]['sha256']}\n".encode())
+    digest.update(f"stock:{stock_yyyymm}\nmethod:{method}\n".encode())
+    return f"dwellings-{digest.hexdigest()[:16]}.parquet"
+
+
+_PPD_PINS = {"2025": {"sha256": "aa" * 32}, "1995": {"sha256": "bb" * 32}}
+
+
+def test_dwelling_cache_name_adds_the_nspl_to_the_old_name() -> None:
+    old = hv.dwelling_cache_name(_PPD_PINS, stock_yyyymm=202512, method="m-v1")
+    assert old == _old_cache_name(_PPD_PINS, 202512, "m-v1")
+    named = hv.dwelling_cache_name(
+        _PPD_PINS, stock_yyyymm=202512, method="m-v1", nspl_sha256="cc" * 32
+    )
+    other = hv.dwelling_cache_name(
+        _PPD_PINS, stock_yyyymm=202512, method="m-v1", nspl_sha256="dd" * 32
+    )
+    assert len({old, named, other}) == 3
+
+
+def test_resolve_dwelling_cache_reuses_an_old_cache_only_on_its_nspl(tmp_path) -> None:
+    def resolve(nspl: str):
+        path, status = hv.resolve_dwelling_cache(
+            tmp_path,
+            _PPD_PINS,
+            stock_yyyymm=202512,
+            method="m-v1",
+            nspl_sha256=nspl,
+            legacy_nspl_sha256="cc" * 32,
+        )
+        return path.name, status
+
+    named = hv.dwelling_cache_name(
+        _PPD_PINS, stock_yyyymm=202512, method="m-v1", nspl_sha256="cc" * 32
+    )
+    assert resolve("cc" * 32) == (named, "absent")
+    old = tmp_path / _old_cache_name(_PPD_PINS, 202512, "m-v1")
+    old.write_bytes(b"parquet")
+    assert resolve("cc" * 32) == (named, "absent")  # no receipts beside it
+    old.with_suffix(".receipts.json").write_text("{}", encoding="utf-8")
+    assert resolve("cc" * 32) == (old.name, "legacy")
+    # Another NSPL reindexes the postcodes, so the old cache is stale for it.
+    assert resolve("dd" * 32)[1] == "absent"
+    current = tmp_path / named
+    current.write_bytes(b"parquet")
+    current.with_suffix(".receipts.json").write_text("{}", encoding="utf-8")
+    assert resolve("cc" * 32) == (named, "current")
+
+
+def test_dwelling_stock_can_carry_each_dwellings_support_row(tmp_path) -> None:
+    hpi = hv.load_hpi(_hpi_csv(tmp_path))
+    valuations = pd.DataFrame(
+        {
+            "key": np.array([3, 1, 2], dtype=np.uint64),
+            "first_yyyymm": np.array([201006, 201006, 201006], dtype=np.int32),
+            "first_newbuild": [False, False, False],
+            "in_stock": [True, True, True],
+            "yyyymm": np.array([201006, 202404, 201006], dtype=np.int32),
+            "price": np.array([100_000, 200_000, 300_000], dtype=np.int64),
+            "ptype": np.array([0, 0, 3], dtype=np.int8),
+            "postcode_row": np.array([1, 0, 1], dtype=np.int32),
+            "valued": [True, True, True],
+        }
+    )
+    support = {
+        "area": np.array(["E00000009", "E00000001", "E00000002"]),
+        "constituency_code": np.array(["E14000009", "E14000001", "E14000002"]),
+        "local_authority_code": np.array(["E06000001"] * 3),
+        "lsoa_code": np.array(["E01000009", "E01000001", "E01000002"]),
+        "region_code": np.array(["E12000001"] * 3),
+    }
+    arguments = dict(
+        postcode_oa=pd.Series(["E00000001", "E00000002"]),
+        support=support,
+        hpi=hpi,
+        hpi_area_for_local_authority={},
+        region_hpi_code={},
+        basis_year=2024,
+    )
+    plain = hv.dwelling_stock(valuations, **arguments)
+    placed = hv.dwelling_stock(valuations, **arguments, include_support_row=True)
+    assert "support_row" not in plain.table.columns
+    assert placed.table["support_row"].dtype == np.int32
+    pd.testing.assert_frame_equal(placed.table.drop(columns="support_row"), plain.table)
+    assert placed.receipts == plain.receipts
+    rows = placed.table["support_row"].to_numpy()
+    assert (support["lsoa_code"][rows] == placed.table["lsoa_code"].to_numpy()).all()
+    assert support["area"][rows].tolist() == ["E00000002", "E00000001", "E00000002"]
+
+
+def _tenure_fact(level: str, code: str, bucket: str, value: float) -> dict:
+    return {
+        "layout": {"record_set_spec_id": f"uk.local_geography.tenure.{bucket}.v1"},
+        "geography": {"level": level, "id": code},
+        "value": value,
+    }
+
+
+def test_tenure_shares_read_the_level_asked_for() -> None:
+    facts = [
+        _tenure_fact("local_authority", "E06000001", "all_households", 100.0),
+        _tenure_fact("local_authority", "E06000001", "social_rent", 20.0),
+        _tenure_fact("local_authority", "E06000001", "owned_outright", 30.0),
+        _tenure_fact("local_authority", "E06000001", "owned_mortgage", 30.0),
+        _tenure_fact("msoa", "E02000001", "all_households", 50.0),
+        _tenure_fact("msoa", "E02000001", "social_rent", 25.0),
+    ]
+    private, owner, receipt = hv.tenure_shares(facts)
+    assert private == {"E06000001": 0.8} and owner == {"E06000001": 0.75}
+    assert receipt["local_authorities_with_tenure"] == 1
+    assert receipt["basis"].startswith("Census 2021 TS054 by local authority:")
+    private, _, receipt = hv.tenure_shares(facts, level="msoa")
+    assert private == {"E02000001": 0.5}
+    assert receipt["areas_with_tenure"] == 1 and receipt["level"] == "msoa"
+
+
+def test_the_library_copies_agree_with_the_stock_tool(tmp_path) -> None:
+    """The stock tool moves onto the library once its rebuild is byte-checked
+    (microcosm#1524); until then the library's copies must agree with it."""
+    tool = _load_tool("build_uk_high_value_home_stock")
+    facts = [
+        _tenure_fact("local_authority", "E06000001", "all_households", 100.0),
+        _tenure_fact("local_authority", "E06000001", "social_rent", 20.0),
+        _tenure_fact("local_authority", "E06000001", "owned_outright", 30.0),
+        _tenure_fact("local_authority", "E06000001", "owned_mortgage", 25.0),
+        _tenure_fact("local_authority", "E06000002", "all_households", 10.0),
+        _tenure_fact("local_authority", "E06000002", "social_rent", 10.0),
+        _tenure_fact("msoa", "E02000001", "all_households", 50.0),
+    ]
+    assert tool._tenure_shares(facts) == hv.tenure_shares(facts)
+    for name in (
+        "TENURE_OWNER_SPEC_IDS",
+        "TENURE_SPEC_PREFIX",
+        "TENURE_ALL_SPEC_ID",
+        "TENURE_SOCIAL_SPEC_ID",
+    ):
+        assert getattr(tool, name) == getattr(hv, name)
+    assert tool._dwelling_cache_path(tmp_path, _PPD_PINS, 202512) == (
+        tmp_path
+        / hv.dwelling_cache_name(
+            _PPD_PINS, stock_yyyymm=202512, method=tool.METHOD_VERSION
+        )
+    )
+    path = _ppd_csv(tmp_path)
+    files = {"2020": {"filename": path.name}}
+    ours, our_receipts = hv.build_dwelling_table(
+        tmp_path, files, _postcode_index(), stock_yyyymm=202512
+    )
+    theirs, their_receipts = tool._build_dwellings(
+        tmp_path, files, _postcode_index(), stock_yyyymm=202512
+    )
+    pd.testing.assert_frame_equal(ours, theirs)
+    assert our_receipts == their_receipts
+
+
+# ----------------------------------------------------------------------------
 # VOA band mix
 
 
