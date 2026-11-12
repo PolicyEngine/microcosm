@@ -746,6 +746,16 @@ TENURE_OWNER_SPEC_IDS = (
 TENURE_SPEC_PREFIX = "uk.local_geography.tenure."
 TENURE_ALL_SPEC_ID = "uk.local_geography.tenure.all_households.v1"
 TENURE_SOCIAL_SPEC_ID = "uk.local_geography.tenure.social_rent.v1"
+#: TS054's categories below the total. Some come in several rows under one
+#: spec id: social renting from the council and other social renting, and
+#: the two kinds of private renting, told apart by their labels.
+TENURE_CATEGORY_SPEC_IDS = (
+    *TENURE_OWNER_SPEC_IDS,
+    "uk.local_geography.tenure.shared_ownership.v1",
+    TENURE_SOCIAL_SPEC_ID,
+    "uk.local_geography.tenure.private_rent.v1",
+    "uk.local_geography.tenure.rent_free.v1",
+)
 
 
 def fact_spec_id(fact: Mapping) -> str:
@@ -764,10 +774,18 @@ def tenure_shares(
     census households net of social renting (TS054 at ``level``, by default
     local authorities). Returns ``(private_share, owner_share_of_private,
     receipt)``.
+
+    A category printed in several rows is their sum: TS054 gives social
+    renting from the council and other social renting as two rows under one
+    spec id (before microcosm#1524 only the last was kept, which halved the
+    social share). The same row twice is refused, and an area that carries
+    every category must add up to its households.
     """
     totals: dict[str, float] = {}
     owner: dict[str, float] = {}
     social: dict[str, float] = {}
+    categories: dict[str, dict[str, float]] = {}
+    seen: set[tuple] = set()
     spec_ids: set[str] = set()
     for fact in facts:
         spec = fact_spec_id(fact)
@@ -777,14 +795,33 @@ def tenure_shares(
         if geography.get("level") != level:
             continue
         code = str(geography.get("id"))
+        row = (code, spec, tuple(sorted((fact.get("dimensions") or {}).items())))
+        if row in seen or (spec == TENURE_ALL_SPEC_ID and code in totals):
+            raise ValueError(f"TS054 carries {spec} for {code} twice.")
+        seen.add(row)
         spec_ids.add(spec)
         value = float(fact["value"])
         if spec == TENURE_ALL_SPEC_ID:
             totals[code] = value
-        elif spec in TENURE_OWNER_SPEC_IDS:
+            continue
+        area = categories.setdefault(code, {})
+        area[spec] = area.get(spec, 0.0) + value
+        if spec in TENURE_OWNER_SPEC_IDS:
             owner[code] = owner.get(code, 0.0) + value
         elif spec == TENURE_SOCIAL_SPEC_ID:
-            social[code] = value
+            social[code] = social.get(code, 0.0) + value
+    checked = 0
+    for code, area in categories.items():
+        if code not in totals or not set(TENURE_CATEGORY_SPEC_IDS) <= set(area):
+            continue
+        checked += 1
+        # Scotland's census perturbs its cells, so its categories can miss
+        # the total by a household or two; a lost row moves it by thousands.
+        if abs(sum(area.values()) - totals[code]) > max(0.5, 1e-3 * totals[code]):
+            raise ValueError(
+                f"TS054's categories for {code} add up to {sum(area.values())}, "
+                f"not its {totals[code]} households."
+            )
     private_share: dict[str, float] = {}
     owner_share: dict[str, float] = {}
     for code, total in totals.items():
@@ -796,6 +833,7 @@ def tenure_shares(
     area = "local authority" if level == "local_authority" else level
     receipt = {
         "tenure_record_set_spec_ids": sorted(spec_ids),
+        "areas_checked_against_households": checked,
         "local_authorities_with_tenure": len(owner_share),
         "basis": (
             f"Census 2021 TS054 by {area}: private-sector stock is all "

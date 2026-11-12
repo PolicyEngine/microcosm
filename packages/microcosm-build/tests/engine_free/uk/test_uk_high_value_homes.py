@@ -552,6 +552,41 @@ def test_tenure_shares_read_the_level_asked_for() -> None:
     assert receipt["areas_with_tenure"] == 1 and receipt["level"] == "msoa"
 
 
+def test_tenure_shares_sum_the_rows_of_a_category() -> None:
+    """TS054 prints social renting from the council and other social renting
+    as two rows under one spec id; both count (microcosm#1524)."""
+
+    def labelled(bucket: str, value: float, label: str) -> dict:
+        fact = _tenure_fact("local_authority", "E06000001", bucket, value)
+        fact["dimensions"] = {"c2021_tenure_9_name": label}
+        return fact
+
+    facts = [
+        labelled("all_households", 100.0, "Total: All households"),
+        labelled("owned_outright", 30.0, "Owned: Owns outright"),
+        labelled("owned_mortgage", 25.0, "Owned: Owns with a mortgage or loan"),
+        labelled("shared_ownership", 1.0, "Shared ownership: Shared ownership"),
+        labelled("social_rent", 8.0, "Social rented: Rents from council"),
+        labelled("social_rent", 12.0, "Social rented: Other social rented"),
+        labelled("private_rent", 18.0, "Private rented: Private landlord"),
+        labelled("private_rent", 5.0, "Private rented: Other private rented"),
+        labelled("rent_free", 1.0, "Lives rent free"),
+    ]
+    private, owner, receipt = hv.tenure_shares(facts)
+    assert private == {"E06000001": pytest.approx(0.8)}
+    assert owner == {"E06000001": pytest.approx(55 / 80)}
+    assert receipt["areas_checked_against_households"] == 1
+    with pytest.raises(ValueError, match="twice"):
+        hv.tenure_shares([*facts, facts[4]])
+    short = [
+        *facts[:7],
+        labelled("private_rent", 4.0, "Other private rented"),
+        facts[8],
+    ]
+    with pytest.raises(ValueError, match="add up"):
+        hv.tenure_shares(short)
+
+
 def test_the_stock_tool_keeps_its_private_names_on_the_shared_code(tmp_path) -> None:
     """The home-stock tool moved onto the shared code (microcosm#1524) once a
     rebuild of its resources from the pinned inputs matched every committed
