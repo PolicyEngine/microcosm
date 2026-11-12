@@ -3092,12 +3092,13 @@ def require_parent_publication(
     :func:`microcosm.data.build_folder_manifests.referenced_build` says: at
     ``main`` from its build folder ``releases/<release>/<build>/``, which
     never changes, or at its immutable tag from ``releases/<id>/`` for a
-    parent that keeps only its tag. Two checks, both there:
+    parent that keeps only its tag. Three checks:
 
     - the carried ``release_manifest.json`` and ``build_manifest.json`` are
       byte for byte the parent's published ones. The release manifest pins
       every parent artifact's digest, so this anchors the whole lineage, and
       a child is never published before its parent;
+    - a build-folder parent is listed in ``releases.json`` and not withdrawn;
     - every parent artifact is on the Hub with the pinned digest (an LFS
       file's SHA-256, or the git blob id of the carried bytes): in a build
       folder, every file in that folder; at a tag, each carried release file
@@ -3222,6 +3223,19 @@ def require_parent_publication(
                 f"{path_in_repo} {where} is not the artifact the child "
                 "carries; refusing to publish it there"
             )
+    if build_folder:
+        # A recertification republishes its parent's data under a wider
+        # claim, so a parent its repository withdrew, or no longer lists, is
+        # refused.
+        from microcosm.data.build_folder_manifests import require_offered_build
+
+        require_offered_build(
+            api,
+            repo_id=repo_id,
+            release=str(parent.get("release")),
+            build=str(parent.get("build")),
+            label="the parent build",
+        )
 
 
 # ---------------------------------------------------------------------------

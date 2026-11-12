@@ -58,6 +58,7 @@ microcosm-build-uk = "microcosm.build.uk_runtime.full_build_cli:main"
 microcosm-export-us-l0-refit-h5 = "microcosm.build.us_runtime.l0_refit_export:main"
 # Publishes a release build into its own folder through the emitter.
 microcosm-publish-release-build = "microcosm.build.release_publication:main"
+microcosm-withdraw-release-build = "microcosm.build.release_publication:withdraw_main"
 
 [project.urls]
 Homepage = "https://microcosm.institute"

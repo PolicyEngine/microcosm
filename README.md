@@ -540,6 +540,28 @@ exact commands; the UK
 `microcosm.data.load` reads the current build of such a release from
 `releases.json`, or the listed build `build=` names.
 
+**Withdrawing a build.** A published build that should no longer be used is
+withdrawn, not deleted:
+
+```bash
+uv run microcosm-withdraw-release-build <repository> <release> <build>
+```
+
+The command hands the withdrawal to the emitter's release writer, which sets
+the build's `withdrawn` flag in `releases.json` and leaves its folder as
+published. The writer refuses the release's current build (make another
+build current first, with `--promote`) and a build `releases.json` does not
+list, and refuses to make a withdrawn build current, whether by `--promote`
+or `--make-current`. The command refuses offline and while a `latest*.json`
+file exists, before it starts an emitter, checks the emitter's write access
+first, waits up to five minutes, prints the receipt as JSON with
+`"change": "withdraw"` and `"withdrawn"`, and exits 1 unless the build is
+withdrawn. `microcosm.data.load` loads a withdrawn build only when `build=`
+pins it, with a warning. A compatibility recertification or an annual
+projection whose parent or base is a build-folder build is refused before
+anything is handed over when `releases.json` withdrew or no longer lists that
+build, and the UK cut reference refuses a withdrawn build.
+
 **The US releases.** `policyengine/populace-us` has five releases
 (`microcosm.data.contract.US_RELEASES`):
 

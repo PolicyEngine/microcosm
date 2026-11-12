@@ -354,7 +354,9 @@ US releases (`microcosm-us-2024-national`, the US default, `-local`,
 through the emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's
 `releases.json`; making a published build current is a separate deliberate
-call to the same command with `--promote`. Each US builder writes its build to
+call to the same command with `--promote`, and withdrawing one is
+`microcosm-withdraw-release-build <repository> <release> <build>`, which sets
+its `withdrawn` flag through the same release writer. Each US builder writes its build to
 `releases/<release>/`; the national builder and the ACS package stage also
 print both commands.
 `tools/preflight_us_release_gates.py` runs the US national release checks that
