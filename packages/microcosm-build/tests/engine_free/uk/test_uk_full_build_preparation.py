@@ -14,7 +14,10 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.graph import ContentStore, compile_graph, run_graph
 from test_support.microcosm_build.uk_atomic_support_fixtures import write_toy_supports
 from test_support.microcosm_build.uk_calibration_run import _bound_checkpoint
-from test_support.microcosm_build.uk_full_build_cli import patch_support_register
+from test_support.microcosm_build.uk_full_build_cli import (
+    geography_first_sidecar_fields,
+    patch_support_register,
+)
 from test_support.microcosm_build.uk_full_population_graph import source_frame
 from test_support.microcosm_build.uk_ladder_rowwise_clone import (
     toy_ladder as toy_ladder,
@@ -29,7 +32,9 @@ def checkpoint_argv(tmp_path, toy_ladder, monkeypatch):
     path = write_uk_national_frame(source_frame(), tmp_path / "spine.h5")
     frame, _ = load_uk_national_frame(path)
     sidecar_path, gates_path, sidecar = _bound_checkpoint(tmp_path, frame)
-    sidecar["stages"] = ["frs_spine"]
+    # A geography-first roster, which the dense line requires before it pins
+    # any input (microcosm#931).
+    sidecar.update(geography_first_sidecar_fields("frs_spine"))
     sidecar["sampling"] = {"fraction": 1.0, "seed": 7}
     sidecar_path.write_text(json.dumps(sidecar))
     ledger = tmp_path / "ledger"
@@ -135,7 +140,7 @@ def test_prepare_real_checkpoint_preserves_source_year_and_wires_preflight(
         "spine_provenance"
     ]
     provenance = json.loads(store.load_bytes(provenance_key))
-    assert provenance["stages"] == ["frs_spine"]
+    assert provenance["stages"] == geography_first_sidecar_fields("frs_spine")["stages"]
     assert provenance["fit_weight_records"] == {"model": {"fit_weights_used": True}}
     fresh = cli.prepare_full_build(args)
     replay = run_graph(
