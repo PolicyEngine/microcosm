@@ -39,13 +39,18 @@ from microcosm.build.uk_runtime.frs_council_tax import (
     frs_council_tax_operations,
     frs_council_tax_resource_artifact,
 )
+from microcosm.build.uk_runtime.frs_disability import CARER_LINK_PARAMETERS
 from microcosm.build.uk_runtime.frs_relationships import (
     FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
     frs_relationships_operation_parameters,
 )
 from microcosm.build.uk_runtime.frs_spine import (
     BENEFIT_CODES,
+    BENEFIT_RECIPIENT_RULE,
     BSP_MONTHLY_RATES,
+    FRS_CARE_HELPER_BIT,
+    FRS_CARE_OUTSIDE_BIT,
+    FRS_CARE_RECIPIENTS_COLUMN,
     FRS_COMPANY_CAR_CARRIER_COLUMNS,
     FRS_COMPANY_CAR_FUEL_CODES,
     FRS_COMPANY_CAR_FUEL_ELECTRIC,
@@ -54,6 +59,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_COMPANY_CAR_PRICE_BAND_OPEN,
     FRS_COMPANY_CAR_PRICE_BANDS,
     FRS_SPINE_TABLES,
+    FRS_UC_CARER_ELEMENT_COLUMN,
     FRS_UC_LCW_STATUS_COLUMN,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
@@ -64,10 +70,15 @@ from microcosm.build.uk_runtime.frs_spine import (
     UKFRSSpineStageTransform,
     _add_benefits,
     access_fund_annual,
+    benefits_by_recipient,
     build_uk_frs_spine_frame,
     completed_months,
+    frs_care_recipients,
     frs_claimant_or_partner,
     frs_council_tax_band,
+    frs_dwp_carer_care_hours,
+    frs_lcwra_proxy,
+    frs_uc_carer_element,
     frs_uc_lcw_status,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
@@ -541,6 +552,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": 2.0,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -552,6 +564,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": 3.0,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -565,6 +578,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": 4.0,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -578,6 +592,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": 5.0,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -591,6 +606,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": _BSP_STANDARD_WEEKLY,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -602,6 +618,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "BENAMT": 7.0,
                 "UCSTART": "",
                 "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
         ],
@@ -630,6 +647,12 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
             }
         ],
         "extchild": [{"SERNUM": 1, "BENUNIT": 1, "NHHAMT": 2.0}],
+        # Person 1 cares for household member 2 at 35-49 hours a week, the
+        # largest band, and for a parent outside the household at 5-9.
+        "care": [
+            {"SERNUM": 1, "BENUNIT": 1, "NEEDPER": 2, "WHOLOO01": 1, "HOUR01": 5},
+            {"SERNUM": 1, "BENUNIT": 1, "NEEDPER": 15, "WHOLOO01": 1, "HOUR01": 2},
+        ],
         "mortgage": [
             {"SERNUM": 1, "RMORT": 1, "RMAMT": 120.0, "BORRAMT": 240.0, "MORTEND": 12.0}
         ],
@@ -640,8 +663,13 @@ def _write_fixture(
     root: Path, tables: dict[str, list[dict[str, object]]] | None = None
 ) -> SourceStageSpec:
     root.mkdir(exist_ok=True)
-    for table, rows in (tables or _fixture_tables()).items():
+    tables = tables or _fixture_tables()
+    for table, rows in tables.items():
         _write_tab(root, table, rows)
+    if "care" not in tables:
+        # Tables written before the care tab joined the spine (A3) take the
+        # fixture's own care rows.
+        _write_tab(root, "care", _fixture_tables()["care"])
     artifacts = []
     for table in FRS_SPINE_TABLES:
         path = root / f"{table}.tab"
@@ -765,6 +793,13 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "parameters": "disability flags from the fiscal-converted gov.dwp tree at the survey year",
                             "year_rule": "survey_year",
                         },
+                        # The carer link (A3 of the November event-data plan's
+                        # PR3, microcosm#1095).
+                        {
+                            "kind": "derive",
+                            "parameters": CARER_LINK_PARAMETERS,
+                            "year_rule": "survey_year",
+                        },
                     ],
                     outputs=(
                         "aa_category",
@@ -774,7 +809,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "pip_dl_category",
                         "is_disabled_for_benefits",
                         "is_enhanced_disabled_for_benefits",
-                        "is_severely_disabled_for_benefits",
+                        "cares_for_severely_disabled_person",
                     ),
                 ),
                 source_stage(
@@ -1154,7 +1189,7 @@ class _FakeUKEngine:
 def test_manifest_stage_and_runtime_agree_on_artifacts_and_operations() -> None:
     stage = _manifest_stage()
 
-    assert len(stage.artifacts) == 14
+    assert len(stage.artifacts) == 15
     assert [artifact["table"] for artifact in stage.artifacts] == sorted(
         FRS_SPINE_TABLES
     )
@@ -2440,6 +2475,7 @@ def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
             "BENAMT": 8.0,
             "UCSTART": "",
             "UCLCW": "",
+            "UCCAREEL": "",
             "UCHOUSEL": "",
         }
     )
@@ -2494,6 +2530,196 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     assert reported.to_numpy().sum() == pytest.approx(
         (110.40 + 28.70 + 72.65 + 28.70 + 73.90 + 29.20) * WEEKS_IN_YEAR
     )
+
+
+def _recipient_rows() -> pd.DataFrame:
+    """One household's disability benefit rows, as the normalized BENEFITS table.
+
+    Person 1 is a parent, 2 a child with DLA on her own row, 3 and 4 children
+    whose Child Disability Payment sits on the parent's row (WHOREC names them).
+    """
+
+    return pd.DataFrame(
+        {
+            "household_id": [1] * 8,
+            "person_id": [1001, 1001, 1001, 1002, 1001, 1001, 1001, 1001],
+            "benefit": [121, 122, 121, 1, 12, 19, 96, 13],
+            "var2": [0] * 8,
+            "var3": [0] * 8,
+            "benamt": [72.65, 28.70, 100.0, 29.20, 72.65, 50.0, 73.90, 83.30],
+            # 3 and 4: the children; 2: her own row; 97: someone outside the
+            # household; 9: a person number the household doesn't hold; -1:
+            # missing. The income support and Carer's Allowance rows name a
+            # child too, and never move.
+            "whorec1": [3, 3, 3, 2, 97, 3, 9, 3],
+            "whorec2": [-1, -1, 4, -1, -1, -1, -1, -1],
+            "whorec3": [-1] * 8,
+            "whorec4": [-1] * 8,
+            "whorec5": [-1] * 8,
+        }
+    )
+
+
+def test_disability_benefits_move_to_the_household_member_they_are_for() -> None:
+    """A Child Disability Payment row on a parent's record moves to the child (A3a).
+
+    The FRS records it on the receiving adult's row with WHOREC naming the
+    child; a row naming two children splits evenly, and a row naming its own
+    person, someone outside the household or a person number the household
+    doesn't hold stays, as every non-disability row does.
+    """
+
+    rows = _recipient_rows()
+    moved, evidence = benefits_by_recipient(rows, [1001, 1002, 1003, 1004])
+
+    by_person = (
+        moved.assign(weekly=moved["benamt"])
+        .groupby(["person_id", "benefit"])["weekly"]
+        .sum()
+    )
+    assert by_person[(1003, 121)] == pytest.approx(72.65 + 50.0)
+    assert by_person[(1004, 121)] == pytest.approx(50.0)
+    assert by_person[(1003, 122)] == pytest.approx(28.70)
+    assert (1001, 121) not in by_person and (1001, 122) not in by_person
+    # The child's own DLA, the AA naming someone outside the household and the
+    # PIP naming a person number the household doesn't hold stay put.
+    assert by_person[(1002, 1)] == pytest.approx(29.20)
+    assert by_person[(1001, 12)] == pytest.approx(72.65)
+    assert by_person[(1001, 96)] == pytest.approx(73.90)
+    # Other benefits never move, whatever WHOREC says.
+    assert by_person[(1001, 19)] == pytest.approx(50.0)
+    assert by_person[(1001, 13)] == pytest.approx(83.30)
+    # Nothing is gained or lost.
+    assert moved["benamt"].sum() == pytest.approx(rows["benamt"].sum())
+
+    assert evidence["rule"] == BENEFIT_RECIPIENT_RULE
+    # One or two rows of each kind: the receipt rounds them, never exact.
+    assert evidence["rows_moved"] == "<3"
+    assert evidence["rows_split"] == "<3"
+    assert evidence["households"] == "<3"
+    assert evidence["by_code"]["121"] == "<3"
+    assert evidence["by_code"]["1"] == 0
+    assert evidence["rows_naming_someone_outside"] == "<3"
+    assert evidence["rows_naming_a_person_number_not_held"] == "<3"
+
+
+def test_moved_disability_benefits_reach_the_childs_reported_amounts() -> None:
+    """After the move the parent reports no DLA care, and each child reports her own."""
+
+    rows = _recipient_rows()
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003, 1004]})
+    pe_person = pd.DataFrame(index=person.index)
+    moved, _ = benefits_by_recipient(rows, person["person_id"])
+
+    _add_benefits(pe_person, person, moved)
+
+    weekly = pe_person.div(WEEKS_IN_YEAR)
+    assert weekly["dla_sc_reported"].tolist() == pytest.approx(
+        [0.0, 29.20, 72.65 + 50.0, 50.0]
+    )
+    assert weekly["dla_m_reported"].tolist() == pytest.approx([0.0, 0.0, 28.70, 0.0])
+    assert weekly["attendance_allowance_reported"].tolist() == pytest.approx(
+        [72.65, 0.0, 0.0, 0.0]
+    )
+
+
+def test_a_benefits_table_without_whorec_is_left_as_it_is() -> None:
+    """A table with no WHOREC columns (a synthetic fixture's) moves nothing."""
+
+    rows = _recipient_rows().drop(columns=[f"whorec{n}" for n in range(1, 6)])
+    moved, evidence = benefits_by_recipient(rows, [1001, 1002, 1003, 1004])
+
+    pd.testing.assert_frame_equal(moved, rows)
+    assert evidence["rows_moved"] == 0 and evidence["rows_split"] == 0
+
+
+def test_care_recipients_are_the_people_given_the_line() -> None:
+    """Each carer's recipients at 35 hours: household members by number, outside as one bit (A3).
+
+    Person 1 cares for member 2 at 35-49 hours and for someone outside at 5-9,
+    so member 2 alone is at the line. Person 3 gives member 2 and someone
+    outside 50-99 hours each, so both count. Every listed carer carries the
+    helper bit. Person 4's row names themself, which is left out, and person 5
+    helps nobody.
+    """
+
+    care = pd.DataFrame(
+        {
+            "household_id": [1, 1, 1, 1, 1],
+            "needper": [2, 15, 17, 2, 4],
+            "wholoo01": [1, 1, 2, 2, 2],
+            "hour01": [5, 2, 0, 0, 0],
+            "wholoo03": [2, 2, 1, 1, 2],
+            "hour03": [0, 0, 6, 6, 0],
+            "wholoo04": [2, 2, 2, 2, 1],
+            "hour04": [0, 0, 0, 0, 5],
+        }
+    )
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003, 1004, 1005]})
+
+    recipients, evidence = frs_care_recipients(care, person)
+
+    helper = 1 << FRS_CARE_HELPER_BIT
+    assert recipients.tolist() == [
+        helper | (1 << 2),
+        0,
+        helper | (1 << 2) | (1 << FRS_CARE_OUTSIDE_BIT),
+        0,
+        0,
+    ]
+    # Two carers: one with household recipients only, one with both.
+    assert evidence["carers"] == "<3"
+    assert evidence["household_only"] == "<3"
+    assert evidence["both"] == "<3"
+    assert evidence["outside_only"] == 0
+    assert evidence["nobody_at_the_line"] == 0
+    assert evidence["helpers_not_held"] == 0
+
+
+def test_care_spread_over_two_people_gives_nobody_the_line() -> None:
+    """Vahid's case (review of microcosm#1583, Should 1): 20-34 hours to each of two members.
+
+    HOURTOT puts the carer at 50-99 hours in all, but the Invalid Care
+    Allowance Regulations 1976 reg. 4(1A) count care for two or more people
+    only where one of them gets 35 hours on their own. So the carer is listed,
+    with the helper bit, and has no recipient at the line. A band that
+    varies at 35 or more (code 10) reaches it; one that varies at 20-34
+    (code 9) doesn't.
+    """
+
+    care = pd.DataFrame(
+        {
+            "household_id": [1, 1, 2, 2],
+            "needper": [2, 3, 2, 15],
+            "wholoo01": [1, 1, 1, 1],
+            "hour01": [4, 4, 9, 10],
+        }
+    )
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003, 2001, 2002]})
+
+    recipients, evidence = frs_care_recipients(care, person)
+
+    helper = 1 << FRS_CARE_HELPER_BIT
+    assert recipients.tolist() == [
+        helper,
+        0,
+        0,
+        helper | (1 << FRS_CARE_OUTSIDE_BIT),
+        0,
+    ]
+    assert evidence["nobody_at_the_line"] == "<3"
+    assert evidence["outside_only"] == "<3"
+
+
+def test_the_spine_stores_each_carers_recipients_at_the_line(tmp_path: Path) -> None:
+    """The fixture's carer gives member 2 alone at least 35 hours (A3)."""
+
+    stage = _write_fixture(tmp_path)
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+    stored = person.set_index("person_id")[FRS_CARE_RECIPIENTS_COLUMN]
+    assert stored.loc[1001] == (1 << FRS_CARE_HELPER_BIT) | (1 << 2)
+    assert (stored.drop(index=1001) == 0).all()
 
 
 def test_weekly_benefits_annualise_at_52_weeks() -> None:
@@ -2763,6 +2989,10 @@ def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
             instant=f"{period}-01-01",
             source="test stub",
         ),
+    )
+    # The carer link's hours line (A3), gov.dwp.carers_allowance.min_hours.
+    monkeypatch.setattr(
+        frs_disability, "uk_dwp_carers_allowance_min_hours", lambda period: 35.0
     )
     monkeypatch.setattr(
         frs_legacy_proxies,
@@ -4662,7 +4892,9 @@ class TestAccessFundAnnual:
             access_fund_annual(frame)
 
 
-def _uc_row(sernum: int, ucstart: str, uclcw: object = "") -> dict[str, object]:
+def _uc_row(
+    sernum: int, ucstart: str, uclcw: object = "", uccareel: object = ""
+) -> dict[str, object]:
     return {
         "SERNUM": sernum,
         "BENUNIT": 1,
@@ -4672,6 +4904,7 @@ def _uc_row(sernum: int, ucstart: str, uclcw: object = "") -> dict[str, object]:
         "BENAMT": 1.0,
         "UCSTART": ucstart,
         "UCLCW": uclcw,
+        "UCCAREEL": uccareel,
     }
 
 
@@ -4877,6 +5110,269 @@ class TestUCLimitedCapabilityCarrier:
         assert {value for key, value in status.items() if key not in (1001,)} == {
             "NOT_LINKED"
         }
+
+
+class TestUCCarerElementCarrier:
+    """DWP's admin-linked UC carer element on a linked claim (microcosm#1095, A3 (f))."""
+
+    @staticmethod
+    def _benefits(rows) -> pd.DataFrame:
+        return pd.DataFrame(
+            rows,
+            columns=["benunit_id", "person_id", "benefit", "uccareel", "ucstart_raw"],
+        )
+
+    def test_the_uc_rows_person_carries_the_claims_carer_element(self) -> None:
+        benefits = self._benefits(
+            [
+                (101, 1001, 95, 1.0, "07/15/2024"),  # a carer element, claimant
+                (201, 2002, 95, 0.0, "01/15/2022"),  # none, on the partner's row
+                (301, 3001, 95, np.nan, ""),  # no linked record
+                (401, 4001, 96, np.nan, ""),  # PIP daily living, not UC
+                (501, 5001, 95, 1.0, ""),  # a value on a claim with no start
+            ]
+        )
+        person = pd.DataFrame({"person_id": [1001, 1002, 2001, 2002, 3001, 4001, 5001]})
+
+        assert frs_uc_carer_element(benefits, person).tolist() == [
+            "CARER",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NONE",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NOT_LINKED",
+        ]
+
+    def test_the_carrier_refuses_what_it_cannot_read(self) -> None:
+        person = pd.DataFrame({"person_id": [1001, 1002]})
+        with pytest.raises(KeyError, match="uccareel"):
+            frs_uc_carer_element(
+                pd.DataFrame(
+                    {"benunit_id": [101], "person_id": [1001], "benefit": [95]}
+                ),
+                person,
+            )
+        with pytest.raises(KeyError, match="benefits.ucstart"):
+            frs_uc_carer_element(
+                pd.DataFrame(
+                    {
+                        "benunit_id": [101],
+                        "person_id": [1001],
+                        "benefit": [95],
+                        "uccareel": [1.0],
+                    }
+                ),
+                person,
+            )
+        linked = "07/15/2024"
+        with pytest.raises(ValueError, match="two FRS UC rows; UCCAREEL"):
+            frs_uc_carer_element(
+                self._benefits(
+                    [(101, 1001, 95, 1.0, linked), (101, 1002, 95, 1.0, linked)]
+                ),
+                person,
+            )
+        with pytest.raises(ValueError, match="outside the 0 and 1"):
+            frs_uc_carer_element(self._benefits([(101, 1001, 95, 2.0, linked)]), person)
+        with pytest.raises(ValueError, match="does not hold"):
+            frs_uc_carer_element(self._benefits([(101, 9999, 95, 1.0, linked)]), person)
+
+    def test_the_spine_stores_the_carrier_from_the_raw_tab(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 2, 1))
+        tables["benefits"].append(_uc_row(2, "", "", ""))
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        status = person.set_index("person_id")[FRS_UC_CARER_ELEMENT_COLUMN].to_dict()
+        assert status[1001] == "CARER"
+        assert {value for key, value in status.items() if key != 1001} == {"NOT_LINKED"}
+
+
+class TestDWPCarerCareHours:
+    """B3 (microcosm#1095; María's ruling of 2026-11-11): DWP's UC carer element
+    on a linked claim puts a carer at the 35-hour line where the survey has none."""
+
+    @staticmethod
+    def _people(rows) -> pd.DataFrame:
+        people = pd.DataFrame(
+            rows,
+            columns=[
+                "person_id",
+                "person_benunit_id",
+                "person_household_id",
+                "is_claimant_or_partner",
+                "care_hours",
+                "carers_allowance_reported",
+                FRS_UC_CARER_ELEMENT_COLUMN,
+            ],
+        )
+        # The claim's limited capability status sits on the UC row's person,
+        # as frs_uc_lcw_status writes it: NONE on a linked claim here.
+        linked = people[FRS_UC_CARER_ELEMENT_COLUMN].isin(["CARER", "NONE"])
+        people[FRS_UC_LCW_STATUS_COLUMN] = np.where(linked, "NONE", "NOT_LINKED")
+        return people
+
+    @staticmethod
+    def _joint_claim(
+        claimant_hours: float,
+        partner_hours: float,
+        *,
+        status: str = "NONE",
+        claimant_pip: float = 0.0,
+        partner_pip: float = 0.0,
+    ) -> pd.DataFrame:
+        """A joint claim: the UC row's person 1001 with the carer element, partner 1002."""
+
+        return pd.DataFrame(
+            {
+                "person_id": [1001, 1002],
+                "person_benunit_id": [11, 11],
+                "person_household_id": [1, 1],
+                "is_claimant_or_partner": [True, True],
+                "care_hours": [claimant_hours, partner_hours],
+                "carers_allowance_reported": [0.0, 0.0],
+                FRS_UC_CARER_ELEMENT_COLUMN: ["CARER", "NOT_LINKED"],
+                FRS_UC_LCW_STATUS_COLUMN: [status, "NOT_LINKED"],
+                "pip_dl_reported": [claimant_pip, partner_pip],
+            }
+        )
+
+    def test_the_partner_who_reports_more_care_takes_the_line(self) -> None:
+        """Vahid's review of microcosm#1583, Should 2: not always the UC row's person."""
+
+        hours, evidence = frs_dwp_carer_care_hours(self._joint_claim(0.0, 20.0))
+
+        assert hours.tolist() == [0.0, 35.0]
+        assert evidence["raised_the_partner_of_the_uc_rows_person"]["people"] == "<3"
+
+    def test_a_tie_raises_the_uc_rows_person(self) -> None:
+        hours, _ = frs_dwp_carer_care_hours(self._joint_claim(5.0, 5.0))
+
+        assert hours.tolist() == [35.0, 5.0]
+
+    def test_an_lcwra_claim_passes_over_the_claimant_the_proxy_flags(self) -> None:
+        """Vahid's case: the UC row's person gets PIP daily living, the partner cares.
+
+        On a claim DWP records with LCWRA and the carer element, the carer
+        isn't the claimant who holds LCWRA (UC Regs 2013 reg. 29(4)), so the
+        claimant Y1's proxy flags is passed over even with more care hours.
+        """
+
+        flagged = 72.65 * 52
+        hours, evidence = frs_dwp_carer_care_hours(
+            self._joint_claim(20.0, 0.0, status="LCWRA", claimant_pip=flagged)
+        )
+
+        assert hours.tolist() == [20.0, 35.0]
+        assert evidence["lcwra_claims_the_proxy_moved"]["people"] == "<3"
+        assert evidence["lcwra_claims"]["people"] == "<3"
+
+    def test_an_lcwra_claim_the_proxy_flags_whole_keeps_the_hours_rule(self) -> None:
+        both = 72.65 * 52
+        hours, evidence = frs_dwp_carer_care_hours(
+            self._joint_claim(
+                0.0, 20.0, status="LCWRA", claimant_pip=both, partner_pip=both
+            )
+        )
+
+        assert hours.tolist() == [0.0, 35.0]
+        assert evidence["lcwra_claims_the_proxy_flags_every_claimant"]["people"] == "<3"
+
+    def test_the_lcwra_proxy_follows_the_engines_formula(self) -> None:
+        """is_disabled_for_benefits, unless one's own ESA award lacks the support component."""
+
+        people = pd.DataFrame(
+            {
+                "pip_dl_reported": [100.0, 0.0, 0.0, 0.0],
+                "esa_income_reported": [0.0, 100.0, 100.0, 0.0],
+                "esa_includes_support_component": [True, True, False, True],
+            }
+        )
+
+        assert frs_lcwra_proxy(people).tolist() == [True, True, False, False]
+
+    def test_a_claim_without_lcwra_ignores_the_proxy(self) -> None:
+        flagged = 72.65 * 52
+        hours, evidence = frs_dwp_carer_care_hours(
+            self._joint_claim(20.0, 0.0, status="LCW", claimant_pip=flagged)
+        )
+
+        assert hours.tolist() == [35.0, 0.0]
+        assert evidence["lcwra_claims"]["people"] == 0
+
+    def test_a_dwp_carer_claim_with_no_carer_at_the_line_takes_35_hours(self) -> None:
+        rows = []
+        for household in range(1, 4):
+            # No care recorded, and care below the line: raised to 35.
+            rows.append(
+                (
+                    household * 1000 + 1,
+                    household * 10 + 1,
+                    household,
+                    True,
+                    0.0,
+                    0.0,
+                    "CARER",
+                )
+            )
+            rows.append(
+                (
+                    household * 1000 + 2,
+                    household * 10 + 1,
+                    household,
+                    True,
+                    0.0,
+                    0.0,
+                    "NOT_LINKED",
+                )
+            )
+        for household in range(4, 7):
+            rows.append(
+                (
+                    household * 1000 + 1,
+                    household * 10 + 1,
+                    household,
+                    True,
+                    20.0,
+                    0.0,
+                    "CARER",
+                )
+            )
+        # A partner already at the line, or Carer's Allowance reported: kept.
+        rows.append((7001, 71, 7, True, 0.0, 0.0, "CARER"))
+        rows.append((7002, 71, 7, True, 50.0, 0.0, "NOT_LINKED"))
+        rows.append((8001, 81, 8, True, 0.0, 4258.8, "CARER"))
+        # No carer element, or no linked record: the survey's answers stand.
+        rows.append((9001, 91, 9, True, 0.0, 0.0, "NONE"))
+        rows.append((10001, 101, 10, True, 10.0, 0.0, "NOT_LINKED"))
+        people = self._people(rows)
+
+        hours, evidence = frs_dwp_carer_care_hours(people)
+
+        by_id = dict(zip(people["person_id"], hours, strict=True))
+        assert [by_id[h * 1000 + 1] for h in range(1, 7)] == [35.0] * 6
+        assert [by_id[h * 1000 + 2] for h in range(1, 4)] == [0.0] * 3
+        assert by_id[7001] == 0.0 and by_id[7002] == 50.0
+        assert by_id[8001] == 0.0 and by_id[9001] == 0.0 and by_id[10001] == 10.0
+        assert evidence["raised"]["support"] == "3-9"
+        assert evidence["raised_from_no_care"]["support"] == "3-9"
+        assert evidence["raised_from_below_the_line"]["support"] == "3-9"
+        assert evidence["hours"] == 35.0
+        # The input frame is left as it was.
+        assert people.loc[people["person_id"] == 1001, "care_hours"].item() == 0.0
+
+    def test_the_spine_raises_a_dwp_carers_hours(self, tmp_path: Path) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 0, 1))
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        hours = person.set_index("person_id")["care_hours"]
+        assert hours[1001] >= 35.0
 
 
 class TestUCGainfulSelfEmployment:

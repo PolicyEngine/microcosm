@@ -30,6 +30,9 @@ from microcosm.build.uk_runtime.uc_take_up import (
     UC_TAKE_UP_AGE_MONTHS,
     UC_TAKE_UP_AGE_RESOURCE,
     UC_TAKE_UP_ENTITLEMENT_VARIABLES,
+    UC_TAKE_UP_LCWRA_MONTHS,
+    UC_TAKE_UP_LCWRA_RECORD_SETS,
+    UC_TAKE_UP_LCWRA_RESOURCE,
     UC_TAKE_UP_MONTHS,
     UC_TAKE_UP_RESOURCE,
     UC_TAKE_UP_STAGE_NAME,
@@ -37,11 +40,13 @@ from microcosm.build.uk_runtime.uc_take_up import (
     _assert_stage_parameters,
     assign_award_band_take_up,
     load_uc_award_band_targets,
+    load_uc_lcwra_households_target,
     load_uc_young_people_target,
     redraw_uc_take_up,
     uc_award_band_targets_from_rows,
     uc_award_bands,
     uc_family_types,
+    uc_lcwra_households_target_from_rows,
     uc_young_people_target_from_rows,
     working_age_housing_benefit_receipt,
 )
@@ -485,8 +490,11 @@ def test_inputs_must_align_and_name_known_cells() -> None:
 class _StubEngine:
     country = "uk"
 
-    def __init__(self, awards: dict[int, float]) -> None:
+    def __init__(
+        self, awards: dict[int, float], lcwra: dict[int, float] | None = None
+    ) -> None:
         self.awards = awards
+        self.lcwra = lcwra or {}
         self.calls: list[tuple[tuple[str, ...], str, str | None]] = []
         self.claims_seen: list[bool] | None = None
         self.deduction_columns_seen: bool | None = None
@@ -512,6 +520,7 @@ class _StubEngine:
             "is_child_or_qualifying_young_person_for_universal_credit": (
                 person["age"].to_numpy() < 16
             ),
+            "uc_LCWRA_element": np.asarray([self.lcwra.get(int(i), 0.0) for i in ids]),
         }
         return {name: values[name] for name in variables}
 
@@ -635,6 +644,7 @@ def test_committed_manifest_declares_the_stage_and_its_rewrite() -> None:
     assert [artifact["resource"] for artifact in stage.artifacts] == [
         UC_TAKE_UP_RESOURCE,
         UC_TAKE_UP_AGE_RESOURCE,
+        UC_TAKE_UP_LCWRA_RESOURCE,
     ]
     transform = UKUCTakeUpStageTransform(
         stage=stage,
@@ -1029,3 +1039,204 @@ def test_redraw_counts_young_claimants_and_partners_for_the_age_fit() -> None:
             minimum_pool_sources=1,
             young_target=5.0,
         )
+
+
+def _lcwra_rows(value_for=lambda month: 1_000.0):
+    """DWP's LCWRA households in Great Britain by payment indicator, with the
+    rows the count leaves out: the nil awards, an English row, another
+    entitlement group and another measure."""
+
+    rows = []
+    for month in UC_TAKE_UP_LCWRA_MONTHS:
+        for geography, measure, group, paid, value in (
+            ("K03000001", "benefit_units", "LCWRA", "Yes", value_for(month)),
+            ("K03000001", "benefit_units", "LCWRA", "No", 1e9),
+            ("E92000001", "benefit_units", "LCWRA", "Yes", 1e9),
+            ("K03000001", "benefit_units", "LCW", "Yes", 1e9),
+            ("K03000001", "total_benefit_units", "LCWRA", "all", 1e9),
+        ):
+            rows.append(
+                {
+                    "concept": "dwp.uc_benefit_units",
+                    "measure_id": measure,
+                    "geography": {"id": geography},
+                    "dimensions": {
+                        "limited_capability_for_work_entitlement": group,
+                        "payment_indicator": paid,
+                    },
+                    "period": {"type": "month", "value": month},
+                    "value": value,
+                }
+            )
+    return rows
+
+
+def test_the_lcwra_count_is_the_mean_of_twelve_months_paid_households() -> None:
+    months = {month: index for index, month in enumerate(UC_TAKE_UP_LCWRA_MONTHS)}
+    target = uc_lcwra_households_target_from_rows(
+        _lcwra_rows(lambda month: 100.0 + 10.0 * months[month])
+    )
+    # The twelve paid counts run 100 to 210 by tens.
+    assert target == pytest.approx(155.0)
+    assert UC_TAKE_UP_LCWRA_RECORD_SETS[0] == (
+        "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator."
+        "month2025_01"
+    )
+    assert len(UC_TAKE_UP_LCWRA_RECORD_SETS) == 12
+
+    short = [row for row in _lcwra_rows() if row["period"]["value"] != "2025-07"]
+    with pytest.raises(ValueError, match="each month of 2025"):
+        uc_lcwra_households_target_from_rows(short)
+    with pytest.raises(ValueError, match="repeat"):
+        uc_lcwra_households_target_from_rows([*_lcwra_rows(), _lcwra_rows()[0]])
+    stray = {**_lcwra_rows()[0], "period": {"type": "month", "value": "2024-12"}}
+    with pytest.raises(ValueError, match="unexpected month"):
+        uc_lcwra_households_target_from_rows([*_lcwra_rows(), stray])
+
+
+def test_the_committed_lcwra_count_is_the_bound_rows_dwp_value() -> None:
+    # The dwp.uc.households_lcwra_element reference resolves 2,272,425.17 from
+    # the same twelve facts (target_reference_membership.json).
+    assert load_uc_lcwra_households_target() == pytest.approx(2_272_425.1666666665)
+
+
+def _lcwra_pool(**overrides):
+    """Sixty drawn singles in one band, the first thirty with the LCWRA element."""
+
+    count = 60
+    lcwra = np.asarray([True] * 30 + [False] * 30)
+    arguments = {
+        "award": np.full(count, 600.0),
+        "draws": np.linspace(0.01, 0.99, count),
+        "targets": _targets(SINGLE_0=30.0),
+        "lcwra_units": lcwra,
+        "lcwra_target": 10.0,
+        **overrides,
+    }
+    return _assign(**arguments), lcwra
+
+
+def test_the_lcwra_fit_keeps_the_pool_count_and_meets_dwp_lcwra_count() -> None:
+    (would_claim, receipt), lcwra = _lcwra_pool()
+
+    # The pool still realizes DWP's 30 claims, now 10 of them with the element.
+    assert float(would_claim.sum()) == pytest.approx(30.0, abs=1.0)
+    assert float(would_claim[lcwra].sum()) == pytest.approx(10.0, abs=1.0)
+    fit = receipt["lcwra_fit"]
+    assert fit["dwp_lcwra_households"] == pytest.approx(10.0)
+    assert fit["lcwra_households_after"] == pytest.approx(10.0, abs=1.0)
+    assert fit["target_unreachable"] is None
+    assert 0.0 < fit["odds_ratio"] < 1.0
+    assert "age_fit" not in receipt
+    assert receipt["families"]["SINGLE"]["caseload_after"] == pytest.approx(
+        30.0, abs=1.0
+    )
+
+    (unfitted, plain), _ = _lcwra_pool(lcwra_units=None, lcwra_target=None)
+    # Without the fit one rate draws the lowest uniforms, all of them LCWRA.
+    assert float(unfitted[lcwra].sum()) == pytest.approx(30.0)
+    assert "lcwra_fit" not in plain
+
+
+def test_the_joint_fit_meets_dwp_young_and_lcwra_counts_together() -> None:
+    # Four groups of twenty drawn singles in one band: young with the element,
+    # young only, the element only, neither. At base odds 1 with ratios 1/3
+    # (young) and 3 (LCWRA) the groups claim 10, 5, 15 and 10: DWP's pool count
+    # of 40, 15 young claimants and 25 LCWRA households.
+    count = 80
+    young = np.asarray([1.0] * 40 + [0.0] * 40)
+    lcwra = np.asarray(([True] * 20 + [False] * 20) * 2)
+    rng = np.random.default_rng(7)
+    would_claim, receipt = _assign(
+        award=np.full(count, 600.0),
+        draws=rng.permutation(np.linspace(0.005, 0.995, count)),
+        targets=_targets(SINGLE_0=40.0),
+        young_people=young,
+        young_target=15.0,
+        lcwra_units=lcwra,
+        lcwra_target=25.0,
+    )
+
+    assert float(would_claim.sum()) == pytest.approx(40.0, abs=1.0)
+    assert float((young * would_claim).sum()) == pytest.approx(15.0, abs=1.0)
+    assert float(would_claim[lcwra].sum()) == pytest.approx(25.0, abs=1.0)
+    age, element = receipt["age_fit"], receipt["lcwra_fit"]
+    assert age["target_unreachable"] is None
+    assert element["target_unreachable"] is None
+    assert 0.0 < age["odds_ratio"] < 1.0 < element["odds_ratio"]
+    # The shortfall the fits leave unplaced is the age fit's block's alone.
+    assert "unplaced_shortfall" in age
+    assert "unplaced_shortfall" not in element
+
+
+def test_the_lcwra_fit_holds_at_its_bound_where_dwp_count_is_out_of_reach() -> None:
+    reporter = np.asarray([True] * 15 + [False] * 45)
+    (would_claim, receipt), _ = _lcwra_pool(reporter=reporter, lcwra_target=5.0)
+
+    # Fifteen LCWRA reporters claim whatever the ratio, so DWP's 5 cannot be met.
+    assert receipt["lcwra_fit"]["target_unreachable"] == (
+        "target_below_least_lcwra_claims"
+    )
+    assert would_claim[reporter].all()
+    assert float(would_claim.sum()) == pytest.approx(30.0, abs=1.0)
+
+
+def test_the_lcwra_fit_leaves_a_shortfall_unplaced_rather_than_draw_its_units() -> None:
+    # Band 2: two drawn units with neither fit's mark against DWP's 5 (three
+    # short). Band 4: ten drawn units, the first five with the element, against
+    # DWP's 5. With the fit, band 4's five other units are all its own count
+    # needs, so the three stay unplaced and the singles land at 7 against
+    # DWP's 10 (María's choices of 2026-11-11).
+    award = np.asarray([3_000.0] * 2 + [5_500.0] * 10)
+    lcwra = np.asarray([False] * 2 + [True] * 5 + [False] * 5)
+    targets = _targets(SINGLE_2=5.0, SINGLE_4=5.0)
+    would_claim, receipt = _assign(
+        award=award, targets=targets, lcwra_units=lcwra, lcwra_target=0.5
+    )
+    assert would_claim[:2].all()
+    assert int(would_claim[2:].sum()) == 5
+    assert int(would_claim[lcwra].sum()) == 0
+    assert receipt["families"]["SINGLE"]["caseload_after"] == pytest.approx(7.0)
+    fit = receipt["lcwra_fit"]
+    assert fit["unplaced_shortfall"]["SINGLE"] == pytest.approx(3.0)
+    assert fit["unplaced_shortfall"]["LONE_PARENT"] == 0.0
+
+
+def test_the_lcwra_fit_needs_both_its_inputs() -> None:
+    with pytest.raises(ValueError, match="needs both lcwra_units and lcwra_target"):
+        _lcwra_pool(lcwra_target=None)
+    with pytest.raises(ValueError, match="must align"):
+        _lcwra_pool(lcwra_units=np.ones(3, dtype=bool))
+    with pytest.raises(ValueError, match="positive and finite"):
+        _lcwra_pool(lcwra_target=0.0)
+
+
+def test_redraw_reads_the_lcwra_element_for_the_lcwra_fit() -> None:
+    engine = _StubEngine({1: 900.0, 2: 900.0, 3: 0.0, 4: 900.0}, lcwra={2: 4_800.0})
+
+    result = redraw_uc_take_up(
+        _frame(),
+        engine=engine,
+        population_policy=_POLICY,
+        targets=_targets(SINGLE_0=10.0),
+        closure_rates={"all": 0.8},
+        minimum_pool_sources=1,
+        lcwra_target=5.0,
+    )
+
+    assert "uc_LCWRA_element" in engine.calls[0][0]
+    # The reporter alone meets DWP's 10, so the drawn unit 2, the one with the
+    # element, cannot claim at any ratio and DWP's 5 is out of reach.
+    assert result.frame.table("benunit")["would_claim_uc"].tolist() == [
+        True,
+        False,
+        True,
+        False,
+    ]
+    fit = result.evidence()["lcwra_fit"]
+    assert fit["target_unreachable"] == "target_above_most_lcwra_claims"
+    # One source household carries the drawn unit with the element: withheld.
+    assert fit["drawn_support"] == "<3"
+    assert fit["odds_ratio"] == "<3"
+    assert fit["lcwra_households_after"] == "<3"
+    assert "lcwra_fit" not in _redraw(_frame(), engine).evidence()
