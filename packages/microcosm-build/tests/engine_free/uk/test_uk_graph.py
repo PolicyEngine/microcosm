@@ -1078,7 +1078,8 @@ _FRAME_REASON = (
 #: node on any edit to it. The Frame's are the only ones a stage's transform
 #: names; the executor and the modules that compute node keys run every node
 #: from outside it. microcosm.graph.canonical also encodes every key, but
-#: regional_home_values draws through it, so that stage binds it instead.
+#: regional_home_values draws through it, and so do the WAS stage's area home
+#: values (microcosm#931), so those stages bind it instead.
 #: test_the_core_modules_are_on_every_nodes_path checks the table.
 _CORE_MODULES: dict[str, str] = {
     "microcosm.frame.bundle": f"the Frame: {_FRAME_REASON}",
@@ -1879,7 +1880,8 @@ def test_the_core_modules_are_on_every_nodes_path() -> None:
         # its own included, declares NONE through the one stage kernel class,
         # as María ruled on 9 Nov (microcosm#931 ruling 7): its stream is a
         # stage parameter, which its contract hash covers, and it reads no
-        # generator the executor seeds.
+        # generator the executor seeds. The WAS stage's area home values draw
+        # the same way on a fixed stream of their own (C-43).
         assert kernel.capabilities.seed_source is SeedSource.NONE, stage
 
 

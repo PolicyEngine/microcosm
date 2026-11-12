@@ -73,6 +73,7 @@ from .. import (
 from . import (
     advani_summers,
     annuity_trust_column,
+    area_home_values,
     atomic_household_identity,
     birth_month,
     bus_fare_pricing,
@@ -120,6 +121,7 @@ from . import (
     property_localisation,
     qrf_gates,
     receipt_counts,
+    regional_uprating,
     release_input_coverage,
     rowwise_geography,
     spi_band_donors,
@@ -521,21 +523,32 @@ _STAGE_HELPER_MODULES = {
     # households, count family roles, group tenure by the shared tenure map and
     # name the HBAI income predictor. The WAS stage, and the LISA, bus, LCFS,
     # ETB, landlord, reporter and housing stages below, fit through the QRF
-    # modules (microcosm#931). The two WAS stages count no support by lineage,
-    # so they bind the geographic clones' leaf for the clone count their
-    # support-clip receipts read (microcosm#931).
+    # modules (microcosm#931). The WAS stage reads its main residences off each
+    # owner's constituency where its declaration asks (area_home_values): it
+    # ranks owners and reads the knots through property_localisation, whose
+    # owners are the tenure map's and whose keyed uniforms are
+    # microcosm.graph's, which encodes each draw's coordinates as canonical
+    # JSON; it divides by the regional uprating's factor, reads the knots'
+    # regions from the FRS region map, and counts its evidence in true source
+    # households, as its donor-range cap counts the sources it adjusts; so it
+    # and the LISA stage, which binds it, are counting stages (microcosm#931).
     "was_wealth": (
         *_ENGINE_STAGE_MODULES,
         *_PINNED_TAB_MODULES,
         *_QRF_MODULES,
+        area_home_values,
         frs_brma,
         gates,
-        geographic_clones,
         household_income,
+        property_localisation,
         qrf_gates,
+        regional_uprating,
+        rowwise_geography,
         support_clip,
         tenure_constants,
         uc_relationships,
+        graph_randomness,
+        graph_canonical,
         stochastic_assignment,
     ),
     # The LISA stage reads its household donor through the WAS cleaning and its
@@ -550,7 +563,6 @@ _STAGE_HELPER_MODULES = {
         *_QRF_MODULES,
         frs_brma,
         gates,
-        geographic_clones,
         household_income,
         support_clip,
         tenure_constants,
@@ -578,8 +590,10 @@ _STAGE_HELPER_MODULES = {
     # (microcosm#1112), over the tenure map's owners; their keyed uniforms are
     # microcosm.graph's, which encodes each draw's coordinates as canonical
     # JSON, and the cap count reads each row's geographic clone from its id
-    # through the copy-id table (microcosm#931).
+    # through the copy-id table (microcosm#931). The knots' regions for the
+    # FRS regions are the area home values' (area_home_values, microcosm#931).
     "regional_home_values": (
+        area_home_values,
         copy_id_table,
         property_localisation,
         rowwise_geography,
@@ -894,6 +908,11 @@ _COUNTING_STAGES = frozenset(
         "spi_income_band_donors",
         "company_cars",
         "spi_housing_shell",
+        # The WAS stage counts its area home values' evidence and the sources
+        # its donor-range cap adjusts in true source households, and the LISA
+        # stage binds it (microcosm#931).
+        "was_wealth",
+        "was_lisa",
         "high_value_home_support",
         "regional_home_values",
         "property_components",

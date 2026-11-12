@@ -35,7 +35,6 @@ as well is refused where the two disagree, as on clones minted another way.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from importlib.resources import files
 
@@ -43,6 +42,10 @@ import numpy as np
 
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime import copy_id_table
+from microcosm.build.uk_runtime.area_home_values import (
+    FRS_REGION_TO_KNOTS_REGION,
+    KNOTS_RESOURCE,
+)
 from microcosm.build.uk_runtime.cgt_structure import _assert_closed_world_operations
 from microcosm.build.uk_runtime.geographic_clones import (
     GEOGRAPHIC_COPY_ID_FIELD,
@@ -70,7 +73,6 @@ from microcosm.build.uk_runtime.receipt_counts import (
     source_household_ids,
     support_band,
 )
-from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
 from microcosm.frame import Frame, MassChangeRecord
 
 __all__ = [
@@ -88,7 +90,6 @@ __all__ = [
 
 REGIONAL_HOME_VALUES_STAGE_NAME = "regional_home_values"
 REGIONAL_HOME_VALUES_OPERATION_KIND = "assign_regional_home_values"
-KNOTS_RESOURCE = "high_value_home_value_knots.json"
 #: The stage's own keyed stream, apart from the dense node's.
 REGIONAL_HOME_VALUES_STREAM = (
     "sha256-u53-v1",
@@ -96,17 +97,6 @@ REGIONAL_HOME_VALUES_STREAM = (
     0,
     0,
 )
-#: The knots' region codes for the FRS regions they cover. Wales is the
-#: country code the knots use, not the placeholder region code the area
-#: assignment keeps for it (``W99999999``).
-FRS_REGION_TO_KNOTS_REGION: Mapping[str, str] = {
-    **{
-        region: code
-        for region, code in FRS_REGION_TO_REGION_CODE.items()
-        if code.startswith("E12")
-    },
-    "WALES": "W92000004",
-}
 REGIONAL_HOME_VALUES_MASS_CHANGE_REASON = (
     "Regional home values assigned on the source spine: household weights pass "
     "through unchanged and total household mass is conserved."

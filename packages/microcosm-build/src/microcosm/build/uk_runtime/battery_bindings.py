@@ -320,9 +320,12 @@ def _evaluate_calibration_reference_coverage(
 
 #: The stage-health checks that read the phase's frame beside their stage's
 #: receipt: the band donors' check recomputes a capped seating's seats from
-#: the transferred phase's frame (microcosm#931). Every other check reads its
-#: receipt alone and runs without a frame.
-_STAGE_HEALTH_FRAME_CHECKS = frozenset({"spi_income_band_donor_support"})
+#: the transferred phase's frame, and the copy area check compares each copy
+#: with its parent there (microcosm#931). Every other check reads its receipt
+#: alone and runs without a frame.
+_STAGE_HEALTH_FRAME_CHECKS = frozenset(
+    {"spi_income_band_donor_support", "copy_area_agreement"}
+)
 
 
 def _stage_health_requires_frame(parameters: Mapping[str, Any]) -> bool:
@@ -809,7 +812,10 @@ def _evaluate_enum_domain(
     (table,) = tables
     by_nation = _nation_partitioned_domains(column, parameters)
     if by_nation is None:
-        return enum_domain_gate({column: table[column]}, {column: domain})
+        return _count_free_enum_domain_result(
+            enum_domain_gate({column: table[column]}, {column: domain}),
+            partitioned=False,
+        )
 
     from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
 
@@ -817,13 +823,54 @@ def _evaluate_enum_domain(
         raise ValueError(f"{column} is partitioned by region, which its table lacks.")
     nations = table["region"].astype(str).map(UK_NATION_BY_REGION)
     if nations.isna().any():
-        unknown = sorted(set(table.loc[nations.isna(), "region"].astype(str)))
-        raise ValueError(f"{column} rows carry regions with no nation: {unknown}.")
-    return enum_domain_gate(
-        {column: table[column]},
-        {column: domain},
-        partitions={column: nations},
-        partition_domains={column: by_nation},
+        # The battery prints a raised refusal as the gate's failure, so it
+        # names the column, never the rows' values (C-32, microcosm#931).
+        raise ValueError(f"{column} rows carry regions with no nation.")
+    return _count_free_enum_domain_result(
+        enum_domain_gate(
+            {column: table[column]},
+            {column: domain},
+            partitions={column: nations},
+            partition_domains={column: by_nation},
+        ),
+        partitioned=True,
+    )
+
+
+def _count_free_enum_domain_result(
+    result: GateResult, *, partitioned: bool
+) -> GateResult:
+    """The shared enum gate's verdict, rebuilt without counts or examples (C-32).
+
+    The UK's enum gates run on frames whose rows are SPI copies and geographic
+    clones of survey households (microcosm#931), so the shared gate's count of
+    values outside the domain and its examples of them could say something of
+    a few records. The verdict is the shared gate's: each failure names the
+    column and its domain, and the details keep the columns checked, the
+    allowed values (and each partition's), and the columns with a value
+    outside the domain. ``microcosm.build.gates`` is untouched.
+    """
+
+    details = dict(result.details)
+    outside = sorted(str(column) for column in dict(details.get("invalid_counts", {})))
+    domain = "its nation's domain" if partitioned else "the engine's enum domain"
+    rebuilt: dict[str, object] = {
+        "columns_checked": details.get("columns_checked", 0),
+        "allowed_values": details.get("allowed_values", {}),
+    }
+    if "partition_allowed_values" in details:
+        rebuilt["partition_allowed_values"] = details["partition_allowed_values"]
+    rebuilt["columns_outside_domain"] = outside
+    failures: tuple[str, ...] = ()
+    if not result.passed:
+        failures = tuple(
+            f"{column}: a value lies outside {domain}." for column in outside
+        ) or (f"A value lies outside {domain}.",)
+    return GateResult(
+        name=result.name,
+        passed=result.passed,
+        failures=failures,
+        details=rebuilt,
     )
 
 
@@ -2257,11 +2304,22 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # uk-data#629 spi_hourly_pay check: the drawn employees' share
                 # below the minimum wage may exceed the FRS rows' by this much.
                 "maximum_share_above_frs",
+                # The spine geography checks (microcosm#931): the area home
+                # values' knots level, beside the ranking check's keys above;
+                # the mapping-integrity check's accepted outcomes, validation
+                # scope and support systems; and each copy layer's columns the
+                # copy area check holds to the copy's parent.
+                "knots_level",
+                "accepted_outcomes",
+                "validation_scope",
+                "support_systems",
+                "columns_by_copy_layer",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
         needs_frame=False,
-        # The band donors' check reads the phase's frame (microcosm#931).
+        # The band donors' and the copy area checks read the phase's frame
+        # (microcosm#931).
         frame_predicate=_stage_health_requires_frame,
         evidence=_stage_health_evidence,
     ),
@@ -2459,6 +2517,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
 #: this list to it exactly.
 UK_GATE_REGISTRY_MODULES: tuple[str, ...] = (
     "microcosm.build.chronicle_epoch",
+    "microcosm.build.copy_agreement",
     "microcosm.build.gate_battery",
     "microcosm.build.gates",
     "microcosm.build.input_mass",

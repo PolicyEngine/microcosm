@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -16,6 +16,14 @@ from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
+)
+from microcosm.build.uk_runtime.area_home_values import (
+    UKAreaHomeValues,
+    UKAreaHomeValuesLocaliser,
+    area_home_values_declared,
+    clone_zero_rows,
+    load_committed_area_home_values_resources,
+    support_clip_exemptions,
 )
 from microcosm.build.uk_runtime.frs_brma import _benunit_household_map
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
@@ -31,11 +39,17 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
 from microcosm.build.uk_runtime.qrf_gates import (
     UK_DEFAULT_GATE_CALIBRATION,
     UK_GATE_OUTCOMES_EVIDENCE,
     declared_gate_calibration,
     gate_outcomes,
+)
+from microcosm.build.uk_runtime.receipt_counts import (
+    distinct_count,
+    extreme_count,
+    record_source_households,
 )
 from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
@@ -400,11 +414,14 @@ class UKWASWealthResult:
     #: the stage-health gate requires to be zero, and the donor comparisons.
     tenure_coherence: Mapping[str, object] = field(default_factory=dict)
     #: Rows on which a derived total departs from its components (zero by
-    #: construction unless the support clip moved a total) and the rows the
-    #: donor-range cap adjusted.
+    #: construction unless the support clip moved a total) and the distinct
+    #: true sources the donor-range cap adjusted, in bands.
     identities: Mapping[str, object] = field(default_factory=dict)
     #: Each chain target's gate outcome, when the chain is not in-sample.
     gate_outcomes: Mapping[str, str] = field(default_factory=dict)
+    #: The area home values' evidence block, where the stage declares them
+    #: (``area_home_values``, microcosm#931).
+    area_home_values: Mapping[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -415,8 +432,15 @@ class UKWASWealthResult:
         }
         if self.gate_outcomes:
             evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.gate_outcomes)
+        if self.area_home_values is not None:
+            evidence[AREA_HOME_VALUES_EVIDENCE] = dict(self.area_home_values)
         return evidence
 
+
+#: The key of the stage evidence's area home values block, which the
+#: home-value ranking check reads (``stage_health``, check
+#: ``area_home_values``).
+AREA_HOME_VALUES_EVIDENCE = "area_home_values"
 
 #: The household-mass receipt this stage records (the manifest's
 #: ``record_mass_conservation_receipt`` operation repeats it): the terminal
@@ -465,6 +489,16 @@ class UKWASWealthStageTransform:
             )
         )
         _assert_chain_declaration(self.stage)
+        # The area home values run inside the chain only where the stage
+        # declares them, so a stage without them draws as before
+        # (microcosm#931).
+        localiser = (
+            UKAreaHomeValuesLocaliser.from_frame(
+                frame, resources=load_committed_area_home_values_resources()
+            )
+            if area_home_values_declared(self.stage)
+            else None
+        )
         household_predictors = recipient_predictors(frame, self.engine)
         imputation = impute_was_wealth(
             donor,
@@ -475,12 +509,26 @@ class UKWASWealthStageTransform:
             gate_calibration=declared_gate_calibration(
                 self.stage, "fit_weighted_qrf_chain"
             ),
+            main_residence_localiser=localiser,
         )
         self.last_fit_weight_records = imputation.fit_weight_records
-        capped, capped_rows = cap_derived_totals_to_donor_range(imputation.draws, donor)
+        localisation = imputation.main_residence_localisation
+        capped, capped_rows = cap_derived_totals_to_donor_range(
+            imputation.draws,
+            donor,
+            localised=None if localisation is None else localisation.rewritten,
+            sources=record_source_households(
+                {"household": frame.table("household")},
+                "household",
+                stage="The WAS wealth stage",
+                before_copies=True,
+            ),
+            counted=clone_zero_rows(frame.table("household")),
+        )
         clip_result = support_clip_to_donor(
             capped,
             donor,
+            exempt=support_clip_exemptions(self.stage),
             clone_count=geographic_clone_count(
                 frame.table("household"), stage=UK_WAS_WEALTH_STAGE_NAME
             ),
@@ -509,6 +557,10 @@ class UKWASWealthStageTransform:
             *UK_WAS_APPENDED_OUTPUT_COLUMNS,
         ):
             household[column] = household_draws[column].to_numpy()
+        if localisation is not None:
+            # The draw the area home values read, which the regional uprating
+            # divides by (microcosm#931).
+            household[RANK_BASIS_COLUMN] = household_draws[RANK_BASIS_COLUMN].to_numpy()
         person["student_loan_balance"] = allocate_student_loan_balance_to_people(
             household_balances=household_draws["student_loan_balance"].clip(lower=0),
             household_ids=household["household_id"],
@@ -535,6 +587,9 @@ class UKWASWealthStageTransform:
             tenure_coherence=tenure_coherence,
             identities=identities,
             gate_outcomes=imputation.gate_outcomes,
+            area_home_values=(
+                None if localisation is None else localisation.evidence()
+            ),
         )
         return result
 
@@ -864,6 +919,9 @@ class UKWASWealthImputationResult:
     segment_seeds: tuple[int, ...] = ()
     #: Each target's gate outcome, when the chain is not in-sample.
     gate_outcomes: Mapping[str, str] = field(default_factory=dict)
+    #: The area home values on the segment-2 draw, where a localiser ran
+    #: (microcosm#931); ``None`` otherwise.
+    main_residence_localisation: UKAreaHomeValues | None = None
 
 
 #: The chain's segments, each with its own model and child seed:
@@ -910,6 +968,7 @@ def impute_was_wealth(
     record_ids: Sequence[object] | np.ndarray,
     segments: int = UK_WAS_CHAIN_SEGMENTS,
     gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
+    main_residence_localiser: Callable[[np.ndarray], UKAreaHomeValues] | None = None,
 ) -> UKWASWealthImputationResult:
     """Fit segmented checkpointed QRF chains and draw WAS wealth outputs.
 
@@ -933,6 +992,14 @@ def impute_was_wealth(
     identical whether or not the later ones run). ``gate_calibration`` is the
     chain's declared :class:`~microcosm.fit.GateCalibration`; when it is not
     the in-sample gate, the result names each target's gate outcome.
+
+    ``main_residence_localiser``, where given, is called with segment 2's
+    draw of ``main_residence_value`` in recipient row order, after segment 2
+    and before segment 3 (the area home values, microcosm#931): segments 3 to
+    11 condition on the values it returns, the draw is kept as
+    ``main_residence_value_rank_basis`` and the result carries what it
+    returned. Segments 1 and 2 draw bit for bit as without it. Without one,
+    the chain is as before.
     """
 
     from microcosm.fit import RegimeGatedQRF
@@ -1067,8 +1134,21 @@ def impute_was_wealth(
         ("main_residence_value",),
         stratum=UK_WAS_STRATIFIED_TARGETS["main_residence_value"],
     )
+    localisation: UKAreaHomeValues | None = None
+    if main_residence_localiser is not None:
+        drawn = raw["main_residence_value"].to_numpy(dtype=float, copy=True)
+        localisation = main_residence_localiser(drawn)
+        if not isinstance(
+            localisation, UKAreaHomeValues
+        ) or localisation.value.shape != (len(raw),):
+            raise ValueError(
+                "The main residence localiser returns one value per recipient, "
+                "in recipient row order."
+            )
+        raw[RANK_BASIS_COLUMN] = drawn
+        raw["main_residence_value"] = np.asarray(localisation.value, dtype=float)
     if segments == 2:
-        return _partial_result(raw, fit_records, segment_seeds, outcomes)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes, localisation)
     recipient_encoded["main_residence_value"] = raw["main_residence_value"]
     run_segment(
         (*base, "owned_land", "main_residence_value"),
@@ -1080,7 +1160,7 @@ def impute_was_wealth(
     )
     derive_total("property_wealth")
     if segments == 3:
-        return _partial_result(raw, fit_records, segment_seeds, outcomes)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes, localisation)
     donor_encoded["corporate_wealth"] = donor_encoded["corporate_wealth"].astype(float)
     donor_encoded["private_pension_wealth"] = donor_encoded[
         "private_pension_wealth"
@@ -1099,7 +1179,7 @@ def impute_was_wealth(
     )
     derive_total("corporate_wealth")
     if segments == 4:
-        return _partial_result(raw, fit_records, segment_seeds, outcomes)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes, localisation)
     recipient_encoded["private_pension_wealth"] = raw["private_pension_wealth"]
     recipient_encoded["corporate_wealth"] = raw["corporate_wealth"]
     # Downstream targets condition on both components, carrying the
@@ -1122,7 +1202,7 @@ def impute_was_wealth(
     )
     derive_total("gross_financial_wealth")
     if segments == 5:
-        return _partial_result(raw, fit_records, segment_seeds, outcomes)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes, localisation)
     prior_outputs = tuple(
         column
         for column in UK_WAS_WEALTH_OUTPUT_COLUMNS
@@ -1136,7 +1216,7 @@ def impute_was_wealth(
         stratum=UK_WAS_STRATIFIED_TARGETS["main_residence_mortgage"],
     )
     if segments == 6:
-        return _partial_result(raw, fit_records, segment_seeds, outcomes)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes, localisation)
     recipient_encoded["main_residence_mortgage"] = raw["main_residence_mortgage"]
     # The mortgages on other property are held on every tenure (an outright
     # owner's or a renter's buy-to-let), so they are drawn without a stratum
@@ -1147,12 +1227,12 @@ def impute_was_wealth(
     )
     derive_total("mortgage_debt")
     if segments == 7:
-        return _partial_result(raw, fit_records, segment_seeds, outcomes)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes, localisation)
     recipient_encoded["mortgage_debt"] = raw["mortgage_debt"]
     run_segment((*base, *prior_outputs, "mortgage_debt"), ("consumer_debt",))
     raw["net_financial_wealth"] = derived_net_financial_wealth(raw)
     if segments == 8:
-        return _partial_result(raw, fit_records, segment_seeds, outcomes)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes, localisation)
     # The appended draws (microcosm#1095): each from the holders of its column
     # only, conditioned on everything the chain drew; nothing before them
     # reads them.
@@ -1171,7 +1251,7 @@ def impute_was_wealth(
         holders=UK_WAS_HOLDER_STRATA[UK_WAS_DIRECT_SHARE_FRACTION_COLUMN],
     )
     if segments == 9:
-        return _partial_result(raw, fit_records, segment_seeds, outcomes)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes, localisation)
     debt_predictors = (
         *base,
         *prior_outputs,
@@ -1186,7 +1266,7 @@ def impute_was_wealth(
         holders=UK_WAS_HOLDER_STRATA[residential],
     )
     if segments == 10:
-        return _partial_result(raw, fit_records, segment_seeds, outcomes)
+        return _partial_result(raw, fit_records, segment_seeds, outcomes, localisation)
     recipient_encoded[residential] = raw[residential]
     run_segment(
         (*debt_predictors, residential),
@@ -1200,11 +1280,13 @@ def impute_was_wealth(
                 *UK_WAS_WEALTH_OUTPUT_COLUMNS,
                 *UK_WAS_DRAWN_ONLY_COLUMNS,
                 *UK_WAS_APPENDED_DRAWN_COLUMNS,
+                *((RANK_BASIS_COLUMN,) if localisation is not None else ()),
             ),
         ],
         fit_weight_records=tuple(fit_records),
         segment_seeds=segment_seeds,
         gate_outcomes=outcomes,
+        main_residence_localisation=localisation,
     )
 
 
@@ -1234,6 +1316,7 @@ def _partial_result(
     fit_records: list[FitWeightRecord],
     segment_seeds: tuple[int, ...],
     outcomes: Mapping[str, str] | None = None,
+    localisation: UKAreaHomeValues | None = None,
 ) -> UKWASWealthImputationResult:
     produced = [
         column
@@ -1241,6 +1324,7 @@ def _partial_result(
             *UK_WAS_WEALTH_OUTPUT_COLUMNS,
             *UK_WAS_DRAWN_ONLY_COLUMNS,
             *UK_WAS_APPENDED_DRAWN_COLUMNS,
+            RANK_BASIS_COLUMN,
         )
         if column in raw
     ]
@@ -1249,6 +1333,7 @@ def _partial_result(
         fit_weight_records=tuple(fit_records),
         segment_seeds=segment_seeds,
         gate_outcomes=dict(outcomes or {}),
+        main_residence_localisation=localisation,
     )
 
 
@@ -1276,19 +1361,77 @@ _UK_WAS_TOTAL_CAP_ORDER: Mapping[str, tuple[str, ...]] = MappingProxyType(
 
 
 def cap_derived_totals_to_donor_range(
-    draws: pd.DataFrame, donor: pd.DataFrame
-) -> tuple[pd.DataFrame, dict[str, int]]:
+    draws: pd.DataFrame,
+    donor: pd.DataFrame,
+    *,
+    localised: Sequence[bool] | np.ndarray | None = None,
+    sources: Sequence[object] | np.ndarray | None = None,
+    counted: Sequence[bool] | np.ndarray | None = None,
+) -> tuple[pd.DataFrame, dict[str, int | str]]:
     """Keep every derived total inside the donor's range without breaking it.
 
-    Each component is a donor value, but their sum can pass the donor's
-    largest total. The excess is taken out of the components in the declared
-    order and the total recomputed, so the identity survives where a clip of
-    the total alone would break it. Returns the adjusted draws and the rows
-    adjusted per total (zero on a build whose joint draws stay in range).
+    A total's excess over the donor's largest is taken out of its components
+    in the declared order and the total recomputed, so the identity survives.
+    On the ``localised`` rows (none by default) the largest property total is
+    raised by the main residence's excess over the donor's largest, so that
+    excess never takes other property away (microcosm#931); other property
+    past the donor's room is still taken. Returns the draws and, per total,
+    the distinct true sources (``sources``; by default each row is its own)
+    adjusted among the ``counted`` rows, in ``receipt_counts.extreme_count``
+    bands (C-40). It counts every record it adjusted, rows of zero weight
+    included, as a count of records picked out by an extreme value.
     """
 
     capped = draws.copy()
-    fired: dict[str, int] = {}
+    rows = len(capped)
+    localised_rows = (
+        np.zeros(rows, dtype=bool)
+        if localised is None
+        else np.asarray(localised, dtype=bool)
+    )
+    source_ids = np.arange(rows) if sources is None else np.asarray(sources)
+    counted_rows = (
+        np.ones(rows, dtype=bool)
+        if counted is None
+        else np.asarray(counted, dtype=bool)
+    )
+    if (
+        localised_rows.shape != (rows,)
+        or source_ids.shape != (rows,)
+        or counted_rows.shape != (rows,)
+    ):
+        raise ValueError(
+            "The WAS donor-range cap reads one localised flag, one source and one "
+            "counted flag per draw row."
+        )
+    fired: dict[str, int | str] = {}
+
+    def adjusted(mask: np.ndarray) -> int | str:
+        return extreme_count(distinct_count(source_ids, mask & counted_rows))
+
+    # A localised main residence's excess over the donor's largest, which its
+    # row's property total may carry above the donor's largest total. Without
+    # a localised row every largest total is the donor's scalar, as before.
+    main_residence_excess: pd.Series | None = None
+    if localised_rows.any():
+        main_residence_maximum = float(
+            pd.to_numeric(donor["main_residence_value"], errors="coerce").max()
+        )
+        main_residence_excess = (
+            (
+                pd.to_numeric(capped["main_residence_value"], errors="coerce")
+                - main_residence_maximum
+            )
+            .clip(lower=0.0)
+            .fillna(0.0)
+            .where(localised_rows, 0.0)
+        )
+
+    def largest(total: str) -> float | pd.Series:
+        maximum = float(pd.to_numeric(donor[total], errors="coerce").max())
+        if total == "property_wealth" and main_residence_excess is not None:
+            return maximum + main_residence_excess
+        return maximum
 
     def reduce(total: str, excess: pd.Series) -> None:
         remaining = excess.clip(lower=0.0)
@@ -1301,7 +1444,7 @@ def cap_derived_totals_to_donor_range(
         # rounding; a sum a few ulp above it would be clipped as a real
         # excess by the support clip, so it lands on the maximum exactly
         # (inside the identity tolerance).
-        maximum = float(pd.to_numeric(donor[total], errors="coerce").max())
+        maximum = largest(total)
         capped[total] = np.where(
             (recomputed > maximum) & (recomputed - maximum <= 1e-6),
             maximum,
@@ -1312,21 +1455,23 @@ def cap_derived_totals_to_donor_range(
         # Recomputed first: a reduced share-like total moves gross financial
         # wealth with it.
         capped[total] = capped.loc[:, list(components)].sum(axis=1)
-        maximum = float(pd.to_numeric(donor[total], errors="coerce").max())
-        excess = capped[total] - maximum
-        fired[f"{total}_capped_rows"] = int((excess > 0).sum())
-        if fired[f"{total}_capped_rows"]:
+        excess = capped[total] - largest(total)
+        above = (excess > 0).to_numpy(dtype=bool)
+        fired[f"{total}_capped_rows"] = adjusted(above)
+        if above.any():
             reduce(total, excess)
     net = pd.to_numeric(donor["net_financial_wealth"], errors="coerce")
     capped["net_financial_wealth"] = derived_net_financial_wealth(capped)
     above = capped["net_financial_wealth"] - float(net.max())
-    fired["net_financial_wealth_capped_high_rows"] = int((above > 0).sum())
-    if fired["net_financial_wealth_capped_high_rows"]:
+    high = (above > 0).to_numpy(dtype=bool)
+    fired["net_financial_wealth_capped_high_rows"] = adjusted(high)
+    if high.any():
         reduce("gross_financial_wealth", above)
         capped["net_financial_wealth"] = derived_net_financial_wealth(capped)
     below = float(net.min()) - capped["net_financial_wealth"]
-    fired["net_financial_wealth_capped_low_rows"] = int((below > 0).sum())
-    if fired["net_financial_wealth_capped_low_rows"]:
+    low = (below > 0).to_numpy(dtype=bool)
+    fired["net_financial_wealth_capped_low_rows"] = adjusted(low)
+    if low.any():
         remaining = below.clip(lower=0.0)
         for liability in UK_WAS_NET_FINANCIAL_LIABILITIES:
             take = np.minimum(remaining, capped[liability].clip(lower=0.0))
@@ -1622,12 +1767,20 @@ def tenure_coherence_receipt(
 
 
 def support_clip_to_donor(
-    draws: pd.DataFrame, donor: pd.DataFrame, *, clone_count: int = 1
+    draws: pd.DataFrame,
+    donor: pd.DataFrame,
+    *,
+    exempt: set[str] | frozenset[str] | None = None,
+    clone_count: int = 1,
 ) -> UKSupportClipResult:
     """Clip output draws to donor-realized support.
 
-    ``clone_count`` is the frame's geographic clone count, which the receipt
-    carries for the support-clip check (microcosm#931).
+    ``exempt`` names the columns the stage's support clip declares exempt:
+    the main residence and the property total, where the stage declares the
+    area home values, whose localised homes can pass the donor's range
+    (``area_home_values.support_clip_exemptions``, microcosm#931); none
+    otherwise. ``clone_count`` is the frame's geographic clone count, which
+    the receipt carries for the support-clip check (microcosm#931).
     """
 
     return support_clip_to_donor_with_receipt(
@@ -1635,6 +1788,7 @@ def support_clip_to_donor(
         donor,
         columns=UK_WAS_WEALTH_OUTPUT_COLUMNS,
         stage=UK_WAS_WEALTH_STAGE_NAME,
+        exempt=set(exempt or ()),
         clone_count=clone_count,
     )
 

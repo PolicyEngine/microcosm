@@ -63,6 +63,7 @@ __all__ = [
     "load_scotland_band_mix",
     "load_value_knots",
     "localise_bands",
+    "localise_main_residence_values",
     "localise_values",
     "main_residence_rank_basis",
     "owner_uniforms",
@@ -431,6 +432,43 @@ def _england_wales(codes: np.ndarray) -> np.ndarray:
     return np.char.startswith(codes, "E") | np.char.startswith(codes, "W")
 
 
+def localise_main_residence_values(
+    *,
+    u: np.ndarray,
+    constituency_code: np.ndarray,
+    tenure_type: np.ndarray,
+    value: np.ndarray,
+    knots: ValueKnots,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Read owner rows' values off their constituency's knots at ``u``.
+
+    The value half of :func:`localise_values`, which the spine's WAS chain
+    reads its home values through (``area_home_values``, microcosm#931).
+    Returns every row's value and the rows it rewrote: the owner-occupied rows
+    with a positive value whose constituency is in England or Wales. Every
+    other row keeps its value bit for bit. A rewritten row's constituency
+    without knots fails closed, by a text that names no constituency: a row's
+    constituency is its household's place.
+    """
+    u = np.asarray(u, dtype=float)
+    value = np.asarray(value, dtype=float)
+    codes = np.asarray(constituency_code).astype(str)
+    target = owner_mask(tenure_type) & (value > 0) & _england_wales(codes)
+    new_value = value.copy()
+    if not set(codes[target]) <= set(knots.quantiles):
+        raise ValueError(
+            "No value knots for a constituency an England or Wales owner row is "
+            "assigned to: the knots resource carries every constituency the "
+            "area draw places owners in."
+        )
+    for code in sorted(set(codes[target])):
+        rows = np.flatnonzero(target & (codes == code))
+        new_value[rows] = np.interp(u[rows], knots.grid, knots.quantiles[code])
+    if np.any(~np.isfinite(new_value)) or np.any(new_value < 0):
+        raise ValueError("Localised home values must be finite and non-negative.")
+    return new_value, target
+
+
 def localise_values(
     *,
     u: np.ndarray,
@@ -442,25 +480,19 @@ def localise_values(
 ) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
     """Read owner rows' values off their constituency's knots at ``u``.
 
-    Returns the new values, the new property wealth (the old total moved by
-    the value's change, so the wealth identity holds) and a receipt. Rows
-    that are not owner-occupied, carry no value or sit outside England and
-    Wales are untouched; a constituency without knots fails closed.
+    Returns the new values (:func:`localise_main_residence_values`'), the new
+    property wealth (the old total moved by the value's change, so the wealth
+    identity holds) and a receipt. Rows that are not owner-occupied, carry no
+    value or sit outside England and Wales are untouched; a constituency
+    without knots fails closed.
     """
     u = np.asarray(u, dtype=float)
     value = np.asarray(value, dtype=float)
     wealth = np.asarray(property_wealth, dtype=float)
     codes = np.asarray(constituency_code).astype(str)
-    target = owner_mask(tenure_type) & (value > 0) & _england_wales(codes)
-    new_value = value.copy()
-    missing = sorted(set(codes[target]) - set(knots.quantiles))
-    if missing:
-        raise ValueError(f"No value knots for constituency {missing[:5]}.")
-    for code in sorted(set(codes[target])):
-        rows = np.flatnonzero(target & (codes == code))
-        new_value[rows] = np.interp(u[rows], knots.grid, knots.quantiles[code])
-    if np.any(~np.isfinite(new_value)) or np.any(new_value < 0):
-        raise ValueError("Localised home values must be finite and non-negative.")
+    new_value, target = localise_main_residence_values(
+        u=u, constituency_code=codes, tenure_type=tenure_type, value=value, knots=knots
+    )
     delta = new_value - value
     new_wealth = wealth + delta
     if np.any(~np.isfinite(new_wealth)):

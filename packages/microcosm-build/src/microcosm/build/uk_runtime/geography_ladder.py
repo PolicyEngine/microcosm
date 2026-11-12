@@ -757,10 +757,7 @@ def uk_geography_ladder_assignment_summary(
         else np.ones(len(household), dtype=np.float64)
     )
     if len(weights) != len(household):
-        raise ValueError(
-            f"weight_values length {len(weights)} does not match household "
-            f"rows {len(household)}."
-        )
+        raise ValueError("weight_values must give one weight per household row.")
     summary: dict[str, Any] = {
         "applied": applied,
         "household_rows": int(len(household)),
@@ -818,10 +815,7 @@ def uk_geography_ladder_gate(
     details: dict[str, object] = {}
     weights = np.asarray(weight_values, dtype=np.float64)
     if len(weights) != len(household):
-        raise ValueError(
-            f"weight_values length {len(weights)} does not match household "
-            f"rows {len(household)}."
-        )
+        raise ValueError("weight_values must give one weight per household row.")
 
     missing_columns = [
         column
@@ -853,10 +847,7 @@ def uk_geography_ladder_gate(
             [bool(value) and pattern.match(value) is None for value in values]
         )
         if bad.any():
-            failures.append(
-                f"{label}: {int(bad.sum())}/{len(values)} row(s) are not valid "
-                f"GSS codes; examples {sorted(set(values[bad]))[:5]}"
-            )
+            failures.append(f"{label}: some row(s) are not valid GSS codes")
 
     # The engine input must agree with the code it was resolved from on every
     # row, and every code must sit on the April 2023 roster; reported, not
@@ -872,46 +863,33 @@ def uk_geography_ladder_gate(
     ):
         mismatched = values != expected
         if mismatched.any():
-            failures.append(
-                f"{label}: {int(mismatched.sum())}/{len(values)} row(s) disagree "
-                "with the ITL3 prefix"
-            )
+            failures.append(f"{label}: some row(s) disagree with the ITL3 prefix")
 
     region = household["region_code"].astype(str).to_numpy()
     recognised_regions = frozenset(FRS_REGION_TO_REGION_CODE.values())
     unknown_region = np.array([value not in recognised_regions for value in region])
     if unknown_region.any():
-        failures.append(
-            f"region_code: {int(unknown_region.sum())}/{len(region)} row(s) are "
-            "not recognised UK region codes; "
-            f"examples {sorted(set(region[unknown_region]))[:5]}"
-        )
+        failures.append("region_code: some row(s) are not recognised UK region codes")
 
     # Rowwise consistency fence: the assigned region_code must agree with the
     # household's own pre-assigned region enum, so a mislabelled assignment
     # (e.g. Scottish households collapsed into English codes) cannot pass on
     # structural validity alone.
-    declared_codes = _household_region_codes(
-        household[region_column],
-        label=region_column,
-    ).to_numpy()
-    inconsistent = declared_codes != region
-    if inconsistent.any():
-        examples = sorted(
-            {
-                f"{declared}!={assigned}"
-                for declared, assigned in zip(
-                    declared_codes[inconsistent],
-                    region[inconsistent],
-                    strict=True,
-                )
-            }
-        )[:5]
-        failures.append(
-            f"region_code: {int(inconsistent.sum())}/{len(region)} row(s) "
-            "disagree with the household's declared region; "
-            f"examples {examples}"
-        )
+    try:
+        declared_codes = _household_region_codes(
+            household[region_column],
+            label=region_column,
+        ).to_numpy()
+    except ValueError:
+        # The reader's refusal lists the values it cannot read; the gate's
+        # failure names the column alone (C-32, microcosm#931).
+        failures.append(f"{region_column}: some row(s) carry no recognised UK region")
+    else:
+        inconsistent = declared_codes != region
+        if inconsistent.any():
+            failures.append(
+                "region_code: some row(s) disagree with the household's declared region"
+            )
 
     total = float(weights.sum())
     if total <= 0:
@@ -929,8 +907,8 @@ def uk_geography_ladder_gate(
     low, high = london_share_bounds
     if not low <= london_share <= high:
         failures.append(
-            f"London weighted household share {london_share:.4f} outside "
-            f"[{low}, {high}] (the region-collapse regression)"
+            f"London weighted household share outside [{low}, {high}] (the "
+            "region-collapse regression)"
         )
 
     for label, bounds in (
@@ -942,17 +920,14 @@ def uk_geography_ladder_gate(
         details[f"{label}_nonempty_weighted_share"] = share
         low, high = bounds
         if not low <= share <= high:
-            failures.append(
-                f"{label} nonempty weighted share {share:.4f} outside [{low}, {high}]"
-            )
+            failures.append(f"{label} nonempty weighted share outside [{low}, {high}]")
 
     constituency = household["constituency_code"].astype(str).to_numpy()
     constituency_share = float(weights[constituency != ""].sum() / total)
     details["constituency_nonempty_weighted_share"] = constituency_share
     if constituency_share < constituency_min_share:
         failures.append(
-            f"constituency nonempty weighted share {constituency_share:.4f} below "
-            f"{constituency_min_share}"
+            f"constituency nonempty weighted share below {constituency_min_share}"
         )
 
     return GateResult(

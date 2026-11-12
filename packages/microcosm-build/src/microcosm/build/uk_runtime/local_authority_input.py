@@ -189,13 +189,15 @@ def local_authority_consistency_failures(
     """Report rows whose engine input disagrees with their code (gate use).
 
     Returns failure messages and never raises, so the ladder gate can carry
-    the verdict through the local battery.
+    the verdict through the local battery. Each names the check and the
+    column, never a count of rows or an example (C-32): the gates that read
+    them run on frames whose rows are SPI copies and geographic clones of
+    survey households (microcosm#931).
     """
 
     missing = [c for c in (code_column, input_column) if c not in household.columns]
     if missing:
         return [f"household table is missing local authority column(s): {missing}"]
-    total = len(household)
     codes = (
         household[code_column].fillna("").astype(str).str.strip().to_numpy(dtype=object)
     )
@@ -210,14 +212,13 @@ def local_authority_consistency_failures(
     failures: list[str] = []
     blank = np.array([key == "" for key in keys], dtype=bool)
     if blank.any():
-        failures.append(f"{input_column}: {int(blank.sum())}/{total} row(s) are blank")
+        failures.append(f"{input_column}: some row(s) are blank")
     expected = [table.get(code) for code in codes]
     off_roster = np.array([value is None for value in expected], dtype=bool)
     if off_roster.any():
-        examples = sorted(set(codes[off_roster].tolist()))[:5]
         failures.append(
-            f"{code_column}: {int(off_roster.sum())}/{total} row(s) are not on "
-            f"the April 2023 local authority roster; examples {examples}"
+            f"{code_column}: some row(s) are not on the April 2023 local "
+            "authority roster"
         )
     mismatched = np.array(
         [
@@ -229,16 +230,7 @@ def local_authority_consistency_failures(
         dtype=bool,
     )
     if mismatched.any():
-        examples = sorted(
-            {
-                f"{code}->{key}"
-                for code, key in zip(codes[mismatched], keys[mismatched], strict=True)
-            }
-        )[:5]
-        failures.append(
-            f"{input_column}: {int(mismatched.sum())}/{total} row(s) disagree with "
-            f"{code_column}; examples {examples}"
-        )
+        failures.append(f"{input_column}: some row(s) disagree with {code_column}")
     return failures
 
 

@@ -1100,7 +1100,10 @@ def _wealth_coherence_evidence() -> dict:
             "mortgage_debt_violation_rows": 0,
             "share_split_violation_rows": 0,
             "secured_debt_violation_rows": 0,
-            "property_wealth_capped_rows": 3,
+            # The cap's counts print as receipt_counts.extreme_count bands
+            # (C-40, microcosm#931): a band, and a zero exact.
+            "property_wealth_capped_rows": "3-9",
+            "mortgage_debt_capped_rows": 0,
         },
     }
 
@@ -1126,8 +1129,18 @@ def test_wealth_coherence_gate_passes_a_coherent_receipt() -> None:
 
     assert _passed(result)
     assert result.details["main_residence_mortgage_off_mortgaged_tenure_rows"] == 0
-    # The donor-range cap is recorded, never a failure.
-    assert result.details["capped_rows"] == {"property_wealth_capped_rows": 3}
+    # The donor-range cap is recorded, never a failure, its bands as printed.
+    assert result.details["capped_rows"] == {
+        "property_wealth_capped_rows": "3-9",
+        "mortgage_debt_capped_rows": 0,
+    }
+    # An older receipt's exact count is carried as a count.
+    evidence = _wealth_coherence_evidence()
+    evidence["identities"]["property_wealth_capped_rows"] = 3
+    assert _wealth_coherence(evidence).details["capped_rows"] == {
+        "property_wealth_capped_rows": 3,
+        "mortgage_debt_capped_rows": 0,
+    }
 
 
 @pytest.mark.parametrize(
@@ -4354,3 +4367,583 @@ def test_assembled_stage_gates_read_only_stages_run_by_the_assembled_boundary() 
         and order.index(str(entry.parameters["stage"])) > boundary
     )
     assert late == []
+
+
+# --- The spine geography checks (microcosm#931) -----------------------------------
+
+
+def _no_digit_beyond(message: str, *allowed: str) -> bool:
+    """No digit in ``message`` beyond the names ``allowed`` and the issue
+    reference."""
+
+    stripped = re.sub(r"microcosm#\d+|sha256|SHA-256|clone 0", "", message)
+    for name in allowed:
+        stripped = stripped.replace(name, "")
+    return re.search(r"\d", stripped) is None
+
+
+_SCOPE = "atomic_geography_mapping_integrity"
+
+
+def _mapping_parameters(stage: str = "atomic_area_assign", **extra) -> dict:
+    from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+
+    return {
+        "stage": stage,
+        "check": "atomic_mapping_integrity",
+        "validation_scope": _SCOPE,
+        "support_systems": list(SYSTEMS),
+        **extra,
+    }
+
+
+def _mapping_evidence(**overrides) -> dict:
+    from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+
+    evidence = {
+        "stage": "atomic_area_assign",
+        "validation": {"outcome": "pass", "scope": _SCOPE},
+        "definition_sha256": "a" * 64,
+        "support_sha256": {system: "b" * 64 for system in SYSTEMS},
+    }
+    evidence.update(overrides)
+    return evidence
+
+
+def _mapping_gate(evidence: dict, **extra):
+    parameters = _mapping_parameters(
+        evidence.get("stage", "atomic_area_assign"), **extra
+    )
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage=parameters["stage"],
+        check=parameters["check"],
+        parameters=parameters,
+    )
+
+
+def test_atomic_mapping_integrity_reads_the_area_draws_own_record() -> None:
+    """The real area draw's evidence, on the toy conditioned supports, passes;
+    the scope is the one the draw records."""
+
+    from dataclasses import replace
+
+    from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
+    from microcosm.build.uk_runtime import spine_geography
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+        toy_spine_frame,
+    )
+
+    assert spine_geography._VALIDATION_SCOPE == _SCOPE
+    stage = SourceStageSpec(
+        stage=spine_geography.ATOMIC_AREA_ASSIGN_STAGE_NAME,
+        survey="Family Resources Survey 2024-25",
+        source="Microcosm structural operator (microcosm#931)",
+        grain="household",
+        artifacts=(),
+        operations=tuple(
+            SourceOperationSpec(kind=kind, parameters=dict(parameters))
+            for kind, parameters in (
+                spine_geography.atomic_area_assign_operation_parameters()
+            )
+        ),
+        outputs=spine_geography.UK_ATOMIC_AREA_ASSIGN_OUTPUT_COLUMNS,
+    )
+    transform = spine_geography.UKAtomicAreaAssignStageTransform(
+        stage=replace(stage), supports=toy_conditioned_support_payloads()
+    )
+    transform(toy_spine_frame(clones=2))
+    evidence = transform.checkpoint_metadata()["evidence"]
+
+    result = _mapping_gate(evidence)
+    assert _passed(result), result.failures
+    assert result.details["outcome"] == "pass"
+
+
+@pytest.mark.parametrize(
+    ("override", "fragment"),
+    [
+        ({"validation": {"outcome": "fail", "scope": _SCOPE}}, "outcome"),
+        ({"validation": {"outcome": "not_run", "scope": _SCOPE}}, "outcome"),
+        ({"validation": {"outcome": "pass", "scope": "another"}}, "scope"),
+        ({"validation": None}, "no validation"),
+        ({"definition_sha256": "A" * 64}, "definition_sha256"),
+        ({"definition_sha256": None}, "definition_sha256"),
+        ({"support_sha256": {"uk_ew_output_area_2021": "b" * 64}}, "support_sha256"),
+        ({"support_sha256": "b" * 64}, "support_sha256"),
+    ],
+)
+def test_atomic_mapping_integrity_fails_closed(override, fragment) -> None:
+    result = _mapping_gate(_mapping_evidence(**override))
+
+    assert not _passed(result)
+    assert any(fragment in failure for failure in result.failures), result.failures
+    assert all(_no_digit_beyond(failure) for failure in result.failures)
+
+
+def test_the_copy_stage_may_accept_a_record_without_copies() -> None:
+    evidence = _mapping_evidence(
+        stage="spi_copy_areas", validation={"outcome": "not_run", "scope": _SCOPE}
+    )
+
+    assert not _passed(_mapping_gate(evidence))
+    accepted = _mapping_gate(evidence, accepted_outcomes=["pass", "not_run"])
+    assert _passed(accepted), accepted.failures
+    assert accepted.details["accepted_outcomes"] == ["pass", "not_run"]
+
+
+def _area_home_values_parameters() -> dict:
+    """The ranking gate's packaged parameters, read at the WAS stage with the
+    knots level the area home values add (microcosm#931)."""
+
+    return {
+        **_packaged_parameters("uk_stage_regional_home_values_ranking"),
+        "stage": "was_wealth",
+        "check": "area_home_values",
+        "knots_level": "constituency",
+    }
+
+
+def _area_home_values_receipt() -> dict:
+    regions = [f"E1200000{index}" for index in range(1, 10)] + ["W92000004"]
+    return {
+        "stage": "was_wealth",
+        "area_home_values": {
+            "clone_count": 1,
+            "counted_among": "clone_0",
+            # Counts as the receipt prints them (receipt_counts.rounded_count).
+            "sources_rewritten_by_region": {region: 10 for region in regions},
+            "sources_at_cap": 0,
+            "knots_basis_year": 2024,
+            "knots_sha256": "c" * 64,
+            "knots_level": "constituency",
+            "regional_reference_sha256": "d" * 64,
+            "ranking": {"rank_basis": "weighted_midpoint_within_frs_region"},
+            "rank_basis_column": "main_residence_value_rank_basis",
+        },
+    }
+
+
+def _area_home_values_gate(receipt: dict):
+    parameters = _area_home_values_parameters()
+    return uk_stage_health_gate(
+        evidence=receipt,
+        stage=parameters["stage"],
+        check=parameters["check"],
+        parameters=parameters,
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "fragment"),
+    [
+        (
+            lambda r: r["area_home_values"]["sources_rewritten_by_region"].pop(
+                "W92000004"
+            ),
+            "regions rewritten",
+        ),
+        (
+            lambda r: r["area_home_values"]["sources_rewritten_by_region"].update(
+                E12000007=0
+            ),
+            "no rewritten source",
+        ),
+        (
+            lambda r: r["area_home_values"]["sources_rewritten_by_region"].update(
+                E12000007="many"
+            ),
+            "not a printed count",
+        ),
+        (lambda r: r["area_home_values"].update(sources_at_cap=1), "knots' cap"),
+        (lambda r: r["area_home_values"].update(sources_at_cap="<3"), "knots' cap"),
+        (
+            lambda r: r["area_home_values"].update(sources_at_cap=None),
+            "not a printed count or band",
+        ),
+        # A band receipt_counts.support_band never prints.
+        (
+            lambda r: r["area_home_values"].update(sources_at_cap="10-49"),
+            "not a printed count or band",
+        ),
+        (
+            lambda r: r["area_home_values"].update(sources_at_cap=-1),
+            "not a printed count or band",
+        ),
+        (lambda r: r["area_home_values"].update(knots_basis_year=2023), "basis year"),
+        (lambda r: r["area_home_values"].update(knots_level="region"), "level"),
+        (
+            lambda r: r["area_home_values"]["ranking"].update(rank_basis="national"),
+            "ranking basis",
+        ),
+        (
+            lambda r: r["area_home_values"].update(counted_among="all_clones"),
+            "clone 0",
+        ),
+        (lambda r: r.pop("area_home_values"), "no area home values block"),
+    ],
+)
+def test_area_home_values_holds_the_ranking_contract(mutate, fragment) -> None:
+    assert _passed(_area_home_values_gate(_area_home_values_receipt()))
+    receipt = _area_home_values_receipt()
+    mutate(receipt)
+    result = _area_home_values_gate(receipt)
+
+    assert not result.passed
+    assert any(fragment in failure for failure in result.failures), result.failures
+    # The texts name the field: no count, band or value of the receipt.
+    assert all(_no_digit_beyond(failure) for failure in result.failures)
+
+
+def test_area_home_values_flags_a_region_under_the_floor_and_reads_the_wealth_stage() -> (
+    None
+):
+    receipt = _area_home_values_receipt()
+    receipt["area_home_values"]["sources_rewritten_by_region"]["W92000004"] = "<3"
+    result = _area_home_values_gate(receipt)
+    assert result.passed, result.failures
+    assert result.details["regions_rewritten_under_floor"] == ["W92000004"]
+    assert result.details["sources_at_cap_unchecked"] is False
+    # The block is read from the WAS stage's own receipt.
+    other = {**_area_home_values_receipt(), "stage": "regional_home_values"}
+    assert not _area_home_values_gate(other).passed
+
+
+def test_a_cap_band_straddling_the_maximum_is_flagged_not_failed() -> None:
+    receipt = _area_home_values_receipt()
+    receipt["area_home_values"]["sources_at_cap"] = "<3"
+    parameters = {**_area_home_values_parameters(), "maximum_sources_at_cap": 1}
+
+    result = uk_stage_health_gate(
+        evidence=receipt,
+        stage="was_wealth",
+        check="area_home_values",
+        parameters=parameters,
+    )
+
+    assert result.passed, result.failures
+    assert result.details["sources_at_cap_unchecked"] is True
+    assert result.details["sources_at_cap"] == "<3"
+
+
+@pytest.mark.parametrize(
+    ("declare", "fragment"),
+    [
+        (
+            lambda: {**_area_home_values_parameters(), "regions": "E12000007"},
+            "regions is not a list",
+        ),
+        (
+            lambda: _mapping_parameters(support_systems="uk_ew_output_area_2021"),
+            "support_systems is not a list",
+        ),
+        (
+            lambda: _mapping_parameters(accepted_outcomes="pass"),
+            "accepted_outcomes is not a list",
+        ),
+    ],
+)
+def test_a_bare_string_where_a_list_is_declared_fails_closed(declare, fragment) -> None:
+    """A declared list given as one string is refused by name, not read as its
+    characters."""
+
+    parameters = declare()
+    evidence = (
+        _area_home_values_receipt()
+        if parameters["check"] == "area_home_values"
+        else _mapping_evidence(stage=parameters["stage"])
+    )
+    result = uk_stage_health_gate(
+        evidence=evidence,
+        stage=parameters["stage"],
+        check=parameters["check"],
+        parameters=parameters,
+    )
+
+    assert not result.passed
+    assert any(fragment in failure for failure in result.failures), result.failures
+    assert all(_no_digit_beyond(failure) for failure in result.failures)
+
+
+def test_area_home_values_reads_the_block_the_wealth_stage_records() -> None:
+    """The WAS stage's evidence block and the check name one key."""
+
+    from microcosm.build.uk_runtime import stage_health, was_wealth
+
+    assert stage_health._AREA_HOME_VALUES_BLOCK == was_wealth.AREA_HOME_VALUES_EVIDENCE
+
+
+class _FrameStandIn:
+    """The one table the copy area check reads."""
+
+    def __init__(self, household: pd.DataFrame) -> None:
+        self._household = household
+
+    def table(self, entity: str) -> pd.DataFrame:
+        assert entity == "household"
+        return self._household
+
+
+_HELD_AREA_COLUMNS = (
+    "oa_code",
+    "local_authority",
+    "brma",
+    "in_rural_fuel_duty_relief_area",
+    "geography_household_key",
+)
+
+
+def _copied_households() -> pd.DataFrame:
+    """Two FRS households in two clones, an SPI copy of the first with its own
+    area, and a high-value and a residential copy that inherit their parents'.
+    Ids are minted through the copy-id table, as the stages mint them."""
+
+    from microcosm.build.uk_runtime import copy_id_table
+
+    base = np.array([101, 102], dtype=np.int64)
+    clones = copy_id_table.mint(base, "geographic_support", 1)
+    spi = copy_id_table.mint(base[:1], "spi_support_channel", 1)
+    high_value = copy_id_table.mint(spi, "high_value_support", 1)
+    arm = copy_id_table.mint(clones[1:], "cgt_residential_split", 3)
+    ids = np.concatenate([base, clones, spi, high_value, arm])
+    return pd.DataFrame(
+        {
+            "household_id": ids,
+            "region": [
+                "LONDON",
+                "WALES",
+                "LONDON",
+                "WALES",
+                "LONDON",
+                "LONDON",
+                "WALES",
+            ],
+            "household_clone_index": np.array([0, 0, 1, 1, 0, 0, 1], dtype=np.int64),
+            # The SPI copy (row 4) drew an area of its own; its high-value copy
+            # (row 5) inherits it; the arm (row 6) inherits its clone's.
+            "oa_code": pd.array(
+                ["E1", "W1", "E2", "W2", "E9", "E9", "W2"], dtype="string"
+            ),
+            "local_authority": ["A", "B", "C", "D", "Z", "Z", "D"],
+            "brma": ["M", "N", "O", "P", "Q", "Q", "P"],
+            "in_rural_fuel_duty_relief_area": [
+                False,
+                True,
+                False,
+                True,
+                True,
+                True,
+                True,
+            ],
+            "geography_household_key": ["k1", "k2", "k3", "k4", "k5", "k5", "k4"],
+        }
+    )
+
+
+def _copy_area_gate(household: pd.DataFrame, layers: dict | None = None, frame=True):
+    parameters = {
+        "stage": "cgt_residential_split",
+        "check": "copy_area_agreement",
+        "columns_by_copy_layer": layers
+        if layers is not None
+        else {
+            "spi_support_channel": ["region", "household_clone_index"],
+            "high_value_support": [
+                "region",
+                "household_clone_index",
+                *_HELD_AREA_COLUMNS,
+            ],
+            "cgt_residential_split": [
+                "region",
+                "household_clone_index",
+                *_HELD_AREA_COLUMNS,
+            ],
+        },
+    }
+    return uk_stage_health_gate(
+        evidence={"stage": "cgt_residential_split"},
+        stage=parameters["stage"],
+        check=parameters["check"],
+        parameters=parameters,
+        frame=_FrameStandIn(household) if frame else None,
+    )
+
+
+def test_copy_area_agreement_holds_each_copy_to_its_immediate_parent() -> None:
+    result = _copy_area_gate(_copied_households())
+
+    assert _passed(result), result.failures
+    layers = result.details["layers"]
+    assert layers["spi_support_channel"]["copies_checked"] is True
+    assert set(layers["high_value_support"]["columns"].values()) == {True}
+    # The high-value copy's parent is the SPI copy, not the FRS household, so
+    # its own area agrees though the FRS household's differs.
+    assert layers["high_value_support"]["parents_present"] is True
+
+
+@pytest.mark.parametrize(
+    ("rows", "column", "value", "layer"),
+    [
+        ([5], "oa_code", "E1", "high_value_support"),
+        ([6], "brma", "N", "cgt_residential_split"),
+        ([6], "geography_household_key", "k9", "cgt_residential_split"),
+        # The SPI copy with its high-value copy, which still equals it.
+        ([4, 5], "region", "WALES", "spi_support_channel"),
+        ([4, 5], "household_clone_index", 1, "spi_support_channel"),
+    ],
+)
+def test_copy_area_agreement_fails_a_copy_that_moved(
+    rows, column, value, layer
+) -> None:
+    household = _copied_households()
+    household.loc[rows, column] = value
+
+    result = _copy_area_gate(household)
+
+    assert not result.passed
+    assert result.failures == (
+        f"cgt_residential_split: copy_area_agreement: {layer}: {column}: a copy "
+        "row differs from its parent.",
+    )
+    assert result.details["layers"][layer]["columns"][column] is False
+
+
+def test_copy_area_agreement_holds_spi_copies_on_region_and_clone_only() -> None:
+    """The SPI copy drew its own area, so holding it on its area fails; the
+    check's declaration holds it on its region and clone index alone (C-20)."""
+
+    household = _copied_households()
+    strict = _copy_area_gate(
+        household,
+        {"spi_support_channel": ["region", "household_clone_index", "oa_code"]},
+    )
+    assert not strict.passed
+    assert _passed(
+        _copy_area_gate(
+            household, {"spi_support_channel": ["region", "household_clone_index"]}
+        )
+    )
+
+
+def test_copy_area_agreement_fails_closed() -> None:
+    household = _copied_households()
+    for layers, fragment in (
+        ({"geographic_support": ["region"]}, "is not a copy layer"),
+        ({"not_a_field": ["region"]}, "is not a copy layer"),
+        ({"high_value_support": "region"}, "no column list"),
+        ({}, "no copy layer"),
+        ({"high_value_support": ["absent_column"]}, "no such column"),
+    ):
+        result = _copy_area_gate(household, layers)
+        assert not result.passed, layers
+        assert any(fragment in failure for failure in result.failures), result.failures
+    absent = _copy_area_gate(household, frame=False)
+    assert not absent.passed
+    assert any("frame" in failure for failure in absent.failures)
+    orphan = household.drop(index=4).reset_index(drop=True)
+    result = _copy_area_gate(orphan, {"high_value_support": ["region"]})
+    assert not result.passed
+    assert any("parent is not in the table" in f for f in result.failures)
+    for failure in (*result.failures, *absent.failures):
+        assert _no_digit_beyond(failure), failure
+
+
+def test_an_spi_copy_of_a_later_clone_is_held_to_that_clone() -> None:
+    """An SPI copy and a band donor of clone 1's household keep clone 1's
+    region and clone index: their parent is that clone's row, not clone
+    0's."""
+
+    from microcosm.build.uk_runtime import copy_id_table
+
+    household = _copied_households()
+    clone_row = household.loc[household["household_clone_index"] == 1].iloc[[0]]
+    extra = []
+    for ordinal in (1, 2):
+        copy = clone_row.copy()
+        copy["household_id"] = copy_id_table.mint(
+            copy["household_id"].to_numpy(np.int64), "spi_support_channel", ordinal
+        )
+        # Its own area, as the copy stage draws it.
+        copy["oa_code"] = pd.array([f"own{ordinal}"], dtype="string")
+        extra.append(copy)
+    with_copies = pd.concat([household, *extra], ignore_index=True)
+    layers = {"spi_support_channel": ["region", "household_clone_index"]}
+
+    result = _copy_area_gate(with_copies, layers)
+
+    assert _passed(result), result.failures
+    # Read against clone 0's row, the copies would carry the wrong clone index.
+    moved = with_copies.copy()
+    moved.loc[len(household) :, "household_clone_index"] = 0
+    failed = _copy_area_gate(moved, layers)
+    assert not failed.passed
+    assert failed.failures == (
+        "cgt_residential_split: copy_area_agreement: spi_support_channel: "
+        "household_clone_index: a copy row differs from its parent.",
+    )
+
+
+@pytest.mark.parametrize(
+    "ids",
+    [
+        lambda table: table["household_id"].astype(float),
+        lambda table: -table["household_id"],
+        lambda table: None,
+    ],
+)
+def test_copy_area_agreement_refuses_ids_it_cannot_decode_by_name(ids) -> None:
+    """The copy-id table refuses negative ids by their count; the check names
+    the column alone."""
+
+    household = _copied_households()
+    replaced = ids(household)
+    if replaced is None:
+        household = household.drop(columns=["household_id"])
+    else:
+        household["household_id"] = replaced
+
+    result = _copy_area_gate(household)
+
+    assert not result.passed
+    assert result.failures == (
+        "cgt_residential_split: copy_area_agreement: household_id is not a column "
+        "of non-negative integer ids.",
+    )
+
+
+@pytest.mark.parametrize(
+    ("layer", "ordinal"),
+    [
+        ("high_value_support", 2),
+        ("cgt_support_split", 7),
+        ("cgt_incidence_clone", 1),
+        ("cgt_residential_split", 5),
+    ],
+)
+def test_each_later_copy_layer_is_held_to_its_parent_in_its_clone(
+    layer, ordinal
+) -> None:
+    """A copy minted in any layer the copy check holds, from a clone-1 row,
+    equals that row on the held columns; moved, it fails on its own layer and
+    column alone."""
+
+    from microcosm.build.uk_runtime import copy_id_table
+
+    household = _copied_households()
+    parent = household.loc[household["household_clone_index"] == 1].iloc[[0]]
+    copy = parent.copy()
+    copy["household_id"] = copy_id_table.mint(
+        copy["household_id"].to_numpy(np.int64), layer, ordinal
+    )
+    with_copy = pd.concat([household, copy], ignore_index=True)
+    held = ["region", "household_clone_index", *_HELD_AREA_COLUMNS]
+
+    assert _passed(_copy_area_gate(with_copy, {layer: held}))
+    moved = with_copy.copy()
+    moved.loc[len(household), "brma"] = "moved"
+    result = _copy_area_gate(moved, {layer: held})
+    assert result.failures == (
+        f"cgt_residential_split: copy_area_agreement: {layer}: brma: a copy row "
+        "differs from its parent.",
+    )

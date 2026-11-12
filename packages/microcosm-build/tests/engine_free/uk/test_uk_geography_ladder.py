@@ -10,6 +10,7 @@ because the UK OA codes are not structural prefixes.
 """
 
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -537,9 +538,10 @@ def test_gate_fails_when_local_authority_disagrees_with_its_code() -> None:
 
     assert not result.passed
     assert any(
-        "local_authority: 1/4 row(s) disagree with local_authority_code" in f
+        "local_authority: some row(s) disagree with local_authority_code" in f
         for f in result.failures
     )
+    assert not any(re.search(r"\d", f) for f in result.failures), result.failures
 
 
 def test_gate_fails_on_local_authority_code_outside_the_roster() -> None:
@@ -563,7 +565,7 @@ def test_gate_fails_when_local_authority_is_blank() -> None:
     result = uk_geography_ladder_gate(household, weights)
 
     assert not result.passed
-    assert any("local_authority: 1/4 row(s) are blank" in f for f in result.failures)
+    assert any("local_authority: some row(s) are blank" in f for f in result.failures)
 
 
 def test_assignment_refuses_ladder_codes_outside_the_lad23_roster(tmp_path) -> None:
@@ -846,3 +848,82 @@ def test_uk_area_region_codes_reads_the_ladder_in_hand() -> None:
     )
     with pytest.raises(ValueError, match="outside the region tier"):
         uk_area_region_codes(outside)
+
+
+def test_gate_failure_texts_carry_no_count_example_or_share() -> None:
+    """The ladder gate runs where SPI copies and geographic clones are rows
+    (microcosm#931), so each failure names the check and the column, with no
+    row count, example or observed share; the shares stay in the details
+    (C-32)."""
+
+    household, weights = _gated_household()
+    household["oa_code"] = household["oa_code"].astype(object)
+    household.loc[0, "oa_code"] = "X123"
+    household.loc[1, "itl2_code"] = "TLZ9"
+    household.loc[2, "region_code"] = "E12000099"
+    household.loc[3, "local_authority"] = ""
+
+    result = uk_geography_ladder_gate(
+        household,
+        weights,
+        london_share_bounds=(0.5, 0.6),
+        ward_share_bounds=(0.25, 0.5),
+        itl_share_bounds=(0.25, 0.5),
+        constituency_min_share=1.5,
+    )
+
+    assert not result.passed
+    declared = (
+        *UK_GEOGRAPHY_LADDER_COLUMNS,
+        "ITL3",
+        "April 2023",
+        "[0.5, 0.6]",
+        "[0.25, 0.5]",
+        "1.5",
+    )
+    for failure in result.failures:
+        stripped = failure
+        for name in sorted(declared, key=len, reverse=True):
+            stripped = stripped.replace(name, "")
+        assert not re.search(r"\d", stripped), failure
+        assert not any(code in failure for code in ("X123", "TLZ9", "E12000099"))
+    assert any("region-collapse" in failure for failure in result.failures)
+    # The ward and ITL3 share texts fire too, with no observed share.
+    assert (
+        sum("nonempty weighted share outside" in failure for failure in result.failures)
+        == 2
+    )
+    assert 0.0 < result.details["london_weighted_household_share"] < 1.0
+    assert result.details["ward_code_nonempty_weighted_share"] == 1.0
+    with pytest.raises(ValueError, match="one weight per household row") as caught:
+        uk_geography_ladder_gate(household, weights[:-1])
+    assert not re.search(r"\d", str(caught.value))
+
+
+@pytest.mark.parametrize("region", ["ATLANTIS", None])
+def test_gate_names_the_region_column_for_a_region_it_cannot_read(region) -> None:
+    """The region reader's refusal lists the values it cannot read; the gate
+    fails on the column alone (C-32, microcosm#931)."""
+
+    household, weights = _gated_household()
+    household["region"] = household["region"].astype(object)
+    household.loc[0, "region"] = region
+
+    result = uk_geography_ladder_gate(household, weights)
+
+    assert not result.passed
+    assert "region: some row(s) carry no recognised UK region" in result.failures
+    assert not any("ATLANTIS" in failure for failure in result.failures)
+
+
+def test_the_assignment_summary_refuses_misaligned_weights_without_counts(
+    tmp_path,
+) -> None:
+    ladder = load_uk_oa_ladder(_write_ladder(tmp_path / "ladder.npz"))
+    assigned = assign_uk_geography_ladder(_household(), ladder, seed=0)
+
+    with pytest.raises(ValueError, match="one weight per household row") as caught:
+        uk_geography_ladder_assignment_summary(
+            assigned, ladder, weight_values=np.ones(len(assigned) + 1)
+        )
+    assert not re.search(r"\d", str(caught.value))

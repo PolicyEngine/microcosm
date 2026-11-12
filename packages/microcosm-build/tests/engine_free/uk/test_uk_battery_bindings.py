@@ -2265,6 +2265,53 @@ class TestEnumDomainResolution:
             assert outcome["artifact_permitted"] is False
             assert outcome["structural_failures"] == ["uk_local_brma_enum_domain"]
 
+    def test_the_verdict_carries_no_count_or_example_of_the_values(self) -> None:
+        """The UK wrapper rebuilds the shared gate's verdict without the count
+        of values outside the domain or examples of them (C-32,
+        microcosm#931): a pass keeps the columns checked and the allowed
+        values, and a failure names the column and its domain."""
+
+        import enum
+
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        frame, domain = self._frame_with_plans()
+
+        class Accessor:
+            def enum_domain(self, column):
+                return domain
+
+        context = EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()})
+        passed = _evaluate_enum_domain(context, {"columns": ["student_loan_plan"]})
+        assert passed.passed
+        assert dict(passed.details) == {
+            "columns_checked": 1,
+            "allowed_values": {"student_loan_plan": ["NONE", "PLAN_2"]},
+            "columns_outside_domain": [],
+        }
+
+        class Narrow(enum.Enum):
+            NONE = "NONE"
+
+        class NarrowAccessor:
+            def enum_domain(self, column):
+                return Narrow
+
+        failed = _evaluate_enum_domain(
+            EvidenceContext(frame=frame, artifacts={"rules_engine": NarrowAccessor()}),
+            {"columns": ["student_loan_plan"]},
+        )
+        assert not failed.passed
+        assert failed.failures == (
+            "student_loan_plan: a value lies outside the engine's enum domain.",
+        )
+        assert dict(failed.details) == {
+            "columns_checked": 1,
+            "allowed_values": {"student_loan_plan": ["NONE"]},
+            "columns_outside_domain": ["student_loan_plan"],
+        }
+        assert "PLAN_2" not in repr(failed)
+
     def test_an_engine_with_neither_names_itself(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
 
@@ -2375,6 +2422,13 @@ class TestCouncilTaxBandDomain:
             self._context(["H", "I", "H", "D"]), self._parameters()
         )
         assert result.passed, result.failures
+        # The UK wrapper keeps each nation's domain in its details (C-32).
+        assert set(result.details["partition_allowed_values"]["council_tax_band"]) == {
+            "ENGLAND",
+            "NORTHERN_IRELAND",
+            "SCOTLAND",
+            "WALES",
+        }
 
     @pytest.mark.parametrize(
         ("bands", "invalid"),
@@ -2389,7 +2443,21 @@ class TestCouncilTaxBandDomain:
 
         result = _evaluate_enum_domain(self._context(bands), self._parameters())
         assert not result.passed
-        assert result.details["invalid_examples"] == {"council_tax_band": invalid}
+        # The UK wrapper rebuilds the shared verdict without a count or an
+        # example of the values outside the domain (C-32, microcosm#931).
+        assert result.details["columns_outside_domain"] == ["council_tax_band"]
+        assert "invalid_examples" not in result.details
+        assert "invalid_counts" not in result.details
+        assert result.failures == (
+            "council_tax_band: a value lies outside its nation's domain.",
+        )
+        assert not any(value in str(result.details) for value in invalid)
+        assert set(result.details["partition_allowed_values"]["council_tax_band"]) == {
+            "ENGLAND",
+            "NORTHERN_IRELAND",
+            "SCOTLAND",
+            "WALES",
+        }
 
     def test_a_declaration_other_than_the_constant_is_refused(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
@@ -2405,7 +2473,7 @@ class TestCouncilTaxBandDomain:
     def test_a_region_without_a_nation_is_refused(self) -> None:
         from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
 
-        with pytest.raises(ValueError, match="regions with no nation"):
+        with pytest.raises(ValueError, match="regions with no nation") as caught:
             _evaluate_enum_domain(
                 self._context(
                     ["H", "I", "H", "D"],
@@ -2413,6 +2481,9 @@ class TestCouncilTaxBandDomain:
                 ),
                 self._parameters(),
             )
+        # The battery prints a raised refusal as the gate's failure, so it
+        # names the column, never a row's value (C-32, microcosm#931).
+        assert "UNKNOWN" not in str(caught.value)
 
 
 def test_weight_gate_bindings_fold_support_families_before_evaluating() -> None:
@@ -2921,6 +2992,29 @@ def test_the_stage_health_binding_reads_the_frame_for_the_band_donor_check_only(
     # The check runs at the spine's transferred boundary, whose battery hands
     # every gate the phase's frame.
     assert _band_donor_entry(uk_gates).phase == "transferred"
+
+
+def test_the_copy_area_check_reads_the_phase_frame_and_the_new_keys_route() -> None:
+    """The copy area check compares each copy with its parent on the phase's
+    frame, so the stage-health binding hands it the frame; the spine
+    geography checks' parameter keys route through the binding
+    (microcosm#931)."""
+
+    binding = UK_GATE_REGISTRY["stage_health"]
+    assert binding.requires_frame({"check": "copy_area_agreement"}) is True
+    for check in ("atomic_mapping_integrity", "area_home_values"):
+        assert binding.requires_frame({"check": check}) is False
+    assert {
+        "knots_level",
+        "accepted_outcomes",
+        "validation_scope",
+        "support_systems",
+        "columns_by_copy_layer",
+        "regions",
+        "maximum_sources_at_cap",
+        "knots_basis_year",
+        "rank_basis",
+    } <= binding.parameter_keys
 
 
 def test_the_band_donor_check_recomputes_a_capped_seating_from_the_phase_frame(
