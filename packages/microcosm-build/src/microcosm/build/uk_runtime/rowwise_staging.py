@@ -11,7 +11,10 @@ graph full-build driver and the rowwise tool stage identically; the tool
 imports them back. The run files and the staged dataset bundle both go to the
 build's emitter, which commits them with the build's own credential; this
 module makes no Hugging Face call. A build whose environment switches the Hub
-off (``HF_HUB_OFFLINE``, as on Modal) keeps its bundle local.
+off (``HF_HUB_OFFLINE``, as on Modal) keeps its bundle local. The bundle's
+hand-over names the build for the collector (:func:`collector_provenance`),
+so the emitter submits its calibration diagnostics there once the bundle's
+commit lands, while its collector submissions are on.
 """
 
 from __future__ import annotations
@@ -23,6 +26,8 @@ from collections.abc import Callable, Mapping
 from importlib import metadata
 from pathlib import Path
 from typing import Any
+
+from microcosm_emitter_interface import CollectorProvenance
 
 from microcosm.build.calibration_epoch_telemetry import (
     CALIBRATION_EPOCH_EVERY,
@@ -63,6 +68,7 @@ from microcosm.build.uk_runtime.rowwise_cli import (
     json_text,
     posture_of,
 )
+from microcosm.build.uk_runtime.rowwise_posture import UK_ROWWISE_POSTURES
 from microcosm.build.uk_runtime.staging import UK_STAGED_DATASET_PREFIX
 
 __all__ = [
@@ -70,7 +76,9 @@ __all__ = [
     "STAGING_UPLOAD_INTERVAL_SECONDS",
     "add_staging_artifact",
     "block_staging_run_bundle",
+    "UK_COLLECTOR_COUNTRY_CODE",
     "bundle_emitter",
+    "collector_provenance",
     "create_staging_run_bundle",
     "emit_calibration_progress",
     "fail_staging_run_bundle",
@@ -105,6 +113,16 @@ STAGED_DATASET_PHASES = {
 _STAGING_UPLOAD_INTERVAL_SECONDS = STAGING_UPLOAD_INTERVAL_SECONDS
 _STAGED_DATASET_PHASES = STAGED_DATASET_PHASES
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
+#: The country code the collector files UK builds under. Staging telemetry
+#: registers UK runs as ``GB``; the collector's calibration trees and Orrery
+#: graph files know the country as ``UK`` and keep a submission naming any
+#: other code in intake storage, building nothing from it.
+UK_COLLECTOR_COUNTRY_CODE = "UK"
+#: The releases a staged UK build can be a candidate for: each release role's
+#: release, whose builds publish into their own folders.
+_CANDIDATE_RELEASES = frozenset(
+    posture.release_id for posture in UK_ROWWISE_POSTURES.values()
+)
 
 
 def active_telemetry_emitter() -> LocalTelemetryEmitter | None:
@@ -609,6 +627,51 @@ def staging_delivery(
 _staging_delivery = staging_delivery
 
 
+def collector_provenance(
+    manifest: Mapping[str, Any], *, build_id: str
+) -> CollectorProvenance:
+    """The collector's provenance of a UK build's staged bundle.
+
+    ``build_id`` is the build's attempt ID, which a release build of it keeps
+    as its folder name, whatever run ID the staging used. Every UK staged
+    bundle holds licensed microdata. The candidate release is the manifest's
+    ``release_id`` when that is a release role's release (the national or
+    dense release, whose builds publish into their own folders); otherwise
+    the provenance names none, and the collector labels the staging tree
+    with the run ID. The interface raises ``ValueError`` for a build ID it
+    does not accept.
+    """
+
+    release = manifest.get("release_id")
+    candidate = (
+        release if isinstance(release, str) and release in _CANDIDATE_RELEASES else None
+    )
+    return CollectorProvenance(
+        country_code=UK_COLLECTOR_COUNTRY_CODE,
+        build_id=build_id,
+        licensed_data=True,
+        release=candidate,
+    )
+
+
+def _bundle_provenance(
+    manifest: Mapping[str, Any], *, build_id: str
+) -> CollectorProvenance | None:
+    """:func:`collector_provenance`, or None with a warning when it is refused."""
+
+    try:
+        return collector_provenance(manifest, build_id=build_id)
+    except ValueError:
+        print(
+            f"warning: build ID {build_id!r} is not one the collector accepts; the "
+            "staged dataset bundle is handed over without naming its build, so "
+            "the collector receives none of its files.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return None
+
+
 def stage_dataset(
     args: argparse.Namespace,
     *,
@@ -616,6 +679,7 @@ def stage_dataset(
     output_paths: Mapping[str, Path],
     run_id: str,
     staging_bundle: StagingRunBundleWriterV2 | None,
+    build_id: str | None = None,
 ) -> StagedBundleHandOver:
     """Stage the published bundle under ``staged/<run_id>/``; record, never raise.
 
@@ -623,7 +687,9 @@ def stage_dataset(
     manifest and two sidecars, verified from disk against the manifest's own
     digests. Nothing else in the run directory is eligible. The build's
     emitter uploads it; the result says which bundle files the build may
-    rewrite afterwards.
+    rewrite afterwards. The hand-over names the build for the collector
+    (:func:`collector_provenance`): ``build_id`` is the build's attempt ID,
+    by default the manifest's ``build_id`` or else ``run_id``.
     """
 
     mode = staged_dataset_mode(args)
@@ -690,6 +756,10 @@ def stage_dataset(
             emitter=bundle_emitter(),
             repository=repository,
             prefix=UK_STAGED_DATASET_PREFIX,
+            collector=_bundle_provenance(
+                manifest,
+                build_id=build_id or str(manifest.get("build_id") or run_id),
+            ),
         )
     delivery = handover.delivery
     print(_staged_dataset_line(delivery), file=sys.stderr, flush=True)

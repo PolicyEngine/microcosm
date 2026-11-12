@@ -58,6 +58,14 @@ build's record is still compared by later runs with the receipt. Without
 build manifest, which on a copied-back directory can make every later run with
 the receipt refuse it; pass the receipt with ``--local-only`` there.
 
+The hand-over names the build for the collector, as the build's own does
+(``rowwise_staging.collector_provenance``): the build ID is the manifest's
+``build_id`` (a national build's), else its Logbook row's (a dense build's),
+else the run ID, and the candidate release is the manifest's ``release_id``.
+The emitter then submits the bundle's calibration diagnostics to the
+collector once the commit lands, while its collector submissions are on. A
+hand-over the command resumes keeps what the build named.
+
 Staging is not publication: ``releases/`` and ``latest.json`` are untouched.
 """
 
@@ -102,7 +110,10 @@ from microcosm.build.uk_runtime.rowwise_cli import (
     BUILD_RECORD_FILENAME,
     SCORE_RECEIPT_FILENAME,
 )
-from microcosm.build.uk_runtime.rowwise_staging import STAGED_DATASET_PHASES
+from microcosm.build.uk_runtime.rowwise_staging import (
+    STAGED_DATASET_PHASES,
+    collector_provenance,
+)
 from microcosm.build.uk_runtime.staging import (
     UK_STAGED_DATASET_PREFIX,
     UK_STAGED_DATASET_REPOSITORY,
@@ -209,10 +220,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def _default_run_id(run_dir: Path, manifest: dict) -> str:
-    staged = manifest.get("staged_dataset")
-    if isinstance(staged, dict) and staged.get("run_id"):
-        return str(staged["run_id"])
+def _logbook_build_id(run_dir: Path) -> str | None:
+    """The build ID of the run directory's last Logbook spool row, if any."""
+
     rows = sorted(glob.glob(str(run_dir / "logbook-spool" / "*.json")))
     for row_path in reversed(rows):
         try:
@@ -221,7 +231,27 @@ def _default_run_id(run_dir: Path, manifest: dict) -> str:
             continue
         if isinstance(row, dict) and row.get("build_id"):
             return str(row["build_id"])
-    return run_dir.name
+    return None
+
+
+def _default_run_id(run_dir: Path, manifest: dict) -> str:
+    staged = manifest.get("staged_dataset")
+    if isinstance(staged, dict) and staged.get("run_id"):
+        return str(staged["run_id"])
+    return _logbook_build_id(run_dir) or run_dir.name
+
+
+def _build_id(run_dir: Path, manifest: dict, run_id: str) -> str:
+    """The build's attempt ID, which names it for the collector.
+
+    A national manifest records it; a dense build's Logbook row does. A
+    directory with neither is named by the run ID it is staged under.
+    """
+
+    recorded = manifest.get("build_id")
+    if isinstance(recorded, str) and recorded:
+        return recorded
+    return _logbook_build_id(run_dir) or run_id
 
 
 def _rewrite_manifest(path: Path, manifest: dict) -> None:
@@ -306,6 +336,14 @@ def main(argv: list[str] | None = None) -> int:
                 "error: HF_HUB_OFFLINE is set, so the emitter cannot upload the "
                 "bundle; unset it, or pass --local-only."
             )
+        build_id = _build_id(run_dir, manifest, run_id)
+        try:
+            provenance = collector_provenance(manifest, build_id=build_id)
+        except ValueError as exc:
+            raise SystemExit(
+                f"error: the build ID {build_id!r} is not one the collector "
+                f"accepts ({exc}); nothing was handed over."
+            ) from exc
         print(
             f"staging {run_dir} to {repository} under "
             f"{bundle.remote_prefix(UK_STAGED_DATASET_PREFIX)}...",
@@ -337,6 +375,7 @@ def main(argv: list[str] | None = None) -> int:
                     prefix=UK_STAGED_DATASET_PREFIX,
                     wait_seconds=args.wait_seconds,
                     earlier_files=None if handed_over is None else handed_over["files"],
+                    collector=provenance,
                 )
         finally:
             emitter.close()
