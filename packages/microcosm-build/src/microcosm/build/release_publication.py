@@ -45,6 +45,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,7 +59,11 @@ from microcosm_emitter_interface.publication import (
 )
 from microcosm_emitter_interface.releases import is_pointer_file
 
-from microcosm.build.staging_dataset import hub_offline, write_access_problem
+from microcosm.build.staging_dataset import (
+    RECEIPT_POLL_SECONDS,  # noqa: F401  (used by the change)
+    hub_offline,
+    write_access_problem,
+)
 from microcosm.build.telemetry_emitter import start_bundle_emitter
 from microcosm.data.contract import publishes_to_build_folder
 from microcosm.data.publish_cli import publication_refusal
@@ -157,6 +162,14 @@ class ReleaseEmitter(Protocol):
 #: Starts the short-lived emitter a publication uses (only its Hugging Face
 #: module); tests replace it.
 _start_release_emitter = start_bundle_emitter
+_clock = time.monotonic
+_sleep = time.sleep
+UK_COLLECTOR_COUNTRY_CODE = "UK"
+US_COLLECTOR_COUNTRY_CODE = "US"
+
+
+def collector_provenance(release: str, build: str) -> Any:
+    return None
 
 
 @dataclass(frozen=True)
@@ -175,6 +188,7 @@ class ReleasePublication:
     wanted_current: bool
     receipt: ReleaseReceipt
     problem: str | None = None
+    collector_receipt: Any = None
 
     @property
     def published(self) -> bool:
@@ -234,6 +248,7 @@ class ReleasePublication:
             "message": self.receipt.get("message"),
             "commit": self.receipt.get("commit"),
             "handover_id": self.receipt.get("handover_id"),
+            "collector_submission": None,
         }
 
 

@@ -119,6 +119,7 @@ STAGED_DATASET_WAIT_SECONDS = 1800.0
 RESTAGE_WAIT_SECONDS = 10800.0
 #: How often the build asks the emitter for the bundle's receipt meanwhile.
 RECEIPT_POLL_SECONDS = 1.0
+COLLECTOR_SUBMISSION_WAIT_SECONDS = 600.0
 
 _MODES = ("local_and_remote", "local_only", "disabled")
 _STATUSES = ("uploaded", "already_staged", "failed", "skipped")
@@ -823,6 +824,7 @@ class StagedBundleHandOver:
     handover_id: str | None = None
     #: The run directory the hand-over names its files in.
     run_dir: str | None = None
+    collector_receipt: Any = None
 
     def may_rewrite(self, name: str) -> bool:
         """Whether the build may change ``name`` in the run directory now."""
@@ -1140,6 +1142,7 @@ def stage_bundle(
     sleep: Callable[[float], None] = time.sleep,
     earlier_files: Mapping[str, Any] | None = None,
     collector: CollectorProvenance | None = None,
+    collector_wait_seconds: float = COLLECTOR_SUBMISSION_WAIT_SECONDS,
 ) -> StagedBundleHandOver:
     """Hand the bundle and its sidecars to the emitter; record, never raise.
 
@@ -1273,6 +1276,7 @@ def resume_hand_over(
     poll_seconds: float = RECEIPT_POLL_SECONDS,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    collector_wait_seconds: float = COLLECTOR_SUBMISSION_WAIT_SECONDS,
 ) -> StagedBundleHandOver | None:
     """Record the outcome of an earlier hand-over the emitter still holds.
 

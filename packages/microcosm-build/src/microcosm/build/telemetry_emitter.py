@@ -902,7 +902,9 @@ def _orrery_emitter() -> EmitterClient:
     )
 
 
-def start_bundle_emitter() -> EmitterClient:
+def start_bundle_emitter(
+    *, development_collector_url: str | None = None
+) -> EmitterClient:
     """A short-lived emitter with only the Hugging Face module.
 
     A command that stages a finished run's bundle, outside any build, uses
