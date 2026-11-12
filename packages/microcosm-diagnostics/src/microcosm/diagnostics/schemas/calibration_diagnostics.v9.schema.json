@@ -176,6 +176,7 @@
     },
     "HierarchyDimensionValueEntry": {
       "additionalProperties": false,
+      "description": "One value of a catalog dimension.\n\n``rank`` is the rows' ``value_rank`` for the value, from 0 in the order\nits source lists the dimension's values. It is absent when no row ranks\nthe value, and for every value of a dimension whose rows rank a value two\nways or give two values in one category the same rank\n(``catalog_calibration_diagnostics``). Readers sort by it.",
       "properties": {
         "id": {
           "title": "Id",
@@ -184,6 +185,19 @@
         "label": {
           "title": "Label",
           "type": "string"
+        },
+        "rank": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rank"
         }
       },
       "required": [

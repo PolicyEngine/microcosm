@@ -89,6 +89,7 @@
     },
     "HierarchyDimension": {
       "additionalProperties": false,
+      "description": "A dimension and the value a target selects.\n\n``value_rank`` is the value's position, from 0, in the order its source\nlists the dimension's values; absent when the source gives none.",
       "properties": {
         "id": {
           "title": "Id",
@@ -105,6 +106,19 @@
         "value_label": {
           "title": "Value Label",
           "type": "string"
+        },
+        "value_rank": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value Rank"
         }
       },
       "required": [
