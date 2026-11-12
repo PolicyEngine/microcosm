@@ -136,14 +136,21 @@ def test_disability_stage_resolves_the_survey_year_not_the_frame_period(
         years.append(year)
         return _flags()
 
+    def _carer_hours_reader(year: int) -> float:
+        years.append(year)
+        return 35.0
+
     monkeypatch.setattr(
         frs_disability, "uk_dwp_disability_category_rates", _category_reader
     )
     monkeypatch.setattr(frs_disability, "uk_dwp_disability_flag_rates", _flag_reader)
+    monkeypatch.setattr(
+        frs_disability, "uk_dwp_carers_allowance_min_hours", _carer_hours_reader
+    )
 
     result = frs_disability.UKFRSDisabilityStageTransform(stage=stage)(frame)
 
-    assert years == [2024, 2024]
+    assert years == [2024, 2024, 2024]
     assert uk_time_period(result) == "2023"
     assert result.table("person")["aa_category"].tolist() == ["HIGHER"]
 
