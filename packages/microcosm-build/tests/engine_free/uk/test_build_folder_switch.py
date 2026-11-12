@@ -877,3 +877,197 @@ def test_switch_ignores_branches_that_are_not_the_tagged_publishers(hub, capsys)
 
     assert exit_code == 0, error_output
     assert "releases.json" in hub.files_at()
+
+
+# The third step, after the switch: delete the old layout's files ----------
+
+DELETE_STEP = "delete-old-layout"
+#: The build folders the UK switch writes, which the step keeps.
+UK_BUILD_FOLDERS = (
+    f"releases/{NATIONAL}/{OLDER_NATIONAL_BUILD}",
+    NEWER_NATIONAL_FOLDER,
+    DENSE_FOLDER,
+    JUNE_2023_FOLDER,
+)
+
+
+def run_step(
+    hub: FakeDatasetRepository, capsys, step: str, *options: str
+) -> tuple[int, dict, str]:
+    """``run``, also when the tool refuses its arguments (exit code 2)."""
+    try:
+        return run(hub, capsys, step, *options)
+    except SystemExit as refusal:
+        return int(refusal.code or 0), {}, capsys.readouterr().err
+
+
+def switched(hub: FakeDatasetRepository, capsys) -> None:
+    """Copy and switch the in-memory UK repository, as its switch did."""
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+    exit_code, _, error_output = run(
+        hub, capsys, "switch", "--write", *INCLUDE_JUNE_2023
+    )
+    assert exit_code == 0, error_output
+
+
+def old_layout_files(files) -> set[str]:
+    """Every file on ``main`` except ``releases.json``, ``.gitattributes`` and
+    the build folders' files: what the old layout left behind."""
+    return {
+        path
+        for path in files
+        if path not in {"releases.json", ".gitattributes"}
+        and not any(path.startswith(f"{folder}/") for folder in UK_BUILD_FOLDERS)
+    }
+
+
+def test_delete_old_layout_without_write_lists_the_old_files_and_changes_nothing(
+    hub, capsys
+):
+    switched(hub, capsys)
+    head, commits = hub.main, len(hub.made)
+
+    exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP)
+
+    assert exit_code == 0, error_output
+    expected = old_layout_files(hub.files_at())
+    # The root dataset files and every file directly in a release folder,
+    # including the June 2023 build's own release folder.
+    assert {
+        "microcosm_uk_2024_25.h5",
+        "microcosm_uk_2024_25_calibration.npz",
+        "populace_uk_2023.h5",
+        f"releases/{NATIONAL}/release_manifest.json",
+        f"releases/{DENSE}/release_manifest.json",
+        JUNE_2023_MANIFEST,
+    } <= expected
+    assert report.get("delete") == sorted(expected)
+    assert report.get("problems") == []
+    assert report.get("written") is False
+    assert (hub.main, len(hub.made)) == (head, commits)
+    assert "Nothing was written" in error_output
+
+
+def test_delete_old_layout_leaves_only_build_folders_and_releases_json(hub, capsys):
+    switched(hub, capsys)
+    head = hub.main
+    before = dict(hub.files_at())
+
+    exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
+
+    assert exit_code == 0, error_output
+    assert report.get("written") is True
+    commit = hub.made[-1]
+    assert report.get("commit") == commit["commit"] == hub.main
+    assert commit["parent"] == head
+    deleted = sorted(operation[1] for operation in commit["operations"])
+    assert {operation[0] for operation in commit["operations"]} == {"delete"}
+    assert deleted == sorted(old_layout_files(before))
+    files = hub.files_at()
+    assert old_layout_files(files) == set()
+    assert {"releases.json", ".gitattributes"} <= set(files)
+    # Every build folder is untouched, and the record still checks out.
+    assert {
+        path: content
+        for path, content in before.items()
+        if any(path.startswith(f"{folder}/") for folder in UK_BUILD_FOLDERS)
+    } == {
+        path: content for path, content in files.items() if path.startswith("releases/")
+    }
+    record = ReleasesRecord.parse(files["releases.json"])
+    assert check_repository(record, list(files), files.__getitem__) == []
+    # The old builds stay at their tags.
+    assert "microcosm_uk_2024_25.h5" in hub.files_at(OLDER_NATIONAL_TAG)
+    assert JUNE_2023_MANIFEST in hub.files_at(JUNE_2023_TAG)
+
+
+def test_delete_old_layout_keeps_files_outside_the_release_layout(hub, capsys):
+    switched(hub, capsys)
+    outside = {
+        "README.md": b"# populace-uk-private\n",
+        "notes.json": b"{}",
+        "staged/uk-attempt/microcosm_uk_2024_25.h5": b"staged rows",
+        "runs/uk-attempt/progress.json": b"{}",
+    }
+    hub.seed(outside, date=LATER)
+
+    exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
+
+    assert exit_code == 0, error_output
+    files = hub.files_at()
+    for path, content in outside.items():
+        assert files.get(path) == content, path
+    assert report.get("kept_root_files") == [
+        ".gitattributes",
+        "README.md",
+        "notes.json",
+        "releases.json",
+    ]
+    assert report.get("kept_directories") == ["runs", "staged"]
+
+
+def test_delete_old_layout_refuses_a_repository_that_has_not_switched(hub, capsys):
+    run(hub, capsys, "copy", "--write", *INCLUDE_JUNE_2023)
+    head, commits = hub.main, len(hub.made)
+
+    exit_code, _, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
+
+    assert exit_code == 1
+    assert "has not switched" in error_output
+    assert (hub.main, len(hub.made)) == (head, commits)
+
+
+def test_delete_old_layout_refuses_while_a_pointer_file_is_there(hub, capsys):
+    switched(hub, capsys)
+    hub.seed({"latest.json": b"{}"}, date=LATER)
+    head, commits = hub.main, len(hub.made)
+
+    exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
+
+    assert exit_code == 1, error_output
+    assert any("latest.json" in problem for problem in report.get("problems", []))
+    assert (hub.main, len(hub.made)) == (head, commits)
+
+
+def test_delete_old_layout_refuses_a_build_folder_the_record_does_not_list(hub, capsys):
+    """A folder that holds a release manifest is a build's folder; the step
+    deletes no build, so one the record does not list stops it."""
+    switched(hub, capsys)
+    unlisted = (
+        f"releases/{NATIONAL}/uk-frs-calibration-attempt-20261111T000000Z-0badcafe"
+    )
+    hub.seed({f"{unlisted}/release_manifest.json": b"{}"}, date=LATER)
+    head, commits = hub.main, len(hub.made)
+
+    exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
+
+    assert exit_code == 1, error_output
+    assert any(unlisted in problem for problem in report.get("problems", []))
+    assert (hub.main, len(hub.made)) == (head, commits)
+
+
+def test_delete_old_layout_again_finds_nothing_to_delete(hub, capsys):
+    switched(hub, capsys)
+    first, _, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
+    assert first == 0, error_output
+    head, commits = hub.main, len(hub.made)
+
+    exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
+
+    assert exit_code == 0, error_output
+    assert report.get("delete") == []
+    assert report.get("written") is False
+    assert (hub.main, len(hub.made)) == (head, commits)
+
+
+def test_delete_old_layout_takes_none_of_the_switch_options(hub, capsys):
+    switched(hub, capsys)
+    head = hub.main
+
+    exit_code, _, error_output = run_step(
+        hub, capsys, DELETE_STEP, "--write", *INCLUDE_JUNE_2023
+    )
+
+    assert exit_code == 1
+    assert "--include" in error_output
+    assert hub.main == head
