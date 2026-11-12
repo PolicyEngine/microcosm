@@ -124,8 +124,30 @@ def test_licence_of_quotes_the_manifest(tmp_path: Path) -> None:
             "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
         ),
         "attribution": "Source: an example publisher.",
+        "license_source": "manifest",
     }
     with pytest.raises(ValueError, match="no licence"):
         licence_of({"package_id": "x"})
     with pytest.raises(ValueError, match="package_id"):
         licence_of({"license": "MIT"})
+
+
+def test_a_declared_licence_fills_only_a_manifest_that_states_none() -> None:
+    declared = {"license": "Open Government Licence v3.0", "attribution": "Ours."}
+    assert licence_of({"package_id": "x"}, declared=declared) == {
+        "package_id": "x",
+        "license": "Open Government Licence v3.0",
+        "attribution": "Ours.",
+        "license_source": "declared",
+    }
+    # The manifest's own words win over a declaration.
+    stated = {"package_id": "x", "license": "MIT"}
+    assert licence_of(stated, declared=declared) == {
+        "package_id": "x",
+        "license": "MIT",
+        "license_source": "manifest",
+    }
+    with pytest.raises(ValueError, match="but no licence"):
+        licence_of({"package_id": "x", "attribution": "Theirs."}, declared=declared)
+    with pytest.raises(ValueError, match="declared for x"):
+        licence_of({"package_id": "x"}, declared={"attribution": "Ours."})

@@ -23,6 +23,54 @@ METHOD_VERSION = "uk-stock-cells-v1"
 ISSUE = "PolicyEngine/microcosm#1524"
 
 # ----------------------------------------------------------------------------
+# Licences the older manifests leave out
+
+_OGL = "Open Government Licence v3.0"
+_OGL_URL = "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
+_HMLR_ATTRIBUTION = (
+    "Contains HM Land Registry data © Crown copyright and database right 2026. "
+    "This data is licensed under the Open Government Licence v3.0."
+)
+_FROM_HOME_STOCK = (
+    "The Chronicle manifest (chronicle#349) states no licence fields. Microcosm "
+    "records the licence and attribution that its high-value home stock builder "
+    "states for this input (tools/build_uk_high_value_home_stock.py, LICENCE; "
+    "reviewed in microcosm#1240)."
+)
+#: The licence of each package whose Chronicle manifest states none, as the
+#: home-stock builder already words it. No verification date is given: the
+#: publishers' pages were not read again for this table. A manifest that
+#: states its own licence always wins (``pinned_inputs.licence_of``).
+DECLARED_LICENCES: dict[str, dict[str, str]] = {
+    "hmlr-price-paid-data-yearly-august-2026": {
+        "license": _OGL,
+        "license_url": _OGL_URL,
+        "attribution": _HMLR_ATTRIBUTION,
+        "license_evidence": (
+            _FROM_HOME_STOCK + " The address data is under Royal Mail and Ordnance "
+            "Survey terms; the stock cells publish none."
+        ),
+    },
+    "hmlr-uk-hpi-full-file-july-2026": {
+        "license": _OGL,
+        "license_url": _OGL_URL,
+        "attribution": _HMLR_ATTRIBUTION,
+        "license_evidence": _FROM_HOME_STOCK,
+    },
+    "ons-nspl-august-2026": {
+        "license": _OGL + ", with Ordnance Survey and Royal Mail notices",
+        "license_url": _OGL_URL,
+        "attribution": (
+            "Source: Office for National Statistics licensed under the Open "
+            "Government Licence v.3.0. Contains OS data © Crown copyright and "
+            "database right 2026. Contains Royal Mail data © Royal Mail copyright "
+            "and database right 2026."
+        ),
+        "license_evidence": _FROM_HOME_STOCK,
+    },
+}
+
+# ----------------------------------------------------------------------------
 # Dates and the dwelling table
 
 #: VOA counts the stock at this date.

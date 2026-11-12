@@ -266,7 +266,10 @@ def _verify_package(
     }
     return {
         "registration": pinned_inputs.registration(manifest, verified),
-        "licence": pinned_inputs.licence_of(manifest),
+        "licence": pinned_inputs.licence_of(
+            manifest,
+            declared=declared.DECLARED_LICENCES.get(str(manifest.get("package_id"))),
+        ),
     }
 
 

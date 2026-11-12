@@ -102,20 +102,45 @@ def registration(
     }
 
 
-def licence_of(manifest: Mapping[str, object]) -> dict[str, str]:
+def licence_of(
+    manifest: Mapping[str, object], *, declared: Mapping[str, object] | None = None
+) -> dict[str, str]:
     """The licence a manifest states for its package, as the publisher words it.
 
     Returns the package id and each of :data:`LICENCE_FIELDS` the manifest
     carries. A methods note builds its attribution text from these fields,
     so it never restates a licence from memory.
+
+    Some older manifests state no licence fields at all. A builder may then
+    pass ``declared``, the licence fields it records for that package itself.
+    ``license_source`` says which of the two the record quotes, so a reader
+    can tell a manifest's words from a builder's. A manifest that states some
+    licence fields but no licence is refused, since mixing the two would hide
+    a manifest to fix.
     """
     if not manifest.get("package_id"):
         raise ValueError("The manifest names no package_id.")
-    out = {"package_id": str(manifest["package_id"])}
+    package_id = str(manifest["package_id"])
+    out = {"package_id": package_id}
     for field in LICENCE_FIELDS:
         value = manifest.get(field)
         if value not in (None, ""):
             out[field] = str(value)
+    if "license" in out:
+        out["license_source"] = "manifest"
+        return out
+    if declared is None:
+        raise ValueError(f"The manifest of {package_id} states no licence.")
+    partial = sorted(set(out) - {"package_id"})
+    if partial:
+        raise ValueError(
+            f"The manifest of {package_id} states {partial} but no licence."
+        )
+    for field in LICENCE_FIELDS:
+        value = declared.get(field)
+        if value not in (None, ""):
+            out[field] = str(value)
     if "license" not in out:
-        raise ValueError(f"The manifest of {out['package_id']} states no licence.")
+        raise ValueError(f"The licence declared for {package_id} states no licence.")
+    out["license_source"] = "declared"
     return out
