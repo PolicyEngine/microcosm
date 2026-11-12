@@ -13,8 +13,9 @@ build's emitter, which commits them with the build's own credential; this
 module makes no Hugging Face call. A build whose environment switches the Hub
 off (``HF_HUB_OFFLINE``, as on Modal) keeps its bundle local. The bundle's
 hand-over names the build for the collector (:func:`collector_provenance`),
-so the emitter submits its calibration diagnostics there once the bundle's
-commit lands, while its collector submissions are on.
+so the emitter, whose collector submissions are on, submits its calibration
+diagnostics there once the bundle's commit lands, and the build waits for the
+collector to accept them (``staging_dataset.follow_collector_submissions``).
 """
 
 from __future__ import annotations

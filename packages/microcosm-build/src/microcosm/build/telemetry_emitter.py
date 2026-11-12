@@ -14,6 +14,13 @@ settings travel on its standard input, never in environment variables or
 process arguments. No call raises into the build: a missing, slow,
 refusing or outdated emitter leaves the build running without it.
 
+Every emitter the adapter starts has its Hugging Face module's collector
+submissions switched on (``COLLECTOR_SUBMISSIONS``): a staged bundle or
+release publication that names its build (``CollectorProvenance``) is also
+submitted to the collector after its Hugging Face commit, with the same
+credential. The emitter's own default leaves them off, so switching them
+off again is a change here, not an emitter release.
+
 Starting the adapter is the exception, and only through
 ``MICROCOSM_TELEMETRY_REQUIRED``. With ``1`` (a build that must send
 telemetry) it raises ``TelemetryRequiredError`` when the emitter cannot be
@@ -67,6 +74,7 @@ from microcosm_emitter_interface.orrery import (
     unavailable_receipt,
 )
 from microcosm_emitter_interface.protocol import HUGGING_FACE_MODULE, TELEMETRY_MODULE
+from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 from microcosm_emitter_interface.telemetry import (
     DEFAULT_FAILURE_CLASS,
     DEFAULT_HEARTBEAT_SECONDS,
@@ -78,6 +86,7 @@ from microcosm_emitter_interface.telemetry import (
 from microcosm.build.telemetry_identity import runtime_identity
 
 __all__ = [
+    "COLLECTOR_SUBMISSIONS",
     "DEFAULT_HEARTBEAT_SECONDS",
     "MINIMUM_EMITTER_VERSION",
     "TELEMETRY_REQUIRED_VARIABLE",
@@ -88,6 +97,7 @@ __all__ = [
     "TelemetryRequiredError",
     "TelemetryRun",
     "emitter_problem",
+    "hugging_face_settings",
     "publication_inventory",
     "publish_graph",
     "start_bundle_emitter",
@@ -128,15 +138,24 @@ def _packaged_minimum_emitter_version() -> str:
     return version
 
 
-#: The oldest emitter release a build starts: 0.13.0 since 2026-11-05, the
-#: newest release then. 0.13.0 added ``microcosm-emitter status``, which the
-#: Modal stage runner runs in the container after a stage's tool to record how
-#: many telemetry events each run left undelivered, so the image needs it; a
-#: build requires the same release, so that the release is written once
+#: The oldest emitter release a build starts: 0.15.0 since 2026-11-13, the
+#: newest release then. 0.15.0 adds the Hugging Face module's setting that
+#: switches collector submissions on (``hugging_face_settings``), collector
+#: provenance on a release publication, which it submits after the release
+#: commit, and a ``skipped`` collector receipt with an error code when it
+#: refuses its collector settings. An older emitter accepts the setting but
+#: drops a publication's provenance, so it would submit no release, and its
+#: hand-over ID differs from the interface's. 0.14.0, from 2026-11-09, added
+#: the build machine's readings. 0.13.0, from 2026-11-05, added
+#: ``microcosm-emitter status``, which the Modal stage runner runs in the
+#: container after a stage's tool to record how many telemetry events each
+#: run left undelivered, so the image needs it; a build requires the same
+#: release, so that the release is written once
 #: (``MINIMUM_EMITTER_VERSION_RESOURCE``). Practically no machine ran the
-#: separately installed emitter yet, so refusing 0.11.9 to 0.12.5 cost
-#: nothing then. Earlier floors: 0.11.9 from 2026-11-02, because since 0.10.0
-#: the emitter sends to the collector's hostname by default, which stays the
+#: separately installed emitter at any of these rises, so refusing the
+#: releases before them cost nothing. Earlier floors: 0.11.9 from
+#: 2026-11-02, because since 0.10.0 the emitter sends to the collector's
+#: hostname by default, which stays the
 #: same when the collector moves to another Google Cloud project, while
 #: earlier releases send to its Cloud Run address, which changes with the
 #: move; 0.11.1 fixed two cases in which the telemetry module stopped. A
@@ -593,6 +612,10 @@ class BundleEmitter(Protocol):
         self, handover_id: str
     ) -> DatasetBundleReceipt | None: ...
 
+    def collector_submission_receipt(
+        self, handover_id: str
+    ) -> CollectorSubmissionReceipt | None: ...
+
     def check_write_access(self, repository: str) -> WriteAccess: ...
 
     def close(self) -> None: ...
@@ -725,10 +748,7 @@ class LocalTelemetryEmitter:
                 heartbeat_seconds=heartbeat_seconds,
             ),
             orrery=OrrerySettings(development_collector_url=development_collector_url),
-            # Its queue is the hand-over database beside the spool database
-            # (``events.handovers.sqlite3``), so emitters of every release can
-            # share the spool database on one machine.
-            hugging_face=HuggingFaceSettings(),
+            hugging_face=hugging_face_settings(development_collector_url),
             spool_path=path,
             startup_timeout=startup_timeout_seconds,
         )
@@ -895,6 +915,31 @@ class LocalTelemetryEmitter:
         )
 
 
+#: Whether the emitters a build starts submit described staged bundles and
+#: release publications to the collector. On since emitter 0.15.0
+#: (2026-11-13), whose default leaves them off: switching them off again is
+#: this change, not an emitter release.
+COLLECTOR_SUBMISSIONS = True
+
+
+def hugging_face_settings(
+    development_collector_url: str | None = None,
+) -> HuggingFaceSettings:
+    """The Hugging Face module's settings for every emitter a build starts.
+
+    Its queue is the hand-over database beside the spool database
+    (``events.handovers.sqlite3``), so emitters of every release can share
+    the spool database on one machine. Collector submissions are switched
+    on (``COLLECTOR_SUBMISSIONS``) and go to the production collector, or to
+    ``development_collector_url``, a loopback collector for tests and local
+    development, as telemetry and Orrery graph publication do.
+    """
+    return HuggingFaceSettings(
+        collector_submissions=COLLECTOR_SUBMISSIONS,
+        development_collector_url=development_collector_url,
+    )
+
+
 def _orrery_emitter() -> EmitterClient:
     """A short-lived emitter that runs only the Orrery module."""
     return _start_emitter(
@@ -907,13 +952,15 @@ def start_bundle_emitter(
 ) -> EmitterClient:
     """A short-lived emitter with only the Hugging Face module.
 
-    A command that stages a finished run's bundle, outside any build, uses
-    it; the caller closes it. Its hand-over queue is the one builds on this
-    machine share (``events.handovers.sqlite3``), so it also resumes their
-    queued hand-overs.
+    A command that stages a finished run's bundle or publishes a release,
+    outside any build, uses it; the caller closes it. Its hand-over queue is
+    the one builds on this machine share (``events.handovers.sqlite3``), so
+    it also resumes their queued hand-overs. Its collector submissions are on,
+    as a build's are (:func:`hugging_face_settings`).
     """
     return _start_emitter(
-        hugging_face=HuggingFaceSettings(), startup_timeout=STARTUP_TIMEOUT_SECONDS
+        hugging_face=hugging_face_settings(development_collector_url),
+        startup_timeout=STARTUP_TIMEOUT_SECONDS,
     )
 
 

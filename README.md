@@ -63,7 +63,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
-microcosm-emitter version           # the installed release; builds need 0.14.0 or later
+microcosm-emitter version           # the installed release; builds need 0.15.0 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -76,7 +76,12 @@ no remote staging, and queues no Orrery graph publication; a UK build given
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
-start one older than 0.14.0. That release adds the build machine's
+start one older than 0.15.0. That release adds the setting that switches
+the Hugging Face module's collector submissions on, which every emitter a
+build starts sets, so staged bundles and release publications that name
+their build reach the collector; collector provenance on a release
+publication; and a `skipped` collector receipt when the emitter refuses its
+collector settings. 0.14.0 added the build machine's
 readings: each heartbeat carries the machine's memory, CPU and disk use and
 the build's processes, a heartbeat after the machine wakes carries the sleep,
 the run's first event describes the machine, each stage's end says how long
@@ -90,12 +95,12 @@ which builds read as package data and the Modal image's install step reads
 from the launching checkout. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the
-collector's hostname, which stays the same. 0.13.0 and 0.14.0 were each
-the newest release when practically no machine ran the emitter yet, so
+collector's hostname, which stays the same. 0.13.0, 0.14.0 and 0.15.0 were
+each the newest release when practically no machine ran the emitter yet, so
 requiring them cost nothing (see
 [graph publication](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
-upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.14.0'`,
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.15.0'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build
@@ -118,7 +123,7 @@ if the emitter cannot be prepared or is missing, its
 `microcosm-emitter version` times out or fails, it is older than the
 minimum, it lists no protocol version 1, its `hello` fails, it exits or
 times out before it is ready, or it starts without its telemetry module.
-Every emitter a build starts (0.14.0 and later, the minimum) reads a given
+Every emitter a build starts (0.15.0 and later, the minimum) reads a given
 collector token, and exits at that point when the collector-token
 variables it inherits (`MICROCOSM_COLLECTOR_TOKEN`,
 `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
@@ -531,7 +536,17 @@ three hours for a publication to land or be refused, which covers the
 emitter's one-hour expiry of a pending change and the upload of a US ACS
 local-area build of about 10 GB, and five minutes for a promotion.
 `--preflight-only` checks the build and lists what would be published,
-offline, and starts no emitter. The calibration diagnostics dashboard posts
+offline, and starts no emitter. A publication names its build for the
+collector: country `UK` with licensed data for the UK releases, `US`
+without for the US releases, and the release and build of its folder. The
+emitter submits the build's calibration diagnostics, with its build and
+release manifests, to the collector after the release commit, so once the
+publication has landed the command waits up to ten minutes for the collector
+to accept them before it closes the emitter. The printed outcome's
+`collector_submission` gives the collector receipt's `status` and
+`error_code`; a collector that receives nothing (`skipped`, for example
+`COLLECTOR_SETTINGS_REFUSED`), rejects them or has not accepted them yet is a
+warning and never fails the command. The calibration diagnostics dashboard posts
 these releases' Slack alerts from changes to `releases.json`. The UK
 assemblers, the US national builder and the US ACS package stage print the
 exact commands; the UK

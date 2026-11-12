@@ -19,7 +19,10 @@ rewrites a bundle file afterwards only when the receipt lists it in
 ``copied_files`` (:meth:`StagedBundleHandOver.may_rewrite`). A hand-over that
 names its build (``collector``, a ``CollectorProvenance``) also asks the
 emitter to submit the bundle's calibration diagnostics to the collector once
-its commit lands, while the emitter's collector submissions are on.
+its commit lands; every emitter a build starts has its collector submissions
+on. Once the commit has landed, the build waits until the collector accepts
+them (:func:`follow_collector_submissions`), since an emitter that is closing
+starts no new submission.
 
 The module knows nothing about a country's manifest beyond the ``outputs``
 mapping shape ``{name: {"path", "sha256", "bytes"}}``; callers pass the manifest
@@ -39,7 +42,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Final, Literal, TypedDict, cast, get_args
+from typing import Any, Final, Literal, Protocol, TypedDict, cast, get_args
 
 from microcosm_emitter_interface import (
     BundleFile,
@@ -55,11 +58,13 @@ from microcosm_emitter_interface.bundles import (
     unavailable_bundle_receipt,
 )
 from microcosm_emitter_interface.identifiers import repository_identifier
+from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 
 from microcosm.build.staging_storage import HuggingFaceDatasetStorage
 from microcosm.build.telemetry_emitter import BundleEmitter, emitter_problem
 
 __all__ = [
+    "COLLECTOR_SUBMISSION_WAIT_SECONDS",
     "DEFAULT_STAGED_DATASET_PREFIX",
     "AT_BUILD_RECORD_KEY",
     "HANDOVER_RECORD_KEY",
@@ -72,6 +77,7 @@ __all__ = [
     "STAGED_MANIFEST_FILENAME",
     "STAGED_MANIFEST_SCHEMA",
     "BundleEmitter",
+    "CollectorReceipts",
     "StagedBundleHandOver",
     "StagedDatasetBundle",
     "StagedDatasetDelivery",
@@ -83,6 +89,7 @@ __all__ = [
     "delivery_covers_bundle",
     "disabled_staged_dataset",
     "fetch_bundle",
+    "follow_collector_submissions",
     "handover_record",
     "hub_offline",
     "local_only_staged_dataset",
@@ -119,7 +126,37 @@ STAGED_DATASET_WAIT_SECONDS = 1800.0
 RESTAGE_WAIT_SECONDS = 10800.0
 #: How often the build asks the emitter for the bundle's receipt meanwhile.
 RECEIPT_POLL_SECONDS = 1.0
+#: How long the build waits, once a described bundle or publication has
+#: landed on Hugging Face, for the collector to accept its submissions. The
+#: emitter's collector row may have retried every five minutes while it
+#: waited for the commit, and its next attempt then uploads the files, so
+#: ten minutes covers one attempt after the commit. The wait also ends at
+#: that attempt when it fails. An emitter that is closing starts no new
+#: submission; one still queued then is sent by the next emitter started on
+#: the machine.
 COLLECTOR_SUBMISSION_WAIT_SECONDS = 600.0
+#: A collector receipt's ``pending`` code while the bundle's or publication's
+#: Hugging Face commit has not landed.
+_WAITING_FOR_HUGGING_FACE = "WAITING_FOR_HUGGING_FACE"
+#: What each ``skipped`` code of a collector receipt means.
+_SKIPPED_REASONS: Final[Mapping[str, str]] = {
+    "COLLECTOR_SETTINGS_REFUSED": (
+        "the emitter refused its collector settings or the collector-token "
+        "variables it inherits"
+    ),
+    "COLLECTOR_FOLDER_TOO_LONG": (
+        "its Hugging Face folder is longer than the collector accepts"
+    ),
+    "NOT_STAGED_ON_HUGGING_FACE": "Hugging Face refused it",
+    "NOT_PUBLISHED_ON_HUGGING_FACE": "Hugging Face refused it",
+}
+#: Added to a ``COLLECTOR_SETTINGS_REFUSED`` warning.
+_SETTINGS_REFUSED_ADVICE = (
+    " The emitter's own warning gives the error type. Check "
+    "MICROCOSM_COLLECTOR_TOKEN, MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and "
+    "MICROCOSM_COLLECTOR_ORIGIN, which are set together or not at all; "
+    "without them the emitter uses the Hugging Face credential."
+)
 
 _MODES = ("local_and_remote", "local_only", "disabled")
 _STATUSES = ("uploaded", "already_staged", "failed", "skipped")
@@ -207,6 +244,10 @@ _ROLE_SEPARATORS = re.compile(r"[^a-z0-9]+")
 _HEXADECIMAL_TOKEN = re.compile(r"^(?=[0-9a-f]*[0-9])[0-9a-f]{8,}$")
 #: An emitter's own error code, printed only when it has this shape.
 _EMITTER_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+#: A collector receipt's code, printed only when it has this shape: the
+#: emitter's codes, or the collector's own, which are lower case
+#: (``content_mismatch``).
+_COLLECTOR_CODE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 
 
 class StagedDatasetError(ValueError):
@@ -824,7 +865,9 @@ class StagedBundleHandOver:
     handover_id: str | None = None
     #: The run directory the hand-over names its files in.
     run_dir: str | None = None
-    collector_receipt: Any = None
+    #: The emitter's last collector receipt of the hand-over, or None when
+    #: the build asked for none or the emitter has no collector row for it.
+    collector_receipt: CollectorSubmissionReceipt | None = None
 
     def may_rewrite(self, name: str) -> bool:
         """Whether the build may change ``name`` in the run directory now."""
@@ -996,6 +1039,126 @@ def _minutes(seconds: float) -> str:
     return f"{seconds / 60:g} minutes"
 
 
+def _attempted_after_commit(
+    receipt: Mapping[str, Any], earlier_attempts: object
+) -> bool:
+    """Whether an attempt that found the Hugging Face commit has finished."""
+    attempts = receipt.get("attempts")
+    return (
+        isinstance(attempts, int)
+        and isinstance(earlier_attempts, int)
+        and attempts > earlier_attempts
+        and receipt.get("error_code") != _WAITING_FOR_HUGGING_FACE
+    )
+
+
+def _collector_warning(receipt: Mapping[str, Any], subject: str) -> str | None:
+    """What the build says about a collector receipt, or None."""
+    status = receipt.get("status")
+    raw_code = receipt.get("error_code")
+    code = (
+        raw_code
+        if isinstance(raw_code, str) and _COLLECTOR_CODE.fullmatch(raw_code)
+        else None
+    )
+    if status == "skipped":
+        reason = _SKIPPED_REASONS.get(str(code), "the emitter skipped them")
+        advice = (
+            _SETTINGS_REFUSED_ADVICE if code == "COLLECTOR_SETTINGS_REFUSED" else ""
+        )
+        return (
+            f"the collector receives nothing of {subject}: {reason} "
+            f"({code or 'no code'}).{advice}"
+        )
+    if status == "rejected":
+        return (
+            f"the collector rejected the submissions of {subject} "
+            f"({code or 'no code'})."
+        )
+    if status == "failed":
+        return (
+            f"the submissions of {subject} to the collector failed "
+            f"({code or 'no code'})."
+        )
+    if status == "pending":
+        detail = f" ({code})" if code else ""
+        return (
+            f"the collector had not accepted the submissions of {subject} when "
+            f"the build stopped waiting{detail}; the emitter keeps them queued, "
+            "and it or the next emitter started on this machine sends them."
+        )
+    return None
+
+
+class CollectorReceipts(Protocol):
+    """The emitter calls :func:`follow_collector_submissions` makes."""
+
+    @property
+    def available(self) -> bool: ...
+
+    def collector_submission_receipt(
+        self, handover_id: str
+    ) -> CollectorSubmissionReceipt | None: ...
+
+
+def follow_collector_submissions(
+    emitter: CollectorReceipts,
+    handover_id: str,
+    *,
+    subject: str,
+    wait_seconds: float | None,
+    poll_seconds: float = RECEIPT_POLL_SECONDS,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> CollectorSubmissionReceipt | None:
+    """The hand-over's collector receipt, once the collector has taken it.
+
+    ``wait_seconds`` is None for a hand-over whose Hugging Face commit has
+    not landed: its submissions wait for the commit, so the build asks once,
+    and warns only when the collector will receive nothing. Otherwise the
+    build waits, at most ``wait_seconds``, while the receipt is ``pending``,
+    until an attempt that found the commit has finished: one that the
+    collector accepted ends ``pending``, and one that failed is retried by
+    the emitter. Any answer but an accepted or succeeded one is a warning
+    naming ``subject``. None, without a warning, when the emitter has no
+    collector row for the hand-over (it named no build, or no file the
+    collector takes) or does not answer.
+    """
+
+    if not emitter.available:
+        return None
+    receipt = emitter.collector_submission_receipt(handover_id)
+    if receipt is None:
+        return None
+    if wait_seconds is not None:
+        earlier_attempts = receipt.get("attempts")
+        deadline = clock() + max(0.0, float(wait_seconds))
+        while (
+            receipt.get("status") == "pending"
+            and not _attempted_after_commit(receipt, earlier_attempts)
+            and clock() < deadline
+        ):
+            sleep(poll_seconds)
+            latest = emitter.collector_submission_receipt(handover_id)
+            if latest is None:
+                break
+            receipt = latest
+    elif receipt.get("status") == "pending":
+        return receipt
+    warning = _collector_warning(receipt, subject)
+    if warning is not None:
+        _warn(warning)
+    return receipt
+
+
+def _staged_subject(remote_prefix: str) -> str:
+    return f"the staged dataset bundle {remote_prefix}"
+
+
+def _landed(delivery: Mapping[str, Any]) -> bool:
+    return delivery["status"] in ("uploaded", "already_staged")
+
+
 def _delivery_from_receipt(
     record: Mapping[str, Any],
     receipt: Mapping[str, Any],
@@ -1150,7 +1313,10 @@ def stage_bundle(
     this run, if any; a ``REMOTE_DIFFERS`` warning then says when the folder
     may hold that bundle. ``collector`` names the build, so the emitter also
     submits the bundle's calibration diagnostics to the collector (see
-    :func:`bundle_request`).
+    :func:`bundle_request`); once the commit has landed, the build waits at
+    most ``collector_wait_seconds`` for the collector to accept them
+    (:func:`follow_collector_submissions`), and only asks whether it will
+    receive them otherwise.
 
     The emitter writes every file under ``<prefix>/<run_id>/`` in one commit,
     idempotent on the outputs' digests (``already_staged``, or
@@ -1217,12 +1383,25 @@ def stage_bundle(
     )
     if answer.get("status") not in _QUEUED_STATUSES:
         return StagedBundleHandOver(delivery)
+    handover_id = _handover_id(answer)
+    collector_receipt = None
+    if collector is not None and emitter is not None and handover_id is not None:
+        collector_receipt = follow_collector_submissions(
+            emitter,
+            handover_id,
+            subject=_staged_subject(remote_prefix),
+            wait_seconds=collector_wait_seconds if _landed(delivery) else None,
+            poll_seconds=poll_seconds,
+            clock=clock,
+            sleep=sleep,
+        )
     return StagedBundleHandOver(
         delivery,
         handed_over=frozenset(item.name for item in request.files),
         copied_files=_copied_files(answer, receipt),
-        handover_id=_handover_id(answer),
+        handover_id=handover_id,
         run_dir=str(bundle.run_dir),
+        collector_receipt=collector_receipt,
     )
 
 
@@ -1295,6 +1474,10 @@ def resume_hand_over(
     cache directory), or when a hand-over that has not landed can never
     finish: its files changed, or a file it reads is gone from the recorded
     run directory (the directory moved).
+
+    The collector's receipt is followed as :func:`stage_bundle` follows it:
+    a hand-over that named its build and has landed waits at most
+    ``collector_wait_seconds`` for the collector to accept its submissions.
     """
 
     handover_id = str(record.get("handover_id"))
@@ -1342,12 +1525,22 @@ def resume_hand_over(
         if run_dir == str(bundle.run_dir)
         else frozenset()
     )
+    collector_receipt = follow_collector_submissions(
+        emitter,
+        handover_id,
+        subject=_staged_subject(bundle.remote_prefix(prefix)),
+        wait_seconds=collector_wait_seconds if _landed(delivery) else None,
+        poll_seconds=poll_seconds,
+        clock=clock,
+        sleep=sleep,
+    )
     return StagedBundleHandOver(
         delivery,
         handed_over=handed_over,
         copied_files=_copied_files(receipt, receipt),
         handover_id=handover_id,
         run_dir=run_dir,
+        collector_receipt=collector_receipt,
     )
 
 

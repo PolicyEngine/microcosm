@@ -744,25 +744,35 @@ def test_submissions_not_accepted_when_the_wait_ends_stay_queued(tmp_path, capsy
 
 
 @pytest.mark.parametrize(
-    ("status", "warned"),
-    [("rejected", "rejected"), ("failed", "failed")],
+    ("status", "code", "warned"),
+    [
+        (
+            "rejected",
+            "content_mismatch",
+            "the collector rejected the submissions of the staged dataset bundle "
+            f"staged/{RUN_ID} (content_mismatch).",
+        ),
+        (
+            "failed",
+            "COLLECTOR_REFUSED_422",
+            f"the submissions of the staged dataset bundle staged/{RUN_ID} to the "
+            "collector failed (COLLECTOR_REFUSED_422).",
+        ),
+    ],
 )
 def test_a_submission_the_collector_turned_down_is_a_warning(
-    tmp_path, capsys, status, warned
+    tmp_path, capsys, status, code, warned
 ):
     bundle = _bundle(tmp_path)
     emitter = FakeEmitterClient(
         hub_api=FakeHub(tmp_path),
-        collector_receipts=[{"status": status, "error_code": "content_mismatch"}],
+        collector_receipts=[{"status": status, "error_code": code}],
     )
 
     staged = _stage(bundle, emitter, collector=PROVENANCE)
 
     assert staged.delivery["status"] == "uploaded"
-    assert (
-        f"warning: the collector {warned} the submissions of the staged dataset "
-        f"bundle staged/{RUN_ID} (content_mismatch)." in capsys.readouterr().err
-    )
+    assert f"warning: {warned}" in capsys.readouterr().err
 
 
 def test_a_bundle_that_has_not_landed_is_asked_about_once_and_not_waited_for(
