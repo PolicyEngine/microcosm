@@ -1,5 +1,6 @@
 {
- "build_id": "microcosm-uk-2024-25-national",
+ "release": "microcosm-uk-2024-25-national",
+ "build": "uk-frs-calibration-attempt-20260101T000000Z-00000000",
  "code": {
   "repository": "PolicyEngine/microcosm",
   "git_commit": "a8fe1b954d0d42c1a6b10d663024d11201717a50",
@@ -45,8 +46,6 @@
    "passed": 4
   }
  },
- "attempt_id": "uk-frs-calibration-attempt-20260101T000000Z-00000000",
- "cut_tag": "microcosm-uk-2024-25-national-20260101T000000Z-00000000",
  "created_at": "2026-01-01T00:00:00+00:00",
  "staging": {
   "contract_version": 2,

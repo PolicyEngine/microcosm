@@ -2,6 +2,7 @@
   "default_variant": "compact",
   "entries": [
     {
+      "build_folder_filename": null,
       "country": "uk",
       "engine_class": "UKSingleYearDataset",
       "engine_module": "policyengine_uk.data",
@@ -14,10 +15,12 @@
         "compact"
       ],
       "pointer_path": "latest.json",
+      "release": "populace-uk-2023",
       "variant": "compact",
       "year": 2023
     },
     {
+      "build_folder_filename": null,
       "country": "uk",
       "engine_class": "UKSingleYearDataset",
       "engine_module": "policyengine_uk.data",
@@ -30,10 +33,12 @@
         "compact"
       ],
       "pointer_path": "latest-national.json",
+      "release": "microcosm-uk-2024-25-national",
       "variant": "compact",
       "year": 2025
     },
     {
+      "build_folder_filename": null,
       "country": "uk",
       "engine_class": "UKSingleYearDataset",
       "engine_module": "policyengine_uk.data",
@@ -46,10 +51,12 @@
         "dense"
       ],
       "pointer_path": "latest.json",
+      "release": "microcosm-uk-2024-25-dense",
       "variant": "dense",
       "year": 2025
     },
     {
+      "build_folder_filename": "microcosm_us_2024.h5",
       "country": "us",
       "engine_class": "USSingleYearDataset",
       "engine_module": "policyengine_us.data",
@@ -62,6 +69,7 @@
         "compact"
       ],
       "pointer_path": "latest.json",
+      "release": "microcosm-us-2024-national",
       "variant": "compact",
       "year": 2024
     }

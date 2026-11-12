@@ -23,35 +23,44 @@
       "kind",
       "parent_spine",
       "parts",
+      "reference",
       "release_id",
       "schema_version",
       "score_receipt",
       "shippable",
+      "since_baseline",
       "spec"
     ],
-    "schema_version": 1,
-    "score_receipt_file": "score_vs_enhanced_frs.json",
+    "schema_version": 2,
+    "score_receipt_file": "score_vs_reference.json",
     "signing_key_env": "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
   },
   "dataset_role": "national_default",
   "line": "national",
+  "publishes_to_build_folder": true,
   "release_directory_files": [
     "build_manifest.json",
     "calibration_diagnostics.json",
     "release_certification.json",
     "release_cut_gates.json",
     "release_manifest.json",
-    "score_vs_enhanced_frs.json",
+    "score_vs_reference.json",
     "spine_gates.json",
     "terminal_gates.json"
   ],
   "release_id": "microcosm-uk-2024-25-national",
   "release_manifest_schema_version": 1,
+  "release_role": "national",
   "required_release_files": [
     "build_manifest.json",
     "release_manifest.json",
     "calibration_diagnostics.json",
     "release_certification.json"
+  ],
+  "retired_build_fields": [
+    "build_id",
+    "attempt_id",
+    "cut_tag"
   ],
   "schema_name": "microcosm.release-contract.c1-inventory",
   "schema_version": 1
