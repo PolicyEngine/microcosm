@@ -78,6 +78,7 @@ __all__ = [
     "block_staging_run_bundle",
     "UK_COLLECTOR_COUNTRY_CODE",
     "bundle_emitter",
+    "bundle_provenance",
     "collector_provenance",
     "create_staging_run_bundle",
     "emit_calibration_progress",
@@ -654,7 +655,7 @@ def collector_provenance(
     )
 
 
-def _bundle_provenance(
+def bundle_provenance(
     manifest: Mapping[str, Any], *, build_id: str
 ) -> CollectorProvenance | None:
     """:func:`collector_provenance`, or None with a warning when it is refused."""
@@ -756,7 +757,7 @@ def stage_dataset(
             emitter=bundle_emitter(),
             repository=repository,
             prefix=UK_STAGED_DATASET_PREFIX,
-            collector=_bundle_provenance(
+            collector=bundle_provenance(
                 manifest,
                 build_id=build_id or str(manifest.get("build_id") or run_id),
             ),

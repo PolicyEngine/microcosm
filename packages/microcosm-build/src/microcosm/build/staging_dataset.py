@@ -55,6 +55,11 @@ from microcosm_emitter_interface.bundles import (
     unavailable_bundle_receipt,
 )
 from microcosm_emitter_interface.identifiers import repository_identifier
+from microcosm_emitter_interface.submissions import (
+    EXECUTION_OVERLAY_ROLE,
+    ORRERY_SCHEMA_ROLE,
+    ORRERY_UPSTREAM_ROLE,
+)
 
 from microcosm.build.staging_storage import HuggingFaceDatasetStorage
 from microcosm.build.telemetry_emitter import BundleEmitter, emitter_problem
@@ -206,6 +211,16 @@ _ROLE_SEPARATORS = re.compile(r"[^a-z0-9]+")
 _HEXADECIMAL_TOKEN = re.compile(r"^(?=[0-9a-f]*[0-9])[0-9a-f]{8,}$")
 #: An emitter's own error code, printed only when it has this shape.
 _EMITTER_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+#: The Orrery inputs, by file name, and the interface's roles for them: with
+#: these roles the emitter submits a bundle's graph schema, execution overlay
+#: and upstream files to the collector as one ``orrery-inputs`` submission.
+_ORRERY_INPUT_ROLES = {
+    "graph.schema.json": ORRERY_SCHEMA_ROLE,
+    "graph.execution.json": EXECUTION_OVERLAY_ROLE,
+}
+#: An upstream file Microcosm copies, named by its own SHA-256
+#: (``save_graph_schema``), as the collector requires.
+_ORRERY_UPSTREAM_FILE = re.compile(r"^upstream-[0-9a-f]{64}\.json$")
 
 
 class StagedDatasetError(ValueError):
@@ -280,13 +295,24 @@ def output_role(key: str) -> str:
 
     Lowercased, with each run of other characters as one ``_``, so that
     ``dataset`` and ``calibration_diagnostics`` keep their names and
-    ``orrery/graph.schema.json`` becomes ``orrery_graph_schema_json``.
+    ``orrery/graph.orrery.json`` becomes ``orrery_graph_orrery_json``.
     Digests and identifiers in the key are left out
     (``orrery/evidence-<id>-<digest>-binding.json`` becomes
     ``orrery_evidence_binding_json``). A key that would not start with a
     letter, or would name a sidecar, gains an ``output_`` prefix.
+
+    The Orrery inputs are the exception: a key whose file name is
+    ``graph.schema.json``, ``graph.execution.json`` or
+    ``upstream-<sha256>.json``, registered under ``orrery/`` or by name, takes
+    the interface's role for it (``orrery_schema``, ``execution_overlay``,
+    ``orrery_upstream``), so the emitter submits them to the collector.
     """
 
+    name = str(key).removeprefix("orrery/")
+    if name in _ORRERY_INPUT_ROLES:
+        return _ORRERY_INPUT_ROLES[name]
+    if _ORRERY_UPSTREAM_FILE.fullmatch(name):
+        return ORRERY_UPSTREAM_ROLE
     words = [
         word
         for word in _ROLE_SEPARATORS.split(str(key).lower())

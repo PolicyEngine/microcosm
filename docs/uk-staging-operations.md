@@ -224,8 +224,13 @@ verified from disk against the manifest's own digests, then handed to the
 build's emitter (`stage_dataset_bundle`): every file by path, with its SHA-256,
 its size and its role. An output's role is its `outputs` key as a role name
 (`dataset` for the H5, `calibration_diagnostics`, `local_registry`, ...; digests
-in a key are left out), and the manifest, `staged_manifest.json` and
-`sha256sums.txt` are `build_manifest`, `staged_manifest` and `checksums`. The
+in a key are left out), except the Orrery inputs: `graph.schema.json`,
+`graph.execution.json` and each `upstream-<sha256>.json` are `orrery_schema`,
+`execution_overlay` and `orrery_upstream`, the interface's roles, so the
+emitter submits them to the collector (see
+[UK graph publication](orrery-publication.md)). The manifest,
+`staged_manifest.json` and `sha256sums.txt` are `build_manifest`,
+`staged_manifest` and `checksums`. The
 emitter writes the bundle in one commit with the build's own credential, and
 its receipt becomes the bundle's `staged_dataset` record, with the commit as
 its revision. `releases/` and `latest.json` are never touched, no tag is

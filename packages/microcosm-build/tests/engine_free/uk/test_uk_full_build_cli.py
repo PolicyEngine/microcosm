@@ -3924,17 +3924,6 @@ def test_the_thin_rows_only_switch_is_gone(tmp_path):
         arguments(tmp_path, "--withhold-thin-rows-only")
 
 
-def test_the_orrery_publication_is_off_unless_asked(tmp_path):
-    """María's ruling of 2026-10-26: no build submits its graph to the public
-    Orrery by default."""
-
-    from microcosm.build.uk_runtime.orrery_publication import publication_enabled
-
-    assert not publication_enabled(arguments(tmp_path))
-    assert not publication_enabled(arguments(tmp_path, "--no-publish-orrery"))
-    assert publication_enabled(arguments(tmp_path, "--publish-orrery"))
-
-
 def test_a_dense_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
     tmp_path, monkeypatch
 ):

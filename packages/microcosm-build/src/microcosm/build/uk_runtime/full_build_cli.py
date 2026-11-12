@@ -906,24 +906,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         dest="publish_orrery",
         action="store_true",
         help=(
-            "Publish the saved graph to the public Orrery, including when "
-            "dataset staging is local-only. Off by default. Its summaries "
-            "carry the targets and each gate's verdict and count of failure "
-            "lines, but no target row's model figures and no failure line; "
-            "the export stops if a summary carries either."
+            "Accepted for older launchers; it only prints a warning. Builds no "
+            "longer upload the graph to the runs application: the staged "
+            "dataset bundle submits the graph's inputs to the collector, which "
+            "builds the Orrery graph files."
         ),
     )
     graph_publication.add_argument(
         "--no-publish-orrery",
         dest="publish_orrery",
         action="store_false",
-        help=(
-            "Export graph files locally without submitting a publication job "
-            "(the default)."
-        ),
+        help=("Accepted for older launchers; builds upload no graph either way."),
     )
     parser.set_defaults(publish_orrery=None)
     args = parser.parse_args(argv)
+    if args.publish_orrery is True:
+        print(
+            "warning: --publish-orrery no longer uploads the graph to the runs "
+            "application. The staged dataset bundle submits the graph's inputs "
+            "to the collector, which builds the Orrery graph files and keeps a "
+            "licensed build's private; with local-only or no staging nothing "
+            "is submitted.",
+            file=sys.stderr,
+            flush=True,
+        )
     validate_staging_arguments(parser, args)
     validate_staged_dataset_arguments(parser, args)
     if args.input_h5 is None and any(
@@ -1899,12 +1905,16 @@ def _run_with_graph_publication[Prepared](
             prepared, args, telemetry=telemetry, attempt=attempt, record=record
         )
     except BaseException as failure:
-        # An interrupt still preserves local evidence and its durable queue
-        # entry, but does not wait for an upload or start Hugging Face staging.
+        # An interrupt still preserves local evidence, but does not start
+        # Hugging Face staging.
         interrupted = not isinstance(failure, Exception)
         try:
             _publish_failure_evidence(
-                args, record, telemetry=telemetry, interrupted=interrupted
+                args,
+                record,
+                telemetry=telemetry,
+                interrupted=interrupted,
+                build_id=getattr((attempt or {}).get("state"), "build_id", None),
             )
         except Exception as error:
             print(
@@ -1923,8 +1933,12 @@ def _publish_failure_evidence(
     *,
     telemetry: StagingRunBundleWriterV2 | None,
     interrupted: bool,
+    build_id: str | None = None,
 ) -> None:
     """Publish a failed build's graph evidence beside its attempt evidence.
+
+    ``build_id`` is the attempt's build ID, which the staged evidence bundle
+    names for the collector.
 
     A failed build leaves the output directory, including any earlier
     successful bundle and its completion marker, unchanged. The graph files go
@@ -1938,7 +1952,6 @@ def _publish_failure_evidence(
         EVIDENCE_MANIFEST_NAME,
         FAILURE_BUNDLE_DIRECTORY,
         FAILURE_MARKER_NAME,
-        GRAPH_PUBLICATION_WAIT_SECONDS,
         finalize_graph,
         stage_graph_evidence,
     )
@@ -1948,7 +1961,6 @@ def _publish_failure_evidence(
         args,
         manifest=record.get("manifest"),
         published_root=output,
-        wait_seconds=0 if interrupted else GRAPH_PUBLICATION_WAIT_SECONDS,
     )
     names = [*graph.files, EVIDENCE_MANIFEST_NAME]
     staged = {name: args.out / name for name in names if (args.out / name).is_file()}
@@ -1981,6 +1993,7 @@ def _publish_failure_evidence(
                 if telemetry is not None
                 else Path(args.attempt_evidence).name
             ),
+            build_id=build_id,
         )
     except Exception as error:
         print(
@@ -2183,6 +2196,7 @@ def _close_attempt(
             args,
             output,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
+            build_id=state.build_id,
         )
         _close_staging(args, telemetry, classified, record)
     spool_path = record_candidate_attempt(
@@ -3631,6 +3645,7 @@ def _close_national_attempt(
             args,
             output,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
+            build_id=state.build_id,
         )
         _close_staging(args, telemetry, classified, record)
     spool_path = record_candidate_attempt(

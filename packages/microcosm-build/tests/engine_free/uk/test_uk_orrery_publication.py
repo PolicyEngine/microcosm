@@ -301,7 +301,6 @@ def test_unavailable_inventory_preserves_graph_without_claiming_a_queued_job(
     else:
         monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", None)
         monkeypatch.setattr(orrery_publication, "publication_inventory", unavailable)
-    monkeypatch.setattr(orrery_publication, "publish_graph", must_not_publish)
     manifest = {"outputs": {}}
     result = orrery_publication.finalize_graph(args, manifest=manifest)
     assert result.receipt["status"] == "failed"
@@ -395,11 +394,6 @@ def test_a_summary_with_failure_lines_is_never_preserved_for_publication(
         return data
 
     monkeypatch.setitem(orrery_contract.UK_SUMMARY_PROVIDERS, key, regressed)
-    monkeypatch.setattr(
-        orrery_publication,
-        "publish_graph",
-        lambda *a, **k: pytest.fail("submitted an unpublishable summary"),
-    )
     args, status = synthetic_full_build(
         tmp_path, monkeypatch, extra=("--publish-orrery",)
     )

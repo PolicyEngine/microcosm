@@ -14,10 +14,10 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 
 ## Commands
 
-UK build completion exports and stages Orrery graph evidence. Publication uses
-an independent module of the separately installed `microcosm-emitter`, which the
-build starts through `microcosm-emitter-interface`, and a durable queue; see
-[configuration and retry](orrery-publication.md). Staging run files and staged
+UK build completion exports and stages Orrery graph evidence. No build uploads
+its graph: the staged bundle submits the graph's inputs to the collector
+through the separately installed `microcosm-emitter`, which the build starts
+through `microcosm-emitter-interface`; see [UK graph publication](orrery-publication.md). Staging run files and staged
 dataset bundles go through the same emitter. No new producer secret is required. Keep graph export/publication tests independent
 of the hosted runs app and collector; use synthetic files and fake HTTP.
 
