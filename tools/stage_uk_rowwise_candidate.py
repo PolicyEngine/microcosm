@@ -59,9 +59,12 @@ build manifest, which on a copied-back directory can make every later run with
 the receipt refuse it; pass the receipt with ``--local-only`` there.
 
 The hand-over names the build for the collector, as the build's own does
-(``rowwise_staging.collector_provenance``): the build ID is the manifest's
-``build_id`` (a national build's), else its Logbook row's (a dense build's),
-else the run ID, and the candidate release is the manifest's ``release_id``.
+(``rowwise_staging.collector_provenance``). The build ID is ``--build-id``,
+else the manifest's ``build_id`` (a national build's), else the
+``release_id`` its local gate report records (a dense build's), else the one
+build its Logbook rows name; rows naming more than one build stop the
+command before it starts an emitter, and a directory with none of these is
+named by the run ID. The release is the manifest's ``release_id``.
 The emitter then submits the bundle's calibration diagnostics to the
 collector once the commit lands, while its collector submissions are on. A
 hand-over the command resumes keeps what the build named.
@@ -169,6 +172,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--build-id",
+        help=(
+            "The build's attempt ID, which names the build for the collector; "
+            "defaults to the manifest's build_id, then the release_id its "
+            "local gate report records, then the build the Logbook rows name. "
+            "Needed when the Logbook rows name more than one build and the "
+            "manifest records none."
+        ),
+    )
+    parser.add_argument(
         "--local-only",
         action="store_true",
         help=(
@@ -241,17 +254,83 @@ def _default_run_id(run_dir: Path, manifest: dict) -> str:
     return _logbook_build_id(run_dir) or run_dir.name
 
 
-def _build_id(run_dir: Path, manifest: dict, run_id: str) -> str:
-    """The build's attempt ID, which names it for the collector.
+def _logbook_build_ids(run_dir: Path) -> set[str]:
+    """Every build ID the run directory's readable Logbook spool rows name."""
 
-    A national manifest records it; a dense build's Logbook row does. A
-    directory with neither is named by the run ID it is staged under.
+    named = set()
+    for row_path in glob.glob(str(run_dir / "logbook-spool" / "*.json")):
+        try:
+            row = json.loads(Path(row_path).read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("build_id"):
+            named.add(str(row["build_id"]))
+    return named
+
+
+def _gate_report_build_id(run_dir: Path, manifest: dict) -> str | None:
+    """The attempt ID a dense build's local gate report records, if any.
+
+    The report is a registered output of the bundle, and its ``release_id``
+    is the build's attempt ID, which the dense release assembler checks
+    against the Logbook row.
     """
 
+    outputs = manifest.get("outputs")
+    entry = outputs.get("local_gate_report") if isinstance(outputs, dict) else None
+    if not isinstance(entry, dict) or not entry.get("path"):
+        return None
+    try:
+        report = json.loads(
+            (run_dir / PurePosixPath(str(entry["path"])).name).read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, ValueError):
+        return None
+    release_id = report.get("release_id") if isinstance(report, dict) else None
+    return release_id if isinstance(release_id, str) and release_id else None
+
+
+def _build_id(
+    run_dir: Path, manifest: dict, run_id: str, given: str | None = None
+) -> str:
+    """The build's attempt ID, which names it for the collector.
+
+    ``--build-id`` first. Then a national manifest's ``build_id``, then the
+    ``release_id`` a dense build's local gate report records. Then the build
+    the Logbook rows name: a retried output directory keeps an earlier
+    attempt's row beside the new one, and the spool names rows by digest, so
+    rows that name more than one build stop the command. A directory with no
+    such record is named by the run ID it is staged under, with a note.
+    """
+
+    if given:
+        return given
     recorded = manifest.get("build_id")
     if isinstance(recorded, str) and recorded:
         return recorded
-    return _logbook_build_id(run_dir) or run_id
+    reported = _gate_report_build_id(run_dir, manifest)
+    if reported is not None:
+        return reported
+    named = _logbook_build_ids(run_dir)
+    if len(named) > 1:
+        raise SystemExit(
+            f"error: the Logbook rows in {run_dir / 'logbook-spool'} name more "
+            f"than one build ({', '.join(sorted(named))}) and nothing else in "
+            "the directory records which built this bundle; pass --build-id "
+            "with that build's attempt ID. Nothing was handed over."
+        )
+    if named:
+        return next(iter(named))
+    print(
+        f"note: nothing in {run_dir} records the build's attempt ID, so the "
+        f"bundle names the build by its run ID, {run_id}; pass --build-id to "
+        "name another.",
+        file=sys.stderr,
+        flush=True,
+    )
+    return run_id
 
 
 def _rewrite_manifest(path: Path, manifest: dict) -> None:
@@ -336,7 +415,7 @@ def main(argv: list[str] | None = None) -> int:
                 "error: HF_HUB_OFFLINE is set, so the emitter cannot upload the "
                 "bundle; unset it, or pass --local-only."
             )
-        build_id = _build_id(run_dir, manifest, run_id)
+        build_id = _build_id(run_dir, manifest, run_id, args.build_id)
         try:
             provenance = collector_provenance(manifest, build_id=build_id)
         except ValueError as exc:

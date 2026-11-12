@@ -242,18 +242,20 @@ The hand-over also names the build for the collector, with the interface's
 
 | Field | Value |
 |---|---|
-| `country_code` | `UK`. Staging telemetry registers UK runs as `GB`, but the collector files calibration trees and Orrery graph files under `UK` and builds nothing from a submission naming another code. |
+| `country_code` | `UK`. Staging telemetry registers UK runs as `GB`, but the collector's calibration tree handler knows the country as `UK` and builds no tree from a submission naming another code. |
 | `build_id` | The build's attempt ID, which a release build of it keeps as its folder name, even when `--staging-run-id` stages it under another run ID. |
 | `licensed_data` | `true`: every UK staged bundle holds licensed microdata. |
-| `release` | The release the build is a candidate for: the manifest's `release_id` when it is the national or the dense release (`microcosm-uk-2024-25-national`, `microcosm-uk-2024-25-dense`), and `null` otherwise. The collector labels the staging calibration tree with it, or with the run ID when it is `null`. |
+| `release` | The manifest's `release_id` when it is the national or the dense release (`microcosm-uk-2024-25-national`, `microcosm-uk-2024-25-dense`). Every national and dense build records its role's release, whether or not it is fit to release, so `null` comes only from an older or another kind of manifest. The collector labels the staging calibration tree with it, or with the run ID when it is `null`. |
 
 With that, the emitter submits the bundle's calibration diagnostics (with the
 build manifest as `build_manifest`) to the collector once the Hugging Face
 commit lands, as a `calibration-diagnostics` submission whose folder is
 `staged/<run_id>`, but only while its collector submissions are on. No
-emitter release up to 0.14.0, the newest Microcosm accepts, can switch them
-on, so for now the emitter ignores the provenance and the bundle goes to
-Hugging Face alone. A different `collector` block gives the bundle a
+emitter release up to 0.14.0 (the newest released, which the installed-emitter
+tests pin) can switch them on, so for now the emitter ignores the provenance
+and the bundle goes to Hugging Face alone. Microcosm sets only a minimum
+emitter version, so an emitter release that switches submissions on by
+default would start these submissions with no change here. A different `collector` block gives the bundle a
 different hand-over ID, so a bundle handed over before this change is not
 the same hand-over as one handed over after it; the re-stage command resumes
 a recorded hand-over by its recorded ID either way.
@@ -470,11 +472,17 @@ receipt.
 > wrote". If that has happened, fetch the run again with `modal volume get`.
 
 The re-stage command names the build for the collector as the build does
-(see above). It takes the build ID from the manifest's `build_id` (a national
-build records it), else from the directory's last Logbook spool row (a dense
-build's), else the run ID, and the candidate release from the manifest's
-`release_id`. A hand-over it resumes keeps what the build named. A build ID
-the interface refuses stops the command before its emitter starts.
+(see above). It takes the build ID from `--build-id`, else the manifest's
+`build_id` (a national build records it), else the `release_id` the
+registered local gate report records (a dense build's attempt ID, as the
+dense release assembler reads it), else the one build the directory's
+Logbook spool rows name, else the run ID, with a note. A retried output
+directory keeps an earlier attempt's row beside the new one, and the spool
+names rows by digest, so rows that name more than one build stop the command
+before its emitter starts, asking for `--build-id`. The release comes from
+the manifest's `release_id`. A hand-over it resumes keeps what the build
+named. A build ID the interface refuses stops the command before its emitter
+starts.
 
 Fetch a bundle for a scorecard, an evaluation leg or the
 dashboard's local-directory mode with:
