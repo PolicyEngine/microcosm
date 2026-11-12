@@ -525,7 +525,7 @@
     },
     {
       "name": "hmrc.scottish_income_tax.nsnd_outturn",
-      "reason": "Diagnostic, not a weight question: the bound SPI rows hold Scotland's tax on all income, and the NSND revenue shows how the build splits it. Measured at 2024, the outturn's own tax year, the head of microcosm#1572 holds NSND within 0.2 percent of the outturn, while an earnings uprating to 2025 sat about 3 percent below NSND's growth with the thresholds frozen, so binding at 2025 would pull the split the wrong way (B4 of the November event-data plan's PR3, microcosm#1095; María's signature of 2026-11-11). Bind only if a build's gap at 2024 exceeds about 3 percent and a calibrate-only solve with the row bound keeps uk_weight_ratio at or below 1,151.25 and the Scottish SPI rows within 10 percent; the row nests inside the SPI all-income tax rows, which would need a cross-grain declaration.",
+      "reason": "Diagnostic first, not yet a weight question: the bound SPI rows hold Scotland's tax on all income, and the NSND revenue shows how the build splits it. Vahid's runs put NSND at -4.9 percent and +3.1 percent of the outturn on two recent builds while the bound SPI total moved about 2 percent. Bind only if the measured gap exceeds about 3 percent and a calibrate-only solve with the row bound keeps uk_weight_ratio at or below 1,151.25 and the Scottish SPI rows within 10 percent; the row nests inside the SPI all-income tax rows, which would need a cross-grain declaration.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
       "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes.",
@@ -534,7 +534,7 @@
     },
     {
       "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
-      "reason": "Diagnostic, not a weight question: the count of Scottish NSND taxpayers measured beside the revenue row at 2024, its own tax year (B4 of the November event-data plan's PR3, microcosm#1095; María's signature of 2026-11-11), missing taxpayers with tax on property income alone. Bind only with the revenue row, after the same calibrate-only solve.",
+      "reason": "Diagnostic, not a weight question: the count of Scottish NSND taxpayers measured beside the revenue row, read at 2025 without uprating, and missing taxpayers with tax on property income alone. Bind only with the revenue row, after the same calibrate-only solve.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
       "adjudication": "María's approval of 2026-11-06 of the plan for the November event data (PR2, item S4): measure HMRC's Scottish NSND outturn and taxpayers on every build and hold both out of the solve; they bind only if the measured gap exceeds about 3 percent and a calibrate-only solve passes.",

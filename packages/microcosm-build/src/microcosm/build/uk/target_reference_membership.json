@@ -7133,7 +7133,10 @@
     {
       "name": "hmrc.scottish_income_tax.nsnd_outturn",
       "from": "2024",
-      "to": "2025"
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.04119828372843",
+      "value_before_uprating": "18635000000.0"
     },
     {
       "name": "hmrc.scottish_income_tax.nsnd_taxpayers",
@@ -15418,9 +15421,14 @@
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
           "resolved_period": 2025,
-          "resolved_value": 18635000000.0,
+          "resolved_value": 19402730017.279205,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f04aad22c7ef0c5d5d0d6064"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f04aad22c7ef0c5d5d0d6064",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.04119828372843",
+            "value_before_uprating": "18635000000.0"
+          }
         }
       ]
     },

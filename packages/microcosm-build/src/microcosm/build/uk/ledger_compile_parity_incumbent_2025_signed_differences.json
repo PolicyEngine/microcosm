@@ -3313,7 +3313,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 18635000000.0,
+   "ledger_value": 19402730017.279205,
    "name": "hmrc.scottish_income_tax.nsnd_outturn",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."

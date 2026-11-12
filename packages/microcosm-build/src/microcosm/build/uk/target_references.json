@@ -5525,10 +5525,9 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.scottish_income_tax.nsnd_outturn",
-        "measure_kind": "prepared_column",
-        "measurement_period": "2024",
-        "source_period_policy": "exact_observation"
+        "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "value_operation": "sum",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
@@ -5553,9 +5552,7 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "hmrc.scottish_income_tax.nsnd_taxpayers",
-        "measure_kind": "prepared_column",
-        "measurement_period": "2024",
-        "source_period_policy": "exact_observation"
+        "measure_kind": "prepared_column"
       },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
