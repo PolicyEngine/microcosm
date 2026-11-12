@@ -85,20 +85,20 @@ from microcosm.graph import (
     StructuralDelta,
 )
 from microcosm.graph.canonical import canonical_json
+from test_support.microcosm_build.uk_full_population_graph import (
+    toy_geography_binding,
+)
 from test_support.microcosm_build.uk_graph_terminal import _frame
 from test_support.paths import paths_for
 
 PIN = "0" * 64
 
-#: Synthetic atomic-area support pins (microcosm#932): the digests the
-#: synthetic spine's geography binding carries and the ones
-#: :func:`patch_support_register` registers, so a synthetic release candidate
-#: passes the register check the way a real one passes on ``sources.yaml``.
-SYNTHETIC_SUPPORT_PINS = {
-    "uk_ew_output_area_2021": {"sha256": "c" * 64, "size_bytes": 1828698},
-    "uk_scotland_output_area_2022": {"sha256": "d" * 64, "size_bytes": 440439},
-    "uk_ni_data_zone_2021": {"sha256": "e" * 64, "size_bytes": 44638},
-}
+#: The stand-in spine's atomic-area support pins (microcosm#931): the toy
+#: supports its areas are drawn on, which the synthetic spine's geography
+#: binding carries and :func:`patch_support_register` registers as the
+#: conditioned supports, so a synthetic release candidate passes the register
+#: check the way a real one passes on ``sources.yaml``.
+SYNTHETIC_SUPPORT_PINS = toy_geography_binding()["support_pins"]
 #: The synthetic spine's geographic clone count: the local doctrine's, at which
 #: a dense release builds (microcosm#931).
 SYNTHETIC_SPINE_CLONES = 15
@@ -145,29 +145,39 @@ def bind_synthetic_spine(args, build) -> None:
 
 
 def patch_support_register(monkeypatch, pins=None) -> None:
-    """Register ``pins`` (default the synthetic ones) in place of sources.yaml."""
+    """Register ``pins`` (default the stand-in's) as the conditioned supports
+    in place of sources.yaml.
+
+    A release's areas are drawn on the conditioned supports (microcosm#931),
+    and its binding check reads that register only, so a reader that asks for
+    the base register here fails loudly.
+    """
     from microcosm.build.uk_runtime import country_adapter
 
     register = {
         k: dict(v)
         for k, v in (SYNTHETIC_SUPPORT_PINS if pins is None else pins).items()
     }
+
+    def conditioned_register(spec=None, *, conditioned=False):
+        if not conditioned:
+            raise AssertionError(
+                "A release's support pins are held to the conditioned "
+                "register (microcosm#931); this reader asked for the base one."
+            )
+        return {k: dict(v) for k, v in register.items()}
+
     monkeypatch.setattr(
-        country_adapter, "uk_atomic_support_register", lambda spec=None: register
+        country_adapter, "uk_atomic_support_register", conditioned_register
     )
 
 
-#: A stand-in sidecar ``geography`` block's values, by key. The dense line's
-#: posture check reads the block's keys only (microcosm#931), so the values are
-#: synthetic stand-ins, not the spine build's.
-_SYNTHETIC_SPINE_GEOGRAPHY = {
-    "assignment": "atomic",
-    "identity": "geography_household_key",
-    "definition_sha256": "f" * 64,
-    "support_pins": SYNTHETIC_SUPPORT_PINS,
-    "stream": ["sha256-u53-v1", "uk-spine-atomic-area-v1", 0, 0],
-    "register": "synthetic",
-}
+#: A stand-in sidecar ``geography`` block's values, by key: the stand-in
+#: spine's own binding, read off the definition and toy supports its areas are
+#: drawn with (``uk_full_population_graph.toy_geography_binding``), which the
+#: release-candidate binding check holds to the register
+#: :func:`patch_support_register` puts in place (microcosm#931).
+_SYNTHETIC_SPINE_GEOGRAPHY = toy_geography_binding()
 
 
 def synthetic_spine_geography() -> dict:

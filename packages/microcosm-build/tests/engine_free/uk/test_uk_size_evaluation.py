@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.size_evaluation import (
+    RowwiseRun,
     area_support_tables,
     dense_reference_deltas,
     footprint,
@@ -34,6 +35,21 @@ from microcosm.calibrate.solve import effective_sample_size
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _clone_ids(ids, clones) -> np.ndarray:
+    """``ids``' geographic clones as the spine's expansion mints them
+    (microcosm#931): clone ``k`` of each id at ordinal ``k`` of the copy-id
+    table's geographic_support field, one id per entry of ``clones``."""
+
+    from microcosm.build.uk_runtime import copy_id_table
+
+    ids = np.asarray(ids, dtype=np.int64)
+    clones = np.asarray(clones, dtype=np.int64)
+    minted = ids.copy()
+    above = clones > 0
+    minted[above] = copy_id_table.mint(ids[above], "geographic_support", clones[above])
+    return minted
 
 
 def _write_run_dir(
@@ -283,10 +299,12 @@ def _write_run_dir(
     gate_path = run / "microcosm_uk_2025_local.local_gates.json"
     gate_path.write_text(json.dumps(gate_report), encoding="utf-8")
 
+    # Clone-first ids: each geographic clone's id holds its clone index at the
+    # copy-id table's geographic_support field (microcosm#931).
     if size_run:
         household = pd.DataFrame(
             {
-                "household_id": [1, 11, 21, 2, 12, 22],
+                "household_id": _clone_ids([1, 1, 1, 2, 2, 2], [0, 1, 2, 0, 1, 2]),
                 "household_weight": [1.0, 2.0, 3.0, 1.0, 2.0, 3.0],
                 "clone_index": [0, 1, 2, 0, 1, 2],
             }
@@ -294,7 +312,7 @@ def _write_run_dir(
     else:
         household = pd.DataFrame(
             {
-                "household_id": [1, 11, 2],
+                "household_id": _clone_ids([1, 1, 2], [0, 1, 0]),
                 "household_weight": [5.0, 5.0, 5.0],
                 "clone_index": [0, 1, 0],
             }
@@ -561,7 +579,8 @@ def test_weight_tables_size_and_dense_spine_paths(tmp_path: Path) -> None:
         effective_sample_size(values)
     )
     assert result["distinct_source_households"] == 2
-    assert result["source_id_multiplier_basis"] == "inferred_from_clone_zero_ids"
+    assert result["source_household_basis"] == "geographic_support_parent"
+    assert "source_id_multiplier" not in result
     assert result["stretch"]["vs_pool_design"]["max"] == pytest.approx(3.0)
     assert result["clones_per_source"]["by_clone_count"] == {"3": 2}
     skipped = load_run(size.path, label="candidate", skip_h5=True)
@@ -570,8 +589,14 @@ def test_weight_tables_size_and_dense_spine_paths(tmp_path: Path) -> None:
     )
 
     dense = load_run(_write_run_dir(tmp_path, "dense", size_run=False), label="dense")
+    # The clone-first spine's own rows and weights: the expansion gave each
+    # clone its share, so the design weight is the spine row's, undivided by
+    # the manifest's 15 clones (microcosm#931).
     spine = pd.DataFrame(
-        {"household_id": [1, 2, 3], "household_weight": [75.0, 75.0, 75.0]}
+        {
+            "household_id": _clone_ids([1, 1, 2, 3], [0, 1, 0, 0]),
+            "household_weight": [5.0, 5.0, 5.0, 5.0],
+        }
     )
     dense_result = weight_tables(dense, spine_weights=spine)
     assert dense_result["stretch"]["reference"] == "pool_design"
@@ -581,12 +606,14 @@ def test_weight_tables_size_and_dense_spine_paths(tmp_path: Path) -> None:
         weight_tables(dense, spine_weights=spine)
 
 
-# --- dense ids back to spine ids, exactly (microcosm#931) -----------------------
+# --- a dense dataset's ids are its clone-first spine's (microcosm#931) ----------
 #
-# The dense line keeps its own clone multiplier, ten to the digit count of the
-# spine's largest id, until #931 (c). A spine minted from the copy-id table
-# reaches 7.1e18, so a one-clone expansion of it records 10**19, which int64
-# cannot hold; every id below is synthetic.
+# The dense line builds on the clone-first spine as it stands, so a dense
+# dataset's rows are spine rows: each geographic clone's id holds its clone
+# index at the copy-id table's geographic_support field, and the decode back
+# to the spine is the identity. The older dense layout, which offset clone c
+# of a spine household by c times a multiplier, has no path here. Every id
+# below is synthetic.
 
 
 def _table_minted_spine_ids() -> np.ndarray:
@@ -604,6 +631,15 @@ def _table_minted_spine_ids() -> np.ndarray:
     )
 
 
+def _clone_first_spine(clones: int) -> tuple[np.ndarray, np.ndarray]:
+    """The table-minted rows at ``clones`` geographic clones, clone by clone,
+    with each row's clone index."""
+
+    rows = _table_minted_spine_ids()
+    clone_index = np.repeat(np.arange(clones, dtype=np.int64), len(rows))
+    return _clone_ids(np.tile(rows, clones), clone_index), clone_index
+
+
 def _with_households(path: Path, household: pd.DataFrame) -> Path:
     """The run at ``path`` with its local file's household table replaced."""
 
@@ -612,109 +648,166 @@ def _with_households(path: Path, household: pd.DataFrame) -> Path:
     return path
 
 
-def test_one_dense_clone_of_a_table_minted_spine_decodes_exactly(
+def _dense_run(tmp_path: Path, household: pd.DataFrame) -> RowwiseRun:
+    return load_run(
+        _with_households(_write_run_dir(tmp_path, "dense", size_run=False), household),
+        label="dense",
+    )
+
+
+def test_a_clone_first_dataset_decodes_by_the_identity_undivided_by_k(
     tmp_path: Path,
 ) -> None:
-    ids = _table_minted_spine_ids()
+    """Each row's spine household is itself, read exactly above 2**62, and its
+    design weight the spine row's own weight: the spine's expansion gave each
+    clone its share, so nothing is divided by K (microcosm#931). Source
+    support folds the geographic clones back to clone 0's id, copies apart."""
+
+    clones = 3
+    ids, clone_index = _clone_first_spine(clones)
     assert int(ids.max()) > 2**62
-    weights = np.array([10.0, 20.0, 30.0, 40.0])
-    run = load_run(
-        _with_households(
-            _write_run_dir(tmp_path, "dense", size_run=False),
-            pd.DataFrame(
-                {
-                    "household_id": ids,
-                    "household_weight": weights,
-                    "clone_index": np.zeros(len(ids), dtype=np.int64),
-                }
-            ),
+    rows = len(_table_minted_spine_ids())
+    spine_weight = np.tile([10.0, 20.0, 30.0, 40.0], clones) / clones
+    shipped = spine_weight * np.linspace(0.5, 2.0, len(ids))
+    run = _dense_run(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": shipped,
+                "clone_index": clone_index,
+            }
         ),
-        label="dense",
     )
     assert run.weights["household_id"].tolist() == ids.tolist()
+    run.manifest["weights"]["realized_max_weight_ratio_vs_design"] = 2.0
+    spine = pd.DataFrame({"household_id": ids, "household_weight": spine_weight})
+    # The spine file lists its rows in another order; the lookup is by id.
+    result = weight_tables(run, spine_weights=spine.iloc[::-1])
+    assert result["source_household_basis"] == "geographic_support_parent"
+    assert result["distinct_source_households"] == rows
+    stretch = result["stretch"]["vs_pool_design"]
+    assert stretch["max"] == pytest.approx(2.0)
+    assert stretch["p50"] == pytest.approx(float(np.median(shipped / spine_weight)))
+    # Divided by K (the run's 3, or the manifest's 15) the maximum would be
+    # 6 or 30, not the recorded 2.
+    assert run.manifest["parameters"]["n_clones"] == 15
+    # Without the spine weights the same counts hold.
+    assert weight_tables(run)["distinct_source_households"] == rows
+
+
+def test_a_file_that_keeps_its_sources_counts_them_and_decodes_its_stretch(
+    tmp_path: Path,
+) -> None:
+    ids, clone_index = _clone_first_spine(2)
+    weights = np.full(len(ids), 7.0)
+    run = _dense_run(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": weights,
+                "clone_index": clone_index,
+                "source_household_id": np.tile(
+                    np.array([1, 2, 1, 2], dtype=np.int64), 2
+                ),
+            }
+        ),
+    )
     spine = pd.DataFrame({"household_id": ids, "household_weight": weights})
-    by_spine = weight_tables(run, spine_weights=spine, n_clones=1)
-    inferred = weight_tables(run)
-    recorded = weight_tables(
-        run,
-        spine_weights=spine,
-        n_clones=1,
-        # As the expansion artifact records it: canonical JSON keeps it exact.
-        id_multiplier=json.loads(json.dumps({"id_multiplier": 10**19}))[
-            "id_multiplier"
-        ],
+    result = weight_tables(run, spine_weights=spine)
+    assert result["source_household_basis"] == "source_household_id"
+    assert result["distinct_source_households"] == 2
+    assert result["stretch"]["vs_pool_design"]["max"] == pytest.approx(1.0)
+
+
+def _the_layout_refusal(caught) -> None:
+    """The fixed layout refusal: no figure at all, so no id, count or clone
+    index, beside its issue number."""
+
+    message = str(caught.value)
+    assert message.startswith(
+        "The dataset's household ids are not in the clone-first layout"
     )
-    for result, basis in (
-        (by_spine, "spine"),
-        (inferred, "inferred_from_clone_zero_ids"),
-        (recorded, "recorded"),
-    ):
-        assert result["source_id_multiplier"] == 10**19
-        assert result["source_id_multiplier_basis"] == basis
-        assert result["distinct_source_households"] == len(ids)
-    assert json.loads(json.dumps(by_spine))["source_id_multiplier"] == 10**19
-    assert by_spine["stretch"]["vs_pool_design"]["max"] == pytest.approx(1.0)
+    assert "'geographic_support'" in message
+    assert "with the tools of the commit that built it" in message
+    assert not any(char.isdigit() for char in message.replace("microcosm#931", ""))
 
 
-def test_an_older_dense_run_decodes_at_the_multiplier_it_recorded(
-    tmp_path: Path,
+@pytest.mark.parametrize("keeps_sources", [False, True])
+def test_a_dataset_in_the_older_dense_layout_is_refused(
+    tmp_path: Path, keeps_sources: bool
 ) -> None:
-    # A spine minted by the retired rule: a copy one power of ten above the
-    # largest id it saw (11 = 1 + 10), and three dense clones at 100.
+    """Clone c of a spine household at c times a multiplier holds no clone
+    index at the geographic_support field, so the dataset is refused, whether
+    or not it keeps its sources and with or without spine weights; the
+    refusal points at the tools of the commit that built it (C-29)."""
+
     spine_ids = np.array([1, 2, 3, 11], dtype=np.int64)
-    clones = np.repeat(np.arange(3, dtype=np.int64), len(spine_ids))
-    dense_ids = np.tile(spine_ids, 3) + clones * 100
-    run = load_run(
-        _with_households(
-            _write_run_dir(tmp_path, "dense", size_run=False),
-            pd.DataFrame(
-                {
-                    "household_id": dense_ids,
-                    "household_weight": np.full(len(dense_ids), 5.0),
-                    "clone_index": clones,
-                }
-            ),
-        ),
-        label="dense",
+    clone_index = np.repeat(np.arange(3, dtype=np.int64), len(spine_ids))
+    dense_ids = np.tile(spine_ids, 3) + clone_index * 100
+    household = pd.DataFrame(
+        {
+            "household_id": dense_ids,
+            "household_weight": np.full(len(dense_ids), 5.0),
+            "clone_index": clone_index,
+        }
     )
-    expansion = json.loads(json.dumps({"n_clones": 3, "id_multiplier": 100}))
-    recorded = weight_tables(run, id_multiplier=expansion["id_multiplier"])
-    assert recorded["source_id_multiplier"] == 100
-    assert recorded["source_id_multiplier_basis"] == "recorded"
-    assert recorded["distinct_source_households"] == len(spine_ids)
-    assert weight_tables(run)["source_id_multiplier"] == 100
-    # A multiplier that is not the dataset's is refused by count, naming no
-    # id: at 10 the copy 11 and every clone above zero fall off it.
-    with pytest.raises(ValueError, match=r"^9 dense row\(s\) do not sit") as caught:
-        weight_tables(run, id_multiplier=10)
-    assert not any(
-        str(value) in str(caught.value) for value in dense_ids if value >= 10
-    )
-    with pytest.raises(TypeError, match="must be an integer"):
-        weight_tables(run, id_multiplier=100.0)
+    if keeps_sources:
+        household["source_household_id"] = np.tile(spine_ids, 3)
+    run = _dense_run(tmp_path, household)
+    spine = pd.DataFrame({"household_id": spine_ids, "household_weight": [15.0] * 4})
+    for kwargs in ({}, {"spine_weights": spine}):
+        with pytest.raises(ValueError) as caught:
+            weight_tables(run, **kwargs)
+        _the_layout_refusal(caught)
+    from microcosm.build.uk_runtime import size_evaluation
+
+    assert not hasattr(size_evaluation, "_source_multiplier")
+    assert not hasattr(size_evaluation, "id_multiplier_for_values")
 
 
-def test_a_clone_offset_int64_cannot_hold_is_refused_by_count(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("ids", "clone_index"),
+    [
+        # A negative clone index, which no copy-id field holds.
+        (np.array([1, 2, 535_353], dtype=np.int64), np.array([0, 0, -1])),
+        # A negative id.
+        (np.array([1, 2, -535_353], dtype=np.int64), np.array([0, 0, 0])),
+        # A clone index the row's id does not hold.
+        (_clone_ids([1, 2, 535_353], [0, 0, 1]), np.array([0, 0, 2])),
+    ],
+)
+def test_a_row_off_the_layout_is_refused_without_a_figure(
+    tmp_path: Path, ids, clone_index
 ) -> None:
-    ids = _table_minted_spine_ids()
-    run = load_run(
-        _with_households(
-            _write_run_dir(tmp_path, "dense", size_run=False),
-            pd.DataFrame(
-                {
-                    "household_id": ids,
-                    "household_weight": np.full(len(ids), 5.0),
-                    "clone_index": np.array([0, 0, 0, 1], dtype=np.int64),
-                }
-            ),
+    run = _dense_run(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": np.full(3, 5.0),
+                "clone_index": clone_index.astype(np.int64),
+            }
         ),
-        label="dense",
     )
-    # A dense clone of a table-minted spine at 10**19 cannot exist: the
-    # expand refuses it, and so does the decode, without overflowing.
-    with pytest.raises(ValueError, match=r"^1 dense row\(s\) carry a clone_index"):
-        weight_tables(run, id_multiplier=10**19)
+    with pytest.raises(ValueError) as caught:
+        weight_tables(run)
+    _the_layout_refusal(caught)
+
+
+def test_a_non_integer_id_column_is_refused_not_cast(tmp_path: Path) -> None:
+    ids, clone_index = _clone_first_spine(1)
+    run = _dense_run(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": np.full(len(ids), 5.0),
+                "clone_index": clone_index,
+            }
+        ),
+    )
     floated = replace(
         run, weights=run.weights.assign(household_id=lambda t: t.household_id * 1.0)
     )
@@ -722,122 +815,35 @@ def test_a_clone_offset_int64_cannot_hold_is_refused_by_count(
         weight_tables(floated)
 
 
-def test_a_file_that_keeps_its_sources_still_decodes_its_spine_stretch(
-    tmp_path: Path,
-) -> None:
-    ids = _table_minted_spine_ids()
-    weights = np.array([10.0, 20.0, 30.0, 40.0])
-    run = load_run(
-        _with_households(
-            _write_run_dir(tmp_path, "dense", size_run=False),
-            pd.DataFrame(
-                {
-                    "household_id": ids,
-                    "household_weight": weights,
-                    "clone_index": np.zeros(len(ids), dtype=np.int64),
-                    "source_household_id": np.array([1, 2, 1, 2], dtype=np.int64),
-                }
-            ),
-        ),
-        label="dense",
-    )
-    spine = pd.DataFrame({"household_id": ids, "household_weight": weights})
-    result = weight_tables(run, spine_weights=spine, n_clones=1)
-    assert result["source_id_multiplier_basis"] == "source_household_id"
-    assert result["distinct_source_households"] == 2
-    assert result["stretch"]["vs_pool_design"]["max"] == pytest.approx(1.0)
-
-
-def test_an_older_dense_run_above_2_53_decodes_exactly_at_every_basis(
-    tmp_path: Path,
-) -> None:
-    # A spine minted by the retired rule reaches 16 digits and its dense
-    # clones 18 at K=15. Odd ids above 2**53 have no float64 twin, so a
-    # subtraction through float would land off the spine ids.
-    spine_ids = np.array([2**53 + 1, 2**53 + 3, 2**53 + 5, 10**16 - 1], dtype=np.int64)
-    assert all(float(value) != value for value in spine_ids.tolist())
-    clones, multiplier = 15, 10**16
-    clone_index = np.repeat(np.arange(clones, dtype=np.int64), len(spine_ids))
-    dense_ids = np.tile(spine_ids, clones) + clone_index * multiplier
-    weights = np.array([10.0, 20.0, 30.0, 40.0])
-    run = load_run(
-        _with_households(
-            _write_run_dir(tmp_path, "dense", size_run=False),
-            pd.DataFrame(
-                {
-                    "household_id": dense_ids,
-                    "household_weight": np.tile(weights, clones) / clones,
-                    "clone_index": clone_index,
-                }
-            ),
-        ),
-        label="dense",
-    )
-    spine = pd.DataFrame({"household_id": spine_ids, "household_weight": weights})
-    for kwargs, basis in (
-        (
-            {"id_multiplier": multiplier, "spine_weights": spine, "n_clones": clones},
-            "recorded",
-        ),
-        ({"spine_weights": spine, "n_clones": clones}, "spine"),
-        ({}, "inferred_from_clone_zero_ids"),
-    ):
-        result = weight_tables(run, **kwargs)
-        assert result["source_id_multiplier"] == multiplier
-        assert result["source_id_multiplier_basis"] == basis
-        assert result["distinct_source_households"] == len(spine_ids)
-        if kwargs:
-            # Every clone carries a fifteenth of its spine household: exact.
-            assert result["stretch"]["vs_pool_design"]["max"] == pytest.approx(1.0)
-
-
-def test_spine_weights_without_a_dense_rows_household_are_refused_by_count(
+def test_spine_weights_without_a_rows_household_are_refused_without_a_figure(
     tmp_path: Path,
 ) -> None:
     import traceback
 
-    ids = np.array([1, 2, 3, 424_242], dtype=np.int64)
-    run = load_run(
-        _with_households(
-            _write_run_dir(tmp_path, "dense", size_run=False),
-            pd.DataFrame(
-                {
-                    "household_id": ids,
-                    "household_weight": np.full(len(ids), 5.0),
-                    "clone_index": np.zeros(len(ids), dtype=np.int64),
-                }
-            ),
+    ids = _clone_ids([1, 2, 3, 424_242], [0, 0, 0, 1])
+    run = _dense_run(
+        tmp_path,
+        pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": np.full(len(ids), 5.0),
+                "clone_index": np.array([0, 0, 0, 1], dtype=np.int64),
+            }
         ),
-        label="dense",
     )
     spine = pd.DataFrame({"household_id": ids[:3], "household_weight": [5.0] * 3})
     with pytest.raises(ValueError) as caught:
-        weight_tables(run, spine_weights=spine, n_clones=1, id_multiplier=10**6)
+        weight_tables(run, spine_weights=spine)
     assert str(caught.value) == (
-        "spine weights do not cover the spine household of 1 dense row(s)"
+        "The spine weights do not cover every dataset row's spine household."
     )
-    # Counted before the lookup: no pandas KeyError listing the id is chained.
+    # Checked before the lookup: no pandas KeyError listing the id is chained.
     assert caught.value.__cause__ is None and caught.value.__context__ is None
     assert "424242" not in "".join(traceback.format_exception(caught.value))
-
-
-def test_a_negative_clone_index_is_refused_by_count(tmp_path: Path) -> None:
-    run = load_run(
-        _with_households(
-            _write_run_dir(tmp_path, "dense", size_run=False),
-            pd.DataFrame(
-                {
-                    "household_id": np.array([1, 2, 535_353], dtype=np.int64),
-                    "household_weight": np.full(3, 5.0),
-                    "clone_index": np.array([0, 0, -1], dtype=np.int64),
-                }
-            ),
-        ),
-        label="dense",
-    )
-    with pytest.raises(ValueError) as caught:
-        weight_tables(run)
-    assert str(caught.value) == "1 dense row(s) carry a negative clone_index"
+    last = pd.DataFrame({"household_id": ids[3:], "household_weight": [5.0]})
+    twice = pd.concat([spine, spine.iloc[:1], last], ignore_index=True)
+    with pytest.raises(ValueError, match=r"^The spine weights carry a household id"):
+        weight_tables(run, spine_weights=twice)
 
 
 def test_area_support_and_gate_tables(tmp_path: Path) -> None:

@@ -21,7 +21,10 @@ from microcosm.frame.adapters.engine_population import (
     Violation,
 )
 from microcosm.frame.adapters.policyengine_uk_population import UK_ENGINE_POPULATION
-from test_support.microcosm_build.uk_full_population_graph import source_frame
+from test_support.microcosm_build.uk_full_population_graph import (
+    source_frame,
+    spine_frame,
+)
 from test_support.microcosm_build.uk_ladder_rowwise_clone import (
     toy_ladder as toy_ladder,
 )
@@ -674,6 +677,84 @@ def test_national_problem_is_none_without_national_targets(
         == frame.table("household")["household_id"].tolist()
     )
     assert receipt["national_materialization"] == "per_engine_block"
+
+
+def _clones_of(frame, wanted):
+    """The households of ``frame`` whose geographic clone index is in
+    ``wanted``, with their people, benefit units and weights."""
+    household = frame.table("household")
+    ids = set(
+        household.loc[household["household_clone_index"].isin(wanted), "household_id"]
+    )
+    return frame.select(frame.table("person")["person_household_id"].isin(ids))
+
+
+def test_engine_blocks_hold_the_frame_to_the_clone_count_their_node_binds():
+    """At every block count, one included, the frame must hold the K
+    geographic clones its node binds (microcosm#931): the whole pool resolves
+    in one block or K, a part that misses a clone or a frame of more clones is
+    refused, and the refusal names the two clone counts only."""
+    pool = spine_frame(2)
+    assert full_measure._engine_block_frames(pool, 1, clones=2) == [(None, pool)]
+    blocks = full_measure._engine_block_frames(pool, 2, clones=2)
+    assert [index for index, _ in blocks] == [0, 1]
+    clone_zero = _clones_of(pool, [0])
+    for frame, bound, held in ((clone_zero, 2, 1), (pool, 1, 2)):
+        for count in (1, bound):
+            with pytest.raises(ValueError) as refused:
+                full_measure._engine_block_frames(frame, count, clones=bound)
+            assert str(refused.value) == (
+                "Engine resolution binds the geographic clone count "
+                f"K = {bound}, but its frame's is K = {held}: a frame of another "
+                "clone count is not the pool its node binds (microcosm#931)."
+            )
+    # A part that misses clone 0 is refused by the clone count itself.
+    with pytest.raises(ValueError, match=r"^An index from 0 to the largest"):
+        full_measure._engine_block_frames(_clones_of(pool, [1]), 1, clones=2)
+    # Without a bound clone count, one block takes any frame, as before.
+    assert full_measure._engine_block_frames(clone_zero, 1) == [(None, clone_zero)]
+
+
+@pytest.mark.parametrize("blocks", [3, 4])
+def test_engine_blocks_other_than_one_or_k_are_refused(blocks):
+    with pytest.raises(ValueError) as refused:
+        full_measure._engine_block_frames(spine_frame(2), blocks, clones=2)
+    assert str(refused.value) == (
+        "Engine resolution blocks must be one or one per geographic clone, "
+        "K = 2 (microcosm#931)."
+    )
+
+
+def test_the_resolvers_refuse_another_clone_count_before_any_engine_loads(tmp_path):
+    """Both resolvers take the clone count their caller binds and refuse a
+    frame that does not hold it before they construct a resolver; the
+    national line binds one clone (microcosm#931)."""
+    constructed = []
+
+    def factory(**kwargs):
+        constructed.append(kwargs)
+        raise AssertionError("no engine may load for a refused frame")
+
+    pool = spine_frame(2)
+    registry = TargetRegistry([], country="uk")
+    for resolve in (
+        full_measure.resolve_uk_full_national_problem,
+        full_measure.resolve_uk_full_measures,
+    ):
+        for frame, clones in ((_clones_of(pool, [0]), 2), (pool, 1)):
+            with pytest.raises(
+                ValueError,
+                match=r"^Engine resolution binds the geographic clone count K = ",
+            ):
+                resolve(
+                    frame,
+                    registry,
+                    period=2025,
+                    scratch_dir=tmp_path / "scratch",
+                    resolver_factory=factory,
+                    clones=clones,
+                )
+    assert constructed == []
 
 
 def _representation_block(

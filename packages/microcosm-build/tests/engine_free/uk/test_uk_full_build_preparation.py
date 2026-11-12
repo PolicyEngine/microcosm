@@ -13,6 +13,7 @@ import pytest
 
 from microcosm.build.uk_runtime import full_build_cli as cli
 from microcosm.build.uk_runtime import hmrc_uprating, spine_build
+from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     write_uk_national_frame,
@@ -21,6 +22,8 @@ from microcosm.graph import ContentStore, compile_graph, run_graph
 from test_support.microcosm_build.uk_calibration_run import _bound_checkpoint
 from test_support.microcosm_build.uk_full_build_cli import (
     geography_first_sidecar_fields,
+    patch_support_register,
+    synthetic_spine_geography,
 )
 from test_support.microcosm_build.uk_full_population_graph import spine_frame
 from test_support.microcosm_build.uk_ladder_rowwise_clone import (
@@ -171,12 +174,15 @@ def test_prepare_refuses_checkpoint_drift_before_registering_a_full_build(
     assert not args.out.exists()
 
 
-def _checkpoint_request(tmp_path, ladder_path, *extra, clones=1, sampling=None):
-    """A dense request over a fresh stand-in checkpoint at ``clones``."""
+def _checkpoint_request(
+    tmp_path, ladder_path, *extra, clones=1, sampling=None, posture="development"
+):
+    """A dense request over a fresh stand-in checkpoint at ``clones``, built
+    in the release ``posture`` its sidecar records."""
     spine = tmp_path / "spine"
     spine.mkdir(parents=True)
     path, sidecar_path, gates_path, _ = _write_checkpoint(
-        spine, clones=clones, sampling=sampling
+        spine, clones=clones, sampling=sampling, posture=posture
     )
     ledger = tmp_path / "ledger"
     ledger.mkdir(exist_ok=True)
@@ -297,15 +303,19 @@ def spine_request(tmp_path, toy_ladder, stand_in_engine, monkeypatch):
 ROUTES = ("input_h5", "spine_request")
 
 
-def _dense_args(route, request, directory, *extra, clones=1, sampling=None):
+def _dense_args(
+    route, request, directory, *extra, clones=1, sampling=None, posture="development"
+):
     """A dense request on ``route`` over a spine of ``clones`` geographic
     clones, sampled as ``sampling`` says (none at f100): a fresh stand-in
-    checkpoint under ``directory``, or a spine request naming them."""
+    checkpoint under ``directory`` built in the release ``posture``, or a
+    spine request naming them (a synthetic smoke request, so never a release
+    candidate's posture)."""
     if route == "input_h5":
         pytest.importorskip("tables")
         ladder = request.getfixturevalue("toy_ladder")[1]
         return _checkpoint_request(
-            directory, ladder, *extra, clones=clones, sampling=sampling
+            directory, ladder, *extra, clones=clones, sampling=sampling, posture=posture
         )
     spine = ["--n-clones", str(clones)]
     if sampling is not None:
@@ -397,19 +407,32 @@ def test_an_asserted_clone_count_other_than_the_spines_is_refused(
 
 @pytest.mark.parametrize("route", ROUTES)
 def test_engine_blocks_are_held_to_the_spines_clone_count(route, request, tmp_path):
-    """With K from the spine, the configuration holds the engine blocks to
-    one or K at preparation (microcosm#931)."""
+    """With K from the spine, preparation holds the engine blocks to one or K
+    once it binds the spine, naming K and not the operator's count
+    (microcosm#931), and the measures node takes K beside them."""
     with pytest.raises(ValueError) as refused:
         cli.prepare_full_build(
             _dense_args(route, request, tmp_path, "--engine-blocks", "3")
         )
     assert str(refused.value) == (
-        "Engine blocks must be one or equal the spine's geographic clone count K."
+        "--engine-blocks is neither one nor the spine's geographic clone count "
+        "K = 1: the engine resolves the pool in one block or one block per clone "
+        "(microcosm#931)."
     )
     blocks = _dense_args(
         route, request, tmp_path / "blocks", "--engine-blocks", "3", clones=3
     )
-    assert cli.prepare_full_build(blocks).full.config.engine_blocks == 3
+    prepared = cli.prepare_full_build(blocks)
+    assert prepared.full.config.engine_blocks == 3
+    measures = prepared.full.graph.node("uk.full.measures")
+    assert (measures.params["engine_blocks"], measures.params["geographic_clones"]) == (
+        3,
+        3,
+    )
+    one = cli.prepare_full_build(
+        _dense_args(route, request, tmp_path / "one", clones=3)
+    ).full.graph.node("uk.full.measures")
+    assert (one.params["engine_blocks"], one.params["geographic_clones"]) == (1, 3)
 
 
 @pytest.mark.parametrize(
@@ -491,6 +514,162 @@ def test_a_release_candidate_on_a_sampled_spine_is_refused(
         "sampled": True,
         "rung_token": "f010",
     }
+
+
+_RELEASE_CANDIDATE_SPINE = (
+    "--release-candidate builds only on a release-candidate spine (microcosm#931): "
+)
+#: The binding failures a geography block can fail at its own K, in the
+#: helper's order: the law, the identity, the digest and each system's pin.
+_BINDING_FAILURES = [
+    "its geography binding's assignment is not 'atomic'",
+    "its geography binding's identity is not 'geography_household_key'",
+    "its geography binding's definition_sha256 is not a SHA-256 hex digest",
+    *(
+        f"its geography binding's support_pins.{system} is not the registered "
+        "conditioned support"
+        for system in SYSTEMS
+    ),
+]
+
+
+@pytest.fixture
+def signing_key(monkeypatch):
+    from microcosm.build.gate_battery import gate_signing_key_env
+
+    monkeypatch.setenv(
+        gate_signing_key_env("uk"), "BQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU="
+    )
+
+
+def test_a_release_candidate_prepares_on_a_release_spine_at_the_doctrines_k(
+    tmp_path, toy_ladder, stand_in_engine, signing_key, monkeypatch
+):
+    """A release candidate builds on a bound spine of the doctrine's 15
+    geographic clones that the spine build made as a release candidate, whose
+    geography binding is a release's: here the stand-in's own block, on the
+    supports the register lists (microcosm#931)."""
+    pytest.importorskip("tables")
+    patch_support_register(monkeypatch)
+    args = _checkpoint_request(
+        tmp_path,
+        toy_ladder[1],
+        "--release-candidate",
+        clones=15,
+        posture="release_candidate",
+    )
+    prepared = cli.prepare_full_build(args)
+    assert prepared.bindings["release_candidate"] is True
+    assert prepared.bindings["spine"]["geographic_clone_count"] == 15
+    assert prepared.bindings["spine"]["release_posture"] == "release_candidate"
+    assert prepared.bindings["geography"] == {
+        **synthetic_spine_geography(),
+        "geographic_clone_count": 15,
+    }
+    assert args.n_clones == 15
+
+
+def _legacy_assignment(sidecar_path) -> None:
+    sidecar = json.loads(sidecar_path.read_text())
+    sidecar["geography"]["assignment"] = "legacy"
+    sidecar_path.write_text(json.dumps(sidecar))
+
+
+@pytest.mark.parametrize(
+    ("clones", "posture", "registered", "edit", "failures"),
+    [
+        (
+            7,
+            "release_candidate",
+            True,
+            None,
+            ["its geographic clone count is K = 7, not the doctrine's K = 15"],
+        ),
+        (15, "development", True, None, ["it was not built as a release candidate"]),
+        (15, "release_candidate", True, _legacy_assignment, _BINDING_FAILURES[:1]),
+        (15, "release_candidate", False, None, _BINDING_FAILURES[3:]),
+        (
+            1,
+            "development",
+            False,
+            None,
+            [
+                "its geographic clone count is K = 1, not the doctrine's K = 15",
+                "it was not built as a release candidate",
+                *_BINDING_FAILURES[3:],
+            ],
+        ),
+    ],
+    ids=["K", "posture", "assignment", "register", "all"],
+)
+def test_a_release_candidate_on_a_spine_a_release_cannot_build_on_is_refused(
+    tmp_path,
+    toy_ladder,
+    stand_in_engine,
+    signing_key,
+    monkeypatch,
+    clones,
+    posture,
+    registered,
+    edit,
+    failures,
+):
+    """A bound spine at another K, in another posture, or whose geography
+    binding is not a release's (another law, or pins off the conditioned
+    register) is refused as a release candidate's, naming every failure and K,
+    never a value (microcosm#931); the same spine builds a candidate."""
+    pytest.importorskip("tables")
+    if registered:
+        patch_support_register(monkeypatch)
+    args = _checkpoint_request(
+        tmp_path, toy_ladder[1], "--release-candidate", clones=clones, posture=posture
+    )
+    if edit is not None:
+        edit(args.input_sidecar)
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(args)
+    assert str(refused.value) == _RELEASE_CANDIDATE_SPINE + "; ".join(failures) + "."
+    candidate = _checkpoint_request(
+        tmp_path / "candidate", toy_ladder[1], clones=clones, posture=posture
+    )
+    if edit is not None:
+        edit(candidate.input_sidecar)
+    assert cli.prepare_full_build(candidate).bindings["release_candidate"] is False
+
+
+@pytest.mark.parametrize("clones", [15, 7])
+def test_a_release_candidate_on_a_spine_request_is_refused(
+    spine_request, signing_key, monkeypatch, clones
+):
+    """A spine request's in-graph spine records no geography block, so its
+    binding carries K alone, and a synthetic request is a smoke build: a
+    release candidate on one is refused, naming what its spine lacks (no
+    geography binding rather than a binding's every field), before the full
+    graph is composed (microcosm#931)."""
+    patch_support_register(monkeypatch)
+
+    def composed(*args, **kwargs):
+        raise AssertionError("the full graph is composed after the refusal")
+
+    monkeypatch.setattr(cli, "uk_full_graph", composed)
+    args = spine_request(["--n-clones", str(clones)], "--release-candidate")
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(args)
+    failures = [
+        *(
+            []
+            if clones == 15
+            else [
+                f"its geographic clone count is K = {clones}, not the doctrine's K = 15"
+            ]
+        ),
+        "it was not built as a release candidate",
+        "it records no geography binding (a spine request's in-graph spine "
+        "writes none)",
+    ]
+    assert str(refused.value) == _RELEASE_CANDIDATE_SPINE + "; ".join(failures) + "."
+    (raw,) = spine_request.requests
+    assert raw.release_candidate is True and raw.n_clones == clones
 
 
 def test_a_spine_whose_sampling_is_not_a_rung_is_refused(
