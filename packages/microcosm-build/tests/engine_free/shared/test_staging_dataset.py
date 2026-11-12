@@ -673,9 +673,9 @@ def test_the_first_failed_attempt_after_the_commit_ends_the_wait(tmp_path, capsy
         f"warning: the collector had not accepted the submissions of the staged "
         f"dataset bundle staged/{RUN_ID} when the wait ended "
         "(COLLECTOR_UNAVAILABLE); the emitter keeps them queued on this machine, "
-        "and an emitter running here later sends them. Until then, leave "
-        "unchanged any of their files the emitter did not copy at hand-over."
-        in capsys.readouterr().err
+        "and an emitter running here later sends them. Leave unchanged any of "
+        "their files the emitter did not copy at hand-over until the hand-over "
+        "settles." in capsys.readouterr().err
     )
 
 
@@ -759,8 +759,9 @@ def test_submissions_not_accepted_when_the_wait_ends_stay_queued(tmp_path, capsy
         f"warning: the collector had not accepted the submissions of the staged "
         f"dataset bundle staged/{RUN_ID} when the wait ended "
         "(COLLECTOR_UNAVAILABLE); the emitter keeps them queued on this machine, "
-        "and an emitter running here later sends them. Until then, leave "
-        "unchanged any of their files the emitter did not copy at hand-over." in warning
+        "and an emitter running here later sends them. Leave unchanged any of "
+        "their files the emitter did not copy at hand-over until the hand-over "
+        "settles." in warning
     )
 
 
@@ -817,6 +818,36 @@ def test_no_wait_is_announced_when_the_first_receipt_is_settled(
 
     assert len(emitter.collector_receipt_requests) == 1
     assert "waiting up to" not in capsys.readouterr().err.split("upload...")[-1]
+
+
+def test_a_submission_without_a_credential_says_how_to_give_it_one(tmp_path, capsys):
+    """An emitter given a telemetry-only collector token, or finding no
+    Hugging Face credential, keeps the submissions pending with
+    CREDENTIAL_MISSING; a later emitter sends them only with the credential."""
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {
+                "status": "pending",
+                "error_code": "WAITING_FOR_HUGGING_FACE",
+                "attempts": 1,
+            },
+            {"status": "pending", "error_code": "CREDENTIAL_MISSING", "attempts": 2},
+        ],
+    )
+
+    _stage(bundle, emitter, collector=PROVENANCE)
+
+    warning = capsys.readouterr().err
+    assert (
+        f"warning: the collector had not accepted the submissions of the staged "
+        f"dataset bundle staged/{RUN_ID} when the wait ended (CREDENTIAL_MISSING): "
+        "the emitter has no credential to submit them with." in warning
+    )
+    assert "unset MICROCOSM_COLLECTOR_TOKEN" in warning
+    assert "`hf auth login`" in warning
+    assert "an emitter running here later sends them" not in warning
 
 
 def test_an_emitter_that_stops_answering_ends_the_wait(tmp_path, capsys):
