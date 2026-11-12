@@ -2115,12 +2115,25 @@ def _measurements(
             ),
         }
     )
-    out.append(_stock_value_check(facts, geo, block, stock, hpi, cells, count, value))
+    owner = tenure.owner_share_of_la[la_of_cell]
+    out.append(_stock_value_check(facts, geo, hpi, cells, count, value, owner))
     return out
 
 
-def _stock_value_check(facts, geo, block, stock, hpi, cells, count, value) -> dict:
-    """The sales-based private-sector mean against the Market Value Survey."""
+def _survey_private_mean(means: Mapping[str, float], owner_share: float) -> float:
+    """The survey's private-sector mean: its owner-occupier and private-renter
+    means, weighted by the private stock's owner-occupied share."""
+    owners, renters = declared.MVS_PRIVATE_TENURES
+    return owner_share * means[owners] + (1.0 - owner_share) * means[renters]
+
+
+def _stock_value_check(facts, geo, hpi, cells, count, value, owner) -> dict:
+    """The sales-based private-sector mean against the Market Value Survey.
+
+    Owner-occupied homes are worth more than privately rented ones, so the
+    survey's two means are weighted by the private stock's owner-occupied
+    share in the same cells (Census 2021 TS054), not taken half and half.
+    """
     spec = declared.MEASUREMENTS[2]
     regions = ref.market_value_means(facts, spec_prefix=declared.MVS_REGION_SPEC)
     year, month = declared.MVS_MONTH
@@ -2130,18 +2143,22 @@ def _stock_value_check(facts, geo, block, stock, hpi, cells, count, value) -> di
     region_of_cell = geo.region_of_la[geo.la_of_msoa[cells // bands]]
     out: dict[str, object] = {}
     gaps = []
+
+    def means_over(rows) -> tuple[float, float]:
+        weight = count[rows].sum()
+        if not weight > 0:
+            return float("nan"), float("nan")
+        return (
+            float((count[rows] * value[rows]).sum() / weight),
+            float((count[rows] * owner[rows]).sum() / weight),
+        )
+
     for r, code in enumerate(geo.region_codes):
         code = str(code)
         if code not in regions:
             continue
-        rows = region_of_cell == r
-        ours = (
-            float((count[rows] * value[rows]).sum() / count[rows].sum())
-            if rows.any()
-            else float("nan")
-        )
-        means = regions[code]
-        survey = float(np.mean([means[t] for t in declared.MVS_PRIVATE_TENURES]))
+        ours, owner_share = means_over(region_of_cell == r)
+        survey = _survey_private_mean(regions[code], owner_share)
         row = hpi.area_index.get(code, hpi.area_index[ENGLAND])
         survey *= float(basis[row, 4] / at_month[row, 4])
         gap = ours / survey - 1.0
@@ -2149,18 +2166,15 @@ def _stock_value_check(facts, geo, block, stock, hpi, cells, count, value) -> di
         out[code] = {
             "ours": round(ours, 2),
             "survey_private_sector": round(survey, 2),
+            "owner_occupied_share": round(owner_share, 4),
             "relative_gap": round(gap, 4),
         }
     english = np.char.startswith(geo.region_codes.astype(str)[region_of_cell], "E")
-    ours = (
-        float((count[english] * value[english]).sum() / count[english].sum())
-        if english.any()
-        else float("nan")
-    )
+    ours, owner_share = means_over(english)
     england = ref.market_value_means(facts, spec_prefix=declared.MVS_ENGLAND_SPEC)[
         ENGLAND
     ]
-    survey = float(np.mean([england[t] for t in declared.MVS_PRIVATE_TENURES]))
+    survey = _survey_private_mean(england, owner_share)
     survey *= float(
         basis[hpi.area_index[ENGLAND], 4] / at_month[hpi.area_index[ENGLAND], 4]
     )
@@ -2173,10 +2187,15 @@ def _stock_value_check(facts, geo, block, stock, hpi, cells, count, value) -> di
         "england": {
             "ours": round(ours, 2),
             "survey_private_sector": round(survey, 2),
+            "owner_occupied_share": round(owner_share, 4),
             "relative_gap": round(national_gap, 4),
         },
         "regions": out,
-        "survey_private_sector_rule": "the unweighted mean of the survey's owner-occupier and private-renter means, moved to the basis by the UK HPI",
+        "survey_private_sector_rule": (
+            "the survey's owner-occupier and private-renter means, weighted by the "
+            "private stock's owner-occupied share in the same cells (Census 2021 "
+            "TS054), moved to the basis by the UK HPI"
+        ),
         "thresholds": {
             "england": spec["england_relative_gap"],
             "region": spec["region_relative_gap"],

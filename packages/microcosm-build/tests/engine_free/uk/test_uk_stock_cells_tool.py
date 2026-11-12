@@ -1060,3 +1060,13 @@ def test_a_level_input_the_feed_carries_in_another_shape_is_refused() -> None:
     ):
         with pytest.raises(ValueError, match="update LEVEL_INPUTS"):
             tool._level_inputs(args, [shape])
+
+
+def test_the_survey_private_mean_weights_owners_by_their_share() -> None:
+    """Owner-occupied homes are worth more than privately rented ones, so
+    the survey's private-sector mean weights its two means by the private
+    stock's owner-occupied share, not half and half."""
+    tool = _load_tool()
+    means = {"owner_occupiers": 400.0, "private_renters": 300.0, "all": 1.0}
+    assert tool._survey_private_mean(means, 0.74) == pytest.approx(374.0)
+    assert tool._survey_private_mean(means, 0.5) == pytest.approx(350.0)
