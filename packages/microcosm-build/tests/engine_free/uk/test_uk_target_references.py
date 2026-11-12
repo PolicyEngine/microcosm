@@ -141,7 +141,7 @@ _TEST_PATHS = paths_for("microcosm-build")
 # UC aged 16 to 24, 16 to 21 and 22 to 24 (Y4), 94 DWP PIP cases rows for
 # England, Wales and the English regions (P3), and ONS's NEET people aged 16
 # to 24 on a quarterly window (Y3), all held out of the solve
-ACTIVE_REFERENCE_COUNT = 1697
+ACTIVE_REFERENCE_COUNT = 1710
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -922,6 +922,23 @@ UC_PEOPLE_BY_AGE_TARGET_IDS = frozenset(
         "dwp.uc.people_aged_22_to_24",
     }
 )
+# B5 of the November event-data plan's PR3 (microcosm#1095): the bound age rows
+# split into two conditionality groups, on the same months and operation.
+UC_PEOPLE_BY_CONDITIONALITY_GROUP_TARGET_IDS = frozenset(
+    {
+        f"dwp.uc.people_aged_{ages}_{group}"
+        for ages in ("16_to_21", "22_to_24")
+        for group in ("no_work_requirements", "other_regimes")
+    }
+)
+UC_OTHER_CONDITIONALITY_REGIMES = (
+    "Searching for work",
+    "Working - with requirements",
+    "Working - no requirements",
+    "Planning for work",
+    "Preparing for work",
+    "Unknown or missing regime",
+)
 
 
 def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> None:
@@ -1008,6 +1025,49 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
             # Chronicle's single years of age are integers, as the State
             # Pension rows by age read them.
             assert pins["age_bands_and_single_year"] == list(range(low, high + 1))
+            continue
+        elif target_id in UC_PEOPLE_BY_CONDITIONALITY_GROUP_TARGET_IDS:
+            # B5: the age row's people in one of two conditionality groups;
+            # DWP publishes no Great Britain cell of unknown regime at 16 or 17.
+            low, _, high, group = target_id.removeprefix("dwp.uc.people_aged_").split(
+                "_", 3
+            )
+            regimes = (
+                ["No work requirements"]
+                if group == "no_work_requirements"
+                else list(UC_OTHER_CONDITIONALITY_REGIMES)
+            )
+            assert selector["dimensions"] == [
+                "age_bands_and_single_year",
+                "conditionality_regime",
+            ]
+            assert pins["conditionality_regime"] == (
+                regimes[0] if len(regimes) == 1 else regimes
+            )
+            assert selector["source_measure_id"] == "people"
+            assert operations[target_id] == "monthly_window_sum_average"
+            assert target["period_match_policy"] == "source_window"
+            assert target_id in sum_target_ids
+            assert selector["period_value"] == [
+                "2025-02",
+                "2025-05",
+                "2025-08",
+                "2025-11",
+            ]
+            ages = range(int(low), int(high) + 1)
+            assert pins["age_bands_and_single_year"] == list(ages)
+            assert {
+                (
+                    operand["dimension_values"]["age_bands_and_single_year"],
+                    operand["dimension_values"]["conditionality_regime"],
+                )
+                for operand in target["value_operands"]
+            } == {
+                (age, regime)
+                for age in ages
+                for regime in regimes
+                if not (regime == "Unknown or missing regime" and age < 18)
+            }
             continue
         else:
             # Merely naming a dimension set still does not request a sum.
@@ -1140,7 +1200,8 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         return {**regions, **nations}[area]
 
     pip_ids = {target_id for target_id in pins if target_id.startswith("dwp.pip.")}
-    assert len(pip_ids) == 94
+    # P3's 94 rows and B2's five broad England bands (microcosm#1095 PR3).
+    assert len(pip_ids) == 99
     assert all(target_id.startswith("dwp.pip.cases_") for target_id in pip_ids)
     assert {target_id: pins[target_id]["geography_id"] for target_id in pip_ids} == {
         target_id: pip_area(target_id) for target_id in pip_ids
@@ -1633,13 +1694,17 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
 ):
     contract = _load_uk_resource("uk_population_targets.json")
     operations = _value_operation_by_target_id(contract)
-    monthly_sum_ids = {
-        "dwp.uc.households",
-        "dwp.uc.households_single_no_children",
-        "dwp.uc.households_single_with_children",
-        "dwp.uc.households_couple_no_children",
-        "dwp.uc.households_couple_with_children",
-    } | UC_PEOPLE_BY_AGE_TARGET_IDS
+    monthly_sum_ids = (
+        {
+            "dwp.uc.households",
+            "dwp.uc.households_single_no_children",
+            "dwp.uc.households_single_with_children",
+            "dwp.uc.households_couple_no_children",
+            "dwp.uc.households_couple_with_children",
+        }
+        | UC_PEOPLE_BY_AGE_TARGET_IDS
+        | UC_PEOPLE_BY_CONDITIONALITY_GROUP_TARGET_IDS
+    )
     monthly_average_ids = {
         f"dwp.uc.households_children_{children}" for children in ("1", "2", "3", "4")
     } | {
