@@ -16609,6 +16609,10 @@ def test_any_error_measuring_a_dense_output_lands_under_unmeasured(
     assert set(block["columns"]) == {"auto_loan_balance"}
     assert set(block["unmeasured"]) == {"taxable_interest_income"}
     assert block["unmeasured"]["taxable_interest_income"].startswith(reason)
+    # The sparse output's measurement reuses the weights the gate loop
+    # resolved, so the frame resolves the household's weights once; the dense
+    # output's measurement then asks for the person's.
+    assert frame.resolved == ["household", "person"]
 
 
 class _StrRaisesError(Exception):
@@ -16903,6 +16907,38 @@ def test_a_misaligned_sparse_output_fails_with_the_gates_own_message() -> None:
         "casualty_loss: values and weights must align, got 12000 values vs "
         "11999 weights."
     )
+
+
+def test_no_measurement_runs_before_the_gate_raises() -> None:
+    """A sparse household output's weights do not align with its values, and
+    a dense person output waits for its measurement. The gate raises its own
+    message, and the frame has resolved the household's weights only: the
+    measurement, which would resolve the person's, has not run."""
+    builder = _load_builder_module()
+    n = 12_000
+    interest = np.zeros(n)
+    interest[: n // 2] = 1_000.0
+    auto_loans = np.zeros(n)
+    auto_loans[:500] = 4_000.0
+    frame = _WeightResolutionSpy(
+        _qrf_person_frame(
+            builder,
+            {"taxable_interest_income": interest},
+            np.ones(n),
+            household_columns={"auto_loan_balance": auto_loans},
+        ),
+        "household",
+        values=np.ones(n - 1),
+    )
+
+    with pytest.raises(ValueError) as raised:
+        builder._qrf_tail_concentration_gate(frame)
+
+    assert str(raised.value) == (
+        "auto_loan_balance: values and weights must align, got 12000 values vs "
+        "11999 weights."
+    )
+    assert frame.resolved == ["household"]
 
 
 def test_a_dense_output_before_a_sparse_one_leaves_the_gate_to_raise() -> None:

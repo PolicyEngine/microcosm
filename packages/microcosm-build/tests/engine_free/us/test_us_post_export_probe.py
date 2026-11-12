@@ -939,6 +939,26 @@ def test_the_probe_compares_single_record_measurements(probe_tool) -> None:
 
     assert lost["differences"] == ["estate_income: top_1_share 0.5 vs None"]
 
+    # The other direction, a probe column with the release's carriers and no
+    # share: what the measurement reports when a column's mass sums past the
+    # float range.
+    no_share = {
+        **_LINE_32,
+        "top_1_share": None,
+        "top_1_weight": None,
+        "top_k_share": None,
+    }
+    unshared = probe_tool.compare_qrf_tail(
+        _tail_result({**measured, "partnership_income": no_share}),
+        _tail_reference(measured),
+    )
+
+    assert unshared["differences"] == [
+        "partnership_income: top_1_share None vs 0.217",
+        "partnership_income: top_1_weight None vs 644.7",
+        "partnership_income: top_k_share None vs 0.451",
+    ]
+
     narrower = probe_tool.compare_qrf_tail(
         _tail_result({"partnership_income": _LINE_32}), _tail_reference(measured)
     )
@@ -1025,6 +1045,22 @@ def test_a_release_without_single_record_measurements_compares_none(
     """A release built before its tail surface carried the block (Route A)."""
     comparison = probe_tool.compare_qrf_tail(
         _tail_result({"partnership_income": _LINE_32}), _tail_reference()
+    )
+
+    assert comparison == {
+        "differences": [],
+        "columns_compared": 1,
+        "single_record_columns_compared": 0,
+    }
+
+
+def test_a_probe_surface_without_the_block_compares_none(probe_tool) -> None:
+    """The comparison skips the block when either side lacks it. A probe run's
+    side is the surface its builder's ``_qrf_tail_concentration_gate``
+    returns, and the release tool's always carries the block, so this pins
+    the skip on a hand-built result."""
+    comparison = probe_tool.compare_qrf_tail(
+        _tail_result(), _tail_reference({"partnership_income": _LINE_32})
     )
 
     assert comparison == {
