@@ -8,6 +8,13 @@ A frame whose households carry more than one clone of the dense spine's
 geography (``UK_SPINE_ENGINE_BATCH_COLUMN``) is computed clone by clone, one
 simulation per clone, through the shared engine-block machinery
 (microcosm#931); every other frame takes one simulation, as it always has.
+
+policyengine-core stores the five id and membership columns as int32
+(``UK_ENGINE_IDENTIFIERS``). Each simulation is given the frame's ids where
+that store keeps them apart, and 1 plus each id's rank among the simulation's
+own ids for an entity whose stored ids would repeat
+(``microcosm.frame.adapters.engine_identifiers``, microcosm#931). The frame is
+never changed, and results return by position or by the frame's own ids.
 """
 
 from __future__ import annotations
@@ -16,15 +23,24 @@ import json
 import operator
 import sys
 import threading
+import warnings
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from importlib import metadata
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType
 from typing import Any, Protocol
 
 import numpy as np
+import pandas as pd
 
+from microcosm.frame.adapters.engine_identifiers import (
+    EngineIdentifiers,
+    engine_identifier_tables,
+    identifier_columns,
+    refuse_inexact_identifier_requests,
+    require_stored_dtypes,
+)
 from microcosm.frame.adapters.engine_population import (
     SPINE_BATCHED_PASS,
     HouseholdBatch,
@@ -50,6 +66,7 @@ __all__ = [
     "ProjectingRulesEngine",
     "SUPPLIED_ROLE_INPUTS",
     "UK_DEFAULT_SAVINGS_INCOME_PROJECTION",
+    "UK_ENGINE_IDENTIFIERS",
     "UK_ISA_INCOME_CONTRACT",
     "UK_ISA_INCOME_CONTRACT_ATTR",
     "UK_LEGACY_ISA_INCOME_CONTRACT",
@@ -67,6 +84,16 @@ __all__ = [
 ]
 
 UK_SCHEMA = EntitySchema(group_entities=("benunit", "household"))
+#: How policyengine-uk stores UK_SCHEMA's five id and membership columns.
+#: policyengine-uk declares its id variables ``value_type = int``, which
+#: policyengine-core stores as int32, converting a larger id with numpy's
+#: ``astype`` without an error (microcosm#931). ``_require_identifier_dtypes``
+#: checks the declaration against the installed engine, and a test holds
+#: national_frame's release range (``UK_ENGINE_IDENTIFIER_MAX``) to the same
+#: width. national_frame's release rule keeps its own ranker; moving it onto
+#: ``rank_identifier_tables``, and deriving that range from this declaration,
+#: are owed.
+UK_ENGINE_IDENTIFIERS = EngineIdentifiers(stored_dtype=np.dtype(np.int32))
 #: How the producer's savings interest holds ISA interest, declared to
 #: policyengine-uk (its ``isa_income_contract``, from 2.162.2): non-ISA interest
 #: in ``savings_interest_income`` and ISA interest in
@@ -403,6 +430,17 @@ class PolicyEngineUKEngine:
     the rows it holds, as a stage before the clones exist must; that no
     stage after them drops the column is the clone stage's integration
     check, not this adapter's.
+
+    Each simulation is given the frame's ids where policyengine-core's
+    32-bit store keeps them apart, and 1 plus each id's rank among that
+    simulation's ids for an entity whose stored ids would repeat, each
+    person's membership taking the new id of the group it names
+    (:meth:`_dataset_tables`). The frame is never changed, and results
+    return by position or by the frame's own ids. A request for an id or
+    membership variable the engine cannot return as the frame holds it is
+    refused, and each simulation is built with policyengine-uk's
+    ``EntityIdWarning`` filtered, since the adapter checks the stored ids
+    itself.
     """
 
     country = "uk"
@@ -420,6 +458,7 @@ class PolicyEngineUKEngine:
                 )
             clones = count
         self._system: Any = None
+        self._identifier_dtypes_checked = False
         self._clones = clones
 
     def variable_metadata(self, name: str) -> VariableMetadata:
@@ -481,8 +520,25 @@ class PolicyEngineUKEngine:
         declaration's guard judges what it ran under the spine's pass, which
         raises on anything only the pool defines, and the values come back
         as one simulation over the bundle returns them.
+
+        Each simulation is given the frame's ids where its 32-bit store keeps
+        them apart, and 1 plus their rank among its own ids where it would
+        not. The frame is never changed, and values return by position or
+        by the frame's own ids. Because ranks are taken per simulation,
+        values the engine keys on ids, such as a draw hashed on them, can
+        differ between a batched call and one simulation over the bundle
+        whenever either side renumbers: a batch ranks its own rows 1 to n_b,
+        while one simulation over the bundle would rank 1 to N, and would
+        also renumber on ids that coincide across batches. Every other value
+        is as one simulation's. A request for an id or membership variable
+        whose entity holds an id the engine cannot store exactly is refused
+        before any engine is built.
         """
 
+        variables = tuple(variables)
+        refuse_inexact_identifier_requests(
+            UK_SCHEMA, variables, UK_ENGINE_IDENTIFIERS, table=bundle.table
+        )
         microsimulation_class = self._import_policyengine_uk().Microsimulation
         if dataset_period is not None and int(dataset_period) > int(period):
             raise ValueError(
@@ -663,13 +719,16 @@ class PolicyEngineUKEngine:
         (:func:`uk_rebalancing_years_through`). A later year would change no
         value at ``period``: policyengine-uk builds each year only from
         earlier ones.
+
+        Every simulation the adapter builds is constructed here, by
+        :meth:`_simulation`, inside the cut (microcosm#931).
         """
 
         projected = uk_dataset_through(
             dataset, period, self._tax_benefit_system().parameters
         )
         with uk_rebalancing_years_through(period):
-            return microsimulation_class(dataset=projected)
+            return self._simulation(microsimulation_class, projected)
 
     def _import_policyengine_uk(self) -> Any:
         try:
@@ -680,6 +739,38 @@ class PolicyEngineUKEngine:
                 "package. Install it with 'microcosm-frame[uk]'."
             ) from exc
         return policyengine_uk
+
+    def _simulation(self, microsimulation_class: Any, dataset: Any) -> Any:
+        """One simulation over ``dataset``, built with policyengine-uk's
+        ``EntityIdWarning`` filtered, since the adapter itself checks the ids
+        each simulation stores (:meth:`_dataset_tables`).
+
+        The warning class is read from the module
+        :meth:`_import_policyengine_uk` returns, at
+        ``utils.entity_ids.EntityIdWarning``, so the method adds no import of
+        its own, and the engine-free stubs that replace that method stand in
+        here too. A real module that defines no such class there is refused,
+        so a policyengine-uk that moved the class cannot bring the warning
+        back unnoticed. A stand-in that is not a module and carries no such
+        class constructs without a filter.
+        """
+
+        module = self._import_policyengine_uk()
+        warning: Any = module
+        for name in ("utils", "entity_ids", "EntityIdWarning"):
+            warning = getattr(warning, name, None)
+        if not (isinstance(warning, type) and issubclass(warning, Warning)):
+            if isinstance(module, ModuleType):
+                raise ImportError(
+                    "The PolicyEngine-UK adapter builds its simulations with "
+                    f"{module.__name__}.utils.entity_ids.EntityIdWarning "
+                    "filtered, and the installed policyengine-uk defines no "
+                    "such warning there; review the filter against the engine."
+                )
+            return microsimulation_class(dataset=dataset)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=warning)
+            return microsimulation_class(dataset=dataset)
 
     def _tax_benefit_system(self) -> Any:
         if self._system is None:
@@ -697,8 +788,39 @@ class PolicyEngineUKEngine:
 
         return getattr(self._variable(name), "possible_values", None)
 
-    def _build_dataset(self, bundle: Frame, period: int | str) -> Any:
-        from policyengine_uk.data import UKSingleYearDataset
+    def _require_identifier_dtypes(self) -> None:
+        """Refuse an installed engine that stores an id or membership column
+        as a type other than ``UK_ENGINE_IDENTIFIERS`` declares.
+
+        Read from this adapter's own ``CountryTaxBenefitSystem``. A pass is
+        remembered for the adapter; a refusal is raised again on every later
+        call.
+        """
+
+        if self._identifier_dtypes_checked:
+            return
+        require_stored_dtypes(
+            UK_ENGINE_IDENTIFIERS,
+            {
+                column: self._variable(column).dtype
+                for column in identifier_columns(UK_SCHEMA)
+            },
+        )
+        self._identifier_dtypes_checked = True
+
+    def _dataset_tables(self, bundle: Frame) -> dict[str, pd.DataFrame]:
+        """The tables one simulation over ``bundle`` receives; no engine is
+        built.
+
+        The frame's engine tables (``engine_tables``, with the household
+        weights), with each entity's ids as :func:`engine_identifier_tables`
+        gives them. An entity whose stored ids stay apart keeps the frame's,
+        so a bundle without a stored repeat gets exactly ``engine_tables``'
+        tables. An entity whose stored ids would repeat takes 1 plus each
+        id's rank among the bundle's ids, and each person's membership takes
+        its group's new id. A batch's bundle is ranked over its own rows. The
+        frame is not changed.
+        """
 
         expected = (_PERSON_TABLE, *_GROUP_TABLES)
         if set(bundle.entities) != set(expected):
@@ -707,6 +829,13 @@ class PolicyEngineUKEngine:
                 f"{list(expected)}; bundle has {list(bundle.entities)}."
             )
         tables = engine_tables(bundle, weighted_entities=("household",))
+        return engine_identifier_tables(UK_SCHEMA, tables, UK_ENGINE_IDENTIFIERS).tables
+
+    def _build_dataset(self, bundle: Frame, period: int | str) -> Any:
+        from policyengine_uk.data import UKSingleYearDataset
+
+        self._require_identifier_dtypes()
+        tables = self._dataset_tables(bundle)
         return UKSingleYearDataset(
             person=tables["person"].copy(),
             benunit=tables["benunit"].copy(),
