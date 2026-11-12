@@ -164,6 +164,7 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
 from microcosm.build.uk_runtime.legacy_closure_take_up import (
     UKLegacyClosureTakeUpStageTransform,
 )
+from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_CLONE_COUNT
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     write_uk_national_frame,
@@ -220,6 +221,7 @@ from microcosm.build.uk_runtime.spi_spine import (
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
 )
+from microcosm.build.uk_runtime.spine_posture import roster_failures, spec_roster
 from microcosm.build.uk_runtime.staging import UK_STAGING_REPOSITORY
 from microcosm.build.uk_runtime.student_loans import UKStudentLoansStageTransform
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
@@ -268,13 +270,49 @@ _RUNG_ABORT_EXIT_CODE = 3
 #: take the count, and the node refuses a transform that makes another number
 #: of clones.
 _GEOGRAPHIC_CLONES = 1
-#: Why a release candidate takes one clone (microcosm#931): the clone count a
-#: release builds at is pinned only from group (c) on.
+#: Why a release candidate takes one clone or, on a geography-first roster,
+#: the dense release's K (microcosm#931): the national line builds at one,
+#: and a dense release at the local doctrine's K
+#: (local_doctrine.UK_LOCAL_CLONE_COUNT).
 _RELEASE_CANDIDATE_CLONES_REFUSAL = (
     "--release-candidate builds the spine at one geographic clone "
-    "(--n-clones 1): the clone count a release builds at is pinned only from "
-    "microcosm#931 group (c) on."
+    "(--n-clones 1) or, on a geography-first roster, at the dense release's "
+    f"{UK_LOCAL_CLONE_COUNT} (--n-clones {UK_LOCAL_CLONE_COUNT}; microcosm#931)."
 )
+
+
+def _release_candidate_clones_refusal(clones: int) -> str | None:
+    """Why a release-candidate spine cannot take ``clones`` geographic
+    clones, or ``None`` where it can (microcosm#931).
+
+    One clone always can. The dense release's K can only where the packaged
+    UK spec's roster is geography-first
+    (:func:`~microcosm.build.uk_runtime.spine_posture.roster_failures`, read
+    off the spec, with no sidecar block): a dense release's clones carry its
+    areas, and a spine whose stages assign none gives them no area to carry.
+    So it switches on by itself once the spec declares its area stages. Every
+    other count is refused. The refusal names the clone counts and what the
+    roster lacks, never a row count or a value.
+    """
+    if clones == 1:
+        return None
+    if clones != UK_LOCAL_CLONE_COUNT:
+        return _RELEASE_CANDIDATE_CLONES_REFUSAL
+    failures = roster_failures(
+        *spec_roster(load_country_spec("uk")), from_sidecar=False
+    )
+    if failures:
+        return (
+            "--release-candidate builds the spine at the dense release's "
+            f"{UK_LOCAL_CLONE_COUNT} geographic clones only on a geography-first "
+            "roster, one that assigns every geographic clone its area "
+            "(microcosm#931); the packaged UK spec's roster lacks: "
+            + "; ".join(failures)
+            + "."
+        )
+    return None
+
+
 #: Declared outputs whose nonzero share no stage record reports: the root's
 #: area-conditioning carriers (frs_spine.FRS_AREA_CONDITIONING_COLUMNS,
 #: microcosm#931), which stay out of every receipt and of the sidecar's
@@ -422,7 +460,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "microcosm#931). The geographic_expand stage makes them after the "
             "stages that read the raw FRS tables, each at an equal share of its "
             "household's weight, and every later engine call runs clone by "
-            "clone. A release candidate takes one."
+            "clone. A release candidate takes one, or the dense release's "
+            f"{UK_LOCAL_CLONE_COUNT} on a geography-first roster."
         ),
     )
     parser.add_argument(
@@ -521,8 +560,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("sample seed must be a non-negative integer.")
     if args.smoke and args.release_candidate:
         parser.error("non-release smoke builds refuse --release-candidate.")
-    if args.release_candidate and args.n_clones != 1:
-        parser.error(_RELEASE_CANDIDATE_CLONES_REFUSAL)
+    if args.release_candidate:
+        refusal = _release_candidate_clones_refusal(args.n_clones)
+        if refusal is not None:
+            parser.error(refusal)
     if _is_sampled(args) and args.checkpoint_dir is not None:
         parser.error(
             "sampled spine builds refuse --checkpoint-dir; sampled artifacts "
@@ -581,8 +622,10 @@ def _sample_token(args: argparse.Namespace) -> str:
 def _validate_args(args: argparse.Namespace) -> None:
     # The parser refuses the pair too; the full build sets release_candidate
     # on a spine request it has already parsed, so the refusal holds here.
-    if args.release_candidate and args.n_clones != 1:
-        raise ValueError(_RELEASE_CANDIDATE_CLONES_REFUSAL)
+    if args.release_candidate:
+        refusal = _release_candidate_clones_refusal(args.n_clones)
+        if refusal is not None:
+            raise ValueError(refusal)
     if args.synthetic_fixture_dir is not None:
         if not args.synthetic_fixture_dir.is_dir():
             raise ValueError(

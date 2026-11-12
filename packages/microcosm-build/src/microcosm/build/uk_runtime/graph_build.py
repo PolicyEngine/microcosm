@@ -188,7 +188,9 @@ def uk_full_graph(
     pool checkpoint keeps every row of it: the dense line takes the spine's
     geographic clones, areas and sampling as they stand (microcosm#931). A
     composed spine whose ``geographic_expand`` node declares another clone
-    count than the config's ``n_clones`` is refused, naming both K.
+    count than the config's ``n_clones`` is refused, naming both K, and the
+    measures refuse a frame that does not hold ``n_clones`` clones, whatever
+    their engine blocks.
     """
 
     initial = uk_spine_graph(source_mode="split") if spine is None else spine
@@ -212,6 +214,7 @@ def uk_full_graph(
         geography_levels=config.geography_levels,
         target_families=config.target_families,
         engine_blocks=config.engine_blocks,
+        geographic_clones=config.n_clones,
         sample_fraction=config.effective_sample_fraction,
         target_weight_rule=config.calibration.target_weight_rule,
         optional_sources=optional_target_sources,

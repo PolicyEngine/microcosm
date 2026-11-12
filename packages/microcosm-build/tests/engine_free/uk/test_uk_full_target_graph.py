@@ -149,6 +149,85 @@ def test_a_composed_spine_of_another_clone_count_is_refused():
         )
 
 
+def test_the_measures_bind_the_spines_clone_count_beside_their_engine_blocks():
+    """The measures node carries the spine's K, the clone count its engine
+    blocks hold the frame to at every block count, beside one or K blocks
+    (microcosm#931). Composed directly, the target nodes refuse other blocks
+    and a K that is not a positive integer, naming K only."""
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
+    from microcosm.build.uk_runtime.graph_targets import append_uk_target_nodes
+
+    for clones, blocks in ((1, 1), (3, 1), (3, 3)):
+        measures = uk_full_graph(
+            UKFullBuildConfig(
+                calibration_year=2026, n_clones=clones, engine_blocks=blocks
+            ),
+            spine=uk_spine_graph(source_mode="split", geographic_clones=clones),
+        ).graph.node("uk.full.measures")
+        assert (
+            measures.params["geographic_clones"],
+            measures.params["engine_blocks"],
+        ) == (clones, blocks)
+    spine = uk_spine_graph(source_mode="split", geographic_clones=3)
+    common = {
+        "population": uk_spine_endpoint(spine).population,
+        "calibration_year": 2026,
+        "time_period": "2023",
+    }
+    with pytest.raises(ValueError) as refused:
+        append_uk_target_nodes(spine, engine_blocks=2, geographic_clones=3, **common)
+    assert str(refused.value) == (
+        "Engine blocks must be one or one per geographic clone, K = 3 (microcosm#931)."
+    )
+    for clones in (0, True, 1.0):
+        with pytest.raises(ValueError, match="must be a positive integer"):
+            append_uk_target_nodes(spine, geographic_clones=clones, **common)
+
+
+class _ResolvedError(Exception):
+    """The stand-in resolver was reached; nothing past it runs."""
+
+
+@pytest.mark.parametrize(("blocks", "clones"), [(1, 3), (3, 3), (1, 1)])
+def test_the_measures_kernel_hands_its_engine_blocks_the_spines_clone_count(
+    monkeypatch, blocks, clones
+):
+    """The measures kernel passes its geographic_clones parameter, the
+    spine's K, to the engine blocks beside its engine_blocks (microcosm#931),
+    so the blocks hold the frame to K at every block count."""
+    from microcosm.build.uk_runtime import graph_evidence
+
+    seen = []
+    frame = object()
+
+    def resolve(resolved, national, **kwargs):
+        seen.append((resolved, kwargs["blocks"], kwargs["clones"]))
+        raise _ResolvedError
+
+    monkeypatch.setattr(
+        graph_evidence, "require_uk_spine_gate_admission", lambda context: None
+    )
+    monkeypatch.setattr(graph_targets, "context_frame", lambda context: frame)
+    monkeypatch.setattr(
+        graph_targets,
+        "registry_from_payload",
+        lambda payload: TargetRegistry([], country="uk"),
+    )
+    monkeypatch.setattr(graph_targets, "resolve_uk_full_national_problem", resolve)
+    context = SimpleNamespace(
+        params={"engine_blocks": blocks, "geographic_clones": clones},
+        artifacts={
+            "surface": SimpleNamespace(
+                payload=json.dumps({"calibration_year": 2026, "band_edge_registry": {}})
+            ),
+            "selection": SimpleNamespace(payload=json.dumps({"registry": {}})),
+        },
+    )
+    with pytest.raises(_ResolvedError):
+        graph_targets.UKFullMeasureKernel().run(context)
+    assert seen == [(frame, blocks, clones)]
+
+
 def test_local_surface_selection_keeps_exact_target_periods():
     rows = pd.DataFrame(
         {

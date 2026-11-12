@@ -7,6 +7,7 @@ import pytest
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.country_adapter import (
     uk_atomic_support_register,
+    uk_spine_geography_binding_failures,
     validate_uk_country_source_projection,
 )
 from test_support.paths import paths_for
@@ -136,3 +137,132 @@ def test_atomic_support_register_is_the_committed_provenance():
             "sha256": provenance["supports"][system]["sha256"],
             "size_bytes": provenance["supports"][system]["size_bytes"],
         }
+
+
+def _release_binding(register: dict, clones: int = 15) -> dict:
+    """A spine's geography binding as a release's, with invented digests."""
+    return {
+        "assignment": "atomic",
+        "identity": "geography_household_key",
+        "definition_sha256": "a" * 64,
+        "support_pins": {system: dict(row) for system, row in register.items()},
+        "stream": ["sha256-u53-v1", "uk-spine-atomic-area-v1", 0, 0],
+        "register": "sources.yaml",
+        "geographic_clone_count": clones,
+    }
+
+
+def _pins_failures() -> tuple[str, ...]:
+    from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+
+    return tuple(
+        f"support_pins.{system} is not the registered conditioned support"
+        for system in SYSTEMS
+    )
+
+
+def _edited(binding: dict, **changes) -> dict:
+    return {**binding, **changes}
+
+
+@pytest.mark.parametrize(
+    ("edit", "failures"),
+    [
+        (lambda b: _edited(b, assignment="legacy"), ("assignment is not 'atomic'",)),
+        (
+            lambda b: _edited(b, identity="household_id"),
+            ("identity is not 'geography_household_key'",),
+        ),
+        (
+            lambda b: _edited(b, definition_sha256="A" * 64),
+            ("definition_sha256 is not a SHA-256 hex digest",),
+        ),
+        (
+            lambda b: _edited(b, definition_sha256="a" * 63),
+            ("definition_sha256 is not a SHA-256 hex digest",),
+        ),
+        (
+            lambda b: _edited(b, support_pins=uk_atomic_support_register()),
+            _pins_failures(),
+        ),
+        (lambda b: _edited(b, support_pins=None), _pins_failures()),
+        (
+            lambda b: _edited(
+                b,
+                support_pins={
+                    **b["support_pins"],
+                    "uk_other_area_2021": {"sha256": "9" * 64, "size_bytes": 1},
+                },
+            ),
+            ("support_pins names a system the register does not",),
+        ),
+        (
+            lambda b: _edited(b, geographic_clone_count=7),
+            ("geographic_clone_count is not K = 15",),
+        ),
+        (
+            lambda b: _edited(b, geographic_clone_count=15.0),
+            ("geographic_clone_count is not K = 15",),
+        ),
+        (
+            lambda b: _edited(
+                b,
+                support_pins={
+                    system: {**pin, "size_bytes": float(pin["size_bytes"])}
+                    for system, pin in b["support_pins"].items()
+                },
+            ),
+            _pins_failures(),
+        ),
+        (
+            lambda b: None,
+            (
+                "assignment is not 'atomic'",
+                "identity is not 'geography_household_key'",
+                "definition_sha256 is not a SHA-256 hex digest",
+                *_pins_failures(),
+                "geographic_clone_count is not K = 15",
+            ),
+        ),
+    ],
+    ids=[
+        "law",
+        "identity",
+        "digest case",
+        "digest length",
+        "base register",
+        "no pins",
+        "extra system",
+        "K",
+        "float K",
+        "float sizes",
+        "no binding",
+    ],
+)
+def test_a_spine_geography_binding_is_held_to_a_releases(edit, failures):
+    """A release's areas are drawn by the atomic law on each clone's
+    geography key, under a definition its SHA-256 names, on exactly the
+    conditioned supports sources.yaml registers, at the K asked for
+    (microcosm#931). Each failure names its field and what it must be, never
+    the value it holds."""
+    register = uk_atomic_support_register(conditioned=True)
+    binding = _release_binding(register)
+    assert uk_spine_geography_binding_failures(binding, clone_count=15) == ()
+    found = uk_spine_geography_binding_failures(edit(binding), clone_count=15)
+    assert found == failures
+    assert not any(
+        value in line
+        for line in found
+        for value in ("legacy", "household_id'", "A" * 8, "9" * 8, "uk_other")
+    )
+
+
+def test_a_binding_without_a_clone_count_check_reads_no_k():
+    register = uk_atomic_support_register(conditioned=True)
+    binding = _release_binding(register, clones=7)
+    assert uk_spine_geography_binding_failures(binding) == ()
+    assert uk_spine_geography_binding_failures(binding, clone_count=7) == ()
+    # A boolean is no clone count, however it compares.
+    assert uk_spine_geography_binding_failures(
+        _edited(binding, geographic_clone_count=True), clone_count=1
+    ) == ("geographic_clone_count is not K = 1",)

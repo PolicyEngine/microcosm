@@ -13,12 +13,16 @@ spine's geography stages give it. :class:`Source` serves the stand-in as a
 CREATE node and :func:`spine_graph` is the one-node spine the full graph is
 appended to; a bound checkpoint of it takes the stand-in sidecar fields of
 ``uk_full_build_cli.geography_first_sidecar_fields``, whose geography block
-is under the leaf's keys. :func:`source_frame` is the toy spine before the
-expansion, the row-wise lane's input. Invented data only.
+(:func:`toy_geography_binding`) is under the leaf's keys and read off the
+definition and supports the stand-in's areas are drawn with.
+:func:`source_frame` is the toy spine before the expansion, the row-wise
+lane's input. Invented data only.
 """
 
 # ruff: noqa: F401
 
+import copy
+import functools
 import hashlib
 
 import numpy as np
@@ -28,6 +32,7 @@ import pytest
 from microcosm.build import atomic_geography as geo
 from microcosm.build.uk_runtime.atomic_area_support import (
     IDENTITY_COLUMN,
+    SYSTEMS,
     uk_atomic_assignment_definition,
 )
 from microcosm.build.uk_runtime.atomic_household_identity import household_draw_key
@@ -58,6 +63,7 @@ from microcosm.graph import (
     compile_graph,
     run_graph,
 )
+from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.uk_atomic_support_fixtures import (
     toy_support_payloads,
 )
@@ -138,6 +144,45 @@ def source_frame():
     )
 
 
+def toy_area_definition() -> dict:
+    """The assignment definition the stand-in's areas are drawn with: the toy
+    supports' at the toy builds' seed."""
+    return uk_atomic_assignment_definition(toy_support_payloads(), seed=TOY_AREA_SEED)
+
+
+@functools.cache
+def _toy_geography_binding() -> dict:
+    payloads = toy_support_payloads()
+    definition = toy_area_definition()
+    return {
+        "assignment": "atomic",
+        "identity": IDENTITY_COLUMN,
+        "definition_sha256": hashlib.sha256(canonical_json(definition)).hexdigest(),
+        # In the register's order, the systems'.
+        "support_pins": {
+            system: {
+                "sha256": hashlib.sha256(payloads[system]).hexdigest(),
+                "size_bytes": len(payloads[system]),
+            }
+            for system in SYSTEMS
+        },
+        "stream": list(definition["stream"]),
+        "register": "synthetic",
+    }
+
+
+def toy_geography_binding() -> dict:
+    """The stand-in spine's ``geography`` block, as a spine's build sidecar
+    records one (microcosm#931): the atomic law keyed on the geography key,
+    the digest of the definition its areas are drawn with
+    (:func:`toy_area_definition`, as the shared operator digests a
+    definition), the toy supports' pins and the definition's stream. Its
+    register is the synthetic one tests put in place of ``sources.yaml``
+    (``uk_full_build_cli.patch_support_register``). A fresh copy each call.
+    """
+    return copy.deepcopy(_toy_geography_binding())
+
+
 def _toy_areas(household: pd.DataFrame) -> pd.DataFrame:
     """Each keyed household's areas, as the spine's geography stages give them.
 
@@ -146,7 +191,7 @@ def _toy_areas(household: pd.DataFrame) -> pd.DataFrame:
     engine's ``local_authority`` member is resolved from the derived code.
     """
     payloads = toy_support_payloads()
-    definition = uk_atomic_assignment_definition(payloads, seed=TOY_AREA_SEED)
+    definition = toy_area_definition()
     supports = {
         system: geo.decode_atomic_support(payload)
         for system, payload in payloads.items()

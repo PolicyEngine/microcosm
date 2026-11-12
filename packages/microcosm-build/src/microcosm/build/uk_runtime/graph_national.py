@@ -633,9 +633,11 @@ def materialize_uk_national_rows(
 
     With a resolver factory the engine route of
     :func:`~.full_measure.resolve_uk_full_measures` runs (one block, no local
-    grains). Without one (``None``) the register materialises from the
-    frame's own columns, the seam's ``measure_resolver=None`` route: the
-    hermetic tests' path, and a data-only environment's.
+    grains), on a frame that must hold one geographic clone: the national
+    line builds at K = 1 (microcosm#931). Without one (``None``) the register
+    materialises from the frame's own columns, the seam's
+    ``measure_resolver=None`` route: the hermetic tests' path, and a
+    data-only environment's.
     """
 
     if resolver_factory is None:
@@ -669,6 +671,7 @@ def materialize_uk_national_rows(
         band_edge_registry=band_edge_registry,
         resolver_factory=resolver_factory,
         blocks=1,
+        clones=1,
         local_grains=(),
     )
     return prepared, restore, rows, dict(evidence)

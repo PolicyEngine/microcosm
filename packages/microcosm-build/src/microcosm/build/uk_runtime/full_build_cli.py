@@ -20,7 +20,10 @@ before it pins an input or composes a graph
 (:mod:`microcosm.build.uk_runtime.spine_posture`, microcosm#931), and takes the
 spine's geographic clone count, sampling and areas as its own: its targets,
 measures and pool run on the spine's version as it stands, and the run's
-recorded clone count and rung are the spine's.
+recorded clone count and rung are the spine's. Its engine blocks are one or
+the spine's K, and a release candidate needs an unsampled spine of the
+doctrine's K, built as a release candidate, whose geography binding is a
+release's (:func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_geography_binding_failures`).
 ``tools/build_uk_rowwise_candidate.py`` and ``tools/build_uk_full.py`` are
 stubs over :func:`main`, so every UK line is built by this one command.
 
@@ -115,6 +118,7 @@ from .calibration_run import (
     spine_provenance_from_sidecar,
 )
 from .chronicle_feed import load_uk_chronicle_feed
+from .country_adapter import uk_spine_geography_binding_failures
 from .dataset_size import (
     UK_SIZE_L2_ANCHORS,
     UK_SIZE_L2_BASES,
@@ -625,7 +629,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
         help="Defaults to the role's doctrine; any other admitted rule is a receipted override.",
     )
-    parser.add_argument("--engine-blocks", type=int, default=1)
+    parser.add_argument(
+        "--engine-blocks",
+        type=int,
+        default=1,
+        help=(
+            "Dense role: engine resolution blocks, 1 (the default) or one per "
+            "geographic clone, the spine's K; any other count is refused."
+        ),
+    )
     parser.add_argument("--source-year", type=int)
     parser.add_argument("--calibration-year", type=int)
     parser.add_argument(
@@ -657,7 +669,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "block. Refused with --release-candidate."
         ),
     )
-    parser.add_argument("--release-candidate", action="store_true")
+    parser.add_argument(
+        "--release-candidate",
+        action="store_true",
+        help=(
+            "Dense role: certify a release candidate. The spine must be "
+            "unsampled, at the doctrine's "
+            f"{UK_ROWWISE_DENSE_POSTURE.clone_count} geographic clones, built "
+            "as a release candidate, with a release's geography binding "
+            "(microcosm#931)."
+        ),
+    )
     parser.add_argument(
         "--review-date",
         type=date.fromisoformat,
@@ -1090,7 +1112,8 @@ def _bind_spine_arguments(
     checkpoint's identity and the Logbook rung are the spine's. An explicit
     ``--n-clones`` is an assertion of the spine's K: one that differs is
     refused, naming both K, and on a spine request (``requested``) pointing
-    at the request's own ``--n-clones``.
+    at the request's own ``--n-clones``. ``--engine-blocks`` must be one or
+    the spine's K, and is refused otherwise, naming K.
     """
     clones = int(binding["geographic_clone_count"])
     explicit = getattr(args, "_explicit_arguments", frozenset())
@@ -1106,11 +1129,62 @@ def _bind_spine_arguments(
             f"geographic clone count K = {clones}: the dense line takes K "
             "from its spine (microcosm#931)."
         )
+    if args.engine_blocks not in {1, clones}:
+        raise ValueError(
+            "--engine-blocks is neither one nor the spine's geographic clone "
+            f"count K = {clones}: the engine resolves the pool in one block or "
+            "one block per clone (microcosm#931)."
+        )
     sampling = binding["sampling"]
     args.n_clones = clones
     args.sample_fraction = float(sampling["fraction"])
     if sampling["seed"] is not None:
         args.sample_seed = int(sampling["seed"])
+
+
+def _require_release_candidate_spine(
+    binding: Mapping[str, object], *, clone_count: int
+) -> None:
+    """Refuse a release candidate on a spine a release cannot build on.
+
+    A dense release builds on a spine of the doctrine's ``clone_count``
+    geographic clones, which the spine build made as a release candidate (its
+    ``release_posture``), whose areas are the release line's: its geography
+    binding passes
+    :func:`~microcosm.build.uk_runtime.country_adapter.uk_spine_geography_binding_failures`
+    (microcosm#931). A sampled spine is refused before this, where its rung is
+    read. A spine request's in-graph spine records no geography block, so its
+    binding carries K alone and a release candidate on one is refused here,
+    as recording no geography binding. The refusal names every failure, with
+    K, never a value.
+    """
+    clones = int(binding["geographic_clone_count"])
+    failures: list[str] = []
+    if clones != clone_count:
+        failures.append(
+            f"its geographic clone count is K = {clones}, not the doctrine's "
+            f"K = {clone_count}"
+        )
+    if binding.get("release_posture") != "release_candidate":
+        failures.append("it was not built as a release candidate")
+    geography = binding.get("geography") or {}
+    if set(geography) <= {"geographic_clone_count"}:
+        failures.append(
+            "it records no geography binding (a spine request's in-graph spine "
+            "writes none)"
+        )
+    else:
+        failures.extend(
+            f"its geography binding's {failure}"
+            for failure in uk_spine_geography_binding_failures(
+                geography, clone_count=clones
+            )
+        )
+    if failures:
+        raise ValueError(
+            "--release-candidate builds only on a release-candidate spine "
+            "(microcosm#931): " + "; ".join(failures) + "."
+        )
 
 
 def prepare_full_build(
@@ -1285,6 +1359,13 @@ def prepare_full_build(
     if args.release_candidate and config.effective_sample_fraction != 1.0:
         raise ValueError(
             "Sampled builds cannot request release-candidate certification."
+        )
+    # The release candidate's K pin, posture and geography binding: the
+    # doctrine's K, a release-candidate spine and the release line's areas
+    # (microcosm#931).
+    if args.release_candidate:
+        _require_release_candidate_spine(
+            spine_binding, clone_count=int(posture.clone_count)
         )
     feed = load_uk_chronicle_feed()
     for supplied, committed in (

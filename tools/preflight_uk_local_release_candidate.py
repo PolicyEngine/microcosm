@@ -12,7 +12,10 @@ Two postures, both fail-closed and both printing every failure by name:
            that the build recorded exact), doctrine values
            (and, for a sized run, the size doctrine: 150,000 households under
            the doctrine's draw, floor and refit penalty, selected by a size
-           search in the doctrine's L0 bracket), the A15 census household
+           search in the doctrine's L0 bracket), the spine's geography
+           binding a release's (the atomic law on the conditioned supports
+           ``sources.yaml`` registers, at the doctrine's 15 clones, the
+           run's ``n_clones``; microcosm#931), the A15 census household
            uprating and A17 tenure application and the
            measure exclusions receipted, the rotated holdout either not
            requested (an opt-in diagnostic, microcosm#1301) or measured
@@ -287,6 +290,9 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     # equal one engine over the pool to float32 rounding (exact_basis
     # pool_share_injection_with_population_guard, microcosm#931). The build
     # decides exact once its blocks ran, and nothing else stands in for it.
+    # The run's n_clones is its spine's K, which the build takes from the
+    # spine it binds and holds its engine blocks to (one or K), so one block
+    # per clone is 15 blocks here (microcosm#931).
     # The check does not require exact_basis, so a receipt from before the
     # correction, when exact meant identical copies, passes too; whether it
     # should is open for Max's review.
@@ -364,31 +370,23 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     for name in ("spine", "ladder"):
         if manifest.get("identity", {}).get(name, {}).get("pin_verified") is not True:
             failures.append(f"identity.{name}.pin_verified is not true.")
-    # The release line assigns geography with the identity-keyed atomic law
-    # on the registered supports (microcosm#932): the manifest's binding must
-    # say so, and its support pins must be the sources.yaml rows, not merely
-    # the digests the operator pinned.
-    assignment = (manifest.get("geography") or {}).get("assignment") or {}
-    if assignment.get("assignment") != "atomic":
-        failures.append(
-            f"geography.assignment.assignment is {assignment.get('assignment')!r}, "
-            "not 'atomic'."
-        )
-    else:
-        from microcosm.build.uk_runtime import country_adapter
+    # The release line's areas are the spine's (microcosm#931): the manifest
+    # records the spine's geography binding as geography.assignment, and it
+    # must be a release's, the identity-keyed atomic law on exactly the
+    # conditioned supports sources.yaml registers, whatever digests the
+    # operator pinned, at the doctrine's clone count, the run's n_clones. The
+    # build's preparation holds a release candidate's spine to the same
+    # check (country_adapter.uk_spine_geography_binding_failures), which
+    # names fields only.
+    from microcosm.build.uk_runtime import country_adapter
 
-        register = country_adapter.uk_atomic_support_register()
-        support_pins = assignment.get("support_pins") or {}
-        for system, expected in register.items():
-            pin = support_pins.get(system) or {}
-            if (
-                pin.get("sha256") != expected["sha256"]
-                or pin.get("size_bytes") != expected["size_bytes"]
-            ):
-                failures.append(
-                    f"geography.assignment.support_pins.{system} is not the "
-                    "registered support (sources.yaml)."
-                )
+    failures.extend(
+        f"geography.assignment.{failure}."
+        for failure in country_adapter.uk_spine_geography_binding_failures(
+            (manifest.get("geography") or {}).get("assignment"),
+            clone_count=expected["clone_count"],
+        )
+    )
     dataset = manifest.get("outputs", {}).get("dataset", {})
     h5_path = Path(str(dataset.get("path", "")))
     if not h5_path.is_absolute():

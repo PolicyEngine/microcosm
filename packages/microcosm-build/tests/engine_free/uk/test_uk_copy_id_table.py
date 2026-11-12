@@ -703,9 +703,8 @@ _RETIRED_RULE = "id_multiplier_for_values"
 #: The modules that keep the row-wise lane's own clone multiplier, the retired
 #: rule over the spine's ids, each with what it uses it for. The dense line
 #: builds on the clone-first spine as it stands (microcosm#931), so the rule
-#: serves the lane that clones a spine without clone indices itself, and the
-#: size evaluation, which decodes the old dense layout until its own #931
-#: commit. Nothing else may name it.
+#: serves only the lane that clones a spine without clone indices itself.
+#: Nothing else may name it.
 _DENSE_RULE_MODULES = {
     "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_geography.py": (
         "defines the row-wise clone multiplier and clones linked frames at it"
@@ -715,9 +714,6 @@ _DENSE_RULE_MODULES = {
     ),
     "packages/microcosm-build/src/microcosm/build/uk_runtime/__init__.py": (
         "re-exports the row-wise helper"
-    ),
-    "packages/microcosm-build/src/microcosm/build/uk_runtime/size_evaluation.py": (
-        "decodes the old dense layout's clone ids back to spine ids"
     ),
     "tools/build_uk_rowwise_dataset.py": (
         "the row-wise tool's dry-run plans size its clones' ids by it"
@@ -733,7 +729,9 @@ _DENSE_RULE_MODULES = {
 #: the donor rows whose ids hold no ordinal in a field minted after the band
 #: donors, and the regional home values count the sources at the value cap in
 #: the rows whose ids hold no geographic_support ordinal, clone 0's
-#: (microcosm#931).
+#: (microcosm#931). The size evaluation decodes a dense dataset's ids, which
+#: are its clone-first spine's, through the geographic_support field, and
+#: refuses any other layout.
 _COPY_ID_MODULES = frozenset(
     {
         *(
@@ -747,6 +745,7 @@ _COPY_ID_MODULES = frozenset(
                 "graph_kernels",
                 "high_value_home_support",
                 "regional_home_values",
+                "size_evaluation",
                 "spi_band_donors",
                 "spi_support",
                 "stage_health",
@@ -805,8 +804,7 @@ def _source_names(source: str) -> set[str]:
 
 def test_only_the_row_wise_lane_names_the_retired_id_rule() -> None:
     """The retired rule survives only where the row-wise lane keeps its own
-    multiplier, and in the size evaluation's old-layout decode; a stale entry
-    fails as well as a new user."""
+    multiplier; a stale entry fails as well as a new user."""
 
     names = {
         path: _source_names(source) for path, source in _uk_python_sources().items()

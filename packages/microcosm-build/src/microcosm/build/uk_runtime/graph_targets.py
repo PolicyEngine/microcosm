@@ -564,7 +564,9 @@ class UKFullMeasureKernel(_TargetKernel):
         ) as scratch:
             # The national problem is compiled per engine block and stitched
             # in the pool's household order; the whole pool is never
-            # materialized (microcosm#932 follow-up, 2026-10-05).
+            # materialized (microcosm#932 follow-up, 2026-10-05). The frame
+            # must hold the spine's K geographic clones at every block count
+            # (microcosm#931).
             national_problem, rows, metrics, evidence = (
                 resolve_uk_full_national_problem(
                     frame,
@@ -575,6 +577,7 @@ class UKFullMeasureKernel(_TargetKernel):
                         full["band_edge_registry"]
                     ),
                     blocks=int(context.params["engine_blocks"]),
+                    clones=int(context.params["geographic_clones"]),
                     local_grains=grains,
                 )
             )
@@ -874,6 +877,7 @@ def append_uk_target_nodes(
     geography_levels: tuple[str, ...] | None = None,
     target_families: tuple[str, ...] | None = None,
     engine_blocks: int = 1,
+    geographic_clones: int = 1,
     sample_fraction: float = 1.0,
     target_weight_rule: str = "uniform",
     optional_sources: tuple[str, ...] = (),
@@ -884,13 +888,28 @@ def append_uk_target_nodes(
     ``population`` is the spine's version the targets read, the full build's
     pool (microcosm#931). Where the graph declares the spine's transferred
     gates, the measures take their admission: they refuse to read the version
-    unless that stored report admits it.
+    unless that stored report admits it. ``geographic_clones`` is the spine's
+    clone count K: the measures refuse a frame that does not hold K clones,
+    at every block count, and ``engine_blocks`` must be one or K.
     """
 
     if geography_levels is not None and not geography_levels:
         raise ValueError("An explicit geography selector must contain levels.")
     if target_families is not None and not target_families:
         raise ValueError("An explicit family selector must contain families.")
+    if (
+        isinstance(geographic_clones, bool)
+        or not isinstance(geographic_clones, int)
+        or geographic_clones < 1
+    ):
+        raise ValueError(
+            "The spine's geographic clone count K must be a positive integer."
+        )
+    if engine_blocks not in {1, geographic_clones}:
+        raise ValueError(
+            "Engine blocks must be one or one per geographic clone, "
+            f"K = {geographic_clones} (microcosm#931)."
+        )
     cells = population_columns(graph, population)
     slices = population_slices(cells)
     compile_sources = ("uk_ladder", "uk_ledger_facts", *optional_sources)
@@ -950,7 +969,12 @@ def append_uk_target_nodes(
             UKFullMeasureKernel.ref,
             population=population,
             inputs=slices,
-            params={**common, "engine_blocks": engine_blocks, **spine_gate_params},
+            params={
+                **common,
+                "engine_blocks": engine_blocks,
+                "geographic_clones": geographic_clones,
+                **spine_gate_params,
+            },
             artifact_inputs=(surface, selection, *spine_gate_inputs),
             artifact_outputs=(ArtifactOutput("measures", MEASURE_TYPE),),
             description="Evaluate selected measures and compile temporary national contributions.",

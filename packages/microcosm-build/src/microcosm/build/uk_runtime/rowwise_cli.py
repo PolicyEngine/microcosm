@@ -1022,8 +1022,10 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         # and the home values, BRMAs, private rents and fuel-relief flags they
         # set from the spine, and spine_posture requires the spine stages that
         # set them before the build pins or reads any other input
-        # (microcosm#931), so no flag turns them off or draws them again. A
-        # sampled spine is refused at preparation, where its rung is read.
+        # (microcosm#931), so no flag turns them off or draws them again.
+        # Preparation, where the spine is read, refuses a sampled spine and
+        # holds the spine to the doctrine's K, to a release candidate's
+        # posture and to a release's geography binding.
         target_levels = getattr(args, "target_geographies", None)
         if target_levels is not None and not set(target_levels) & {
             "constituency",
@@ -1057,9 +1059,9 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError("--sample-seed must be non-negative.")
     if args.engine_blocks <= 0:
         raise ValueError("--engine-blocks must be positive.")
-    # The dense line's K is its spine's, read at preparation, where its
-    # configuration holds the engine blocks to one or K; here only an
-    # asserted --n-clones can be compared (microcosm#931).
+    # The dense line's K is its spine's, read at preparation, which holds the
+    # engine blocks to one or K; here only an asserted --n-clones can be
+    # compared (microcosm#931).
     if (
         args.engine_blocks > 1
         and args.n_clones is not None

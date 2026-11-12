@@ -3558,25 +3558,103 @@ def test_driver_refuses_a_clone_count_outside_the_copy_id_fields_bound(
     assert tool._parse_args([*base, "--n-clones", "100"]).n_clones == 100
 
 
-def test_a_release_candidate_spine_takes_one_geographic_clone(
-    tmp_path: Path,
+@pytest.mark.parametrize("clones", ["2", "7", "16"])
+def test_a_release_candidate_spine_takes_one_clone_or_the_dense_releases_k(
+    tmp_path: Path, clones: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A release candidate refuses --n-clones above one until microcosm#931
-    group (c) pins the clone count a release builds at: the parser refuses
-    the pair, and so does the preparation the full build hands a spine request
-    it has marked a release candidate after parsing it."""
+    """A release candidate builds the spine at one geographic clone, as the
+    national line does, or, on a geography-first roster, at the dense
+    release's 15 (microcosm#931); any other count is refused, by the parser
+    and by the preparation the full build hands a spine request it has marked
+    a release candidate after parsing it."""
+
+    tool = _load_tool()
+    refusal = (
+        "--release-candidate builds the spine at one geographic clone "
+        "(--n-clones 1) or, on a geography-first roster, at the dense release's "
+        "15 (--n-clones 15; microcosm#931)."
+    )
+    base = _driver_arguments(
+        tmp_path, tmp_path / "spine.h5", tmp_path / "put2223uk.tab", tmp_path / "x"
+    )
+    with pytest.raises(SystemExit):
+        tool._parse_args([*base, "--release-candidate", "--n-clones", clones])
+    assert refusal in capsys.readouterr().err
+    assert tool._parse_args([*base, "--release-candidate"]).n_clones == 1
+    requested = tool._parse_args([*base, "--n-clones", clones])
+    requested.release_candidate = True
+    with pytest.raises(ValueError) as refused:
+        tool.prepare_uk_spine_execution(requested)
+    assert str(refused.value) == refusal
+
+
+def _geography_first_roster():
+    """A roster that runs every geography-first stage and operation."""
+    from microcosm.build.uk_runtime.geography_first_roster import (
+        GEOGRAPHY_FIRST_OPERATIONS,
+        GEOGRAPHY_FIRST_STAGES,
+    )
+
+    stages = ("frs_spine", *GEOGRAPHY_FIRST_STAGES, *GEOGRAPHY_FIRST_OPERATIONS)
+    return stages, {
+        stage: GEOGRAPHY_FIRST_OPERATIONS.get(stage, ()) for stage in stages
+    }
+
+
+def test_a_release_candidate_spine_takes_the_dense_k_only_on_a_geography_first_roster(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """At the dense release's 15 clones a release-candidate spine needs a
+    geography-first roster, one whose stages give every clone its area
+    (microcosm#931, C-38): the parser and the preparation refuse 15 on a
+    roster that lacks them, naming what it lacks and nothing else, and accept
+    it on a geography-first one. The check reads the packaged spec's roster,
+    so it switches on by itself once the spec declares its area stages."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.spine_posture import roster_failures, spec_roster
 
     tool = _load_tool()
     base = _driver_arguments(
         tmp_path, tmp_path / "spine.h5", tmp_path / "put2223uk.tab", tmp_path / "x"
     )
+    release = [*base, "--release-candidate", "--n-clones", "15"]
+    # A roster before the area stages: the clone-first stages and the WAS
+    # chain without its localiser.
+    pre_geography = (
+        ("frs_spine", "geographic_expand", "geographic_identity", "was_wealth"),
+        {"was_wealth": ("assign_was_wealth",)},
+    )
+    monkeypatch.setattr(tool, "spec_roster", lambda spec: pre_geography)
+    expected = (
+        "--release-candidate builds the spine at the dense release's 15 "
+        "geographic clones only on a geography-first roster, one that assigns "
+        "every geographic clone its area (microcosm#931); the packaged UK "
+        "spec's roster lacks: stage atomic_area_assign; stage local_authority; "
+        "stage rfdr; stage area_brma; stage spi_copy_areas; stage private_rent; "
+        "operation localise_main_residence_value in was_wealth."
+    )
     with pytest.raises(SystemExit):
-        tool._parse_args([*base, "--release-candidate", "--n-clones", "2"])
-    assert tool._parse_args([*base, "--release-candidate"]).n_clones == 1
-    requested = tool._parse_args([*base, "--n-clones", "2"])
+        tool._parse_args(release)
+    assert expected in capsys.readouterr().err
+    requested = tool._parse_args([*base, "--n-clones", "15"])
     requested.release_candidate = True
-    with pytest.raises(ValueError, match="builds the spine at one geographic clone"):
+    with pytest.raises(ValueError) as refused:
         tool.prepare_uk_spine_execution(requested)
+    assert str(refused.value) == expected
+    monkeypatch.setattr(tool, "spec_roster", lambda spec: _geography_first_roster())
+    assert tool._parse_args(release).n_clones == 15
+    assert tool._release_candidate_clones_refusal(15) is None
+    assert tool._release_candidate_clones_refusal(7) is not None
+    # On the packaged spec, 15 is accepted exactly when its roster is
+    # geography-first.
+    monkeypatch.setattr(tool, "spec_roster", spec_roster)
+    packaged = roster_failures(
+        *spec_roster(load_country_spec("uk")), from_sidecar=False
+    )
+    assert (tool._release_candidate_clones_refusal(15) is None) is (not packaged)
 
 
 def test_driver_refuses_a_clone_count_its_synthetic_fixture_does_not_make(

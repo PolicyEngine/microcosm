@@ -1209,6 +1209,13 @@ _REFUSAL_ONLY_HELPERS: dict[tuple[str, str], str] = {
         "geographic clone index, and refuses the spine if it does; the "
         "national problem calls it before it resolves anything (microcosm#931)"
     ),
+    ("microcosm.build.uk_runtime.full_measure", "_require_engine_clone_count"): (
+        "reads only the frame's geographic clone count, through "
+        "geographic_clone_count, and refuses the frame unless it holds the K "
+        "its caller binds; the engine blocks call it before they split the "
+        "frame or resolve anything, for the dense measures at the spine's K "
+        "and for the national line at one (microcosm#931)"
+    ),
     ("microcosm.frame.rules", "assert_rules_engine_country"): (
         "reads the engine's declared country and refuses one that declares "
         "none or another; the stages that take an engine call it before "
@@ -1288,12 +1295,16 @@ _KERNEL_UNBOUND_NAMES: dict[tuple[str, str], str] = {
         "stands (microcosm#931): the calibrated gates' support-family fold "
         "reads the household's on the dense frame, and the dense measures "
         "read it only to split their frame into the engine blocks their "
-        "engine_blocks parameter asks for, and refuse a frame without it. "
+        "engine_blocks parameter asks for, and refuse a frame without it; "
+        "their frame's clone count, which they hold to their "
+        "geographic_clones parameter, they read only through a refusal-only "
+        "check. "
         "Their population is the spine's version, so their keys chain on "
         "geographic_expand's on a composed spine, and on the bound "
         "checkpoint's on a bound one, whose kernel hashes geographic_clones "
         "for the clone count it holds its sidecar's to. The national problem "
-        "resolves its measures in one block, which never reads it "
+        "resolves its measures in one block of one clone, which never reads "
+        "it but through that refusal-only check "
         "(full_measure._engine_block_frames; checked); its early refusal of a "
         "clone-first spine reads it only through "
         "refuse_clone_first_national_spine, a refusal-only helper"
@@ -2448,6 +2459,9 @@ def test_every_uk_graph_kernel_hashes_each_helper_it_computes_through() -> None:
     resolving = calls(graph_national, "resolve_uk_full_measures")
     assert resolving and all(
         [ast.unparse(item.value) for item in call.keywords if item.arg == "blocks"]
+        == ["1"]
+        # The national line holds its frame to one clone (microcosm#931).
+        and [ast.unparse(item.value) for item in call.keywords if item.arg == "clones"]
         == ["1"]
         for call in resolving
     )
