@@ -226,6 +226,7 @@ class _TargetKernel(KernelBase):
             full_targets,
             high_value_homes,
             measure_simulation,
+            receipt_counts,
             weighted_integrity,
         )
         from .target_compile_modules import uk_target_compile_modules
@@ -252,8 +253,11 @@ class _TargetKernel(KernelBase):
             calibrate_artifacts,
             # full_targets takes its exclusion clock from here. Hashed
             # directly, not listed: the module also loads the registers only
-            # the validation checks read, which no listed module may.
+            # the validation checks read, which no listed module may. Its
+            # input-mass gate counts source households with receipt_counts
+            # (microcosm#1095), hashed beside it.
             weighted_integrity,
+            receipt_counts,
             *uk_target_compile_modules(),
         )
         # The solve fingerprint: every packaged resource but the gate-only

@@ -74,23 +74,39 @@ def _json_object(value: object, *, label: str) -> dict[str, object]:
     return value
 
 
-def _load_release_base_pool_receipt(path: Path) -> dict[str, object] | None:
-    """Read one optional base-pool receipt from a built release manifest."""
+def _release_build_details(path: Path) -> dict[str, object]:
+    """The fields of a built release manifest that say how the build was made.
+
+    A manifest in the tagged layout keeps them in its ``build`` object. One
+    in the build-folder layout, as the US builders write after
+    microcosm#1570, names its build in ``build`` and keeps them at its top
+    level. A manifest with neither is refused.
+    """
 
     release_manifest = _json_object(
         json.loads(path.read_text()),
         label=f"release manifest {path}",
     )
     build = release_manifest.get("build")
-    if not isinstance(build, dict):
-        raise ValueError(f"Release manifest {path} has no build object.")
+    if isinstance(build, dict):
+        return build
+    if isinstance(build, str) and build:
+        return release_manifest
+    raise ValueError(
+        f"Release manifest {path} has no build details: neither a build object "
+        "nor a build ID."
+    )
+
+
+def _load_release_base_pool_receipt(path: Path) -> dict[str, object] | None:
+    """Read one optional base-pool receipt from a built release manifest."""
+
+    build = _release_build_details(path)
     if "base_pool" not in build:
         return None
     base_pool = build.get("base_pool")
     if not isinstance(base_pool, dict):
-        raise ValueError(
-            f"Release manifest {path} build.base_pool must be a JSON object."
-        )
+        raise ValueError(f"Release manifest {path} base_pool must be a JSON object.")
     return base_pool
 
 
@@ -126,7 +142,7 @@ def _carried_base_pool_battery(
         )
     gate_reference = _json_object(
         agreement_gate_reference,
-        label=(f"release manifest {path} build.base_pool.agreement_gate_reference"),
+        label=(f"release manifest {path} base_pool.agreement_gate_reference"),
     )
     failures = gate_reference.get("failures")
     failure_count = gate_reference.get("failure_count")
@@ -204,26 +220,21 @@ def _carried_base_pool_battery(
 def _require_release_without_selection_source(path: Path) -> None:
     """Refuse ``--new-lineage`` for a release that carried a frozen selection.
 
-    The release tool records ``build.selection_source`` as ``{"enabled":
-    false}`` when it ran without one, and as the selection report otherwise.
-    Skipping the carryover check is sound only for the former, so a built
-    release named beside ``--new-lineage`` must be the former.
+    The release tool records ``selection_source`` among the build's details
+    (:func:`_release_build_details`) as ``{"enabled": false}`` when it ran
+    without one, and as the selection report otherwise. Skipping the
+    carryover check is sound only for the former, so a built release named
+    beside ``--new-lineage`` must be the former.
     """
 
-    release_manifest = _json_object(
-        json.loads(path.read_text()),
-        label=f"release manifest {path}",
-    )
-    build = release_manifest.get("build")
-    if not isinstance(build, dict):
-        raise ValueError(f"Release manifest {path} has no build object.")
+    build = _release_build_details(path)
     selection_source = build.get("selection_source")
     if not (
         isinstance(selection_source, dict) and selection_source.get("enabled") is False
     ):
         raise ValueError(
             f"{_NEW_LINEAGE_FLAG} was set, but release manifest {path} "
-            f"build.selection_source is {selection_source!r}, not a record of "
+            f"selection_source is {selection_source!r}, not a record of "
             "a build without a selection source. A release built with a frozen "
             "selection is not a new lineage: preflight it with "
             f"{_SELECTION_SOURCE_MANIFEST_FLAG}."
@@ -240,7 +251,7 @@ def _require_matching_release_base_pool(
 
     if authenticated != carried:
         raise ValueError(
-            f"Release manifest {path} build.base_pool does not exactly match "
+            f"Release manifest {path} base_pool does not exactly match "
             "the base-pool receipt authenticated by this preflight."
         )
 

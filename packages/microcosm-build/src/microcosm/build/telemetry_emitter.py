@@ -70,6 +70,7 @@ from microcosm_emitter_interface.protocol import HUGGING_FACE_MODULE, TELEMETRY_
 from microcosm_emitter_interface.telemetry import (
     DEFAULT_FAILURE_CLASS,
     DEFAULT_HEARTBEAT_SECONDS,
+    OuterProgress,
     TelemetryEventType,
     TelemetryStatus,
 )
@@ -792,10 +793,18 @@ class LocalTelemetryEmitter:
         done: int,
         total: int,
         unit: str | None = None,
+        outer: OuterProgress | None = None,
         **details: Any,
     ) -> None:
+        """Report ``done`` of ``total`` within a stage.
+
+        ``outer`` is the counter one level above, such as the reform pass a
+        scoring batch belongs to; the emitter sends it only when given.
+        """
         if (telemetry := self._telemetry()) is not None:
-            telemetry.progress(stage_id, done=done, total=total, unit=unit, **details)
+            telemetry.progress(
+                stage_id, done=done, total=total, unit=unit, outer=outer, **details
+            )
 
     def calibration_progress(self, event: Mapping[str, Any]) -> None:
         if (telemetry := self._telemetry()) is not None:

@@ -136,6 +136,13 @@ def test_spawned_workers_score_identically_to_sequential_cli(
     # Six tasks per artifact force a replacement even for two workers with K=2.
     # The single-worker recycling case also verifies K opts into spawn by itself.
     configurations = [(1, None), (3, None), (2, 1), (2, 2), (1, 2)]
+    try:
+        module._assert_worker_recycling_supported()
+    except RuntimeError:
+        # This interpreter can deadlock replacing a recycled worker, so the CLI
+        # refuses --worker-max-slices on it, as the refusal tests above check.
+        # The configurations without recycling still run.
+        configurations = [config for config in configurations if config[1] is None]
     for workers, worker_max_slices in configurations:
         prefix = tmp_path / f"workers-{workers}-max-slices-{worker_max_slices}"
         worker_log_dir = tmp_path / f"{prefix.name}-slice-logs"
@@ -1325,3 +1332,52 @@ def test_sequential_slice_errors_match_origin_main(
         assert type(caught.value) is expected_type
         errors.append((type(caught.value), str(caught.value).encode("utf-8")))
     assert errors[0] == errors[1]
+
+
+def test_the_comparison_payload_keeps_the_us_scorecard_names() -> None:
+    """The shared comparison (microcosm.build.head_to_head) leaves this
+    payload, and so the written scorecard, exactly as it was."""
+
+    def side(errors, loss, status):
+        return {
+            "fiscal": {
+                "targets": [
+                    {
+                        "name": name,
+                        "period": 2024,
+                        "absolute_relative_error": abs(error),
+                    }
+                    for name, error in errors
+                ],
+                "weighted_loss": loss,
+            },
+            "terminal_battery": {"status": status},
+        }
+
+    module = _load_head_to_head_module()
+    payload = module._comparison_payload(
+        side([("a", 0.2), ("b", 0.1), ("c", 0.3)], 0.5, "computed_finished_h5"),
+        side([("a", 0.1), ("b", 0.1), ("c", -0.4)], 0.25, "computed_finished_h5"),
+    )
+
+    assert payload["decision"] == "owner_decides_flip"
+    assert payload["fiscal_weighted_loss"] == {
+        "incumbent": 0.5,
+        "candidate": 0.25,
+        "candidate_minus_incumbent": -0.25,
+    }
+    per_target = payload["per_target_absolute_relative_error"]
+    assert (
+        per_target["candidate_lower_count"],
+        per_target["equal_count"],
+        per_target["incumbent_lower_count"],
+    ) == (1, 1, 1)
+    assert per_target["targets"][2] == {
+        "name": "c",
+        "period": 2024,
+        "incumbent_absolute_relative_error": 0.3,
+        "candidate_absolute_relative_error": 0.4,
+        "candidate_minus_incumbent_absolute_relative_error": 0.4 - 0.3,
+        "lower_absolute_relative_error": "incumbent",
+    }
+    assert payload["terminal_battery"]["head_to_head_comparable"] is True

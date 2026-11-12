@@ -21,7 +21,7 @@ Before starting, export:
   copied certification.
 - `HF_TOKEN` (or `HUGGINGFACE_TOKEN`, or a token saved by `hf auth login`),
   with write access to `policyengine/populace-uk-private`. The publication
-  command starts the separately installed `microcosm-emitter` (0.13.0 or
+  command starts the separately installed `microcosm-emitter` (0.14.0 or
   later) as its child process, and the emitter uses the token it inherits.
 
 These come from your shell: the publication command does not read
@@ -33,8 +33,26 @@ dashboard announces new and current builds, comparing `releases.json` before
 and after each change.
 
 Keep the spine H5, its sibling `.build.json` and `.spine_gates.json`, the
-Ledger consumer artifact and manifest digest, and the licensed input-mass
-reference together through the run.
+Ledger consumer artifact and manifest digest, and the cut's reference
+directory together through the run.
+
+## 0. Resolve the reference
+
+The cut compares with the current build of the national line, as
+`releases.json` in `policyengine/populace-uk-private` names it
+(microcosm#1095). Resolve it once, into a directory the run keeps:
+
+```bash
+uv run --no-sync python tools/resolve_uk_reference.py \
+  --release microcosm-uk-2024-25-national --output-dir <reference-dir>
+```
+
+This refuses a build that is withdrawn or not certified shippable, and
+writes the dataset, `reference.json` (its record), `input_mass_reference.json`
+(its input-mass totals and carriers, licensed-data aggregates that stay with
+the run) and `reference_surface.json` (the columns it exports and the inputs
+it carries, names and flags only). `tools/run_uk_cut.py` does this itself as
+its `reference` step.
 
 ## 1. Calibrate the national candidate
 
@@ -50,22 +68,26 @@ uv run --no-sync python tools/build_uk_full.py --release-role national \
   --ledger-facts <ledger-consumer-facts> \
   --ledger-facts-sha256 <ledger-facts-sha256> \
   --ledger-manifest-sha256 <ledger-manifest-sha256> \
-  --incumbent-h5 <incumbent-h5> \
-  --incumbent-sha256 <incumbent-h5-sha256> \
+  --reference-h5 <reference-dir>/microcosm_uk_2024_25.h5 \
+  --reference-record <reference-dir>/reference.json \
   --out <candidate-dir>
 ```
 
-`--incumbent-h5` (with its digest; `--incumbent-label` names it, default
-`enhanced_frs_2024_25`) makes the build evaluate the finished candidate
-against the incumbent after the bundle is staged: `score_vs_incumbent.json`
-lands beside the outputs with the rule-1 verdict, rows the incumbent cannot
-materialize are pruned from both arms and named on stderr, the receipt rides
-the staging telemetry as `artifacts/score_vs_incumbent.json`, and the manifest
-records `evaluation` (`status`, `verdict`, `rule_1`, `scored_surface`,
-`pruned_measures`). The evaluation never blocks the build: an error is
+`--reference-h5` with `--reference-record` makes the build compare the
+finished candidate with the reference after the bundle is staged:
+`score_vs_reference.json` lands beside the outputs. It is a report with no
+verdict: each side's loss on the targets both can materialize and how many
+targets each fits more closely, with `no_threshold_applied`. Rows the
+reference cannot materialize are pruned from both arms and named on stderr;
+a pruned measure needs an entry for this reference in
+`uk/reference_unresolvable_measures.json`. The receipt rides the staging
+telemetry as `artifacts/score_vs_reference.json`, and the manifest records
+`evaluation` (`status`, `reference`, `losses`, `targets`, `scored_surface`,
+`pruned_measures`). The comparison never blocks the build: an error is
 recorded as `status: error` and warned. Without the flags the manifest says
 `not_requested`, and the certifier has no receipt to read until the candidate
-is scored by hand.
+is scored with `tools/score_uk_national_candidate.py`, given `--reference-h5`
+and `--reference-record`.
 
 The role's doctrine is the campaign posture (1,500 epochs, `family_equal`,
 learning rate 0.02, seed 0): a certified cut passes no solve flags and records
@@ -81,14 +103,15 @@ name in both release manifests and in its folder on the Hub.
 
 ## 2. Score and certify the cut
 
-The rule-1 score receipt is the build's own when the national role was given
-`--incumbent-h5` (`score_vs_incumbent.json` beside the candidate); otherwise
-create it against the pinned incumbent following the scoring section of
-`docs/uk-national-calibration-runbook-623.md`. Its `evaluation.verdict` must
-be `passed`: the certifier refuses a receipt whose verdict is anything else,
-whose scored surface does not close over its pruned rows, or which carries no
-evaluation block. Then run the release-cut battery and compose the signed
-certification:
+The score receipt is the build's own when the national role was given
+`--reference-h5` (`score_vs_reference.json` beside the candidate); otherwise
+create it with `tools/score_uk_national_candidate.py`, given `--reference-h5
+<reference-dir>/microcosm_uk_2024_25.h5` and `--reference-record
+<reference-dir>/reference.json`. The certifier reads no verdict from it: it
+refuses a receipt that names another candidate or another reference than the
+cut's, whose scored surface does not close over its pruned rows, or which
+carries no evaluation block. Then run the release-cut battery and compose the
+signed certification:
 
 ```bash
 uv run --no-sync python tools/certify_uk_release_cut.py \
@@ -103,10 +126,24 @@ uv run --no-sync python tools/certify_uk_release_cut.py \
   --ledger-facts <ledger-consumer-facts> \
   --ledger-facts-sha256 <ledger-facts-sha256> \
   --ledger-manifest-sha256 <ledger-manifest-sha256> \
-  --input-mass-reference <licensed-input-mass-reference> \
-  --score-receipt <candidate-dir>/score_vs_incumbent.json \
+  --input-mass-reference <reference-dir>/input_mass_reference.json \
+  --reference-surface <reference-dir>/reference_surface.json \
+  --score-receipt <candidate-dir>/score_vs_reference.json \
+  --reference-record <reference-dir>/reference.json \
   --release-id microcosm-uk-2024-25-national
 ```
+
+The input-mass, export-surface and input-coverage gates compare the candidate
+with the reference: its totals within the relative tolerance gates.json
+declares, no column losing more than its declared share of the reference's
+total (`maximum_relative_drop`), and each line's reviewed exclusions keyed
+`<release>@<build>`; its exported columns (a column only the candidate
+exports must be a declared extra, an entry the reference now carries is
+reported as redundant), and the inputs it carries (each must reach the
+candidate's export with signal, less the coverage manifest's reviewed
+exclusions). The certifier refuses an input-mass reference or a surface that
+names another build than `--reference-record`, and the certification records
+the reference in its `reference` block.
 
 The spine is stage evidence for the family build-state gates, so `--spine-sha256` must be the parent the calibration recorded (`build_record.input_posture.sha256`, `source_pins.input_h5.sha256`, the signed diagnostics' `build.input_posture`); a spine that pins correctly but is not that parent is refused before any gate runs, and the certification records it as `parent_spine`.
 
@@ -118,12 +155,13 @@ only when the certification says `shippable: true`.
 **Interim check until microcosm#1276 lands.** microcosm#1281 removed the QRF
 tail-concentration gate, and nothing release-blocking yet checks the SPI
 stage-1 columns (`hmrc_spi_*` and the other stage-1 outputs). Before assembly,
-measure the candidate and the currently promoted cut together:
+measure the candidate and the reference (the currently promoted cut)
+together:
 
 ```bash
 uv run --no-sync python tools/measure_uk_weighted_integrity_baselines.py \
   --h5 candidate=<candidate-dir>/microcosm_uk_2024_25.h5 \
-  --h5 previous=<promoted-cut-h5> \
+  --h5 previous=<reference-dir>/microcosm_uk_2024_25.h5 \
   --output <candidate-dir>/stage1_comparison.json
 ```
 
@@ -150,7 +188,7 @@ uv run --no-sync python tools/assemble_uk_release_dir.py \
   --diagnostics-json <candidate-dir>/calibration_diagnostics.json \
   --seam-gate-report <candidate-dir>/microcosm_uk_2024_25.terminal_gates.json \
   --release-cut-gate-json <candidate-dir>/microcosm_uk_2024_25.release_cut_gates.json \
-  --score-receipt <candidate-dir>/score_vs_incumbent.json \
+  --score-receipt <candidate-dir>/score_vs_reference.json \
   --out-dir releases
 ```
 

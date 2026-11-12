@@ -262,6 +262,13 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "afcs_reported",
             "esa_contrib_reported",
             "esa_income_reported",
+            # The carer link's reads (A3).
+            "frs_care_recipients",
+            "care_hours",
+            "carers_allowance_reported",
+            # Its check against DWP's record of the UC carer element (A3 (f)).
+            "frs_uc_carer_element",
+            "is_claimant_or_partner",
         )
     ),
     "frs_education": frozenset(
@@ -295,11 +302,17 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     )
     | frozenset({("benunit", "is_married")}),
     # is_apprentice draws employees aged 21 to 24 at a rate set by the
-    # frame's weights (microcosm#1372), and its receipt reads their pay for
+    # frame's weights (microcosm#1372), outside full-time education (Vahid's
+    # review of microcosm#1535, nit 3), and its receipt reads their pay for
     # the relief the flags imply (microcosm#1373).
     "frs_person_draws": frozenset(
         ("person", column)
-        for column in ("age", "employment_status", "employment_income")
+        for column in (
+            "age",
+            "employment_status",
+            "is_in_full_time_education",
+            "employment_income",
+        )
     ),
     "frs_household_draws": frozenset(),
     "frs_brma": None,
@@ -449,6 +462,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
     "uc_reporter_redraw": None,
+    # One engine materialization of the limited capability proxy, the UC
+    # claimant role and carer status over the whole frame, beside the admin
+    # status carrier (microcosm#1095, Y1): an open surface.
+    "uc_limited_capability": None,
     # One temporary engine materialization of the Universal Credit award over
     # the whole frame, which also hands the stage the source lineage its pools
     # and receipt count by: an open surface (microcosm#1334).
@@ -498,7 +515,6 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "pip_dl_category",
                     "is_disabled_for_benefits",
                     "is_enhanced_disabled_for_benefits",
-                    "is_severely_disabled_for_benefits",
                     "receives_benefits_in_own_right",
                     # The UC draw's population (frs_take_up's rule).
                     "is_uc_claimant",
@@ -695,11 +711,25 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "stocks_and_shares_isa"),
         }
     ),
-    # The gross receipts are drawn on each person's final self-employment
-    # profit, and the receipt counts support by source household
-    # (microcosm#1428).
+    # The points are drawn within each person's stored PIP awards, by their
+    # age group, and the receipt counts support by source household
+    # (microcosm#1095, P1).
+    "pip_points": frozenset(
+        {
+            ("person", "pip_dl_category"),
+            ("person", "pip_m_category"),
+            ("household", "household_source_id"),
+        }
+    ),
+    # The claim statuses are drawn on each person's final self-employment
+    # profit, the full-relief group leaves the SPI rows out, and the receipt
+    # counts support by source household (microcosm#1428, microcosm#1439).
     "trading_allowance_receipts": frozenset(
-        {("person", "self_employment_income"), ("household", "household_source_id")}
+        {
+            ("person", "self_employment_income"),
+            ("household", "household_source_id"),
+            ("household", "household_is_spi_synthetic"),
+        }
     ),
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
@@ -753,7 +783,12 @@ class _Cell:
         return Owned(self.entity, self.column, self.dtype, rewrite=rewrite)
 
 
-_ROOT_PERSON_STRING = {"gender", "marital_status"}
+_ROOT_PERSON_STRING = {
+    "gender",
+    "marital_status",
+    "frs_uc_lcw_status",
+    "frs_uc_carer_element",
+}
 _ROOT_PERSON_BOOL = {
     "is_household_head",
     "esa_includes_support_component",
@@ -779,6 +814,8 @@ _ROOT_PERSON_INT = {
     # The company car carriers' FRS codes (frs_spine.frs_company_car_carriers).
     "frs_company_car_price_band",
     "frs_company_car_fuel_code",
+    # The care recipients bitmask (frs_spine.frs_care_recipients).
+    "frs_care_recipients",
 }
 _ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {
@@ -892,7 +929,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             (
                 "is_disabled_for_benefits",
                 "is_enhanced_disabled_for_benefits",
-                "is_severely_disabled_for_benefits",
+                "cares_for_severely_disabled_person",
             ),
             "bool",
         ),
@@ -1254,7 +1291,6 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             (
                 "is_disabled_for_benefits",
                 "is_enhanced_disabled_for_benefits",
-                "is_severely_disabled_for_benefits",
                 "receives_benefits_in_own_right",
             ),
             "bool",
@@ -1266,6 +1302,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "pension_credit_reported_capital", "float64"),
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
+    ),
+    "uc_limited_capability": (
+        _Cell("person", "uc_limited_capability_for_WRA", "bool"),
+        _Cell("person", "uc_limited_capability_for_work", "bool"),
     ),
     "uc_take_up": (_Cell("benunit", "would_claim_uc", "bool"),),
     "uc_legacy_closure_take_up": (
@@ -1348,8 +1388,13 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "lifetime_isa_payments",
         ),
     ),
+    "pip_points": (
+        _Cell("person", "pip_dl_points", "int64"),
+        _Cell("person", "pip_m_points", "int64"),
+    ),
     "trading_allowance_receipts": (
-        _Cell("person", "self_employment_gross_receipts", "float64"),
+        _Cell("person", "trading_allowance_claim_status", "string"),
+        _Cell("person", "trading_allowance_full_relief", "bool"),
     ),
     "company_cars": (
         _Cell("person", "company_car_list_price", "float64"),
@@ -1466,7 +1511,6 @@ _HMRC_SPI_HIDDEN_STRING = (
 _HMRC_SPI_HIDDEN_BOOL = (
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
-    "is_severely_disabled_for_benefits",
     # #882: the carer take-up flag follows the refilled Carer's Allowance
     # receipt on the SPI-redrawn rows; carers_allowance_take_up later opens it
     # to carers over the earnings limit (microcosm#1319).
@@ -1490,6 +1534,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     "owned_company_is_main_employment",
     "owned_company_carries_on_trade",
     "owned_company_carries_on_property_business",
+    # The carer link, taken again on the channel's households from the
+    # re-imputed disability benefits (A3, microcosm#1095).
+    "cares_for_severely_disabled_person",
     # The rows stage 1 drew, read by property_components (microcosm#840).
     "person_is_spi_income_recipient",
 )

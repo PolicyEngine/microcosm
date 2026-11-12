@@ -1,0 +1,1242 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "dwp_uc_lcwra_households_facts.json",
+  "purpose": "DWP Stat-Xplore, Households on Universal Credit in Great Britain by limited capability for work entitlement group and payment indicator, January to December 2025: the LCWRA group's paid and nil-award cells, whose paid cells the bound dwp.uc.households_lcwra_element row averages (microcosm#1095, B3 of the November event-data plan's PR3). Consumed by the uc_take_up stage's LCWRA fit, which takes the mean over the twelve months of the paid count as the LCWRA households its second odds ratio aims at on the spine's design weights (Mar\u00eda's choices of 2026-11-11). No value is derived here.",
+  "consumers": [
+    "uk_runtime.uc_take_up"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "81caed7576b4235017b7b2dc1b4b3251b3a7418a",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 2094003,
+    "facts_sha256": "211d2dc3eaa7d0db607c911ffef63eb5039abcd0f952b9b4176c9a4c2eeb4363",
+    "manifest_sha256": "205a2a4dcc79fba826c5b9fea17074abb01b0d4973634a4125a11a5f1bf21272"
+  },
+  "selections": [
+    {
+      "label": "uc_lcwra_households_great_britain_2025_01",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_01",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_02",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_02",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_03",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_03",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_04",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_04",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_05",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_05",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_06",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_06",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_07",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_07",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_08",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_08",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_09",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_09",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_10",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_10",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_11",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_11",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "uc_lcwra_households_great_britain_2025_12",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_12",
+        "geography_id": "K03000001"
+      },
+      "row_count": 2
+    }
+  ],
+  "row_count": 24,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b6678757d7f554b2a3466b2e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_555ff2bd0a00b8ccc0284c43",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_01.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-01"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_01",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 21118
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3fdeb960fca4b117e727ba21",
+      "semantic_fact_key": "ledger_semantic_fact_v2_091dce496259c692ae270f0d",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_01.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-01"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_01",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 1825054
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9f40b9c5ba26a20dc11e2882",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5a3ca0f65faedfa106e0da11",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_02.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-02"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_02",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 20065
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d6a37bcbcfeb37d593925280",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c6e2c59d98503763a3310bde",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_02.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-02"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_02",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 1909477
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_23d345fe0f15a773a4264a87",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5fb954c75babd9728cb024b1",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_03.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-03"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_03",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 21036
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_468aa327cf693d1af240ce87",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f0d34d95744a8b08f277a254",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_03.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-03"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_03",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 1981141
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_70a03240465d07d7e4cffe6e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6e4e79521df9b7c90ba5d6bf",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_04.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-04"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_04",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 20964
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b53de2348a3d7b3562a53ca5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_519c31459433e1c8af520148",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_04.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-04"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_04",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 2050162
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2955446b07f0f25a4599d35e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_18d4dc470cae557bf0f21c80",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_05.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_05",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 20272
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cb94c38011b163bbfa7843cf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_423609a6d505e1ca80f181b4",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_05.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-05"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_05",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 2127859
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_94cebfb387077b7a319407f2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f703caff3911ea7774f58fb5",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_06.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-06"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_06",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 21018
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_813f3552833c8a95c8c8fabb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_213320e72e4b0bc10be9b907",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_06.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-06"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_06",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 2229719
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fc893ace0b9b88bd59d2896b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bd97ddf9d7c83001f42f5484",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_07.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-07"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_07",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 20983
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_02e910f897b373a678d0e491",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e182a69c0c77c8f99f49b93c",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_07.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-07"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_07",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 2312448
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_426ce61e80df50ddad32920d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_845139146f7f8c72c36e89af",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_08.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_08",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 22450
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0a85a446ecd08e292bff8d19",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a691623d5776ecba4f43fb67",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_08.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-08"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_08",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 2409102
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dd992916bd26b2eabe7db2d7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_35582e42bf0020f0b71930a9",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_09.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-09"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_09",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 22717
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6ad543d4d798a52fc6bd7cdd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e588b21cffdae4064110626a",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_09.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-09"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_09",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 2503058
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4749750e54c8fde972c29ffb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7b10d69717301d0fcd949af6",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_10.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-10"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_10",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 22191
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2c6a8164063a9d6573b51e21",
+      "semantic_fact_key": "ledger_semantic_fact_v2_40e39649a7aeece5331fd2b5",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_10.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-10"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_10",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 2583494
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f9e8563a67938334efb5866a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8143ac41a7d6d001f00c8e88",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_11.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-11"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_11",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 22422
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c0dd7fd61dc199cf840dd82f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_391b6dca88d590b18b94a6b8",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_11.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-11"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_11",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 2653544
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_71bef1e6578627bac8bcaab1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_715b8cd02724c9070e3ba262",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_12.group_lcwra__payment_indicator_no.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-12"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_12",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_no",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "No"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 22862
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f59149c4c514e1acffb728a8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dfca2db27f9cb6babe83fe52",
+      "source_record_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_12.group_lcwra__payment_indicator_yes.benefit_units",
+      "concept": "dwp.uc_households",
+      "measure_id": "benefit_units",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "benefit_unit",
+        "role": "universal_credit_unit_of_assessment"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-12"
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_12",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "groupby_value_id": "group_lcwra__payment_indicator_yes",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "limited_capability_for_work_entitlement": "LCWRA",
+        "payment_indicator": "Yes"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Households on Universal Credit by limited capability for work entitlement group and payment indicator, January 2023 to May 2026",
+        "source_file": "uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json",
+        "source_sha256": "02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3",
+        "vintage": "stat_xplore_2026_09_11",
+        "raw_r2_key": "raw/uk/dwp/dwp-uc-households-lcw-entitlement-group-payment-indicator-january-2023-may-2026/2025/02b9b993ef3fdc67b06ab9923ee148819ca924f5abd7369ea234c74da03030f3/uc_households_by_lcw_entitlement_group_and_payment_indicator_january_2023_may_2026.json"
+      },
+      "value": 2684044
+    }
+  ]
+}
