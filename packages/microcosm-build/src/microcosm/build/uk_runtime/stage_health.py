@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping
 
 import numpy as np
 
+from microcosm.build.copy_agreement import rows_agree_with_parents
 from microcosm.build.gates import GateResult
 from microcosm.build.stochastic_assignment import binomial_share_tolerance
 from microcosm.build.uk_runtime import copy_id_table
@@ -30,8 +32,9 @@ def uk_stage_health_gate(
 ) -> GateResult:
     """Evaluate one spine-stage receipt against spec-declared thresholds.
 
-    ``frame`` is the gate phase's frame, which only the band donor check
-    reads: it recomputes a capped seating's seats there (microcosm#931).
+    ``frame`` is the gate phase's frame, which two checks read: the band
+    donor check recomputes a capped seating's seats there, and the copy area
+    check compares each copy with its parent there (microcosm#931).
     """
 
     if evidence.get("stage") not in {stage, _legacy_receipt_stage(stage)}:
@@ -137,6 +140,12 @@ def uk_stage_health_gate(
         return _occupation_redraw_gate(stage, evidence, parameters)
     if check == "sub_major_draw":
         return _sub_major_draw_gate(stage, evidence, parameters)
+    if check == "atomic_mapping_integrity":
+        return _atomic_mapping_integrity_gate(stage, evidence, parameters)
+    if check == "area_home_values":
+        return _area_home_values_gate(stage, evidence, parameters)
+    if check == "copy_area_agreement":
+        return _copy_area_agreement_gate(stage, evidence, parameters, frame=frame)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -3209,12 +3218,16 @@ def _wealth_coherence_gate(
                 )
     identities = blocks.get("identities")
     if identities is not None:
+        # The WAS stage prints its donor-range cap's counts as
+        # receipt_counts.extreme_count bands (C-40, microcosm#931); a band is
+        # carried as printed, beside the counts that print as numbers.
         details["capped_rows"] = {
-            str(key): int(value)
+            str(key): value if isinstance(value, str) else int(value)
             for key, value in identities.items()
             if str(key).endswith("_rows")
             and "capped" in str(key)
-            and isinstance(value, int | float)
+            and isinstance(value, int | float | str)
+            and not isinstance(value, bool)
         }
     if failures:
         return _fail(stage, check, failures, details)
@@ -5104,6 +5117,322 @@ def _regional_home_values_gate(
         "regions_rewritten_under_floor": banded,
         "sources_at_cap_unchecked": cap_unchecked,
     }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+
+
+def _is_sha256(value: object) -> bool:
+    return isinstance(value, str) and _SHA256_HEX.fullmatch(value) is not None
+
+
+def _declared_names(value: object) -> tuple[str, ...] | None:
+    """A gate's declared list of names, or ``None`` where it declares no list.
+
+    A bare string is no list: read name by name it would be its characters.
+    """
+
+    if isinstance(value, str) or not isinstance(value, list | tuple):
+        return None
+    return tuple(str(item) for item in value)
+
+
+def _atomic_mapping_integrity_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """An area stage's ladders passed the shared mapping-integrity check
+    (microcosm#931).
+
+    The spine's area draw (``atomic_area_assign``) and its SPI-copy area stage
+    (``spi_copy_areas``) validate every drawn ladder through the shared
+    operator and refuse to finish unless it passes, recording the outcome,
+    its scope and the digests of the definition and the supports. This check
+    reads that record: the outcome is one the gate accepts
+    (``accepted_outcomes``, by default ``pass``; the copy stage records
+    ``not_run`` on a frame without a copy), the scope is the declared
+    ``validation_scope``, the definition's digest is a SHA-256 digest, and
+    the supports' digests are one SHA-256 digest per declared support system.
+    Its texts name the field, never a value.
+    """
+
+    check = "atomic_mapping_integrity"
+    failures: list[str] = []
+    accepted = _declared_names(parameters.get("accepted_outcomes", ("pass",)))
+    if accepted is None:
+        failures.append(f"{stage}: {check}: accepted_outcomes is not a list.")
+        accepted = ()
+    scope = str(parameters["validation_scope"])
+    declared_systems = _declared_names(parameters["support_systems"])
+    if declared_systems is None:
+        failures.append(f"{stage}: {check}: support_systems is not a list.")
+        declared_systems = ()
+    systems = sorted(declared_systems)
+    validation = evidence.get("validation")
+    outcome = validation.get("outcome") if isinstance(validation, Mapping) else None
+    if not isinstance(validation, Mapping):
+        failures.append(f"{stage}: {check}: the receipt carries no validation.")
+    else:
+        if outcome not in accepted:
+            failures.append(
+                f"{stage}: {check}: the validation's outcome is not one the gate "
+                "accepts."
+            )
+        if validation.get("scope") != scope:
+            failures.append(
+                f"{stage}: {check}: the validation's scope is not the declared scope."
+            )
+    if not _is_sha256(evidence.get("definition_sha256")):
+        failures.append(f"{stage}: {check}: definition_sha256 is not a SHA-256 digest.")
+    supports = evidence.get("support_sha256")
+    if (
+        not isinstance(supports, Mapping)
+        or sorted(str(system) for system in supports) != systems
+        or not all(_is_sha256(digest) for digest in supports.values())
+    ):
+        failures.append(
+            f"{stage}: {check}: support_sha256 is not one SHA-256 digest per "
+            "declared support system."
+        )
+    details = {
+        "outcome": outcome if outcome in accepted else None,
+        "accepted_outcomes": list(accepted),
+        "validation_scope": scope,
+        "support_systems": systems,
+    }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+#: The WAS stage evidence's block the area home values check reads
+#: (``was_wealth.AREA_HOME_VALUES_EVIDENCE``).
+_AREA_HOME_VALUES_BLOCK = "area_home_values"
+
+
+def _area_home_values_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The WAS chain read its home values off each owner's constituency
+    (microcosm#931).
+
+    The regional home values check, for the area home values the WAS stage
+    records in its ``area_home_values`` block: every declared region has
+    rewritten sources; no more sources sit at the knots' cap than the
+    declared count, which the stage counts in geographic clone 0's rows, so
+    the count holds at any clone count; the knots are the declared basis year
+    and level, and the ranking the declared basis. A count the receipt bands
+    for resting on fewer than three sources is flagged rather than failed
+    where the band cannot tell (María's ruling of 2026-10-26). The block
+    carries no value, sum or factor (C-16), so neither does this check, and
+    its texts name the field, never a count or a value.
+    """
+
+    check = "area_home_values"
+    declared_regions = _declared_names(parameters["regions"])
+    if declared_regions is None:
+        return _fail(stage, check, [f"{stage}: {check}: regions is not a list."], {})
+    regions = sorted(declared_regions)
+    block = evidence.get(_AREA_HOME_VALUES_BLOCK)
+    if not isinstance(block, Mapping):
+        return _fail(
+            stage,
+            check,
+            [f"{stage}: {check}: the receipt carries no area home values block."],
+            {"regions": regions},
+        )
+    failures: list[str] = []
+    rewritten = block.get("sources_rewritten_by_region")
+    if not isinstance(rewritten, Mapping):
+        rewritten = {}
+    if sorted(str(region) for region in rewritten) != regions:
+        failures.append(
+            f"{stage}: {check}: the regions rewritten are not the declared regions."
+        )
+    banded = sorted(
+        str(region) for region, count in rewritten.items() if count == UK_WITHHELD
+    )
+    lowest: dict[str, float] = {}
+    for region, count in rewritten.items():
+        try:
+            if isinstance(count, bool):
+                raise TypeError
+            lowest[str(region)] = _count_bounds(count)[0]
+        except (TypeError, ValueError):
+            failures.append(
+                f"{stage}: {check}: a region's rewritten sources are not a "
+                "printed count."
+            )
+    if any(count <= 0 for count in lowest.values()):
+        failures.append(f"{stage}: {check}: a declared region has no rewritten source.")
+    at_cap = block.get("sources_at_cap")
+    maximum_at_cap = int(parameters["maximum_sources_at_cap"])
+    cap_unchecked = False
+    banded_at_cap = isinstance(at_cap, str) and at_cap in _SUPPORT_BAND_BOUNDS
+    counted_at_cap = (
+        isinstance(at_cap, int | np.integer)
+        and not isinstance(at_cap, bool)
+        and at_cap >= 0
+    )
+    if banded_at_cap:
+        # The receipt bands the count: it fails only when the whole band is
+        # past the limit, and a band straddling the limit is flagged.
+        lowest_at_cap, highest_at_cap = _SUPPORT_BAND_BOUNDS[at_cap]
+        if lowest_at_cap > maximum_at_cap:
+            failures.append(
+                f"{stage}: {check}: more sources sit at the knots' cap than the "
+                "declared maximum."
+            )
+        elif highest_at_cap > maximum_at_cap:
+            cap_unchecked = True
+    elif not counted_at_cap:
+        failures.append(
+            f"{stage}: {check}: sources_at_cap is not a printed count or band."
+        )
+    elif at_cap > maximum_at_cap:
+        failures.append(
+            f"{stage}: {check}: more sources sit at the knots' cap than the "
+            "declared maximum."
+        )
+    if block.get("knots_basis_year") != parameters["knots_basis_year"]:
+        failures.append(
+            f"{stage}: {check}: the knots' basis year is not the declared one."
+        )
+    if block.get("knots_level") != parameters["knots_level"]:
+        failures.append(f"{stage}: {check}: the knots' level is not the declared one.")
+    ranking = block.get("ranking")
+    basis = ranking.get("rank_basis") if isinstance(ranking, Mapping) else None
+    if basis != parameters["rank_basis"]:
+        failures.append(f"{stage}: {check}: the ranking basis is not the declared one.")
+    if block.get("counted_among") != "clone_0":
+        failures.append(
+            f"{stage}: {check}: the receipt does not count its sources among "
+            "geographic clone 0's rows."
+        )
+    details = {
+        "regions": regions,
+        "sources_at_cap": (
+            at_cap if banded_at_cap else int(at_cap) if counted_at_cap else None
+        ),
+        "regions_rewritten_under_floor": banded,
+        "sources_at_cap_unchecked": cap_unchecked,
+        "knots_level": str(parameters["knots_level"]),
+    }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
+
+
+#: The copy-id fields that are no copy layer of the check: the vintages and
+#: the geographic clones, whose rows draw areas of their own.
+_NOT_COPY_LAYERS = frozenset({"vintage", "geographic_support"})
+
+
+def _copy_layer_of_rows(ids: np.ndarray) -> np.ndarray:
+    """Each id's copy layer: the most significant copy-id field it carries.
+
+    A copy minted in a field carries no digit in any later field, since every
+    field sits above the fields filled before it, so its id's most significant
+    field is the field it was minted in, and its immediate parent is its id
+    with that field's digits cleared. An id with no field set reads "".
+    """
+
+    layer = np.full(len(ids), "", dtype=object)
+    for field in copy_id_table.UK_COPY_ID_FIELDS:
+        layer[copy_id_table.ordinal(ids, field.name) != 0] = field.name
+    return layer
+
+
+def _copy_area_agreement_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+    *,
+    frame: object | None,
+) -> GateResult:
+    """Every copy of a declared layer carries its parent's area (microcosm#931).
+
+    The spine's copy layers copy whole households, and the SPI-copy area stage
+    gives the support channel's copies and band donors areas of their own, so
+    a copy made after it inherits its parent's area, ladder, local authority,
+    BRMA, fuel-relief flag and geography key (C-11). This check reads the
+    phase's frame: for each layer ``columns_by_copy_layer`` names (a copy-id
+    field), every household minted in it must equal its immediate parent,
+    the household whose id is its id with that field's digits cleared
+    (``copy_id_table.parent``), on that layer's columns
+    (``copy_agreement.rows_agree_with_parents``). The support channel's copies
+    are held on their region and clone index only, since they draw the rest.
+    Its details are booleans per layer and column, and its texts name the
+    layer and column, never an id, a value or a count.
+    """
+
+    check = "copy_area_agreement"
+    layers = parameters.get("columns_by_copy_layer")
+    if frame is None or not hasattr(frame, "table"):
+        return _fail(
+            stage,
+            check,
+            [f"{stage}: {check}: the check reads the phase's frame, which is absent."],
+            {},
+        )
+    if not isinstance(layers, Mapping) or not layers:
+        return _fail(
+            stage,
+            check,
+            [f"{stage}: {check}: the gate declares no copy layer."],
+            {},
+        )
+    household = frame.table("household")
+    try:
+        ids = household["household_id"].to_numpy()
+        layer_of_row = _copy_layer_of_rows(ids)
+    except (KeyError, TypeError, ValueError):
+        # The copy-id table refuses negative ids by their count; this check
+        # names the column alone.
+        return _fail(
+            stage,
+            check,
+            [
+                f"{stage}: {check}: household_id is not a column of non-negative "
+                "integer ids."
+            ],
+            {},
+        )
+    failures: list[str] = []
+    by_layer: dict[str, object] = {}
+    fields = {field.name for field in copy_id_table.UK_COPY_ID_FIELDS}
+    for layer, columns in sorted(layers.items()):
+        layer = str(layer)
+        if layer not in fields or layer in _NOT_COPY_LAYERS:
+            failures.append(f"{stage}: {check}: {layer!r} is not a copy layer.")
+            continue
+        if isinstance(columns, str) or not isinstance(columns, list | tuple):
+            failures.append(
+                f"{stage}: {check}: {layer}: the gate declares no column list."
+            )
+            continue
+        agreement = rows_agree_with_parents(
+            household,
+            id_column="household_id",
+            parent_ids=copy_id_table.parent(ids, layer),
+            rows=layer_of_row == layer,
+            columns=[str(column) for column in columns],
+        )
+        by_layer[layer] = {
+            "copies_checked": agreement.copies_checked,
+            "parents_present": agreement.parents_present,
+            "columns": dict(agreement.columns),
+        }
+        failures.extend(
+            f"{stage}: {check}: {layer}: {failure}" for failure in agreement.failures
+        )
+    details = {"layers": by_layer}
     if failures:
         return _fail(stage, check, failures, details)
     return _pass(stage, check, details)

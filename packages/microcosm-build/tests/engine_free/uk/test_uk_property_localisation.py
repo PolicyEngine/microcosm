@@ -252,6 +252,59 @@ def test_localise_values_interpolates_caps_and_leaves_others_untouched() -> None
         )
 
 
+def test_the_value_half_is_localise_values_values_bit_for_bit() -> None:
+    """The WAS chain reads its home values through the value half of
+    localise_values (microcosm#931): the same values, bit for bit, and the
+    rows it rewrote."""
+
+    knots = _knots()
+    seats = sorted(knots.quantiles)
+    rng = np.random.default_rng(931)
+    n = 64
+    codes = np.asarray(
+        [seats[i % len(seats)] for i in range(n - 8)]
+        + ["S14000001"] * 4
+        + ["N05000001"] * 4,
+        dtype=object,
+    )
+    tenure = np.resize(
+        np.asarray(["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE", "RENT_PRIVATELY"]), n
+    )
+    values = np.where(rng.uniform(size=n) < 0.2, 0.0, rng.uniform(50_000, 900_000, n))
+    u = rng.uniform(size=n)
+
+    new_value, target = pl.localise_main_residence_values(
+        u=u, constituency_code=codes, tenure_type=tenure, value=values, knots=knots
+    )
+    whole, _, receipt = pl.localise_values(
+        u=u,
+        constituency_code=codes,
+        tenure_type=tenure,
+        value=values,
+        property_wealth=values + 5.0,
+        knots=knots,
+    )
+
+    assert new_value.view(np.int64).tolist() == whole.view(np.int64).tolist()
+    assert int(target.sum()) == receipt["rows_rewritten"]
+    assert not target[codes == "S14000001"].any()
+    assert (new_value[~target] == values[~target]).all()
+
+
+def test_the_value_half_refuses_a_seat_without_knots_by_a_count_free_text() -> None:
+    with pytest.raises(ValueError, match="No value knots") as caught:
+        pl.localise_main_residence_values(
+            u=np.array([0.5]),
+            constituency_code=np.array(["E14999999"]),
+            tenure_type=np.array(["OWNED_OUTRIGHT"]),
+            value=np.array([1.0]),
+            knots=_knots(),
+        )
+    # The text names no constituency: a row's constituency is its place.
+    assert "E14999999" not in str(caught.value)
+    assert not any(character.isdigit() for character in str(caught.value))
+
+
 def test_localise_bands_is_monotone_in_the_uniform_and_skips_scotland() -> None:
     mix = _mix()
     lsoa = next(iter(mix.cumulative))

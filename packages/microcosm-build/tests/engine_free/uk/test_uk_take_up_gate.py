@@ -135,7 +135,11 @@ def test_brma_enum_domain_binding_fails_off_domain() -> None:
     )
 
     assert result.passed is False
-    assert "OFF_DOMAIN" in result.failures[0]
+    # The failure names the column and its domain, never the value outside it
+    # (C-32, microcosm#931).
+    assert result.failures == ("brma: a value lies outside the engine's enum domain.",)
+    assert result.details["columns_outside_domain"] == ["brma"]
+    assert "OFF_DOMAIN" not in repr(result)
 
 
 def test_student_loan_enum_domain_binding_resolves_person_column() -> None:
@@ -159,7 +163,11 @@ def test_student_loan_enum_domain_binding_resolves_person_column() -> None:
     )
 
     assert result.passed is False
-    assert "PLAN_4" in result.failures[0]
+    assert result.failures == (
+        "student_loan_plan: a value lies outside the engine's enum domain.",
+    )
+    assert result.details["columns_outside_domain"] == ["student_loan_plan"]
+    assert "PLAN_4" not in repr(result)
 
 
 def test_gate_registry_vocabulary_round_trip() -> None:
