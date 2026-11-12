@@ -559,41 +559,9 @@ def _staging_run_setup(builder, monkeypatch, tmp_path, *, remote: bool = False):
     return input_h5, ladder_path, flags
 
 
-#: Unread stand-in atomic-area supports (microcosm#932): every dense request
-#: names the three, and these runs refuse or stub before the supports are read.
-_SUPPORT_FLAGS = (
-    "--atomic-support-ew",
-    "supports/ew.npz",
-    "--atomic-support-scotland",
-    "supports/scotland.npz",
-    "--atomic-support-ni",
-    "supports/ni.npz",
-)
-_SUPPORT_PINS = (
-    "--atomic-support-sha256-ew",
-    "c" * 64,
-    "--atomic-support-sha256-scotland",
-    "d" * 64,
-    "--atomic-support-sha256-ni",
-    "e" * 64,
-)
-
-
-def _toy_support_flags(tmp_path: Path) -> list[str]:
-    """The three toy supports written to disk, for a preparation that reads them."""
-    from test_support.microcosm_build.uk_atomic_support_fixtures import (
-        write_toy_supports,
-    )
-
-    _, paths = write_toy_supports(tmp_path / "supports")
-    flags = []
-    # ``write_toy_supports`` keeps ``SYSTEMS`` order: E&W, Scotland, NI.
-    for system, label in zip(paths, ("ew", "scotland", "ni"), strict=True):
-        flags += [f"--atomic-support-{label}", str(paths[system])]
-    return flags
-
-
 def _build_args(input_h5, ladder_path, flags, out, *extra):
+    """A dense request; its clone count and areas are its spine's
+    (microcosm#931), so it names no support and asserts no K."""
     return [
         "--input-h5",
         str(input_h5),
@@ -601,12 +569,9 @@ def _build_args(input_h5, ladder_path, flags, out, *extra):
         "dense",
         "--ladder",
         str(ladder_path),
-        *_SUPPORT_FLAGS,
         *flags,
         "--out",
         str(out),
-        "--n-clones",
-        "2",
         "--seed",
         "7",
         "--epochs",
@@ -643,7 +608,6 @@ def _dense_argv(tmp_path: Path, *extra: str) -> list[str]:
         str(tmp_path / "ladder.npz"),
         "--ladder-sha256",
         "3" * 64,
-        *_SUPPORT_FLAGS,
         *extra,
     )
 

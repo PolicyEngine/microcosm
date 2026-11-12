@@ -773,7 +773,6 @@ def test_maintained_uk_dense_declaration_reconstructs_to_a_marked_schema(tmp_pat
     full = uk_full_graph(
         UKFullBuildConfig(
             calibration_year=2025,
-            geography_assignment="legacy",
             calibration=UKGraphCalibrationConfig(),
         ),
         spine=spine,

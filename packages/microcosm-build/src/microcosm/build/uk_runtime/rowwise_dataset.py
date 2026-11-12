@@ -20,10 +20,10 @@ from microcosm.build.gates import GateResult
 
 # Moved to geographic_clones (microcosm#931): the spine stages that count by
 # lineage read the clone index columns' names through household_lineage and
-# hash that small module, not this one, and the full build's population and
-# export kernels hash it beside this one. Kept importable from here for this
-# module's other callers. The households' source columns, which the
-# clone-first spine's geographic_expand writes, are named there too.
+# hash that small module, not this one, and the full build's export kernels
+# hash it beside this one. Kept importable from here for this module's other
+# callers. The households' source columns, which the clone-first spine's
+# geographic_expand writes, are named there too.
 from microcosm.build.uk_runtime.geographic_clones import (
     ARTIFACT_CLONE_INDEX_COLUMN,
     UK_GEOGRAPHIC_SOURCE_COLUMNS,
@@ -105,21 +105,21 @@ def refuse_dense_clone_id_overflow(
     id_multiplier: int,
     ids: tuple[object, ...],
 ) -> None:
-    """Refuse dense clones whose ids int64 cannot hold, in one clear message.
+    """Refuse row-wise clones whose ids int64 cannot hold, in one clear message.
 
-    Dense clone ``c`` offsets every id by ``c`` times a multiplier above the
-    spine's largest id. Since microcosm#931 the spine mints its copies' ids in
-    fixed fields of the copy-id table, the CGT incidence twins at 10**17 and
-    the residential arms at multiples of 10**18, so a spine carrying arms, as
-    a production national spine does, leaves no int64 room for a second
-    clone. This refuses wherever the dense offset would overflow int64; one
-    clone, and any spine whose ids leave room (one without copy rows, say),
-    expand as before, as long as the spine carries no geographic clone index.
-    Dense builds with more than one clone of such a spine wait for the
-    clone-first spine, which mints the geographic clones at its start and
-    which the dense line takes from #931 group (c); until then the dense
-    expansion refuses a spine carrying geographic_expand's clone index, at
-    any clone count, before it reaches this check. The message names no id.
+    The row-wise lane's clone ``c`` offsets every id by ``c`` times a
+    multiplier above the spine's largest id. Since microcosm#931 the spine
+    mints its copies' ids in fixed fields of the copy-id table, the CGT
+    incidence twins at 10**17 and the residential arms at multiples of
+    10**18, so a spine carrying arms, as a production national spine does,
+    leaves no int64 room for a second clone. This refuses wherever the
+    offset would overflow int64; one clone, and any spine whose ids leave
+    room (one without copy rows, say), expand as before, as long as the
+    spine carries no geographic clone index. A dataset of more than one clone
+    of such a spine is the dense graph's, on the geography-first spine,
+    which mints the geographic clones at its start; the lane's expansion
+    refuses a spine carrying geographic_expand's clone index, at any clone
+    count, before it reaches this check. The message names no id.
     """
 
     if type(n_clones) is not int or n_clones <= 1:
@@ -131,14 +131,15 @@ def refuse_dense_clone_id_overflow(
             largest = max(largest, int(np.abs(array.astype(np.int64)).max()))
     if (n_clones - 1) * int(id_multiplier) + largest > _INT64_MAX:
         raise ValueError(
-            f"Dense geographic clones of this spine at n_clones={n_clones} would "
-            "overflow int64: since microcosm#931 the spine mints its copy ids in "
-            "the copy-id table's fixed fields, with residential arms at "
-            "multiples of 10**18, and every dense clone is offset above the "
-            "spine's largest id. Dense builds with more than one clone of such a "
-            "spine wait for the clone-first spine of microcosm#931, which mints "
-            "the geographic clones at its start; n_clones=1 still expands a "
-            "spine that carries no geographic clone index."
+            f"Row-wise geographic clones of this spine at n_clones={n_clones} "
+            "would overflow int64: since microcosm#931 the spine mints its copy "
+            "ids in the copy-id table's fixed fields, with residential arms at "
+            "multiples of 10**18, and every row-wise clone is offset above the "
+            "spine's largest id. A dataset of more than one clone of such a "
+            "spine is built by the dense graph on the geography-first, "
+            "clone-first spine of microcosm#931, which mints the geographic "
+            "clones at its start; n_clones=1 still expands a spine that "
+            "carries no geographic clone index."
         )
 
 
@@ -422,7 +423,8 @@ def expand_uk_geographic_pool(
     # {entity}_clone_index names fail closed rather than being silently
     # overwritten: their one other producer is the clone-first spine's
     # geographic_expand (microcosm#931), whose spine carries its geographic
-    # clones already and which the dense line takes only from #931 group (c).
+    # clones already; the dense graph builds on such a spine as it stands, and
+    # this expansion, which clones a spine itself, refuses it.
     tables = {
         "person": person_frame,
         "benunit": benunit_frame,
@@ -435,9 +437,9 @@ def expand_uk_geographic_pool(
                 f"input {entity} table already carries the reserved in-memory "
                 f"clone column {reserved!r}; the ladder clone owns that name. A "
                 "clone-first spine, whose geographic_expand stage writes it, "
-                "carries its geographic clones already, and the dense line "
-                "builds on such a spine only from microcosm#931 group (c), at "
-                "any n_clones."
+                "carries its geographic clones already: the dense graph builds "
+                "on a geography-first spine as it stands (microcosm#931), and "
+                "this clone refuses one at any n_clones."
             )
         if ARTIFACT_CLONE_INDEX_COLUMN in table.columns:
             table.drop(columns=[ARTIFACT_CLONE_INDEX_COLUMN], inplace=True)
@@ -806,8 +808,8 @@ def _attach_source_lineage(
             raise ValueError(
                 f"The household table carries {clone_index!r} but not {missing}: "
                 "on the clone-first spine geographic_expand writes every "
-                "household's source columns, and the dense line never takes a "
-                "clone's own ids for its source (microcosm#931)."
+                "household's source columns, and a clone's own ids are never "
+                "taken for its source (microcosm#931)."
             )
         return frame
     if "source_household_id" not in frame.columns:

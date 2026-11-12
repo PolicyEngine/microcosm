@@ -22,9 +22,11 @@ household's name through ``household_lineage``, and their nodes hash this
 module with the counting modules (``graph_kernels._COUNTING_MODULES``). The
 CGT support split, the support-clip stages and property components read
 ``K`` through the count, and the WAS stages, which count nothing by lineage,
-hash this module as a helper. The full build's population and export
-kernels, which read the names, hash it as well. So an edit here re-keys all
-of them, without binding the dense line's ``rowwise_dataset`` or
+hash this module as a helper. The bound spine's checkpoint, which holds its
+sidecar's ``K`` to its frame's count, the national gates, whose
+support-family fold reads the names, and the full build's export kernels,
+which read the names, hash it as well. So an edit here re-keys all of them,
+without binding the dense line's ``rowwise_dataset`` or
 ``atomic_area_support`` into the spine (microcosm#931).
 """
 
@@ -69,9 +71,8 @@ UK_GEOGRAPHIC_SOURCE_COLUMNS = (
 #: imports nothing first-party).
 GEOGRAPHIC_COPY_ID_FIELD = "geographic_support"
 #: Each clone's geography key, which ``geographic_identity`` writes on every
-#: household of the spine and the dense line's ``uk.full.identity`` on every
-#: household of its pool (``atomic_area_support.IDENTITY_COLUMN`` is this
-#: name).
+#: household of the spine, the dense line's pool among them
+#: (``atomic_area_support.IDENTITY_COLUMN`` is this name).
 GEOGRAPHY_HOUSEHOLD_KEY_COLUMN = "geography_household_key"
 
 

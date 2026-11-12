@@ -513,90 +513,55 @@ def test_assembled_admission_refuses_before_model_and_preserves_development_poli
 
 
 @pytest.mark.parametrize("synthetic_smoke", [False, True])
-def test_sample_admission_carries_the_transferred_gate_posture(synthetic_smoke):
-    """The raw-spine path admits ``uk.full.sample`` through the transferred gate
-    with every parameter the admission check reads (found by the first licensed
-    end-to-end run: ``spine_gate_synthetic_smoke`` was missing there)."""
-    from microcosm.build.uk_runtime.graph_population import append_uk_population_nodes
+def test_measure_admission_carries_the_transferred_gate_posture(synthetic_smoke):
+    """The dense measures, the first dense node to read the spine's version,
+    take the transferred gate's admission the retired sample node held
+    (microcosm#931), with every parameter the admission check reads (found on
+    the sample node by the first licensed end-to-end run:
+    ``spine_gate_synthetic_smoke`` was missing there), and run after it."""
+    from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
 
     country = load_country_spec("uk")
-    spine = uk_spine_graph(country)
     gated = add_uk_spine_gate_nodes(
-        spine,
+        uk_spine_graph(country),
         spec=country,
         engine_identity="test-engine",
         synthetic_smoke=synthetic_smoke,
     )
-    graph = append_uk_population_nodes(
-        gated,
-        population=uk_spine_endpoint(spine).population,
-        time_period="2024",
-        weight_kind="importance",
-        sample_fraction=0.1,
-        n_clones=2,
-        # The admission under test sits on the sample node, before any
-        # assignment; the legacy law needs no atomic definition here.
-        geography_assignment="legacy",
-    )
+    graph = uk_full_graph(UKFullBuildConfig(calibration_year=2025), spine=gated).graph
     gate = graph.node("spine.gates.transferred")
-    sample = graph.node("uk.full.sample")
-    assert {edge.producer for edge in sample.artifact_inputs} >= {gate.id}
-    assert sample.params["spine_gate_phase"] == "transferred"
-    assert sample.params["spine_gate_release_candidate"] is bool(
+    measures = graph.node("uk.full.measures")
+    assert {edge.producer for edge in measures.artifact_inputs} >= {gate.id}
+    assert measures.params["spine_gate_phase"] == "transferred"
+    assert measures.params["spine_gate_release_candidate"] is bool(
         gate.params["release_candidate"]
     )
-    assert sample.params["spine_gate_synthetic_smoke"] is synthetic_smoke
+    assert measures.params["spine_gate_synthetic_smoke"] is synthetic_smoke
     assert gate.params["synthetic_smoke"] is synthetic_smoke
-
-
-@pytest.mark.parametrize("synthetic_smoke", [False, True])
-def test_sample_admission_holds_under_the_default_atomic_law(synthetic_smoke):
-    """The same admission composed under the default law (microcosm#932): the
-    identity-keyed assignment follows the sample node and does not move the
-    transferred-gate parameters the sample admission reads."""
-    from microcosm.build.uk_runtime.atomic_area_support import (
-        uk_atomic_assignment_definition,
-    )
-    from microcosm.build.uk_runtime.graph_population import append_uk_population_nodes
-    from test_support.microcosm_build.uk_atomic_support_fixtures import (
-        toy_support_payloads,
-    )
-    from test_support.microcosm_build.uk_full_population_graph import SOURCE_VINTAGE
-
-    country = load_country_spec("uk")
-    spine = uk_spine_graph(country)
-    gated = add_uk_spine_gate_nodes(
-        spine,
-        spec=country,
-        engine_identity="test-engine",
-        synthetic_smoke=synthetic_smoke,
-    )
-    graph = append_uk_population_nodes(
-        gated,
-        population=uk_spine_endpoint(spine).population,
-        time_period="2024",
-        weight_kind="importance",
-        sample_fraction=0.1,
-        n_clones=2,
-        seed=7,
-        atomic_geography_definition=uk_atomic_assignment_definition(
-            toy_support_payloads(), seed=7
-        ),
-        source_vintage=SOURCE_VINTAGE,
-    )
-    gate = graph.node("spine.gates.transferred")
-    sample = graph.node("uk.full.sample")
-    assert {edge.producer for edge in sample.artifact_inputs} >= {gate.id}
-    assert sample.params["spine_gate_phase"] == "transferred"
-    assert sample.params["spine_gate_release_candidate"] is bool(
-        gate.params["release_candidate"]
-    )
-    assert sample.params["spine_gate_synthetic_smoke"] is synthetic_smoke
-    assert graph.node("uk.full.identity").kernel == "uk.full.identity@1"
     compiled = compile_graph(graph)
-    assert compiled.order.index("uk.full.sample") < compiled.order.index(
-        "uk.full.identity"
+    assert compiled.order.index(gate.id) < compiled.order.index("uk.full.measures")
+
+
+def test_the_measures_check_their_admission_before_they_read_anything(monkeypatch):
+    """The measures kernel runs the admission check first: a refused
+    admission stops it before it reads a table, an artifact or a parameter
+    (microcosm#931)."""
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import graph_evidence, graph_targets
+
+    class _RefusedError(Exception):
+        pass
+
+    def refuse(context, **kwargs):
+        raise _RefusedError
+
+    monkeypatch.setattr(graph_evidence, "require_uk_spine_gate_admission", refuse)
+    context = SimpleNamespace(
+        tables=_UnreadArtifacts(), artifacts=_UnreadArtifacts(), params={}
     )
+    with pytest.raises(_RefusedError):
+        graph_targets.UKFullMeasureKernel().run(context)
 
 
 class _ArtifactReadError(Exception):

@@ -4,7 +4,7 @@ Every id here is synthetic. The table declares each copy layer's decimal field
 of the id; these tests hold its fields, its helpers and the code that mints
 and decodes through it: the order of ids at K=1 (as the retired rule ordered
 them), nesting across K on clone-first frames, the executor's parent recovery,
-the static guard against the retired rule and the dense line's refusal.
+the static guard against the retired rule and the row-wise lane's refusal.
 """
 
 from __future__ import annotations
@@ -700,24 +700,27 @@ def test_the_executor_refuses_an_incumbent_id_at_its_radix_by_count() -> None:
 
 #: The rule the table replaced: ten to the digit count of the largest id seen.
 _RETIRED_RULE = "id_multiplier_for_values"
-#: The modules that keep the dense line's own clone multiplier, the retired
-#: rule over the spine's ids, until #931 (c) re-bases the dense line onto the
-#: clone-first spine, each with what it uses it for. Nothing else may name it.
+#: The modules that keep the row-wise lane's own clone multiplier, the retired
+#: rule over the spine's ids, each with what it uses it for. The dense line
+#: builds on the clone-first spine as it stands (microcosm#931), so the rule
+#: serves the lane that clones a spine without clone indices itself, and the
+#: size evaluation, which decodes the old dense layout until its own #931
+#: commit. Nothing else may name it.
 _DENSE_RULE_MODULES = {
     "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_geography.py": (
-        "defines the dense clone multiplier and clones linked frames at it"
+        "defines the row-wise clone multiplier and clones linked frames at it"
     ),
     "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_dataset.py": (
-        "the dense expand and the crosswalk clone route offset dense clones by it"
+        "the row-wise lane's ladder and crosswalk clone routes offset clones by it"
     ),
     "packages/microcosm-build/src/microcosm/build/uk_runtime/__init__.py": (
-        "re-exports the dense helper"
+        "re-exports the row-wise helper"
     ),
     "packages/microcosm-build/src/microcosm/build/uk_runtime/size_evaluation.py": (
-        "decodes dense clone ids back to spine ids"
+        "decodes the old dense layout's clone ids back to spine ids"
     ),
     "tools/build_uk_rowwise_dataset.py": (
-        "the row-wise tool's dry-run plans size the dense clone's ids by it"
+        "the row-wise tool's dry-run plans size its clones' ids by it"
     ),
 }
 #: Every module that mints, bounds or decodes spine copy ids; none may also
@@ -800,9 +803,10 @@ def _source_names(source: str) -> set[str]:
     return names
 
 
-def test_only_the_dense_line_names_the_retired_id_rule() -> None:
-    """The retired rule survives only where the dense line keeps its own
-    multiplier until #931 (c); a stale entry fails as well as a new user."""
+def test_only_the_row_wise_lane_names_the_retired_id_rule() -> None:
+    """The retired rule survives only where the row-wise lane keeps its own
+    multiplier, and in the size evaluation's old-layout decode; a stale entry
+    fails as well as a new user."""
 
     names = {
         path: _source_names(source) for path, source in _uk_python_sources().items()
@@ -817,7 +821,7 @@ def test_only_the_dense_line_names_the_retired_id_rule() -> None:
 #: (``10 ** len(str(max(ids)))``) fails the guard below.
 _INLINE_DIGIT_COUNT_MODULES = {
     "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_geography.py": (
-        "defines the dense clone multiplier, id_multiplier_for_values"
+        "defines the row-wise clone multiplier, id_multiplier_for_values"
     ),
     "packages/microcosm-build/src/microcosm/build/uk_runtime/copy_id_table.py": (
         "sizes each declared field's span from its ordinal bound"
@@ -885,7 +889,7 @@ def test_no_module_that_mints_or_decodes_copy_ids_names_the_retired_rule() -> No
     assert not _COPY_ID_MODULES & set(_DENSE_RULE_MODULES)
 
 
-# --- the dense line ---------------------------------------------------------------
+# --- the row-wise lane ------------------------------------------------------------
 
 
 def _pool_inputs(tables):
@@ -934,25 +938,28 @@ def _crosswalk_clone(*, n_clones, person, benunit, household, source_year, **_):
 
 
 def _pool_expand(*, n_clones, **inputs):
-    """The dense expand both the ladder clone route and uk.full.expand run."""
+    """The row-wise lane's expansion, which its ladder clone route runs."""
 
     pool = expand_uk_geographic_pool(n_clones=n_clones, **inputs)
     return pool.frame.table("household"), pool.frame.table("person")
 
 
 @pytest.mark.parametrize("route", [_pool_expand, _crosswalk_clone])
-def test_dense_clones_of_a_table_minted_spine_are_refused_in_one_message(
+def test_row_wise_clones_of_a_table_minted_spine_are_refused_in_one_message(
     route,
 ) -> None:
     # The row-wise tool's two dry-run plans are refused the same way
-    # (test_uk_rowwise_dry_run.py and test_uk_ladder_rowwise_clone.py), and
-    # the graph's uk.full.expand in test_uk_full_population_graph.py.
+    # (test_uk_rowwise_dry_run.py and test_uk_ladder_rowwise_clone.py).
     spine = copy_chain(base_id_tables())
     with pytest.raises(ValueError) as caught:
         route(n_clones=2, **_pool_inputs(spine))
     message = str(caught.value)
     assert "microcosm#931" in message
     assert "clone-first spine" in message
+    # It points at the dense graph on a geography-first spine, and promises
+    # no later group (microcosm#931).
+    assert "dense graph on the geography-first" in message
+    assert "group (c)" not in message
     assert "n_clones=2" in message
     assert str(int(spine.household["household_id"].max())) not in message
     with pytest.raises(ValueError, match="clone-first spine"):
@@ -962,7 +969,7 @@ def test_dense_clones_of_a_table_minted_spine_are_refused_in_one_message(
 
 
 @pytest.mark.parametrize("route", [_pool_expand, _crosswalk_clone])
-def test_one_dense_clone_of_a_table_minted_spine_still_expands(route) -> None:
+def test_one_row_wise_clone_of_a_table_minted_spine_still_expands(route) -> None:
     spine = copy_chain(base_id_tables())
     household, person = route(n_clones=1, **_pool_inputs(spine))
     assert household["household_id"].dtype == np.dtype("int64")
@@ -972,10 +979,10 @@ def test_one_dense_clone_of_a_table_minted_spine_still_expands(route) -> None:
     np.testing.assert_array_equal(person["person_id"].to_numpy(), spine.ids("person"))
 
 
-def test_a_spine_without_copy_rows_still_expands_into_dense_clones() -> None:
+def test_a_spine_without_copy_rows_still_expands_into_row_wise_clones() -> None:
     base = base_id_tables()
     pool = expand_uk_geographic_pool(n_clones=3, **_pool_inputs(base))
-    # Today's dense rule: clones above ten to the spine's digit count.
+    # The row-wise lane's rule: clones above ten to the spine's digit count.
     multiplier = 10 ** len(str(int(base.person["person_id"].max())))
     assert pool.id_multiplier == multiplier
     np.testing.assert_array_equal(
