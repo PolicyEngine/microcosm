@@ -1083,6 +1083,8 @@ class TestUKCountryPackage:
             "dwp_uc_award_band_facts.json",
             # microcosm#1095 Y4: uc_take_up's age fit.
             "dwp_uc_people_by_age_facts.json",
+            # microcosm#1095 B3: uc_take_up's LCWRA fit.
+            "dwp_uc_lcwra_households_facts.json",
             # microcosm#1095 P1: pip_points' Pathways to Work tables.
             "dwp_pip_points_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1267,6 +1269,8 @@ class TestExistingPackagesGeneralize:
             "dwp_uc_award_band_facts.json",
             # microcosm#1095 Y4: uc_take_up's age fit.
             "dwp_uc_people_by_age_facts.json",
+            # microcosm#1095 B3: uc_take_up's LCWRA fit.
+            "dwp_uc_lcwra_households_facts.json",
             # microcosm#1095 P1: pip_points' Pathways to Work tables.
             "dwp_pip_points_facts.json",
             "obr_hvcts_costing_facts.json",

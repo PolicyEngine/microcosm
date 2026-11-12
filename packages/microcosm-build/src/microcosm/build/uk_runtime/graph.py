@@ -262,6 +262,13 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "afcs_reported",
             "esa_contrib_reported",
             "esa_income_reported",
+            # The carer link's reads (A3).
+            "frs_care_recipients",
+            "care_hours",
+            "carers_allowance_reported",
+            # Its check against DWP's record of the UC carer element (A3 (f)).
+            "frs_uc_carer_element",
+            "is_claimant_or_partner",
         )
     ),
     "frs_education": frozenset(
@@ -508,7 +515,6 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "pip_dl_category",
                     "is_disabled_for_benefits",
                     "is_enhanced_disabled_for_benefits",
-                    "is_severely_disabled_for_benefits",
                     "receives_benefits_in_own_right",
                     # The UC draw's population (frs_take_up's rule).
                     "is_uc_claimant",
@@ -777,7 +783,12 @@ class _Cell:
         return Owned(self.entity, self.column, self.dtype, rewrite=rewrite)
 
 
-_ROOT_PERSON_STRING = {"gender", "marital_status", "frs_uc_lcw_status"}
+_ROOT_PERSON_STRING = {
+    "gender",
+    "marital_status",
+    "frs_uc_lcw_status",
+    "frs_uc_carer_element",
+}
 _ROOT_PERSON_BOOL = {
     "is_household_head",
     "esa_includes_support_component",
@@ -803,6 +814,8 @@ _ROOT_PERSON_INT = {
     # The company car carriers' FRS codes (frs_spine.frs_company_car_carriers).
     "frs_company_car_price_band",
     "frs_company_car_fuel_code",
+    # The care recipients bitmask (frs_spine.frs_care_recipients).
+    "frs_care_recipients",
 }
 _ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {
@@ -916,7 +929,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             (
                 "is_disabled_for_benefits",
                 "is_enhanced_disabled_for_benefits",
-                "is_severely_disabled_for_benefits",
+                "cares_for_severely_disabled_person",
             ),
             "bool",
         ),
@@ -1278,7 +1291,6 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             (
                 "is_disabled_for_benefits",
                 "is_enhanced_disabled_for_benefits",
-                "is_severely_disabled_for_benefits",
                 "receives_benefits_in_own_right",
             ),
             "bool",
@@ -1499,7 +1511,6 @@ _HMRC_SPI_HIDDEN_STRING = (
 _HMRC_SPI_HIDDEN_BOOL = (
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
-    "is_severely_disabled_for_benefits",
     # #882: the carer take-up flag follows the refilled Carer's Allowance
     # receipt on the SPI-redrawn rows; carers_allowance_take_up later opens it
     # to carers over the earnings limit (microcosm#1319).
@@ -1523,6 +1534,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     "owned_company_is_main_employment",
     "owned_company_carries_on_trade",
     "owned_company_carries_on_property_business",
+    # The carer link, taken again on the channel's households from the
+    # re-imputed disability benefits (A3, microcosm#1095).
+    "cares_for_severely_disabled_person",
     # The rows stage 1 drew, read by property_components (microcosm#840).
     "person_is_spi_income_recipient",
 )

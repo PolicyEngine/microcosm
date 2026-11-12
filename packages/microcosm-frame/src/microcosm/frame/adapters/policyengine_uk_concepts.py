@@ -508,20 +508,6 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "keeps. 2025, the calibration year, does not move (microcosm#1095; for "
         "María's signature)."
     ),
-    "cares_for_severely_disabled_person": (
-        "From policyengine-uk 2.177.3 caring hours pay Carer's Allowance and "
-        "Carer Support Payment, and count for the Universal Credit carer "
-        "element, only where the person cared for gets a qualifying disability "
-        "benefit (SSCBA 1992 s. 70(1)-(2); SSI 2023/302 regs 2 and 5(1); UC Regs "
-        "2013 regs 29-30). The FRS records caring hours but not whom the carer "
-        "cares for, and the person cared for can live elsewhere, so the build "
-        "leaves the input at its default, True, as policyengine-uk documents for "
-        "survey data. A carer whose hours go to someone with no qualifying "
-        "benefit is then treated as entitled through the caring-hours route; a "
-        "reported award counts whatever the input says. At the default no "
-        "figure moves from policyengine-uk 2.177.2 (microcosm#1095; for María's "
-        "signature)."
-    ),
 }
 
 

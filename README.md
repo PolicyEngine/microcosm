@@ -663,6 +663,24 @@ reference and the stored-input verdict (`stored_inputs`), so a waiver ships
 with the release it waives, and a `gate_evidence` block that says of each
 verdict whether it is bound, skipped by flag or never evaluated.
 
+The QRF tail gate checks a sparse QRF output only when it has 500 or more
+carriers, the records with positive weighted absolute mass, and reports one
+with fewer as thin. It fails a checked column whose top 100 records carry
+more than 75% of its weighted absolute mass, unless the run's register
+(`--qrf-tail-concentration-exclusions`) lists the column with a reason. That
+test cannot see one record carrying a fifth of a column: in #1259's seed-0
+rerun of the #1251 chain, one tax unit of weight 644.7 carried 21.7% of line
+32's weighted absolute mass at initial weights, while the top 100 of its
+16,001 carriers carried 45.1%.
+`qrf_tail_concentration.json` therefore also reports, for every numeric QRF
+output, dense and thin ones included, the largest single record's share of
+the weighted absolute mass and that record's weight, beside the top-100 share
+(`surface.single_record_concentration`). These numbers never change the
+gate's verdict: the release tool measures after the gate runs and lists an
+output it cannot measure under `unmeasured` with the reason. A column with no
+mass reports no share. The dry run reports the same two numbers at base weights,
+and the post-export probe compares the block, unmeasured reasons included.
+
 A US release may not store a column that looks like a policyengine-us variable
 (lowercase snake_case) unless the engine it is certified against defines that
 variable or `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`

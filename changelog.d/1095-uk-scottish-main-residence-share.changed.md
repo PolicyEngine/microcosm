@@ -1,0 +1,9 @@
+`frs_council_tax` now nets Scotland's second homes and liable empty homes out of the level it scales the Scottish council tax bills to (B11 of the November event-data plan's PR3, microcosm#1095; Vahid's second review of microcosm#1550, Should 2; María's signature of 11 November 2026).
+
+S2(a) levelled the bills to the 2024-25 liability of every chargeable dwelling: CTAXBASE 2025's Band D equivalents before council tax reduction at September 2024 times CTAS 2026's average Band D, about £3.39bn. That liability includes 21,606 second homes and 43,538 empty homes liable for council tax (empty more than 6 months) at September 2024, which no FRS household occupies (Scottish Government, Second Homes and Empty Properties in September 2025, from the councils' CTAXBASE returns, packaged in PolicyEngine/chronicle#436).
+
+The level is now the liability times Scotland's main-residence share at September 2024: one less those 65,144 dwellings over CTAXBASE 2024's 2,602,545 chargeable dwellings, 97.5%. The level falls by 2.5%, to about £3.31bn, and the factor on every Scottish household's `council_tax` falls with it.
+
+- The share is in dwellings, since no published table splits Band D equivalents by class. It nets out less than these dwellings' whole liability: councils can charge second homes and long-term empty homes a premium of up to double the rate, and homes empty 6 months or less, which are also liable, are not counted.
+- The vendored `scotgov_band_d_liability_facts.json` gains Scotland's three counts, and the stage verifies them against the pin with its Band D facts. The stage receipt records the counts, the share, and the level before and after the netting.
+- `obr.council_tax`'s netting (D14f) still applies England's share of main residences to the whole of Great Britain's line. Taking each nation's own share is a later option.

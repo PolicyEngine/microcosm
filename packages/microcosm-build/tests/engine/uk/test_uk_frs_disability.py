@@ -22,8 +22,11 @@ def test_dwp_readers_share_fiscal_converted_tree() -> None:
     assert category_2023.aa_higher == flags_2023.aa_higher == pytest.approx(101.75)
 
 
-def test_stored_severe_flag_matches_the_policyengine_uk_formula() -> None:
-    """On every category, the stored flag is the engine's own formula (pe-uk#1946)."""
+def test_engine_formula_on_the_stage_categories_is_the_severe_condition() -> None:
+    """The stage stores no severe flag (microcosm#1095, A4); on every category
+    it writes, policyengine-uk's formula is the tax credit severe disability
+    condition (pe-uk#1946): DLA care at the highest rate, PIP daily living at
+    the enhanced rate or higher-rate Attendance Allowance."""
 
     import policyengine_uk
 
@@ -61,6 +64,7 @@ def test_stored_severe_flag_matches_the_policyengine_uk_formula() -> None:
     stored = derive_frs_disability(
         pd.DataFrame(rows), category_rates=rates, flag_rates=flags
     )
+    assert "is_severely_disabled_for_benefits" not in stored
     # The engine reads the same categories the spine stores.
     assert [
         stored.loc[index, category_column]
@@ -87,4 +91,14 @@ def test_stored_severe_flag_matches_the_policyengine_uk_formula() -> None:
         simulation.calculate("is_severely_disabled_for_benefits", year), dtype=bool
     )
 
-    assert stored["is_severely_disabled_for_benefits"].tolist() == engine.tolist()
+    severe = {
+        ("aa_category", "HIGHER"),
+        ("dla_sc_category", "HIGHER"),
+        ("pip_dl_category", "ENHANCED"),
+    }
+    expected = [
+        (category_column, category) in severe
+        for _, category_column, category, _ in cases
+    ]
+    assert engine.tolist() == expected
+    assert any(expected) and not all(expected)
