@@ -250,7 +250,9 @@ The hand-over also names the build for the collector, with the interface's
 With that, the emitter submits the bundle's calibration diagnostics (with the
 build manifest as `build_manifest`) to the collector once the Hugging Face
 commit lands, as a `calibration-diagnostics` submission whose folder is
-`staged/<run_id>`, but only while its collector submissions are on. No
+`staged/<run_id>`, and its Orrery inputs as an `orrery-inputs` submission
+([UK graph publication](orrery-publication.md)), but only while its
+collector submissions are on. No
 emitter release up to 0.14.0 (the newest released, which the installed-emitter
 tests pin) can switch them on, so for now the emitter ignores the provenance
 and the bundle goes to Hugging Face alone. Microcosm sets only a minimum

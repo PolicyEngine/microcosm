@@ -908,8 +908,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Accepted for older launchers; it only prints a warning. Builds no "
             "longer upload the graph to the runs application: the staged "
-            "dataset bundle submits the graph's inputs to the collector, which "
-            "builds the Orrery graph files."
+            "dataset bundle hands the graph's inputs to the emitter for the "
+            "collector, which builds the Orrery graph files."
         ),
     )
     graph_publication.add_argument(
@@ -923,10 +923,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.publish_orrery is True:
         print(
             "warning: --publish-orrery no longer uploads the graph to the runs "
-            "application. The staged dataset bundle submits the graph's inputs "
-            "to the collector, which builds the Orrery graph files and keeps a "
-            "licensed build's private; with local-only or no staging nothing "
-            "is submitted.",
+            "application. The staged dataset bundle hands the graph's inputs to "
+            "the emitter, which submits them to the collector only while the "
+            "emitter's collector submissions are on (no released emitter "
+            "switches them on yet); the collector builds the Orrery graph files "
+            "and keeps a licensed build's private. With local-only or no "
+            "staging nothing is handed over.",
             file=sys.stderr,
             flush=True,
         )

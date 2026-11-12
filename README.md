@@ -46,12 +46,11 @@ until you restart the kernel, load it by path with
 
 ## Build progress and staging run files
 
-UK build completion automatically exports Orrery execution graphs, attempts
-immutable publication before Hugging Face artifact staging when
-`--publish-orrery` asks for it, and preserves durable retry jobs and receipt
-snapshots. No upload is published today; see
-[the status of graph publication](docs/orrery-publication.md#status). See
-[graph publication](docs/orrery-publication.md) for configuration and retry.
+UK build completion automatically exports Orrery execution graphs for viewing
+offline and uploads none. Its staged dataset bundle hands the graph's inputs
+to the emitter for the collector, which builds the Orrery graph files; see
+[graph publication](docs/orrery-publication.md) and
+[its status](docs/orrery-publication.md#status).
 
 Supported US and UK build commands start the local emitter as the build's
 child process, with its telemetry, graph-publication and Hugging Face
@@ -71,7 +70,7 @@ The build finds the `microcosm-emitter` command through
 environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
-no remote staging, and queues no Orrery graph publication; a UK build given
+no remote staging, and measures no Orrery publication inventory; a UK build given
 `--staging-read-back` fails at the read-back, and a UK build asked to stage
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,

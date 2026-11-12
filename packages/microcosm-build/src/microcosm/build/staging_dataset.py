@@ -18,8 +18,9 @@ files before it answers; it uploads every other file from disk, so the build
 rewrites a bundle file afterwards only when the receipt lists it in
 ``copied_files`` (:meth:`StagedBundleHandOver.may_rewrite`). A hand-over that
 names its build (``collector``, a ``CollectorProvenance``) also asks the
-emitter to submit the bundle's calibration diagnostics to the collector once
-its commit lands, while the emitter's collector submissions are on.
+emitter to submit the bundle's calibration diagnostics and Orrery inputs
+(:func:`output_role`) to the collector once its commit lands, while the
+emitter's collector submissions are on.
 
 The module knows nothing about a country's manifest beyond the ``outputs``
 mapping shape ``{name: {"path", "sha256", "bytes"}}``; callers pass the manifest
@@ -1172,8 +1173,8 @@ def stage_bundle(
     ``earlier_files`` are the outputs' digests of an earlier hand-over of
     this run, if any; a ``REMOTE_DIFFERS`` warning then says when the folder
     may hold that bundle. ``collector`` names the build, so the emitter also
-    submits the bundle's calibration diagnostics to the collector (see
-    :func:`bundle_request`).
+    submits the bundle's calibration diagnostics and Orrery inputs to the
+    collector (see :func:`bundle_request`).
 
     The emitter writes every file under ``<prefix>/<run_id>/`` in one commit,
     idempotent on the outputs' digests (``already_staged``, or

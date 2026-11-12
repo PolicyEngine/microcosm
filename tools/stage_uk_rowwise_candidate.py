@@ -67,8 +67,9 @@ more than one build stop the command before it starts an emitter, and a
 directory with none of these is named by the run ID. Without ``--run-id``
 or a staged record, the bundle is staged under the same build ID. The
 release is the manifest's ``release_id``.
-The emitter then submits the bundle's calibration diagnostics to the
-collector once the commit lands, while its collector submissions are on. A
+The emitter then submits the bundle's calibration diagnostics and Orrery
+inputs to the collector once the commit lands, while its collector
+submissions are on. A
 hand-over the command resumes keeps what the build named.
 
 Staging is not publication: ``releases/`` and ``latest.json`` are untouched.

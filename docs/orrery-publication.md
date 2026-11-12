@@ -26,9 +26,10 @@ so the emitter submits the files as one `orrery-inputs` submission once the
 bundle's Hugging Face commit lands, while its collector submissions are on.
 No emitter release up to 0.14.0 switches them on, so until one does, nothing
 is submitted. The collector projects the document with
-`orrery_json_from_schema(schema, execution=overlay)`, validates it and keeps a
-build that used licensed microdata, as every UK build does, private until
-output clearance; staff see it through the run viewer. The native evidence
+`orrery_json_from_schema(schema, execution=overlay)`, validates it and keeps
+the graph of a build that used licensed microdata, as every UK build does,
+private; staff are to see it through the run viewer once it reads graphs
+from the collector. The native evidence
 files (`execution.evidence.json` and `evidence-<phase>-*.json`) and
 `graph.orrery.json` keep roles named after their keys, so they are not
 submitted.
@@ -70,9 +71,12 @@ has no authorization endpoint
 (PolicyEngine/calibration-diagnostics#208, which would have added one, was
 closed unmerged), so none of them can succeed. Each stays pending in its
 machine's queue with its files in the attempt's preserved
-`orrery-publication/` directory, until an emitter change re-submits queued
-uploads to the collector as `orrery-inputs` submissions and removes the
-direct upload.
+`orrery-publication/` directory, until an emitter change removes the direct
+upload. That change can re-submit a queued upload to the collector as an
+`orrery-inputs` submission only with an execution overlay, which the
+preserved directory never holds: the overlay is in the build's staged bundle
+(`graph.execution.json`), and the collector's rebuild of past builds reads it
+there.
 
 The receipt snapshot (`orrery.publication.json`) of every build now records
 `skipped` with the error code `local_only`: nothing was queued for the runs
