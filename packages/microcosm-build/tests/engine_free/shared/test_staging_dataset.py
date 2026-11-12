@@ -262,7 +262,27 @@ def test_sidecars_list_every_file_and_verify_themselves(tmp_path):
         ("dataset", "dataset"),
         ("calibration_diagnostics", "calibration_diagnostics"),
         ("local_registry", "local_registry"),
-        ("orrery/graph.schema.json", "orrery_graph_schema_json"),
+        # The Orrery inputs take the interface's roles, so the emitter submits
+        # them to the collector as an ``orrery-inputs`` submission, whether
+        # the build registers them under ``orrery/`` (a dataset bundle) or
+        # by name (a failed build's graph evidence).
+        ("orrery/graph.schema.json", "orrery_schema"),
+        ("graph.schema.json", "orrery_schema"),
+        ("orrery/graph.execution.json", "execution_overlay"),
+        ("graph.execution.json", "execution_overlay"),
+        (
+            "orrery/upstream-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.json",
+            "orrery_upstream",
+        ),
+        (
+            "upstream-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.json",
+            "orrery_upstream",
+        ),
+        # Only an upstream file named by a full SHA-256 is an Orrery input;
+        # the projection and the native evidence keep their key's role.
+        ("orrery/upstream-0123456789abcdef.json", "orrery_upstream_json"),
+        ("orrery/graph.orrery.json", "orrery_graph_orrery_json"),
+        ("orrery/execution.evidence.json", "orrery_execution_evidence_json"),
         (
             "orrery/evidence-0e07dea6cca04063a47a8166793d9a0c-6f8356b6990586505573"
             "13f43b8875214a46246d990ce7e3f574d8af6dd52e9f-binding.json",

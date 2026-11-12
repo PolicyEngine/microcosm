@@ -1539,6 +1539,14 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
         "sha256sums.txt": "checksums",
     }
     assert roles[dataset_name] == "dataset"
+    # The graph schema, its execution overlay and the upstream files it links
+    # carry the interface's Orrery input roles, so the emitter submits them
+    # to the collector as one orrery-inputs submission.
+    assert roles["graph.schema.json"] == "orrery_schema"
+    assert roles["graph.execution.json"] == "execution_overlay"
+    upstream = {name for name in roles if name.startswith("upstream-")}
+    assert {roles[name] for name in upstream} <= {"orrery_upstream"}
+    assert roles["graph.orrery.json"] == "orrery_graph_orrery_json"
     for item in request.files:
         assert Path(item.local_path) == out / item.name
         committed = hub.files[

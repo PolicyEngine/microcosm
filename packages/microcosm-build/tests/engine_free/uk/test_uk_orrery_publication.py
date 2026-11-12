@@ -91,19 +91,23 @@ def test_local_export_preserves_exact_graph_without_a_run_id_or_network(
     assert not (preserved / "raw.json").exists()
 
 
-def test_publication_precedes_manifest_registration_and_receipt_is_a_snapshot(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("requested", [None, True])
+def test_a_build_uploads_no_graph_and_its_receipt_is_a_snapshot(
+    tmp_path, monkeypatch, requested
 ):
+    """The collector builds the Orrery graph files from the inputs the staged
+    bundle submits, so a build queues no upload to the runs application, even
+    with ``--publish-orrery``; it still registers its graph files and a
+    receipt snapshot."""
     args = fixture(tmp_path)
-    args.publish_orrery = True
-    events = []
+    args.publish_orrery = requested
+    uploads = []
 
     class Emitter:
         publication_inventory = staticmethod(fake_publication_inventory)
 
         def publish_graph(self, directory, inventory, *, wait_seconds):
-            assert not (args.out / "orrery.publication.json").exists()
-            events.append("publication_attempt")
+            uploads.append(directory)
             return {
                 "publication_id": inventory["publication_id"],
                 "status": "pending",
@@ -113,9 +117,8 @@ def test_publication_precedes_manifest_registration_and_receipt_is_a_snapshot(
     monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", Emitter())
     manifest = {"outputs": {}}
     receipt = orrery_publication.finalize_graph(args, manifest=manifest).receipt
-    events.append("registered")
-    assert events == ["publication_attempt", "registered"]
-    assert receipt["status"] == "pending"
+    assert uploads == []
+    assert (receipt["status"], receipt["error_code"]) == ("skipped", "local_only")
     names = {entry["path"].split("/")[-1] for entry in manifest["outputs"].values()}
     assert {
         "graph.orrery.json",
@@ -236,45 +239,35 @@ def test_failure_evidence_error_does_not_replace_the_build_error(
     )
 
 
-def test_no_emitter_delegates_publication_without_a_run_id(tmp_path, monkeypatch):
+def test_without_an_emitter_a_build_queues_no_upload_either(tmp_path, monkeypatch):
     args = fixture(tmp_path)
     args.publish_orrery = True
     monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", None)
     calls = []
 
     def publish(directory, inventory, **options):
-        assert "run_id" not in inventory
-        assert options == {"wait_seconds": 0}
         calls.append(directory)
         return {"status": "pending", "error_code": "credential_missing"}
 
-    monkeypatch.setattr(orrery_publication, "publish_graph", publish)
+    monkeypatch.setattr(orrery_publication, "publish_graph", publish, raising=False)
     receipt = orrery_publication.finalize_graph(args, manifest=None).receipt
-    assert receipt["status"] == "pending"
-    assert calls == [args.attempt_evidence / "orrery-publication"]
+    assert calls == []
+    assert (receipt["status"], receipt["error_code"]) == ("skipped", "local_only")
 
 
-@pytest.mark.parametrize(
-    "explicit,local,disabled,expected",
-    [
-        (None, False, False, False),
-        (None, True, False, False),
-        (None, False, True, False),
-        (True, False, False, True),
-        (True, True, True, True),
-        (False, False, False, False),
-    ],
-)
-def test_publication_is_opt_in_whatever_the_staging(
-    explicit, local, disabled, expected
-):
-    """María's ruling of 2026-10-26: a build publishes its graph to the
-    public Orrery only on ``--publish-orrery``, staged or not."""
+def test_publish_orrery_only_warns_that_the_build_uploads_no_graph(tmp_path, capsys):
+    """``--publish-orrery`` asked for an upload to the public Orrery, which
+    builds no longer make: the collector builds the graph files from the
+    inputs the staged bundle submits, and keeps a licensed build's private.
+    The flag is accepted, says so, and changes nothing."""
 
-    args = Namespace(
-        publish_orrery=explicit, staging_local_only=local, no_staging=disabled
-    )
-    assert orrery_publication.publication_enabled(args) is expected
+    args = full_build_support.arguments(tmp_path, "--publish-orrery")
+    warning = capsys.readouterr().err
+    assert "--publish-orrery no longer uploads the graph" in warning
+    assert "collector" in warning
+    quiet = full_build_support.arguments(tmp_path, "--no-publish-orrery")
+    assert "--publish-orrery" not in capsys.readouterr().err
+    assert args.publish_orrery is True and quiet.publish_orrery is False
 
 
 @pytest.mark.parametrize("active", [False, True])
@@ -322,33 +315,6 @@ def test_unavailable_inventory_preserves_graph_without_claiming_a_queued_job(
     assert "orrery/orrery.publication.json" in manifest["outputs"]
 
 
-def test_enqueue_failure_is_recorded_without_replacing_graph_exports(
-    tmp_path, monkeypatch
-):
-    args = fixture(tmp_path)
-    args.publish_orrery = True
-
-    class Emitter:
-        publication_inventory = staticmethod(fake_publication_inventory)
-
-        def publish_graph(self, directory, inventory, *, wait_seconds):
-            return {
-                "version": 1,
-                "publication_id": inventory["publication_id"],
-                "status": "failed",
-                "error_code": "local_service_unavailable",
-            }
-
-    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", Emitter())
-    result = orrery_publication.finalize_graph(args, manifest=None)
-    assert result.receipt["status"] == "failed"
-    assert result.receipt["error_code"] == "local_service_unavailable"
-    assert result.receipt["publication_id"]
-    assert (args.out / "graph.orrery.json").is_file()
-    assert (args.out / "orrery.upload.json").is_file()
-    assert (args.out / "orrery.evidence-manifest.json").is_file()
-
-
 def synthetic_build_request(tmp_path, monkeypatch, failure=None, extra=()):
     """A synthetic dense build request whose run records execution."""
     pytest.importorskip("tables")
@@ -389,7 +355,11 @@ def test_a_refused_build_submits_gate_verdicts_without_their_failure_lines(
     evidence = json.loads(
         (args.out / orrery_publication.EVIDENCE_MANIFEST_NAME).read_bytes()
     )
-    assert evidence["orrery_publication"]["status"] == "pending"
+    # No upload is queued; the receipt says the graph stayed with the build.
+    assert (
+        evidence["orrery_publication"]["status"],
+        evidence["orrery_publication"]["error_code"],
+    ) == ("skipped", "local_only")
     preserved = args.attempt_evidence / "orrery-publication"
     summaries = published_summaries(preserved)
     gates = [
@@ -592,11 +562,18 @@ def test_failure_evidence_is_handed_to_the_builds_emitter_with_each_files_role(
     assert delivery["revision"] == hub.sha
     (request,) = client.bundle_requests
     assert {item.name: item.role for item in request.files} == {
-        "graph.schema.json": "graph_schema_json",
+        "graph.schema.json": "orrery_schema",
         orrery_publication.EVIDENCE_MANIFEST_NAME: "build_manifest",
         "staged_manifest.json": "staged_manifest",
         "sha256sums.txt": "checksums",
     }
+    # The bundle names the build for the collector, so its Orrery inputs are
+    # submitted once the commit lands; a failed build is no release candidate.
+    from microcosm_emitter_interface import CollectorProvenance
+
+    assert request.collector == CollectorProvenance(
+        country_code="UK", build_id="uk-attempt", licensed_data=True, release=None
+    )
     assert hub.commits[0]["paths"] == sorted(
         f"staged/uk-attempt/{item.name}" for item in request.files
     )
