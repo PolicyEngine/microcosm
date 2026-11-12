@@ -2216,8 +2216,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 33:
-        raise RuntimeError("The legacy normalization audit is not exactly 33 cells.")
+    if observed != expected_order or len(observed) != 34:
+        raise RuntimeError("The legacy normalization audit is not exactly 34 cells.")
     return Frame(
         tables,
         frame.schema,
