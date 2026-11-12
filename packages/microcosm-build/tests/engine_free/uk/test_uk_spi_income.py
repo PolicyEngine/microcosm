@@ -99,11 +99,16 @@ def test_spi_carer_link_is_taken_again_from_the_channels_benefits() -> None:
     their carers' link by frs_disability's rule, outside carers drawn at the
     FRS channel's share; the FRS rows keep their values."""
 
-    from microcosm.build.uk_runtime.frs_spine import FRS_CARE_OUTSIDE_BIT
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_CARE_HELPER_BIT,
+        FRS_CARE_OUTSIDE_BIT,
+    )
 
     column = frs_disability.CARER_LINK_COLUMN
-    member = 1 << 2
-    outside = 1 << FRS_CARE_OUTSIDE_BIT
+    # The carriers the twin hands its copies: the care tab lists each carer,
+    # and member 2 or someone outside gets their 35 hours.
+    member = (1 << FRS_CARE_HELPER_BIT) | (1 << 2)
+    outside = (1 << FRS_CARE_HELPER_BIT) | (1 << FRS_CARE_OUTSIDE_BIT)
     rows = [
         # FRS household 1: the share's only base carer, whose member qualifies,
         # so the survey's share is one.

@@ -156,21 +156,28 @@ def test_disability_stage_resolves_the_survey_year_not_the_frame_period(
 
 
 def _carer_link_people() -> pd.DataFrame:
-    """Eleven one- or two-person households, each carer at 35 hours a week.
+    """Twelve one- or two-person households, each carer at 35 hours a week or more.
 
-    Households 1 and 3: the carer's main recipient (member 2) qualifies
-    (middle-rate DLA care, lower-rate Attendance Allowance). Households 2 and
-    4: member 2 gets none of the benefits. Households 5 to 8: the main
-    recipient lives outside. Household 9: care hours and no link in the care
-    tab. Household 10: no care at all. Household 11: a qualifying member and
-    reported Carer's Allowance, so it stays out of the share's base.
+    Households 1 and 3: the carer gives member 2, who qualifies (middle-rate
+    DLA care, lower-rate Attendance Allowance), at least 35 hours. Households
+    2 and 4: member 2 gets none of the benefits. Households 5 to 8: the carer
+    gives someone outside the household that. Household 9: care hours and no
+    link in the care tab. Household 10: no care at all. Household 11: a
+    qualifying member and reported Carer's Allowance, so it stays out of the
+    share's base. Household 12: 50 hours in all, but spread so that nobody,
+    the qualifying member 2 included, gets 35 (Vahid's review of
+    microcosm#1583, Should 1).
     """
 
-    from microcosm.build.uk_runtime.frs_spine import FRS_CARE_OUTSIDE_BIT
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_CARE_HELPER_BIT,
+        FRS_CARE_OUTSIDE_BIT,
+    )
 
     rows = []
-    member = 1 << 2
-    outside = 1 << FRS_CARE_OUTSIDE_BIT
+    listed = 1 << FRS_CARE_HELPER_BIT
+    member = listed | (1 << 2)
+    outside = listed | (1 << FRS_CARE_OUTSIDE_BIT)
     carers = {
         1: (member, "MIDDLE", "NONE", 0.0),
         2: (member, "NONE", "NONE", 0.0),
@@ -183,6 +190,7 @@ def _carer_link_people() -> pd.DataFrame:
         9: (0, None, None, 0.0),
         10: (0, None, None, 0.0),
         11: (member, "HIGHER", "NONE", 5000.0),
+        12: (listed, "HIGHER", "NONE", 0.0),
     }
     for household, (mask, dla, aa, reported) in carers.items():
         rows.append(
@@ -190,7 +198,7 @@ def _carer_link_people() -> pd.DataFrame:
                 "person_id": household * 1000 + 1,
                 "person_household_id": household,
                 "frs_care_recipients": mask,
-                "care_hours": 0.0 if household == 10 else 35.0,
+                "care_hours": {10: 0.0, 12: 50.0}.get(household, 35.0),
                 "carers_allowance_reported": reported,
                 "aa_category": "NONE",
                 "dla_sc_category": "NONE",
@@ -242,6 +250,45 @@ def test_the_carer_link_follows_the_main_recipient_and_draws_outside_carers() ->
     assert routes["outside_drawn"] == {"carers": "3-9", "support": "3-9", "true": "<3"}
     assert routes["no_link"]["true"] == "<3"
     assert evidence["rule"] == frs_disability.CARER_LINK_PARAMETERS
+
+
+def test_care_spread_so_nobody_gets_35_hours_is_no_carer_link() -> None:
+    """Vahid's review of microcosm#1583, Should 1: the line is per person cared for.
+
+    Household 12's carer gives 50 hours in all, and member 2 qualifies, but
+    nobody gets 35 hours on their own (ICA Regs 1976 reg. 4(1A)): the care tab
+    lists them with no recipient at the line, so the link is false, and the
+    receipt counts them on their own route.
+    """
+
+    from microcosm.build.uk_runtime import frs_disability
+
+    people = _carer_link_people()
+    link, evidence = frs_disability.derive_carer_link(
+        people, weights=np.ones(len(people)), min_hours=35.0
+    )
+    by_id = dict(zip(people["person_id"], link, strict=True))
+
+    assert not by_id[12001]
+    assert evidence["routes_at_the_line"]["care_tab_nobody_given_the_line"] == {
+        "carers": "<3",
+        "support": "<3",
+        "true": 0,
+    }
+    # They stay out of the share's base: it reads only carers at the line.
+    assert frs_disability.carer_link_share(
+        people, weights=np.ones(len(people)), min_hours=35.0
+    ) == (0.5, 4)
+
+
+def test_the_carer_link_refuses_a_minimum_the_care_bands_dont_mark() -> None:
+    from microcosm.build.uk_runtime import frs_disability
+
+    people = _carer_link_people()
+    with pytest.raises(ValueError, match="read the bands again"):
+        frs_disability.derive_carer_link(
+            people, weights=np.ones(len(people)), min_hours=30.0
+        )
 
 
 def test_the_carer_link_draw_is_reproducible() -> None:
@@ -443,7 +490,10 @@ def test_a_dwp_carer_at_the_line_is_linked_whatever_the_care_tab_says() -> None:
                 "person_household_id": household,
                 "person_benunit_id": household * 10 + 1,
                 "is_claimant_or_partner": True,
-                frs_disability.FRS_CARE_RECIPIENTS_COLUMN: 1 << 2,
+                frs_disability.FRS_CARE_RECIPIENTS_COLUMN: (
+                    1 << frs_disability.FRS_CARE_HELPER_BIT
+                )
+                | (1 << 2),
                 "care_hours": 35.0,
                 "carers_allowance_reported": 0.0,
                 FRS_UC_CARER_ELEMENT_COLUMN: "CARER" if household < 4 else "NONE",
