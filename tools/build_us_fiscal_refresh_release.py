@@ -77,6 +77,7 @@ from microcosm.build.gates import (
     nonconstant_columns_gate,
     observed_value_counts,
     parity_gate,
+    single_record_concentration,
     tail_concentration_gate,
     target_fit_gate,
     target_profile_coverage_gate,
@@ -321,6 +322,7 @@ from microcosm.build.us_runtime.population_structure_holdout import (
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
+from microcosm.build.us_runtime.reform_coverage_smoke import RECORDS_REQUESTS_ONLY
 from microcosm.build.us_runtime.reform_validation import (
     US_RELEASE_SPM_SELECTION,
     default_baseline_level_specs,
@@ -4907,7 +4909,10 @@ def _record_post_export_requests(
     logs every baseline request, and each ``simulate(reform)`` a recorder of
     its own. The consumers ask for the same keys whatever values they get
     back, and the served baseline refuses any key this dry run did not see,
-    so a value-dependent request cannot slip past the plan.
+    so a value-dependent request cannot slip past the plan. ``simulate``
+    carries ``RECORDS_REQUESTS_ONLY``, so the reform-coverage smoke gate hands
+    it each probe instead of building the probe's reform, and the dry run
+    resolves no list edit against an engine.
 
     When the consumer runs for real, each key a reformed simulation is first
     asked for is one batched pass (``_BatchedPostExportReform``), so the pass
@@ -4924,6 +4929,7 @@ def _record_post_export_requests(
         reform_keys.append({})
         return _RecordingPostExportSimulation(reform_keys[-1])
 
+    setattr(simulate, RECORDS_REQUESTS_ONLY, True)
     consumer(simulate)
     return _ascending_period_plan(keys), sum(len(asked) for asked in reform_keys)
 
@@ -8363,6 +8369,20 @@ def _qrf_tail_concentration_gate(
     absent, or non-numeric, and each numeric output's record nonzero share and
     finite nonzero record count, the numbers behind the dense/sparse split) for
     the release artifact and the ``--dry-run-gates-report`` certainty model.
+
+    The surface also measures every numeric output, dense and thin ones
+    included, with :func:`microcosm.build.gates.single_record_concentration`:
+    the largest single record's share of the column's weighted absolute mass
+    and that record's weight, next to the top-k share. The measurements cannot
+    change the gate's inputs, its verdict or the errors it raises: the loop
+    resolves weights only for sparse outputs, and the gate runs before any
+    measurement. A misaligned sparse output therefore still fails with the
+    gate's own message, which names the column. The loop stores a dense
+    output's entity and not its values, and the measurement reads the column
+    from the frame again.
+    :func:`_qrf_single_record_measurements` runs after the gate and turns
+    every ``Exception`` into an ``unmeasured`` entry, so no ``Exception``
+    from a measurement fails a run the gate would pass.
     """
     qrf_outputs = sorted(_qrf_imputed_source_outputs())
     values: dict[str, np.ndarray] = {}
@@ -8373,6 +8393,7 @@ def _qrf_tail_concentration_gate(
     nonzero_shares: dict[str, float] = {}
     nonzero_records: dict[str, int] = {}
     entity_weights: dict[str, np.ndarray] = {}
+    dense_entities: dict[str, str] = {}
     for column in qrf_outputs:
         try:
             entity = export_frame.column_entity(column)
@@ -8390,6 +8411,7 @@ def _qrf_tail_concentration_gate(
         nonzero_records[column] = int((np.isfinite(array) & (array != 0.0)).sum())
         if nonzero_share > US_QRF_SPARSE_NONZERO_SHARE_MAX:
             dense.append(column)
+            dense_entities[column] = entity
             continue
         if entity not in entity_weights:
             entity_weights[entity] = np.asarray(
@@ -8405,6 +8427,14 @@ def _qrf_tail_concentration_gate(
         min_nonzero_records=US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
         reviewed_exclusions=reviewed_exclusions,
     )
+    single_record, unmeasured = _qrf_single_record_measurements(
+        export_frame,
+        qrf_outputs,
+        sparse_values=values,
+        sparse_weights=weights,
+        dense_entities=dense_entities,
+        entity_weights=entity_weights,
+    )
     surface: dict[str, object] = {
         "qrf_imputed_outputs": len(qrf_outputs),
         "checked_sparse_columns": sorted(values),
@@ -8414,8 +8444,86 @@ def _qrf_tail_concentration_gate(
         "sparse_nonzero_share_max": US_QRF_SPARSE_NONZERO_SHARE_MAX,
         "nonzero_shares": nonzero_shares,
         "nonzero_records": nonzero_records,
+        "single_record_concentration": {
+            "top_k": US_QRF_TAIL_CONCENTRATION_TOP_K,
+            "columns": single_record,
+            "unmeasured": unmeasured,
+        },
     }
     return gate, surface
+
+
+def _qrf_single_record_measurements(
+    export_frame: Frame,
+    qrf_outputs: Sequence[str],
+    *,
+    sparse_values: Mapping[str, np.ndarray],
+    sparse_weights: Mapping[str, np.ndarray],
+    dense_entities: Mapping[str, str],
+    entity_weights: Mapping[str, np.ndarray],
+) -> tuple[dict[str, dict[str, float | int | None]], dict[str, str]]:
+    """Each numeric QRF output's single-record measurements, after the gate.
+
+    A sparse output reuses the values and weights the gate checked. For a
+    dense output the gate loop stored only the entity, so this reads the
+    column from the frame again, with the loop's two conversion statements.
+    A dense column's converted values stay in local names: this stores them
+    in no mapping and returns none of them. A dense output resolves its
+    entity's weights here, since the gate never weighs one, and reuses
+    weights that a sparse output of the same entity already resolved. Any
+    ``Exception``, from reading a dense column, from resolving weights or
+    from measuring, lists the output under ``unmeasured`` with the reason
+    :func:`_unmeasured_reason` builds, so no ``Exception`` from an output
+    fails the run. Both mappings keep the order of ``qrf_outputs``.
+    """
+    resolved = dict(entity_weights)
+    columns: dict[str, dict[str, float | int | None]] = {}
+    unmeasured: dict[str, str] = {}
+    for column in qrf_outputs:
+        if column not in sparse_values and column not in dense_entities:
+            continue
+        try:
+            if column in sparse_values:
+                column_values = sparse_values[column]
+                column_weights = sparse_weights[column]
+            else:
+                entity = dense_entities[column]
+                series = export_frame.table(entity)[column]
+                numeric = pd.to_numeric(series, errors="coerce").fillna(0.0)
+                column_values = numeric.to_numpy(dtype=np.float64)
+                if entity not in resolved:
+                    resolved[entity] = np.asarray(
+                        export_frame.resolve_weights(entity).values,
+                        dtype=np.float64,
+                    )
+                column_weights = resolved[entity]
+            columns[column] = single_record_concentration(
+                column_values,
+                column_weights,
+                top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
+            )
+        except Exception as error:
+            unmeasured[column] = _unmeasured_reason(error)
+    return columns, unmeasured
+
+
+def _unmeasured_reason(error: Exception) -> str:
+    """Why an output went unmeasured: the error's type and text.
+
+    Formatting an error runs the error's own ``__str__`` or ``__format__``,
+    and reading its type's name can run a metaclass property; any of them
+    can raise. When one raises an ``Exception``, the reason falls back to
+    the type's name with ``unprintable error``, then to ``unprintable
+    error`` alone, so no ``Exception`` raised while formatting leaves this
+    function.
+    """
+    try:
+        return f"{type(error).__name__}: {error}"
+    except Exception:
+        try:
+            return f"{type(error).__name__}: unprintable error"
+        except Exception:
+            return "unprintable error"
 
 
 #: Failure-line prefix for a per-run QRF tail-concentration register that does
@@ -8515,9 +8623,9 @@ def _record_qrf_tail_concentration_gate(
     flag says) to ``terminal_gate_failures``, so the batched pre-export raise
     refuses the run with the #568 weight sidecar on disk. Whenever the gate
     evaluated, ``qrf_tail_concentration.json`` is written with the per-column
-    shares, carrier counts, and the mismatch. Only a genuine evaluation crash
-    escapes: it propagates on an otherwise-clean run and becomes one unowned
-    failure line under earlier failures.
+    shares, carrier counts, single-record shares, and the mismatch. Only a
+    genuine evaluation crash escapes: it propagates on an otherwise-clean run
+    and becomes one unowned failure line under earlier failures.
 
     Returns the register-mismatch failure lines (empty when the register
     matches) so --evidence-release can refuse them.

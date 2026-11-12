@@ -1,0 +1,74 @@
+{
+  "release_id": "populace-us-2024-0fb05b6-4b57d15a287c-20260930T150401Z",
+  "h5_sha256": "417d23aed4d044de2e657a7b5d856136975d25739dbdb4ddd72866f841de1559",
+  "qrf_tail_concentration_sha256": "8311943453d524a5b1a286cd440e40ea56a5909da0aa9971d065da9cc72cdc58",
+  "branch_commit": "a6644d62b2f7b6d4e2afbd91212e8f25dd82ac1d",
+  "fidelity": {
+    "gate_details_equal_recorded": true,
+    "verdict_equal_recorded": true,
+    "checked_sparse_columns_equal_recorded": true,
+    "dense_columns_equal_recorded": true,
+    "absent_columns_equal_recorded": true,
+    "non_numeric_columns_equal_recorded": true,
+    "probe_compare_differences": [],
+    "probe_columns_compared": 33,
+    "sidecar_final_weights_equal_h5": true
+  },
+  "qrf_outputs": 106,
+  "measured_columns": 68,
+  "over": {
+    "final_weights_over_5pct": [
+      "long_term_capital_gains_on_collectibles",
+      "investment_income_elected_form_4952",
+      "farm_income",
+      "casualty_loss",
+      "sstb_w2_wages_from_qualified_business",
+      "investment_interest_expense",
+      "bond_assets",
+      "estate_income",
+      "w2_wages_from_qualified_business",
+      "sstb_self_employment_income_before_lsr",
+      "unadjusted_basis_qualified_property",
+      "qualified_bdc_income",
+      "charitable_non_cash_donations",
+      "unrecaptured_section_1250_gain",
+      "sstb_unadjusted_basis_qualified_property",
+      "tax_exempt_interest_income",
+      "farm_rent_income"
+    ],
+    "final_weights_over_10pct": [
+      "long_term_capital_gains_on_collectibles",
+      "investment_income_elected_form_4952",
+      "farm_income",
+      "casualty_loss",
+      "sstb_w2_wages_from_qualified_business",
+      "investment_interest_expense",
+      "bond_assets"
+    ],
+    "initial_weights_over_5pct": [
+      "investment_income_elected_form_4952",
+      "farm_income",
+      "estate_income",
+      "domestic_production_ald",
+      "sstb_w2_wages_from_qualified_business",
+      "unrecaptured_section_1250_gain",
+      "long_term_capital_gains_on_collectibles",
+      "w2_wages_from_qualified_business",
+      "investment_interest_expense",
+      "casualty_loss",
+      "charitable_non_cash_donations",
+      "stock_assets",
+      "partnership_income"
+    ],
+    "initial_weights_over_10pct": [
+      "investment_income_elected_form_4952",
+      "farm_income",
+      "estate_income",
+      "domestic_production_ald",
+      "sstb_w2_wages_from_qualified_business",
+      "unrecaptured_section_1250_gain",
+      "long_term_capital_gains_on_collectibles",
+      "w2_wages_from_qualified_business"
+    ]
+  }
+}

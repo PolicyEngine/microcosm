@@ -5295,6 +5295,27 @@ class TestDWPCarerCareHours:
 
         assert frs_lcwra_proxy(people).tolist() == [True, True, False, False]
 
+    def test_the_spines_strict_proxy_refuses_a_missing_column(self) -> None:
+        """A partial frame reads missing columns as no benefit; the spine's call refuses."""
+
+        from microcosm.build.uk_runtime.frs_disability import (
+            UK_DISABILITY_FLAG_REPORTED_COLUMNS,
+        )
+
+        full = pd.DataFrame(
+            {column: [0.0, 100.0] for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS}
+        )
+        full["esa_includes_support_component"] = [True, True]
+        assert frs_lcwra_proxy(full, strict=True).tolist() == [False, True]
+
+        renamed = full.drop(columns=[UK_DISABILITY_FLAG_REPORTED_COLUMNS[0]])
+        assert frs_lcwra_proxy(renamed).tolist() == [False, True]
+        with pytest.raises(ValueError, match="LCWRA proxy needs"):
+            frs_lcwra_proxy(renamed, strict=True)
+        without_support = full.drop(columns=["esa_includes_support_component"])
+        with pytest.raises(ValueError, match="esa_includes_support_component"):
+            frs_lcwra_proxy(without_support, strict=True)
+
     def test_a_claim_without_lcwra_ignores_the_proxy(self) -> None:
         flagged = 72.65 * 52
         hours, evidence = frs_dwp_carer_care_hours(
