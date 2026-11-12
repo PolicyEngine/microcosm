@@ -55,7 +55,9 @@ from microcosm.build.uk_runtime.pension_coherence import (
 )
 from microcosm.build.uk_runtime.qrf_gates import (
     UK_DEFAULT_GATE_CALIBRATION,
+    gate_levels,
     gate_outcomes,
+    pooled_gate_levels,
     pooled_gate_outcomes,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
@@ -1163,6 +1165,9 @@ class UKSPIIncomeImputationResult:
     #: How the stage-1 donor frame was drawn, for a design other than the
     #: FACT-weighted bootstrap.
     donor_frame: Mapping[str, object] | None = None
+    #: The predictor levels each stage-1 gate's calibration offsets on their
+    #: own, for a stage 1 that declares ``gate_level_columns``.
+    gate_levels: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1274,6 +1279,7 @@ def impute_uk_spi_income_support(
     stage1_gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
     stage2_gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
     donor_frame_design: str = SPI_DONOR_FRAME_FACT_BOOTSTRAP,
+    stage1_gate_level_columns: Sequence[str] = (),
 ) -> UKSPIIncomeImputationResult:
     """Run strict SPI-income and FRS-only QRFs on rebuilt positive support.
 
@@ -1300,7 +1306,12 @@ def impute_uk_spi_income_support(
     on the in-sample gate. ``donor_frame_design`` names how the stage-1
     forest's ``donor_sample_size`` rows are drawn from the tape
     (:data:`SPI_DONOR_FRAME_DESIGNS`); a full-tape fit (``None`` rows) has no
-    draw.
+    draw. ``stage1_gate_level_columns`` names stage-1 predictors whose levels
+    the cross-fitted stage-1 gates offset on their own (microcosm#1276); a
+    categorical predictor's levels are its one-hot columns. The reference
+    forests take them too: a copy's sign uniform is located in its twin's
+    reference gate, so the copies keep the tape gate's rate in a level only
+    where the reference gate holds the FRS rows' rate there.
     """
 
     if support.household_weight_kind is not WeightKind.IMPORTANCE:
@@ -1320,6 +1331,7 @@ def impute_uk_spi_income_support(
             f"donor_frame_design {donor_frame_design!r} is not one of "
             f"{SPI_DONOR_FRAME_DESIGNS}."
         )
+    _check_gate_level_columns(stage1_gate_level_columns)
 
     donor_path = Path(spi_tab_path).expanduser().resolve()
     if donor_table is None:
@@ -1543,11 +1555,20 @@ def impute_uk_spi_income_support(
         weights=donor_fit_weights,
         weight_kind=WeightKind.DESIGN,
     )
+    stage1_level_columns = _encoded_gate_level_columns(
+        stage1_gate_level_columns, donor_predictors.columns
+    )
+    # Only a stage that declares levels passes them, so a model without the
+    # keyword (a synthetic test double) still fits every other stage.
+    stage1_level_kwargs = (
+        {"gate_level_columns": stage1_level_columns} if stage1_level_columns else {}
+    )
     qrf_cls = _qrf_class()
     stage1 = qrf_cls(
         n_estimators=n_estimators,
         seed=seed,
         gate_calibration=stage1_gate_calibration,
+        **stage1_level_kwargs,
     ).fit(
         donor_frame,
         list(donor_predictors.columns),
@@ -1578,6 +1599,7 @@ def impute_uk_spi_income_support(
             n_estimators=n_estimators,
             seed=seed + SPI_TRANSPORT_SEED_OFFSET,
             gate_calibration=stage1_gate_calibration,
+            **stage1_level_kwargs,
         ).fit(
             frame,
             list(encoded.columns),
@@ -1963,6 +1985,17 @@ def impute_uk_spi_income_support(
                 else gate_outcomes(FRS_ONLY_FIT_NAME, stage2)
             ),
         },
+        gate_levels=(
+            {
+                "declared": list(stage1_gate_level_columns),
+                "offset_levels": {
+                    **gate_levels(SPI_DONOR_FIT_NAME, stage1),
+                    **pooled_gate_levels(SPI_TRANSPORT_FIT_NAME, reference_fits),
+                },
+            }
+            if stage1_level_columns
+            else None
+        ),
     )
 
 
@@ -3461,6 +3494,54 @@ def _encode_predictor_frames(
         _require_finite_numeric(part, label="encoded QRF predictors")
         out.append(part)
         start += length
+    return tuple(out)
+
+
+def _check_gate_level_columns(declared: Sequence[str]) -> None:
+    """Refuse ``gate_level_columns`` that are not distinct stage-1 predictors."""
+
+    columns = list(declared)
+    unknown = [
+        column for column in columns if column not in SPI_STAGE1_PREDICTOR_COLUMNS
+    ]
+    if unknown:
+        raise ValueError(
+            f"SPI stage-1 gate_level_columns {unknown} are not stage-1 predictors "
+            f"{list(SPI_STAGE1_PREDICTOR_COLUMNS)}."
+        )
+    if len(set(columns)) != len(columns):
+        raise ValueError(f"SPI stage-1 gate_level_columns repeats a column: {columns}.")
+
+
+def _encoded_gate_level_columns(
+    declared: Sequence[str], encoded_columns: Sequence[str]
+) -> tuple[str, ...]:
+    """The encoded predictor columns behind stage 1's ``gate_level_columns``.
+
+    A numeric predictor is its own column. A categorical one is every one-hot
+    column :func:`_encode_predictor_frames` made of it, so each of its levels,
+    the composite records' age band among them, can hold offsets of its own;
+    the gate's calibration skips a thin level and the reference level.
+    """
+
+    _check_gate_level_columns(declared)
+    encoded = list(encoded_columns)
+    out: list[str] = []
+    for column in declared:
+        if column in SPI_STAGE1_CATEGORICAL_PREDICTORS:
+            levels = [
+                name
+                for name in encoded
+                if name.startswith(f"{column}_")
+                and name not in SPI_STAGE1_PREDICTOR_COLUMNS
+            ]
+        else:
+            levels = [column] if column in encoded else []
+        if not levels:
+            raise ValueError(
+                f"SPI stage-1 gate level column {column!r} has no encoded predictor."
+            )
+        out.extend(levels)
     return tuple(out)
 
 

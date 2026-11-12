@@ -22,8 +22,8 @@ import pytest
 from microcosm.fit import GateCalibration, GateOutcome, RegimeGatedQRF
 from microcosm.fit.qrf import (
     _GATE_LEVEL_MIN_ROWS,
-    _CrossFittedGate,
     _cross_fit_gate,
+    _CrossFittedGate,
     _fit_gate_calibration,
     _fit_gate_level_calibration,
     _GateLevels,
@@ -108,7 +108,7 @@ def test_levels_skip_the_reference_and_thin_levels() -> None:
     labels = np.zeros(n, dtype=np.int64)
     # Level 1: enough rows of both classes. Level 2: too few carriers.
     column[:200] = 1.0
-    labels[:_GATE_LEVEL_MIN_ROWS + 5] = 1
+    labels[: _GATE_LEVEL_MIN_ROWS + 5] = 1
     column[200:300] = 2.0
     labels[200:205] = 1
     labels[300:400] = 1  # carriers in the reference level
@@ -132,7 +132,9 @@ class _ConstantGate:
         return np.tile([0.9, 0.1], (len(x), 1))
 
 
-def test_the_draw_path_applies_level_offsets_and_unseen_levels_take_the_reference() -> None:
+def test_the_draw_path_applies_level_offsets_and_unseen_levels_take_the_reference() -> (
+    None
+):
     gate = _CrossFittedGate(
         [_ConstantGate()],
         slope=1.0,
@@ -184,6 +186,7 @@ def test_a_fitted_model_keeps_each_level_s_rate_on_fresh_rows() -> None:
     gate = fitted._target_models["target"].gate
     assert isinstance(gate, _CrossFittedGate)
     assert gate.levels is not None and gate.levels.values == (1.0,)
+    assert fitted.gate_levels() == {"target": ("level=1",)}
 
     fresh = _composite_like(seed=22)
     proba = gate.predict_proba(fresh[columns].to_numpy(dtype=np.float64))[:, 1]
@@ -192,8 +195,19 @@ def test_a_fitted_model_keeps_each_level_s_rate_on_fresh_rows() -> None:
         member = fresh["level"].to_numpy() == value
         ratio = proba[member].mean() / carrier[member].mean()
         assert 0.8 < ratio < 1.25, (value, ratio)
-    draws = fitted.predict(fresh[columns])
+    draws = fitted.predict(fresh[columns], release_models=True)
     assert (draws["target"] >= 0.0).all()
+    # Read at fit time, so a draw that releases the models keeps the receipt.
+    assert fitted.gate_levels() == {"target": ("level=1",)}
+
+
+def test_gate_levels_are_empty_without_level_columns() -> None:
+    columns = ["x0", "x1", "x2", "x3", "level"]
+    table = _composite_like(seed=23, n=2_000)
+    fitted = RegimeGatedQRF(
+        n_estimators=2, seed=9, gate_calibration=GateCalibration.CROSS_FITTED_BALANCED
+    ).fit(table, columns, ["target"], weights="weight")
+    assert fitted.gate_levels() == {"target": ()}
 
 
 def test_without_levels_or_with_only_thin_levels_nothing_moves() -> None:

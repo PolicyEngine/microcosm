@@ -6,7 +6,11 @@ outputs sit. ``rare_carriers_certain`` keeps the row count, takes every record
 carrying a rare output and weights each row by FACT over its inclusion
 probability. These tests pin that the frame holds every rare carrier once,
 that its weighted incidence is the tape's, that the draw is seeded, and that
-the stage refuses a manifest whose weights contradict its design.
+the stage refuses a manifest whose weights contradict its design. The stage-1
+gates also offset declared predictors' levels in their calibration
+(``gate_level_columns``), so the composite records' age band and the other
+margins each keep their own rate; the last tests pin how the declared names
+map to the encoded columns and that the stage refuses names it cannot map.
 """
 
 from __future__ import annotations
@@ -20,7 +24,12 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_FRAME_FIT_WEIGHT,
     SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN,
     SPI_DONOR_RARE_CARRIER_SHARE,
+    SPI_STAGE1_CATEGORICAL_PREDICTORS,
+    SPI_STAGE1_PREDICTOR_COLUMNS,
     _capped_inclusion,
+    _check_gate_level_columns,
+    _encode_predictor_frames,
+    _encoded_gate_level_columns,
     _rare_carriers_certain_frame,
 )
 from microcosm.build.uk_runtime.spi_support import SPI_INCOME_QRF_OUTPUT_COLUMNS
@@ -145,3 +154,67 @@ def _with_stage1_parameters(stage, parameters):
         for operation in stage.operations
     )
     return replace(stage, operations=operations)
+
+
+def _encoded_stage1_predictors() -> pd.DataFrame:
+    """Stage-1 predictors one-hot encoded as the stage encodes them."""
+    frame = pd.DataFrame(
+        {
+            "spi_age_band": [-1.0, 1.0, 2.0, 1.0],
+            "gender": ["MALE", "FEMALE", "MALE", "FEMALE"],
+            "region": ["LONDON", "WALES", "LONDON", "WALES"],
+            "main_source": ["pay", "trade", "pay", "pension"],
+            "has_pay": [1.0, 0.0, 1.0, 0.0],
+            "has_trade": [0.0, 1.0, 0.0, 0.0],
+            "at_or_over_spa": [0.0, 0.0, 1.0, 1.0],
+        }
+    )
+    (encoded,) = _encode_predictor_frames(
+        (frame[list(SPI_STAGE1_PREDICTOR_COLUMNS)],),
+        categorical=SPI_STAGE1_CATEGORICAL_PREDICTORS,
+    )
+    return encoded
+
+
+def test_gate_level_columns_take_every_one_hot_level_of_a_categorical() -> None:
+    encoded = _encoded_stage1_predictors()
+    levels = _encoded_gate_level_columns(
+        ("spi_age_band", "main_source", "has_pay", "has_trade"), encoded.columns
+    )
+    assert levels == (
+        "spi_age_band_-1.0",
+        "spi_age_band_1.0",
+        "spi_age_band_2.0",
+        "main_source_pay",
+        "main_source_pension",
+        "main_source_trade",
+        "has_pay",
+        "has_trade",
+    )
+    assert set(levels) <= set(encoded.columns)
+    assert _encoded_gate_level_columns((), encoded.columns) == ()
+
+
+def test_gate_level_columns_must_be_distinct_encodable_stage1_predictors() -> None:
+    with pytest.raises(ValueError, match="not stage-1 predictors"):
+        _check_gate_level_columns(("age",))
+    with pytest.raises(ValueError, match="repeats a column"):
+        _check_gate_level_columns(("has_pay", "has_pay"))
+    with pytest.raises(ValueError, match="has no encoded predictor"):
+        _encoded_gate_level_columns(("has_pay",), ["gender_MALE"])
+
+
+def test_the_stage_refuses_gate_level_columns_outside_its_predictors() -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime import spi_spine
+
+    stage = load_country_spec("uk").sources.stage_map()["hmrc_spi_income_spine"]
+    stage1 = spi_spine._operation(stage, "fit_weighted_qrf_stage1")
+    drifted = {**stage1.parameters, "gate_level_columns": ["spi_age_band", "age"]}
+    with pytest.raises(ValueError, match="gate_level_columns must be stage-1"):
+        spi_spine._assert_income_stage_parameters(
+            _with_stage1_parameters(stage, drifted),
+            seed=42,
+            qrf_estimators=100,
+            donor_sample_size=100_000,
+        )

@@ -50,8 +50,10 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.qrf_gates import (
+    UK_GATE_LEVELS_EVIDENCE,
     UK_GATE_OUTCOMES_EVIDENCE,
     declared_gate_calibration,
+    declared_gate_level_columns,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE,
@@ -496,6 +498,8 @@ class UKSPIIncomeSpineResult:
             evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.imputation.gate_outcomes)
         if self.imputation.donor_frame:
             evidence["donor_frame"] = dict(self.imputation.donor_frame)
+        if self.imputation.gate_levels:
+            evidence[UK_GATE_LEVELS_EVIDENCE] = dict(self.imputation.gate_levels)
         return evidence
 
 
@@ -905,6 +909,9 @@ class UKSPIIncomeSpineStageTransform:
                 self.stage, "fit_weighted_qrf_stage2"
             ),
             donor_frame_design=declared_donor_frame_design(self.stage),
+            stage1_gate_level_columns=declared_gate_level_columns(
+                self.stage, "fit_weighted_qrf_stage1"
+            ),
         )
         result_frame = uk_national_frame(
             person=imputation.person,
@@ -1319,6 +1326,12 @@ def _assert_income_stage_parameters(
         )
     if tuple(stage1.parameters.get("predictors", ())) != SPI_SPINE_STAGE1_PREDICTORS:
         raise ValueError("SPI income stage-1 predictors drifted.")
+    level_columns = declared_gate_level_columns(stage, "fit_weighted_qrf_stage1")
+    if not set(level_columns) <= set(SPI_SPINE_STAGE1_PREDICTORS):
+        raise ValueError(
+            "SPI income stage-1 gate_level_columns must be stage-1 predictors, got "
+            f"{list(level_columns)}."
+        )
     if (
         tuple(stage1.parameters.get("categorical_predictors", ()))
         != SPI_SPINE_STAGE1_CATEGORICAL_PREDICTORS

@@ -8744,6 +8744,13 @@
         "cross_fitted",
         "cross_fitted_balanced"
        ]
+      },
+      "gate_level_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "uniqueItems": true
       }
      }
     },

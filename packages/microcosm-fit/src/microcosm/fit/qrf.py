@@ -2595,6 +2595,18 @@ class ConditionalUniforms:
     ungated: tuple[str, ...]
 
 
+def _gate_level_names(model: _TargetModel) -> tuple[str, ...]:
+    """``"<column>=<value>"`` for each level a target's gate offsets on its own."""
+
+    levels = getattr(model.gate, "levels", None)
+    if levels is None:
+        return ()
+    return tuple(
+        f"{model.columns[position]}={value:g}"
+        for position, value in zip(levels.positions, levels.values, strict=True)
+    )
+
+
 class FittedRegimeGatedQRF:
     """A fitted :class:`RegimeGatedQRF`, ready to draw.
 
@@ -2644,6 +2656,9 @@ class FittedRegimeGatedQRF:
             name: getattr(model, "gate_outcome", None)
             for name, model in target_models.items()
         }
+        self._gate_levels = {
+            name: _gate_level_names(model) for name, model in target_models.items()
+        }
 
     @property
     def weight_kind(self) -> str:
@@ -2662,6 +2677,16 @@ class FittedRegimeGatedQRF:
         in-sample gate or fell back to the class rates.
         """
         return dict(self._gate_outcomes)
+
+    def gate_levels(self) -> dict[str, tuple[str, ...]]:
+        """The predictor levels each target's gate calibration offsets on its own.
+
+        One ``"<column>=<value>"`` per level that holds offsets of its own
+        (``gate_level_columns``), and an empty tuple for a target whose gate
+        has none: no level columns, none supported, or the level-free
+        calibration kept. Every other level takes the reference.
+        """
+        return dict(self._gate_levels)
 
     def sign_classes(self, target: str) -> tuple[int, ...]:
         """The sign classes of ``target``, ascending.
