@@ -359,6 +359,8 @@ class _BaseOnTheHub:
         )
 
         self.requests.append((repo_id, filename, repo_type, revision))
+        if filename == "releases.json":
+            return self._record(repo_id, filename)
         if self.problem == "absent":
             raise missing_on_hub(repo_id, filename, revision)
         if self.problem == "unreachable":
@@ -397,11 +399,46 @@ class _BaseOnTheHub:
         local.write_text(json.dumps(manifest))
         return str(local)
 
+    def _record(self, repo_id, filename):
+        """``releases.json``, listing the base build (withdrawn, or not at all,
+        when the problem says so) beside another, current build."""
+        from microcosm_emitter_interface.releases import (
+            ReleasesRecord,
+            add_build,
+            withdraw_build,
+        )
+
+        record = ReleasesRecord.empty()
+        builds = [("an-earlier-national-build", True)]
+        if self.problem != "unlisted":
+            builds.append((_BASE_BUILD, False))
+        for build, current in builds:
+            record = add_build(
+                record,
+                release="microcosm-us-2024-national",
+                build=build,
+                release_role="national",
+                published_at="2026-11-01T00:00:00+00:00",
+                make_current=current,
+            )
+        if self.problem == "withdrawn":
+            record = withdraw_build(
+                record, release="microcosm-us-2024-national", build=_BASE_BUILD
+            )
+        local = self.directory / filename
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(record.serialize())
+        return str(local)
+
 
 @pytest.mark.parametrize(
     ("problem", "refusal"),
     [
         (None, None),
+        # A withdrawn base build, or one releases.json no longer lists, is
+        # not one to project.
+        ("withdrawn", "has been withdrawn"),
+        ("unlisted", "does not list"),
         ("absent", "not published"),
         ("other_sha256", "sha256"),
         ("unreachable", "did not answer"),
@@ -452,13 +489,18 @@ def test_an_annual_build_is_handed_over_only_once_its_base_build_is_published(
         with pytest.raises((ValueError, RuntimeError), match=refusal):
             publish()
         assert handed_over == []
+    manifest_request = (
+        _US_REPOSITORY,
+        f"releases/microcosm-us-2024-national/{_BASE_BUILD}/release_manifest.json",
+        "dataset",
+        "main",
+    )
+    record_request = (_US_REPOSITORY, "releases.json", "dataset", "main")
+    # releases.json is read once the base build's manifest checks out.
+    reads_record = problem in (None, "withdrawn", "unlisted")
     assert hub.requests == [
-        (
-            _US_REPOSITORY,
-            f"releases/microcosm-us-2024-national/{_BASE_BUILD}/release_manifest.json",
-            "dataset",
-            "main",
-        )
+        manifest_request,
+        *([record_request] if reads_record else []),
     ]
 
 
