@@ -493,7 +493,7 @@ def _world(root: Path) -> list[str]:
                     "postcode",
                     "paon",
                     "saon",
-                    "tfarea",
+                    "TOTAL_FLOOR_AREA",
                     "CONSTRUCTION_AGE_BAND",
                 ],
                 linked,
@@ -502,10 +502,11 @@ def _world(root: Path) -> list[str]:
     bundle_1 = _zip(
         root / "856542_bundle_1.zip",
         {
-            "tranall_link_02122023.zip": inner.getvalue(),
-            "856542_readme.txt": b"Fields: transactionid, tfarea, CONSTRUCTION_AGE_BAND\n",
+            # ReShare keeps each bundle's files in a folder named for it.
+            "856542_bundle_1/tranall_link_02122023.zip": inner.getvalue(),
+            "856542_bundle_1/Readme .txt": b"Fields: transactionid, TOTAL_FLOOR_AREA\n",
         },
-        stored={"tranall_link_02122023.zip"},
+        stored={"856542_bundle_1/tranall_link_02122023.zip"},
     )
     certificates = []
     for la in AUTHORITIES:
@@ -549,8 +550,8 @@ def _world(root: Path) -> list[str]:
         )
     bundle_2 = _zip(
         root / "856542_bundle_2.zip",
-        {"epc20_id.zip": inner.getvalue()},
-        stored={"epc20_id.zip"},
+        {"856542_bundle_2/epc20_id.zip": inner.getvalue()},
+        stored={"856542_bundle_2/epc20_id.zip"},
     )
     # TPA.
     regions = ", ".join(f'"E1200000{i}": 1.0' for i in range(1, 10))
@@ -972,4 +973,4 @@ def test_discover_prints_the_headers_against_the_declarations(built, tmp_path) -
     (certificates,) = report["certificate_headers"].values()
     assert certificates["declared_missing"] == []
     assert "error" not in report["ctsop3"] and "error" not in report["ctsop4"]
-    assert report["readme"]["member"] == "856542_readme.txt"
+    assert report["readme"]["member"] == "856542_bundle_1/Readme .txt"

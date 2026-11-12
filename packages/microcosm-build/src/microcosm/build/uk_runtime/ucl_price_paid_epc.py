@@ -194,6 +194,25 @@ def bundle_members(path: Path) -> list[dict[str, object]]:
         ]
 
 
+def _member(archive: zipfile.ZipFile, name: str) -> zipfile.ZipInfo:
+    """A member by its name, or by its file name inside one folder.
+
+    ReShare's bundles hold their files in a folder named for the bundle
+    (``856542_bundle_1/tranall_link_02122023.zip``).
+    """
+    try:
+        return archive.getinfo(name)
+    except KeyError:
+        matches = [
+            info for info in archive.infolist() if Path(info.filename).name == name
+        ]
+        if len(matches) != 1:
+            raise KeyError(
+                f"The bundle holds {len(matches)} members named {name!r}."
+            ) from None
+        return matches[0]
+
+
 @contextlib.contextmanager
 def open_inner_zip(bundle_path: Path, member: str) -> Iterator[zipfile.ZipFile]:
     """Open a zip that is itself a member of the bundle zip, without extracting it.
@@ -203,7 +222,7 @@ def open_inner_zip(bundle_path: Path, member: str) -> Iterator[zipfile.ZipFile]:
     stream, which can seek only by reading.
     """
     with open(bundle_path, "rb") as handle, zipfile.ZipFile(handle) as outer:
-        info = outer.getinfo(member)
+        info = _member(outer, member)
         if info.compress_type == zipfile.ZIP_STORED:
             handle.seek(info.header_offset)
             fields = _LOCAL_HEADER.unpack(handle.read(_LOCAL_HEADER.size))

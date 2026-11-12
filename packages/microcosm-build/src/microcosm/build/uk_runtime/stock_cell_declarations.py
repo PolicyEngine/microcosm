@@ -111,12 +111,13 @@ BUILD_PERIOD_GROUPS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = 
         ("1996-2002", "2003-2006", "2007-2011", "2012 onwards"),
     ),
 )
-#: The linked file's columns by role. UNVERIFIED: the names follow Price
-#: Paid's and the EPC's own field names; the discover stage checks them.
+#: The linked file's columns by role, as its header prints them (checked by
+#: the discover stage on 12 November 2026): Price Paid's fields in lower
+#: case, the EPC's in upper case.
 UCL_LINKED_COLUMNS: dict[str, str | None] = {
     "transaction_id": "transactionid",
     "date": "dateoftransfer",
-    "floor_area": "tfarea",
+    "floor_area": "TOTAL_FLOOR_AREA",
     "age_band": "CONSTRUCTION_AGE_BAND",
     "postcode": "postcode",
     "paon": "paon",
