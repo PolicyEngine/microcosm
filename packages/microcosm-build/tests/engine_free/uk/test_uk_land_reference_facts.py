@@ -351,3 +351,69 @@ def test_the_build_period_groups_hold_each_age_band_and_period_once() -> None:
     assert sorted(periods) == sorted(printed)
     spans = voa.classify_build_periods(printed)
     assert all(spans[name] != (None, None) for name in periods)
+
+
+def test_epc_mean_floor_area_adds_up_merged_councils() -> None:
+    spec = declared.EPC_D3_SPEC + "2022_q4.v1"
+    rows = [
+        # Allerdale and Carlisle before Cumberland (April 2023): two councils.
+        _fact(
+            "mhclg.epc_domestic_total_floor_area",
+            "E07000026",
+            800.0,
+            spec=spec,
+            period="2022-Q4",
+        ),
+        _fact(
+            "mhclg.epc_domestic_lodgements",
+            "E07000026",
+            10,
+            spec=spec,
+            period="2022-Q4",
+        ),
+        _fact(
+            "mhclg.epc_domestic_total_floor_area",
+            "E07000028",
+            1200.0,
+            spec=spec,
+            period="2022-Q4",
+        ),
+        _fact(
+            "mhclg.epc_domestic_lodgements",
+            "E07000028",
+            10,
+            spec=spec,
+            period="2022-Q4",
+        ),
+        _fact(
+            "mhclg.epc_domestic_total_floor_area",
+            "E06000063",
+            1000.0,
+            spec=spec,
+            period="2023-Q2",
+        ),
+        _fact(
+            "mhclg.epc_domestic_lodgements",
+            "E06000063",
+            10,
+            spec=spec,
+            period="2023-Q2",
+        ),
+    ]
+    means = facts.epc_mean_floor_area(
+        rows,
+        spec_prefix=declared.EPC_D3_SPEC,
+        predecessors=declared.AUTHORITY_PREDECESSORS,
+    )
+    assert means == {"E06000063": pytest.approx(3000.0 / 30)}
+
+
+def test_every_predecessor_maps_off_the_roster_onto_it() -> None:
+    crosswalk = json.loads(
+        (
+            Path(facts.__file__).parents[1] / "uk" / "local_area_crosswalk.json"
+        ).read_text(encoding="utf-8")
+    )
+    roster = set(crosswalk["levels"]["local_authority"]["area_ids"])
+    assert not set(declared.AUTHORITY_PREDECESSORS) & roster
+    assert set(declared.AUTHORITY_PREDECESSORS.values()) <= roster

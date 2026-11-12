@@ -276,6 +276,65 @@ MHCLG_SHEETS: dict[str, str] = {
 }
 ISLES_OF_SCILLY = "E06000053"
 CORNWALL = "E06000052"
+#: Councils merged since 2019, by their old code: an energy certificate or
+#: an EPC D3 quarter recorded before the merger names the old council, and
+#: counts towards its successor on Microcosm's April 2023 roster. These are
+#: different councils, so their counts add up; a recoded council (Barnsley,
+#: Sheffield) is an alias instead and counts once. The 2020 to 2023 codes
+#: and names are as EPC D3 prints them.
+AUTHORITY_PREDECESSORS: dict[str, str] = {
+    # Bournemouth, Christchurch and Poole, and Dorset, April 2019.
+    "E06000028": "E06000058",
+    "E06000029": "E06000058",
+    "E07000048": "E06000058",
+    "E07000049": "E06000059",
+    "E07000050": "E06000059",
+    "E07000051": "E06000059",
+    "E07000052": "E06000059",
+    "E07000053": "E06000059",
+    # East Suffolk and West Suffolk, April 2019.
+    "E07000205": "E07000244",
+    "E07000206": "E07000244",
+    "E07000201": "E07000245",
+    "E07000204": "E07000245",
+    # Taunton Deane and West Somerset (Somerset West and Taunton, 2019), then
+    # Somerset, April 2023.
+    "E07000190": "E06000066",
+    "E07000191": "E06000066",
+    # Buckinghamshire, April 2020.
+    "E07000004": "E06000060",
+    "E07000005": "E06000060",
+    "E07000006": "E06000060",
+    "E07000007": "E06000060",
+    # North and West Northamptonshire, April 2021.
+    "E07000150": "E06000061",
+    "E07000152": "E06000061",
+    "E07000153": "E06000061",
+    "E07000156": "E06000061",
+    "E07000151": "E06000062",
+    "E07000154": "E06000062",
+    "E07000155": "E06000062",
+    # Cumberland, and Westmorland and Furness, April 2023.
+    "E07000026": "E06000063",
+    "E07000028": "E06000063",
+    "E07000029": "E06000063",
+    "E07000027": "E06000064",
+    "E07000030": "E06000064",
+    "E07000031": "E06000064",
+    # North Yorkshire, April 2023.
+    "E07000163": "E06000065",
+    "E07000164": "E06000065",
+    "E07000165": "E06000065",
+    "E07000166": "E06000065",
+    "E07000167": "E06000065",
+    "E07000168": "E06000065",
+    "E07000169": "E06000065",
+    # Somerset, April 2023.
+    "E07000187": "E06000066",
+    "E07000188": "E06000066",
+    "E07000189": "E06000066",
+    "E07000246": "E06000066",
+}
 
 # ----------------------------------------------------------------------------
 # The decision rule and the measurements, fixed before the builder runs

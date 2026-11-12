@@ -353,14 +353,18 @@ def epc_mean_floor_area(
     *,
     spec_prefix: str,
     code_aliases: Mapping[str, str] | None = None,
+    predecessors: Mapping[str, str] | None = None,
 ) -> dict[str, float]:
     """Mean floor area per authority: total floor area ÷ lodgements, all quarters.
 
     ``code_aliases`` folds a recoded authority onto its roster code, so a
-    council that changed codes counts once in each quarter.
+    council that changed codes counts once in each quarter. ``predecessors``
+    maps a council merged away to its successor, whose totals add up its
+    predecessors' quarters.
     """
     facts = list(facts)
     aliases = dict(code_aliases or {})
+    merged = dict(predecessors or {})
     totals: dict[str, list[float]] = {}
     seen: set[tuple[str, str, str]] = set()
     for index, concept in enumerate(
@@ -370,11 +374,12 @@ def epc_mean_floor_area(
             facts, concept=concept, level="local_authority", spec_prefix=spec_prefix
         ):
             raw = str((fact.get("geography") or {}).get("id"))
-            code = aliases.get(raw, raw)
+            council = aliases.get(raw, raw)
             period = str((fact.get("period") or {}).get("value"))
-            if (concept, code, period) in seen:
+            if (concept, council, period) in seen:
                 continue  # the old and new code of one council in one quarter
-            seen.add((concept, code, period))
+            seen.add((concept, council, period))
+            code = merged.get(council, council)
             totals.setdefault(code, [0.0, 0.0])[index] += fact_value(fact)
     return {
         code: area / lodgements

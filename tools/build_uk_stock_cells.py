@@ -391,9 +391,16 @@ def _attribute_cache_paths(args, ucl_record) -> tuple[Path, Path]:
                 key: list(value) if isinstance(value, tuple) else value
                 for key, value in declared.UCL_CERTIFICATE_COLUMNS.items()
             },
+            "authorities": _certificate_authorities(args),
         },
     )
     return linked, social
+
+
+def _certificate_authorities(args: argparse.Namespace) -> dict[str, str]:
+    """A certificate's council on the roster: recoded ones and merged ones."""
+    to_roster, _ = _aliases(args.crosswalk)
+    return {**to_roster, **declared.AUTHORITY_PREDECESSORS}
 
 
 # ----------------------------------------------------------------------------
@@ -551,14 +558,13 @@ def _attributes(
         linked = (table, receipts)
     social = _read_cache(social_path)
     if social is None:
-        to_roster, _ = _aliases(args.crosswalk)
         _log("Streaming UCL's certificates for social rented homes ...")
         table, receipts = ucl.social_certificate_cells(
             args.ucl_bundle_2,
             _certificate_columns(),
             age_bands=declared.EPC_AGE_BANDS,
             floor_area_bounds=declared.FLOOR_AREA_BOUNDS_M2,
-            authority_aliases=to_roster,
+            authority_aliases=_certificate_authorities(args),
             log=_log,
         )
         _write_cache(social_path, table, receipts)
@@ -2421,6 +2427,19 @@ def _value_payload(
             "columns": ["local_authority", "count", "mean_value"],
             "rows": social_rows,
         },
+        # Each MSOA's authority and region, so the rollups can be checked
+        # from the committed files alone.
+        "msoas": {
+            "columns": ["msoa", "local_authority", "region"],
+            "rows": [
+                [
+                    str(code),
+                    str(geo.la_codes[geo.la_of_msoa[m]]),
+                    str(geo.region_codes[geo.region_of_la[geo.la_of_msoa[m]]]),
+                ]
+                for m, code in enumerate(geo.msoa_codes)
+            ],
+        },
     }
 
 
@@ -2646,6 +2665,16 @@ def _cells(args: argparse.Namespace, run: RunLog) -> dict[str, dict]:
         facts = ref.read_feed_facts(args.ledger_facts)
         stock = _stock(args, geo, to_roster, to_alias)
         costs = _costs(args.tpa_config, geo, stock)
+        outside = ~social_cells["local_authority"].isin(geo.la_codes.astype(str))
+        attribute_receipts["social"] = {
+            **attribute_receipts["social"],
+            "certificates_outside_roster": int(
+                social_cells.loc[outside, "certificates"].sum()
+            ),
+            "authorities_outside_roster": sorted(
+                set(social_cells.loc[outside, "local_authority"].astype(str))
+            ),
+        }
         tpa_meta, tpa_cells = ref.parse_tpa_cells(args.tpa_cells.read_bytes())
         tpa_cells = {to_roster.get(code, code): row for code, row in tpa_cells.items()}
         levels = _level_inputs(args, facts)
@@ -2656,7 +2685,10 @@ def _cells(args: argparse.Namespace, run: RunLog) -> dict[str, dict]:
             (1.0 - net / gross) if (net is not None and gross) else None
         )
         epc_floor = ref.epc_mean_floor_area(
-            facts, spec_prefix=declared.EPC_D3_SPEC, code_aliases=to_roster
+            facts,
+            spec_prefix=declared.EPC_D3_SPEC,
+            code_aliases=to_roster,
+            predecessors=declared.AUTHORITY_PREDECESSORS,
         )
     with run.stage("homes"):
         homes = _homes(args, dwellings, postcodes, support, geo, linked, hpi)
