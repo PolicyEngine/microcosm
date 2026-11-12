@@ -266,6 +266,9 @@ def test_publish_orrery_only_warns_that_the_build_uploads_no_graph(tmp_path, cap
     warning = capsys.readouterr().err
     assert "--publish-orrery no longer uploads the graph" in warning
     assert "collector" in warning
+    # It promises nothing the emitter does not do: no released emitter
+    # switches collector submissions on yet.
+    assert "only while the emitter's collector submissions are on" in warning
     quiet = full_build_support.arguments(tmp_path, "--no-publish-orrery")
     assert "--publish-orrery" not in capsys.readouterr().err
     assert args.publish_orrery is True and quiet.publish_orrery is False
@@ -406,6 +409,11 @@ def test_a_summary_with_failure_lines_is_never_preserved_for_publication(
     preserved = args.attempt_evidence / "orrery-publication"
     assert not (preserved / orrery_publication.INVENTORY_NAME).exists()
     assert not (preserved / "graph.orrery.json").exists()
+    # Nor does the bundle carry the Orrery inputs for the collector.
+    manifest = json.loads((args.out / full_build_cli.MANIFEST_FILENAME).read_bytes())
+    assert not {"orrery/graph.schema.json", f"orrery/{OVERLAY_NAME}"} & set(
+        manifest.get("outputs", {})
+    )
     assert not any(
         message.get("action") == "graph_publication"
         for emitter in fake_telemetry_emitters
