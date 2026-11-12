@@ -106,9 +106,12 @@ says that the switch should delete it with nothing in its place.
     files and every directory outside ``releases/`` (``staged/``, say). It
     refuses a repository without ``releases.json`` or with a pointer file,
     and a build folder ``releases.json`` does not list, which it never
-    deletes, and it runs the interface's repository and commit checks on
-    what remains. The old builds stay at their tags. Run it once nothing
-    reads those files from ``main`` any more.
+    deletes, and it runs the interface's repository check on what remains
+    (and its commit check, which a deletion outside build folders always
+    passes). Every deleted file stays in ``main``'s history at the head the
+    report names, and each tagged build at its tag; the report lists, as
+    ``untagged_folders``, any deleted release-per-build folder no tag names.
+    Run it once nothing reads those files from ``main`` any more.
 
 Run the ``switch`` step only while nobody publishes to the repository. The
 tagged publisher checks for ``releases.json`` only when it starts, so a
@@ -117,7 +120,7 @@ branch after the switch's last read, would still be in neither the record nor
 a folder. A build tagged while ``copy`` runs is safe: the switch refuses until
 ``copy`` runs again.
 
-Both steps read the Hub and print, as JSON, what they would do. They change
+Every step reads the Hub and prints, as JSON, what it would do. They change
 nothing without ``--write``. They read and write with ``HF_TOKEN``, then
 ``HUGGINGFACE_TOKEN``, then the login ``hf auth login`` saved, and refuse to
 run with ``HF_HUB_OFFLINE`` or ``TRANSFORMERS_OFFLINE`` set. Each commit names
@@ -1458,6 +1461,19 @@ def delete_old_layout(api: Any, repository: str, *, write: bool) -> dict[str, An
         for folder in unlisted
     )
     delete = sorted(path for path in head_files if _old_layout_file(path))
+    # A release-per-build folder is named by its build's tag; a folder named
+    # by a release whose builds publish into folders held copies of builds
+    # that each have their own tag.
+    listed_tags, _ = hub.refs()
+    untagged = sorted(
+        {
+            f"releases/{parts[1]}"
+            for parts in (path.split("/") for path in delete)
+            if len(parts) == 3
+            and not publishes_to_build_folder(parts[1])
+            and parts[1] not in listed_tags
+        }
+    )
     remaining = [path for path in head_files if not _old_layout_file(path)]
     if not problems:
         violations = [
@@ -1480,6 +1496,7 @@ def delete_old_layout(api: Any, repository: str, *, write: bool) -> dict[str, An
         "kept_directories": sorted(
             {path.split("/", 1)[0] for path in remaining if "/" in path} - {"releases"}
         ),
+        "untagged_folders": untagged,
         "problems": problems,
         "written": False,
         "commit": None,
@@ -1594,7 +1611,8 @@ def main(argv: Sequence[str] | None = None, *, api: Any = None) -> int:
     args = _parser().parse_args(argv)
     if api is None and hub_offline():
         print(
-            "refusing to switch: HF_HUB_OFFLINE or TRANSFORMERS_OFFLINE is set, and "
+            f"refusing to {args.step}: HF_HUB_OFFLINE or TRANSFORMERS_OFFLINE is "
+            "set, and "
             "this tool reads the Hub",
             file=sys.stderr,
         )

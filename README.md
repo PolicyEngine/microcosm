@@ -667,10 +667,14 @@ the other root files (`.gitattributes`, `README.md`) and every directory
 outside `releases/`, such as the UK repository's `staged/`. It refuses a
 repository without `releases.json` or with a `latest*.json` file, and a build
 folder `releases.json` does not list, which it never deletes. It runs the
-emitter interface's repository and commit checks on what remains, and takes
-none of the other steps' options. Every old build stays readable at its tag,
-which is where Microcosm's tag references read it, but anything that reads
-those paths from `main` stops finding them, so run it only once nothing does.
+emitter interface's repository check on what remains, and takes none of the
+other steps' options. Every tagged build stays readable at its tag, which is
+where Microcosm's tag references read it, and every deleted file stays in
+`main`'s history at the head the report names; the report lists any deleted
+release-per-build folder that no tag names (`untagged_folders`). Anything
+that reads those paths from `main` stops finding them, so run it only once
+nothing does (the example notebook reads the US dataset through
+`releases.json`).
 The commit removes the files from `main` only: their large (LFS) objects stay
 in the repository's history. A second run finds nothing to delete. The
 module's docstring describes all three steps in full.
