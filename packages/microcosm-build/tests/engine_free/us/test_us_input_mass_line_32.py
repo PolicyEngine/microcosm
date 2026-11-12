@@ -542,8 +542,12 @@ def test_the_preview_counts_both_columns_for_cancelling_partnership_records() ->
 
 
 def test_the_preview_reads_partnership_records_without_weight_as_at_risk() -> None:
-    # Records at zero base weight can gain weight in the solve, and the rule
-    # then counts both columns, so the gate's refusal here isn't certain.
+    # The preview reads the refusal as uncertain because a solve that gave
+    # records at zero base weight some weight would make the rule count both
+    # columns. A release's dense solve caps each weight at the builder's
+    # default --max-weight-ratio (5) times its starting weight, which keeps
+    # these records at zero, and the L0 refit drops them; only an uncapped
+    # solve from a positive warm start can give them weight.
     candidate = {"partnership_income": 0.0, "s_corp_income": EXPORT["s_corp_income"]}
     assert "mass is zero" in _gate(candidate, REFERENCE, LOST).failures[0]
     row = _partnership_row(_preview(candidate, REFERENCE, LOST))
