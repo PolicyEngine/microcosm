@@ -1,23 +1,22 @@
 """The geography identity, G1b of the clone-first spine (microcosm#931).
 
 G1b keys every household of the geographic expansion's frame by its source,
-FRS vintage, true source and copy path, as the dense line's
-``uk.full.identity`` keys it. The spine's ``geographic_identity`` stage runs
-it, under its packaged declaration, which every transform here is built from.
-These tests hold clone 0's key, and clone k's, to the dense identity kernel
-itself on the same households, and check the clone path, uniqueness, nesting
-across K, the dtype, the vintage read from frs_release.json, the evidence and
-every refusal, a declaration other than the reviewed one's included. On the
-spine's graph they check what the stage's node reads and writes, and that
-frs_release.json's bytes are in its stage contract. Invented frames only; no
-refusal prints a key, an id or a year of a row.
+FRS vintage, true source and copy path, as the dense line's own identity node
+keyed its pool before the dense line took its keys from the spine. The
+spine's ``geographic_identity`` stage runs it, under its packaged
+declaration, which every transform here is built from. These tests hold clone
+0's key, and clone k's, to ``household_draw_key`` itself on the same
+households' sources and clone indices, and check the clone path, uniqueness,
+nesting across K, the dtype, the vintage read from frs_release.json, the
+evidence and every refusal, a declaration other than the reviewed one's
+included. On the spine's graph they check what the stage's node reads and
+writes, and that frs_release.json's bytes are in its stage contract. Invented
+frames only; no refusal prints a key, an id or a year of a row.
 """
 
 from __future__ import annotations
 
-import inspect
 from dataclasses import replace
-from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -49,10 +48,6 @@ from microcosm.build.uk_runtime.geographic_identity import (
     key_uk_households_by_clone_path,
 )
 from microcosm.build.uk_runtime.graph import uk_spine_graph
-from microcosm.build.uk_runtime.graph_population import (
-    UKGeographyIdentityKernel,
-    append_uk_population_nodes,
-)
 from microcosm.build.uk_runtime.household_lineage import GEOGRAPHIC_SUPPORT_BRANCH
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.receipt_counts import rounded_count
@@ -69,17 +64,6 @@ _PERIOD = str(_RELEASE.survey_year)
 _UNPINNED_EARLIER = min(_RELEASE.survey_year, _RELEASE.base_year) - 1
 _UNPINNED_LATER = max(_RELEASE.survey_year, _RELEASE.base_year) + 1
 _CLONE = ladder_clone_index_column("household")
-#: The dense identity's lineage columns at their values on a base household:
-#: no SPI support copy, CGT copy, incidence clone or residential arm.
-_BASE_LINEAGE = {
-    "household_support_channel": "frs",
-    "household_support_clone_index": 0,
-    "household_is_cgt_support_copy": False,
-    "cgt_support_copy_index": 0,
-    "household_is_capital_gains_clone": False,
-    "household_is_cgt_residential_clone": False,
-    "cgt_residential_clone_index": 0,
-}
 
 
 def _base_frame(households: int = 9, *, time_period: str = _PERIOD) -> Frame:
@@ -129,18 +113,24 @@ def _stage(**overrides: object) -> SourceStageSpec:
     )
 
 
-def _dense_keys(household: pd.DataFrame) -> list[str]:
-    """The dense line's own identity kernel on these households, given the
-    lineage a base household carries there and the full build's params."""
+def _oracle_keys(household: pd.DataFrame, *, vintage: str = _RELEASE.vintage):
+    """``household_draw_key`` on these households' sources and clone indices:
+    a base household's copy path before any copy step is its geographic
+    branch alone, empty for clone 0."""
 
-    dense = household.assign(**_BASE_LINEAGE)
-    context = SimpleNamespace(
-        tables={"household": dense},
-        params={"source": "frs", "source_vintage": _RELEASE.vintage},
-    )
-    result = UKGeographyIdentityKernel().run(context)
-    (keys,) = result.columns.values()
-    return keys.tolist()
+    return [
+        household_draw_key(
+            source="frs",
+            source_vintage=vintage,
+            source_household_id=source,
+            clone_path=((GEOGRAPHIC_SUPPORT_BRANCH, clone),) if clone else (),
+        )
+        for source, clone in zip(
+            household[SOURCE_HOUSEHOLD_ID_COLUMN].tolist(),
+            household[_CLONE].tolist(),
+            strict=True,
+        )
+    ]
 
 
 def _keys(frame: Frame) -> list[str]:
@@ -151,10 +141,10 @@ def _keys(frame: Frame) -> list[str]:
 
 
 @pytest.mark.parametrize("clones", [1, 3])
-def test_every_clone_keys_as_the_dense_identity_keys_that_clone(clones: int) -> None:
+def test_every_clone_keys_on_its_source_and_clone_path(clones: int) -> None:
     expanded = _expanded(clones)
     keyed = key_uk_households_by_clone_path(expanded).frame
-    assert _keys(keyed) == _dense_keys(expanded.table("household"))
+    assert _keys(keyed) == _oracle_keys(expanded.table("household"))
 
 
 def test_clone_zero_keys_on_its_source_and_clone_k_on_its_geographic_branch() -> None:
@@ -257,7 +247,7 @@ def test_the_vintage_is_frs_release_json_s_for_the_source_year() -> None:
 def test_a_base_year_after_the_survey_year_keys_with_the_release_s_vintage() -> None:
     """G1 writes source_year from the frame's time period, the release's base
     year, so a pin whose base year follows its survey year keys the base
-    year's households with its vintage, as the dense identity does."""
+    year's households with its vintage."""
 
     later = replace(
         _RELEASE,
@@ -270,13 +260,17 @@ def test_a_base_year_after_the_survey_year_keys_with_the_release_s_vintage() -> 
     }
     expanded = _expanded(3, time_period=later.time_period)
     result = key_uk_households_by_clone_path(expanded, release=later)
-    assert _keys(result.frame) == _dense_keys(expanded.table("household"))
+    assert _keys(result.frame) == _oracle_keys(expanded.table("household"))
     assert result.evidence()["source_vintages"] == [_RELEASE.vintage]
 
 
-def test_the_source_is_the_dense_identity_s() -> None:
-    parameters = inspect.signature(append_uk_population_nodes).parameters
-    assert parameters["identity_source"].default == GEOGRAPHIC_IDENTITY_SOURCE
+def test_the_source_every_key_names_is_the_frs() -> None:
+    """The keys name the FRS, as the dense line's own identity named it before
+    the dense line took its keys from the spine (microcosm#931), and the
+    reviewed operation declares that source."""
+    assert GEOGRAPHIC_IDENTITY_SOURCE == "frs"
+    ((_, parameters),) = geographic_identity_operation_parameters()
+    assert parameters["source"] == GEOGRAPHIC_IDENTITY_SOURCE
 
 
 def test_the_evidence_gives_rounded_sources_uniqueness_source_and_vintage() -> None:

@@ -2,13 +2,15 @@
 
 The same graph handles all targets (the default), explicit target filters,
 dense exports and exact-count exports. A bound spine checkpoint resumes this
-composition; an arbitrary historical uk-data H5 is not a build source.
+composition; an arbitrary historical uk-data H5 is not a build source. The
+full build composes its targets, measures and problem on the spine's own
+version, and its pool is that version whole: the spine's geographic clones,
+areas and sampling are the build's (microcosm#931).
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
@@ -49,65 +51,48 @@ from .graph_frames import normalize_create_frame
 from .graph_kernels import UKClaimKernel, UKIdentityKernel
 from .graph_population import (
     UKPoolCheckpointKernel,
-    append_uk_population_nodes,
     population_columns,
     population_slices,
     register_uk_population_kernels,
-    uk_pool_validation_inputs,
 )
 from .graph_targets import append_uk_target_nodes, register_uk_target_kernels
-from .local_doctrine import UK_LOCAL_CLONE_COUNT
-from .national_sampling import UK_SAMPLE_SEED_DEFAULT
 
 SPINE_PROVENANCE_TYPE = ArtifactType("microcosm.uk.bound-spine-provenance", 1)
 
 
 @dataclass(frozen=True)
 class UKFullBuildConfig:
-    """Three independent controls: geography target scope, pool K, export k."""
+    """Two independent controls, geography target scope and export k, over the
+    bound spine.
+
+    The spine binds the rest (microcosm#931): ``n_clones`` is its geographic
+    clone count K and ``source_sample_fraction`` its sampling rung, both read
+    from the spine the build binds, never chosen here. The full build samples,
+    expands and places nothing of its own.
+    """
 
     calibration_year: int
     time_period: str = field(default_factory=lambda: load_uk_frs_release().time_period)
     source_year: int = field(default_factory=lambda: load_uk_frs_release().survey_year)
     geography_levels: tuple[str, ...] | None = None
     target_families: tuple[str, ...] | None = None
-    n_clones: int = UK_LOCAL_CLONE_COUNT
-    sample_fraction: float = 1.0
+    n_clones: int = 1
     source_sample_fraction: float = 1.0
-    sample_seed: int = UK_SAMPLE_SEED_DEFAULT
     seed: int = 42
     engine_blocks: int = 1
-    constituency_vintage: str = "2024_pcon"
-    source_lineage_modulus: int | None = None
     calibration: UKGraphCalibrationConfig = UKGraphCalibrationConfig()
-    #: ``atomic`` keys every post-clone household and draws on the shared
-    #: atomic-geography operators; ``legacy`` keeps the sequential ladder draw
-    #: for measurement builds (a release candidate refuses it).
-    geography_assignment: str = "atomic"
-    #: FRS release vintage folded into every geography identity key.
-    source_vintage: str = field(default_factory=lambda: load_uk_frs_release().vintage)
 
     def __post_init__(self) -> None:
-        from .graph_population import GEOGRAPHY_ASSIGNMENTS
-        from .national_sampling import validate_sample_fraction
+        from microcosm.build.frame_sampling import validate_sample_fraction
 
-        if self.geography_assignment not in GEOGRAPHY_ASSIGNMENTS:
-            raise ValueError(
-                f"Geography assignment must be one of {GEOGRAPHY_ASSIGNMENTS}."
-            )
-        if not isinstance(self.source_vintage, str) or not self.source_vintage:
-            raise ValueError("The FRS source vintage must be a non-empty string.")
-        validate_sample_fraction(self.sample_fraction, label="UK full pool")
         validate_sample_fraction(self.source_sample_fraction, label="UK source spine")
-        if self.sample_fraction != 1.0 and self.source_sample_fraction != 1.0:
-            raise ValueError(
-                "A sampled spine cannot be sampled a second time in the full build."
-            )
         if type(self.n_clones) is not int or self.n_clones < 1:
-            raise ValueError("Geographic pool K must be a positive integer.")
+            raise ValueError(
+                "The spine's geographic clone count K must be a positive integer."
+            )
         if self.engine_blocks not in {1, self.n_clones}:
             raise ValueError(
-                "Engine blocks must be one or equal the geographic pool K."
+                "Engine blocks must be one or equal the spine's geographic clone count K."
             )
         if self.geography_levels is not None:
             if not self.geography_levels or set(self.geography_levels) - {
@@ -137,7 +122,8 @@ class UKFullBuildConfig:
 
     @property
     def effective_sample_fraction(self) -> float:
-        return self.sample_fraction * self.source_sample_fraction
+        """The spine's sampling rung: the dense line samples nothing more."""
+        return self.source_sample_fraction
 
 
 @dataclass(frozen=True)
@@ -172,22 +158,37 @@ class UKFullGraph:
         }
 
 
+def _declared_spine_clone_count(graph: Graph) -> int | None:
+    """The clone count K a composed spine's ``geographic_expand`` node declares.
+
+    ``None`` where the graph composes no such node, as a bound checkpoint does:
+    its K is read from its frame and build sidecar where it is bound.
+    """
+
+    from .geographic_expand import GEOGRAPHIC_EXPAND_STAGE_NAME
+
+    for node in graph.nodes:
+        if node.id == GEOGRAPHIC_EXPAND_STAGE_NAME:
+            return int(node.params["geographic_clones"])
+    return None
+
+
 def uk_full_graph(
     config: UKFullBuildConfig,
     *,
     spine: Graph | None = None,
     spine_population: str | None = None,
-    spine_weight_kind: str = "importance",
     optional_target_sources: tuple[str, ...] = (),
     checkpoint_identity: dict | None = None,
     review_date: str | None = None,
-    atomic_geography_definition: Mapping | None = None,
 ) -> UKFullGraph:
     """Append the full build to the existing source-owned UK spine graph.
 
-    ``atomic_geography_definition`` is the validated UK assignment declaration
-    (``uk_atomic_assignment_definition``) and is required when the config's
-    ``geography_assignment`` is ``atomic``.
+    The targets, measures and problem run on the spine's own version, and the
+    pool checkpoint keeps every row of it: the dense line takes the spine's
+    geographic clones, areas and sampling as they stand (microcosm#931). A
+    composed spine whose ``geographic_expand`` node declares another clone
+    count than the config's ``n_clones`` is refused, naming both K.
     """
 
     initial = uk_spine_graph(source_mode="split") if spine is None else spine
@@ -196,24 +197,16 @@ def uk_full_graph(
         if spine_population is None
         else spine_population
     )
-    graph = append_uk_population_nodes(
+    declared = _declared_spine_clone_count(initial)
+    if declared is not None and declared != config.n_clones:
+        raise ValueError(
+            f"The full build is configured for K = {config.n_clones} geographic "
+            f"clones, but the spine it composes makes K = {declared}; the "
+            "dense line takes K from its spine (microcosm#931)."
+        )
+    graph = append_uk_target_nodes(
         initial,
         population=endpoint,
-        time_period=config.time_period,
-        weight_kind=spine_weight_kind,
-        sample_fraction=config.sample_fraction,
-        sample_seed=config.sample_seed,
-        n_clones=config.n_clones,
-        seed=config.seed,
-        source_year=config.source_year,
-        constituency_vintage=config.constituency_vintage,
-        source_lineage_modulus=config.source_lineage_modulus,
-        geography_assignment=config.geography_assignment,
-        atomic_geography_definition=atomic_geography_definition,
-        source_vintage=config.source_vintage,
-    )
-    graph = append_uk_target_nodes(
-        graph,
         calibration_year=config.calibration_year,
         time_period=config.time_period,
         geography_levels=config.geography_levels,
@@ -224,10 +217,11 @@ def uk_full_graph(
         optional_sources=optional_target_sources,
         review_date=review_date,
     )
-    cells = population_columns(graph, "uk.full.expand")
-    # This structural checkpoint depends on every pool operation, including
-    # evidence-only gates and the contribution problem. It binds the complete
-    # incoming ledger before downstream nodes reconstruct any Frame slices.
+    cells = population_columns(graph, endpoint)
+    # This structural checkpoint depends on every operation on the spine's
+    # version, the evidence-only gates and the contribution problem among
+    # them. It binds the complete incoming ledger before downstream nodes
+    # reconstruct any Frame slices, and keeps every row.
     graph = replace(
         graph,
         nodes=(
@@ -236,10 +230,9 @@ def uk_full_graph(
                 "uk.full.pool",
                 UKPoolCheckpointKernel.ref,
                 structural=StructuralDelta.FILTER,
-                base="uk.full.expand",
+                base=endpoint,
                 inputs=population_slices(cells),
-                artifact_inputs=uk_pool_validation_inputs(config.geography_assignment),
-                description="Checkpoint the complete geographic pool and selected-target problem.",
+                description="Checkpoint the bound spine and the selected-target problem.",
             ),
         ),
     )
@@ -287,13 +280,20 @@ class UKBoundSpineKernel(KernelBase):
         from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
         from .. import gate_battery, gates, trace
-        from . import content_identity, gate_scopes, graph_frames, hmrc_uprating
+        from . import (
+            content_identity,
+            gate_scopes,
+            geographic_clones,
+            graph_frames,
+            hmrc_uprating,
+        )
 
         # The node also computes through the H5 it loads (frame_materialize,
         # the engine adapter's contracts), the checkpoint's content identity
-        # and pinned engine (content_identity, hmrc_uprating), the gate
-        # digests it derives through a battery run (gate_battery, gates,
-        # trace) over the spine gate scope and its scoped manifest
+        # and pinned engine (content_identity, hmrc_uprating), the frame's
+        # geographic clone count it holds the sidecar's to (geographic_clones),
+        # the gate digests it derives through a battery run (gate_battery,
+        # gates, trace) over the spine gate scope and its scoped manifest
         # (gate_scopes), the create-frame normalisation it shares with the
         # spine's root (graph_frames, not the spine's kernel module, so an
         # edit there does not re-key the national line) and the canonical
@@ -303,6 +303,7 @@ class UKBoundSpineKernel(KernelBase):
             national_frame,
             calibration_run,
             gate_scopes,
+            geographic_clones,
             release_certification,
             frame_materialize,
             uk_engine_adapter,

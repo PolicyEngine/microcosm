@@ -1,58 +1,152 @@
 """Actual full graph on synthetic target and engine-source adapters."""
 
 # ruff: noqa: F403, F405
-from microcosm.build.uk_runtime.atomic_area_support import (
-    uk_atomic_assignment_definition,
-)
-from test_support.microcosm_build.uk_atomic_support_fixtures import (
-    toy_support_payloads,
-)
 from test_support.microcosm_build.uk_full_target_graph import *
+
+#: The dense line's own population and geography nodes, retired with its
+#: sampler, expansion, identity and area draw (microcosm#931).
+_RETIRED_DENSE_NODES = (
+    "uk.full.sample",
+    "uk.full.normalize",
+    "uk.full.expand",
+    "uk.full.expand.owned",
+    "uk.full.identity",
+    "uk.full.locations",
+    "uk.full.geography_mapping",
+    "uk.full.geography_gate",
+    "uk.full.geography.assign",
+    "uk.full.geography.derive",
+    "uk.full.geography.local_authority",
+    "uk.full.geography.gate",
+)
 
 
 def test_default_scope_contains_all_levels_and_never_depends_on_k_or_k_small():
+    from microcosm.build.uk_runtime.graph import uk_spine_graph
+
     default = UKFullBuildConfig(calibration_year=2026)
-    for config in (
-        default,
-        replace(default, n_clones=1),
-        replace(
-            default, calibration=replace(default.calibration, dataset_households=20)
+    for config, clones in (
+        (default, 1),
+        (replace(default, n_clones=3), 3),
+        (
+            replace(
+                default,
+                calibration=replace(default.calibration, dataset_households=20),
+            ),
+            1,
         ),
     ):
         graph = uk_full_graph(
             config,
-            atomic_geography_definition=uk_atomic_assignment_definition(
-                toy_support_payloads(), seed=config.seed
-            ),
+            spine=uk_spine_graph(source_mode="split", geographic_clones=clones),
         ).graph
         assert graph.node("uk.full.target_selection").params["geography_levels"] is None
 
 
-def test_the_identity_node_rewrites_the_key_the_clone_first_spine_carries():
-    """The spine's geographic_identity stage keys every household
-    (microcosm#931), so the dense line's uk.full.identity declares its key as
-    a rewrite of the spine's cell, not as a cell of its own."""
+def test_the_dense_line_composes_its_pool_on_the_spines_version():
+    """The dense line samples, expands, keys and places nothing of its own
+    (microcosm#931): its targets read the spine's version, the keep-all pool
+    checkpoint follows them on it with no typed edge, and the spine's
+    geography key, which geographic_identity writes, reaches the pool
+    unrewritten."""
     from microcosm.build.uk_runtime.geographic_clones import (
         GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
     )
+    from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
 
-    config = UKFullBuildConfig(calibration_year=2026)
-    graph = uk_full_graph(
-        config,
-        atomic_geography_definition=uk_atomic_assignment_definition(
-            toy_support_payloads(), seed=config.seed
-        ),
-    ).graph
-    assert ("household", GEOGRAPHY_HOUSEHOLD_KEY_COLUMN) in {
-        (owned.entity, owned.column)
-        for owned in graph.node("geographic_identity").outputs
-    }
-    (identity,) = graph.node("uk.full.identity").outputs
-    assert (identity.entity, identity.column, identity.rewrite) == (
-        "household",
-        GEOGRAPHY_HOUSEHOLD_KEY_COLUMN,
-        True,
+    spine = uk_spine_graph(source_mode="split")
+    graph = uk_full_graph(UKFullBuildConfig(calibration_year=2026), spine=spine).graph
+    endpoint = uk_spine_endpoint(spine).population
+    assert not {node.id for node in graph.nodes} & set(_RETIRED_DENSE_NODES)
+    pool = graph.node("uk.full.pool")
+    assert pool.base == endpoint
+    assert pool.artifact_inputs == ()
+    # It conserves mass, so the executor refuses a FILTER that drops a row.
+    assert pool.mass == "conserve"
+    for node_id in (
+        "uk.full.target_compilation",
+        "uk.full.target_selection",
+        "uk.full.measures",
+        "uk.full.problem",
+    ):
+        assert graph.node(node_id).population == endpoint
+    assert GEOGRAPHY_HOUSEHOLD_KEY_COLUMN in next(
+        part.columns for part in pool.inputs if part.entity == "household"
     )
+    writers = [
+        node.id
+        for node in graph.nodes
+        for owned in node.outputs
+        if (owned.entity, owned.column) == ("household", GEOGRAPHY_HOUSEHOLD_KEY_COLUMN)
+    ]
+    assert writers == ["geographic_identity"]
+
+
+def test_the_pool_checkpoint_keeps_every_person():
+    """The pool kernel keeps every row of the spine's version: its keep mask
+    is True for every person, by person id, on an invented person table
+    (microcosm#931)."""
+    from types import SimpleNamespace
+
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.graph_population import UKPoolCheckpointKernel
+
+    person = pd.DataFrame(
+        {"person_id": [11, 12, 21, 31], "person_household_id": [1, 1, 2, 3]}
+    )
+    result = UKPoolCheckpointKernel().run(SimpleNamespace(tables={"person": person}))
+    assert result.keep.dtype == bool and result.keep.all()
+    assert result.keep.index.tolist() == [11, 12, 21, 31]
+    assert result.keep.index.name == "person_id"
+    assert result.receipt == {"scope": "complete_pool_checkpoint"}
+
+
+def test_the_measures_take_the_spines_transferred_gate_admission():
+    """The measures, the first dense node to read the spine's version, take
+    the spine's transferred-gate admission the retired sample node held; a
+    spine without gate nodes declares none (microcosm#931)."""
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.graph import uk_spine_graph
+    from microcosm.build.uk_runtime.graph_evidence import add_uk_spine_gate_nodes
+
+    gated = add_uk_spine_gate_nodes(
+        uk_spine_graph(source_mode="split"),
+        spec=load_country_spec("uk"),
+        engine_identity="declaration-only",
+        release_candidate=True,
+    )
+    measures = uk_full_graph(
+        UKFullBuildConfig(calibration_year=2026), spine=gated
+    ).graph.node("uk.full.measures")
+    (admission,) = [
+        edge for edge in measures.artifact_inputs if edge.name == "spine_gate"
+    ]
+    assert (admission.producer, admission.artifact) == (
+        "spine.gates.transferred",
+        "gate_report",
+    )
+    assert measures.params["spine_gate_phase"] == "transferred"
+    assert measures.params["spine_gate_release_candidate"] is True
+    assert measures.params["spine_gate_synthetic_smoke"] is False
+    plain = uk_full_graph(
+        UKFullBuildConfig(calibration_year=2026),
+        spine=uk_spine_graph(source_mode="split"),
+    ).graph.node("uk.full.measures")
+    assert "spine_gate" not in {edge.name for edge in plain.artifact_inputs}
+    assert "spine_gate_phase" not in plain.params
+
+
+def test_a_composed_spine_of_another_clone_count_is_refused():
+    """K is the spine's (microcosm#931): a full build configured for another
+    clone count than its composed spine makes is refused, naming both."""
+    from microcosm.build.uk_runtime.graph import uk_spine_graph
+
+    with pytest.raises(ValueError, match=r"K = 3 .* K = 1"):
+        uk_full_graph(
+            UKFullBuildConfig(calibration_year=2026, n_clones=3),
+            spine=uk_spine_graph(source_mode="split"),
+        )
 
 
 def test_local_surface_selection_keeps_exact_target_periods():

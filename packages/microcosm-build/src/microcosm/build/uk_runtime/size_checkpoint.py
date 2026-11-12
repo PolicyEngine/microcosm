@@ -27,9 +27,6 @@ from typing import Any
 
 import numpy as np
 
-from microcosm.build.uk_runtime.atomic_area_support import (
-    SOURCES as ATOMIC_SUPPORT_SOURCES,
-)
 from microcosm.build.uk_runtime.dataset_size import (
     UKSizeSelection,
     uk_size_l2,
@@ -78,7 +75,9 @@ def uk_size_checkpoint_identity(
     deliberately absent: re-drawing at another threshold is the point. Both
     UK drivers write and resume with this one mapping (moved here from
     ``tools/build_uk_rowwise_candidate.py``), so a checkpoint cut by either
-    resumes on the other.
+    resumes on the other. The pool is the bound spine whole, its clone count
+    and sampling recorded in the run's arguments, and its areas are the
+    spine's, which the dataset pin binds (microcosm#931).
     """
     posture = posture_of(args)
     identity: dict[str, object] = {
@@ -98,7 +97,6 @@ def uk_size_checkpoint_identity(
         "sample_fraction": float(args.sample_fraction),
         "sample_seed": int(args.sample_seed),
         "source_year": int(source_year),
-        "source_lineage_modulus": args.source_lineage_modulus,
         "calibration_year": getattr(args, "_calibration_year", None),
         "target_weight_rule": args.target_weight_rule,
         "engine_blocks": int(args.engine_blocks),
@@ -122,17 +120,6 @@ def uk_size_checkpoint_identity(
     )
     if selection_l2 is not None:
         identity["selection_l2"] = selection_l2.as_dict()
-    # microcosm#932: an identity-keyed atomic run also binds the assignment
-    # and the three support pins (flat pin roles named by graph source); a
-    # legacy run adds nothing, so its checkpoints keep their identity.
-    if getattr(args, "geography_assignment", "legacy") == "atomic":
-        identity["geography"] = {
-            "assignment": "atomic",
-            "support_pins": {
-                system: dict(pins[source])
-                for system, source in ATOMIC_SUPPORT_SOURCES.items()
-            },
-        }
     return identity
 
 

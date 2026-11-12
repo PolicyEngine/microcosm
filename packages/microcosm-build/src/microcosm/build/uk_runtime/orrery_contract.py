@@ -347,13 +347,8 @@ UK_GROUPS = (
     (
         "population",
         "Population pool",
-        "Checkpoint admission, sampling, normalisation, expansion into K "
-        "geographic copies and the pooled problem checkpoint.",
-    ),
-    (
-        "geography",
-        "Geography",
-        "Location draws, derived geographies and the geography integrity gate.",
+        "Checkpoint admission and the pool checkpoint: the bound spine whole, "
+        "with its geographic clones, areas and sampling.",
     ),
     (
         "targets",
@@ -381,20 +376,7 @@ UK_GROUPS = (
 _FULL_BUILD_GROUPS = {
     "population": (
         "uk.full.spine_checkpoint",
-        "uk.full.sample",
-        "uk.full.normalize",
-        "uk.full.expand",
         "uk.full.pool",
-    ),
-    "geography": (
-        "uk.full.identity",
-        "uk.full.locations",
-        "uk.full.geography_mapping",
-        "uk.full.geography_gate",
-        "uk.full.geography.assign",
-        "uk.full.geography.derive",
-        "uk.full.geography.local_authority",
-        "uk.full.geography.gate",
     ),
     "targets": (
         "uk.full.target_compilation",
