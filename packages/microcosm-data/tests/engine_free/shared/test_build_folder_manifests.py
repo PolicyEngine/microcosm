@@ -263,3 +263,46 @@ def test_a_tag_reference_is_read_at_its_tag(id_field: str) -> None:
 def test_an_incomplete_or_mixed_reference_is_refused(reference: dict) -> None:
     with pytest.raises(ValueError, match="reference"):
         build_folder_manifests.referenced_build(reference)
+
+
+class _NoRecordHub:
+    """A Hub without ``releases.json``, or one that could not be asked."""
+
+    def __init__(self, answer: str) -> None:
+        self.answer = answer
+
+    def hf_hub_download(self, *, repo_id, filename, repo_type, revision):
+        from test_support.microcosm_data.hub_errors import (
+            hub_unreachable,
+            missing_on_hub,
+        )
+
+        if self.answer == "absent":
+            raise missing_on_hub(repo_id, filename, revision)
+        raise hub_unreachable(repo_id, filename, revision, status_code=403)
+
+
+def test_an_absent_releases_json_refuses_a_build_folder_build():
+    with pytest.raises(ValueError, match="has no releases.json"):
+        build_folder_manifests.require_offered_build(
+            _NoRecordHub("absent"),
+            repo_id="policyengine/populace-us",
+            release="microcosm-us-2024-national",
+            build="populace-us-2024-9f1260b-20260611",
+            label="the parent build",
+        )
+
+
+def test_a_hub_that_could_not_be_asked_propagates():
+    """huggingface_hub's LocalEntryNotFoundError says the Hub was not asked,
+    not that releases.json is absent."""
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    with pytest.raises(LocalEntryNotFoundError):
+        build_folder_manifests.require_offered_build(
+            _NoRecordHub("cannot_ask"),
+            repo_id="policyengine/populace-us",
+            release="microcosm-us-2024-national",
+            build="populace-us-2024-9f1260b-20260611",
+            label="the parent build",
+        )

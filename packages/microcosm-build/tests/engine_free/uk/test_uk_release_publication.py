@@ -1139,3 +1139,88 @@ def test_the_withdraw_command_checks_write_access_before_withdrawing(
     assert emitter.release_requests == []
     assert output["status"] == "unavailable"
     assert "needs a Hugging Face write credential" in error
+
+
+def test_a_promotion_of_an_unlisted_build_is_explained_as_unpublished() -> None:
+    """A promotion takes its names from the build's own manifest, so a build
+    releases.json does not list has not been published (or its publication
+    has not landed); mistyped names are a withdrawal's problem."""
+    from microcosm_emitter_interface import PromoteBuild
+
+    client = FakeEmitterClient(hub_files=_two_listed_builds())
+    promotion = release_publication._hand_over(
+        PromoteBuild(
+            repository=UK_REPO_ID,
+            release=UK_NATIONAL_RELEASE_ID,
+            build="uk-frs-calibration-attempt-20260101T000000Z-00000000",
+        ),
+        client=client,
+        wait_seconds=0,
+        wanted_current=True,
+    )
+
+    assert promotion.receipt["error_code"] == "BUILD_NOT_LISTED"
+    explanation = promotion.explanation()
+    assert "has not been published" in explanation
+    assert "check the names" not in explanation
+
+
+def test_only_a_withdrawal_reports_whether_the_build_is_withdrawn(
+    national: Path,
+    artifact_root: Path,  # noqa: F811
+) -> None:
+    """A publication or promotion cannot tell whether the build was withdrawn
+    since, so its outcome reports ``withdrawn`` as unknown."""
+    client = FakeEmitterClient()
+
+    outcome = release_publication.publish_release_build(
+        national, artifact_root=artifact_root, client=client
+    )
+
+    assert outcome.as_json()["change"] == "publish"
+    assert outcome.as_json()["withdrawn"] is None
+
+
+def test_withdrawing_a_withdrawn_build_again_succeeds() -> None:
+    client = FakeEmitterClient(hub_files=_two_listed_builds())
+    withdraw = _withdraw_function()
+    withdraw(UK_REPO_ID, UK_NATIONAL_RELEASE_ID, UK_OTHER_BUILD, client=client)
+
+    again = withdraw(UK_REPO_ID, UK_NATIONAL_RELEASE_ID, UK_OTHER_BUILD, client=client)
+
+    assert again.withdrawn and again.succeeded
+
+
+def test_the_withdraw_command_refuses_a_name_the_interface_refuses(
+    monkeypatch, capsys
+) -> None:
+    started, _ = _start_emitters(monkeypatch)
+
+    code, output, error = _withdraw_command(
+        [UK_REPO_ID, UK_NATIONAL_RELEASE_ID, "not a build"], capsys
+    )
+
+    assert code == 1
+    assert started == [] and output is None
+    assert "refusing to withdraw" in error
+
+
+def test_the_withdraw_command_fails_on_a_withdrawal_still_pending(
+    monkeypatch, capsys
+) -> None:
+    _start_emitters(
+        monkeypatch,
+        {
+            "release_receipts": [
+                {"status": "pending", "error_code": "REPOSITORY_UNAVAILABLE"}
+            ]
+        },
+    )
+
+    code, output, error = _withdraw_command(
+        [UK_REPO_ID, UK_NATIONAL_RELEASE_ID, UK_OTHER_BUILD], capsys
+    )
+
+    assert code == 1
+    assert output["status"] == "pending" and output["withdrawn"] is False
+    assert "still trying (REPOSITORY_UNAVAILABLE)" in error
