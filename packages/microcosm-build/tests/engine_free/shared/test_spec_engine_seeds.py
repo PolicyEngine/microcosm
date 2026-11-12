@@ -268,6 +268,7 @@ def test_audited_source_manifest_is_independent_and_total() -> None:
         "manual_seed",
         "PCG64",
         "_stable_unit_draws",
+        "stable_identity_uniforms",
     )
     for site_id, relative in AUDITED_SOURCE_BY_SITE.items():
         source = (root / relative).read_text(encoding="utf-8")
@@ -276,7 +277,12 @@ def test_audited_source_manifest_is_independent_and_total() -> None:
             relative.split("/src/", maxsplit=1)[1].removesuffix(".py").replace("/", ".")
         )
         site = LEGACY_V1_PROTOCOL.site(site_id)
-        assert module in kernel_by_id[site.kernel].source_modules, site_id
+        source_modules = kernel_by_id[site.kernel].source_modules
+        assert module in source_modules, site_id
+        if "stable_identity_uniforms" in source:
+            # The shared helper computes the site's draw, so the kernel
+            # attests its source too (microcosm#1585).
+            assert "microcosm.build.stochastic_assignment" in source_modules, site_id
 
 
 def test_exact_blake2b_salts_keys_candidates_and_absence_conditions() -> None:

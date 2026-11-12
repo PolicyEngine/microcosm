@@ -308,6 +308,7 @@ _X31_MIX64 = (
 _DIRECT_KERNEL_MODULES = (
     "microcosm.build.frame_sampling",
     "microcosm.build.source_runtime",
+    "microcosm.build.stochastic_assignment",
     "microcosm.build.us_runtime.acs_transfer",
     "microcosm.build.us_runtime.adult_care",
     "microcosm.build.us_runtime.child_support",
