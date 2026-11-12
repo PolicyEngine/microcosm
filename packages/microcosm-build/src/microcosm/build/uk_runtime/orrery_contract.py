@@ -394,11 +394,6 @@ _FULL_BUILD_GROUPS = {
         "uk.full.geography.assign",
         "uk.full.geography.derive",
         "uk.full.geography.local_authority",
-        "uk.full.geography.brma",
-        "uk.full.geography.rfdr",
-        "uk.full.private_rent",
-        "uk.full.property.value",
-        "uk.full.property.band",
         "uk.full.geography.gate",
     ),
     "targets": (

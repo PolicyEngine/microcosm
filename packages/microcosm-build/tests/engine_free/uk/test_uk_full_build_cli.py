@@ -4145,94 +4145,6 @@ def test_solve_reuse_refuses_an_out_that_holds_a_bundle(
     assert _files(out) == before
 
 
-def test_a_release_candidate_refuses_the_brma_and_rent_measurement_modes(
-    tmp_path, monkeypatch
-):
-    """microcosm#1305 review: both none modes are for measurement builds only."""
-    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
-    with pytest.raises(ValueError, match="--brma-localisation none"):
-        cli.validate_cli_args(
-            arguments(tmp_path, "--release-candidate", "--brma-localisation", "none")
-        )
-    with pytest.raises(ValueError, match="--private-rent-localisation none"):
-        cli.validate_cli_args(
-            arguments(
-                tmp_path, "--release-candidate", "--private-rent-localisation", "none"
-            )
-        )
-
-
-def test_a_release_candidate_refuses_the_rfdr_measurement_mode(tmp_path, monkeypatch):
-    """Anthony's review of microcosm#1420: the release line flags its Rural
-    Fuel Duty Relief areas; none is for measurement builds only."""
-    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
-    with pytest.raises(ValueError, match="--rfdr-localisation none"):
-        cli.validate_cli_args(
-            arguments(tmp_path, "--release-candidate", "--rfdr-localisation", "none")
-        )
-
-
-def test_the_rfdr_layer_needs_area_mode_and_a_release_the_committed_layer(tmp_path):
-    """Anthony's review of microcosm#1420: an override nothing reads is refused,
-    and a release candidate builds on the committed layer only."""
-    other = tmp_path / "other.json"
-    other.write_text("{}")
-    with pytest.raises(ValueError, match="need --rfdr-localisation area"):
-        cli._prepare_rfdr_localisation(
-            SimpleNamespace(
-                rfdr_localisation="none",
-                rfdr_area_layer=other,
-                rfdr_area_layer_sha256=None,
-            ),
-            {},
-            {},
-        )
-    with pytest.raises(ValueError, match="requires the committed RFDR area layer"):
-        cli._prepare_rfdr_localisation(
-            SimpleNamespace(
-                rfdr_localisation="area",
-                rfdr_area_layer=other,
-                rfdr_area_layer_sha256=None,
-                release_candidate=True,
-            ),
-            {},
-            {},
-        )
-    pins: dict = {}
-    sources: dict = {}
-    binding = cli._prepare_rfdr_localisation(
-        SimpleNamespace(
-            rfdr_localisation="area",
-            rfdr_area_layer=None,
-            rfdr_area_layer_sha256=None,
-            release_candidate=True,
-        ),
-        pins,
-        sources,
-    )
-    assert binding["mode"] == "area"
-    assert set(pins) == set(sources) == {"uk_rfdr_area_layer"}
-    assert sources["uk_rfdr_area_layer"].name == "rfdr_area_layer.json"
-    assert binding["resource_pins"]["uk_rfdr_area_layer"] == pins["uk_rfdr_area_layer"]
-
-
-@pytest.mark.parametrize(
-    ("assignment", "mode"), [("atomic", "area"), ("legacy", "none")]
-)
-def test_an_unset_rfdr_mode_follows_the_geography_assignment(
-    tmp_path, assignment, mode
-):
-    """The independent review of microcosm#1420: a legacy-assignment build
-    through the CLI need not pass --rfdr-localisation none, as the build config
-    resolves it the same way."""
-    args = arguments(tmp_path, "--geography-assignment", assignment)
-    assert args.rfdr_localisation is None
-    pins: dict = {}
-    binding = cli._prepare_rfdr_localisation(args, pins, {})
-    assert binding["mode"] == args.rfdr_localisation == mode
-    assert bool(pins) is (mode == "area")
-
-
 def test_target_geographies_can_name_the_brma_rows(tmp_path):
     assert arguments(
         tmp_path, "--target-geographies", "la,brma"
@@ -4244,65 +4156,46 @@ def test_target_geographies_can_name_the_brma_rows(tmp_path):
         arguments(tmp_path, "--target-geographies", "la,ward")
 
 
-def test_the_brma_and_rent_resource_flags_need_their_modes(tmp_path):
-    """microcosm#1305 review: an override nothing reads is refused, not ignored."""
-    other = tmp_path / "other.json"
-    other.write_text("{}")
-    with pytest.raises(ValueError, match="need --brma-localisation area"):
-        cli._prepare_brma_localisation(
-            SimpleNamespace(
-                brma_localisation="none",
-                brma_area_layer=other,
-                brma_area_layer_sha256=None,
-            ),
-            {},
-            {},
-        )
-    with pytest.raises(ValueError, match="need --private-rent-localisation brma_list"):
-        cli._prepare_private_rent_localisation(
-            SimpleNamespace(
-                brma_localisation="none",
-                private_rent_localisation="none",
-                brma_rent_quantiles=None,
-                brma_rent_quantiles_sha256="0" * 64,
-            ),
-            {},
-            {},
-        )
-    # A release candidate builds on the committed bytes only.
-    with pytest.raises(ValueError, match="requires the committed BRMA area layer"):
-        cli._prepare_brma_localisation(
-            SimpleNamespace(
-                brma_localisation="area",
-                brma_area_layer=other,
-                brma_area_layer_sha256=None,
-                release_candidate=True,
-            ),
-            {},
-            {},
-        )
-    with pytest.raises(
-        ValueError, match="requires the committed 'uk_brma_rent_quantiles' resource"
-    ):
-        cli._prepare_private_rent_localisation(
-            SimpleNamespace(
-                brma_localisation="area",
-                private_rent_localisation="brma_list",
-                brma_rent_quantiles=other,
-                brma_rent_quantiles_sha256=None,
-                release_candidate=True,
-            ),
-            {},
-            {},
-        )
-
-
 def test_the_thin_rows_only_switch_is_gone(tmp_path):
     """María's ruling of 2026-10-26 dropped the withholding, and with it
     --withhold-thin-rows-only; a script that still passes it is refused."""
 
     with pytest.raises(SystemExit):
         arguments(tmp_path, "--withhold-thin-rows-only")
+
+
+#: The dense line's localisation flags and their resource overrides, retired
+#: with the property, BRMA, private-rent and fuel-relief nodes (#931).
+_RETIRED_LOCALISATION_FLAGS = (
+    "--property-localisation",
+    "--price-paid-quantiles",
+    "--price-paid-quantiles-sha256",
+    "--voa-band-mix",
+    "--voa-band-mix-sha256",
+    "--scotgov-band-mix",
+    "--scotgov-band-mix-sha256",
+    "--brma-localisation",
+    "--brma-area-layer",
+    "--brma-area-layer-sha256",
+    "--private-rent-localisation",
+    "--brma-rent-quantiles",
+    "--brma-rent-quantiles-sha256",
+    "--rfdr-localisation",
+    "--rfdr-area-layer",
+    "--rfdr-area-layer-sha256",
+)
+
+
+@pytest.mark.parametrize("flag", _RETIRED_LOCALISATION_FLAGS)
+def test_the_dense_localisation_flags_are_gone(tmp_path, capsys, flag):
+    """The dense line takes its home values, BRMAs, private rents and
+    fuel-relief flags from the spine (#931), so a script that still passes a
+    retired localisation flag is refused, neither ignored nor read as an
+    abbreviation of a live flag."""
+
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, flag, "none")
+    assert f"unrecognized arguments: {flag} none" in capsys.readouterr().err
 
 
 def test_the_orrery_publication_is_off_unless_asked(tmp_path):

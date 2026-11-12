@@ -2,22 +2,23 @@
 
 The UK spine carries each private renter's rent from its source household
 (the FRS report, or the SPI housing shell's draw from FRS donors), which
-describes its FRS region, not the district the household is placed in. After
-geography, ``uk.full.private_rent`` keeps each private renter's rank among
-the FRS renters of its region and bedroom size and reads that quantile off
-the list of rents of the BRMA its assigned area sits in
-(``uk/brma_rent_quantiles.json``), scaled per FRS region so that, on the
-census private-renter mix of the region's BRMAs, its mean rent is the FRS level
-(María's rulings of 2026-10-15/16, kept on 2026-10-17): the lists set where
-rents sit within a region and their spread within a BRMA, not the level.
-Placement follows all households, not renters, so at design weights a
-region's mean rent moves by the gap between the two mixes until
-calibration's tenure rows restore the renter mix; the receipts report that
-level as a check.
+describes its FRS region, not the district the household is placed in. The
+clone-first spine's private-rent stage
+(``spine_private_rent.UKPrivateRentStageTransform``, G7 of microcosm#931)
+keeps each private renter's rank among the FRS renters of its region and
+bedroom size and reads that quantile off the list of rents of the BRMA its
+drawn area sits in (``uk/brma_rent_quantiles.json``), scaled per FRS region
+so that, on the census private-renter mix of the region's BRMAs, its mean
+rent is the FRS level (María's rulings of 2026-10-15/16, kept on
+2026-10-17): the lists set where rents sit within a region and their spread
+within a BRMA, not the level. Placement follows all households, not renters,
+so at design weights a region's mean rent moves by the gap between the two
+mixes until calibration's tenure rows restore the renter mix; the receipts
+report that level as a check.
 
 Everything here is pure and depends on the standard library, numpy and
-pandas only, so the build tool can load this module by path; the graph
-kernel supplies the spine keys and the keyed tie-break uniforms.
+pandas only, so the build tool can load this module by path; the spine's
+private-rent stage supplies the row keys and the keyed tie-break uniforms.
 """
 
 from __future__ import annotations
@@ -36,7 +37,6 @@ __all__ = [
     "COUNTS_SOURCE",
     "GRID",
     "METHOD_VERSION",
-    "PRIVATE_RENT_LOCALISATION_MODES",
     "QUANTILES_KIND",
     "QUANTILES_METHOD",
     "QUANTILES_SCHEMA_VERSION",
@@ -55,9 +55,6 @@ __all__ = [
     "rent_uniforms",
 ]
 
-#: ``brma_list`` re-draws each Great Britain private renter's rent from its
-#: assigned BRMA's list of rents; ``none`` keeps the spine's rents.
-PRIVATE_RENT_LOCALISATION_MODES = ("none", "brma_list")
 METHOD_VERSION = "uk-private-rent-localisation-v1"
 STREAM_EXPERIMENT = "uk-post-clone-private-rent-v1"
 #: Graph source names: the committed rent quantiles and the census counts of

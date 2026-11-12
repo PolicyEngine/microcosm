@@ -39,7 +39,6 @@ __all__ = [
     "METHOD_VERSION",
     "RFDR_AREA_LAYER_SOURCE",
     "RFDR_COLUMN",
-    "RFDR_LOCALISATION_MODES",
     "SCHEMA_VERSION",
     "SYSTEMS",
     "RFDRAreaLayer",
@@ -55,10 +54,7 @@ SCHEMA_VERSION = 1
 METHOD_VERSION = "uk-rfdr-area-layer-v1"
 #: Graph source name of the committed layer bytes.
 RFDR_AREA_LAYER_SOURCE = "uk_rfdr_area_layer"
-#: ``area`` sets each placed Great Britain household's flag from its assigned
-#: output area; ``none`` leaves the engine's default on every clone.
-RFDR_LOCALISATION_MODES = ("none", "area")
-#: The policyengine-uk household input the node writes.
+#: The policyengine-uk household input the spine's fuel-relief stage sets.
 RFDR_COLUMN = "in_rural_fuel_duty_relief_area"
 #: The support systems the layer covers, by the output-area code they read.
 SYSTEMS: Mapping[str, str] = {

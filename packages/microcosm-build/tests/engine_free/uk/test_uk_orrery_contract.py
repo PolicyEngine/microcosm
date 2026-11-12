@@ -139,6 +139,75 @@ def test_complete_dense_and_size_declarations_fit_existing_export_limits(househo
         )
 
 
+#: The dense line's localisation nodes, retired with their flags (#931): the
+#: dense line takes home values, BRMAs, private rents and fuel-relief flags
+#: from the spine.
+_RETIRED_DENSE_NODES = (
+    "uk.full.geography.brma",
+    "uk.full.geography.rfdr",
+    "uk.full.private_rent",
+    "uk.full.property.value",
+    "uk.full.property.band",
+)
+
+
+def test_the_dense_line_composes_and_rosters_no_localisation_node():
+    """The atomic dense graph composes none of the retired nodes and neither
+    declares nor reads their resources, and the roster names none of them."""
+    from microcosm.build.uk_runtime import (
+        brma_area_layer,
+        private_rent_localisation,
+        property_localisation,
+        rfdr_area_layer,
+    )
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        uk_atomic_assignment_definition,
+    )
+    from test_support.microcosm_build.uk_atomic_support_fixtures import (
+        toy_support_payloads,
+    )
+
+    spine = add_uk_spine_gate_nodes(
+        uk_spine_graph(source_mode="split"),
+        spec=load_country_spec("uk"),
+        engine_identity="declaration-only",
+    )
+    config = UKFullBuildConfig(calibration_year=2025)
+    full = uk_full_graph(
+        config,
+        spine=spine,
+        atomic_geography_definition=uk_atomic_assignment_definition(
+            toy_support_payloads(), seed=config.seed
+        ),
+    )
+    graph = append_uk_full_gate_nodes(
+        full.graph,
+        calibration=full.calibration,
+        spine_stage_names=uk_spine_endpoint(spine).stage_names,
+        engine_identity="declaration-only",
+        review_date="2026-10-08",
+    )
+    spine_nodes = {node.id for node in spine.nodes}
+    dense = [node for node in graph.nodes if node.id not in spine_nodes]
+    composed = {node.id for node in dense}
+    assert "uk.full.pool" in composed
+    assert not composed & set(_RETIRED_DENSE_NODES)
+    resources = {
+        property_localisation.QUANTILES_SOURCE,
+        property_localisation.BAND_MIX_SOURCE,
+        property_localisation.SCOTLAND_BAND_MIX_SOURCE,
+        brma_area_layer.BRMA_AREA_LAYER_SOURCE,
+        private_rent_localisation.QUANTILES_SOURCE,
+        private_rent_localisation.COUNTS_SOURCE,
+        rfdr_area_layer.RFDR_AREA_LAYER_SOURCE,
+    }
+    assert not {name for node in dense for name in node.sources} & resources
+    assert not {source.name for source in graph.sources} & resources
+    stages = uk_spine_stage_ids()
+    for node_id in _RETIRED_DENSE_NODES:
+        assert uk_operation_group(node_id, spine_stages=stages) == "other"
+
+
 def test_old_checkpoint_has_an_explicit_missing_boundary(tmp_path):
     sidecar = tmp_path / "old.build.json"
     sidecar.write_text("{}")
