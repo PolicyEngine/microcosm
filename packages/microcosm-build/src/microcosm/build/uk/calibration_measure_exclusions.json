@@ -1314,6 +1314,60 @@
       "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (María's signature of 2026-11-11).",
       "approved_on": "2026-11-11",
       "expires_on": "2027-02-11"
+    },
+    {
+      "name": "dwp.uc.people_aged_16_to_21_no_work_requirements",
+      "reason": "Diagnostic, not a weight question: DWP's People on Universal Credit by conditionality regime (PolicyEngine/chronicle#420 item 3), in two groups, because policyengine-uk's uc_work_related_group_apart_from_earnings leaves out the earnings rules (reg 90 and the administrative earnings threshold) that move earners into 'Working – no requirements'. 'No work requirements' is set against NO_REQUIREMENTS, and the other five regimes against every other value. The model's NO_REQUIREMENTS group runs low, because the build writes none of the pregnancy, adoption, student and foster inputs and pe-uk models no reg 14 students. So the rows measure the split and don't bind it (B5 of the November event-data plan's PR3, microcosm#1095). No 16–17 row and no 18–21 or 18–24 regime row exists, so 16–17 can't be given back by difference.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's go of 2026-11-12 on B5 of the November event-data plan's PR3 (microcosm#1095): measure DWP's people on Universal Credit aged 16 to 21 and 22 to 24 in two conditionality groups, 'No work requirements' against uc_work_related_group_apart_from_earnings's NO_REQUIREMENTS and the other regimes against every other value, on the four quarterly points of 2025, and hold them out of the solve (María's signature of 2026-11-12).",
+      "approved_on": "2026-11-12",
+      "expires_on": "2027-02-12"
+    },
+    {
+      "name": "dwp.uc.people_aged_16_to_21_other_regimes",
+      "reason": "Diagnostic, not a weight question: DWP's People on Universal Credit by conditionality regime (PolicyEngine/chronicle#420 item 3), in two groups, because policyengine-uk's uc_work_related_group_apart_from_earnings leaves out the earnings rules (reg 90 and the administrative earnings threshold) that move earners into 'Working – no requirements'. 'No work requirements' is set against NO_REQUIREMENTS, and the other five regimes against every other value. The model's NO_REQUIREMENTS group runs low, because the build writes none of the pregnancy, adoption, student and foster inputs and pe-uk models no reg 14 students. So the rows measure the split and don't bind it (B5 of the November event-data plan's PR3, microcosm#1095). No 16–17 row and no 18–21 or 18–24 regime row exists, so 16–17 can't be given back by difference.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's go of 2026-11-12 on B5 of the November event-data plan's PR3 (microcosm#1095): measure DWP's people on Universal Credit aged 16 to 21 and 22 to 24 in two conditionality groups, 'No work requirements' against uc_work_related_group_apart_from_earnings's NO_REQUIREMENTS and the other regimes against every other value, on the four quarterly points of 2025, and hold them out of the solve (María's signature of 2026-11-12).",
+      "approved_on": "2026-11-12",
+      "expires_on": "2027-02-12"
+    },
+    {
+      "name": "dwp.uc.people_aged_22_to_24_no_work_requirements",
+      "reason": "Diagnostic, not a weight question: DWP's People on Universal Credit by conditionality regime (PolicyEngine/chronicle#420 item 3), in two groups, because policyengine-uk's uc_work_related_group_apart_from_earnings leaves out the earnings rules (reg 90 and the administrative earnings threshold) that move earners into 'Working – no requirements'. 'No work requirements' is set against NO_REQUIREMENTS, and the other five regimes against every other value. The model's NO_REQUIREMENTS group runs low, because the build writes none of the pregnancy, adoption, student and foster inputs and pe-uk models no reg 14 students. So the rows measure the split and don't bind it (B5 of the November event-data plan's PR3, microcosm#1095). No 16–17 row and no 18–21 or 18–24 regime row exists, so 16–17 can't be given back by difference.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's go of 2026-11-12 on B5 of the November event-data plan's PR3 (microcosm#1095): measure DWP's people on Universal Credit aged 16 to 21 and 22 to 24 in two conditionality groups, 'No work requirements' against uc_work_related_group_apart_from_earnings's NO_REQUIREMENTS and the other regimes against every other value, on the four quarterly points of 2025, and hold them out of the solve (María's signature of 2026-11-12).",
+      "approved_on": "2026-11-12",
+      "expires_on": "2027-02-12"
+    },
+    {
+      "name": "dwp.uc.people_aged_22_to_24_other_regimes",
+      "reason": "Diagnostic, not a weight question: DWP's People on Universal Credit by conditionality regime (PolicyEngine/chronicle#420 item 3), in two groups, because policyengine-uk's uc_work_related_group_apart_from_earnings leaves out the earnings rules (reg 90 and the administrative earnings threshold) that move earners into 'Working – no requirements'. 'No work requirements' is set against NO_REQUIREMENTS, and the other five regimes against every other value. The model's NO_REQUIREMENTS group runs low, because the build writes none of the pregnancy, adoption, student and foster inputs and pe-uk models no reg 14 students. So the rows measure the split and don't bind it (B5 of the November event-data plan's PR3, microcosm#1095). No 16–17 row and no 18–21 or 18–24 regime row exists, so 16–17 can't be given back by difference.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's go of 2026-11-12 on B5 of the November event-data plan's PR3 (microcosm#1095): measure DWP's people on Universal Credit aged 16 to 21 and 22 to 24 in two conditionality groups, 'No work requirements' against uc_work_related_group_apart_from_earnings's NO_REQUIREMENTS and the other regimes against every other value, on the four quarterly points of 2025, and hold them out of the solve (María's signature of 2026-11-12).",
+      "approved_on": "2026-11-12",
+      "expires_on": "2027-02-12"
+    },
+    {
+      "name": "scotgov.adp.caseload_scotland",
+      "reason": "Diagnostic, not a weight question: Social Security Scotland's Adult Disability Payment caseload (PolicyEngine/chronicle#420 item 7), against the people in Scottish households with a PIP award, since frs_spine reads ADP (FRS codes 117 and 118) as PIP. The data hold about a third fewer Scottish recipients than the caseload, and binding the spending would stretch those households' weights beyond uk_weight_ratio's limit (P4; B10 of PR3, microcosm#1095). Bind only if a build's gap falls within the plan's 1.15 cap and a calibrate-only solve keeps uk_weight_ratio at or below 1,151.25.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's go of 2026-11-12 on B10 of the November event-data plan's PR3 (microcosm#1095): P4 stays a stated limitation; measure Social Security Scotland's ADP and Carer Support Payment caseloads for Scotland, averaged over July to December 2025, on every build and hold them out of the solve (María's signature of 2026-11-12).",
+      "approved_on": "2026-11-12",
+      "expires_on": "2027-02-12"
+    },
+    {
+      "name": "scotgov.carer_support_payment.in_payment_scotland",
+      "reason": "Diagnostic, not a weight question: Social Security Scotland's Carer Support Payment caseload in payment (PolicyEngine/chronicle#420 item 7), against the carers in Scottish households with Carer Support Payment in payment (carer_support_payment above zero); carers whose award an overlapping benefit reduces to nil are underlying entitlement and aren't counted. The data hold about a third fewer Scottish recipients than the caseload, and binding the spending would stretch those households' weights beyond uk_weight_ratio's limit (P4; B10 of PR3, microcosm#1095). Bind only if a build's gap falls within the plan's 1.15 cap and a calibrate-only solve keeps uk_weight_ratio at or below 1,151.25.",
+      "tracking": "microcosm#1095",
+      "approved_by": "juaristi22",
+      "adjudication": "María's go of 2026-11-12 on B10 of the November event-data plan's PR3 (microcosm#1095): P4 stays a stated limitation; measure Social Security Scotland's ADP and Carer Support Payment caseloads for Scotland, averaged over July to December 2025, on every build and hold them out of the solve (María's signature of 2026-11-12).",
+      "approved_on": "2026-11-12",
+      "expires_on": "2027-02-12"
     }
   ]
 }

@@ -1086,6 +1086,8 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         "scotgov.scottish_child_payment_spending",
         "scotgov.bus.passenger_revenue",
         "scotgov.bus.government_support",
+        "scotgov.adp.caseload_scotland",
+        "scotgov.carer_support_payment.in_payment_scotland",
     }
     # The council-area cells of the same publication are local-authority
     # targets (microcosm#929) and take their geography from the roster.
