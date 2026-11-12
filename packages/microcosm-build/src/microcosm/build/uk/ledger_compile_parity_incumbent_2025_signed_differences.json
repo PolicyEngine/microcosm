@@ -1,11 +1,11 @@
 {
- "compiled_count": 1697,
+ "compiled_count": 1710,
  "counts_by_kind": {
   "calibration_drift": 564,
   "fixture_only": 44,
-  "ledger_only": 1104
+  "ledger_only": 1117
  },
- "difference_count": 1712,
+ "difference_count": 1725,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -849,6 +849,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 384149.5,
+   "name": "dwp.pip.cases_england_aged_16_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 202349.5,
    "name": "dwp.pip.cases_england_aged_20_to_24",
    "period": 2025,
@@ -863,6 +870,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 419039.75,
+   "name": "dwp.pip.cases_england_aged_25_to_34",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 222042.25,
    "name": "dwp.pip.cases_england_aged_30_to_34",
    "period": 2025,
@@ -872,6 +886,13 @@
    "kind": "ledger_only",
    "ledger_value": 248251.5,
    "name": "dwp.pip.cases_england_aged_35_to_39",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 780871.75,
+   "name": "dwp.pip.cases_england_aged_35_to_49",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -898,6 +919,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 1244108.25,
+   "name": "dwp.pip.cases_england_aged_50_to_64",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 425461.75,
    "name": "dwp.pip.cases_england_aged_55_to_59",
    "period": 2025,
@@ -907,6 +935,13 @@
    "kind": "ledger_only",
    "ledger_value": 475625.75,
    "name": "dwp.pip.cases_england_aged_60_to_64",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 662046.75,
+   "name": "dwp.pip.cases_england_aged_65_and_over",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -1864,6 +1899,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 137557.75,
+   "name": "dwp.uc.people_aged_16_to_21_no_work_requirements",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 249061.5,
+   "name": "dwp.uc.people_aged_16_to_21_other_regimes",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 762585.25,
    "name": "dwp.uc.people_aged_16_to_24",
    "period": 2025,
@@ -1873,6 +1922,20 @@
    "kind": "ledger_only",
    "ledger_value": 375967.75,
    "name": "dwp.uc.people_aged_22_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 157008.5,
+   "name": "dwp.uc.people_aged_22_to_24_no_work_requirements",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 218958.75,
+   "name": "dwp.uc.people_aged_22_to_24_other_regimes",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -7751,6 +7814,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 438614.5833333333,
+   "name": "ons.paye_rti.employees_aged_0_to_17",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3441394.4166666665,
+   "name": "ons.paye_rti.employees_aged_18_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 658357.0,
    "name": "ons.population.age_0",
    "period": 2025,
@@ -8010,6 +8087,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 490779.1666666667,
+   "name": "scotgov.adp.caseload_scotland",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 499000000.0,
    "name": "scotgov.bus.government_support",
    "period": 2025,
@@ -8019,6 +8103,13 @@
    "kind": "ledger_only",
    "ledger_value": 391000000.0,
    "name": "scotgov.bus.passenger_revenue",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 97737.5,
+   "name": "scotgov.carer_support_payment.in_payment_scotland",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

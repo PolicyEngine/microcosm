@@ -66,6 +66,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     rounded_count,
     small_cell_share,
     source_household_ids,
+    support_band,
 )
 from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_STAGE1_ANALOGUE_COLUMNS,
@@ -1127,6 +1128,8 @@ class UKSPIIncomeImputationResult:
     reference_training_rows: int = 0
     state_pension_age: int | None = None
     gainful_self_employment_refresh: Mapping[str, object] | None = None
+    #: The carer link re-derived on the channel's households (A3).
+    carer_link_refresh: Mapping[str, object] | None = None
     pension_coherence: Mapping[str, object] | None = None
     employment_pay_floor: Mapping[str, object] | None = None
     gift_anchor: Mapping[str, object] | None = None
@@ -1843,6 +1846,9 @@ def impute_uk_spi_income_support(
     person = _move_losses_brought_forward_to_loss_relief(person, spi_people=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
+    person, carer_link_refresh = _refresh_carer_link(
+        person, household, spi_channel=spi_channel_people
+    )
     person = _refresh_esa_support_component(person, spi_people=spi_people)
     person = _clear_trading_loss_beside_profit(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
@@ -1892,6 +1898,7 @@ def impute_uk_spi_income_support(
         reference_training_rows=int(reference_people.sum()),
         state_pension_age=int(state_pension_age),
         gainful_self_employment_refresh=gainful_self_employment,
+        carer_link_refresh=carer_link_refresh,
         pension_coherence=pension_coherence,
         employment_pay_floor=pay_floor_receipt,
         gift_anchor=gift_anchor,
@@ -3676,6 +3683,70 @@ def _refresh_carer_take_up_input(
         person, spi_people, "would_claim_carers_allowance", refilled, default=False
     )
     return person
+
+
+def _refresh_carer_link(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    spi_channel: pd.Series,
+    min_hours: float | None = None,
+) -> tuple[pd.DataFrame, dict[str, object] | None]:
+    """Re-derive the carer link on the SPI channel's households.
+
+    ``frs_disability`` writes ``cares_for_severely_disabled_person`` from the
+    survey's benefits, and each copy carries its twin's value. Stage 2 re-imputes
+    the copies' disability benefits, so a copy's carer can now look after a
+    member whose benefits qualify, or no longer do. Every row of the channel
+    takes the link again by frs_disability's rule, from the benefits after the
+    refresh (A3 of the November event-data plan's PR3, microcosm#1095; María's
+    choices of 2026-11-10), its outside carers drawn on their own identities at
+    the share of the survey's own households: the FRS channel's, at this
+    stage's weights. The care carriers come from the twin, since stage 2 draws
+    no care. The receipt bands the households whose link changed. A frame
+    without the link (an older synthetic manifest) passes through.
+    """
+
+    from microcosm.build.uk_runtime import frs_disability
+
+    column = frs_disability.CARER_LINK_COLUMN
+    if column not in person.columns:
+        return person, None
+    if min_hours is None:
+        from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
+
+        min_hours = frs_disability.uk_dwp_carers_allowance_min_hours(
+            resolve_uk_year_rule(frs_disability.YEAR_RULE)
+        )
+    channel = spi_channel.reindex(person.index).fillna(False).to_numpy(dtype=bool)
+    weights = _person_household_weights(person, household).to_numpy(dtype=float)
+    sources = (
+        person["person_household_id"]
+        .map(
+            pd.Series(
+                source_household_ids(household, stage="hmrc_spi_income_spine"),
+                index=household["household_id"].to_numpy(),
+            )
+        )
+        .to_numpy()
+    )
+    share = frs_disability.carer_link_share(
+        person.loc[~channel], weights=weights[~channel], min_hours=float(min_hours)
+    )
+    link, evidence = frs_disability.derive_carer_link(
+        person.loc[channel],
+        weights=weights[channel],
+        min_hours=float(min_hours),
+        share=share,
+        support_keys=sources[channel],
+    )
+    before = person.loc[channel, column].to_numpy(dtype=bool)
+    changed = sources[channel][before != link]
+    person[column] = person[column].astype(bool)
+    person.loc[channel, column] = link
+    evidence["rows"] = "the SPI channel's households; the share from the FRS channel's"
+    evidence["changed_support"] = support_band(len(set(changed.tolist())))
+    return person, evidence
 
 
 def _owner_manager_flags_as_numbers(person: pd.DataFrame) -> pd.DataFrame:
