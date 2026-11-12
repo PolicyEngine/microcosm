@@ -26,7 +26,9 @@ from microcosm.build.us_runtime.l0_refit_export import (
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.release_input_coverage import (
     RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS,
+    ListParameterEdit,
     load_release_input_coverage_manifest,
+    resolve_probe_parameter_changes,
     us_release_reform_coverage_probes,
 )
 from microcosm.build.us_runtime.source_runtime import us_source_operation_handlers
@@ -61,6 +63,8 @@ _PREDICTORS = (
     "social_security",
 )
 ROOT = _TEST_PATHS.repository
+# The person-level SNAP unearned-source list the shipped exclusion probe edits.
+_SNAP_UNEARNED_SOURCES = "gov.usda.snap.income.sources.unearned"
 
 
 def _sha256(path: Path) -> str:

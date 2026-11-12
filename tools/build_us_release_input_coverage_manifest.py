@@ -30,6 +30,14 @@ The SSI asset inputs are ``bank_account_assets``, ``stock_assets``, and
 them absent, countable resources are 0 for every record, so the SSI asset-limit
 reform probe scores $0; that is the failure the gate exists to surface.
 
+A probe that changes a list-valued parameter declares only the items it removes
+or adds under ``list_edits``; the list is resolved against the installed
+PolicyEngine-US baseline when the reform is built. Pinning the whole list in
+``parameter_changes`` is refused by the loader: a pinned copy silently reverts
+any later engine change to the list (the 2026-09-28 release failure, where
+pinned SNAP source lists re-added TANF after PolicyEngine-US 2.2.1 moved it to
+``unearned_spm_unit``).
+
 Run:  uv run python tools/build_us_release_input_coverage_manifest.py
 It rewrites packages/microcosm-build/src/microcosm/build/us/
 release_input_coverage_manifest.json. A test asserts the committed file matches
@@ -44,6 +52,7 @@ from pathlib import Path
 
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
+    US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION,
     project_ecps_parity_known_gap_names,
 )
 
@@ -886,15 +895,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "qbi_farm_operations_income_exclusion",
         "name": "Exclude farm-operations income from Section 199A QBI",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.deductions.qbi.income_definition": {
-                "2026-01-01.2026-12-31": [
-                    "self_employment_income",
-                    "partnership_s_corp_income",
-                    "farm_rent_income",
-                    "rental_income",
-                    "estate_income",
-                ]
+                "period": "2026-01-01.2026-12-31",
+                "remove": ["farm_operations_income"],
             }
         },
         "budget_measure": "qualified_business_income_deduction",
@@ -920,15 +925,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "qbi_farm_rent_income_exclusion",
         "name": "Exclude farm-rent income from Section 199A QBI",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.deductions.qbi.income_definition": {
-                "2026-01-01.2026-12-31": [
-                    "self_employment_income",
-                    "partnership_s_corp_income",
-                    "farm_operations_income",
-                    "rental_income",
-                    "estate_income",
-                ]
+                "period": "2026-01-01.2026-12-31",
+                "remove": ["farm_rent_income"],
             }
         },
         "budget_measure": "qualified_business_income_deduction",
@@ -948,15 +949,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "niit_passive_pass_through_exclusion",
         "name": "Exclude passive partnership and S-corp income from the NIIT base",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.investment.income.sources": {
-                "2024-01-01.2024-12-31": [
-                    "taxable_interest_income",
-                    "dividend_income",
-                    "rental_income",
-                    "loss_limited_net_capital_gains",
-                    "non_sch_d_capital_gains",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["passive_partnership_s_corp_income"],
             }
         },
         "budget_measure": "net_investment_income_tax",
@@ -979,25 +976,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "domestic_production_ald_reactivation",
         "name": "Former Section 199 domestic-production deduction reactivation",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.ald.deductions": {
-                "2024-01-01.2024-12-31": [
-                    "loss_ald",
-                    "self_employment_tax_ald",
-                    "student_loan_interest_ald",
-                    "early_withdrawal_penalty",
-                    "alimony_expense_ald",
-                    "educator_expense",
-                    "health_savings_account_ald",
-                    "self_employed_health_insurance_ald",
-                    "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
-                    "qualified_adoption_assistance_expense",
-                    "us_bonds_for_higher_ed",
-                    "specified_possession_income",
-                    "puerto_rico_income",
-                    "domestic_production_ald",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "add": ["domestic_production_ald"],
             }
         },
         "budget_measure": "income_tax",
@@ -1008,8 +991,8 @@ REFORM_COVERAGE_PROBES = [
         "min_abs_effect": 1_000_000.0,
         "reason": (
             "PolicyEngine-US 2.2.1 excludes the former Section 199 deduction "
-            "from current-law above-the-line deductions. This probe preserves "
-            "the exact 2024 list and adds only domestic_production_ald, so "
+            "from current-law above-the-line deductions. This probe adds only "
+            "domestic_production_ald to the installed engine's 2024 list, so "
             "baseline-minus-reform income tax must be positive. Without the "
             "restored E03240 input, reactivation is a structural zero."
         ),
@@ -1102,26 +1085,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "child_support_received_snap_exclusion",
         "name": "Exclude child-support receipts from SNAP unearned income",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.usda.snap.income.sources.unearned": {
-                "2024-01-01.2024-12-31": [
-                    "ssi",
-                    "general_assistance",
-                    "pension_income",
-                    "veterans_benefits",
-                    "unemployment_compensation",
-                    "disability_benefits",
-                    "workers_compensation",
-                    "social_security",
-                    "retirement_distributions",
-                    "rental_income",
-                    "alimony_income",
-                    "financial_assistance",
-                    "survivor_benefits",
-                    "dividend_income",
-                    "interest_income",
-                    "miscellaneous_income",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["child_support_received"],
             }
         },
         "budget_measure": "snap",
@@ -1141,15 +1109,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "child_support_expense_snap_deduction_abolition",
         "name": "Abolish the SNAP child-support expense deduction",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.usda.snap.income.deductions.allowed": {
-                "2024-01-01.2024-12-31": [
-                    "snap_standard_deduction",
-                    "snap_earned_income_deduction",
-                    "snap_dependent_care_deduction",
-                    "snap_excess_medical_expense_deduction",
-                    "snap_excess_shelter_expense_deduction",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["snap_child_support_deduction"],
             }
         },
         "budget_measure": "snap",
@@ -1169,26 +1133,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "disability_benefits_snap_exclusion",
         "name": "Exclude disability benefits from SNAP unearned income",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.usda.snap.income.sources.unearned": {
-                "2024-01-01.2024-12-31": [
-                    "ssi",
-                    "general_assistance",
-                    "pension_income",
-                    "veterans_benefits",
-                    "unemployment_compensation",
-                    "workers_compensation",
-                    "social_security",
-                    "retirement_distributions",
-                    "rental_income",
-                    "child_support_received",
-                    "alimony_income",
-                    "financial_assistance",
-                    "survivor_benefits",
-                    "dividend_income",
-                    "interest_income",
-                    "miscellaneous_income",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["disability_benefits"],
             }
         },
         "budget_measure": "snap",
@@ -1208,26 +1157,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "workers_compensation_snap_exclusion",
         "name": "Exclude workers' compensation from SNAP unearned income",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.usda.snap.income.sources.unearned": {
-                "2024-01-01.2024-12-31": [
-                    "ssi",
-                    "general_assistance",
-                    "pension_income",
-                    "veterans_benefits",
-                    "unemployment_compensation",
-                    "disability_benefits",
-                    "social_security",
-                    "retirement_distributions",
-                    "rental_income",
-                    "child_support_received",
-                    "alimony_income",
-                    "financial_assistance",
-                    "survivor_benefits",
-                    "dividend_income",
-                    "interest_income",
-                    "miscellaneous_income",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["workers_compensation"],
             }
         },
         "budget_measure": "snap",
@@ -1243,9 +1177,10 @@ REFORM_COVERAGE_PROBES = [
             "2.2.1) the corrected list scored +$277.9M reform-minus-baseline "
             "over all 1,708 households carrying the leaf; without the measured "
             "WC_VAL carry and PUF-half QRF, the source-list reform is a "
-            "structural zero. The list must equal the engine's person-level "
-            "unearned sources minus this leaf: TANF is counted once on "
-            "unearned_spm_unit and must not be re-added here."
+            "structural zero. The probe declares only the removal, so it "
+            "resolves against the installed engine's person-level unearned "
+            "sources: the whole list it pinned before re-added TANF, which "
+            "2.2.1 counts once on unearned_spm_unit."
         ),
         "issue": "PolicyEngine/microcosm#32",
     },
@@ -1272,23 +1207,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "educator_expense_ald_abolition",
         "name": "Abolish the educator-expense above-the-line deduction",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.ald.deductions": {
-                "2024-01-01.2024-12-31": [
-                    "loss_ald",
-                    "self_employment_tax_ald",
-                    "student_loan_interest_ald",
-                    "early_withdrawal_penalty",
-                    "alimony_expense_ald",
-                    "health_savings_account_ald",
-                    "self_employed_health_insurance_ald",
-                    "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
-                    "qualified_adoption_assistance_expense",
-                    "us_bonds_for_higher_ed",
-                    "specified_possession_income",
-                    "puerto_rico_income",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["educator_expense"],
             }
         },
         "budget_measure": "income_tax",
@@ -1308,23 +1231,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "alimony_expense_ald_abolition",
         "name": "Alimony expense above-the-line deduction abolition",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.ald.deductions": {
-                "2024-01-01.2024-12-31": [
-                    "loss_ald",
-                    "self_employment_tax_ald",
-                    "student_loan_interest_ald",
-                    "early_withdrawal_penalty",
-                    "educator_expense",
-                    "health_savings_account_ald",
-                    "self_employed_health_insurance_ald",
-                    "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
-                    "qualified_adoption_assistance_expense",
-                    "us_bonds_for_higher_ed",
-                    "specified_possession_income",
-                    "puerto_rico_income",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["alimony_expense_ald"],
             }
         },
         "budget_measure": "income_tax",
@@ -1600,18 +1511,17 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "hr1_medicaid_humanitarian_eligibility_restoration",
         "name": "H.R.1 SS71109 Medicaid humanitarian-status restoration",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.hhs.medicaid.eligibility.eligible_immigration_statuses": {
-                "2026-10-01.2100-12-31": [
-                    "CITIZEN",
-                    "LEGAL_PERMANENT_RESIDENT",
+                "period": "2026-10-01.2100-12-31",
+                "add": [
                     "REFUGEE",
                     "ASYLEE",
                     "DEPORTATION_WITHHELD",
-                    "CUBAN_HAITIAN_ENTRANT",
                     "CONDITIONAL_ENTRANT",
                     "PAROLED_ONE_YEAR",
-                ]
+                ],
             }
         },
         "budget_measure": "medicaid_enrolled",
@@ -1683,9 +1593,17 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "hr1_aca_lawful_presence_restoration",
         "name": "H.R.1 SS71301 ACA lawful-presence list restoration",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.aca.ineligible_immigration_statuses": {
-                "2027-01-01.2100-12-31": ["DACA", "UNDOCUMENTED"]
+                "period": "2027-01-01.2100-12-31",
+                "remove": [
+                    "TPS",
+                    "REFUGEE",
+                    "ASYLEE",
+                    "DEPORTATION_WITHHELD",
+                    "PAROLED_ONE_YEAR",
+                ],
             }
         },
         "budget_measure": "aca_ptc",
@@ -1711,18 +1629,17 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "hr1_snap_humanitarian_eligibility_restoration",
         "name": "H.R.1 SS10108 SNAP humanitarian-status restoration",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.usda.snap.eligibility.eligible_immigration_statuses": {
-                "2025-07-01.2100-12-31": [
-                    "CITIZEN",
-                    "LEGAL_PERMANENT_RESIDENT",
+                "period": "2025-07-01.2100-12-31",
+                "add": [
                     "REFUGEE",
                     "ASYLEE",
                     "DEPORTATION_WITHHELD",
-                    "CUBAN_HAITIAN_ENTRANT",
                     "CONDITIONAL_ENTRANT",
                     "PAROLED_ONE_YEAR",
-                ]
+                ],
             }
         },
         "budget_measure": "snap",
@@ -1862,7 +1779,7 @@ def build_manifest() -> dict:
     }
 
     return {
-        "schema_version": 1,
+        "schema_version": US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION,
         "issue": "PolicyEngine/microcosm#368",
         "description": (
             "Declared full-coverage contract for a US release: every input "
@@ -1870,7 +1787,11 @@ def build_manifest() -> dict:
             "non-default signal, or carry a reviewed exclusion. Enforced as a "
             "hard release gate (microcosm.build.us_runtime.release_input_"
             "coverage) that generalizes assert_required_us_release_source_"
-            "columns from 5 columns to the full eCPS input surface."
+            "columns from 5 columns to the full eCPS input surface. Its "
+            "reform-coverage probes declare list-valued parameter changes as "
+            "list_edits (items removed or added), resolved against the "
+            "installed PolicyEngine-US baseline when each reform is built; "
+            "schema_version 2 refuses a whole list pinned in parameter_changes."
         ),
         "reference": reference,
         "derivation": (

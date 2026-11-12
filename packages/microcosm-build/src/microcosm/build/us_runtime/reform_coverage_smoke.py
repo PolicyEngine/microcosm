@@ -29,16 +29,27 @@ from typing import Any
 
 from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.release_input_coverage import (
+    ListParameterEdit,
     ReformCoverageProbe,
+    check_resolved_list_edit_target,
+    installed_list_parameter_baseline,
+    resolve_probe_parameter_changes,
     us_release_reform_coverage_probes,
 )
 
 __all__ = [
+    "RECORDS_REQUESTS_ONLY",
     "us_reform_coverage_smoke_gate",
 ]
 
 # simulate(reform_or_None) -> object with .calculate(measure, period).sum()
 SimulateFn = Callable[[Any], Any]
+
+#: Set to ``True`` on a ``simulate`` that only records the keys it is asked
+#: for and never applies a reform (the release tool's post-export plan dry
+#: run). The gate then passes it each probe in place of the probe's built
+#: reform, so recording resolves no list edit and needs no engine.
+RECORDS_REQUESTS_ONLY = "records_requests_only"
 
 
 def _weighted_total(simulation: Any, measure: str, period: int) -> float:
@@ -47,6 +58,21 @@ def _weighted_total(simulation: Any, measure: str, period: int) -> float:
 
 
 def _build_reform(probe: ReformCoverageProbe) -> Any:
+    """The probe's reform, its list edits resolved on the installed engine.
+
+    A list edit resolves against the installed PolicyEngine-US baseline here,
+    so an edit that no longer fits that baseline fails before anything is
+    scored. The returned reform also re-reads each edited list from the system
+    it is applied to, stretch by stretch over the edit's period, and refuses
+    to apply unless every stretch holds the baseline the edit was resolved
+    against or already the reform's own resolution
+    (:func:`check_resolved_list_edit_target`), so the resolved list can only
+    replace the baseline it was derived from.
+
+    Raises:
+        ValueError: Naming the probe, if a list edit does not fit the installed
+            baseline.
+    """
     from policyengine_core.reforms import Reform
 
     if probe.neutralized_variable:
@@ -61,7 +87,48 @@ def _build_reform(probe: ReformCoverageProbe) -> Any:
                 )
 
         return _Neutralize
-    return Reform.from_dict(dict(probe.parameter_changes), country_id="us")
+    if not probe.list_edits:
+        return Reform.from_dict(dict(probe.parameter_changes), country_id="us")
+
+    baselines: dict[str, list[str]] = {}
+
+    def installed_baseline(path: str, edit: ListParameterEdit) -> list[str]:
+        baselines[path] = installed_list_parameter_baseline(path, edit)
+        return baselines[path]
+
+    changes = resolve_probe_parameter_changes(probe, installed_baseline)
+    resolved = Reform.from_dict(changes, country_id="us")
+    probe_id, list_edits = probe.id, dict(probe.list_edits)
+    resolved_lists = {
+        path: list(changes[path][edit.period]) for path, edit in list_edits.items()
+    }
+
+    class _ResolvedListEdits(resolved):
+        resolved_list_edits = resolved_lists
+
+        def apply(self) -> None:
+            # PolicyEngine-US applies a reform set more than once while it
+            # builds a system (CountryTaxBenefitSystem applies it before and
+            # after backdating parameters, and a Simulation once more), so a
+            # stretch that already holds this reform's resolution is accepted
+            # and rewritten unchanged. Every other stretch must hold the
+            # baseline the edit resolved on.
+            for path, edit in list_edits.items():
+                try:
+                    check_resolved_list_edit_target(
+                        self.parameters,
+                        path,
+                        edit,
+                        baseline=baselines[path],
+                        resolved=resolved_lists[path],
+                    )
+                except ValueError as error:
+                    raise ValueError(
+                        f"reform-coverage probe {probe_id!r}: {error}"
+                    ) from error
+            resolved.apply(self)
+
+    return _ResolvedListEdits
 
 
 def us_reform_coverage_smoke_gate(
@@ -76,12 +143,18 @@ def us_reform_coverage_smoke_gate(
     For each probe, the budget-measure change (reform vs baseline, signed by
     ``effect_direction``) must have the declared ``expected_sign`` and magnitude
     at least ``min_abs_effect``. A zero, undersized, or wrong-signed effect means
-    the reform did not bind as declared and fails the release.
+    the reform did not bind as declared and fails the release. A probe's list
+    edits resolve against the installed engine as its reform is built; one that
+    no longer fits raises rather than scoring a different reform, and each
+    result records the resolved lists under ``list_edits``.
 
     Args:
         simulate: ``simulate(None)`` builds the baseline; ``simulate(reform)``
             builds the reformed simulation. Each result answers
-            ``.calculate(measure, period).sum()`` as a weighted total.
+            ``.calculate(measure, period).sum()`` as a weighted total. A
+            ``simulate`` whose :data:`RECORDS_REQUESTS_ONLY` attribute is true
+            only records requests: it receives each probe in place of the
+            probe's reform, and no reform is built.
         probes: Probes to run. Defaults to the shipped manifest's probe set.
         period: Default period for probes without a probe-specific period.
         name: Gate name for the manifest.
@@ -99,11 +172,12 @@ def us_reform_coverage_smoke_gate(
             "gate would pass vacuously."
         )
 
+    records_requests_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
     baseline = simulate(None)
     failures: list[str] = []
     results: dict[str, Any] = {}
     for probe in probes:
-        reform = _build_reform(probe)
+        reform = probe if records_requests_only else _build_reform(probe)
         reformed = simulate(reform)
         probe_period = int(probe.period if probe.period is not None else period)
         baseline_total = _weighted_total(baseline, probe.budget_measure, probe_period)
@@ -137,6 +211,23 @@ def us_reform_coverage_smoke_gate(
             "issue": probe.issue,
             "passed": passed,
         }
+        if probe.list_edits:
+            # Record the list each edit resolved to, so the smoke evidence
+            # names exactly what was scored against the installed engine.
+            resolved_lists = getattr(reform, "resolved_list_edits", None) or {}
+            results[probe.id]["list_edits"] = {
+                path: {
+                    "period": edit.period,
+                    "remove": list(edit.remove),
+                    "add": list(edit.add),
+                    "resolved": (
+                        None
+                        if resolved_lists.get(path) is None
+                        else list(resolved_lists[path])
+                    ),
+                }
+                for path, edit in probe.list_edits.items()
+            }
         if not passed:
             expectation = (
                 "an effect in either direction"
