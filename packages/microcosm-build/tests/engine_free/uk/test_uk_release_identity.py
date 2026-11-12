@@ -50,8 +50,8 @@ def test_uk_release_tier_rejects_quality_adjectives_and_unknown_values(
 )
 def test_exact_k_id_minting_is_retired(retired: str) -> None:
     """The exact-k minting helpers are gone: release contract version 1
-    derives a new release's id from C1's declared identity
-    (docs/release-contract.md)."""
+    renders a new release's name from the identity its manifest declares
+    (docs/release-contract.md, C1)."""
 
     assert not hasattr(release_identity, retired)
     assert not hasattr(uk_runtime, retired)
