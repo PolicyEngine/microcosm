@@ -1785,35 +1785,47 @@ def test_a_staged_dense_bundle_names_its_build_and_candidate_release_for_the_col
     )
 
 
-def _restage_one_bundle(
-    tmp_path, monkeypatch, manifest_extra, argv_extra=(), *, logbook_build_id=None
+def _one_bundle_run(
+    tmp_path,
+    monkeypatch,
+    manifest_extra,
+    *,
+    logbook_rows=None,
+    gate_report_release_id=None,
 ):
-    """Re-stage a one-output run directory; return the bundle request it handed over.
+    """A one-output run directory and the re-stage command, with its emitters.
 
-    ``logbook_build_id`` writes a Logbook spool row naming that build.
+    ``logbook_rows`` maps Logbook spool file names to the build ID each row
+    names; ``gate_report_release_id`` registers a dense local gate report
+    recording that ``release_id``. Returns the directory, the command module
+    and the list of emitters it starts.
     """
     from test_support.microcosm_build.emitter import FakeEmitterClient
     from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
 
     run_dir = tmp_path / "run"
     run_dir.mkdir()
-    dataset = run_dir / "microcosm_uk_2024_25_local.h5"
-    dataset.write_bytes(b"synthetic rows")
-    if logbook_build_id is not None:
-        (run_dir / "logbook-spool").mkdir()
-        (run_dir / "logbook-spool" / "row.json").write_text(
-            json.dumps({"build_id": logbook_build_id})
+    outputs = {}
+    files = {"dataset": ("microcosm_uk_2024_25_local.h5", b"synthetic rows")}
+    if gate_report_release_id is not None:
+        files["local_gate_report"] = (
+            "microcosm_uk_2024_25_local.local_gates.json",
+            json.dumps({"release_id": gate_report_release_id}).encode(),
         )
-    manifest = {
-        "outputs": {
-            "dataset": {
-                "path": str(dataset),
-                "sha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
-                "bytes": dataset.stat().st_size,
-            }
-        },
-        **manifest_extra,
-    }
+    for key, (name, data) in files.items():
+        (run_dir / name).write_bytes(data)
+        outputs[key] = {
+            "path": str(run_dir / name),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "bytes": len(data),
+        }
+    if logbook_rows:
+        (run_dir / "logbook-spool").mkdir()
+        for name, build_id in logbook_rows.items():
+            (run_dir / "logbook-spool" / name).write_text(
+                json.dumps({"build_id": build_id})
+            )
+    manifest = {"outputs": outputs, **manifest_extra}
     (run_dir / cli.MANIFEST_FILENAME).write_text(json.dumps(manifest))
     stager = load_tool("stage_uk_rowwise_candidate")
     hub = _FakeHub()
@@ -1824,10 +1836,145 @@ def _restage_one_bundle(
         return started[-1]
 
     monkeypatch.setattr(stager, "_start_bundle_emitter", start)
+    return run_dir, stager, started
+
+
+def _restage_one_bundle(
+    tmp_path,
+    monkeypatch,
+    manifest_extra,
+    argv_extra=(),
+    *,
+    logbook_build_id=None,
+    **run_options,
+):
+    """Re-stage a one-output run directory; return the bundle request it handed over.
+
+    ``logbook_build_id`` writes a Logbook spool row naming that build.
+    """
+    if logbook_build_id is not None:
+        run_options["logbook_rows"] = {"row.json": logbook_build_id}
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path, monkeypatch, manifest_extra, **run_options
+    )
     assert stager.main(["--run-dir", str(run_dir), *argv_extra]) == 0
     (client,) = started
     (request,) = client.bundle_requests
     return run_dir, request
+
+
+def _restage_outcome(stager, argv) -> str:
+    """``staged`` when the command returns, else the message it exits with."""
+    try:
+        stager.main(argv)
+    except SystemExit as refusal:
+        return str(refusal)
+    return "staged"
+
+
+#: Two attempts' Logbook rows in one output directory. The spool names each
+#: row by its digest, so file-name order says nothing about which came first;
+#: here the earlier attempt's row sorts last.
+TWO_ATTEMPTS = {
+    "0aaa.json": "uk-local-candidate-f100-s42-20261112T100000Z-0000000b",
+    "ffff.json": "uk-local-candidate-f100-s42-20261112T090000Z-0000000a",
+}
+
+
+def test_the_restage_tool_takes_a_dense_build_id_from_its_gate_report(
+    tmp_path, monkeypatch, capsys
+):
+    """A dense build's local gate report records its attempt ID, as the
+    dense release assembler reads it; a retried output directory's earlier
+    Logbook row does not name the build."""
+    _run_dir, request = _restage_one_bundle(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        ("--run-id", "uk-restaged-run"),
+        logbook_rows=TWO_ATTEMPTS,
+        gate_report_release_id=TWO_ATTEMPTS["0aaa.json"],
+    )
+    assert request.collector.build_id == TWO_ATTEMPTS["0aaa.json"]
+
+
+def test_the_restage_tool_refuses_logbook_rows_that_name_two_builds(
+    tmp_path, monkeypatch, capsys
+):
+    """Without a record of its own, a directory whose Logbook rows name two
+    builds does not say which built the bundle: the command stops before it
+    starts an emitter and asks for ``--build-id``."""
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        logbook_rows=TWO_ATTEMPTS,
+    )
+    outcome = _restage_outcome(
+        stager, ["--run-dir", str(run_dir), "--run-id", "uk-restaged-run"]
+    )
+    assert "name more than one build" in outcome
+    assert "--build-id" in outcome
+    assert started == []
+
+
+def test_the_restage_tool_names_the_build_given_with_build_id(
+    tmp_path, monkeypatch, capsys
+):
+    """``--build-id`` names the build when the directory's records cannot."""
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        logbook_rows=TWO_ATTEMPTS,
+    )
+    chosen = TWO_ATTEMPTS["ffff.json"]
+    outcome = _restage_outcome(
+        stager,
+        [
+            "--run-dir",
+            str(run_dir),
+            "--run-id",
+            "uk-restaged-run",
+            "--build-id",
+            chosen,
+        ],
+    )
+    assert outcome == "staged"
+    (client,) = started
+    (request,) = client.bundle_requests
+    assert request.collector.build_id == chosen
+
+
+@pytest.mark.parametrize(
+    "manifest_extra",
+    [{"build_id": "not a build id"}, {"build_id": "-starts-with-a-hyphen"}],
+)
+def test_the_restage_tool_refuses_a_build_id_before_starting_an_emitter(
+    tmp_path, monkeypatch, capsys, manifest_extra
+):
+    run_dir, stager, started = _one_bundle_run(tmp_path, monkeypatch, manifest_extra)
+    outcome = _restage_outcome(
+        stager, ["--run-dir", str(run_dir), "--run-id", "uk-attempt"]
+    )
+    assert "is not one the collector accepts" in outcome
+    assert started == []
+
+
+def test_a_build_id_the_interface_refuses_leaves_the_bundle_unnamed_with_a_warning(
+    capsys,
+):
+    """A build's staging never raises: an unusable build ID hands the bundle
+    over without provenance, and says so."""
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    assert (
+        rowwise_staging._bundle_provenance(
+            {"release_id": "microcosm-uk-2024-25-dense"}, build_id="not a build id"
+        )
+        is None
+    )
+    assert "is not one the collector accepts" in capsys.readouterr().err
 
 
 def test_the_restage_tool_names_a_national_build_and_its_release_for_the_collector(
