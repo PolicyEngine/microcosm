@@ -79,6 +79,11 @@ Dropping exactly these eight pairs from the rebuilt feed reproduces all
 `1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07`.
 The delta is exactly 3,094 rows: 3,074 ACS estimates and margins of error
 and Table 1.3's 20 cells. No pre-existing fact changes.
+The committed comparison and source listing in
+`experiments/us-feed-household-filing-status-880/` record every added key,
+its source and period, and the unchanged values and publisher hash of the
+three B4923C anchors. The ESI anchor test follows this receipt in the re-pin
+chain and checks each source's reviewed namespaces.
 
 The release compile binds eight national ACS estimates and 16 filing-status
 cells by default. The parity manifest declares the two new families
