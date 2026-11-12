@@ -1080,3 +1080,80 @@ def test_delete_old_layout_takes_none_of_the_switch_options(hub, capsys):
     assert exit_code == 1
     assert "--include" in error_output
     assert hub.main == head
+
+
+def test_delete_old_layout_reports_a_deleted_folder_no_tag_names(hub, capsys):
+    """A release-per-build folder whose name is no tag stays readable only by
+    the commit the report names, so the report lists it."""
+    switched(hub, capsys)
+    untagged = "releases/populace-uk-2023-0000000-20260101"
+    hub.seed({f"{untagged}/release_manifest.json": b"{}"}, date=LATER)
+
+    exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP)
+
+    assert exit_code == 0, error_output
+    assert f"{untagged}/release_manifest.json" in report["delete"]
+    # The June 2023 build's own folder is named by its tag, and the national
+    # release's folder held copies of tagged builds.
+    assert report.get("untagged_folders") == [untagged]
+
+
+def test_delete_old_layout_refuses_an_invalid_releases_json(hub, capsys):
+    switched(hub, capsys)
+    hub.seed({"releases.json": b"{"}, date=LATER)
+    head = hub.main
+
+    exit_code, _, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
+
+    assert exit_code == 1
+    assert "is not a valid record" in error_output
+    assert hub.main == head
+
+
+def test_delete_old_layout_refuses_a_commit_on_a_moved_head(hub, capsys, monkeypatch):
+    """The commit names the head the step read; another commit landing first
+    makes the Hub refuse it, and nothing is deleted."""
+    switched(hub, capsys)
+    real_create_commit = hub.create_commit
+
+    def another_commit_first(*args, **options):
+        hub.seed({"README.md": b"# a commit that landed first\n"}, date=LATER)
+        return real_create_commit(*args, **options)
+
+    monkeypatch.setattr(hub, "create_commit", another_commit_first)
+
+    exit_code, _, error_output = run_step(hub, capsys, DELETE_STEP, "--write")
+
+    assert exit_code == 1
+    assert "the deletion commit failed" in error_output
+    assert "microcosm_uk_2024_25.h5" in hub.files_at()
+
+
+def test_delete_old_layout_matches_root_dataset_suffixes_in_any_case(hub, capsys):
+    switched(hub, capsys)
+    hub.seed(
+        {
+            "OLD_DATASET.H5": b"rows",
+            "older.hdf5": b"rows",
+            "releases/stray.json": b"{}",
+            "notes.txt": b"kept",
+        },
+        date=LATER,
+    )
+
+    exit_code, report, error_output = run_step(hub, capsys, DELETE_STEP)
+
+    assert exit_code == 0, error_output
+    assert {"OLD_DATASET.H5", "older.hdf5", "releases/stray.json"} <= set(
+        report["delete"]
+    )
+    assert "notes.txt" in report["kept_root_files"]
+
+
+def test_the_offline_refusal_names_the_step(hub, capsys, monkeypatch):
+    """Offline, every step refuses before it builds a Hub client."""
+    exit_code = build_folder_switch.main([DELETE_STEP, UK_REPOSITORY])
+
+    error_output = capsys.readouterr().err
+    assert exit_code == 1
+    assert f"refusing to {DELETE_STEP}" in error_output
