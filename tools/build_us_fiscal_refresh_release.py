@@ -6091,6 +6091,8 @@ def _restated_ledger_filter_refusal(
         compiled = metadata.get(concept)
         if side is not None or compiled != value:
             return f"{key}={value} disagrees with compiled {concept}={compiled}"
+        if concept == "statistic" and value != "estimate":
+            return f"{key}={value} is not an ACS estimate"
         return None
     rule = RESTATED_LEDGER_FILTER_CONCEPTS.get(concept) if concept else None
     if rule is None:
@@ -13425,7 +13427,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     if telemetry is not None:
         telemetry.stage(
             "base_population_repair",
-            message="Repaired base population mass for conserved calibration.",
+            message="Repaired base population mass before fiscal calibration.",
             applied=base_population_repair.get("applied"),
             factor=base_population_repair.get("factor"),
             initial_population=base_population_repair.get("initial_population"),

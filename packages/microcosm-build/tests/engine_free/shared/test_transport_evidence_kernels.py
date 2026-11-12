@@ -147,8 +147,10 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # loan targets.
         "microcosm.build.us_runtime.fsa_student_loan_targets",
         # microcosm#880: the fiscal compiler names the stored-roster
-        # household materializer in each ACS household-type target.
+        # household materializer in each ACS household-type target. Its
+        # group-quarters constants come from the source-universe producer.
         "microcosm.build.us_runtime.household_type_targets",
+        "microcosm.build.us_runtime.spm_universe_source",
     ]
 )
 BATTERY = "toy.gates.terminal"

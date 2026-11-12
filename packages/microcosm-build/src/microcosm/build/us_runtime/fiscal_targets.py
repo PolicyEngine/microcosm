@@ -15,6 +15,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import cache
 from importlib.resources import files
+from types import MappingProxyType
 from typing import Any, Literal
 
 from microcosm.build.gates import TargetCoverageRequirement
@@ -72,6 +73,7 @@ __all__ = [
     "US_SOI_STATE_AGI_BAND_MINIMUM_LOWER_BOUND",
     "US_SOI_FISCAL_TARGET_SPECS",
     "US_SOI_FISCAL_TARGET_REFERENCES",
+    "US_SOI_SUPERSEDED_CTC_TOTAL_EXCLUSIONS",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "SimpleTaxExpenditureReform",
@@ -602,7 +604,25 @@ INDICATOR_LEDGER_TARGETS: dict[tuple[str, str], IndicatorLedgerTarget] = {
 }
 
 
+US_SOI_SUPERSEDED_CTC_TOTAL_EXCLUSIONS: Mapping[str, str] = MappingProxyType(
+    dict.fromkeys(
+        {
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+        },
+        "SOI Table 1.3 TY2023's four bound filing statuses superseded the "
+        "older Historic Table 2 national nonrefundable child and other "
+        "dependent credit count and amount. Both materialize the same "
+        "all-tax-unit CTC vector, so keeping this total would impose a competing "
+        "aggregate on that partition. Exclude this national all-AGI cell at "
+        "every vintage to prevent fallback; state totals and AGI bins retain "
+        "their existing policy (microcosm#880).",
+    )
+)
+
+
 US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
+    **US_SOI_SUPERSEDED_CTC_TOTAL_EXCLUSIONS,
     "irs_soi.ty2023.table_1_4.all.other_income_net_loss_amount": (
         "The PUF pipeline maps miscellaneous_income = E01200 (policyengine-us- "
         "data datasets/puf/puf.py), but E01200 is Form 4797 / Form 1040 line 14 "
@@ -890,8 +910,11 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
 #   incumbent_48b9d479.md). The pinned feed carries both, latest-vintage
 #   fallback selected ty2020, and #1016 kept it as the one reviewed vintage
 #   bypass until decision d179 ruled to enforce #451 at every vintage.
+# - the two national Historic Table 2 CTC totals: the newer Table 1.3
+#   filing-status partition determines both aggregates (microcosm#880).
 US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS: frozenset[str] = frozenset(
     {
+        *US_SOI_SUPERSEDED_CTC_TOTAL_EXCLUSIONS,
         "irs_soi.ty2023.table_1_4.all.other_income_net_loss_amount",
         "irs_soi.ty2023.table_1_4.all.other_income_net_loss_returns",
         "irs_soi.ty2023.table_1_4.all.other_income_net_income_amount",
@@ -3201,6 +3224,10 @@ ACS_HOUSEHOLD_TYPE_RECORD_SET_IDS = frozenset(
     for table in ("b11001", "b11003")
     for geography in ("national", "state")
 )
+_SOI_FILING_STATUS_RECORD_SET_IDS = frozenset(
+    f"irs_soi.ty2023.table_1_3.filing_status_{measure}"
+    for measure in ("returns", "agi", "ctc_returns", "ctc_amount")
+)
 
 # Bind one independent national partition, leaving the within-family age
 # splits and the implied cells as reviewed exclusions (microcosm#880).
@@ -3221,15 +3248,14 @@ _ACS_HOUSEHOLD_TYPE_BOUND_MEASURES = frozenset(
 def household_type_fact_exclusion_reason(fact: object) -> str | None:
     """Explain every unbound ACS 2024 B11001/B11003 feed cell."""
 
-    if _str_at(fact, "layout", "record_set_id") not in (
-        ACS_HOUSEHOLD_TYPE_RECORD_SET_IDS
-    ):
+    record_set = _str_at(fact, "layout", "record_set_id")
+    if record_set not in ACS_HOUSEHOLD_TYPE_RECORD_SET_IDS:
         return None
     if _geography_id(fact) == "0400000US72":
         return "Puerto Rico is outside the United States household universe."
     if _dimensions(fact).get("statistic") != "estimate":
         return "ACS margins of error describe uncertainty, not calibration levels."
-    if _geography_level(fact) != "country":
+    if record_set.endswith(".state") or _geography_level(fact) != "country":
         return (
             "State household-type cells await a separately reviewed state calibration."
         )
@@ -3241,6 +3267,8 @@ def household_type_fact_exclusion_reason(fact: object) -> str | None:
     ):
         return "These household-type record sets bind only their 2024 calendar year."
     measure_id = _measure_id(fact)
+    if measure_id.split("_")[0].lower() != record_set.split(".")[-2]:
+        return "The household-type measure must match its declared ACS table."
     if measure_id in _ACS_HOUSEHOLD_TYPE_BOUND_MEASURES:
         return None
     if measure_id.startswith("B11003_") and measure_id[7:10] in {
@@ -3295,12 +3323,15 @@ def soi_filing_status_fact_exclusion_reason(fact: object) -> str | None:
     """Keep Table 1.3's totals out of its bound filing-status partition."""
 
     record_set = _str_at(fact, "layout", "record_set_id")
-    if not record_set.startswith("irs_soi.ty2023.table_1_3.filing_status_"):
+    if record_set not in _SOI_FILING_STATUS_RECORD_SET_IDS:
         return None
     if _dimensions(fact).get("filing_status") == "all":
         if _measure_id(fact) in {"return_count", "adjusted_gross_income"}:
             return "Table 1.3's all-status cell repeats the bound Table 1.2 all-returns cell."
-        return "Table 1.3's all-status CTC cell is implied by its four bound filing statuses."
+        return (
+            "Table 1.3's all-status CTC cell is implied, up to publisher rounding, "
+            "by its four bound filing statuses."
+        )
     return None
 
 
@@ -4578,9 +4609,22 @@ US_FISCAL_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = 
     ),
     TargetCoverageRequirement(
         requirement_id="ctc_total",
-        label="Child Tax Credit total",
+        label="Nonrefundable Child Tax Credit filing-status partition",
         accepted_families=("irs_soi",),
-        required_metadata=(("target_role", "ctc_total"),),
+        required_metadata=(
+            ("source_measure_id", "ctc_amount"),
+            (
+                "ledger_layout_record_set_id",
+                "irs_soi.ty2023.table_1_3.filing_status_ctc_amount",
+            ),
+            ("ledger_geography_level", "country"),
+        ),
+        min_matches=4,
+        notes=(
+            "Table 1.3's four statuses imply the national nonrefundable CTC "
+            "amount; its bound partition replaces the older national Historic "
+            "Table 2 aggregate, with the same all-tax-unit universe."
+        ),
     ),
     TargetCoverageRequirement(
         requirement_id="aca_marketplace",

@@ -4,10 +4,18 @@ from copy import deepcopy
 
 import pytest
 
+from microcosm.build.gates import target_profile_coverage_gate
 from microcosm.build.us_runtime.fiscal_targets import (
+    US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    US_SOI_SUPERSEDED_CTC_TOTAL_EXCLUSIONS,
     compile_us_fiscal_target_registry,
     household_type_fact_exclusion_reason,
     soi_filing_status_fact_exclusion_reason,
+    us_fiscal_target_exclusion_receipt,
+)
+from microcosm.data.us_critical_targets import (
+    US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
+    US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS,
 )
 from test_support.microcosm_build.us_batched_target_materialization import (
     _load_builder_module,
@@ -167,6 +175,24 @@ def test_household_dispatch_does_not_admit_other_acs_tables_or_periods() -> None
     )
 
 
+@pytest.mark.parametrize(
+    ("record_set", "reason"),
+    [
+        ("census_acs.acs1_2024.b11001.state", "State household-type"),
+        ("census_acs.acs1_2024.b11003.national", "declared ACS table"),
+    ],
+)
+def test_household_record_set_scope_cannot_be_bypassed_by_a_country_geography(
+    record_set: str, reason: str
+) -> None:
+    fact = household_fact("B11001_003E", "married_couple_family", record_set=record_set)
+    assert reason in household_type_fact_exclusion_reason(fact)
+    registry = compile_us_fiscal_target_registry(
+        [*packaged_reference_facts(), fact], allow_unaged_dollar_targets=True
+    )
+    assert not any(spec.family == "census_households" for spec in registry.specs)
+
+
 def filing_status_fact(status: str, measure: str) -> dict[str, object]:
     group = {
         "return_count": "returns",
@@ -218,6 +244,11 @@ def test_soi_sixteen_status_cells_bind_and_all_four_totals_are_excluded() -> Non
     specs = [spec for spec in registry.specs if ".table_1_3." in spec.name]
 
     assert len(specs) == 16
+    critical_ctc = {
+        requirement.requirement_id: requirement
+        for requirement in US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS
+        if requirement.requirement_id in {"ctc_amount", "ctc_claims"}
+    }
     for spec in specs:
         assert spec.metadata["materializer"] == "irs_soi_slice"
         assert spec.metadata["filing_status"] in statuses.values()
@@ -232,6 +263,18 @@ def test_soi_sixteen_status_cells_bind_and_all_four_totals_are_excluded() -> Non
             if spec.metadata["source_measure_id"] in {"return_count", "ctc_claims"}
             else "sum"
         )
+        measure = spec.metadata["source_measure_id"]
+        if measure in critical_ctc:
+            requirement = critical_ctc[measure]
+            assert requirement.matches(
+                name=f"{spec.name}@2024",
+                family=spec.family,
+                target_role=spec.metadata["target_role"],
+            )
+            assert (
+                requirement.max_abs_relative_error
+                == US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR
+            )
     for fact in facts:
         reason = soi_filing_status_fact_exclusion_reason(fact)
         if fact["dimensions"]["filing_status"] == "all":
@@ -243,3 +286,84 @@ def test_soi_sixteen_status_cells_bind_and_all_four_totals_are_excluded() -> Non
             ) in reason
         else:
             assert reason is None
+    for measure, requirement in critical_ctc.items():
+        assert requirement.matches(
+            name=f"irs_soi.ty2022.historic_table_2.us.all.{measure}@2024"
+        )
+
+
+def test_soi_total_exclusions_apply_only_to_the_four_reviewed_record_sets() -> None:
+    fact = filing_status_fact("all", "return_count")
+    for record_set in (
+        "irs_soi.ty2022.table_1_3.filing_status_returns",
+        "irs_soi.ty2023.table_1_3.filing_status_unreviewed",
+        "irs_soi.ty2023.table_1_2.all_returns",
+    ):
+        fact["layout"]["record_set_id"] = record_set
+        assert soi_filing_status_fact_exclusion_reason(fact) is None
+
+
+def test_soi_status_partition_supersedes_only_national_ht2_ctc_totals() -> None:
+    statuses = (
+        "single",
+        "head_of_household",
+        "married_filing_separately",
+        "married_filing_jointly_surviving_spouse",
+    )
+    status_facts = [
+        filing_status_fact(status, measure)
+        for status in statuses
+        for measure in ("ctc_claims", "ctc_amount")
+    ]
+    older = []
+    for year in (2021, 2022):
+        for measure in ("ctc_claims", "ctc_amount"):
+            fact = filing_status_fact("all", measure)
+            record_set = f"irs_soi.ty{year}.historic_table_2.us"
+            fact["layout"]["record_set_id"] = record_set
+            fact["lineage"]["source_record_id"] = f"{record_set}.all.{measure}"
+            fact["period"]["value"] = year
+            older.append(fact)
+    # Different geography and a different measure remain in scope: the new
+    # rule replaces exactly two national aggregates, not the HT2 family.
+    state = deepcopy(older[-1])
+    state["layout"]["record_set_id"] = "irs_soi.ty2022.historic_table_2.state_broad.ca"
+    state["lineage"]["source_record_id"] = (
+        f"{state['layout']['record_set_id']}.all.ctc_amount"
+    )
+    state["geography"] = {"level": "state", "id": "0400000US06", "name": "California"}
+    other_measure = deepcopy(older[-1])
+    other_measure["layout"]["measure_id"] = "actc_amount"
+    other_measure["observed_measure"]["source_measure_id"] = "actc_amount"
+    other_measure["lineage"]["source_record_id"] = (
+        "irs_soi.ty2022.historic_table_2.us.all.actc_amount"
+    )
+    facts = [*packaged_reference_facts(), *status_facts, *older, state, other_measure]
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+    names = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
+    assert not any(fact["lineage"]["source_record_id"] in names for fact in older)
+    assert all(fact["lineage"]["source_record_id"] in names for fact in status_facts)
+    assert state["lineage"]["source_record_id"] in names
+    assert other_measure["lineage"]["source_record_id"] in names
+    assert len(US_SOI_SUPERSEDED_CTC_TOTAL_EXCLUSIONS) == 2
+    receipt = us_fiscal_target_exclusion_receipt(facts)
+    excluded = receipt["rules"]["all_vintage_reviewed_exclusion"]["source_record_ids"]
+    assert all(fact["lineage"]["source_record_id"] in excluded for fact in older)
+    requirement = next(
+        requirement
+        for requirement in US_FISCAL_TARGET_COVERAGE_REQUIREMENTS
+        if requirement.requirement_id == "ctc_total"
+    )
+    assert target_profile_coverage_gate(registry.specs, [requirement]).passed
+    amounts = [
+        spec
+        for spec in registry.specs
+        if spec.metadata.get("ledger_layout_record_set_id")
+        == "irs_soi.ty2023.table_1_3.filing_status_ctc_amount"
+    ]
+    assert len(amounts) == 4
+    for missing in amounts:
+        partial = [spec for spec in registry.specs if spec.name != missing.name]
+        assert not target_profile_coverage_gate(partial, [requirement]).passed

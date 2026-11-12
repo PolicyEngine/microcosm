@@ -58,7 +58,10 @@ with its reason. The 2023 ACS reviewed exclusion remains separate from these
 The baseline Route A `national_state` surface binds 6,102 targets after CMS
 Medicaid substitutions, with dollar aging enabled and the optional FSA family
 disabled. Its full surface has 33,250 targets; district selection removes
-27,148. No existing target counts all households, household types or a
+27,148. The new surface binds 6,124 targets (33,272 before district
+selection): 24 additions replace two superseded national CTC aggregates,
+a net increase of 22. All other target names, values and metadata stay
+unchanged. No existing target counts all households, household types or a
 specific filing status.
 
 | Existing record sets | Cells and geography | Source period | Relation to new cells |
@@ -69,14 +72,21 @@ specific filing status.
 | `irs_soi.ty2023.historic_table_2.state_agi.<postal>` | All-status return counts, four high-AGI bands per state/DC, rebased to state controls | TY2023 | Income distribution, rather than filing-status distribution |
 | `irs_soi.ty2023.state_2022.us.return_count` and `.eitc_three_or_more_children_returns` | National all returns and EITC returns with three or more qualifying children | TY2023 | All-status total or receipt subset |
 | `irs_soi.ty2023.table_1_1`, `.table_1_2.all_returns`, `.table_4_3.all_returns_excluding_dependents` | National all-status return counts, including the Table 4.3 dependent exclusion | TY2023 | No status split; Table 1.2 supplies the duplicated all-status returns and AGI |
-| `irs_soi.ty2022.historic_table_2.us` | National all-status CTC claims and amount | TY2022 | Different source vintage from Table 1.3's TY2023 cells; dollars use existing aging |
+| `irs_soi.ty2022.historic_table_2.us` | National all-status CTC claims and amount | TY2022 | Superseded by the newer Table 1.3 status partition; both old aggregates receive reviewed exclusions |
 
 The new eight ACS cells add household composition constraints; the sixteen
 SOI cells split the existing family's universe by status. The two Table 1.3
-all-status duplicates stay out of the registry. The older HT2 CTC constraints
-remain because their vintage differs from the new cells. This change does
-not settle the pre-existing choice to carry those older all-status controls
-beside later national SOI tables.
+all-status duplicates stay out of the registry. The old national HT2 CTC
+count and amount measure the same nonrefundable
+credit vectors as the sums of the new status cells. Different vintages give
+different totals (38,069,010 TY2022 claims versus 38,949,527 TY2023 claims),
+so retaining both would create conflicting constraints. The newer status
+partition replaces these two aggregates. This corrects the design's missing
+overlap and explains why the net count increase is 22 rather than 24.
+The profile gate now requires all four national Table 1.3 CTC amount cells.
+The existing CTC critical-fit selectors cover each new status count and
+amount, retaining their 15% limit and the older names for historical releases.
+Other pre-existing SOI vintage choices stay outside this change.
 
 ## Materializer and household universe
 
@@ -166,6 +176,12 @@ while keeping Table 1.2's all-unit total, would force nonfilers' weight to
 zero if the totals fit exactly. Whether the entire SOI family should instead
 count filed returns needs a separate change and receipt. The new constraints
 do not establish that all tax units are filed returns.
+
+The separate compatibility-recertification drift scorer currently refuses
+SOI filing-status filters (`microcosm.data.compatibility_recertification`,
+`_soi_row_metric`). It needs support before a future compatibility
+recertification can score these new critical rows. The from-scratch release
+scores them through its existing SOI slice materializer.
 
 B11007 (households with people 65 and over) and B12002 (marital status by age
 and sex) remain follow-ups from microcosm#1212. The calibration receipt and

@@ -216,6 +216,12 @@ def test_release_filter_guard_checks_household_filter_attestation(field: str) ->
     metadata["materializer"] = "policyengine_variable"
     with pytest.raises(RuntimeError, match=f"ledger_filter_{field}"):
         builder._assert_supported_ledger_filter_metadata((spec,))
+    if field == "statistic":
+        metadata["materializer"] = HOUSEHOLD_TYPE_MATERIALIZER
+        metadata["statistic"] = "margin_of_error"
+        metadata["ledger_filter_statistic"] = "margin_of_error"
+        with pytest.raises(RuntimeError, match="not an ACS estimate"):
+            builder._assert_supported_ledger_filter_metadata((spec,))
 
 
 @pytest.mark.parametrize("batch_size", [1, 3, None])

@@ -1308,6 +1308,29 @@ def complete_program_rows() -> list[dict[str, object]]:
     for role in REFERENCE_PROGRAM_TARGET_ROLES:
         if role == "federal_income_tax_total":
             continue
+        if role == "ctc_total":
+            record_set = "irs_soi.ty2023.table_1_3.filing_status_ctc_amount"
+            for status in (
+                "single",
+                "head_of_household",
+                "married_filing_separately",
+                "married_filing_jointly_surviving_spouse",
+            ):
+                rows.append(
+                    {
+                        "name": f"{record_set}.{status}.ctc_amount",
+                        "measure": f"{record_set}.{status}.ctc_amount",
+                        "family": "irs_soi",
+                        "metadata": {
+                            "target_role": "soi_fiscal_distribution",
+                            "source_measure_id": "ctc_amount",
+                            "ledger_layout_record_set_id": record_set,
+                            "ledger_geography_level": "country",
+                            "filing_status": status,
+                        },
+                    }
+                )
+            continue
         if role.startswith("ssa_") or role in {
             "social_security_total",
             "ssi_total",

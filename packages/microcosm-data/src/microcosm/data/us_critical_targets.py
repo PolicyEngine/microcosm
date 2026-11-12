@@ -122,6 +122,8 @@ US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         label="Child Tax Credit amount",
         max_abs_relative_error=US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
         names=("irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024",),
+        name_substrings=("irs_soi.ty2023.table_1_3.filing_status_ctc_amount.",),
+        name_suffixes=(".ctc_amount@2024",),
         families=("irs_soi",),
         target_roles=("ctc_total",),
     ),
@@ -130,6 +132,8 @@ US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS = (
         label="Child Tax Credit claims",
         max_abs_relative_error=US_CRITICAL_CREDIT_MAX_ABS_RELATIVE_ERROR,
         names=("irs_soi.ty2022.historic_table_2.us.all.ctc_claims@2024",),
+        name_substrings=("irs_soi.ty2023.table_1_3.filing_status_ctc_returns.",),
+        name_suffixes=(".ctc_claims@2024",),
     ),
     USCriticalTargetFitRequirement(
         requirement_id="actc_amount",
