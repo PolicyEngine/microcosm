@@ -45,10 +45,15 @@ engine-uk-after-merge job on pushes to main.
   fits at K = 4, and none at one clone.
 
 It cannot catch within-batch int32 collisions: ids past 2**31 reach the engine
-at K = 1 already, and these households are too few (a licensed build's
-per-batch int32 count is that check). Invented data only; assertion messages
-give K, stages, columns, counts and booleans, never a weight, a value or an
-id.
+at K = 1 already, and these households are too few. The adapter's rank rule
+handles them (microcosm.frame.adapters.engine_identifiers): an entity whose
+ids would repeat once stored takes 1 plus each id's rank within its batch,
+and microcosm-frame's test_engine_identifiers.py and
+test_policyengine_uk_identifiers.py pin that on invented frames, so a
+licensed build's per-batch int32 count is no longer the only check. Invented
+data only;
+assertion messages give K, stages, columns, counts and booleans, never a
+weight, a value or an id.
 """
 
 from __future__ import annotations
