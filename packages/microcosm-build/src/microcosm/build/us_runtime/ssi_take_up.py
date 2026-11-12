@@ -59,7 +59,6 @@ diagnosed on release weights without rewriting the persisted decisions.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
@@ -71,6 +70,7 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PERSON_SUPPORT_CHANNEL_COLUMN,
@@ -501,15 +501,7 @@ def _normalize_targets(targets: Mapping[str, float]) -> dict[str, float]:
 
 
 def _stable_source_draw(source_id: str, *, seed: int) -> float:
-    value = int.from_bytes(
-        hashlib.blake2b(
-            f"{seed}:{_OUTPUT}:{source_id}".encode(),
-            digest_size=8,
-        ).digest(),
-        byteorder="big",
-        signed=False,
-    )
-    return value / float(2**64)
+    return float(stable_identity_uniforms((source_id,), seed=seed, salt=_OUTPUT)[0])
 
 
 def us_ssi_take_up_reporter_source_ids(frame: Frame) -> frozenset[str]:

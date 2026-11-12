@@ -26,7 +26,6 @@ idempotent for the same build seed.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 from importlib.resources import files
 
@@ -45,6 +44,7 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.support_provenance import (
     has_assembled_support_metadata,
     has_support_role_metadata,
@@ -412,22 +412,7 @@ def _stable_person_keys(person: pd.DataFrame) -> pd.Series:
 
 def _stable_person_draws(person: pd.DataFrame, *, seed: int) -> np.ndarray:
     keys = _stable_person_keys(person)
-    denominator = float(2**64)
-    return np.asarray(
-        [
-            int.from_bytes(
-                hashlib.blake2b(
-                    f"{seed}:{_DRAW_SALT}:{key}".encode(),
-                    digest_size=8,
-                ).digest(),
-                byteorder="big",
-                signed=False,
-            )
-            / denominator
-            for key in keys
-        ],
-        dtype=np.float64,
-    )
+    return stable_identity_uniforms(keys, seed=seed, salt=_DRAW_SALT)
 
 
 def derive_us_wic_claim_from_manifest(

@@ -67,6 +67,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.acs_inputs import _nullable_source_codes
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.acs_release_predictors import (
@@ -388,22 +389,7 @@ def _acs_draw_keys(household: pd.DataFrame, rows: pd.DataFrame) -> pd.Series:
 def _keyed_uniforms(keys: Sequence[str], *, seed: int, stream: str) -> np.ndarray:
     """Seeded blake2b uniforms in ``[0, 1)``, one per key."""
 
-    denominator = float(2**64)
-    return np.asarray(
-        [
-            int.from_bytes(
-                hashlib.blake2b(
-                    f"{seed}:{_DRAW_SALT}:{stream}:{key}".encode(),
-                    digest_size=8,
-                ).digest(),
-                byteorder="big",
-                signed=False,
-            )
-            / denominator
-            for key in keys
-        ],
-        dtype=np.float64,
-    )
+    return stable_identity_uniforms(keys, seed=seed, salt=f"{_DRAW_SALT}:{stream}")
 
 
 def _assignment_sha256(person_ids: np.ndarray, values: np.ndarray) -> str:

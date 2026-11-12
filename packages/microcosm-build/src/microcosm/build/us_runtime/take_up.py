@@ -40,7 +40,6 @@ deliberately left unseeded until a rate is sourced.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +48,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.support_provenance import (
     support_source_id_column,
 )
@@ -121,7 +121,9 @@ def _stable_unit_draws(
     When the frame carries source-identity columns (a unit's origin ASEC year,
     household, and smallest person id) the draw keys on them, so support-channel
     clones of one source unit — which share that identity — always draw
-    together. Frames without source columns key on the entity id itself.
+    together. Frames without source columns key on the entity id itself. The
+    draw is :func:`~microcosm.build.stochastic_assignment.stable_identity_uniforms`
+    salted with the program variable.
     """
     entity = id_column.removesuffix("_id")
     source_id_column = support_source_id_column(entity)
@@ -141,22 +143,7 @@ def _stable_unit_draws(
             + units["source_person_id"].astype(str)
         )
         keys = keys.where(~complete_identity, source_keys)
-    denominator = float(2**64)
-    return np.asarray(
-        [
-            int.from_bytes(
-                hashlib.blake2b(
-                    f"{seed}:{variable}:{key}".encode(),
-                    digest_size=8,
-                ).digest(),
-                byteorder="big",
-                signed=False,
-            )
-            / denominator
-            for key in keys
-        ],
-        dtype=np.float64,
-    )
+    return stable_identity_uniforms(keys, seed=seed, salt=variable)
 
 
 def _units_with_source_identity(frame: Frame, entity: str) -> pd.DataFrame:
