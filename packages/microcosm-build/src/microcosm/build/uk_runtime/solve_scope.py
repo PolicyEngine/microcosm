@@ -18,13 +18,21 @@ contract pins its digest.
 The names are literals rather than imports of the register constants
 (``weighted_integrity``), which import the gate machinery; a test holds the
 two in lockstep with the ``gates.json`` resource parameters.
+
+The land side of the stock cell table (microcosm#1524) leaves the
+fingerprint too, as :data:`UK_POST_SOLVE_RESOURCES`: its building costs, its
+rollups by authority and constituency, and its provenance. No solve module
+reads them, and a rebuild of the land, which the level's inputs from ONS
+will prompt, must not re-key the solve. The stock cells' value block stays
+in, since the frame's home values will be read from it. Membership is the
+same claim as for the gate-only registers, and the same suite tests it.
 """
 
 from __future__ import annotations
 
 from microcosm.build import country_spec
 
-__all__ = ["UK_GATE_ONLY_RESOURCES", "uk_solve_fingerprint"]
+__all__ = ["UK_GATE_ONLY_RESOURCES", "UK_POST_SOLVE_RESOURCES", "uk_solve_fingerprint"]
 
 UK_GATE_ONLY_RESOURCES: frozenset[str] = frozenset(
     {
@@ -41,13 +49,27 @@ UK_GATE_ONLY_RESOURCES: frozenset[str] = frozenset(
     }
 )
 
+UK_POST_SOLVE_RESOURCES: frozenset[str] = frozenset(
+    {
+        # The stock cell table's building costs and central land per cell.
+        "stock_cells_structure.json",
+        # Land and stock value by authority and constituency, every variant.
+        "la_land_shares.json",
+        "constituency_land_totals.json",
+        # The inputs, level, checks and measurements of that build.
+        "stock_cells.provenance.json",
+    }
+)
+
 
 def uk_solve_fingerprint(spec: country_spec.ResolvedCountrySpec | None = None) -> str:
-    """The UK country fingerprint without the gate-only registers.
+    """The UK country fingerprint without the gate-only and post-solve resources.
 
     ``spec`` defaults to the packaged UK spec, looked up when called so a
     test can substitute one.
     """
 
     resolved = country_spec.load_country_spec("uk") if spec is None else spec
-    return resolved.fingerprint_excluding(UK_GATE_ONLY_RESOURCES)
+    return resolved.fingerprint_excluding(
+        UK_GATE_ONLY_RESOURCES | UK_POST_SOLVE_RESOURCES
+    )

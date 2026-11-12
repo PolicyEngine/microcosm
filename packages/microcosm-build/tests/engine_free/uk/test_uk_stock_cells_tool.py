@@ -976,6 +976,51 @@ def test_discover_prints_the_headers_against_the_declarations(built, tmp_path) -
     assert report["readme"]["member"] == "856542_bundle_1/Readme .txt"
 
 
+def test_the_loaders_accept_the_built_resources_and_their_digests_chain(built) -> None:
+    from microcosm.build.uk_runtime import stock_cells
+
+    tool, _, _, (first, _) = built
+
+    def raw(name: str) -> bytes:
+        return (first / tool.RESOURCES[name]).read_bytes()
+
+    value = stock_cells.load_uk_stock_cells_value(raw("value"))
+    structure = stock_cells.load_uk_stock_cells_structure(raw("structure"), value=value)
+    authorities = stock_cells.load_uk_la_land_shares(raw("authorities"))
+    seats = stock_cells.load_uk_constituency_land_totals(raw("constituencies"))
+    provenance = stock_cells.load_uk_stock_cells_provenance(raw("provenance"))
+    assert structure.value_block_sha256 == value.digest
+    digests = provenance["digests"]
+    assert digests["value_block_sha256"] == value.digest
+    assert digests["structure_block_sha256"] == structure.digest
+    for name in ("authorities", "constituencies"):
+        payload = json.loads(raw(name))
+        assert digests[f"{name}_sha256"] == stock_cells.resource_digest(payload)
+    assert (
+        authorities.digests
+        == seats.digests
+        == {k: digests[k] for k in ("value_block_sha256", "structure_block_sha256")}
+    )
+    # λ is the loader's, and lies in [0, 1] under every variant.
+    for name, share in authorities.land_share.items():
+        assert np.all(share >= 0) and np.all(share <= 1), name
+    # The MSOA table lets the rollups be checked from the files alone.
+    land = value.private_count * structure.land_per_home
+    by_authority = pd.Series(land).groupby(value.authority_of_rows()).sum()
+    for i, code in enumerate(authorities.codes):
+        count, _ = value.social[code]
+        social_land = structure.social[code][3]
+        assert by_authority[code] + count * social_land == pytest.approx(
+            authorities.land["central"][i], rel=1e-6, abs=2
+        )
+    with pytest.raises(ValueError, match="another value block"):
+        other = json.loads(raw("structure"))
+        other["value_block_sha256"] = "0" * 64
+        stock_cells.load_uk_stock_cells_structure(
+            json.dumps(other).encode(), value=value
+        )
+
+
 def test_a_level_input_the_feed_carries_in_another_shape_is_refused() -> None:
     tool = _load_tool()
     spec = tool.declared.LEVEL_INPUTS["dwellings_gross_capital_stock"]

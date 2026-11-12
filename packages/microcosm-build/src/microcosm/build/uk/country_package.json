@@ -328,6 +328,31 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "stock_cells_value.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "stock_cells_structure.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "la_land_shares.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "constituency_land_totals.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "stock_cells.provenance.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "source_stages.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
