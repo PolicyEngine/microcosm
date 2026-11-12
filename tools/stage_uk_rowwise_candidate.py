@@ -64,9 +64,11 @@ The hand-over names the build for the collector, as the build's own does
 report records (a dense build's), else ``--build-id``, which may not
 contradict either, else the one build its Logbook rows name. Rows naming
 more than one build stop the command before it starts an emitter, and a
-directory with none of these is named by the run ID. Without ``--run-id``
-or a staged record, the bundle is staged under the same build ID. The
-release is the manifest's ``release_id``.
+directory with none of these is named by the run ID. Without ``--run-id``,
+the bundle is staged under the run ID of the manifest's staged record, else
+the one ``staged_manifest.json`` records, else the same build ID; so
+``--local-only`` stops on those rows too. The release is the manifest's
+``release_id``.
 The emitter then submits the bundle's calibration diagnostics to the
 collector once the commit lands, while its collector submissions are on. A
 hand-over the command resumes keeps what the build named.
@@ -93,6 +95,7 @@ from microcosm.build.staging_dataset import (
     RESTAGE_WAIT_SECONDS,
     RETRYING_ERROR_CODES,
     SHA256SUMS_FILENAME,
+    STAGED_MANIFEST_SCHEMA,
     StagedBundleHandOver,
     StagedDatasetBundle,
     StagedDatasetDelivery,
@@ -170,7 +173,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--run-id",
         help=(
             "Staged run id; defaults to the manifest's staged_dataset.run_id, "
-            "then the build ID (see --build-id), then the directory name."
+            "then the run_id staged_manifest.json records, then the build ID "
+            "(see --build-id), then the directory name."
         ),
     )
     parser.add_argument(
@@ -181,8 +185,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "under. Defaults to the manifest's build_id, then the release_id "
             "its local gate report records, then the one build the Logbook "
             "rows name, then the run ID. Needed when the rows name more than "
-            "one build and nothing else records one; refused when it differs "
-            "from the one the directory records."
+            "one build and nothing else records one (it is not compared with "
+            "the rows); refused when it differs from the one the directory "
+            "records."
         ),
     )
     parser.add_argument(
@@ -314,21 +319,50 @@ def _build_id(run_dir: Path, manifest: dict, given: str | None = None) -> str | 
             f"error: the Logbook rows in {run_dir / 'logbook-spool'} name more "
             f"than one build ({', '.join(sorted(named))}) and nothing else in "
             "the directory records which built this bundle; pass --build-id "
-            "with that build's attempt ID. Nothing was handed over."
+            "with that build's attempt ID (with --local-only, --run-id also "
+            "names the run). Nothing was handed over."
         )
     return next(iter(named), None)
 
 
-def _default_run_id(run_dir: Path, manifest: dict, given_build: str | None) -> str:
-    """The run ID a bundle is staged under: the staged record's, else the build's.
+def _sidecar_run_id(run_dir: Path) -> str | None:
+    """The run ID the directory's ``staged_manifest.json`` records, if any.
 
-    A directory that names no build is staged under its own name.
+    The build writes it before its hand-over, under the run ID it staged
+    with (``--staging-run-id`` included), so it survives a build interrupted
+    before the manifest gained its staged record.
+    """
+
+    try:
+        sidecar = json.loads(
+            (run_dir / "staged_manifest.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return None
+    if not isinstance(sidecar, dict) or sidecar.get("schema_name") != (
+        STAGED_MANIFEST_SCHEMA
+    ):
+        return None
+    run_id = sidecar.get("run_id")
+    return run_id if isinstance(run_id, str) and run_id else None
+
+
+def _default_run_id(run_dir: Path, manifest: dict, given_build: str | None) -> str:
+    """The run ID a bundle is staged under.
+
+    The staged record's, else the one ``staged_manifest.json`` records, else
+    the build's ID; a directory that names no build is staged under its own
+    name.
     """
 
     staged = manifest.get("staged_dataset")
     if isinstance(staged, dict) and staged.get("run_id"):
         return str(staged["run_id"])
-    return _build_id(run_dir, manifest, given_build) or run_dir.name
+    return (
+        _sidecar_run_id(run_dir)
+        or _build_id(run_dir, manifest, given_build)
+        or run_dir.name
+    )
 
 
 def _rewrite_manifest(path: Path, manifest: dict) -> None:
