@@ -230,12 +230,18 @@ VALUE_VARIANTS: tuple[dict[str, object], ...] = (
 )
 #: MHCLG's pattern across authorities: land per new home × dwellings, each
 #: variant scaled to the central land total, capped at value and rescaled.
+#: Each variant changes the central entry's settings it names. MHCLG
+#: publishes no value for the Isles of Scilly, which takes Cornwall's in
+#: the central case and is flagged (the issue's rule); the last variant
+#: leaves it without a value instead.
 MHCLG_VARIANTS: tuple[dict[str, object], ...] = (
     {
         "name": "central",
         "sheet": "floor_adjusted",
         "density": "medium",
         "percentile": 50,
+        "density_factor": 1.0,
+        "scilly": "cornwall",
     },
     {"name": "density_minus_25", "density_factor": 0.75},
     {"name": "density_plus_25", "density_factor": 1.25},
@@ -244,7 +250,7 @@ MHCLG_VARIANTS: tuple[dict[str, object], ...] = (
     {"name": "price_p25", "percentile": 25},
     {"name": "price_p75", "percentile": 75},
     {"name": "before_floor", "sheet": "before_floor"},
-    {"name": "scilly_from_cornwall", "scilly": "cornwall"},
+    {"name": "scilly_unimputed", "scilly": "none"},
 )
 MHCLG_SHEETS: dict[str, str] = {
     "floor_adjusted": "mhclg.residential_land_value_floor_adjusted",
