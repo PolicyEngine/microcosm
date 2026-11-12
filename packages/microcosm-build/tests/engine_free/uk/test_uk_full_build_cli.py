@@ -2042,6 +2042,71 @@ def test_the_restage_tool_notes_a_build_named_by_its_run_id(
     assert "names the build by its run ID, uk-attempt" in capsys.readouterr().err
 
 
+def test_the_restage_tool_keeps_the_staging_run_id_its_sidecar_records(
+    tmp_path, monkeypatch, capsys
+):
+    """A build staged under ``--staging-run-id`` whose manifest has no staged
+    record (interrupted during its upload wait) still names that run in its
+    ``staged_manifest.json``; a re-stage keeps it, and names the build by its
+    attempt ID."""
+    attempt = TWO_ATTEMPTS["0aaa.json"]
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        logbook_rows={"0aaa.json": attempt},
+        gate_report_release_id=attempt,
+    )
+    (run_dir / "staged_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_name": "microcosm.staged-dataset.manifest",
+                "run_id": "uk-dense-staging-run",
+            }
+        )
+    )
+    assert _restage_outcome(stager, ["--run-dir", str(run_dir)]) == "staged"
+    (client,) = started
+    (request,) = client.bundle_requests
+    assert request.run_id == "uk-dense-staging-run"
+    assert request.collector.build_id == attempt
+
+
+def test_local_only_also_stops_on_rows_that_name_two_builds(
+    tmp_path, monkeypatch, capsys
+):
+    """Without a run ID or a recorded build, the run ID is unknown even for a
+    local-only re-stage; ``--run-id`` names it."""
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        logbook_rows=TWO_ATTEMPTS,
+    )
+    outcome = _restage_outcome(stager, ["--run-dir", str(run_dir), "--local-only"])
+    assert "name more than one build" in outcome and "--run-id" in outcome
+    named = _restage_outcome(
+        stager,
+        ["--run-dir", str(run_dir), "--local-only", "--run-id", "uk-attempt"],
+    )
+    assert named == "staged"
+    assert started == []
+
+
+def test_the_restage_tool_accepts_a_build_id_equal_to_the_recorded_one(
+    tmp_path, monkeypatch, capsys
+):
+    recorded = "uk-frs-calibration-attempt-20261112T090000Z-0badcafe"
+    _run_dir, request = _restage_one_bundle(
+        tmp_path,
+        monkeypatch,
+        {"build_id": recorded, "release_id": "microcosm-uk-2024-25-national"},
+        ("--build-id", recorded),
+    )
+    assert request.collector.build_id == recorded
+    assert request.run_id == recorded
+
+
 def test_a_build_id_the_interface_refuses_leaves_the_bundle_unnamed_with_a_warning(
     capsys,
 ):
