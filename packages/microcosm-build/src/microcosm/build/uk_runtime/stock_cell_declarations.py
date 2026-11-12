@@ -236,13 +236,21 @@ LEVEL_INPUTS: dict[str, dict[str, object]] = {
         "parameter": "--dwellings-whole-economy-2021-gbp",
         "request": "PolicyEngine/chronicle#438, item 1",
     },
+    # ONS's capital stocks of 27 November 2025, Tables 2.1.1 (net, MJF8) and
+    # 1.1.1 (gross, MJF7), total dwellings excluding land, current prices;
+    # the ids are those of ons-capital-stocks-dwellings-2025 in
+    # PolicyEngine/chronicle#439.
     "dwellings_net_capital_stock": {
-        "concept": None,
+        "concept": "ons.mjf8",
+        "spec_prefix": "ons.capital_stocks2025.",
+        "period": "2024",
         "parameter": "--dwellings-net-capital-stock-gbp",
         "request": "PolicyEngine/chronicle#438, item 2",
     },
     "dwellings_gross_capital_stock": {
-        "concept": None,
+        "concept": "ons.mjf7",
+        "spec_prefix": "ons.capital_stocks2025.",
+        "period": "2024",
         "parameter": "--dwellings-gross-capital-stock-gbp",
         "request": "PolicyEngine/chronicle#438, item 2",
     },

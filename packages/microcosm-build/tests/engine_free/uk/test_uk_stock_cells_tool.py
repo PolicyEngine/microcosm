@@ -974,3 +974,44 @@ def test_discover_prints_the_headers_against_the_declarations(built, tmp_path) -
     assert certificates["declared_missing"] == []
     assert "error" not in report["ctsop3"] and "error" not in report["ctsop4"]
     assert report["readme"]["member"] == "856542_bundle_1/Readme .txt"
+
+
+def test_a_level_input_the_feed_carries_in_another_shape_is_refused() -> None:
+    tool = _load_tool()
+    spec = tool.declared.LEVEL_INPUTS["dwellings_gross_capital_stock"]
+    args = type("Args", (), {})()
+    for name in tool.declared.LEVEL_INPUTS:
+        setattr(args, f"level_{name}", None)
+    gross = 4_632e9
+    prefix = f"{spec['spec_prefix']}dwellings.gross.total_economy.cy2024.v1"
+
+    def fact(**changes):
+        base = {"spec": prefix, "period": int(spec["period"])}
+        dims = changes.pop("dims", {})
+        return _fact(
+            spec["concept"],
+            "K02000001",
+            gross,
+            level="country",
+            **base | changes,
+            **dims,
+        )
+
+    resolved = tool._level_inputs(args, [fact()])
+    assert resolved["dwellings_gross_capital_stock"]["status"] == "feed"
+    assert resolved["dwellings_gross_capital_stock"]["value"] == gross
+    # Another year alone is not the input.
+    assert (
+        tool._level_inputs(args, [fact(period=2023)])["dwellings_gross_capital_stock"][
+            "status"
+        ]
+        == "absent"
+    )
+    # The right series and year under another prefix, or with a dimension,
+    # would fall back to the parameter in silence: the build refuses it.
+    for shape in (
+        fact(spec="ons.capital_stocks2026.dwellings.gross.total_economy.cy2024.v1"),
+        fact(dims={"capital_stock_sector": "total_economy"}),
+    ):
+        with pytest.raises(ValueError, match="update LEVEL_INPUTS"):
+            tool._level_inputs(args, [shape])

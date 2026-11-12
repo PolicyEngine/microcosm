@@ -1484,19 +1484,38 @@ class Level:
 
 
 def _level_inputs(args, facts) -> dict[str, dict]:
+    """Each level input from the feed, else its parameter, else absent.
+
+    A feed that carries an input's source concept for its period, but in no
+    fact the declaration selects (another spec prefix, or dimensions), is
+    refused: the build would otherwise fall back to the parameter without a
+    word, and the re-pin test would not see it.
+    """
     out = {}
     for name, spec in declared.LEVEL_INPUTS.items():
         feed_value = feed_key = None
         concept = spec.get("concept")
         if concept:
+            period = str(spec["period"])
+            prefix = str(spec.get("spec_prefix") or "")
+            carried = [
+                fact
+                for fact in ref.select_facts(facts, concept=str(concept))
+                if str((fact.get("period") or {}).get("value")) == period
+            ]
             rows = [
                 fact
-                for fact in ref.select_facts(
-                    facts, concept=str(concept), spec_prefix=spec.get("spec_prefix")
-                )
-                if str((fact.get("period") or {}).get("value")) == str(spec["period"])
+                for fact in carried
+                if str(
+                    (fact.get("layout") or {}).get("record_set_spec_id") or ""
+                ).startswith(prefix)
                 and not (fact.get("dimensions") or {})
             ]
+            if carried and not rows:
+                raise ValueError(
+                    f"The feed carries {concept} for {period}, but in no fact under "
+                    f"{prefix!r} without dimensions: update LEVEL_INPUTS[{name!r}]."
+                )
             if len(rows) > 1:
                 raise ValueError(f"The feed carries {len(rows)} facts for {name}.")
             if rows:
