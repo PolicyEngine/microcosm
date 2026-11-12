@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 from microcosm_emitter_interface import CollectorProvenance
 
-from microcosm.build import staging_dataset
+from microcosm.build import collector_submissions, staging_dataset
 from microcosm.build.staging_dataset import (
     SHA256SUMS_FILENAME,
     STAGED_MANIFEST_FILENAME,
@@ -746,7 +746,7 @@ def test_submissions_not_accepted_when_the_wait_ends_stay_queued(tmp_path, capsy
     )
 
     assert staged.delivery["status"] == "uploaded"
-    assert staging_dataset.COLLECTOR_SUBMISSION_WAIT_SECONDS == 600
+    assert collector_submissions.COLLECTOR_SUBMISSION_WAIT_SECONDS == 600
     assert sum(clock.slept) == 600
     assert staged.collector_receipt["status"] == "pending"
     warning = capsys.readouterr().err

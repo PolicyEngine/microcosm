@@ -74,7 +74,6 @@ from microcosm_emitter_interface.orrery import (
     unavailable_receipt,
 )
 from microcosm_emitter_interface.protocol import HUGGING_FACE_MODULE, TELEMETRY_MODULE
-from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 from microcosm_emitter_interface.telemetry import (
     DEFAULT_FAILURE_CLASS,
     DEFAULT_HEARTBEAT_SECONDS,
@@ -83,6 +82,7 @@ from microcosm_emitter_interface.telemetry import (
     TelemetryStatus,
 )
 
+from microcosm.build.collector_submissions import CollectorReceipts
 from microcosm.build.telemetry_identity import runtime_identity
 
 __all__ = [
@@ -588,11 +588,12 @@ class OutdatedEmitterClient(EmitterClient):
         self.reported = reported
 
 
-class BundleEmitter(Protocol):
+class BundleEmitter(CollectorReceipts, Protocol):
     """The interface ``EmitterClient``'s staged-bundle calls and state.
 
     ``startup_error`` says why an emitter did not start, and ``last_failure``
-    why its latest call reported failure.
+    why its latest call reported failure. Its collector receipts come from
+    ``CollectorReceipts``.
     """
 
     startup_error: EmitterStartupError | None
@@ -611,10 +612,6 @@ class BundleEmitter(Protocol):
     def dataset_bundle_receipt(
         self, handover_id: str
     ) -> DatasetBundleReceipt | None: ...
-
-    def collector_submission_receipt(
-        self, handover_id: str
-    ) -> CollectorSubmissionReceipt | None: ...
 
     def check_write_access(self, repository: str) -> WriteAccess: ...
 

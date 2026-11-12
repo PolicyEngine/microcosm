@@ -251,7 +251,7 @@ on (`telemetry_emitter.COLLECTOR_SUBMISSIONS`, through the setting emitter
 0.15.0 added; the emitter's own default leaves them off, so switching them
 off again is a Microcosm change). Once the bundle has landed, the build waits
 up to ten minutes for the collector to accept the submissions
-(`staging_dataset.follow_collector_submissions`), because an emitter that is
+(`collector_submissions.follow_collector_submissions`), because an emitter that is
 closing starts no new submission; an attempt after the commit that fails
 ends the wait sooner. A bundle that has not landed is asked about once and
 not waited for. The build carries on in every case, with a warning when:

@@ -54,6 +54,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from collections.abc import Mapping
@@ -74,13 +75,15 @@ from microcosm_emitter_interface.publication import (
 )
 from microcosm_emitter_interface.releases import is_pointer_file
 
-from microcosm.build.staging_dataset import (
+from microcosm.build.collector_submissions import (
+    COLLECTOR_RECEIPT_POLL_SECONDS,
     COLLECTOR_SUBMISSION_WAIT_SECONDS,
-    RECEIPT_POLL_SECONDS,
+    UK_COLLECTOR_COUNTRY_CODE,
+    US_COLLECTOR_COUNTRY_CODE,
+    CollectorReceipts,
     follow_collector_submissions,
-    hub_offline,
-    write_access_problem,
 )
+from microcosm.build.staging_dataset import hub_offline, write_access_problem
 from microcosm.build.telemetry_emitter import start_bundle_emitter
 from microcosm.data.contract import US_RELEASES, publishes_to_build_folder
 from microcosm.data.publish_cli import publication_refusal
@@ -100,8 +103,6 @@ if TYPE_CHECKING:
 __all__ = [
     "PROMOTION_WAIT_SECONDS",
     "PUBLICATION_WAIT_SECONDS",
-    "UK_COLLECTOR_COUNTRY_CODE",
-    "US_COLLECTOR_COUNTRY_CODE",
     "ReleaseEmitter",
     "ReleasePublication",
     "collector_provenance",
@@ -156,8 +157,11 @@ _OFFLINE_REFUSAL = (
 )
 
 
-class ReleaseEmitter(Protocol):
-    """The interface ``EmitterClient``'s release calls and state."""
+class ReleaseEmitter(CollectorReceipts, Protocol):
+    """The interface ``EmitterClient``'s release calls and state.
+
+    Its collector receipts come from ``CollectorReceipts``.
+    """
 
     startup_error: EmitterStartupError | None
     last_failure: RequestFailure | None
@@ -178,26 +182,17 @@ class ReleaseEmitter(Protocol):
         self, request: PromoteBuild, *, wait_seconds: float = 60.0
     ) -> ReleaseReceipt: ...
 
-    def collector_submission_receipt(
-        self, handover_id: str
-    ) -> CollectorSubmissionReceipt | None: ...
-
     def close(self) -> None: ...
 
 
+#: The shape of an emitter's hand-over ID.
+_HANDOVER_ID = re.compile(r"^[0-9a-f]{32}$")
 #: Starts the short-lived emitter a publication uses (only its Hugging Face
 #: module); tests replace it.
 _start_release_emitter = start_bundle_emitter
 #: The clock and sleep of the wait for the collector; tests replace them.
 _clock = time.monotonic
 _sleep = time.sleep
-#: The country codes a publication's collector provenance names: those the
-#: collector's calibration tree handler registers each country's release
-#: repository under. The UK's is ``UK``, as UK staged bundles name it
-#: (``uk_runtime.rowwise_staging.UK_COLLECTOR_COUNTRY_CODE``), not the
-#: telemetry's ``GB``.
-UK_COLLECTOR_COUNTRY_CODE = "UK"
-US_COLLECTOR_COUNTRY_CODE = "US"
 
 
 def collector_provenance(release: str, build: str) -> CollectorProvenance | None:
@@ -342,17 +337,18 @@ def _hand_over(
             receipt = emitter.publish_release(change, wait_seconds=wait_seconds)
             if change.collector is not None and receipt["status"] != "unavailable":
                 # Before the emitter closes: a closing emitter starts no new
-                # submission.
+                # submission. The emitter keeps the collector row under the
+                # hand-over ID its receipt names.
                 collector_receipt = follow_collector_submissions(
                     emitter,
-                    change.handover_id(),
+                    _receipt_handover_id(receipt) or change.handover_id(),
                     subject=f"build {change.build} of {change.release}",
                     wait_seconds=(
                         collector_wait_seconds
                         if receipt["status"] == "published"
                         else None
                     ),
-                    poll_seconds=RECEIPT_POLL_SECONDS,
+                    poll_seconds=COLLECTOR_RECEIPT_POLL_SECONDS,
                     clock=_clock,
                     sleep=_sleep,
                 )
@@ -369,6 +365,16 @@ def _hand_over(
         receipt=receipt,
         problem=problem,
         collector_receipt=collector_receipt,
+    )
+
+
+def _receipt_handover_id(receipt: ReleaseReceipt) -> str | None:
+    """The hand-over ID a release receipt names, when it has the emitter's shape."""
+    handover_id = receipt.get("handover_id")
+    return (
+        handover_id
+        if isinstance(handover_id, str) and _HANDOVER_ID.fullmatch(handover_id)
+        else None
     )
 
 

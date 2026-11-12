@@ -546,7 +546,11 @@ to accept them before it closes the emitter. The printed outcome's
 `collector_submission` gives the collector receipt's `status` and
 `error_code`; a collector that receives nothing (`skipped`, for example
 `COLLECTOR_SETTINGS_REFUSED`), rejects them or has not accepted them yet is a
-warning and never fails the command. The calibration diagnostics dashboard posts
+warning and never fails the command. The collector makes every build of the
+UK national release it receives the UK's latest calibration tree, whether or
+not the build is current in `releases.json`, so a build published without
+`--make-current` is the collector's latest from its publication on, and a
+promotion sends the collector nothing. The calibration diagnostics dashboard posts
 these releases' Slack alerts from changes to `releases.json`. The UK
 assemblers, the US national builder and the US ACS package stage print the
 exact commands; the UK

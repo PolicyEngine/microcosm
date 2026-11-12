@@ -19,8 +19,7 @@ import pytest
 from microcosm_emitter_interface import CollectorProvenance
 from microcosm_emitter_interface.releases import ReleaseRecordError, ReleasesRecord
 
-from microcosm.build import release_publication
-from microcosm.build.uk_runtime import rowwise_staging
+from microcosm.build import collector_submissions, release_publication
 from microcosm.data import release as release_module
 from microcosm.data.releases_record import parse_releases_record
 from test_support.microcosm_build.emitter import FakeEmitterClient
@@ -207,13 +206,6 @@ def test_every_uk_release_names_its_builds_as_licensed_uk_builds(release) -> Non
     )
 
 
-def test_the_uk_country_code_is_the_one_staged_bundles_name() -> None:
-    assert (
-        release_publication.UK_COLLECTOR_COUNTRY_CODE
-        == rowwise_staging.UK_COLLECTOR_COUNTRY_CODE
-    )
-
-
 def test_a_release_that_publishes_with_tags_names_no_build() -> None:
     assert (
         release_publication.collector_provenance(
@@ -241,7 +233,7 @@ def test_a_published_build_waits_until_the_collector_accepts_its_submissions(
 
     (request,) = client.release_requests
     assert client.collector_receipt_requests == [request.handover_id()] * 2
-    assert clock.slept == [release_publication.RECEIPT_POLL_SECONDS]
+    assert clock.slept == [collector_submissions.COLLECTOR_RECEIPT_POLL_SECONDS]
     assert outcome.collector_receipt is not None
     assert outcome.collector_receipt["status"] == "awaiting_final_status"
     assert outcome.as_json()["collector_submission"] == {
