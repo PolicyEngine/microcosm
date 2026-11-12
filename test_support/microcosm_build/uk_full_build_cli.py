@@ -1,11 +1,12 @@
 """Synthetic dense full-build fixtures for the canonical UK CLI: the
-kernel stand-ins, payload builders, the prepared build and the
-``graph_dense_bundle`` runner the release pre-flight and assembler tests
-feed."""
+kernel stand-ins, payload builders, the prepared build, the stand-in spine
+roster and the ``graph_dense_bundle`` runner the release pre-flight and
+assembler tests feed."""
 
 # ruff: noqa: F401
 
 import base64
+import copy
 import hashlib
 import importlib.util
 import json
@@ -33,6 +34,11 @@ from microcosm.build.uk_runtime.full_certification import FULL_CERTIFICATION_TYP
 from microcosm.build.uk_runtime.full_gates import (
     classify_full_gate_outcomes,
     uk_full_gate_manifest,
+)
+from microcosm.build.uk_runtime.geography_first_roster import (
+    GEOGRAPHY_FIRST_OPERATIONS,
+    GEOGRAPHY_FIRST_STAGES,
+    SIDECAR_GEOGRAPHY_KEYS,
 )
 from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, UKFullGraph
 from microcosm.build.uk_runtime.graph_calibration import (
@@ -120,6 +126,51 @@ def patch_support_register(monkeypatch, pins=None) -> None:
     monkeypatch.setattr(
         country_adapter, "uk_atomic_support_register", lambda spec=None: register
     )
+
+
+#: A stand-in sidecar ``geography`` block's values, by key. The dense line's
+#: posture check reads the block's keys only (microcosm#931), so the values are
+#: synthetic stand-ins, not the spine build's.
+_SYNTHETIC_SPINE_GEOGRAPHY = {
+    "assignment": "atomic",
+    "identity": "geography_household_key",
+    "definition_sha256": "f" * 64,
+    "support_pins": SYNTHETIC_SUPPORT_PINS,
+    "stream": ["sha256-u53-v1", "uk-spine-atomic-area-v1", 0, 0],
+    "register": "synthetic",
+}
+
+
+def synthetic_spine_geography() -> dict:
+    """A stand-in sidecar ``geography`` block under the leaf's keys, each once.
+
+    A key the leaf gains without a stand-in value here fails loudly.
+    """
+    return {
+        key: copy.deepcopy(_SYNTHETIC_SPINE_GEOGRAPHY[key])
+        for key in SIDECAR_GEOGRAPHY_KEYS
+    }
+
+
+def geography_first_sidecar_fields(*stages: str) -> dict:
+    """The roster fields of a stand-in build sidecar the dense line accepts.
+
+    ``stages`` run first, then every geography-first stage and every stage a
+    geography-first operation runs in that ``stages`` does not name. Each stage
+    records the operation kinds the leaf requires of it and no other, and the
+    sidecar records a stand-in ``geography`` block (microcosm#931). Merge it
+    into a stand-in sidecar.
+    """
+    names = list(
+        dict.fromkeys((*stages, *GEOGRAPHY_FIRST_STAGES, *GEOGRAPHY_FIRST_OPERATIONS))
+    )
+    return {
+        "stages": names,
+        "operations": {
+            name: list(GEOGRAPHY_FIRST_OPERATIONS.get(name, ())) for name in names
+        },
+        "geography": synthetic_spine_geography(),
+    }
 
 
 STEM = "microcosm_uk_2024_25_local"

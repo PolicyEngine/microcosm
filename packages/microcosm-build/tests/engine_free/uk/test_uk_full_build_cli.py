@@ -409,6 +409,438 @@ def test_candidate_clone_counts_are_dry_run_only(tmp_path):
         )
 
 
+# ---------------------------------------------------------------------------
+# microcosm#931: the dense line builds only on a geography-first spine
+# ---------------------------------------------------------------------------
+
+
+class _StandInStopError(Exception):
+    """A recording stand-in's stop: the preparation got past the posture check."""
+
+
+def _record_preparation(monkeypatch) -> list[str]:
+    """Recording stand-ins for every preparation step after the posture check
+    that reads an input or composes a graph. Each records its name and stops
+    the preparation, so the record holds the first step the check let through,
+    or nothing. The engine freeze, which runs before the check, stands in."""
+    from microcosm.build.uk_runtime import calibration_run, hmrc_uprating, spine_build
+    from microcosm.build.uk_runtime import graph as uk_graph
+
+    calls: list[str] = []
+
+    def stand_in(name):
+        def record(*args, **kwargs):
+            calls.append(name)
+            raise _StandInStopError(name)
+
+        return record
+
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    for owner, name in (
+        (cli, "_pin"),
+        (cli, "load_uk_national_frame"),
+        (cli, "bound_spine_graph"),
+        (cli, "uk_full_graph"),
+        (cli, "append_uk_full_gate_nodes"),
+        (cli, "compile_graph"),
+        (cli, "_prepare_geography"),
+        (calibration_run, "load_bound_spine_checkpoint"),
+        (spine_build, "parse_uk_spine_args"),
+        (spine_build, "prepare_uk_spine_execution"),
+        (spine_build, "uk_spine_graph"),
+        # A reader that imports the spine graph's composer late meets it here.
+        (uk_graph, "uk_spine_graph"),
+    ):
+        monkeypatch.setattr(owner, name, stand_in(name))
+    return calls
+
+
+def _write_sidecar(tmp_path, roster) -> None:
+    """A stand-in build sidecar beside ``arguments``' stand-in spine."""
+    (tmp_path / "spine.build.json").write_text(json.dumps(roster))
+
+
+def _packaged_sidecar_roster() -> dict:
+    """The packaged spec's stages and kinds as sidecar fields (lists), with no
+    geography block: the names a spine built on this code records."""
+    stages, operations = cli._spine_request_roster()
+    return {
+        "stages": list(stages),
+        "operations": {stage: list(kinds) for stage, kinds in operations.items()},
+    }
+
+
+#: A spine built before the area stages, cut to what the posture check reads:
+#: it makes and keys its clones, frs_brma draws the BRMAs, and was_wealth runs
+#: without the main-residence localiser.
+_PRE_GEOGRAPHY_ROSTER = {
+    "stages": [
+        "frs_spine",
+        "geographic_expand",
+        "geographic_identity",
+        "frs_brma",
+        "was_wealth",
+    ],
+    "operations": {
+        "frs_spine": ["read_tables"],
+        "geographic_expand": ["expand_geographic_clones"],
+        "geographic_identity": ["key_households_by_clone_path"],
+        "frs_brma": [
+            "materialize_rules_engine_predictors",
+            "sample_categorical_from_count_table",
+        ],
+        "was_wealth": ["derive", "fit_weighted_qrf_chain"],
+    },
+}
+
+
+def _posture_refusal(roster, *, from_sidecar=True) -> str:
+    """The posture check's own refusal of ``roster``."""
+    from microcosm.build.uk_runtime.spine_posture import require_geography_first_spine
+
+    with pytest.raises(ValueError) as refused:
+        require_geography_first_spine(
+            roster["stages"],
+            roster["operations"],
+            roster.get("geography"),
+            from_sidecar=from_sidecar,
+        )
+    return str(refused.value)
+
+
+def _request_arguments(tmp_path):
+    """A dense request over a spine request, with staging disabled."""
+    request = tmp_path / "request.json"
+    request.write_text(json.dumps(["--smoke"]))
+    ladder = tmp_path / "ladder.npz"
+    return cli.parse_args(
+        [
+            "--release-role",
+            "dense",
+            "--spine-request",
+            str(request),
+            "--ladder",
+            str(ladder),
+            "--ladder-sha256",
+            _placeholder(ladder, b"ladder stand-in"),
+            "--ledger-facts",
+            str(tmp_path / "ledger"),
+            "--ledger-facts-sha256",
+            PIN,
+            "--ledger-manifest-sha256",
+            PIN,
+            "--out",
+            str(tmp_path / "out"),
+            "--no-staging",
+            *SUPPORT_ARGUMENTS,
+        ]
+    )
+
+
+def _without_geography(roster) -> dict:
+    return {key: value for key, value in roster.items() if key != "geography"}
+
+
+@pytest.mark.parametrize(
+    "roster",
+    [
+        pytest.param(_packaged_sidecar_roster, id="the packaged roster"),
+        pytest.param(lambda: _PRE_GEOGRAPHY_ROSTER, id="a pre-geography roster"),
+        pytest.param(
+            lambda: _without_geography(geography_first_sidecar_fields("frs_spine")),
+            id="every stage but no geography block",
+        ),
+    ],
+)
+def test_a_bound_spine_that_does_not_assign_areas_is_refused_before_any_input_is_pinned(
+    tmp_path, monkeypatch, roster
+):
+    """``--input-h5``: the sidecar's roster is checked before the ladder or the
+    spine is pinned, the frame read, the checkpoint authenticated or any graph
+    composed (microcosm#931), and the refusal is the posture check's own,
+    naming every missing name and nothing else."""
+    fields = roster()
+    _write_sidecar(tmp_path, fields)
+    calls = _record_preparation(monkeypatch)
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(arguments(tmp_path))
+    message = str(refused.value)
+    assert message == _posture_refusal(fields)
+    assert "the bound spine's build sidecar lacks:" in message
+    assert message.endswith("geography block.")
+    assert calls == []
+
+
+@pytest.mark.parametrize("missing", SIDECAR_GEOGRAPHY_KEYS)
+def test_a_bound_spine_whose_geography_block_lacks_a_key_is_refused(
+    tmp_path, monkeypatch, missing
+):
+    """A sidecar that records every geography-first stage and operation but
+    whose block lacks one key is refused through the preparation, naming that
+    key alone, before anything is pinned."""
+    roster = geography_first_sidecar_fields("frs_spine")
+    del roster["geography"][missing]
+    _write_sidecar(tmp_path, roster)
+    calls = _record_preparation(monkeypatch)
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(arguments(tmp_path))
+    assert str(refused.value) == _posture_refusal(roster)
+    assert str(refused.value).endswith(f"lacks: geography key {missing}.")
+    assert calls == []
+
+
+def test_a_bound_spine_whose_sidecar_cannot_be_read_is_refused_before_anything_is_pinned(
+    tmp_path, monkeypatch
+):
+    """An absent, malformed or non-object sidecar is refused before anything
+    is pinned, word for word as the bound loader refuses it, which it does
+    before it reads the frame."""
+    from microcosm.build.uk_runtime import calibration_run
+
+    load_bound_spine_checkpoint = calibration_run.load_bound_spine_checkpoint
+    calls = _record_preparation(monkeypatch)
+    args = arguments(tmp_path)
+    sidecar = tmp_path / "spine.build.json"
+    for text, needle in (
+        (None, "absent"),
+        ("{", "is invalid JSON"),
+        ("[]", "must be a JSON object"),
+    ):
+        if text is not None:
+            sidecar.write_text(text)
+        expected = f"input H5 build sidecar {needle}"
+        with pytest.raises(ValueError, match=expected) as refused:
+            cli.prepare_full_build(args)
+        with pytest.raises(ValueError) as loaded:
+            load_bound_spine_checkpoint(sidecar, None)
+        assert str(refused.value) == str(loaded.value)
+    assert calls == []
+
+
+def test_a_bound_spine_read_through_its_named_sidecar_goes_on_once_geography_first(
+    tmp_path, monkeypatch
+):
+    """A geography-first sidecar passes, read from ``--input-sidecar`` where
+    one is named (no sidecar lies beside the stand-in spine then) and from
+    beside the spine otherwise, and the preparation goes on to pin its first
+    input, the ladder."""
+    calls = _record_preparation(monkeypatch)
+    named = tmp_path / "named.build.json"
+    named.write_text(json.dumps(geography_first_sidecar_fields("frs_spine")))
+    args = arguments(tmp_path, "--input-sidecar", str(named))
+    with pytest.raises(_StandInStopError):
+        cli.prepare_full_build(args)
+    assert calls == ["_pin"]
+    # The same roster beside the spine, where no sidecar is named, passes too.
+    calls.clear()
+    _write_sidecar(tmp_path, geography_first_sidecar_fields("frs_spine"))
+    with pytest.raises(_StandInStopError):
+        cli.prepare_full_build(arguments(tmp_path))
+    assert calls == ["_pin"]
+
+
+def test_a_bound_spine_is_checked_again_on_the_sidecar_it_authenticates(
+    tmp_path, monkeypatch
+):
+    """The sidecar the bound loader authenticates is the one the build binds,
+    so its roster is checked again: a spine whose sidecar passed the early read
+    but whose authenticated sidecar does not assign areas is refused before
+    its graph is made."""
+    from microcosm.build.uk_runtime import calibration_run
+
+    pin = cli._pin
+    calls = _record_preparation(monkeypatch)
+    _write_sidecar(tmp_path, geography_first_sidecar_fields("frs_spine"))
+    # Past the early check the inputs are pinned for real and the frame stands
+    # in; the loader authenticates a sidecar changed since the early read.
+    monkeypatch.setattr(cli, "_pin", pin)
+    monkeypatch.setattr(cli, "load_uk_national_frame", lambda path: (object(), None))
+    monkeypatch.setattr(
+        cli, "require_uk_producer_isa_income_contract", lambda frame, *, label: None
+    )
+    monkeypatch.setattr(
+        calibration_run,
+        "load_bound_spine_checkpoint",
+        lambda *args, **kwargs: json.loads(json.dumps(_PRE_GEOGRAPHY_ROSTER)),
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(arguments(tmp_path))
+    assert str(refused.value) == _posture_refusal(_PRE_GEOGRAPHY_ROSTER)
+    assert calls == []
+
+
+def test_a_spine_request_that_does_not_assign_areas_is_refused_before_it_is_read(
+    tmp_path, monkeypatch
+):
+    """``--spine-request``: the roster the request runs is checked, its stage
+    names and operation kinds only, before the request is parsed or its spine
+    composed; the request's spine has no sidecar block to read
+    (microcosm#931)."""
+    calls = _record_preparation(monkeypatch)
+    pre = _PRE_GEOGRAPHY_ROSTER
+    monkeypatch.setattr(
+        cli,
+        "_spine_request_roster",
+        lambda: (tuple(pre["stages"]), dict(pre["operations"])),
+    )
+    args = _request_arguments(tmp_path)
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(args)
+    message = str(refused.value)
+    assert message == _posture_refusal(pre, from_sidecar=False)
+    assert "the spine request's stage roster lacks:" in message
+    assert "geography block" not in message and "geography key" not in message
+    assert calls == []
+    # A geography-first roster passes; the preparation goes on to pin the
+    # ladder, its first input, and has parsed no request.
+    first = _without_geography(geography_first_sidecar_fields("frs_spine"))
+    monkeypatch.setattr(
+        cli,
+        "_spine_request_roster",
+        lambda: (tuple(first["stages"]), dict(first["operations"])),
+    )
+    with pytest.raises(_StandInStopError):
+        cli.prepare_full_build(args)
+    assert calls == ["_pin"]
+
+
+def test_a_spine_request_reads_its_roster_without_composing_a_graph(
+    tmp_path, monkeypatch
+):
+    """The real request-roster reader runs under the recording stand-ins, so a
+    reader that composed the spine graph to read its roster would be caught.
+    While the packaged roster lacks a geography-first name it is refused
+    before anything is pinned, read or composed; once it has them all, the
+    preparation goes on to pin the ladder."""
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.spine_posture import roster_failures, spec_roster
+
+    stages, operations = spec_roster(load_country_spec("uk"))
+    calls = _record_preparation(monkeypatch)
+    with pytest.raises((ValueError, _StandInStopError)) as stopped:
+        cli.prepare_full_build(_request_arguments(tmp_path))
+    if roster_failures(stages, operations, from_sidecar=False):
+        assert str(stopped.value) == _posture_refusal(
+            {"stages": stages, "operations": operations}, from_sidecar=False
+        )
+        assert calls == []
+    else:
+        assert calls == ["_pin"]
+
+
+def test_a_spine_request_is_checked_again_on_the_spine_it_composes(
+    tmp_path, monkeypatch
+):
+    """The spine a request composes is the one the build runs, so its own
+    roster is checked again: a composed spine that lacks the area stages is
+    refused before the build reads it, though the roster read early passed."""
+    from microcosm.build.uk_runtime import graph as uk_graph
+    from microcosm.build.uk_runtime import spine_build
+
+    pin = cli._pin
+    calls = _record_preparation(monkeypatch)
+    first = _without_geography(geography_first_sidecar_fields("frs_spine"))
+    monkeypatch.setattr(
+        cli,
+        "_spine_request_roster",
+        lambda: (tuple(first["stages"]), dict(first["operations"])),
+    )
+    pre = _PRE_GEOGRAPHY_ROSTER
+    composed = SimpleNamespace(
+        graph=None,
+        kernels=None,
+        sources={},
+        stages=tuple(
+            SimpleNamespace(
+                stage=name,
+                operations=tuple(
+                    SimpleNamespace(kind=kind) for kind in pre["operations"][name]
+                ),
+            )
+            for name in pre["stages"]
+        ),
+    )
+    # Past the early check the ladder is pinned for real, and the request
+    # composes the stand-in spine.
+    monkeypatch.setattr(cli, "_pin", pin)
+    monkeypatch.setattr(
+        spine_build,
+        "parse_uk_spine_args",
+        lambda argv: SimpleNamespace(release_candidate=False),
+    )
+    monkeypatch.setattr(spine_build, "prepare_uk_spine_execution", lambda raw: composed)
+    monkeypatch.setattr(
+        uk_graph,
+        "uk_spine_endpoint",
+        lambda graph: pytest.fail("the build read a spine its roster check missed"),
+    )
+    with pytest.raises(ValueError) as refused:
+        cli.prepare_full_build(_request_arguments(tmp_path))
+    assert str(refused.value) == _posture_refusal(pre, from_sidecar=False)
+    assert calls == []
+
+
+def test_a_spine_request_is_checked_on_the_packaged_roster_it_runs():
+    """No spine argument selects stages: a request runs the packaged UK spec's
+    whole roster, the one the spine build derives and composes, so the check
+    reads that spec's stage names and each stage's operation kinds."""
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.spine_build import _uk_spine_stage_names
+
+    spec = load_country_spec("uk")
+    stages, operations = cli._spine_request_roster()
+    assert stages == tuple(stage.stage for stage in spec.sources.stages)
+    assert set(stages) == set(_uk_spine_stage_names(spec))
+    assert operations == {
+        stage.stage: tuple(operation.kind for operation in stage.operations)
+        for stage in spec.sources.stages
+    }
+
+
+def test_a_dense_build_on_a_spine_without_areas_fails_before_any_graph_runs(
+    tmp_path, monkeypatch, capsys
+):
+    """Through ``main``, the refusal closes the attempt failed, with the
+    refusal as its message and no graph composed or run; a dry run raises
+    it."""
+    from microcosm.build.logbook import load_spool_rows
+    from microcosm.build.uk_runtime import hmrc_uprating
+
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+    monkeypatch.setattr(
+        hmrc_uprating, "assert_installed_engine_is_pinned", lambda: "fixture"
+    )
+    for name in (
+        "run_graph",
+        "compile_graph",
+        "uk_full_graph",
+        "load_uk_national_frame",
+    ):
+        monkeypatch.setattr(
+            cli,
+            name,
+            lambda *a, _name=name, **k: pytest.fail(f"{_name} ran before the refusal"),
+        )
+    _write_sidecar(tmp_path, _packaged_sidecar_roster())
+    refusal = _posture_refusal(_packaged_sidecar_roster())
+    args = arguments(tmp_path)
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    assert cli.main([]) == 1
+    assert refusal in capsys.readouterr().err
+    failure = json.loads((args.out / "failure.json").read_text())
+    assert (failure["error_type"], failure["message"]) == ("ValueError", refusal)
+    rows = load_spool_rows(args.out / "logbook-spool")
+    assert len(rows) == 1 and rows[0].disposition == "failed"
+    dry = arguments(tmp_path, "--dry-run", "--out", str(tmp_path / "dry"))
+    monkeypatch.setattr(cli, "parse_args", lambda argv: dry)
+    with pytest.raises(ValueError) as refused:
+        cli.main([])
+    assert str(refused.value) == refusal
+    assert not (tmp_path / "dry").exists()
+
+
 def test_source_sampling_cannot_be_reapplied_as_pool_sampling():
     config = UKFullBuildConfig(calibration_year=2025, source_sample_fraction=0.1)
     assert config.sample_fraction == 1.0

@@ -43,6 +43,9 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
     from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
     from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
     from test_support.microcosm_build.uk_calibration_run import _bound_checkpoint
+    from test_support.microcosm_build.uk_full_build_cli import (
+        geography_first_sidecar_fields,
+    )
 
     input_h5 = tmp_path / "spine.h5"
     ladder_path = tmp_path / "ladder.npz"
@@ -51,7 +54,8 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
     _write_ladder(ladder_path)
     frame, _ = load_uk_national_frame(input_h5)
     sidecar_path, gates_path, sidecar = _bound_checkpoint(tmp_path, frame)
-    sidecar["stages"] = ["frs_spine"]
+    # The dense line plans only on a geography-first spine (microcosm#931).
+    sidecar.update(geography_first_sidecar_fields("frs_spine"))
     sidecar["sampling"] = {"fraction": 1.0, "seed": 578}
     sidecar_path.write_text(json.dumps(sidecar))
     monkeypatch.setattr(spine_build, "_rules_engine", lambda: object())

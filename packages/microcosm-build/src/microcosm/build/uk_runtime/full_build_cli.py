@@ -14,7 +14,10 @@ the diagnostics, the frozen registries, the schema-4 national manifest;
 :mod:`microcosm.build.uk_runtime.national_role`) materialised from the
 graph's stored artifacts. Both lines are built here through the graph. The
 role supplies every unset solve default and refuses the other role's flags
-through :mod:`microcosm.build.uk_runtime.rowwise_cli`.
+through :mod:`microcosm.build.uk_runtime.rowwise_cli`. The dense line builds
+only on a geography-first spine: :func:`prepare_full_build` refuses any other
+before it pins an input or composes a graph
+(:mod:`microcosm.build.uk_runtime.spine_posture`, microcosm#931).
 ``tools/build_uk_rowwise_candidate.py`` and ``tools/build_uk_full.py`` are
 stubs over :func:`main`, so every UK line is built by this one command.
 
@@ -257,6 +260,7 @@ from .rowwise_staging import (
 )
 from .size_checkpoint import uk_size_checkpoint_identity
 from .solve_scope import UK_GATE_ONLY_RESOURCES
+from .spine_posture import require_geography_first_spine, spec_roster, stage_roster
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
 from .weight_year import uk_dataset_year_frame
 
@@ -1286,6 +1290,63 @@ def _require_gate_kernel_completed(manifest, node_id: str) -> None:
             )
 
 
+def _read_spine_sidecar(path: Path) -> dict:
+    """A bound spine's build sidecar as a JSON object.
+
+    The refusals are ``load_bound_spine_checkpoint``'s, word for word, so a
+    sidecar that cannot be read is refused alike whichever reader meets it
+    first.
+    """
+    if not path.is_file():
+        raise ValueError(f"input H5 build sidecar absent: {path}")
+    try:
+        sidecar = json.loads(path.read_bytes())
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ValueError(f"input H5 build sidecar is invalid JSON: {path}") from exc
+    if not isinstance(sidecar, dict):
+        raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
+    return sidecar
+
+
+def _spine_request_roster() -> tuple[tuple[str, ...], dict[str, tuple[str, ...]]]:
+    """The stage names and operation kinds a spine request runs.
+
+    Every request runs the packaged UK spec's whole roster: no spine argument
+    selects stages, and the spine build derives its roster from that spec,
+    refusing a spine graph that disagrees with it. So the roster is read off
+    the spec, without parsing the request or composing its spine.
+    """
+    from microcosm.build.country_spec import load_country_spec
+
+    return spec_roster(load_country_spec("uk"))
+
+
+def _require_geography_first_spine(args: argparse.Namespace) -> None:
+    """Refuse a spine that does not assign areas, before any input is pinned.
+
+    The dense line builds only on a geography-first spine (microcosm#931;
+    :mod:`~microcosm.build.uk_runtime.spine_posture`). A bound spine
+    (``--input-h5``) is read off its build sidecar: the stages it ran, their
+    operation kinds and its ``geography`` block. A spine request's stage names
+    and operation kinds are read off the packaged spec it runs
+    (:func:`_spine_request_roster`); its spine runs inside the dense build's
+    own graph, so it has no block to read. The check only refuses: it reads
+    the sidecar before the spine is pinned, the bound checkpoint is still
+    authenticated after it, and :func:`prepare_full_build` checks the roster
+    it then binds again, the authenticated sidecar's or the composed spine's.
+    """
+    if args.input_h5 is not None:
+        sidecar = _read_spine_sidecar(
+            Path(args.input_sidecar or args.input_h5.with_suffix(".build.json"))
+        )
+        require_geography_first_spine(
+            sidecar.get("stages"), sidecar.get("operations"), sidecar.get("geography")
+        )
+    else:
+        stages, operations = _spine_request_roster()
+        require_geography_first_spine(stages, operations, from_sidecar=False)
+
+
 def prepare_full_build(
     args: argparse.Namespace, *, telemetry=None, attempt: dict | None = None
 ) -> PreparedUKFullBuild:
@@ -1301,6 +1362,9 @@ def prepare_full_build(
 
     # The engine freeze, before any input is read (microcosm#1095).
     assert_installed_engine_is_pinned()
+    # The spine's posture, before any input is pinned or any graph composed:
+    # the dense line builds only on a spine that assigns areas (microcosm#931).
+    _require_geography_first_spine(args)
     posture = posture_of(args)
     release = load_uk_frs_release()
     pins = {"ladder": _pin(args.ladder, args.ladder_sha256)}
@@ -1327,6 +1391,11 @@ def prepare_full_build(
             frame,
             gate_report_path=gates_path,
             input_sha256=pins["dataset"]["sha256"],
+        )
+        # The authenticated sidecar is the one the build binds, so its roster
+        # is checked again: one changed since the early read is refused too.
+        require_geography_first_spine(
+            sidecar.get("stages"), sidecar.get("operations"), sidecar.get("geography")
         )
         spine = bound_spine_graph(frame)
         endpoint = "uk.full.spine_checkpoint"
@@ -1365,6 +1434,11 @@ def prepare_full_build(
         if args.release_candidate:
             raw.release_candidate = True
         prepared = prepare_uk_spine_execution(raw)
+        # The composed spine is the one the build runs, so its own roster is
+        # checked again: the early check read the packaged spec's.
+        require_geography_first_spine(
+            *stage_roster(prepared.stages), from_sidecar=False
+        )
         spine, kernels = prepared.graph, prepared.kernels
         sources.update(prepared.sources)
         endpoint = uk_spine_endpoint(spine).population
