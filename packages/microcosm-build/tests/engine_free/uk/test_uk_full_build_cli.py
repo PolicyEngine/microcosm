@@ -1750,6 +1750,158 @@ def test_the_staged_dataset_status_says_where_a_failed_bundle_is(
     assert never_says not in line
 
 
+def test_a_staged_dense_bundle_names_its_build_and_candidate_release_for_the_collector(
+    tmp_path, monkeypatch, fake_telemetry_emitters
+):
+    """The hand-over carries the collector's provenance: the country, the
+    build's attempt ID (which its release build keeps, whatever run ID the
+    staging used), licensed data, and the release the build is a candidate
+    for, so the collector labels the staging tree with that release."""
+    pytest.importorskip("tables")
+    from microcosm_emitter_interface import CollectorProvenance
+
+    _remote_hub(monkeypatch)
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-upload-interval-seconds",
+        "0",
+        "--staging-run-id",
+        "uk-dense-staging-run",
+        staging=None,
+        on_prepare=_drive_epochs,
+    )
+    assert status == 0
+    (row,) = spool_rows(out)
+    assert row.build_id.startswith("uk-local-candidate-")
+    (client,) = [emitter.client for emitter in fake_telemetry_emitters]
+    (request,) = client.bundle_requests
+    assert request.run_id == "uk-dense-staging-run"
+    assert request.collector == CollectorProvenance(
+        country_code="UK",
+        build_id=row.build_id,
+        licensed_data=True,
+        release="microcosm-uk-2024-25-dense",
+    )
+
+
+def _restage_one_bundle(
+    tmp_path, monkeypatch, manifest_extra, argv_extra=(), *, logbook_build_id=None
+):
+    """Re-stage a one-output run directory; return the bundle request it handed over.
+
+    ``logbook_build_id`` writes a Logbook spool row naming that build.
+    """
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    dataset = run_dir / "microcosm_uk_2024_25_local.h5"
+    dataset.write_bytes(b"synthetic rows")
+    if logbook_build_id is not None:
+        (run_dir / "logbook-spool").mkdir()
+        (run_dir / "logbook-spool" / "row.json").write_text(
+            json.dumps({"build_id": logbook_build_id})
+        )
+    manifest = {
+        "outputs": {
+            "dataset": {
+                "path": str(dataset),
+                "sha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
+                "bytes": dataset.stat().st_size,
+            }
+        },
+        **manifest_extra,
+    }
+    (run_dir / cli.MANIFEST_FILENAME).write_text(json.dumps(manifest))
+    stager = load_tool("stage_uk_rowwise_candidate")
+    hub = _FakeHub()
+    started: list[FakeEmitterClient] = []
+
+    def start():
+        started.append(FakeEmitterClient(hub_files=hub.files, hub_api=hub))
+        return started[-1]
+
+    monkeypatch.setattr(stager, "_start_bundle_emitter", start)
+    assert stager.main(["--run-dir", str(run_dir), *argv_extra]) == 0
+    (client,) = started
+    (request,) = client.bundle_requests
+    return run_dir, request
+
+
+def test_the_restage_tool_names_a_national_build_and_its_release_for_the_collector(
+    tmp_path, monkeypatch, capsys
+):
+    """A national manifest records its build ID: a re-stage under another run
+    ID still names that build, and the release the manifest is a candidate for."""
+    from microcosm_emitter_interface import CollectorProvenance
+
+    _run_dir, request = _restage_one_bundle(
+        tmp_path,
+        monkeypatch,
+        {
+            "build_id": "uk-frs-calibration-attempt-20261112T090000Z-0badcafe",
+            "release_id": "microcosm-uk-2024-25-national",
+        },
+        ("--run-id", "uk-restaged-run"),
+    )
+    assert request.run_id == "uk-restaged-run"
+    assert request.collector == CollectorProvenance(
+        country_code="UK",
+        build_id="uk-frs-calibration-attempt-20261112T090000Z-0badcafe",
+        licensed_data=True,
+        release="microcosm-uk-2024-25-national",
+    )
+
+
+def test_the_restage_tool_takes_a_dense_build_id_from_its_logbook_row(
+    tmp_path, monkeypatch, capsys
+):
+    """A dense manifest records no build ID; its Logbook row does."""
+    from microcosm_emitter_interface import CollectorProvenance
+
+    _run_dir, request = _restage_one_bundle(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        ("--run-id", "uk-restaged-run"),
+        logbook_build_id="uk-local-candidate-f100-s42-20261112T090000Z-0badcafe",
+    )
+    assert request.run_id == "uk-restaged-run"
+    assert request.collector == CollectorProvenance(
+        country_code="UK",
+        build_id="uk-local-candidate-f100-s42-20261112T090000Z-0badcafe",
+        licensed_data=True,
+        release="microcosm-uk-2024-25-dense",
+    )
+
+
+@pytest.mark.parametrize(
+    "manifest_extra",
+    [
+        {},
+        {"release_id": "populace-uk-2023"},
+        {"release_id": "microcosm-us-2024-national"},
+    ],
+    ids=["no release", "tagged release", "another country's release"],
+)
+def test_the_restage_tool_names_no_release_a_uk_build_cannot_publish_into(
+    tmp_path, monkeypatch, capsys, manifest_extra
+):
+    """Only a UK release that publishes into build folders is a candidate
+    release; otherwise the provenance names none, and the collector labels
+    the staging tree with the run ID. The build ID falls back to the run ID."""
+    from microcosm_emitter_interface import CollectorProvenance
+
+    _run_dir, request = _restage_one_bundle(
+        tmp_path, monkeypatch, manifest_extra, ("--run-id", "uk-attempt")
+    )
+    assert request.collector == CollectorProvenance(
+        country_code="UK", build_id="uk-attempt", licensed_data=True, release=None
+    )
+
+
 def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(
     tmp_path, monkeypatch, capsys
 ):
