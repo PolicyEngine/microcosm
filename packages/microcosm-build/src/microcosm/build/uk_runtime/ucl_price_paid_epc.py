@@ -399,6 +399,12 @@ def _floor_area(values: pd.Series, bounds: tuple[float, float]) -> np.ndarray:
     return np.where((area >= low) & (area <= high), area, np.nan).astype(np.float32)
 
 
+def _present(values: pd.Series) -> np.ndarray:
+    """Which values are given: not missing and not blank."""
+    text = values.astype("string").str.strip()
+    return (text.notna() & (text != "")).to_numpy(dtype=bool, na_value=False)
+
+
 def transaction_hash(values: pd.Series) -> np.ndarray:
     """A uint64 hash of Price Paid transaction ids, braces and case dropped."""
     text = values.astype("string").str.strip().str.strip("{}").str.upper().fillna("")
@@ -611,7 +617,12 @@ def social_certificate_cells(
                                 "building": (
                                     transaction_hash(frame[columns.building_id])
                                     if columns.building_id
-                                    else np.arange(len(frame), dtype=np.uint64)
+                                    else np.zeros(len(frame), dtype=np.uint64)
+                                ),
+                                "has_building": (
+                                    _present(frame[columns.building_id])
+                                    if columns.building_id
+                                    else np.zeros(len(frame), dtype=bool)
                                 ),
                                 "lodged": _yyyymm(frame[columns.lodgement_date]),
                                 "ptype": dwelling_type_index(
@@ -634,9 +645,14 @@ def social_certificate_cells(
         raise ValueError("No certificate carries a declared social tenure.")
     frame = pd.concat(parts, ignore_index=True)
     receipts["social_certificates"] = int(len(frame))
-    if columns.building_id:
-        frame = frame.sort_values(["building", "lodged"], kind="stable")
-        frame = frame.drop_duplicates("building", keep="last")
+    # Only a certificate with a building id can repeat; one without counts
+    # once, as it stands.
+    identified = frame[frame["has_building"].to_numpy()]
+    identified = identified.sort_values(["building", "lodged"], kind="stable")
+    identified = identified.drop_duplicates("building", keep="last")
+    unidentified = frame[~frame["has_building"].to_numpy()]
+    receipts["social_certificates_without_building_id"] = int(len(unidentified))
+    frame = pd.concat([identified, unidentified], ignore_index=True)
     receipts["social_buildings"] = int(len(frame))
     usable = (frame["ptype"] >= 0) & (frame["age_band"] >= 0)
     receipts["social_without_type_or_age"] = int((~usable).sum())

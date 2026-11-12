@@ -392,6 +392,7 @@ def _attribute_cache_paths(args, ucl_record) -> tuple[Path, Path]:
                 for key, value in declared.UCL_CERTIFICATE_COLUMNS.items()
             },
             "authorities": _certificate_authorities(args),
+            "rule": "the latest certificate per building id; one without an id counts once",
         },
     )
     return linked, social

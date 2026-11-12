@@ -305,6 +305,21 @@ def test_social_certificate_cells_count_each_building_once(tmp_path: Path) -> No
                 "2016-01-01",
                 "102",
             ],
+            # Two certificates without a UPRN are two homes, not one building.
+            *(
+                [
+                    str(lmk),
+                    "E08000038",
+                    "rental (social)",
+                    "Flat",
+                    "Mid-Terrace",
+                    area,
+                    "1967-1975",
+                    "2019-01-01",
+                    "",
+                ]
+                for lmk, area in ((7, "40"), (8, "50"))
+            ),
         ]
     )
     second = _certificates(
@@ -350,11 +365,12 @@ def test_social_certificate_cells_count_each_building_once(tmp_path: Path) -> No
         "local_authority": ["E08000016", "E08000016", "W06000001"],
         "ptype": [1, 3, 2],
         "age_band": [3, 4, 6],
-        "certificates": [1, 1, 1],
-        "floor_area_mean": [pytest.approx(np.nan, nan_ok=True), 60.0, 70.0],
+        "certificates": [1, 3, 1],
+        "floor_area_mean": [pytest.approx(np.nan, nan_ok=True), 50.0, 70.0],
     }
-    assert receipts["certificates_read"] == 6
-    assert receipts["social_certificates"] == 5
-    assert receipts["social_buildings"] == 4
+    assert receipts["certificates_read"] == 8
+    assert receipts["social_certificates"] == 7
+    assert receipts["social_certificates_without_building_id"] == 2
+    assert receipts["social_buildings"] == 6
     assert receipts["social_without_type_or_age"] == 1  # the park home
     assert receipts["members"] == 2

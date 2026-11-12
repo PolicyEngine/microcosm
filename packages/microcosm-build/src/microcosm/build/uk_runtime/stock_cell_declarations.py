@@ -123,7 +123,9 @@ UCL_LINKED_COLUMNS: dict[str, str | None] = {
     "paon": "paon",
     "saon": "saon",
 }
-#: The certificate file's columns by role. UNVERIFIED, as above.
+#: The certificate file's columns by role, as its header prints them; its
+#: social tenures as its TENURE column spells them (checked on 12 November
+#: 2026, with the property types and built forms the reader maps).
 UCL_CERTIFICATE_COLUMNS: dict[str, object] = {
     "local_authority": "LOCAL_AUTHORITY",
     "tenure": "TENURE",
@@ -135,9 +137,11 @@ UCL_CERTIFICATE_COLUMNS: dict[str, object] = {
     "building_id": "UPRN",
     "social_tenures": ("rental (social)", "Rented (social)"),
 }
-#: The sha256 of UCL's readme the column names were checked against; None
-#: until the discover stage has run on the pinned bundle.
-UCL_COLUMNS_VERIFIED_AGAINST: str | None = None
+#: The sha256 of UCL's readme (bundle 1's ``Readme .docx``) the column names
+#: were checked against, with both files' headers, by the discover stage.
+UCL_COLUMNS_VERIFIED_AGAINST: str | None = (
+    "3d65cc4171af46fc8a65bc8fb9d95d582fbbe0603d893fada9f268a466e04710"
+)
 
 # ----------------------------------------------------------------------------
 # Building cost
