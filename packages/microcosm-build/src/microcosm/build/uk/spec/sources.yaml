@@ -31,6 +31,13 @@ sources:
   loader: kernel:build_uk_frs_spine
   vintages:
   - vintage:uk_frs_2024_25
+- id: frs_care
+  role: frs_raw_table
+  sha256: a1b6d472233098da0577176eac67dff449a236d8c35acb2b8163797620e030b1
+  byte_size: 416348
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
 - id: frs_child
   role: frs_raw_table
   sha256: 88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5
