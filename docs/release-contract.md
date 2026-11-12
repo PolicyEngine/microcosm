@@ -13,7 +13,7 @@ lacks.
 
 Nothing here refuses anything. This document, its golden fixtures and their
 tests describe and freeze; they do not change what publishes. Each "today"
-statement below comes from reading the code at `origin/main` 6c64038f3
+statement below comes from reading the code at main's 6c64038f3
 (2026-11-12, the merge of microcosm#1583), or from executing against it, and
 cites the function that does the work; statements about policyengine.py and the
 Hub carry the date of their reading. The golden fixtures, their generator and
@@ -448,7 +448,9 @@ composes the certification from the projected reports. It projects; it does not
 re-evaluate. On 2026-11-12 neither `us/gates.json` nor that adapter exists, and
 no US build carries a certification. The US national golden,
 [`v1/c1/microcosm-us-2024-national/`](#golden-fixtures), therefore freezes
-the two manifests the US fiscal-refresh tool writes today. The validator asks
+the two manifests the US fiscal-refresh tool writes today for a run that
+passes `_build_manifests` only its required arguments and a staging block. A
+real build adds blocks that the golden does not freeze. The validator asks
 no certification of a US build, so that golden freezes a shape, not a
 conforming release.
 `test_us_fiscal_refresh_builder.py` and
@@ -1039,8 +1041,9 @@ work.
     registered. `test_release_contract_keying.py` pins today's admission with
     `microcosm-uk-2024-25-local-k55000`, which the registry does not name.
     microcosm#1586 plans to narrow the function to the k's that the registry
-    names, which flips that case. Under that plan `line_for_release_id` keeps
-    the pattern, because the pointer reader still calls it.
+    names, which flips that case; Max's session owns that change as a code
+    pull request. Under that plan `line_for_release_id` keeps the pattern,
+    because the pointer reader still calls it.
   - *The tagged publisher.* `microcosm-publish-release` and
     `tools/publish_release.sh` stay installed and sit on the
     [retire list](#retire-list-as-of-2026-10-15). Their removal waits on the
@@ -1129,7 +1132,7 @@ version 1 takes that shape.
 | M0 | 2026-10-16 | This document and the golden fixtures; nothing refuses | Max's session | microcosm#1285, which adds this document |
 | M1 | 2026-10-23 | A UK national cut on policyengine-uk ≥ 2.122.2 with staging version 3, a Logbook row and a certification; the registry's UK default flips to it | juaristi22 | The registry flip, in microcosm#1432 (merged 2026-11-02). Since microcosm#1505 the entry also names release `microcosm-uk-2024-25-national`, and the loader reads that release's current build from `releases.json` where the repository has one. microcosm#1574 (merged 2026-11-11) moved the national certification to schema 2, which adds `reference` and `since_baseline`, and renamed the score receipt to `score_vs_reference.json`. This document does not check the current build's staging, Logbook row or certification on the Hub |
 | M2 | 2026-10-30 | `us/gates.json` and the US adapter (C1); the US writes staging version 3 and a Logbook row and records `producer` (C3, C4); staging version 1 goes; the registry gains an entry for the US local-area release, which carries the state and district file (C5); one compatibility rule in both loaders and, at publication, for every role (C2) | Max's session, PavelMakarchuk, anth-volk | None of it: only am, be, nz and uk carry a `gates.json`; the fiscal-refresh tool composes no certification, still writes staging version 1 through `StagingRunBundleWriter` and records no Logbook row; no release manifest records a `producer`; the registry has no entry for `microcosm-us-2024-local`; `_check_local_area_release_manifest` checks no compatibility list; and microcosm.data's loader keeps today's containment rule. policyengine.py, at 5b6d7901c on 2026-11-11, keeps its three bases and the `legacy_compatible_model_package` label |
-| M3 | 2026-11-06 | Release manifest schema 2 and declared-country dispatch; the validator refuses unknown countries, which also closes a new country's tagged publish; `microcosm-publish-release-build` refuses non-conforming builds, derived builds included; the staging re-delivery command; policyengine.py's registry check | Max's session, juaristi22, anth-volk | None of it: `RELEASE_MANIFEST_SCHEMA_VERSION` is 1; `required_release_files`, `_expected_model_package` and `publishes_to_build_folder` still key on the release name, and an unknown name still gets the base file set; `microcosm-publish-release-build` runs the nine checks that C5 lists under "Order" and adds none of M3's: no check it runs asks for a `run_outcome`, a Logbook row or a manifest's declared `country`, and only the UK national release must ship a `release_certification.json`. `test_release_contract_keying.py`, which arrives with this document, pins today's keying. This document has not looked for policyengine.py's registry check |
+| M3 | 2026-11-06 | Release manifest schema 2 and declared-country dispatch; the validator refuses unknown countries, which also closes a new country's tagged publish; `microcosm-publish-release-build` refuses non-conforming builds, derived builds included; the staging re-delivery command; policyengine.py's registry check | Max's session, juaristi22, anth-volk | None of it: `RELEASE_MANIFEST_SCHEMA_VERSION` is 1; `required_release_files`, `_expected_model_package` and `publishes_to_build_folder` still key on the release name, and an unknown name still gets the base file set; `microcosm-publish-release-build` runs the nine checks that C5 lists under "Order" and adds none of M3's: no check it runs asks for a `run_outcome`, a Logbook row or a manifest's declared `country`, and `required_release_files` names `release_certification.json` for `microcosm-uk-2024-25-national` alone; C1's other certification rule keys on the gate files a directory carries, not on a declared country. `test_release_contract_keying.py`, which arrives with this document, pins today's keying. This document has not looked for policyengine.py's registry check |
 
 Max's rulings still decide anything that changes published numbers, such as
 moving policyengine.py's UK default (UK-1 in the 2026-10-09 report). On
@@ -1142,8 +1145,8 @@ the Microcosm national release.
 in bytes, the way `packages/microcosm-build/tests/fixtures/staging/` freezes the
 staging documents that calibration-diagnostics vendors and byte-checks. Each
 manifest golden and each `releases.json` holds the bytes that the writer of the
-same file in a real build gives, and `writers.json` names that writer. The
-folder holds ten files:
+same file in a real build gives for the generator's synthetic inputs, and
+`writers.json` names that writer. The folder holds ten files:
 
 | File | Contract | Writers, as `writers.json` names them, in call order (the last one serializes) |
 | --- | --- | --- |
@@ -1210,11 +1213,21 @@ builder writes them into every build:
 - the calibration diagnostics' schema version
   (`CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION`, 9);
 - the fiscal-target exclusion receipt's key;
-- the defaults that `_build_manifests` writes when the run passes no value: no
-  warm start, no selection source, an empty `timing`, a null `ledger_artifact`
-  and `default_dataset`, and no Medicaid enrollment substitutions;
 - the dataset and calibration keys and file names, and the repository id
   (`policyengine/populace-us`).
+
+The rest of the two US manifests holds what `_build_manifests` writes for the
+generator's call, which passes the function only its required arguments and a
+staging block. For each optional value the call leaves out, the function
+writes its default: no warm start, no selection source, an empty `timing`, a
+null `ledger_artifact` and `default_dataset`, and no Medicaid enrollment
+substitutions. It also writes no optional gate block, so the build manifest's
+`gates` holds only the four entries that the function always writes:
+`calibration`, `target_compilation`, `target_profile_coverage` and
+`documented_absent_inputs`. A real build's `_main` passes its timing, the
+ledger artifact's provenance, its gate results and receipts such as
+`base_pool` and `post_export_scoring`, and the golden freezes none of those
+blocks.
 
 **The two records.** Each `releases.json` holds one release, the country's
 national one, with one build: the build its C1 golden names, published at the
@@ -1306,13 +1319,13 @@ The tests:
   `_finish_build_folder_release` calls `rewrite_release_dir`. It rebuilds each
   `releases.json` from one publication, one promotion and the `default` step,
   and checks the interface's serialization against the golden byte for byte
-  and this repository's reader against the interface's parse. A Hypothesis
-  property holds `uk_national_release_manifests` to the contract for every
-  valid input: the manifest checks pass, the build-folder layout holds, the
-  diagnostics match the assembler's six evidence files, the loader selects the
-  build through a published and promoted record, the SPI marker and each
-  part's census carry through, and the output depends on the inputs alone, key
-  order included.
+  and this repository's reader against the interface's parse. On up to 60
+  generated inputs each run, a Hypothesis property checks that for any valid
+  input `uk_national_release_manifests` meets the contract: the manifest
+  checks pass, the build-folder layout holds, the diagnostics match the
+  assembler's six evidence files, the loader selects the build through a
+  published and promoted record, the SPI marker and each part's census carry
+  through, and the output depends on the inputs alone, key order included.
 - `test_assembled_release_has_the_release_contract_golden_shape` in
   `packages/microcosm-build/tests/engine_free/uk/test_uk_release_assembler.py`:
   a real assembly's manifests match the golden key for key and type for type,
@@ -1336,9 +1349,12 @@ fixtures:
   repository id, the evidence files, the SPI marker's study number and
   conditions), or the form `validate_staging_delivery` gives a staging
   delivery;
-- what the US builder writes into every build: `_build_manifests`'s layout and
-  defaults, `rewrite_release_dir`'s output (indent 2, a final newline), or one
-  of the live constants above;
+- what the US builder writes for the generator's call: the blocks that
+  `_build_manifests` always writes and the defaults it writes for a value the
+  call leaves out, `rewrite_release_dir`'s output (indent 2, a final newline),
+  or one of the live constants above. A change to a block that only a real
+  build's arguments produce, such as the ledger provenance or an optional
+  gate, leaves `--check` green;
 - the contract's required files, certification constants, roles, artifact
   roles or retired fields;
 - the emitter interface's `add_build`, `make_current` or
