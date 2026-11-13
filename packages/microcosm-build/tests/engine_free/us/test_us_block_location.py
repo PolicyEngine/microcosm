@@ -395,12 +395,25 @@ def test_block_lies_inside_the_source_geography(scenario, seed, clones):
 
 
 def test_cbsa_narrowing_keeps_blocks_in_the_cbsa(tmp_path) -> None:
+    """Review r6 P2: two CBSAs compete within one state, so a draw that
+    ignores the narrowing (drawing across the state under the CBSA label)
+    puts some households in the other CBSA."""
+
     arrays = synthetic_blocks(4)
+    county = arrays["block_geoid"] // 10**10
+    state = int(arrays["block_geoid"][0] // 10**13)
+    in_state = county // 1000 == state
+    first_county = int(county[in_state].min())
     arrays["cbsa_code"] = np.where(
-        arrays["block_geoid"] // 10**10 % 2 == 1, 11111, 0
+        county == first_county, 11111, np.where(in_state, 22222, 0)
     ).astype(np.int32)
     ladder = load_us_location_ladder(write_location_ladder(tmp_path / "l.npz", arrays))
-    state = int(ladder.block_geoid[0] // 10**13)
+    in_state = ladder.block_geoid // 10**13 == state
+    # Both CBSAs hold populated blocks in the state, so either could be drawn.
+    for code in (11111, 22222):
+        held = in_state & (ladder.cbsa_code == code)
+        assert held.any() and ladder.population[held].sum() > 0, code
+    source_cbsa = np.tile([11111, 22222], 100)
     draw = draw_us_block_locations(
         ladder,
         household_key=np.arange(200),
@@ -408,12 +421,12 @@ def test_cbsa_narrowing_keeps_blocks_in_the_cbsa(tmp_path) -> None:
         seed=9,
         identification_group=np.zeros(200),
         identified_counties={0: frozenset()},
-        cbsa_code=np.full(200, 11111),
+        cbsa_code=source_cbsa,
     )
     assert set(draw.source_geography) == {
         SOURCE_GEOGRAPHY_STATE_UNIDENTIFIED_COUNTIES_CBSA
     }
-    assert (ladder.cbsa_code[draw.block_index] == 11111).all()
+    np.testing.assert_array_equal(ladder.cbsa_code[draw.block_index], source_cbsa)
 
 
 def test_empty_candidate_sets_fail_closed(tmp_path) -> None:
@@ -728,7 +741,9 @@ def test_cloning_conserves_weight_and_household_mass(scenario, seed, clones):
     )
 
 
-def _us_frame(n_households: int, rng: np.random.Generator) -> Frame:
+def _us_frame(
+    n_households: int, rng: np.random.Generator, *, index: str = "range"
+) -> Frame:
     sizes = rng.integers(1, 4, size=n_households)
     household_ids = np.arange(1, n_households + 1, dtype=np.int64) * 10
     person_household = np.repeat(household_ids, sizes)
@@ -776,7 +791,17 @@ def _us_frame(n_households: int, rng: np.random.Generator) -> Frame:
         )
         for entity, kind in kinds.items()
     }
-    strata = pd.Series(rng.choice(["asec_2023", "asec_2024"], size=n_people))
+    # Frames need not carry a RangeIndex; cloning must repeat rows by
+    # position (review r6 P2: a duplicate index multiplied rows).
+    for table in tables.values():
+        if index == "duplicate":
+            table.index = pd.Index(np.zeros(len(table), dtype=np.int64))
+        elif index == "reversed":
+            table.index = pd.Index(np.arange(len(table), dtype=np.int64)[::-1] + 7)
+    strata = pd.Series(
+        rng.choice(["asec_2023", "asec_2024"], size=n_people),
+        index=tables["person"].index,
+    )
     return Frame(tables, US_SCHEMA, weights, strata, metadata={"stage": "test"})
 
 
@@ -785,10 +810,11 @@ def _us_frame(n_households: int, rng: np.random.Generator) -> Frame:
     n_households=st.integers(1, 12),
     clones=st.integers(1, 5),
     seed=st.integers(0, 2**32),
+    index=st.sampled_from(["range", "duplicate", "reversed"]),
 )
-def test_frame_location_conserves_mass_and_linkage(n_households, clones, seed):
+def test_frame_location_conserves_mass_and_linkage(n_households, clones, seed, index):
     rng = np.random.default_rng(seed)
-    frame = _us_frame(n_households, rng)
+    frame = _us_frame(n_households, rng, index=index)
     ladder = _load(synthetic_blocks(seed % 97))
     located, table = with_household_us_block_location(
         frame,

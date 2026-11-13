@@ -257,9 +257,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "seeded by --geography-seed). block_v1 (microcosm#696) gives every "
             "household one 2020 census block drawn by population within its "
             "finest source geography (ACS: observed PUMA; an ASEC-by-PUF donor "
-            "keeps a block its base already carries, else draws within its "
-            "state) and derives every other geography from the block. "
-            "Requires --block-ladder."
+            "keeps the block its base drew) and derives every other geography "
+            "from the block. Requires --block-ladder and a --base-h5 built "
+            "with --location-rule block_v1, in which every donor carries a "
+            "block; any other base is refused."
         ),
     )
     parser.add_argument(

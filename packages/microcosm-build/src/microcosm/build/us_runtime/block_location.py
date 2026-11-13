@@ -1186,7 +1186,10 @@ def clone_frame_for_location(
         clone_column = f"{entity}_location_clone_index"
         if clone_column in original.columns:
             raise ValueError(f"{entity} is already location-cloned ({clone_column}).")
-        repeated = original.loc[original.index.repeat(clones)].reset_index(drop=True)
+        # Positional, not by label: a duplicate pandas index must not
+        # multiply rows.
+        repeated = original.iloc[np.repeat(np.arange(len(original)), clones)]
+        repeated = repeated.reset_index(drop=True)
         clone = np.tile(np.arange(clones, dtype=np.int64), len(original))
         repeated[id_columns[entity]] = remap(repeated[id_columns[entity]], clone)
         if entity == schema.person_entity:
@@ -1199,7 +1202,8 @@ def clone_frame_for_location(
         tables[entity] = repeated
     for link_name in frame.links:
         link = frame.link(link_name)
-        repeated = link.loc[link.index.repeat(clones)].reset_index(drop=True)
+        repeated = link.iloc[np.repeat(np.arange(len(link)), clones)]
+        repeated = repeated.reset_index(drop=True)
         clone = np.tile(np.arange(clones, dtype=np.int64), len(link))
         for column in id_columns.values():
             if column in repeated.columns:
