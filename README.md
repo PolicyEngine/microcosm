@@ -570,7 +570,13 @@ whether it builds a tree from them or rejects them (for example
 its build for the collector in the same way, so once it has landed the
 emitter submits `releases.json` at the commit its receipt reports, naming the
 build now current, and the command waits for the collector to accept it,
-with the same `collector_submission` output and warnings. For a promotion
+with the same `collector_submission` output and warnings, less the advice
+about files on disk (the emitter keeps the `releases.json` it sends). A
+change that writes nothing, such as promoting the build already current,
+sends the same record as the change that last wrote `releases.json`; when
+another Hugging Face user sent that one, the collector refuses the copy and
+the command warns `COLLECTOR_REFUSED_403`, although the collector already
+holds the record. For a promotion
 that has not landed the command says nothing of the collector: a refused one
 sends nothing, and a pending one is sent by the emitter that lands it later. The collector then reads `releases.json` at the repository's
 head and points the country's latest calibration tree at the current build

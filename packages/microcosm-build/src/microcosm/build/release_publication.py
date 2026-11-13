@@ -47,8 +47,9 @@ and never fails the publication.
 A promotion (``--promote``) and a withdrawal name their own release and
 build for the collector too, as the interface requires. Once the change has
 landed, the emitter submits ``releases.json`` at the commit its receipt
-reports (for a promotion of the build already current, which writes
-nothing, the commit that last changed it) to the collector as a
+reports (for a change that writes nothing, such as a promotion of the build
+already current or a withdrawal of a withdrawn build, the commit that last
+changed it) to the collector as a
 ``releases-record`` submission naming the release's current build after the
 change: the promoted build, or, for a withdrawal, the current build it left
 in place. The collector then reads ``releases.json`` at the repository's
@@ -438,9 +439,10 @@ def _hand_over(
             # warning would name a releases.json change the writer may never
             # make. The emitter's own startup warning still says when it
             # refused its collector settings.
-            if change.collector is not None and (
-                landed if kind != "publish" else receipt["status"] != "unavailable"
-            ):
+            asks_collector = (
+                receipt["status"] != "unavailable" if kind == "publish" else landed
+            )
+            if change.collector is not None and asks_collector:
                 # Before the emitter closes: a closing emitter starts no new
                 # submission. The emitter keeps the collector row under the
                 # hand-over ID its receipt names.

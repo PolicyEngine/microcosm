@@ -70,15 +70,17 @@ _SKIPPED_REASONS: Final[Mapping[str, str]] = {
     # release a current build to name.
     "NO_CURRENT_BUILD": "the release has no current build after the change",
     # The emitter that landed the change kept no releases.json for it: an
-    # older emitter release sharing the machine's hand-over database, or one
-    # with submissions off. A new request is submitted once an emitter that
-    # keeps the file lands it.
+    # older emitter release sharing the machine's hand-over database. (The
+    # emitter's other cause, a request handed over again after it landed
+    # with submissions off, cannot arise: every command run makes a new
+    # request.) A new request is submitted once an emitter that keeps the
+    # file lands it.
     "RELEASES_RECORD_MISSING": (
         "the emitter that landed the change kept no copy of releases.json to "
         "submit, as an older emitter release sharing this machine's hand-over "
-        "database, or one with collector submissions off, does; running the "
-        "same command again hands the change over as a new request, which is "
-        "submitted once an emitter that keeps the file lands it"
+        "database does; running the same command again hands the change over "
+        "as a new request, which is submitted once an emitter that keeps the "
+        "file lands it"
     ),
 }
 #: Which credential collector submissions use. An emitter given a collector
