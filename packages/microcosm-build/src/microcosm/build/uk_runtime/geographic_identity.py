@@ -57,6 +57,9 @@ from microcosm.build.uk_runtime.geographic_clones import (
     SOURCE_YEAR_COLUMN,
     ladder_clone_index_column,
 )
+from microcosm.build.uk_runtime.geography_first_roster import (
+    GEOGRAPHIC_IDENTITY_STAGE,
+)
 from microcosm.build.uk_runtime.household_lineage import (
     GEOGRAPHIC_SUPPORT_BRANCH,
     UK_COPY_LINEAGE,
@@ -84,7 +87,7 @@ __all__ = [
     "key_uk_households_by_clone_path",
 ]
 
-GEOGRAPHIC_IDENTITY_STAGE_NAME = "geographic_identity"
+GEOGRAPHIC_IDENTITY_STAGE_NAME = GEOGRAPHIC_IDENTITY_STAGE
 #: The source every key names: the FRS, as the dense line's own identity node
 #: named it before the dense line took its keys from the spine (microcosm#931).
 GEOGRAPHIC_IDENTITY_SOURCE = "frs"

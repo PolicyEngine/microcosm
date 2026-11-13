@@ -228,14 +228,23 @@ def spine_request(tmp_path, toy_ladder, stand_in_engine, monkeypatch):
     The roster checks and the spine's own preparation stand in, since the
     packaged spec is not yet geography-first: the stand-in composes the
     declared spine at the request's ``--n-clones``, ``--sample-fraction`` and
-    ``--sample-seed``, as the spine build does, and records every request it
-    parses in ``requests``. ``spine_request(spine_arguments, *extra)`` is a
-    dense request whose spine request is ``spine_arguments`` on the synthetic
+    ``--sample-seed``, as the spine build does, with the geography block a
+    synthetic request composes, over the toy conditioned supports under the
+    synthetic register (microcosm#931), and records every request it parses
+    in ``requests``. ``spine_request(spine_arguments, *extra)`` is a dense
+    request whose spine request is ``spine_arguments`` on the synthetic
     fixture; ``extra`` are the dense request's own.
     """
     from types import SimpleNamespace
 
     from microcosm.build.uk_runtime import graph as uk_graph
+    from microcosm.build.uk_runtime.country_adapter import (
+        UK_SYNTHETIC_SUPPORT_REGISTER,
+        uk_spine_geography_binding,
+    )
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
 
     monkeypatch.setattr(cli, "_require_geography_first_spine", lambda args: None)
     monkeypatch.setattr(cli, "require_geography_first_spine", lambda *a, **k: None)
@@ -257,6 +266,10 @@ def spine_request(tmp_path, toy_ladder, stand_in_engine, monkeypatch):
             stage_names=uk_graph.uk_spine_endpoint(graph).stage_names,
             engine_identity="fixture",
             frs_release=SimpleNamespace(time_period="2023"),
+            geography=uk_spine_geography_binding(
+                toy_conditioned_support_payloads(),
+                register=UK_SYNTHETIC_SUPPORT_REGISTER,
+            ),
         )
 
     monkeypatch.setattr(spine_build, "prepare_uk_spine_execution", composed)
@@ -641,11 +654,12 @@ def test_a_release_candidate_on_a_spine_a_release_cannot_build_on_is_refused(
 def test_a_release_candidate_on_a_spine_request_is_refused(
     spine_request, signing_key, monkeypatch, clones
 ):
-    """A spine request's in-graph spine records no geography block, so its
-    binding carries K alone, and a synthetic request is a smoke build: a
-    release candidate on one is refused, naming what its spine lacks (no
-    geography binding rather than a binding's every field), before the full
-    graph is composed (microcosm#931)."""
+    """A spine request's binding carries the geography block its preparation
+    composes, through the sidecar writer's helper, and a synthetic request is
+    a smoke build whose block is the toy supports' under the synthetic
+    register: a release candidate on one is refused, naming every field its
+    binding fails of a release's, its pins off the register and its register
+    among them, before the full graph is composed (microcosm#931)."""
     patch_support_register(monkeypatch)
 
     def composed(*args, **kwargs):
@@ -664,8 +678,8 @@ def test_a_release_candidate_on_a_spine_request_is_refused(
             ]
         ),
         "it was not built as a release candidate",
-        "it records no geography binding (a spine request's in-graph spine "
-        "writes none)",
+        *_BINDING_FAILURES[3:],
+        "its geography binding's register is not 'sources.yaml'",
     ]
     assert str(refused.value) == _RELEASE_CANDIDATE_SPINE + "; ".join(failures) + "."
     (raw,) = spine_request.requests
@@ -862,3 +876,47 @@ def test_a_later_gate_clock_rekeys_only_the_calibrated_gates_and_the_export(
         "uk.full.holdout",
     ):
         assert second.full.graph.node(node).params["review_date"] == solve
+
+
+def test_a_spine_requests_binding_carries_the_block_its_preparation_composes(
+    monkeypatch,
+):
+    """A spine request binds the geography block its preparation composed,
+    through the helper the spine build's sidecar writer calls, with K beside
+    it (microcosm#931): on supports held to the register, a release-candidate
+    request's binding passes the release check, as a bound spine's does. A
+    request whose roster runs no area draw composes none, and its binding
+    carries K alone."""
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.country_adapter import (
+        UK_SPINE_SUPPORT_REGISTER,
+        uk_spine_geography_binding,
+        uk_spine_geography_binding_failures,
+    )
+    from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+        toy_conditioned_support_payloads,
+    )
+
+    block = uk_spine_geography_binding(
+        toy_conditioned_support_payloads(), register=UK_SPINE_SUPPORT_REGISTER
+    )
+    patch_support_register(monkeypatch, pins=block["support_pins"])
+    raw = SimpleNamespace(
+        n_clones=15,
+        sample_fraction=1.0,
+        sample_seed=0,
+        smoke=False,
+        release_candidate=True,
+    )
+    binding = cli._requested_spine_binding(raw, block)
+    assert binding["geography"] == {**block, "geographic_clone_count": 15}
+    assert binding["release_posture"] == "release_candidate"
+    assert (
+        uk_spine_geography_binding_failures(binding["geography"], clone_count=15) == ()
+    )
+    assert cli._require_release_candidate_spine(binding, clone_count=15) is None
+    bare = cli._requested_spine_binding(raw, None)
+    assert bare["geography"] == {"geographic_clone_count": 15}
+    with pytest.raises(ValueError, match="it records no geography binding"):
+        cli._require_release_candidate_spine(bare, clone_count=15)

@@ -12,6 +12,12 @@ import h5py
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.staging_v2 import validate_v2_bundle
+from microcosm.build.uk_runtime.country_adapter import (
+    UK_SYNTHETIC_SUPPORT_REGISTER,
+    uk_spine_geography_binding,
+)
+from microcosm.build.uk_runtime.geography_first_roster import SIDECAR_GEOGRAPHY_KEYS
+from microcosm.build.uk_runtime.graph_kernels import FIXTURE_SUPPORT_INPUTS
 from microcosm.graph import ContentStore, collect_execution_evidence, load_run_evidence
 from microcosm.graph.orrery import orrery_document_from_schema
 from test_support.paths import paths_for
@@ -75,6 +81,21 @@ def test_uk_staging_smoke_command_runs_every_spine_stage(tmp_path: Path) -> None
 
     output = tmp_path / "uk-smoke.h5"
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
+    # The sidecar records how the spine drew its areas: the block the leaf
+    # names, composed from the fixture's toy conditioned supports under the
+    # synthetic register (microcosm#931). The file is written with its keys
+    # sorted, so the block's keys are compared as a set here; the writer's
+    # order is test_uk_spine_posture's.
+    descriptor = json.loads((FIXTURE / "fixture.json").read_text())
+    supports = {
+        system: (FIXTURE / descriptor["inputs"][source_id]).read_bytes()
+        for system, source_id in FIXTURE_SUPPORT_INPUTS.items()
+    }
+    assert set(sidecar["geography"]) == set(SIDECAR_GEOGRAPHY_KEYS)
+    assert sidecar["geography"]["register"] == UK_SYNTHETIC_SUPPORT_REGISTER
+    assert sidecar["geography"] == uk_spine_geography_binding(
+        supports, register=UK_SYNTHETIC_SUPPORT_REGISTER
+    )
     with h5py.File(output) as data:
         assert bool(data.attrs["populace_non_release"]) is True
         assert data.attrs["populace_release_posture"] == "smoke"

@@ -276,7 +276,12 @@ def test_national_and_export_operations_are_rostered():
     spine = uk_spine_stage_ids()
     assert uk_operation_group("create_uk_frs", spine_stages=spine) == "enrichment"
     assert uk_operation_group("was_wealth", spine_stages=spine) == "enrichment"
-    assert uk_operation_group("frs_brma.checkpoint", spine_stages=spine) == "enrichment"
+    # The assembled checkpoint follows area_brma, which took frs_brma's place
+    # (microcosm#931); frs_brma is no spine stage now.
+    assert uk_operation_group("area_brma.checkpoint", spine_stages=spine) == (
+        "enrichment"
+    )
+    assert uk_operation_group("frs_brma.checkpoint", spine_stages=spine) == "other"
     assert uk_operation_group(NATIONAL_TARGETS_NODE, spine_stages=spine) == "targets"
     assert uk_operation_group(NATIONAL_PROBLEM_NODE, spine_stages=spine) == "targets"
     assert uk_operation_group(NATIONAL_GATES_NODE, spine_stages=spine) == "checks"

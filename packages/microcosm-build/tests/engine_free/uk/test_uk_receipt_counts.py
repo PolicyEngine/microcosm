@@ -182,6 +182,13 @@ _KEPT_TENS: dict[str, tuple[tuple[str, int], ...]] = {
         ("goes to HMRC at least ten working days", 1),
     ),
     "tools/graph_uk_spine_fixture.py": (("4 <= band <= 9", 1),),
+    # The band edge of the BRMA distribution tool's shares (microcosm#931): a
+    # cell whose counts read "3-9" prints no benefit-unit share or z, which
+    # would narrow that band; its counts follow the floor of three.
+    "tools/emit_uk_brma_distribution.py": (
+        ("SHARE_MINIMUM_SOURCES = 10", 1),
+        ("withheld in a cell resting on fewer than ten source households", 1),
+    ),
 }
 #: The hand-written UK JSON files; the generated ones repeat what these say.
 _UK_HAND_WRITTEN_JSON = (

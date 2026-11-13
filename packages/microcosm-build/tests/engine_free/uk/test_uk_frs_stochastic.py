@@ -746,3 +746,37 @@ def test_take_up_draws_refuse_a_clone_index_they_cannot_count_within() -> None:
         with pytest.raises(error, match=message) as refused:
             derive_frs_take_up(benunit, **arguments, clone_index=clone_index)
         assert not any(character.isdigit() for character in str(refused.value))
+
+
+def test_the_declarations_say_the_targets_count_within_each_geographic_clone() -> None:
+    """The per-clone counts are declared in text (C-33, microcosm#931):
+    frs_take_up's notes name its three anchored draws as counting within each
+    geographic clone, frs_person_draws' apprentice walk says its target is
+    counted within each geographic clone, and the take-up contract's policy
+    line says frs_take_up's anchors take int(rate * n_units) within each
+    clone, while spi_benefit_coherence's SPI-channel redraw, which reads the
+    same rule, still counts over every clone. The packaged spec and the
+    packaged contract say so."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+
+    clause = "within each geographic clone"
+    stages = load_country_spec("uk").sources.stage_map()
+    notes = stages["frs_take_up"].notes
+    assert clause in notes
+    for flag in _ANCHORED_FLAGS:
+        assert flag in notes, flag
+    (walk,) = (
+        operation
+        for operation in stages["frs_person_draws"].operations
+        if "rate_derivation" in operation.parameters
+    )
+    assert walk.parameters["output"] == "is_apprentice"
+    assert clause in walk.parameters["rate_derivation"]
+    policy = load_uk_take_up_contract().policy
+    assert (
+        f"target = int(rate * n_units), counted {clause} by frs_take_up's "
+        "anchored draws"
+    ) in policy
+    assert "spi_benefit_coherence's SPI-channel Universal Credit redraw" in policy

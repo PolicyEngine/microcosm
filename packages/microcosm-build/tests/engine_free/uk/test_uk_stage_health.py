@@ -4369,6 +4369,41 @@ def test_assembled_stage_gates_read_only_stages_run_by_the_assembled_boundary() 
     assert late == []
 
 
+def test_the_assembled_gates_read_up_to_area_brma() -> None:
+    """The assembled checkpoint closes at area_brma, in frs_brma's place after
+    the draws and after the area stages (microcosm#931), so every column an
+    assembled domain gate reads is written by area_brma or an earlier stage:
+    the BRMA domain gate reads the brma area_brma writes, before
+    spi_copy_areas rewrites the SPI copies' brma at the transferred phase."""
+    from microcosm.build import load_country_spec
+    from microcosm.build.uk_runtime.graph import UK_SPINE_ASSEMBLED_FINAL_STAGE
+
+    assert UK_SPINE_ASSEMBLED_FINAL_STAGE == "area_brma"
+    spec = load_country_spec("uk")
+    stages = list(spec.sources.stages)
+    order = [stage.stage for stage in stages]
+    boundary = order.index(UK_SPINE_ASSEMBLED_FINAL_STAGE)
+    assert order[boundary - 1] == "frs_household_draws"
+    assert order[boundary + 1] == "spi_support_channel"
+    assert {"atomic_area_assign", "local_authority", "rfdr"} <= set(order[:boundary])
+    writers: dict[str, list[int]] = {}
+    for position, stage in enumerate(stages):
+        for column in (*stage.outputs, *stage.rewrites):
+            writers.setdefault(column, []).append(position)
+    read = {
+        str(column)
+        for entry in spec.gates.gates
+        if entry.phase == "assembled" and entry.gate == "enum_domain"
+        for column in entry.parameters["columns"]
+    }
+    assert "brma" in read
+    assert sorted(column for column in read if writers[column][0] > boundary) == []
+    assert [order[position] for position in writers["brma"]] == [
+        "area_brma",
+        "spi_copy_areas",
+    ]
+
+
 # --- The spine geography checks (microcosm#931) -----------------------------------
 
 

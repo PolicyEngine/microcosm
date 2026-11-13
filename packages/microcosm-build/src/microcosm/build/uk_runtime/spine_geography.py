@@ -56,11 +56,11 @@ clone's area as its household's:
 G2, G3 and G5 compute with keyed integer draws, exact integer sampling
 masses and string lookups, so each is bitwise, the class of every spine stage
 (C-2). G4 and the copy stage read ``LHA_category`` from the rules engine and
-draw Northern Ireland's BRMAs as ``frs_brma`` does. No stage declares them
-yet: each transform checks the stage it runs as against the reviewed
-declaration this module states (name, household grain, outputs, rewrites,
-the reviewed operations verbatim and its artifacts), which the declarations
-will carry.
+draw Northern Ireland's BRMAs as ``frs_brma`` does. ``sources.yaml``
+declares every stage: each transform checks the stage it runs as against the
+reviewed declaration this module states (name, household grain, outputs,
+rewrites, the reviewed operations verbatim and its artifacts), which the
+declarations carry.
 
 This module's refusals give columns, dtypes and declared constants only,
 never a key, an id, a code of a household, a value or a count of households.
@@ -71,7 +71,10 @@ sources by system, by level and by fallback reason, G3's sources, and G4's
 sources by grain and Northern Ireland's sources drawn, over every clone,
 since each is the same at every clone count; G5's flagged sources and the
 copy stage's copied, donor and flagged sources among clone-0 rows, where a
-union could grow with K.
+union could grow with K. The copy stage withholds every system of a kind
+where one system rests on one or two sources: at one clone the support
+channel's and the band donors' own exact copy counts are that kind's total,
+so the others' would give it back by difference.
 """
 
 from __future__ import annotations
@@ -162,6 +165,13 @@ from microcosm.build.uk_runtime.geographic_identity import (
     GEOGRAPHIC_IDENTITY_SOURCE,
     frs_vintages_by_source_year,
 )
+from microcosm.build.uk_runtime.geography_first_roster import (
+    AREA_BRMA_STAGE,
+    ATOMIC_AREA_ASSIGN_STAGE,
+    LOCAL_AUTHORITY_STAGE,
+    RFDR_STAGE,
+    SPI_COPY_AREAS_STAGE,
+)
 from microcosm.build.uk_runtime.geography_sources import LAD23_NAMES_SHA256
 from microcosm.build.uk_runtime.household_lineage import (
     GEOGRAPHIC_SUPPORT_BRANCH,
@@ -180,6 +190,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_carriers,
     record_source_households,
     rounded_count,
@@ -362,7 +374,7 @@ def _sources_by(
 
 # --- G2, atomic_area_assign -------------------------------------------------------
 
-ATOMIC_AREA_ASSIGN_STAGE_NAME = "atomic_area_assign"
+ATOMIC_AREA_ASSIGN_STAGE_NAME = ATOMIC_AREA_ASSIGN_STAGE
 ATOMIC_AREA_ASSIGN_OPERATION_KIND = "assign_atomic_area"
 #: The columns G2 writes: the three assignment columns, then the ten ladder
 #: columns, every one in the graph's string dtype.
@@ -663,7 +675,7 @@ class UKAtomicAreaAssignStageTransform:
 
 # --- G3, local_authority ----------------------------------------------------------
 
-LOCAL_AUTHORITY_STAGE_NAME = "local_authority"
+LOCAL_AUTHORITY_STAGE_NAME = LOCAL_AUTHORITY_STAGE
 LOCAL_AUTHORITY_OPERATION_KIND = "resolve_local_authority"
 #: The stage's one artifact: the committed ONS names roster, whose bytes enter
 #: the stage's contract.
@@ -810,7 +822,7 @@ class UKLocalAuthorityStageTransform:
 
 # --- G4, area_brma ----------------------------------------------------------------
 
-AREA_BRMA_STAGE_NAME = "area_brma"
+AREA_BRMA_STAGE_NAME = AREA_BRMA_STAGE
 AREA_BRMA_OPERATION_KIND = "assign_area_brma"
 #: The stage's two artifacts, whose bytes enter its contract: the committed
 #: area-to-BRMA layer Great Britain reads, and the census counts Northern
@@ -1193,7 +1205,7 @@ class UKAreaBRMAStageTransform:
 
 # --- G5, rfdr ---------------------------------------------------------------------
 
-RFDR_STAGE_NAME = "rfdr"
+RFDR_STAGE_NAME = RFDR_STAGE
 RFDR_OPERATION_KIND = "assign_rfdr_flags"
 #: The stage's one artifact: the committed RFDR layer, whose bytes enter the
 #: stage's contract.
@@ -1408,7 +1420,7 @@ class UKRFDRStageTransform:
 
 # --- The SPI-copy area stage, spi_copy_areas --------------------------------------
 
-SPI_COPY_AREAS_STAGE_NAME = "spi_copy_areas"
+SPI_COPY_AREAS_STAGE_NAME = SPI_COPY_AREAS_STAGE
 SPI_COPY_AREAS_OPERATION_KIND = "assign_spi_copy_areas"
 #: The columns the stage rewrites on the rows the SPI support channel copied,
 #: each in the dtype its column holds: the geography key, G2's three
@@ -1750,10 +1762,25 @@ def _copy_brmas(
     return _layer_brmas(copies, systems, current, layer=layer, what=what)
 
 
+def _copy_sources_by_system(counts: Mapping[str, int]) -> dict[str, int | str]:
+    """One kind's copied source households by system, as the evidence prints
+    them: rounded by the shared rules, or, where any system rests on one or
+    two, withheld for every system of the kind, zeros included. At one clone
+    the support channel's exact ``spi_households`` and the band donors' exact
+    ``donor_count`` at full seating are the kind's total over its systems, so
+    the other systems' counts would give a withheld one back by difference."""
+
+    if any(0 < int(count) < UK_DISCLOSURE_FLOOR for count in counts.values()):
+        return {system: UK_WITHHELD for system in counts}
+    return {system: rounded_count(count) for system, count in counts.items()}
+
+
 @dataclass(frozen=True)
 class UKSPICopyAreasResult:
     """The copy stage's frame and what its evidence reads of it, counted
-    among clone-0 rows; the source counts are exact and print only rounded."""
+    among clone-0 rows; the source counts are exact and print only rounded,
+    a kind's every system withheld where one rests on one or two
+    (:func:`_copy_sources_by_system`)."""
 
     frame: Frame = field(repr=False)
     clone_count: int
@@ -1784,7 +1811,7 @@ class UKSPICopyAreasResult:
             "clone_count": int(self.clone_count),
             "counted_among": "clone_0",
             "copy_source_households": {
-                kind: {system: rounded_count(count) for system, count in counts.items()}
+                kind: _copy_sources_by_system(counts)
                 for kind, counts in self.by_kind.items()
             },
             "flagged_copy_source_households": {
@@ -1852,8 +1879,9 @@ def assign_uk_spi_copy_areas(
     Here G4 runs before G5, the reverse of their order on the spine; neither
     reads the other's column. Each rewrite keeps its column's dtype, and
     every other row and column is left as it was. The evidence counts, among
-    clone-0 rows, the distinct source households copied, by kind and system,
-    and those whose copies are flagged, by Great Britain system; on a frame
+    clone-0 rows, the distinct source households copied, by kind and system
+    (every system of a kind withheld where one rests on one or two), and
+    those whose copies are flagged, by Great Britain system; on a frame
     without a copy it says the validation and the roster check did not run.
 
     Refused, naming columns and declared constants only: a frame without a
