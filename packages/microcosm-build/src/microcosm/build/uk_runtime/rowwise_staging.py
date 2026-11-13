@@ -13,8 +13,9 @@ build's emitter, which commits them with the build's own credential; this
 module makes no Hugging Face call. A build whose environment switches the Hub
 off (``HF_HUB_OFFLINE``, as on Modal) keeps its bundle local. The bundle's
 hand-over names the build for the collector (:func:`collector_provenance`),
-so the emitter submits its calibration diagnostics there once the bundle's
-commit lands, while its collector submissions are on.
+so the emitter, whose collector submissions are on, submits its calibration
+diagnostics there once the bundle's commit lands, and the build waits for the
+collector to accept them (``collector_submissions.follow_collector_submissions``).
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from microcosm.build.calibration_epoch_telemetry import (
     calibration_epoch_stride,
     forwards_calibration_epoch,
 )
+from microcosm.build.collector_submissions import UK_COLLECTOR_COUNTRY_CODE
 from microcosm.build.run_outcome import (
     UNRECORDED_GATE_BLOCK,
     GateBlock,
@@ -113,12 +115,6 @@ STAGED_DATASET_PHASES = {
 _STAGING_UPLOAD_INTERVAL_SECONDS = STAGING_UPLOAD_INTERVAL_SECONDS
 _STAGED_DATASET_PHASES = STAGED_DATASET_PHASES
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
-#: The country code a UK bundle's collector provenance names. Staging
-#: telemetry registers UK runs as ``GB``, but the collector's calibration
-#: tree handler knows the country as ``UK`` and builds no tree from a
-#: submission naming another code. Its Orrery graph handler records whatever
-#: code it is given.
-UK_COLLECTOR_COUNTRY_CODE = "UK"
 #: The releases a staged UK build can be a candidate for: each release role's
 #: release, whose builds publish into their own folders.
 _CANDIDATE_RELEASES = frozenset(

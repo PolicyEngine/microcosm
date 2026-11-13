@@ -181,6 +181,9 @@ start the installed command with `start_bundle_emitter()`, as the UK re-stage
 command does (the Hugging Face module only), and send its Hugging Face Hub
 requests through `HF_ENDPOINT` to a loopback stand-in server
 (`test_support/microcosm_build/stand_in_hub.py`), so the job needs no secret.
+Builds switch the emitter's collector submissions on, so the tests' fixture
+sends them to a closed loopback port: nothing reaches a collector, and a
+build's wait for the collector ends at the first failed attempt.
 With Xet turned off, the stand-in takes the dataset through the LFS upload a
 real Hub requires for it, with the single-part `basic` transfer. It does not
 model Xet, which machines with `hf_xet` use, or the multipart transfer a real

@@ -245,15 +245,42 @@ The hand-over also names the build for the collector, with the interface's
 With that, the emitter submits the bundle's calibration diagnostics (with the
 build manifest as `build_manifest`) to the collector once the Hugging Face
 commit lands, as a `calibration-diagnostics` submission whose folder is
-`staged/<run_id>`, but only while its collector submissions are on. No
-emitter release up to 0.14.0 (the newest released, which the installed-emitter
-tests pin) can switch them on, so for now the emitter ignores the provenance
-and the bundle goes to Hugging Face alone. Microcosm sets only a minimum
-emitter version, so an emitter release that switches submissions on by
-default would start these submissions with no change here. A different `collector` block gives the bundle a
-different hand-over ID, so a bundle handed over before this change is not
-the same hand-over as one handed over after it; the re-stage command resumes
-a recorded hand-over by its recorded ID either way.
+`staged/<run_id>`, with the build's Hugging Face credential. Every emitter a
+build or the re-stage command starts has its collector submissions switched
+on (`telemetry_emitter.COLLECTOR_SUBMISSIONS`, through the setting emitter
+0.15.0 added; the emitter's own default leaves them off, so switching them
+off again is a Microcosm change). Once the bundle has landed, the build waits
+up to ten minutes for the collector to accept the submissions
+(`collector_submissions.follow_collector_submissions`), because an emitter that is
+closing starts no new submission; an attempt after the commit that fails
+ends the wait sooner. A bundle that has not landed is asked about once and
+not waited for. The build carries on in every case, with a warning when:
+
+- the collector receives nothing (`skipped`): the emitter refused its
+  collector settings or the collector-token variables it inherits
+  (`COLLECTOR_SETTINGS_REFUSED`; an emitter given a collector token uses it
+  instead of the Hugging Face credential, and it only sends telemetry, so
+  unset those variables), the bundle's Hugging Face upload failed or was
+  refused (`NOT_STAGED_ON_HUGGING_FACE`), or its folder is longer than the
+  collector accepts (`COLLECTOR_FOLDER_TOO_LONG`);
+- the collector refused the submissions at intake (`rejected` or `failed`),
+  with the code the receipt gives. Once it has accepted them, its own
+  processing decides whether it builds a tree or rejects them, and the build
+  doesn't wait for that; a re-stage that resumes an older hand-over can show
+  that later result, or `timed_out`;
+- the emitter had no credential for them (`CREDENTIAL_MISSING`): it was given
+  a collector token, which only sends telemetry, or found no Hugging Face
+  credential;
+- they were still queued when the wait ended: an emitter running on this
+  machine later sends them, and files the emitter did not copy at hand-over
+  must stay unchanged until the hand-over settles.
+
+The staged dataset record (`staged_dataset`) describes the Hugging Face
+upload alone and does not change. A different `collector` block gives the
+bundle a different hand-over ID, so a bundle handed over before the
+provenance was added is not the same hand-over as one handed over after it;
+the re-stage command resumes a recorded hand-over by its recorded ID either
+way, and follows its collector receipt as the build does.
 
 Modes follow the staging switch. The default uploads telemetry and the bundle;
 `--staging-local-only` keeps both on disk (the sidecars are still written);
