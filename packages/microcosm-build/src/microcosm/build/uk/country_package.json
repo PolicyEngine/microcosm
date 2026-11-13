@@ -138,6 +138,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "dwp_uc_lcwra_households_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "dwp_pip_points_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -348,7 +353,7 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "incumbent_unresolvable_measures.json",
+      "path": "reference_unresolvable_measures.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

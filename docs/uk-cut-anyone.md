@@ -48,14 +48,18 @@ with `agent-secret get microcosm/uk-gate-signing-key-team maxghenis`, and
 
 1. `fetch`
 2. `preflight`
-3. spine
-4. national dry run, then the national calibration
-5. re-score, only when the in-build evaluation did not pass
-6. certify
-7. stage-1 comparison (with `--previous-h5`)
-8. assemble
-9. publish preflight
-10. publish (with `--publish`)
+3. `reference`: the current national build the cut compares with
+   ([The reference build](#the-reference-build))
+4. spine
+5. national dry run, then the national calibration
+6. re-score, only when the build's comparison with the reference is missing
+   or names another candidate or reference
+7. certify
+8. stage-1 comparison, against the reference (`--previous-h5` names another
+   file)
+9. assemble
+10. publish preflight
+11. publish (with `--publish`)
 
 Every step first checks whether its outputs already exist and verify, and
 skips itself if they do. So when a run stops, fix the cause and run the same
@@ -85,6 +89,7 @@ derive from licensed data:
 | Path | Contents |
 |---|---|
 | `inputs/` | shared verified inputs |
+| `cuts/<label>-<sha9>/reference/` | the build the cut compares with: its dataset, its record (`reference.json`) and the evidence the gates read from it |
 | `cuts/<label>-<sha9>/spine/` | the spine |
 | `cuts/<label>-<sha9>/national/` | the calibration run |
 | `cuts/<label>-<sha9>/release/` | the assembled release |
@@ -150,11 +155,10 @@ MICROCOSM_UK_CUT_MODAL_RUN=1 modal run --detach tools/modal_uk_cut.py --commit <
 `tools/uk_cut_inputs.json` says where each input lives. Every expected digest
 is read at run time from the pins the build already checks:
 `uk/source_stages.json`, `uk/frs_release.json`, `uk/chronicle_feed.json` and
-`uk/gates.json`. The one exception is the input-mass reference: the build
-binds it by a canonical digest of its contents, so the manifest also carries
-the hosted file's byte sha256. A file is installed only if it
-is byte-identical to what the build will accept, and nothing unverified is
-ever left at an input's path.
+`uk/gates.json`. A file is installed only if it is byte-identical to what the
+build will accept, and nothing unverified is ever left at an input's path.
+The build the cut compares with is not a fixed input: the `reference` step
+resolves it ([The reference build](#the-reference-build)).
 
 **Who can read them.** `policyengine/microcosm-uk-build-inputs`,
 `policyengine/populace-uk-private` and `policyengine/populace-uk-staging` are
@@ -168,8 +172,6 @@ is what admits a builder to the licensed inputs.
 | FRS 2024-25 (14 tabs) | `policyengine/policyengine-uk-data-private` `frs_2024_25.zip` @ `a2039519` (gated) | fetched, every member matches its pin |
 | SPI 2022-23, WAS round 8, ETB 1977-2024 | the same repo's `spi_2022_23.zip`, `was_2006_22.zip`, `etb_1977_24.zip` | fetched, matches |
 | HMRC personal incomes ODS | gov.uk URL pinned in `source_stages.json` | fetched, matches |
-| Incumbent enhanced FRS | `policyengine-uk-data-private` `enhanced_frs_2024_25.h5` @ `a9e52499` | fetched, matches |
-| Input-mass reference | `policyengine/microcosm-uk-build-inputs` (private) `input-mass-reference/fd41cb5f…/` | fetched, matches |
 | Chronicle UK consumer artifact (about 8 GB) | `policyengine/microcosm-uk-build-inputs` `chronicle-uk/<the feed's source commit>/`, read at main | fetched, both files match the feed pin. The path follows `chronicle_feed.json`, so each re-pin needs its artifact hosted (below). 64753803's (main's pin since PolicyEngine/chronicle#411) was uploaded on 2026-11-06 from a local build that matches both digests; 272c987's on 2026-10-26 from the build #1359 pinned; abf0921's was rebuilt on Modal and reproduced the pin byte for byte |
 | NTS 2002-2024 (6 tabs) | `policyengine-uk-data-private` `nts_2002_24.zip` @ `559b69e9` | fetched, every member matches its pin |
 | LCFS 2024-25 (2 tabs) | `policyengine-uk-data-private` `lcfs_2024_25.zip` @ `11051052` (a repack of the extracted files) | fetched, every member matches its pin |
@@ -232,22 +234,79 @@ the private repositories, is attached only with
 ephemeral secret for that run; no named workspace secret keeps it. A rebuild
 without `--upload` sends no credential at all.
 
-### Regenerating the input-mass reference
+### The reference build
 
-The certifier binds the reference by a canonical digest of its identity and
-totals. The emitted column set follows the installed policyengine-uk.
-Today's engine adds `bus_fare_spending` and `sic_industry_division`. That
-changes the digest, though all 131 shared totals are identical. Reproduce the
-pinned file (`fd41cb5f…`) at the commit that pinned it:
+A cut checks and certifies its candidate against the current build of the
+national line, as `releases.json` in `policyengine/populace-uk-private` names
+it (microcosm#1095). Until then every cut compared with the enhanced FRS.
+
+The `reference` step resolves that build once per cut. It refuses a build
+that is withdrawn or whose `release_certification.json` is not shippable,
+names another file or was signed by an unregistered key. It downloads the
+dataset, checks its sha256 and writes four files to
+`cuts/<label>-<sha9>/reference/`:
+
+- the dataset;
+- `reference.json`, the record every later step reads, so a promotion while
+  the cut runs does not change what it is compared with;
+- `input_mass_reference.json`, the build's input-mass totals and carriers at
+  its own solved weights, for the input-mass gate;
+- `reference_surface.json`, the columns it exports and the loader inputs it
+  carries, names and flags only, for the export-surface and input-coverage
+  gates.
+
+The totals are licensed-data aggregates and stay in the work directory like
+the dataset. The candidate's score against the reference is a report with no
+verdict (`score_vs_reference.json`); the certification records the reference
+it was checked against.
+
+To see what a cut would compare with now, without downloading anything:
 
 ```bash
-git worktree add --detach ../mc-0eac9bbbd 0eac9bbbd && cd ../mc-0eac9bbbd
-uv sync --all-packages --locked --extra uk        # policyengine-uk 2.89.0
-uv run --no-sync python tools/build_uk_efrs_parity_reference.py \
-  --input-h5 <enhanced_frs_2024_25.h5 @ a9e52499> --emit-weighted-totals <outside the repo>.json
+uv run --no-sync python tools/resolve_uk_reference.py --release microcosm-uk-2024-25-national --check
 ```
 
-The hosted copy's receipt records this recipe.
+`--re-resolve-reference` sets a cut's reference aside (as
+`reference.superseded-<time>`) and resolves the current build again; the
+score and the certification then run again against it.
+
+It refuses to move to the cut's own candidate, which becomes the current build
+once the cut is promoted. A build withdrawn after the fetch stops the certify
+and publish steps, even once the cut is certified, and `status` says so; the
+cut keeps its record until `--re-resolve-reference` moves it, which certifies
+the cut again.
+
+A line with no current build (a new line, or one whose only current build
+was withdrawn, `current: null`) refuses at the reference step. Pin one of its
+listed builds instead, with `--reference-build <build>` here or `--build` on
+`tools/resolve_uk_reference.py`. A pinned build passes the same certification
+checks as the current one and is refused if withdrawn. The record and the
+certification mark it `pinned`. A cut that already compares with another
+build keeps it unless `--re-resolve-reference` is given too. The release ids
+and the registry year are code constants, so the next FRS year needs a code
+change.
+
+Every check compares a cut with the build before it, so the certification
+also records the change since a fixed baseline:
+- each input column's total as a ratio of the baseline's;
+- each column that has left that chain, with why and its last ratio;
+- the inputs the baseline carried;
+- which of those this build no longer carries.
+
+The chain starts at the build each line compared with first (for the national
+line, eeb6093e). Each cut continues its reference's record, multiplying in
+the ratios its own input-mass gate measures, so no baseline dataset is ever
+loaded. It continues from the reference's certification kept beside it, which
+a resumed cut keeps again if the copy is missing.
+
+A column leaves the chain when it is absent on a side, when the reference's
+total is zero, or when one or two source households carry it on a side (its
+figures are withheld). It stays listed in every later certification, with the
+reason and the last ratio the chain recorded for it. A national chain that
+starts at any build but eeb6093e (a pinned build certified before the record
+began, say) has restarted, and the certification records `restarted_from`.
+The record carries no verdict. The dense line's published evidence carries
+none of these gates, so its chain restarts at each reference.
 
 ## Signing keys
 

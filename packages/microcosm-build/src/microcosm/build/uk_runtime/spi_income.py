@@ -55,7 +55,12 @@ from microcosm.build.uk_runtime.pension_coherence import (
 )
 from microcosm.build.uk_runtime.qrf_gates import (
     UK_DEFAULT_GATE_CALIBRATION,
+    gate_level_reports,
+    gate_level_settings_receipt,
+    gate_levels,
     gate_outcomes,
+    pooled_gate_level_reports,
+    pooled_gate_levels,
     pooled_gate_outcomes,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
@@ -63,9 +68,11 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_WITHHELD,
     distinct_count,
     extreme_count,
+    floored_share,
     rounded_count,
     small_cell_share,
     source_household_ids,
+    support_band,
 )
 from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_STAGE1_ANALOGUE_COLUMNS,
@@ -127,6 +134,31 @@ FRS_ONLY_FIT_NAME = "uk_frs_only_spi_fill"
 #: layout, so moving to the additive contract redraws nothing (microcosm#1360).
 _STAGE2_SALT_NAMES = {ISA_INTEREST_COLUMN: "tax_free_savings_income"}
 DEFAULT_SPI_DONOR_SAMPLE_SIZE = 100_000
+#: How the stage-1 forest's donor frame is drawn from the prepared tape.
+#: ``fact_weighted_bootstrap`` draws rows with replacement in proportion to
+#: FACT and fits them at uniform weight, as the enhanced-FRS pipeline does.
+#: ``rare_carriers_certain`` (microcosm#1276) keeps the row count and takes
+#: every record that carries a rare output, then fills the frame from the
+#: other records in proportion to FACT without replacement; each row is fitted
+#: at FACT over its inclusion probability, so the frame's weighted incidence
+#: is the tape's and no record repeats.
+SPI_DONOR_FRAME_FACT_BOOTSTRAP = "fact_weighted_bootstrap"
+SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN = "rare_carriers_certain"
+SPI_DONOR_FRAME_DESIGNS = (
+    SPI_DONOR_FRAME_FACT_BOOTSTRAP,
+    SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN,
+)
+#: The manifest's ``post_sample_fit_weight`` for each design.
+SPI_DONOR_FRAME_FIT_WEIGHT = {
+    SPI_DONOR_FRAME_FACT_BOOTSTRAP: "uniform",
+    SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN: "inverse_inclusion",
+}
+#: Under ``rare_carriers_certain`` an output is rare when the tape records
+#: that carry it number fewer than this share of the frame's rows.
+SPI_DONOR_RARE_CARRIER_SHARE = 0.25
+#: The frame draw's seed derives from the stage seed, like stage 2's (+1), the
+#: band resample's (+2) and the reference forests' (+3).
+SPI_DONOR_FRAME_SEED_OFFSET = 4
 # Recipient guard matching the existing constructed SPI age support below.
 # SN 9422 Annex A labels the youngest band "Under 25"; it does not establish
 # a survey age minimum. Keep observed FRS inputs below the constructed lower
@@ -1127,11 +1159,19 @@ class UKSPIIncomeImputationResult:
     reference_training_rows: int = 0
     state_pension_age: int | None = None
     gainful_self_employment_refresh: Mapping[str, object] | None = None
+    #: The carer link re-derived on the channel's households (A3).
+    carer_link_refresh: Mapping[str, object] | None = None
     pension_coherence: Mapping[str, object] | None = None
     employment_pay_floor: Mapping[str, object] | None = None
     gift_anchor: Mapping[str, object] | None = None
     #: Each gated target's gate outcome, for the fits not on the in-sample gate.
     gate_outcomes: Mapping[str, str] | None = None
+    #: How the stage-1 donor frame was drawn, for a design other than the
+    #: FACT-weighted bootstrap.
+    donor_frame: Mapping[str, object] | None = None
+    #: The predictor levels each stage-1 gate's calibration offsets on their
+    #: own, for a stage 1 that declares ``gate_level_columns``.
+    gate_levels: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1242,6 +1282,8 @@ def impute_uk_spi_income_support(
     employment_pay_floor: SPIEmploymentPayFloor | None = None,
     stage1_gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
     stage2_gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
+    donor_frame_design: str = SPI_DONOR_FRAME_FACT_BOOTSTRAP,
+    stage1_gate_level_columns: Sequence[str] = (),
 ) -> UKSPIIncomeImputationResult:
     """Run strict SPI-income and FRS-only QRFs on rebuilt positive support.
 
@@ -1265,7 +1307,15 @@ def impute_uk_spi_income_support(
     observed sign and the tape forest's gate that reads it are calibrated
     alike; their cross-fitted folds, like stage 2's, keep an FRS household's
     members together. The result names each gate's outcome for the fits not
-    on the in-sample gate.
+    on the in-sample gate. ``donor_frame_design`` names how the stage-1
+    forest's ``donor_sample_size`` rows are drawn from the tape
+    (:data:`SPI_DONOR_FRAME_DESIGNS`); a full-tape fit (``None`` rows) has no
+    draw. ``stage1_gate_level_columns`` names stage-1 predictors whose levels
+    the cross-fitted stage-1 gates offset on their own (microcosm#1276); a
+    categorical predictor's levels are its one-hot columns. The reference
+    forests take them too: a copy's sign uniform is located in its twin's
+    reference gate, so the copies keep the tape gate's rate in a level only
+    where the reference gate holds the FRS rows' rate there.
     """
 
     if support.household_weight_kind is not WeightKind.IMPORTANCE:
@@ -1280,6 +1330,12 @@ def impute_uk_spi_income_support(
         not isinstance(donor_sample_size, int) or donor_sample_size <= 0
     ):
         raise ValueError("donor_sample_size must be a positive integer or None.")
+    if donor_frame_design not in SPI_DONOR_FRAME_DESIGNS:
+        raise ValueError(
+            f"donor_frame_design {donor_frame_design!r} is not one of "
+            f"{SPI_DONOR_FRAME_DESIGNS}."
+        )
+    _check_gate_level_columns(stage1_gate_level_columns)
 
     donor_path = Path(spi_tab_path).expanduser().resolve()
     if donor_table is None:
@@ -1329,7 +1385,15 @@ def impute_uk_spi_income_support(
     }
     donor_full = donor
     donor_fit_weights = donor["FACT"].to_numpy(dtype=np.float64)
-    if donor_sample_size is not None:
+    donor_frame_receipt: dict[str, object] | None = None
+    if (
+        donor_sample_size is not None
+        and donor_frame_design == SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN
+    ):
+        donor, donor_fit_weights, donor_frame_receipt = _rare_carriers_certain_frame(
+            donor, size=donor_sample_size, seed=seed + SPI_DONOR_FRAME_SEED_OFFSET
+        )
+    elif donor_sample_size is not None:
         donor = donor.sample(
             n=donor_sample_size,
             replace=True,
@@ -1495,11 +1559,20 @@ def impute_uk_spi_income_support(
         weights=donor_fit_weights,
         weight_kind=WeightKind.DESIGN,
     )
+    stage1_level_columns = _encoded_gate_level_columns(
+        stage1_gate_level_columns, donor_predictors.columns
+    )
+    # Only a stage that declares levels passes them, so a model without the
+    # keyword (a synthetic test double) still fits every other stage.
+    stage1_level_kwargs = (
+        {"gate_level_columns": stage1_level_columns} if stage1_level_columns else {}
+    )
     qrf_cls = _qrf_class()
     stage1 = qrf_cls(
         n_estimators=n_estimators,
         seed=seed,
         gate_calibration=stage1_gate_calibration,
+        **stage1_level_kwargs,
     ).fit(
         donor_frame,
         list(donor_predictors.columns),
@@ -1530,6 +1603,7 @@ def impute_uk_spi_income_support(
             n_estimators=n_estimators,
             seed=seed + SPI_TRANSPORT_SEED_OFFSET,
             gate_calibration=stage1_gate_calibration,
+            **stage1_level_kwargs,
         ).fit(
             frame,
             list(encoded.columns),
@@ -1843,6 +1917,9 @@ def impute_uk_spi_income_support(
     person = _move_losses_brought_forward_to_loss_relief(person, spi_people=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
     person = _refresh_carer_take_up_input(person, spi_people=spi_people)
+    person, carer_link_refresh = _refresh_carer_link(
+        person, household, spi_channel=spi_channel_people
+    )
     person = _refresh_esa_support_component(person, spi_people=spi_people)
     person = _clear_trading_loss_beside_profit(person, spi_people=spi_people)
     person = _refresh_uc_start_up_period(person, spi_people=spi_people)
@@ -1892,9 +1969,11 @@ def impute_uk_spi_income_support(
         reference_training_rows=int(reference_people.sum()),
         state_pension_age=int(state_pension_age),
         gainful_self_employment_refresh=gainful_self_employment,
+        carer_link_refresh=carer_link_refresh,
         pension_coherence=pension_coherence,
         employment_pay_floor=pay_floor_receipt,
         gift_anchor=gift_anchor,
+        donor_frame=donor_frame_receipt,
         gate_outcomes={
             **(
                 {}
@@ -1910,6 +1989,22 @@ def impute_uk_spi_income_support(
                 else gate_outcomes(FRS_ONLY_FIT_NAME, stage2)
             ),
         },
+        gate_levels=(
+            {
+                "declared": list(stage1_gate_level_columns),
+                "settings": gate_level_settings_receipt(),
+                "offset_levels": {
+                    **gate_levels(SPI_DONOR_FIT_NAME, stage1),
+                    **pooled_gate_levels(SPI_TRANSPORT_FIT_NAME, reference_fits),
+                },
+                "level_fits": {
+                    **gate_level_reports(SPI_DONOR_FIT_NAME, stage1),
+                    **pooled_gate_level_reports(SPI_TRANSPORT_FIT_NAME, reference_fits),
+                },
+            }
+            if stage1_level_columns
+            else None
+        ),
     )
 
 
@@ -1919,6 +2014,128 @@ SPI_INCOME_BAND_LOWER_BOUND_COLUMN = "spi_income_band_donor_lower_bound"
 #: lineage column), falling back to ``person_id`` on a frame without lineage.
 SPI_INCOME_BAND_CARRIER_KEY_COLUMN = "person_source_id"
 SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT = "spi_income_band_donor_leaf_draw"
+
+
+def _capped_inclusion(weights: np.ndarray, size: int) -> np.ndarray:
+    """Inclusion probabilities in proportion to ``weights``, capped at one.
+
+    They sum to ``size``: a record whose share would exceed one is taken with
+    certainty and the rest share what is left.
+    """
+
+    capped = np.zeros(len(weights), dtype=bool)
+    while True:
+        scale = (size - int(capped.sum())) / float(weights[~capped].sum())
+        over = ~capped & (scale * weights >= 1.0)
+        if not over.any():
+            return np.where(capped, 1.0, scale * weights)
+        capped |= over
+
+
+def _rare_carriers_certain_frame(
+    donor: pd.DataFrame, *, size: int, seed: int
+) -> tuple[pd.DataFrame, np.ndarray, dict[str, object]]:
+    """The stage-1 donor frame with every rare output's carriers in it.
+
+    An output is rare when fewer than :data:`SPI_DONOR_RARE_CARRIER_SHARE` of
+    ``size`` tape records carry it. Every record carrying a rare output is
+    taken, at weight FACT. The other rows come from the remaining records by
+    systematic sampling in proportion to FACT without replacement, at weight
+    FACT over the inclusion probability. So the frame's weights total the
+    tape's FACT (to the rounding of the systematic draw), a rare output's
+    weighted prevalence and total are the tape's exactly, and no record
+    repeats. Rows keep the tape's order. A tape with no more records than
+    ``size`` is the frame, whole, at FACT.
+
+    The receipt counts tape records as every stage receipt does
+    (``receipt_counts``, microcosm#1164): rounded, or "<3" and "3-9" in bands.
+    The rows taken for a rare output and the rows sampled fill the frame, so
+    the sampled count is the frame's rows less the rounded carrier count and
+    the pair gives nothing back by difference. Where the carrier count prints
+    as a band, the sampled count sits within nine of the frame's rows, and any
+    rounding of it beside them would narrow the band, so it is left out
+    (``None``). Each output's share of the tape's carriers the frame keeps is
+    floored to the hundredth.
+
+    Returns:
+        ``(frame, design weights, receipt)``.
+    """
+
+    fact = donor["FACT"].to_numpy(dtype=np.float64)
+    if size >= len(donor):
+        # A tape no larger than the frame is the frame, whole, at FACT.
+        return (
+            donor.reset_index(drop=True),
+            fact,
+            {
+                "design": SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN,
+                "rows": rounded_count(len(donor)),
+                "whole_tape": True,
+            },
+        )
+    rare: list[str] = []
+    certain = np.zeros(len(donor), dtype=bool)
+    carriers = {
+        column: donor[column].to_numpy(dtype=np.float64) != 0.0
+        for column in SPI_INCOME_QRF_OUTPUT_COLUMNS
+    }
+    for column, carrier in carriers.items():
+        if 0 < int(carrier.sum()) < SPI_DONOR_RARE_CARRIER_SHARE * size:
+            rare.append(column)
+            certain |= carrier
+    budget = size - int(certain.sum())
+    rest = np.flatnonzero(~certain)
+    if budget <= 0 or budget > len(rest):
+        raise ValueError(
+            "The SPI donor frame cannot hold every rare output's carriers and a "
+            f"sample of the rest: {int(certain.sum())} carrier records, "
+            f"{len(rest)} others, {size} rows."
+        )
+    inclusion = _capped_inclusion(fact[rest], budget)
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(rest))
+    cumulative = np.cumsum(inclusion[order])
+    points = rng.random() + np.arange(budget, dtype=np.float64)
+    picks = np.minimum(np.searchsorted(cumulative, points, side="right"), len(rest) - 1)
+    if len(np.unique(picks)) != budget:
+        raise ValueError("The SPI donor frame's systematic draw repeated a record.")
+    chosen = order[picks]
+    weights = np.zeros(len(donor), dtype=np.float64)
+    weights[certain] = fact[certain]
+    weights[rest[chosen]] = fact[rest[chosen]] / inclusion[chosen]
+    selected = np.flatnonzero(weights > 0.0)
+    frame_weights = weights[selected]
+    kept = weights > 0.0
+    carrier_rows = rounded_count(int(certain.sum()))
+    receipt: dict[str, object] = {
+        "design": SPI_DONOR_FRAME_RARE_CARRIERS_CERTAIN,
+        "rows": int(len(selected)),
+        "rare_carrier_share_of_rows": SPI_DONOR_RARE_CARRIER_SHARE,
+        "rare_outputs": rare,
+        "rows_carrying_a_rare_output": carrier_rows,
+        "rows_sampled_in_proportion_to_fact": (
+            int(len(selected)) - carrier_rows if isinstance(carrier_rows, int) else None
+        ),
+        "sampled_rows_taken_with_certainty": rounded_count(
+            int((inclusion[chosen] >= 1.0).sum())
+        ),
+        "weight_total_over_tape_fact_total": float(frame_weights.sum() / fact.sum()),
+        "kish_effective_rows": rounded_count(
+            int(round(frame_weights.sum() ** 2 / (frame_weights**2).sum()))
+        ),
+        # Each output's share of the tape's carriers the frame keeps: one for a
+        # rare output, and for a sampled one more than the bootstrap's, since no
+        # record repeats (microcosm#1276, part A).
+        "tape_carriers_kept_share": {
+            column: (
+                floored_share(int((carrier & kept).sum()) / int(carrier.sum()))
+                if carrier.any()
+                else None
+            )
+            for column, carrier in carriers.items()
+        },
+    }
+    return donor.iloc[selected].reset_index(drop=True), frame_weights, receipt
 
 
 def _spi_agerange_codes(ages: np.ndarray) -> np.ndarray:
@@ -3319,6 +3536,57 @@ def _encode_predictor_frames(
     return tuple(out)
 
 
+def _check_gate_level_columns(declared: Sequence[str]) -> None:
+    """Refuse ``gate_level_columns`` that are not distinct stage-1 predictors."""
+
+    columns = list(declared)
+    unknown = [
+        column for column in columns if column not in SPI_STAGE1_PREDICTOR_COLUMNS
+    ]
+    if unknown:
+        raise ValueError(
+            f"SPI stage-1 gate_level_columns {unknown} are not stage-1 predictors "
+            f"{list(SPI_STAGE1_PREDICTOR_COLUMNS)}."
+        )
+    if len(set(columns)) != len(columns):
+        raise ValueError(f"SPI stage-1 gate_level_columns repeats a column: {columns}.")
+
+
+def _encoded_gate_level_columns(
+    declared: Sequence[str], encoded_columns: Sequence[str]
+) -> tuple[str | tuple[str, ...], ...]:
+    """The encoded predictor columns behind stage 1's ``gate_level_columns``.
+
+    A numeric predictor is its own column. A categorical one is every one-hot
+    column :func:`_encode_predictor_frames` made of it, passed as one group, so
+    each of its levels, the composite records' age band among them, can hold
+    offsets of its own while its heaviest level is the reference, chosen where
+    the weights are known; the gate's calibration skips a thin level.
+    """
+
+    _check_gate_level_columns(declared)
+    encoded = list(encoded_columns)
+    out: list[str | tuple[str, ...]] = []
+    for column in declared:
+        if column in SPI_STAGE1_CATEGORICAL_PREDICTORS:
+            levels = [
+                name
+                for name in encoded
+                if name.startswith(f"{column}_")
+                and name not in SPI_STAGE1_PREDICTOR_COLUMNS
+            ]
+        else:
+            levels = [column] if column in encoded else []
+        if not levels:
+            raise ValueError(
+                f"SPI stage-1 gate level column {column!r} has no encoded predictor."
+            )
+        out.append(
+            tuple(levels) if column in SPI_STAGE1_CATEGORICAL_PREDICTORS else levels[0]
+        )
+    return tuple(out)
+
+
 def _encode_predictor_pair(
     train: pd.DataFrame,
     target: pd.DataFrame,
@@ -3676,6 +3944,70 @@ def _refresh_carer_take_up_input(
         person, spi_people, "would_claim_carers_allowance", refilled, default=False
     )
     return person
+
+
+def _refresh_carer_link(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    spi_channel: pd.Series,
+    min_hours: float | None = None,
+) -> tuple[pd.DataFrame, dict[str, object] | None]:
+    """Re-derive the carer link on the SPI channel's households.
+
+    ``frs_disability`` writes ``cares_for_severely_disabled_person`` from the
+    survey's benefits, and each copy carries its twin's value. Stage 2 re-imputes
+    the copies' disability benefits, so a copy's carer can now look after a
+    member whose benefits qualify, or no longer do. Every row of the channel
+    takes the link again by frs_disability's rule, from the benefits after the
+    refresh (A3 of the November event-data plan's PR3, microcosm#1095; María's
+    choices of 2026-11-10), its outside carers drawn on their own identities at
+    the share of the survey's own households: the FRS channel's, at this
+    stage's weights. The care carriers come from the twin, since stage 2 draws
+    no care. The receipt bands the households whose link changed. A frame
+    without the link (an older synthetic manifest) passes through.
+    """
+
+    from microcosm.build.uk_runtime import frs_disability
+
+    column = frs_disability.CARER_LINK_COLUMN
+    if column not in person.columns:
+        return person, None
+    if min_hours is None:
+        from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
+
+        min_hours = frs_disability.uk_dwp_carers_allowance_min_hours(
+            resolve_uk_year_rule(frs_disability.YEAR_RULE)
+        )
+    channel = spi_channel.reindex(person.index).fillna(False).to_numpy(dtype=bool)
+    weights = _person_household_weights(person, household).to_numpy(dtype=float)
+    sources = (
+        person["person_household_id"]
+        .map(
+            pd.Series(
+                source_household_ids(household, stage="hmrc_spi_income_spine"),
+                index=household["household_id"].to_numpy(),
+            )
+        )
+        .to_numpy()
+    )
+    share = frs_disability.carer_link_share(
+        person.loc[~channel], weights=weights[~channel], min_hours=float(min_hours)
+    )
+    link, evidence = frs_disability.derive_carer_link(
+        person.loc[channel],
+        weights=weights[channel],
+        min_hours=float(min_hours),
+        share=share,
+        support_keys=sources[channel],
+    )
+    before = person.loc[channel, column].to_numpy(dtype=bool)
+    changed = sources[channel][before != link]
+    person[column] = person[column].astype(bool)
+    person.loc[channel, column] = link
+    evidence["rows"] = "the SPI channel's households; the share from the FRS channel's"
+    evidence["changed_support"] = support_band(len(set(changed.tolist())))
+    return person, evidence
 
 
 def _owner_manager_flags_as_numbers(person: pd.DataFrame) -> pd.DataFrame:

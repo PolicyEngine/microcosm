@@ -309,13 +309,15 @@ class QRFKernel(KernelBase):
         gate_calibration = context.params.get(
             "gate_calibration", GateCalibration.IN_SAMPLE
         )
-        if gate_calibration not in (
+        allowed = (
             GateCalibration.IN_SAMPLE,
             GateCalibration.CROSS_FITTED,
-        ):
+            GateCalibration.CROSS_FITTED_BALANCED,
+        )
+        if gate_calibration not in allowed:
             raise ValueError(
-                f"fit.qrf@1 gate_calibration {gate_calibration!r} is not "
-                f"{GateCalibration.IN_SAMPLE!r} or {GateCalibration.CROSS_FITTED!r}."
+                f"fit.qrf@1 gate_calibration {gate_calibration!r} is not one of "
+                f"{', '.join(repr(value) for value in allowed)}."
             )
 
         seed = self._seed(context)

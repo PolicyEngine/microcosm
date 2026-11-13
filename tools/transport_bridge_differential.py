@@ -17,15 +17,16 @@ These declarations and oracle comparisons are checked before registry
 preparation or engine execution. All numbers come from case data or the
 oracle; the script has no policy constants.
 
-The golden-08 executable case is unresolved pending an approved declaration.
-``build/nz/as_rate_bridge.json`` declares three sole-parent cutout evaluations:
-``gross_rate``, ``reduction_at_anchor`` and ``reduction_after_step``, followed by
-slope, threshold and cutout composition. Its ``why_not_solve_zero`` explains
-why a zero solve on the unit's own Jobseeker schedule cannot reproduce that
-harness pairing. This driver has no arithmetic-composition contract for those
-evaluations and cannot yet run that recipe. Approved sampled-unit cases may
-declare additional small entity-table rows and corresponding oracle arrays.
-This command does not read donor HDF5.
+The golden-08 case isn't declared yet: it needs an approved case declaration
+and an explicit tolerance on each comparison. ``build/nz/as_rate_bridge.json``
+records golden-08's expected reg 17 base rate and reg 18 cutout under
+``differential_expectations``, and names the axiom-oracles requests file they
+come from. ``build/nz/entitlement_graph.json`` computes the base rate with
+``simulate.counterfactual@1`` (``nz.scn.{scenario}.bridge.base_rate``) and the
+cutout with ``simulate.solve_zero@1`` (``nz.as.bridge.cutout``). The registry
+this driver builds registers both kernels, so a case can call them. Approved
+sampled-unit cases may declare additional small entity-table rows and
+corresponding oracle arrays. This command does not read donor HDF5.
 """
 
 from __future__ import annotations

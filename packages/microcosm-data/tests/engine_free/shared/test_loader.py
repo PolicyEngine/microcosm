@@ -261,6 +261,7 @@ def _build_folder_hub(
     manifest: dict,
     record: dict | bytes | None = None,
     artifact_content: bytes = UK_TAGGED_ARTIFACT,
+    repo_id: str = UK_REPO_ID,
 ) -> FakeHubDownload:
     """Serve releases.json and one build folder, all read at ``main``."""
     hub = FakeHubDownload(tmp_path)
@@ -269,7 +270,7 @@ def _build_folder_hub(
     record = _releases_record() if record is None else record
     hub._add(
         tmp_path,
-        UK_REPO_ID,
+        repo_id,
         "releases.json",
         None,
         record if isinstance(record, bytes) else json.dumps(record).encode(),
@@ -277,7 +278,7 @@ def _build_folder_hub(
     folder = f"releases/{manifest['release']}/{manifest['build']}"
     hub._add(
         tmp_path,
-        UK_REPO_ID,
+        repo_id,
         f"{folder}/release_manifest.json",
         None,
         json.dumps(manifest).encode(),
@@ -287,9 +288,7 @@ def _build_folder_hub(
         for entry in manifest["artifacts"].values()
         if entry.get("kind") == "microdata"
     )
-    hub._add(
-        tmp_path, UK_REPO_ID, f"{folder}/{artifact['path']}", None, artifact_content
-    )
+    hub._add(tmp_path, repo_id, f"{folder}/{artifact['path']}", None, artifact_content)
     return hub
 
 
@@ -570,9 +569,12 @@ def test_a_build_pin_needs_a_build_folder_release() -> None:
     def unexpected_download(**_kwargs) -> str:
         pytest.fail("a refused pin must fail before a Hub request")
 
+    # Every registry entry now names a release; an entry that names none
+    # keeps the tagged layout.
+    tagged = replace(resolve("us", 2024), release=None)
     with pytest.raises(ValueError, match="pins a build only for releases"):
         loader._resolve_certified_release(
-            resolve("us", 2024), hub_download=unexpected_download, build="x"
+            tagged, hub_download=unexpected_download, build="x"
         )
 
 
@@ -642,6 +644,113 @@ def test_download_verifies_the_build_folder_dataset(
     )
     with pytest.raises(ValueError, match="sha256 verification failed"):
         download("uk", 2025)
+
+
+def test_download_certified_returns_the_current_builds_record(
+    tmp_path: Path,
+) -> None:
+    hub = _build_folder_hub(tmp_path, manifest=_uk_build_folder_manifest())
+
+    # The fake build claims policyengine-uk ==2.89.2, which is not installed:
+    # a comparison reads a build under its own engine, so nothing refuses.
+    path, certified = loader.download_certified("uk", 2025, hub_download=hub)
+
+    folder = f"releases/{UK_NATIONAL_RELEASE_ID}/{UK_NATIONAL_BUILD}"
+    assert path.read_bytes() == UK_TAGGED_ARTIFACT
+    assert certified.release_id == UK_NATIONAL_RELEASE_ID
+    assert certified.build == UK_NATIONAL_BUILD
+    assert certified.artifact_path == f"{folder}/microcosm_uk_2024_25.h5"
+    assert certified.artifact_sha256 == hashlib.sha256(UK_TAGGED_ARTIFACT).hexdigest()
+    assert certified.model.built_version == "2.89.2"
+
+
+def _declare_build_file(
+    hub: FakeHubDownload,
+    tmp_path: Path,
+    manifest: dict,
+    *,
+    key: str,
+    name: str,
+    content: bytes,
+    declared: bytes | None = None,
+) -> None:
+    """Declare ``name`` in the build's manifest and serve ``content`` for it."""
+    manifest["artifacts"][key] = {
+        "kind": "diagnostics",
+        "path": name,
+        "repo_id": UK_REPO_ID,
+        "sha256": hashlib.sha256(content if declared is None else declared).hexdigest(),
+        "role": key,
+    }
+    folder = f"releases/{manifest['release']}/{manifest['build']}"
+    hub._add(
+        tmp_path,
+        UK_REPO_ID,
+        f"{folder}/release_manifest.json",
+        None,
+        json.dumps(manifest).encode(),
+    )
+    hub._add(tmp_path, UK_REPO_ID, f"{folder}/{name}", None, content)
+
+
+def test_download_build_file_reads_a_declared_file_from_the_build_folder(
+    tmp_path: Path,
+) -> None:
+    manifest = _uk_build_folder_manifest()
+    hub = _build_folder_hub(tmp_path, manifest=manifest)
+    _declare_build_file(
+        hub,
+        tmp_path,
+        manifest,
+        key="release_certification",
+        name="release_certification.json",
+        content=b'{"shippable": true}',
+    )
+    _, certified = loader.download_certified("uk", 2025, hub_download=hub)
+
+    path = loader.download_build_file(
+        certified, "release_certification", hub_download=hub
+    )
+
+    folder = f"releases/{UK_NATIONAL_RELEASE_ID}/{UK_NATIONAL_BUILD}"
+    assert path.read_bytes() == b'{"shippable": true}'
+    assert hub.calls[-1] == (UK_REPO_ID, f"{folder}/release_certification.json", None)
+    with pytest.raises(ValueError, match="declares no artifact 'gate_summary'"):
+        loader.download_build_file(certified, "gate_summary", hub_download=hub)
+
+
+def test_download_build_file_refuses_a_file_whose_digest_differs(
+    tmp_path: Path,
+) -> None:
+    manifest = _uk_build_folder_manifest()
+    hub = _build_folder_hub(tmp_path, manifest=manifest)
+    _declare_build_file(
+        hub,
+        tmp_path,
+        manifest,
+        key="release_certification",
+        name="release_certification.json",
+        content=b'{"shippable": false}',
+        declared=b'{"shippable": true}',
+    )
+    _, certified = loader.download_certified("uk", 2025, hub_download=hub)
+
+    with pytest.raises(ValueError, match="sha256 verification failed"):
+        loader.download_build_file(certified, "release_certification", hub_download=hub)
+
+
+def test_download_build_file_needs_a_build_folder_release() -> None:
+    tagged = loader.CertifiedRelease(
+        release_id=UK_NATIONAL_RELEASE_ID,
+        artifact_repo_id=UK_REPO_ID,
+        artifact_path="microcosm_uk_2024_25.h5",
+        artifact_revision=UK_NATIONAL_CUT_TAG,
+        artifact_sha256="0" * 64,
+        model=loader._PackageCertification("policyengine-uk", ("==2.89.2",), "2.89.2"),
+        core=loader._PackageCertification("policyengine-core", ("==3.27.1",), "3.27.1"),
+    )
+    with pytest.raises(ValueError, match="keeps the tagged layout"):
+        loader.download_build_file(tagged, "release_certification")
 
 
 def test_uk_2023_follows_latest_json_until_its_repository_has_releases_json(
@@ -719,7 +828,9 @@ def test_uk_2023_loads_the_june_build_from_its_folder_after_the_switch(
 
 @pytest.mark.parametrize("pointer_path", ["current.json", "latest-local-k0.json"])
 def test_resolve_refuses_an_unsupported_pointer_path(pointer_path: str) -> None:
-    spec = replace(resolve("us", 2024), pointer_path=pointer_path)
+    # An entry that names no release follows only its pointer; one that names
+    # a release reads releases.json first, so the US entry drops its release.
+    spec = replace(resolve("us", 2024), release=None, pointer_path=pointer_path)
 
     def unexpected_download(**_kwargs) -> str:
         pytest.fail("an unsupported pointer path must fail before a Hub request")
@@ -1199,7 +1310,10 @@ def test_download_uses_pointer_manifest_and_release_revision(
 
     manifest_path = f"releases/{RELEASE_ID}/release_manifest.json"
     assert artifact.read_bytes() == TAGGED_ARTIFACT
+    # The US entry names its release, so the loader looks for releases.json
+    # first and follows latest.json while the repository has none.
     assert hub.calls == [
+        ("policyengine/populace-us", "releases.json", None),
         ("policyengine/populace-us", LATEST_POINTER_PATH, None),
         ("policyengine/populace-us", manifest_path, RELEASE_ID),
         ("policyengine/populace-us", "populace_us_2024.h5", RELEASE_ID),
@@ -1377,7 +1491,12 @@ def test_unverified_root_opt_out_warns_loudly(
 
     assert dataset.file_path == constructed[0]
     assert Path(dataset.file_path).read_bytes() == MUTABLE_ROOT_ARTIFACT
-    assert hub.calls == [("policyengine/populace-us", "populace_us_2024.h5", None)]
+    # Before the switch the repository has no releases.json and still has
+    # its root file.
+    assert hub.calls == [
+        ("policyengine/populace-us", "releases.json", None),
+        ("policyengine/populace-us", "populace_us_2024.h5", None),
+    ]
 
 
 def _hf_offline() -> bool:
@@ -1528,3 +1647,71 @@ def test_latest_pointer_refuses_any_artifact_revision_mismatch(tmp_path: Path):
     )
     with pytest.raises(ValueError, match="not pinned to expected revision"):
         loader._resolve_certified_release(spec, hub_download=hub)
+
+
+US_REPO_ID = "policyengine/populace-us"
+US_NATIONAL_RELEASE_ID = "microcosm-us-2024-national"
+
+
+def _us_build_folder_manifest(*, path: str = "microcosm_us_2024.h5") -> dict:
+    """A US national build's release manifest in its own folder, declaring
+    its dataset as ``path``."""
+    manifest = _release_manifest()
+    key = path.removesuffix(".h5")
+    entry = manifest["artifacts"].pop("populace_us_2024")
+    manifest["artifacts"][key] = {**entry, "path": path}
+    manifest["default_datasets"] = {"national": key}
+    return build_folder_release_manifest(
+        manifest, release=US_NATIONAL_RELEASE_ID, build=RELEASE_ID
+    )
+
+
+def _us_build_folder_hub(tmp_path: Path, manifest: dict) -> FakeHubDownload:
+    return _build_folder_hub(
+        tmp_path,
+        manifest=manifest,
+        record=_releases_record(
+            US_NATIONAL_RELEASE_ID, current=RELEASE_ID, builds={RELEASE_ID: False}
+        ),
+        artifact_content=TAGGED_ARTIFACT,
+        repo_id=US_REPO_ID,
+    )
+
+
+def test_us_national_load_follows_the_current_build_in_releases_json(
+    tmp_path: Path,
+) -> None:
+    hub = _us_build_folder_hub(tmp_path, _us_build_folder_manifest())
+
+    certified = loader._resolve_certified_release(resolve("us", 2024), hub_download=hub)
+
+    folder = f"releases/{US_NATIONAL_RELEASE_ID}/{RELEASE_ID}"
+    assert certified.release_id == US_NATIONAL_RELEASE_ID
+    assert certified.build == RELEASE_ID
+    assert certified.artifact_path == f"{folder}/microcosm_us_2024.h5"
+    assert hub.calls == [
+        (US_REPO_ID, "releases.json", None),
+        (US_REPO_ID, f"{folder}/release_manifest.json", None),
+    ]
+
+
+def test_a_us_build_moved_by_the_switch_loads_with_its_earlier_dataset_name(
+    tmp_path: Path,
+) -> None:
+    hub = _us_build_folder_hub(
+        tmp_path, _us_build_folder_manifest(path="populace_us_2024.h5")
+    )
+
+    certified = loader._resolve_certified_release(resolve("us", 2024), hub_download=hub)
+
+    assert certified.artifact_path.endswith(f"/{RELEASE_ID}/populace_us_2024.h5")
+
+
+def test_a_us_build_with_another_dataset_name_is_refused(tmp_path: Path) -> None:
+    hub = _us_build_folder_hub(
+        tmp_path,
+        _us_build_folder_manifest(path="microcosm_us_2024_receipt_qualified.h5"),
+    )
+
+    with pytest.raises(ValueError, match="microcosm_us_2024.h5"):
+        loader._resolve_certified_release(resolve("us", 2024), hub_download=hub)

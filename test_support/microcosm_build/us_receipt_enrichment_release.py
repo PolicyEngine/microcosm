@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import sys
 from importlib import import_module, metadata
 from pathlib import Path
@@ -26,7 +27,12 @@ import pytest
 from microcosm.build.us_runtime import public_assistance_type_source as pats
 from microcosm.data import release as publisher
 from microcosm.data import source_enrichment as contract
-from microcosm.data.contract import ReleaseContractError, validate_release_dir
+from microcosm.data.contract import (
+    US_NATIONAL_RELEASE_ID,
+    US_RECEIPT_DONOR_RELEASE_ID,
+    ReleaseContractError,
+    validate_release_dir,
+)
 from microcosm.data.h5_enrichment import file_sha256
 from test_support.paths import paths_for
 from tools import build_us_acs_donor_receipt_qualification as qualification
@@ -64,8 +70,8 @@ def lineage(tmp_path, monkeypatch):
 
     parent_dir = tmp_path / "parent"
     parent_dir.mkdir()
-    # The national default's root name, so the qualified child takes the
-    # published name the release pins.
+    # The national default's root name, so the qualified child takes the name
+    # the release builder reads it under.
     parent = parent_dir / "populace_us_2024.h5"
     _SYNTHETIC._write_parent(parent)
     parent_sha = file_sha256(parent)
@@ -125,7 +131,7 @@ def lineage(tmp_path, monkeypatch):
         parent=parent,
         parent_release=evidence,
         qualified=qualified,
-        child=qualified / contract.RECEIPT_DATASET_FILENAME,
+        child=qualified / contract.TAGGED_RECEIPT_DATASET_FILENAME,
         output=tmp_path / "candidate",
         tmp=tmp_path,
     )
@@ -144,7 +150,7 @@ def _build(lineage, **overrides) -> dict:
 
 
 def _release(lineage) -> Path:
-    return lineage.output / "releases" / _RELEASE_ID
+    return lineage.output / "releases" / US_RECEIPT_DONOR_RELEASE_ID
 
 
 def _artifacts(lineage) -> Path:
@@ -233,7 +239,7 @@ def _certify(lineage, monkeypatch, calls: list) -> Path:
     monkeypatch.setattr(metadata, "version", lambda name: "0.1.0")
     certified = contract.certify_source_enrichment(
         _release(lineage),
-        lineage.tmp / "certified" / _RELEASE_ID,
+        lineage.tmp / "certified" / US_RECEIPT_DONOR_RELEASE_ID,
         parent_h5=lineage.parent,
         artifact_root=_artifacts(lineage),
         compatibility_wheels=_WHEELS,

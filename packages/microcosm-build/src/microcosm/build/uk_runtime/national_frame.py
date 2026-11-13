@@ -74,6 +74,7 @@ __all__ = [
     "uk_household_mass_conservation_receipt",
     "uk_time_period",
     "validate_uk_national_frame",
+    "uk_published_release_frame",
     "uk_release_export_frame",
     "write_uk_national_frame",
 ]
@@ -732,10 +733,23 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # (frs_spine.FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN) the Carer's Allowance
         # draw reads (microcosm#1418); it is no engine input.
         "frs_care_hours_in_household",
+        # The care recipients carrier (frs_spine.FRS_CARE_RECIPIENTS_COLUMN)
+        # frs_disability reads to write cares_for_severely_disabled_person
+        # (microcosm#1095, A3); it is no engine input.
+        "frs_care_recipients",
         # The admin UC limited capability carrier
         # (frs_spine.FRS_UC_LCW_STATUS_COLUMN) the uc_limited_capability stage
         # reads (microcosm#1095, Y1); it is no engine input.
         "frs_uc_lcw_status",
+        # The admin UC carer element carrier (frs_spine.FRS_UC_CARER_ELEMENT_COLUMN)
+        # frs_disability checks the carer link against (microcosm#1095, A3 (f));
+        # it is no engine input.
+        "frs_uc_carer_element",
+        # The gross receipts microcosm#1550 (microcosm#1439) stops writing:
+        # the trading allowance stage stores the claim status instead. A frame
+        # from an older spine would carry the receipts encoding into the
+        # release, which the export gate refuses (microcosm#1095).
+        "self_employment_gross_receipts",
         # The company car carriers (frs_spine.FRS_COMPANY_CAR_CARRIER_COLUMNS)
         # the company_cars stage reads to set policyengine-uk's company car
         # inputs (PolicyEngine/uk-autumn-budget-dashboard-2026#316); they are
@@ -748,7 +762,7 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # from pip_dl_points and pip_m_points, which the pip_points stage draws
         # within the stored awards; a persisted category would override the
         # points in every projected year. The spine keeps both, for the VED
-        # exemption and the severe disability flag.
+        # exemption and the carer link.
         "pip_dl_category",
         "pip_m_category",
         # policyengine-uk's sum of the ISA interest parts (microcosm#1360). The
@@ -756,6 +770,12 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # so no stage writes it; a persisted copy would override the sum and
         # never be uprated, so the boundary drops one should it appear.
         "tax_free_savings_income",
+        # The tax credit severe disability condition (microcosm#1095, A4):
+        # policyengine-uk's formula reads the disability categories and Armed
+        # Forces Independence Payment, so no stage writes it; a persisted copy
+        # would override the formula in every projected year, so the boundary
+        # drops one should it appear.
+        "is_severely_disabled_for_benefits",
     ),
     "household": (
         "property_wealth",
@@ -1050,6 +1070,50 @@ def uk_release_export_frame(frame: Frame) -> Frame:
         isa_income_contract=uk_isa_income_contract(frame),
         savings_income_projection=uk_savings_income_projection(frame),
     )
+
+
+def uk_published_release_frame(frame: Frame) -> Frame:
+    """A published release file read back, through today's export boundary.
+
+    A cut compares with the current build of its line (microcosm#1095), whose
+    file already left through the export boundary of its own build: a dense
+    file carries the consumers' area-code names (microcosm#1114), which
+    :func:`uk_release_export_frame` refuses on a frame it is to rename. Those
+    names go back to the ladder's first, so the boundary writes them again and
+    the reference leaves with today's drops and names, exactly as the
+    candidate does. A national file carries none and only takes the drops.
+    """
+
+    from .geography_ladder import UK_EXPORT_AREA_CODE_COLUMNS
+
+    household = frame.table("household")
+    published = {
+        export: ladder
+        for ladder, export in UK_EXPORT_AREA_CODE_COLUMNS.items()
+        if export in household.columns
+    }
+    shadowed = sorted(
+        ladder for ladder in published.values() if ladder in household.columns
+    )
+    if shadowed:
+        raise ValueError(
+            "A published release file carries both the ladder and the consumer "
+            f"names of the area code(s) {shadowed}; it did not leave through "
+            "the export boundary."
+        )
+    if published:
+        frame = uk_national_frame(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=household.rename(columns=published),
+            time_period=uk_time_period(frame),
+            weight_kind=uk_household_weight_kind(frame),
+            household_weights=frame.weights_for("household").values,
+            mass_log=frame.mass_log,
+            isa_income_contract=uk_isa_income_contract(frame),
+            savings_income_projection=uk_savings_income_projection(frame),
+        )
+    return uk_release_export_frame(frame)
 
 
 def write_uk_national_frame(frame: Frame, path: str | Path) -> Path:

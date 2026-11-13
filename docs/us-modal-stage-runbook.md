@@ -30,10 +30,13 @@ Two files do the work:
   Staging tests are in
   `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_acs_multispine_staging.py`.
 
-Nothing here uploads to the Hugging Face Hub, touches `latest.json` or
-notifies anyone. The furthest a stage goes is `package`, which writes a
-release directory onto the runs volume. Publication stays the human step in
-`tools/publish_release.sh`.
+Nothing here uploads to the Hugging Face Hub, changes `releases.json` or
+notifies anyone. The furthest a stage goes is `package`, which writes the
+release directory `releases/microcosm-us-2024-local/` onto the runs volume.
+Publication stays a human step: the two `microcosm-publish-release-build`
+commands that the stage's `package_result.json` records, one that publishes
+the build into its folder of the local-area release and one that makes it
+that release's current build.
 
 ## How a run works
 
@@ -123,9 +126,12 @@ release directory onto the runs volume. Publication stays the human step in
    any branch name on any commit, so each container also proves the name
    before it runs anything: it fetches the plan's branch from the remote
    (commits only, into a scratch repository) and requires
-   `git merge-base --is-ancestor <commit> <branch tip>`. The check and the
-   run both refuse a plan whose branch is missing or does not contain the
-   commit, and the receipt records the tip it was checked against. The
+   `git merge-base --is-ancestor <commit> <branch tip>`. The runner's git
+   commands run without `GIT_DIR` and the other variables
+   `modal_us_stage_plan.GIT_REPOSITORY_ENV` lists, so they reach the clone
+   and the scratch repository alone. The check and the run both refuse a
+   plan whose branch is missing or does not contain the commit, and the
+   receipt records the tip it was checked against. The
    release tool's `_repo_code_identity` therefore records the real sha and a
    branch that contained it when the stage ran. The runner
    code comes from your checkout, not from the pinned commit, so any pushed
@@ -181,8 +187,9 @@ release directory onto the runs volume. Publication stays the human step in
    - the attempt id and this attempt's share of `max_wall_seconds`;
    - every verified input;
    - the names, never the values, of environment variables withheld from
-     the tool (credentials, and the container's `PYTHONHASHSEED` if it had
-     one);
+     the tool (credentials, the container's `PYTHONHASHSEED` if it had
+     one, and any git variable `modal_us_stage_plan.GIT_REPOSITORY_ENV`
+     lists, such as `GIT_DIR`);
    - `runner.python_hash_seed`: the container's `PYTHONHASHSEED`, what the
      tool's environment carried (always none or `0`; the runner refuses
      anything else before staging), and the value the tool's stage
@@ -525,6 +532,16 @@ if you like, since only materialize reads it. Run steps 3 and 4 again. Run
 one stage of a run at a time, because two concurrent stages would race on the
 same state directory. The attempt ledger enforces this, best effort (see
 "Preemption and restarts").
+
+For `us-acs-local-release`, run package at the commit calibrate ran at.
+Calibrate records the code that wrote the calibrated H5 in
+`consumer_export.json`: it reads the commit when the stage starts, reads it
+again just before it writes the H5, and refuses to write if the commit or
+the tree's dirty state changed in between. The build's ID names the
+packaging code, so package refuses to give a build an ID that names any
+other commit (microcosm#1263). A commit landing between the two stages means
+re-running calibrate, qa and finalize at the new commit, or packaging at the
+old one.
 
 For a gated or private Hub input, set `MICROCOSM_MODAL_HF_SECRET` to the name
 of a Modal secret that holds `HF_TOKEN`, for example `huggingface-token` in

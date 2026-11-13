@@ -54,6 +54,12 @@ RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_EXACT_K_RELEASE_ID = "populace-uk-2023-frs-k535080"
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+#: The US repository's releases in the build-folder layout (microcosm#1570).
+US_NATIONAL_RELEASE = "microcosm-us-2024-national"
+US_LOCAL_RELEASE = "microcosm-us-2024-local"
+US_RECEIPT_DONOR_RELEASE = "microcosm-us-2024-receipt-donor"
+US_EVIDENCE_RELEASE = "microcosm-us-2024-evidence"
+US_ANNUAL_RELEASE = "microcosm-us-2024-annual"
 UK_RECORD_COUNT = 535_080
 UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 UK_TERMINAL_GATE_PRODUCER = (
@@ -89,47 +95,26 @@ UK_EVIDENCE_GATE_NAMES = {
     "release_parity": ("export_surface", "target_surface", "target_fit"),
     "input_mass_parity": ("input_mass_parity",),
 }
+UK_INPUT_MASS_REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+UK_INPUT_MASS_REFERENCE_LABEL = (
+    f"microcosm-uk-2024-25-national@{UK_INPUT_MASS_REFERENCE_BUILD}"
+)
 UK_INPUT_MASS_REFERENCE_IDENTITY = {
-    "filename": "enhanced_frs_2024_25.h5",
-    "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
-    "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
+    "filename": "microcosm_uk_2024_25.h5",
+    "revision": UK_INPUT_MASS_REFERENCE_BUILD,
+    "sha256": "9" * 64,
     "vintage": "2024_25",
 }
-UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c"
-)
-UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
+UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = "8" * 64
+UK_INPUT_MASS_ACTIVE_REFERENCE = "current_build"
 UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
-    "Channel-blind post-calibration enhanced-FRS production incumbent, pinned "
-    "to the 2024-25 line; structurally lacks the SPI clone channel, so "
-    "SPI-channel-exclusive columns are comparable only through per-reference "
-    "reviewed exclusions."
+    "The current build of the cut's own release line, as releases.json named "
+    "it when the cut fetched its inputs (microcosm#1095): totals at each "
+    "build's own solved weights, on the export surface."
 )
-# The committed per-reference register (microcosm#1063 c9): the policy payloads
-# sealed into the input-mass evidence digest.
-UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
-    "dfe_education_spending": {
-        "reason": "The candidate carries DfE education spending through the build (GBP 98.8bn against the incumbent's GBP 52.8m, +187,061%): the enhanced-FRS reference carries almost none of this input, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
-        "approved_on": "2026-10-02",
-        "expires_on": "2027-04-02",
-    },
-    "property_wealth": {
-        "reason": "The candidate no longer ships household.property_wealth: policyengine-uk derives it as the sum of main_residence_value, other_residential_property_value and non_residential_property_value, and a persisted copy overrides that sum and has no uprating index (microcosm#1106, the uk-data#543 defect). The enhanced-FRS reference stores its own WAS total, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. The gate compares the release surface (the export frame, reviewed exclusions dropped) on both paths, the national seam and the release cut; the three components stay compared.",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#1106 (#1145): part B measured on the A9 candidate at 2025 and on the final-head arm c7 of 2026-10-11; ruling 2026-10-11 in session",
-        "approved_on": "2026-10-11",
-        "expires_on": "2027-04-11",
-    },
-    "tax_free_savings_income": {
-        "reason": "The candidate no longer ships person.tax_free_savings_income: policyengine-uk derives it as the sum of individual_savings_account_interest_income, which the candidate stores apart from non-ISA interest under the additive ISA income contract, and a persisted copy overrides that sum and is never uprated (microcosm#1360). The enhanced-FRS reference stores it in the legacy gross layout, so the column is present in the reference and absent from the candidate, which this gate otherwise fails whatever the tolerance. Non-ISA savings_interest_income stays compared; it falls below the reference's gross total by the ISA part.",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#1360 folded into microcosm#1418's PR B (ruling 2026-10-28 in session)",
-        "approved_on": "2026-10-28",
-        "expires_on": "2027-04-28",
-    },
-}
+# The committed per-reference register is empty since the enhanced-FRS
+# reference retired (microcosm#1095).
+UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -227,20 +212,20 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "0d148ddccb8f126e4d64cfce94e820cec8d2adaccfc57fb87bb5f5ef2fc09106"
+    "6b58c92b17862758f0d994e7ef72d4fad270c3db9667ad84b92cf552c5fc581e"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d3b13d6ce2a87aa0d9b87066cd46c3aa03b6c031dbb4c9d5ec44dc33e273bf63"
+    "6d54957d276c2738833b27f4cfe67450d430e39267356dc8964c506a25e9904d"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "a7c86e189ecaea1061f7e280f0c63d5a6e13449e4a1f3a1be618eae8909a12e0"
+    "e0504f39332bce9be72529e1836a6c5079820ab22a6add5208a0390f589a2ce0"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "f246388de42654dd68dbbb40c42282001b5b0a8bf48976162bcb1199085cb1d3"
+    "a6ebc171cadf45b691a2b83632bc1f87f3116ad31aebf073e3786ce90ecc0307"
 )
-UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "24bb96f93de3bda45425b797a2f5069df7477bf3a56616080cc04376beab56e5"
-)
+# The input-mass evidence digest covers the reference build's own totals, so
+# it is not pinned (microcosm#1095); a fixture value stands in.
+UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = "7" * 64
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 #: microcosm#1240: the two report-only high-value homes gates.
 UK_DIAGNOSTIC_ENTRY_IDS = frozenset(
@@ -1182,8 +1167,10 @@ def _terminal_gate_details(name: str) -> dict:
         return {
             "candidate_name": "uk_release_candidate",
             "reference_name": UK_INPUT_MASS_REFERENCE_IDENTITY["filename"],
-            "relative_tolerance": 4.521811483823806,
+            "relative_tolerance": 5.9984285545209834,
             "minimum_reference_total": 0.0,
+            "maximum_relative_drop": 0.9,
+            "excess_drops": [],
             "columns_checked": 1,
             "columns_below_reference_floor": 0,
             "candidate_only_columns": [],
@@ -1198,6 +1185,8 @@ def _terminal_gate_details(name: str) -> dict:
             "reference": UK_INPUT_MASS_ACTIVE_REFERENCE,
             "reference_scope_note": UK_INPUT_MASS_REFERENCE_SCOPE_NOTE,
             "reference_identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
+            "reference_label": UK_INPUT_MASS_REFERENCE_LABEL,
+            "withheld_thin_columns": [],
         }
     if name == "take_up_signal":
         # Mirrors uk_take_up_signal_gate's per-column detail block.
@@ -1808,9 +1797,7 @@ def _write_uk_national_release_dir(tmp_path: Path) -> Path:
     (national / "release_cut_gates.json").write_text(
         json.dumps({"fixture": "release_cut"})
     )
-    (national / "score_vs_enhanced_frs.json").write_text(
-        json.dumps({"fixture": "score"})
-    )
+    (national / "score_vs_reference.json").write_text(json.dumps({"fixture": "score"}))
     certification = _green_uk_certification(
         TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
         release_id=UK_NATIONAL_RELEASE_ID,
@@ -1820,7 +1807,7 @@ def _write_uk_national_release_dir(tmp_path: Path) -> Path:
             "calibration_seam": _sha256(national / "terminal_gates.json"),
             "release_cut": _sha256(national / "release_cut_gates.json"),
         },
-        score_receipt_sha256=_sha256(national / "score_vs_enhanced_frs.json"),
+        score_receipt_sha256=_sha256(national / "score_vs_reference.json"),
     )
     certification_path = national / "release_certification.json"
     certification_path.write_text(json.dumps(certification))
@@ -2518,36 +2505,211 @@ def test_uk_national_release_requires_policyengine_uk_model_pin(
         (UK_NATIONAL_RELEASE_ID, True),
         ("microcosm-uk-2024-25-dense", True),
         ("microcosm-uk-2024-25-local-k55000", True),
-        # Which stable releases US builds publish under is not agreed with
-        # the US data builder yet, so every US release keeps tags and
-        # latest.json.
+        (US_NATIONAL_RELEASE, True),
+        (US_LOCAL_RELEASE, True),
+        (US_RECEIPT_DONOR_RELEASE, True),
+        (US_EVIDENCE_RELEASE, True),
+        (US_ANNUAL_RELEASE, True),
+        # A US build ID names a build, not a release; its tagged layout stays
+        # for the builds that keep only their tag.
         (RELEASE_ID, False),
         ("populace-us-2024-buildo-acs-local-abc1234-20260723T000000Z", False),
+        # Spec-engine build IDs share the release names' prefix.
+        ("microcosm-us-2024-stacked-abc1234-20261101T000000Z", False),
         (UK_RELEASE_ID, False),
         (UK_EXACT_K_RELEASE_ID, False),
         ("microcosm-uk-2024-25-local-k0", False),
     ],
 )
-def test_publishes_to_build_folder_names_only_the_uk_releases(
+def test_publishes_to_build_folder_names_the_uk_and_us_releases(
     release_id: str, publishes: bool
 ) -> None:
     assert contract.publishes_to_build_folder(release_id) is publishes
 
 
-def test_the_proposed_us_releases_are_recorded_but_not_used() -> None:
-    """The US stable releases are proposed, not agreed with the US data
-    builder: the contract records them with their roles in one place, and no
-    US release publishes into build folders until they are agreed."""
-    assert contract.PROPOSED_US_RELEASES == {
-        "populace-us-2024-national": "national",
-        "populace-us-2024-local": "local_area",
+def test_the_us_releases_have_their_roles_and_dataset_files() -> None:
+    """The US repository's five releases, each with its role in
+    ``releases.json`` and the dataset file its new builds declare: national
+    builds of every kind in the default release, ACS builds in the local
+    release, and receipt-qualified donors, evidence-tier builds and annual
+    projections of a national build in releases of their own, which are never
+    the default."""
+    assert contract.US_RELEASES == {
+        US_NATIONAL_RELEASE: "national",
+        US_LOCAL_RELEASE: "local_area",
+        US_RECEIPT_DONOR_RELEASE: "national",
+        US_EVIDENCE_RELEASE: "national",
+        US_ANNUAL_RELEASE: "national",
     }
-    assert set(contract.PROPOSED_US_RELEASES.values()) <= set(
-        contract.RELEASE_ROLES.values()
+    assert contract.US_ANNUAL_RELEASE_ID == US_ANNUAL_RELEASE
+    assert contract.US_RELEASE_DATASET_FILES == {
+        US_NATIONAL_RELEASE: "microcosm_us_2024.h5",
+        US_LOCAL_RELEASE: "microcosm_us_2024_acs_local.h5",
+        US_RECEIPT_DONOR_RELEASE: "microcosm_us_2024_receipt_qualified.h5",
+        US_EVIDENCE_RELEASE: "microcosm_us_2024.h5",
+        US_ANNUAL_RELEASE: "microcosm_us_2024.h5",
+    }
+    # An annual build's base-year H5 keeps its base build's file name, which
+    # is the old one for a build the switch moved.
+    assert contract.US_ANNUAL_BASE_DATASET_FILES == (
+        "microcosm_us_2024.h5",
+        "populace_us_2024.h5",
     )
-    for release in contract.PROPOSED_US_RELEASES:
-        assert release.startswith("populace-us-")
-        assert contract.publishes_to_build_folder(release) is False
+    assert set(contract.US_RELEASES.values()) <= set(contract.RELEASE_ROLES.values())
+    assert not hasattr(contract, "PROPOSED_US_RELEASES")
+
+
+@pytest.mark.parametrize(
+    ("release_id", "is_us"),
+    [
+        (US_NATIONAL_RELEASE, True),
+        (US_LOCAL_RELEASE, True),
+        (US_RECEIPT_DONOR_RELEASE, True),
+        (US_EVIDENCE_RELEASE, True),
+        (US_ANNUAL_RELEASE, True),
+        (RELEASE_ID, True),
+        ("populace-us-2024-buildo-acs-local-abc1234-20260723T000000Z", True),
+        ("microcosm-us-2024-stacked-abc1234-20261101T000000Z", False),
+        (UK_NATIONAL_RELEASE_ID, False),
+        (UK_RELEASE_ID, False),
+    ],
+)
+def test_is_us_release_names_the_us_releases_and_tagged_us_builds(
+    release_id: str, is_us: bool
+) -> None:
+    assert contract.is_us_release(release_id) is is_us
+
+
+def _as_us_build_folder_release(
+    release_dir: Path, *, release: str = US_NATIONAL_RELEASE, build: str = RELEASE_ID
+) -> Path:
+    """Retarget the US fixture to a US release in the build-folder layout.
+
+    The directory is named after the release and the build is ``build``, the
+    fixture's ID by default. The dataset and calibration weights carry the
+    new ``microcosm_`` file names and keys that new US builds declare.
+    """
+    moved = release_dir.with_name(release)
+    release_dir.rename(moved)
+    renamed = {
+        "populace_us_2024": "microcosm_us_2024",
+        "populace_us_2024_calibration": "microcosm_us_2024_calibration",
+    }
+    manifest_path = moved / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    artifacts = {}
+    for key, entry in manifest["artifacts"].items():
+        if key in renamed:
+            entry = {**entry, "path": entry["path"].replace("populace_", "microcosm_")}
+        artifacts[renamed.get(key, key)] = entry
+    manifest["artifacts"] = artifacts
+    manifest["default_datasets"] = {"national": "microcosm_us_2024"}
+    manifest_path.write_text(json.dumps(manifest))
+    build_path = moved / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    for section in ("dataset", "calibration"):
+        if isinstance(build_manifest.get(section), dict):
+            build_manifest[section]["filename"] = build_manifest[section][
+                "filename"
+            ].replace("populace_", "microcosm_")
+    build_path.write_text(json.dumps(build_manifest))
+    return to_build_folder_layout(moved, build=build)
+
+
+def _rewrite_release_manifest(release_dir: Path, rewrite) -> None:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    rewrite(manifest)
+    manifest_path.write_text(json.dumps(manifest))
+
+
+def test_a_us_national_build_folder_release_validates(release_dir: Path) -> None:
+    validate_release_dir(_as_us_build_folder_release(release_dir))
+
+
+def test_a_us_build_folder_release_must_declare_its_source_coverage(
+    release_dir: Path,
+) -> None:
+    national = _as_us_build_folder_release(release_dir)
+    _rewrite_release_manifest(
+        national, lambda manifest: manifest["artifacts"].pop("us_source_coverage")
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(national)
+
+    assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE in "\n".join(excinfo.value.failures)
+
+
+def test_a_us_build_folder_release_refuses_split_microdata(release_dir: Path) -> None:
+    national = _as_us_build_folder_release(release_dir)
+
+    def add_a_state_file(manifest):
+        entry = _split_microdata_artifact_entry(RELEASE_ID, "states/CA")
+        entry.pop("revision", None)
+        entry["role"] = "states/CA"
+        manifest["artifacts"]["states/CA"] = entry
+
+    _rewrite_release_manifest(national, add_a_state_file)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(national)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "single national microdata artifact" in failures
+    assert "states/CA" in failures
+
+
+@pytest.mark.parametrize(
+    "dataset_file",
+    [
+        # The name the builds before the switch used.
+        "populace_us_2024.h5",
+        # A receipt-qualified donor's dataset, which the national release
+        # must never list.
+        "microcosm_us_2024_receipt_qualified.h5",
+    ],
+)
+def test_a_us_build_folder_release_must_declare_its_release_s_dataset_file(
+    release_dir: Path, dataset_file: str
+) -> None:
+    national = _as_us_build_folder_release(release_dir)
+
+    def rename_the_dataset(manifest):
+        manifest["artifacts"]["microcosm_us_2024"]["path"] = dataset_file
+
+    _rewrite_release_manifest(national, rename_the_dataset)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(national)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "microcosm_us_2024.h5" in failures
+    assert dataset_file in failures
+
+
+def test_the_receipt_donor_release_takes_only_receipt_source_enrichments(
+    release_dir: Path,
+) -> None:
+    """A calibrated national build that names its dataset after the donor's
+    file is still not a receipt-qualified donor (review of #1571)."""
+    donor = _as_us_build_folder_release(release_dir, release=US_RECEIPT_DONOR_RELEASE)
+
+    def rename_the_dataset(manifest):
+        manifest["artifacts"]["microcosm_us_2024"]["path"] = (
+            "microcosm_us_2024_receipt_qualified.h5"
+        )
+
+    _rewrite_release_manifest(donor, rename_the_dataset)
+    build_path = donor / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    build_manifest["dataset"]["filename"] = "microcosm_us_2024_receipt_qualified.h5"
+    build_path.write_text(json.dumps(build_manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(donor)
+
+    assert "receipt source enrichment" in "\n".join(excinfo.value.failures)
 
 
 def test_release_roles_record_national_and_local_area() -> None:
@@ -3250,37 +3412,33 @@ def test_exact_k_uk_terminal_rejects_unreviewed_input_mass_identity(
         validate_release_dir(directory)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "reference_identity must match the active reviewed" in failures
+    assert "must name the reference build it compared with" in failures
 
 
-def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
+def test_exact_k_uk_terminal_requires_the_reference_label(
     tmp_path: Path,
 ) -> None:
+    """The report must say which build it compared with (microcosm#1095)."""
+
     directory = _write_uk_release_dir(
         tmp_path,
         UK_EXACT_K_RELEASE_ID,
         tier="frs",
     )
-    payload, _evidence = _terminal_gate_payload(
+    payload, evidence = _terminal_gate_payload(
         release_id=UK_EXACT_K_RELEASE_ID,
         calibration_diagnostics_sha256=_sha256(
             directory / "calibration_diagnostics.json"
         ),
         evidence_stages=("input_mass_parity",),
     )
-    substituted = _canonical_sha256(
-        {
-            "reference": {
-                "identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
-                "totals": {"employment_income": 1.0},
-            }
-        }
+    payload["gates"]["input_mass_parity"]["details"]["reference_label"] = (
+        "microcosm-uk-2024-25-national@another-build"
     )
-    payload["attestation"]["evidence_sha256"]["input_mass_parity"] = substituted
     _refresh_terminal_gate_attestation(payload)
     build_path = directory / "build_manifest.json"
     build = json.loads(build_path.read_text())
-    build["terminal_gate_evidence"] = dict(payload["attestation"]["evidence_sha256"])
+    build["terminal_gate_evidence"] = evidence
     build_path.write_text(json.dumps(build))
     _write_terminal_and_refresh_manifest_hashes(directory, payload)
 
@@ -3288,7 +3446,7 @@ def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
         validate_release_dir(directory)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "must bind the reviewed enhanced-FRS incumbent totals" in failures
+    assert "must name the reference build it compared with" in failures
 
 
 def test_exact_k_uk_terminal_rejects_evidence_gate_without_its_stage(
@@ -5008,18 +5166,7 @@ def test_uk_gate_battery_pins_are_in_lockstep_with_the_contract() -> None:
         contract_module._UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
         == UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
     )
-    assert (
-        contract_module._UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
-        == UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
-    )
-    assert UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 == _canonical_sha256(
-        {
-            "reference": UK_INPUT_MASS_ACTIVE_REFERENCE,
-            "reference_evidence_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
-            "exclusions_policy": "committed",
-            "reviewed_exclusions": UK_INPUT_MASS_REVIEWED_EXCLUSIONS,
-        }
-    )
+    assert not hasattr(contract_module, "_UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256")
 
 
 def test_exact_k_uk_gate_battery_report_validates_end_to_end(tmp_path: Path) -> None:
@@ -5061,6 +5208,33 @@ def test_exact_k_uk_gate_battery_rejects_loosened_input_mass_tolerance(
     _rewrite_battery_report(directory, payload)
 
     assert "relative_tolerance must equal the committed spec value" in (
+        _battery_failures(directory)
+    )
+
+
+def test_exact_k_uk_gate_battery_rejects_a_loosened_input_mass_drop_limit(
+    tmp_path: Path,
+) -> None:
+    # The drop limit is committed spec too (microcosm#1095).
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_input_mass_parity"]["details"]
+    details["maximum_relative_drop"] = 1.0
+    _rewrite_battery_report(directory, payload)
+
+    assert "maximum_relative_drop must equal the committed spec value" in (
+        _battery_failures(directory)
+    )
+
+
+def test_exact_k_uk_gate_battery_rejects_a_passing_report_with_excess_drops(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_input_mass_parity"]["details"]
+    details["excess_drops"] = ["employment_income"]
+    _rewrite_battery_report(directory, payload)
+
+    assert "requires details.excess_drops to be an empty list" in (
         _battery_failures(directory)
     )
 
@@ -5312,9 +5486,12 @@ def test_exact_k_uk_gate_battery_rejects_a_recorded_signing_error(
     assert "attestation must contain exactly" in _battery_failures(directory)
 
 
-def test_exact_k_uk_gate_battery_rejects_an_unpinned_input_mass_evidence(
+def test_exact_k_uk_gate_battery_accepts_any_reference_builds_evidence(
     tmp_path: Path,
 ) -> None:
+    """The input-mass evidence digest covers the reference build's totals,
+    which change with every cut, so no digest is pinned (microcosm#1095)."""
+
     directory, payload = _write_battery_release(tmp_path)
     payload["evidence_sha256"]["uk_input_mass_parity"] = "b" * 64
     _rewrite_battery_report(directory, payload)
@@ -5324,7 +5501,7 @@ def test_exact_k_uk_gate_battery_rejects_an_unpinned_input_mass_evidence(
     build_path.write_text(json.dumps(build))
     _refresh_terminal_manifest_hashes(directory)
 
-    assert "bind the reviewed enhanced-FRS" in _battery_failures(directory)
+    validate_release_dir(directory)
 
 
 def test_exact_k_uk_gate_battery_rejects_mixed_manifest_evidence_vocabulary(
@@ -6017,6 +6194,144 @@ def test_evidence_release_still_enforces_dirty_git_refusal(
     assert "'code.git_dirty' must be false" in "\n".join(excinfo.value.failures)
 
 
+# --- The evidence tier in the build-folder layout (microcosm#1570) ---------
+#
+# After the US switch an evidence-tier build is published into the evidence
+# release, ``releases/microcosm-us-2024-evidence/<build>/``. The directory is
+# named after the release, so the tier and the US scope are read from the
+# build ID both manifests carry as ``build``.
+
+
+def _evidence_failures(release_dir: Path) -> str:
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(release_dir)
+    return "\n".join(excinfo.value.failures)
+
+
+def test_a_build_folder_evidence_release_validates(
+    evidence_release_dir: Path,
+) -> None:
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+
+    validate_evidence_release_dir(evidence)
+
+
+def test_a_build_folder_evidence_build_cannot_declare_annual_years(
+    evidence_release_dir: Path,
+) -> None:
+    """In the build-folder layout only builds of the annual release declare
+    ``metadata.dataset_years``; an evidence build that does is refused."""
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+
+    def declare_annual_years(manifest):
+        manifest.setdefault("metadata", {})["dataset_years"] = {
+            "microcosm_us_2024": {"2024": "microcosm_us_2024"}
+        }
+
+    _rewrite_release_manifest(evidence, declare_annual_years)
+
+    failures = _evidence_failures(evidence)
+
+    assert "dataset_years" in failures
+    assert US_ANNUAL_RELEASE in failures
+
+
+def test_a_build_folder_evidence_release_fails_the_certified_contract(
+    evidence_release_dir: Path,
+) -> None:
+    """The evidence schema marker still refuses the certified tier."""
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(evidence)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert f"'schema_version' is {EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION!r}" in (
+        failures
+    )
+
+
+@pytest.mark.parametrize(
+    ("build", "expected"),
+    [
+        # A certified build's ID does not name the tier.
+        (RELEASE_ID, EVIDENCE_RELEASE_ID_SEGMENT),
+        # A build ID that is not a US build's buys no weaker contract.
+        ("acme-evidence-build", "out of scope"),
+    ],
+)
+def test_a_build_folder_evidence_release_checks_the_build_id(
+    evidence_release_dir: Path, build: str, expected: str
+) -> None:
+    """The segment and the US scope apply to the build ID, since the
+    directory is named after the release."""
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=build
+    )
+
+    failures = _evidence_failures(evidence)
+
+    assert expected in failures
+    assert repr(build) in failures
+
+
+def test_a_build_folder_evidence_release_names_its_build_in_both_manifests(
+    evidence_release_dir: Path,
+) -> None:
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+    other_build = "populace-us-2024-evidence-0000000-20260612"
+    build_path = evidence / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    build_manifest["build"] = other_build
+    build_path.write_text(json.dumps(build_manifest))
+
+    failures = _evidence_failures(evidence)
+
+    assert "name different builds" in failures
+    assert other_build in failures
+
+
+def test_an_evidence_build_is_refused_outside_the_evidence_release(
+    evidence_release_dir: Path,
+) -> None:
+    """An evidence build in the national release (the repository's default)
+    is refused, though both releases declare the same dataset file."""
+    national = _as_us_build_folder_release(
+        evidence_release_dir, release=US_NATIONAL_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+
+    failures = _evidence_failures(national)
+
+    assert US_EVIDENCE_RELEASE in failures
+    assert US_NATIONAL_RELEASE in failures
+
+
+def test_a_build_folder_evidence_release_declares_its_dataset_file(
+    evidence_release_dir: Path,
+) -> None:
+    evidence = _as_us_build_folder_release(
+        evidence_release_dir, release=US_EVIDENCE_RELEASE, build=EVIDENCE_RELEASE_ID
+    )
+
+    def keep_the_old_name(manifest):
+        manifest["artifacts"]["microcosm_us_2024"]["path"] = "populace_us_2024.h5"
+
+    _rewrite_release_manifest(evidence, keep_the_old_name)
+
+    failures = _evidence_failures(evidence)
+
+    assert "microcosm_us_2024.h5" in failures
+    assert "populace_us_2024.h5" in failures
+
+
 def test_breach_acknowledgment_matching_is_name_delimited() -> None:
     from microcosm.data import contract as contract_module
 
@@ -6060,7 +6375,7 @@ def _green_uk_certification(
             "statuses": {"passed": len(scope)},
         }
     certification = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "uk_release_certification",
         "country": "uk",
         "release_id": release_id,
@@ -6071,6 +6386,37 @@ def _green_uk_certification(
             "size_bytes": 1,
         },
         "parent_spine": {"sha256": "a" * 64},
+        "reference": {
+            "release": "microcosm-uk-2024-25-national",
+            "build": "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e",
+            "filename": "microcosm_uk_2024_25.h5",
+            "sha256": "9" * 64,
+            "built_with_model_package": {
+                "name": "policyengine-uk",
+                "version": "2.174.1",
+            },
+            "selection": "current",
+        },
+        "since_baseline": {
+            "baseline": (
+                "microcosm-uk-2024-25-national@"
+                "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+            ),
+            "restarted_from": None,
+            "input_mass_ratios": {"employment_income": 1.02},
+            "input_mass_left": {
+                "gift_aid": {
+                    "reason": "thin",
+                    "last_ratio": 0.9,
+                    "last_build": (
+                        "microcosm-uk-2024-25-national@"
+                        "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+                    ),
+                }
+            },
+            "baseline_inputs": ["employment_income", "gift_aid"],
+            "inputs_dropped": ["gift_aid"],
+        },
         "parts": parts,
         "spec": {
             "gates_manifest_sha256": contract._UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
@@ -6086,7 +6432,7 @@ def _green_uk_certification(
         "doctrine": {"payload": {"epochs": 1500}, "overrides": {}},
         "diagnostics_sha256": diagnostics_sha256,
         "score_receipt": {
-            "filename": "score_vs_enhanced_frs.json",
+            "filename": "score_vs_reference.json",
             "sha256": score_receipt_sha256,
         },
         "exclusions_evaluated_on": "2026-08-27",
@@ -6192,6 +6538,78 @@ def test_uk_release_certification_refusals(monkeypatch) -> None:
     del certification["score_receipt"]
     assert any(
         "exactly the certification fields" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    # Schema 2 names the build the cut was compared with (microcosm#1095);
+    # a schema-1 certification against the enhanced FRS no longer validates.
+    certification = _green_uk_certification(key)
+    del certification["reference"]
+    assert any(
+        "exactly the certification fields" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+    for broken in (
+        {"release": "microcosm-uk-2024-25-dense"},
+        {"sha256": "not-a-digest"},
+        {"built_with_model_package": {"name": "policyengine-us", "version": "1"}},
+        # A pinned reference is recorded as such (the review of microcosm#1574).
+        {"selection": "latest"},
+    ):
+        certification = _green_uk_certification(key)
+        certification["reference"].update(broken)
+        assert any(
+            "reference must be a build of" in line
+            for line in _certification_failures(certification, monkeypatch, key)
+        ), broken
+    # The change since a fixed baseline (the review of microcosm#1574).
+    left = _green_uk_certification(key)["since_baseline"]["input_mass_left"]["gift_aid"]
+    for broken in (
+        {"baseline": "microcosm-uk-2024-25-dense@x"},
+        {"input_mass_ratios": {"employment_income": -1.0}},
+        {"inputs_dropped": ["not_a_baseline_input"]},
+        # Round 2 of the review: each column that left the chain says why,
+        # with its last ratio and build, and is no longer in the ratios.
+        {"input_mass_left": {"gift_aid": {**left, "reason": "vanished"}}},
+        {"input_mass_left": {"gift_aid": {**left, "last_ratio": -0.5}}},
+        {"input_mass_left": {"gift_aid": {**left, "last_build": "elsewhere"}}},
+        {"input_mass_left": {"employment_income": left}},
+        {"input_mass_left": ["gift_aid"]},
+    ):
+        certification = _green_uk_certification(key)
+        certification["since_baseline"].update(broken)
+        assert any(
+            "since_baseline must name a national baseline" in line
+            for line in _certification_failures(certification, monkeypatch, key)
+        ), broken
+    certification = _green_uk_certification(key)
+    del certification["since_baseline"]["inputs_dropped"]
+    assert any(
+        "since_baseline must record exactly" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+    # A chain that starts anywhere but the national origin has restarted,
+    # and says so; one that starts there has not.
+    origin = contract._UK_NATIONAL_SINCE_BASELINE_ORIGIN
+    for baseline, restarted_from, ok in (
+        (origin, None, True),
+        (origin, origin, False),
+        ("microcosm-uk-2024-25-national@older", origin, True),
+        ("microcosm-uk-2024-25-national@older", None, False),
+    ):
+        certification = _green_uk_certification(key)
+        certification["since_baseline"].update(
+            {"baseline": baseline, "restarted_from": restarted_from}
+        )
+        failures = _certification_failures(certification, monkeypatch, key)
+        assert ok != any("restarted_from" in line for line in failures), (
+            baseline,
+            restarted_from,
+        )
+    certification = _green_uk_certification(key)
+    certification["schema_version"] = 1
+    assert any(
+        "schema_version must be the integer 2" in line
         for line in _certification_failures(certification, monkeypatch, key)
     )
 

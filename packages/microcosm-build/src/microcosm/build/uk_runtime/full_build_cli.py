@@ -604,6 +604,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--register-json", type=Path)
     parser.add_argument("--input-mass-reference", type=Path)
     parser.add_argument(
+        "--reference-surface",
+        type=Path,
+        help=(
+            "Dense role: the export surface and carried inputs of the dense "
+            "line's current build (reference_surface.json from "
+            "tools/resolve_uk_reference.py), which the export-surface and "
+            "input-coverage gates compare with (microcosm#1095)."
+        ),
+    )
+    parser.add_argument(
         "--native-scorecard",
         type=Path,
         help=(
@@ -825,18 +835,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="National role only: allow a Ledger artifact whose feed commit is not the committed Chronicle pin.",
     )
     parser.add_argument(
-        "--incumbent-h5",
+        "--reference-h5",
         type=Path,
-        help="National role only: the incumbent dataset the finished candidate is evaluated against.",
+        help=(
+            "National role only: the current national build the finished "
+            "candidate is compared with (microcosm#1095)."
+        ),
     )
     parser.add_argument(
-        "--incumbent-sha256",
-        help="National role only: the incumbent's SHA-256, verified before it is read.",
-    )
-    parser.add_argument(
-        "--incumbent-label",
-        default="enhanced_frs_2024_25",
-        help="National role only: the incumbent's label in the score receipt.",
+        "--reference-record",
+        type=Path,
+        help=(
+            "National role only: the cut's record of that build "
+            "(tools/resolve_uk_reference.py), checked against the file."
+        ),
     )
     parser.add_argument(
         "--logbook-prev-row-digest",
@@ -1460,14 +1472,18 @@ def prepare_full_build(
         if path is not None:
             sources[name] = path
             optional.append(name)
-    if args.input_mass_reference is not None:
-        sources["uk_input_mass_reference"] = args.input_mass_reference
+    for name, path in (
+        ("uk_input_mass_reference", args.input_mass_reference),
+        # The reference build's surface (microcosm#1095): the export-surface
+        # and input-coverage gates read it, and are evidence_absent without.
+        ("uk_reference_surface", getattr(args, "reference_surface", None)),
+    ):
+        if path is None:
+            continue
+        sources[name] = path
         spine = replace(
             spine,
-            sources=(
-                *spine.sources,
-                SourceRef("uk_input_mass_reference", "raw-bytes-v1"),
-            ),
+            sources=(*spine.sources, SourceRef(name, "raw-bytes-v1")),
         )
     checkpoint_identity = (
         None
@@ -1807,6 +1823,7 @@ def _argument_sources(args: argparse.Namespace) -> dict[str, Path]:
             ("measure_exclusions", args.measure_exclusions),
             ("register_json", args.register_json),
             ("input_mass_reference", args.input_mass_reference),
+            ("reference_surface", getattr(args, "reference_surface", None)),
             ("native_scorecard", args.native_scorecard),
             ("matched_size_scorecard", args.matched_size_scorecard),
             ("resume_size_checkpoint", args.resume_size_checkpoint),
@@ -2136,6 +2153,7 @@ def _close_attempt(
             output_paths={"manifest": output / MANIFEST_FILENAME},
             run_id=state.build_id if telemetry is None else telemetry.run_id,
             staging_bundle=telemetry,
+            build_id=state.build_id,
         )
         staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
@@ -3194,7 +3212,7 @@ def _execute_national_build(
         "chronicle_provenance": dict(registry_document["chronicle_provenance"]),
     }
     record["inputs"] = inputs
-    record["incumbent"] = national_role.incumbent_arguments(args)
+    record["reference"] = national_role.reference_arguments(args)
     # 3. The solve and the seam battery, evaluated in the graph.
     stage(
         telemetry,
@@ -3275,7 +3293,6 @@ def _execute_national_build(
         "measure_resolution": evidence["calibration"].get("measure_resolution"),
         "register": evidence["register"],
         "spine_provenance": spine_provenance,
-        "score_vs_enhanced_frs": None,
     }
     stage(telemetry, "diagnostics", "started")
     diagnostics_outcome = write_uk_calibration_diagnostics(
@@ -3528,7 +3545,7 @@ def _close_national_attempt(
     """Stage the published bundle, evaluate, close the telemetry, spool the row.
 
     The seam's order: the manifest and the staged bundle's hand-over first,
-    then the incumbent evaluation, which waits for no upload and runs before
+    then the comparison with the reference, which waits for no upload and runs before
     the telemetry completes, then the build record and the manifest rewritten
     with the delivery summary and the sums refreshed. The build record is
     rewritten after the hand-over, so the bundle the emitter holds keeps the
@@ -3553,12 +3570,13 @@ def _close_national_attempt(
             output_paths=paths,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
             staging_bundle=telemetry,
+            build_id=state.build_id,
         )
         staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
-        evaluation = national_role.evaluate_against_incumbent(
+        evaluation = national_role.evaluate_against_reference(
             args,
-            incumbent=record.get("incumbent"),
+            reference=record.get("reference"),
             inputs=record["inputs"],
             output_paths=paths,
             telemetry=telemetry,

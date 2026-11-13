@@ -1,6 +1,6 @@
 """PIP assessment points for every recipient (P1 of the November event-data plan, microcosm#1095).
 
-policyengine-uk 2.174.1 decides a PIP component's rate from its points
+policyengine-uk 2.177.7 decides a PIP component's rate from its points
 (``pip_dl_points`` and ``pip_m_points``: 8 for the standard rate, 12 for the
 enhanced) wherever no category is supplied for the year (``utils/pip.py``).
 The release used to store ``pip_dl_category`` and ``pip_m_category``, which
@@ -184,6 +184,16 @@ PIP_POINTS_COUNTRY_REGIONS: Mapping[str, tuple[str, ...]] = {
     "scotland": ("SCOTLAND",),
     "northern_ireland": ("NORTHERN_IRELAND",),
 }
+
+#: What the receipt's recipients_by_country counts, and how to net those
+#: recipients out of a release (Vahid's second review of microcosm#1550,
+#: Should 1; B12 of the November event-data plan's PR3).
+PIP_POINTS_COUNTRY_NOTE = (
+    "weighted at the spine's household weights at this stage, before "
+    "calibration, not the release's calibrated weights; to net Adult "
+    "Disability Payment and Northern Ireland PIP recipients out at release "
+    "weights, filter the release on region rather than lift these counts"
+)
 
 PIP_POINTS_SCOPE = (
     "every person with pip_dl_category or pip_m_category other than NONE; "
@@ -646,6 +656,7 @@ def store_pip_points(
         "recipients_by_country": _recipients_by_country(
             recipient=recipient, country=country, weights=weights, sources=sources
         ),
+        "recipients_by_country_note": PIP_POINTS_COUNTRY_NOTE,
         "components": {},
     }
     for name, category, output in PIP_COMPONENTS:

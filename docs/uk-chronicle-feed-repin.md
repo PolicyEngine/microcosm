@@ -483,3 +483,23 @@ consumer-artifact step, and the regeneration ran its Python steps the same way: 
 row in memory (about 50 GB footprint for the artifact), and the collector's passes over the
 swapped heap stalled the first artifact run for an hour. The rows are acyclic, so the outputs are
 the same.
+
+The `81caed75` re-pin (PR3 of the November event-data plan, microcosm#1095) is Chronicle main
+after PolicyEngine/chronicle#436, which adds Scotland's second homes and empty dwellings, QEP
+payment methods, council tax Bands I and J and £1m sales (2,094,003 rows, under the same row
+contract). Two vendored resources move content. `scotgov_band_d_liability_facts.json` gains the
+Scottish Government's counts at September 2024 of Scotland's chargeable dwellings (2,602,545),
+second homes (21,606) and empty homes liable for council tax (43,538), which B11's
+main-residence share reads. The new `dwp_uc_lcwra_households_facts.json` holds Great Britain's
+paid and nil LCWRA households for each month of 2025, which B3's joint fit reads, and the country
+package declares it. Every other vendored resource changes only its pin stamps, and the DESNZ
+constituency resource keeps the same 2,526 values, with new input digests.
+
+The national references and membership gain the 13 rows PR3 adds (1,710 active references for
+591 contract targets), and the national compile-parity receipt lists them as ledger-only. No
+other target's compiled value moves, so the feed changes nothing outside PR3's items. The local
+references and membership change only their feed label, and the local census and the release
+input coverage manifest only their source digests. The charter-H2 fixture moves the stage
+contract hashes of the stages that read A3's care tab, A3 (f)'s UC carer element column and B3's
+resource, and regenerates byte-identically. The high-value home stock's feed inputs pass on the
+new pin, so it was not rebuilt.
