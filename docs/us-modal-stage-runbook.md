@@ -850,8 +850,9 @@ estimators, district seed 0, `--assign-congressional-districts`) are fixed
 in the registration, not plan options: a different setting is a different
 base, and changing it is a reviewed registry change. The tool's other flags
 (`--base-h5`, the smoke limit, the equivalence harness, the ladder escape
-hatches) are runner-owned, so no plan can pass them. A test refuses a
-registry option for each of the 26 owned flags, and another for every
+hatches, and the household-location flags that would switch the base off the
+certified `legacy` rule) are runner-owned, so no plan can pass them. A test
+refuses a registry option for each of the 29 owned flags, and another for every
 abbreviation of each withheld flag (argparse would read
 `--allow-geography` as `--allow-geography-ladder-gate-failures`) and for a
 flag with `=` in it.
@@ -1455,8 +1456,10 @@ existing network use; the tool runs with `HF_HUB_OFFLINE=1`, without
 credential-name environment values, and consumes the staged files.
 
 The runner owns `--base-h5`, `--donor-release-manifest`, `--source-manifest`,
-`--inputs-dir`, `--puma-ladder`, `--out-h5`, `--summary` and `--sipp-donor`,
-which it never passes. Plans may set
+`--inputs-dir`, `--puma-ladder`, `--out-h5`, `--summary`, `--sipp-donor` and
+the household-location flags (`--location-rule`, `--location-seed`,
+`--location-clones`, `--block-ladder`). It never passes the last five, so a
+staging run keeps the `legacy` location rule. Plans may set
 only the builder's tuning flags: `--acs-share`, `--n-estimators`,
 `--max-targets-per-fit`, `--seed`, `--geography-seed`, `--chunksize`,
 `--donor-channel`, `--hours-under15-policy`, `--max-households` and

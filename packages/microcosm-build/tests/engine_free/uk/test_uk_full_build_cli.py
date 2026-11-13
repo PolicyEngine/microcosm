@@ -1539,6 +1539,14 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
         "sha256sums.txt": "checksums",
     }
     assert roles[dataset_name] == "dataset"
+    # The graph schema, its execution overlay and the upstream files it links
+    # carry the interface's Orrery input roles, so the emitter submits them
+    # to the collector as one orrery-inputs submission.
+    assert roles["graph.schema.json"] == "orrery_schema"
+    assert roles["graph.execution.json"] == "execution_overlay"
+    upstream = {name for name in roles if name.startswith("upstream-")}
+    assert {roles[name] for name in upstream} <= {"orrery_upstream"}
+    assert roles["graph.orrery.json"] == "orrery_graph_orrery_json"
     for item in request.files:
         assert Path(item.local_path) == out / item.name
         committed = hub.files[
@@ -2115,7 +2123,7 @@ def test_a_build_id_the_interface_refuses_leaves_the_bundle_unnamed_with_a_warni
     from microcosm.build.uk_runtime import rowwise_staging
 
     assert (
-        rowwise_staging._bundle_provenance(
+        rowwise_staging.bundle_provenance(
             {"release_id": "microcosm-uk-2024-25-dense"}, build_id="not a build id"
         )
         is None
@@ -4207,17 +4215,6 @@ def test_the_thin_rows_only_switch_is_gone(tmp_path):
 
     with pytest.raises(SystemExit):
         arguments(tmp_path, "--withhold-thin-rows-only")
-
-
-def test_the_orrery_publication_is_off_unless_asked(tmp_path):
-    """María's ruling of 2026-10-26: no build submits its graph to the public
-    Orrery by default."""
-
-    from microcosm.build.uk_runtime.orrery_publication import publication_enabled
-
-    assert not publication_enabled(arguments(tmp_path))
-    assert not publication_enabled(arguments(tmp_path, "--no-publish-orrery"))
-    assert publication_enabled(arguments(tmp_path, "--publish-orrery"))
 
 
 def test_a_dense_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(

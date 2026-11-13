@@ -72,10 +72,10 @@ the one ``staged_manifest.json`` records, else the same build ID; so
 ``--local-only`` stops on those rows too. The release is the manifest's
 ``release_id``.
 The emitter, whose collector submissions are on, then submits the bundle's
-calibration diagnostics to the collector once the commit lands, and the
-command waits up to ten minutes for the collector to accept them before it
-closes the emitter. A hand-over the command resumes keeps what the build
-named, and its collector receipt is followed the same way.
+calibration diagnostics and Orrery inputs to the collector once the commit
+lands, and the command waits up to ten minutes for the collector to accept
+them before it closes the emitter. A hand-over the command resumes keeps what
+the build named, and its collector receipt is followed the same way.
 
 Staging is not publication: ``releases/`` and ``latest.json`` are untouched.
 """

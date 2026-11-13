@@ -1,0 +1,37 @@
+{
+  "csv_sha256": "d10fc71c77b59997d7c9cac78e74106cd43bfcf00470bd11e07f528bc6982acc",
+  "kind": "cps_asec_identified_counties",
+  "list": "List 4: FIPS County Codes",
+  "note": "Census (ASEC 2023-2025): 'Counties are only included on this list if the entire county is identified.' The 2026 documentation drops that sentence; entire_county_guarantee records, per year, whether the preamble carries it. An asterisk marks a county that is also a single-county micropolitan area.",
+  "pdftotext": "pdftotext version 26.09.0",
+  "years": {
+    "2023": {
+      "counties": 277,
+      "entire_county_guarantee": true,
+      "sha256": "54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d",
+      "states": 41,
+      "url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar23.pdf"
+    },
+    "2024": {
+      "counties": 277,
+      "entire_county_guarantee": true,
+      "sha256": "650fdf1707cf5f1b8729a52156729f6a495c37421c98372bfc7b0deb3fe2be9d",
+      "states": 41,
+      "url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf"
+    },
+    "2025": {
+      "counties": 277,
+      "entire_county_guarantee": true,
+      "sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+      "states": 41,
+      "url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+    },
+    "2026": {
+      "counties": 361,
+      "entire_county_guarantee": false,
+      "sha256": "8f6d4c10ae5e720449ae23fdf739bb7812aff8102218d7c013be8ce737125107",
+      "states": 43,
+      "url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar26.pdf"
+    }
+  }
+}
