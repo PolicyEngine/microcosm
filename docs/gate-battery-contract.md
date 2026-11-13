@@ -17,13 +17,15 @@ split:
 - **Batched within a phase, fail-closed at the phase boundary.** Every
   gate bound to a phase evaluates — a raising evaluator becomes a failed
   result, never a crash that masks the remaining gates — and the build
-  decides at the boundary, not per gate.
+  decides at the boundary, not per gate. A build that gates stage by stage
+  decides at the stage, by the same rule (see
+  [outcomes and blocking](#outcomes-and-blocking)).
 - **Write-then-block.** The full report, including the block itself, is on
   disk before `enforce` raises. A blocked build always leaves evidence.
 - **Every declared gate has exactly one outcome.** Nothing is omitted:
   evidence that does not exist is a named gap (`evidence_absent`), a
-  reviewed non-selection is a receipt (`not_applicable`), and entries
-  after a blocked phase are `unreached`. Silence is not in the vocabulary.
+  reviewed non-selection is a receipt (`not_applicable`), and entries a
+  block left behind are `unreached`. Silence is not in the vocabulary.
 
 ## Declaring gates: `gates.json`
 
@@ -31,7 +33,10 @@ A country's gate policy is one JSON resource, `<cc>/gates.json`, inside
 its spec-only country package. It must be listed in
 `<cc>/country_package.json` `resources` — `load_country_spec` refuses
 undeclared files on disk and missing declared ones — and it is parsed and
-validated by canonical filename into `CountrySpec.gates`.
+validated by canonical filename into `CountrySpec.gates`. A tool that needs
+only its gate policy reads it with `load_gates_manifest("<cc>")`, which
+parses and validates `gates.json` alone, with no bundle load or file-closure
+check, and returns the manifest `load_country_spec("<cc>").gates` returns.
 
 The header:
 
@@ -52,6 +57,8 @@ Each entry in `gates`:
 | `criticality` | `release_blocking` or `diagnostic`. At least one entry must be release-blocking — a country whose every gate is diagnostic has no release contract. |
 | `parameters` | Declarative gate inputs: tolerances, surfaces, exclusion registers, reference pins. Pure data, recursively frozen at load (mappings become read-only proxies, lists become tuples). Thresholds live *here*, covered by the policy hash — never in runner code. |
 | `not_applicable` | Reviewed reason this gate deliberately does not run for this country. Mutually exclusive with a non-empty `parameters`; the entry appears in every report as `not_applicable` and never evaluates. |
+| `evidence_absent_blocks` | `true` makes an `evidence_absent` outcome block every posture, not only release candidates (see [outcomes and blocking](#outcomes-and-blocking)). Mutually exclusive with `not_applicable`. |
+| `population_fact_check` | `true` marks a gate that checks the frame against published population statistics. A synthetic smoke build records its failure without blocking on it; every other posture blocks. |
 | `notes` | Free-text rationale and provenance. |
 
 Entry validation is closed-world: an unknown key is refused, not ignored,
@@ -82,14 +89,18 @@ shaped like a dotted entry point. Name parameters accordingly.
 Three digests pin the declaration, all carried in every report:
 
 - `policy_sha256` — over each entry's `id`/`gate`/`phase`/`criticality`/
-  `parameters`/`not_applicable`, sorted by id. **Excludes `notes`**:
-  editing rationale does not move gate policy.
+  `parameters`/`not_applicable`, and `evidence_absent_blocks` when it is
+  true, sorted by id. **Excludes `notes`**: editing rationale does not move
+  gate policy.
 - `gates_manifest_sha256` — over the full manifest including `notes` and
   the phase order.
 - `spec_fingerprint` — the composition fingerprint of `gates.json` only.
   Adding or editing a gate entry moves this value; unrelated country-package
   resources do not. Anything pinning it must be regenerated in the same
   change.
+
+`population_fact_check` is in neither digest. It changes only the synthetic
+smoke posture, which can never be a release candidate.
 
 ## Supplying evidence: `EvidenceContext` and bindings
 
@@ -115,6 +126,17 @@ evidence already travels as plain data; a country passes `registry=` to
 add or override bindings. A declared gate with no binding in the active
 registry is a named `evidence_absent` gap — an incomplete registry cannot
 manufacture a pass.
+
+Two binding classes are shared. `FunctionBinding` routes declared parameters
+into a pure gate function's keyword arguments. `EvaluatorBinding` hands a
+country evaluator the whole `(context, parameters)` pair, may choose its
+artifacts and its need for a frame from the parameters, and re-mints a gate
+written before the battery: the executor fails any result whose name differs
+from the declared gate, so `legacy_name` names the one other name the
+evaluator may return, and that result is re-minted under the declared name.
+The UK's `UKGateBinding` is an alias of it. A binding reads the packaged
+registers its declared `*_resource` parameters name with
+`country_resource("<cc>", name)`.
 
 Canonical artifact keys:
 
@@ -145,9 +167,9 @@ UK-flavored result names of the legacy evaluators onto the shared
 vocabulary. Every verdict
 is computed by the existing UK gate functions — a binding adapts
 evidence; it never re-implements a comparison. The differential test
-(`tests/test_uk_battery_bindings.py`) holds the battery's verdicts equal
-to the incumbent UK battery's, failure line for failure line, over
-identical evidence.
+(`packages/microcosm-build/tests/engine_free/uk/test_uk_battery_bindings.py`)
+holds the battery's verdicts equal to the incumbent UK battery's, failure
+line for failure line, over identical evidence.
 
 ## Outcomes and blocking
 
@@ -159,7 +181,7 @@ Five statuses, one per declared entry per report:
 | `failed` | Evaluated and failed — including evaluator crashes, wrong-name results, and unattestable evidence, all failed closed. |
 | `evidence_absent` | Declared, but a required artifact, frame, or binding was missing; the gap is named. |
 | `not_applicable` | Declared with a reviewed reason not to run. Reported even if its phase never ran. |
-| `unreached` | Its phase never ran because an earlier phase blocked. |
+| `unreached` | Its phase never ran because an earlier phase blocked, or, in a phase evaluated stage by stage, an earlier stage of the same phase blocked before this entry's stage ran. Its reason then names the entry that blocked, and `blocked_at_phase` is that phase. |
 
 `passed` and `not_applicable` are the only shippable statuses.
 
@@ -176,6 +198,10 @@ Blocking is a two-axis decision at each phase boundary:
   `input_mass_parity` entry deliberately does not: missing licensed
   reference totals record `evidence_absent`, and that gap blocks release
   candidates through the normal posture rule.
+- A synthetic smoke build (`synthetic_smoke=True`) runs on a fixture, not
+  the population. It can never be a release candidate, its report and
+  attestation say so, and a failed entry declaring `population_fact_check`
+  does not block it.
 
 The battery run (`GateBatteryRun`) executes phases in declared order:
 `run_phase` evaluates the batch and persists the full report atomically
@@ -186,6 +212,34 @@ is written and marked (`MARKS_ARTIFACT` — intermediates: an artifact with
 a failed gate can be worth keeping; it just is not ready). Once a phase
 blocks, later phases refuse to run and their entries stay `unreached` —
 which is the truth.
+
+A phase evaluated somewhere else is recorded, not re-run.
+`gate_phase_report_payload` turns a phase report into plain data bound to the
+manifest digest, `gate_phase_report_from_payload` checks it against the
+current manifest, and `record_phase` persists it through the same
+write-then-block boundary as `run_phase` without running an evaluator. The UK
+graph replays its stored phase reports this way, and the transport graph's
+`gates.battery@1` kernel (`microcosm.build.transport.gate_kernels`) runs one
+phase of any country's `gates.json` as a graph gate node, whose report
+artifact carries that payload.
+
+A build may also evaluate a phase's gates where each one's evidence appears
+instead of in one batch at the boundary, which keeps it failing fast and gives
+each gate its own stage's evidence. `evaluate_entries` resolves named entries
+exactly as the batch would, `blocking_outcomes` says whether they stop the
+build under its posture, and `assemble_phase_report` gathers the phase's
+outcomes into its report in manifest order, refusing a missing or duplicate
+entry. A build that stopped at a blocking stage names that entry in
+`blocked_by`: the phase's remaining entries become `unreached`, with a reason
+naming it, and `record_phase` takes such a phase only if it blocks under the
+run's posture, recording `blocked_at_phase` in the same write. A signed run
+can then be assembled at the end, from phases carried between stages or
+processes.
+
+A posture that must keep going past failed gates, such as an evidence build
+or a dry run, runs every phase and never calls `enforce`. Every phase is
+recorded, nothing is marked blocked, and the report stays unshippable while a
+release-blocking entry has not passed.
 
 The report is signed (HMAC-SHA256) with a per-country key; the signature
 is valid over failed reports — a blocked build's evidence is still
@@ -218,20 +272,20 @@ too. `enforce(..., BLOCKS_ARTIFACT)` raises only after the report — with
 and the schema-versioned body and attestation — is on disk.
 
 The other two statuses are exercised in
-`tests/test_gate_battery.py::TestOutcomeTaxonomy`, which reaches all five
-in one report.
+`packages/microcosm-build/tests/engine_free/shared/test_gate_battery.py::TestOutcomeTaxonomy`,
+which reaches all five in one report.
 
 ## Two postures, one executor
 
-The two country specs in the tree show how far the same executor
-stretches on declaration alone:
+BE, AM and NZ declare only the `terminal` phase. Two of the country specs in
+the tree show how far the same executor stretches on declaration alone:
 
 | | BE | UK |
 | --- | --- | --- |
 | phases | `terminal` | `preflight`, `assembled`, `transferred`, `terminal` |
-| entries | 9 | 73 (64 national-build entries, 7 local-candidate entries and 2 local diagnostics) |
+| entries | 9 | 94 (85 national-line entries, 7 local-candidate entries and 2 local diagnostics) |
 | incumbent posture | none — incumbent-comparison gates deliberately not selected; external oracles replace self-parity | full — export surface, input coverage and input mass against the current build of the cut's own line (microcosm#1095; until then the pinned enhanced-FRS incumbent) |
-| criticality mix | 8 blocking + 1 diagnostic | 71 blocking + 2 local diagnostics |
+| criticality mix | 8 blocking + 1 diagnostic | 92 blocking + 2 local diagnostics |
 
 The differences are entirely in the two country inputs — the spec file
 and the registry — which is the point. The UK national build is the
@@ -241,12 +295,18 @@ frame loads, terminal immediately before the staging writer), while BE
 remains spec-only.
 
 UK evaluates the declaration through four producer scopes: spine,
-calibration seam, national release cut, and local candidate. The first three
-compose the national release certification. The seven local-candidate entries
-are explicitly classified as excluded from that certification until the
+calibration seam, national release cut, and local candidate. One
+`GateBatteryRun` runs one manifest, each phase once and in order, so each
+scope is a manifest of its own, built by the shared `scoped_gate_manifest`
+(`uk_scoped_gate_manifest` supplies the UK spec), with its own pinned digests.
+The first three compose the national release certification. The seven
+local-candidate entries are explicitly classified as excluded from that
+certification until the
 local publication work in #146; they are evaluated in their own signed
 `local_candidate` report rather than silently disappearing from union
 accounting.
+
+US adoption is in progress (microcosm#1585 item 11).
 
 ## The reference rule
 
@@ -278,19 +338,25 @@ enhanced FRS, through a closed registry of named identities with
 
 1. **The spec**: `<cc>/gates.json` (header, phase order, entries per the
    anatomy above), listed in `<cc>/country_package.json` `resources`.
-   Loaded via `load_country_spec("<cc>").gates`; nothing else is needed
-   for the spec to reach the battery.
+   Loaded via `load_country_spec("<cc>").gates`, or alone via
+   `load_gates_manifest("<cc>")`; nothing else is needed for the spec to
+   reach the battery. A country whose build tools each gate part of the
+   spec gives each tool its own scope (`scoped_gate_manifest`), each pinned
+   separately.
 2. **A registry**, if `DEFAULT_REGISTRY` does not already bind every
-   selected gate: bindings implementing the `GateBinding` protocol,
-   passed as `GateBatteryRun(..., registry=...)`. Unbound declared gates
-   are named gaps, so a country can land its spec before its bindings.
+   selected gate: bindings implementing the `GateBinding` protocol
+   (`FunctionBinding` over a pure gate function, `EvaluatorBinding` over a
+   country evaluator), passed as `GateBatteryRun(..., registry=...)`.
+   Unbound declared gates are named gaps, so a country can land its spec
+   before its bindings.
 3. **Runtime artifacts**, under the canonical keys each selected gate's
    binding declares (table above). Missing artifacts are named gaps that
    block release candidates only.
 4. **A `Frame`** at every phase whose gates read one; preflight-style
    phases may run frameless.
-5. **Run identity**: `release_id`, `release_candidate`, and a
-   `report_path` for the atomically-written report.
+5. **Run identity**: `release_id`, `release_candidate` (and
+   `synthetic_smoke` for a build on a fixture), and a `report_path` for the
+   atomically-written report.
 6. **The signing key**: `gate_signing_key_env("<cc>")` names the
    variable — `MICROCOSM_<CC>_TERMINAL_GATE_SIGNING_KEY`, base64,
    exactly 32 decoded bytes.
