@@ -382,9 +382,10 @@ EXPECTED_HASHES = {
     # S-corp line-32 shares as separate leaves. microcosm#1585 moves both
     # again: the US keyed draws call stochastic_assignment's
     # stable_identity_uniforms, and that module joins the attested kernel
-    # modules; no draw changes.
-    "seed_map": "af9d9678c29bfe5cc0c2a4e01765610ba2c67aa42ba31c7b9f1e362d7ba58c58",
-    "seed_protocol": "63a042848eaa843185641a9abc8875ba76480557cd7f106c34e3f10bfcc815c6",
+    # modules; no draw changes. #1585's public solve_constraint_system and
+    # calibrate's shared option checks move both again; no US solve changes.
+    "seed_map": "135522c0ea7e61672b198d1cb9e860fc74972ab5a9a2193ddf90ea3675690be6",
+    "seed_protocol": "0770f95230a2fcb1096c6f514a5d1db8d57a7539b23c953b87578d762c8b29ed",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
