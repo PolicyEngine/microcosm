@@ -924,10 +924,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         print(
             "warning: --publish-orrery no longer uploads the graph to the runs "
             "application. The staged dataset bundle hands the graph's inputs to "
-            "the emitter, which submits them to the collector only while the "
-            "emitter's collector submissions are on (no released emitter "
-            "switches them on yet); the collector builds the Orrery graph files "
-            "and keeps a licensed build's private. With local-only or no "
+            "the emitter, which submits them to the collector with or without "
+            "the flag; the collector builds the Orrery graph files and keeps a "
+            "licensed build's private. With local-only or no "
             "staging nothing is handed over.",
             file=sys.stderr,
             flush=True,

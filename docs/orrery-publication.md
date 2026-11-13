@@ -23,9 +23,13 @@ kinds of file, registered under `orrery/` in a dataset bundle or by name in a
 failed build's evidence bundle. The hand-over names the build for the
 collector (see [UK staging operations](uk-staging-operations.md#staged-datasets)),
 so the emitter submits the files as one `orrery-inputs` submission once the
-bundle's Hugging Face commit lands, while its collector submissions are on.
-No emitter release up to 0.14.0 switches them on, so until one does, nothing
-is submitted. The collector projects the document with
+bundle's Hugging Face commit lands. Every emitter a build or the re-stage
+command starts has its collector submissions on
+(`telemetry_emitter.COLLECTOR_SUBMISSIONS`, from emitter 0.15.0), and the
+build waits for the collector to accept the bundle's submissions, its
+calibration diagnostics and its Orrery inputs alike, as that section
+describes.
+The collector projects the document with
 `orrery_json_from_schema(schema, execution=overlay)`, validates it and keeps
 the graph of a build that used licensed microdata, as every UK build does,
 private; staff are to see it through the run viewer once it reads graphs
