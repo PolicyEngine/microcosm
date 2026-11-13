@@ -1145,3 +1145,57 @@ class TestStageLevelEvaluation:
         replay.record_phase(never_reached)
         assert replay.phases_evaluated == ("terminal",)
         assert replay.blocked_at_phase is None
+
+
+class TestRecordWithoutEnforce:
+    """The keep-going posture: run every phase, never enforce (#1585 item 11).
+
+    An evidence build and a dry run continue past failed gates. Running every
+    phase without ``enforce`` records them all, marks nothing blocked, and
+    leaves the report unshippable while a release-blocking entry has not
+    passed.
+    """
+
+    @pytest.mark.parametrize("release_candidate", [True, False])
+    def test_every_phase_records_and_the_report_stays_unshippable(
+        self, tmp_path, signing_env, release_candidate
+    ):
+        manifest = _manifest(
+            [
+                _entry("pf_fail", gate="support", phase="preflight"),
+                _entry("t_pass", gate="exported_nonzero"),
+                _entry("t_absent", gate="weights_audit"),
+            ]
+        )
+        run = GateBatteryRun(
+            manifest,
+            release_id="xx-test-build",
+            report_path=tmp_path / "terminal_gates.json",
+            release_candidate=release_candidate,
+            registry={
+                "support": _binding("support", passes=False),
+                "exported_nonzero": _binding("exported_nonzero"),
+                "weights_audit": DEFAULT_REGISTRY["weights_audit"],
+            },
+        )
+        run.run_phase("preflight", EvidenceContext())
+        # Under enforce the failure would have blocked here.
+        assert run.phase_report("preflight").blocking_outcomes(
+            release_candidate=release_candidate
+        )
+        assert json.loads(run.report_path.read_text())["phases_evaluated"] == [
+            "preflight"
+        ]
+        run.run_phase("terminal", EvidenceContext())
+
+        report = json.loads(run.report_path.read_text())
+        assert report == run.report_payload()
+        assert report["phases_evaluated"] == ["preflight", "terminal"]
+        assert report["blocked_at_phase"] is None
+        assert {entry: gate["status"] for entry, gate in report["gates"].items()} == {
+            "pf_fail": "failed",
+            "t_pass": "passed",
+            "t_absent": "evidence_absent",
+        }
+        assert report["shippable"] is False
+        assert report["attestation"]["signature"] is not None

@@ -1098,6 +1098,11 @@ class GateBatteryRun:
     evaluated elsewhere — at its stages, or in another process — is
     persisted with :meth:`record_phase` instead of :meth:`run_phase`.
 
+    A posture that must keep going past failed gates (an evidence build, a
+    dry run) runs every phase and never calls :meth:`enforce`: nothing is
+    marked blocked, every phase is recorded, and the report stays
+    unshippable while a release-blocking entry has not passed.
+
     Args:
         gates: The country's gate manifest.
         release_id: Identity of the build the report attests.
