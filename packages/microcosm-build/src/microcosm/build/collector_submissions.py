@@ -5,7 +5,7 @@ submissions on (``telemetry_emitter.COLLECTOR_SUBMISSIONS``). A staged bundle
 or release publication that names its build (``CollectorProvenance``) is then
 also submitted to the collector, from the emitter's own worker, once its
 Hugging Face commit lands; a promotion or withdrawal that names its build
-submits the ``releases.json`` its commit wrote. An emitter that is closing
+submits ``releases.json`` once its commit lands. An emitter that is closing
 starts no new submission, so a build or command that closes its emitter
 straight after the commit would leave them queued for the next emitter
 started on the machine. :func:`follow_collector_submissions` waits, after
@@ -69,12 +69,16 @@ _SKIPPED_REASONS: Final[Mapping[str, str]] = {
     # A promotion or withdrawal submits releases.json only when it leaves the
     # release a current build to name.
     "NO_CURRENT_BUILD": "the release has no current build after the change",
-    # An emitter release that keeps no releases.json, sharing the machine's
-    # hand-over database, landed the change; a new request submits it.
+    # The emitter that landed the change kept no releases.json for it: an
+    # older emitter release sharing the machine's hand-over database, or one
+    # with submissions off. A new request is submitted once an emitter that
+    # keeps the file lands it.
     "RELEASES_RECORD_MISSING": (
         "the emitter that landed the change kept no copy of releases.json to "
-        "submit; run the same command again, which hands the change over as a "
-        "new request that submits it"
+        "submit, as an older emitter release sharing this machine's hand-over "
+        "database, or one with collector submissions off, does; running the "
+        "same command again hands the change over as a new request, which is "
+        "submitted once an emitter that keeps the file lands it"
     ),
 }
 #: Which credential collector submissions use. An emitter given a collector

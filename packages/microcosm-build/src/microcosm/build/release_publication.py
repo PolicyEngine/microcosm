@@ -56,7 +56,8 @@ head and points the country's latest calibration tree at its default
 release's current build, an older build as well as a newer one, when it has
 that build's tree. The command waits for the collector to accept the
 submission, as for a publication, and says nothing of the collector for a
-change that has not landed: a refused change submits nothing. A release with
+change that has not landed: a refused change submits nothing, and a pending
+one is submitted by the emitter that lands it later. A release with
 no current build after the change sends nothing (``NO_CURRENT_BUILD``). A
 publication with ``make_current`` needs no record of its own: its
 calibration diagnostics submission already names the build it made current.
@@ -256,9 +257,9 @@ _sleep = time.sleep
 def collector_provenance(release: str, build: str) -> CollectorProvenance | None:
     """The collector's provenance of a build of ``release``, or None.
 
-    It names the publication's own release and build, as the interface
-    requires, since the collector refuses a build folder whose provenance
-    names another. A UK build (the national, dense and local-area releases)
+    It names the publication's, promotion's or withdrawal's own release and
+    build, as the interface requires, since the collector refuses a build
+    folder whose provenance names another. A UK build (the national, dense and local-area releases)
     used licensed microdata, so the collector keeps its Orrery outputs
     private; a US build is published in the public US repository, so it used
     none whose licence keeps its outputs private. None for a release whose
@@ -289,9 +290,9 @@ class ReleasePublication:
     write-access check refused it.
     ``collector_receipt`` is the emitter's last collector receipt of the
     change (a publication's calibration diagnostics, or the ``releases.json``
-    a promotion or withdrawal wrote), or None for a change handed nothing,
-    one that names no build for the collector, or one the emitter has no
-    collector row for.
+    a promotion or withdrawal submits), or None for a change handed nothing,
+    one that names no build for the collector, a promotion or withdrawal that
+    has not landed, or one the emitter has no collector row for.
     """
 
     repository: str
@@ -431,9 +432,12 @@ def _hand_over(
             landed = receipt["status"] == "published"
             # A publication is asked about once even before it lands, so a
             # collector that will receive nothing is said at once. A promotion
-            # or withdrawal submits only the releases.json it wrote, so only
-            # once it has landed: before that, a warning would name a change
-            # the writer may never make.
+            # or withdrawal is asked about only once it has landed: a refused
+            # one submits nothing, a pending one is submitted by the emitter
+            # that lands it after this command ends, and before it lands a
+            # warning would name a releases.json change the writer may never
+            # make. The emitter's own startup warning still says when it
+            # refused its collector settings.
             if change.collector is not None and (
                 landed if kind != "publish" else receipt["status"] != "unavailable"
             ):

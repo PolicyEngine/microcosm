@@ -570,9 +570,9 @@ whether it builds a tree from them or rejects them (for example
 its build for the collector in the same way, so once it has landed the
 emitter submits `releases.json` at the commit its receipt reports, naming the
 build now current, and the command waits for the collector to accept it,
-with the same `collector_submission` output and warnings; a promotion that
-has not landed or was refused sends nothing, and the command says nothing of
-the collector. The collector then reads `releases.json` at the repository's
+with the same `collector_submission` output and warnings. For a promotion
+that has not landed the command says nothing of the collector: a refused one
+sends nothing, and a pending one is sent by the emitter that lands it later. The collector then reads `releases.json` at the repository's
 head and points the country's latest calibration tree at the current build
 of its default release, older or newer, when it has that build's tree.
 `--make-current` needs no separate record: the publication's calibration
