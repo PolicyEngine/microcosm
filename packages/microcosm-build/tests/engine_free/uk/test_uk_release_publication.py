@@ -1488,21 +1488,37 @@ def test_the_withdraw_command_says_why_a_release_without_a_current_build_sends_n
     )
 
 
-def test_a_refused_withdrawal_asks_nothing_of_the_collector(
-    clock: Clock, capsys
+@pytest.mark.parametrize(
+    ("build", "receipts", "code"),
+    [
+        (UK_EARLIER_BUILD, None, "WITHDRAWING_CURRENT_BUILD"),
+        (
+            UK_OTHER_BUILD,
+            [{"status": "pending", "error_code": "REPOSITORY_UNAVAILABLE"}],
+            "REPOSITORY_UNAVAILABLE",
+        ),
+    ],
+    ids=["refused", "pending"],
+)
+def test_a_withdrawal_that_has_not_landed_asks_nothing_of_the_collector(
+    clock: Clock, capsys, build: str, receipts: list | None, code: str
 ) -> None:
+    """A refused withdrawal submits nothing; a pending one is submitted by the
+    emitter that lands it, after this command has ended."""
     client = FakeEmitterClient(
         hub_files=_two_listed_builds(),
+        release_receipts=receipts,
         collector_receipts=[
             {"status": "skipped", "error_code": "NOT_PUBLISHED_ON_HUGGING_FACE"}
         ],
     )
 
     outcome = _withdraw_function()(
-        UK_REPO_ID, UK_NATIONAL_RELEASE_ID, UK_EARLIER_BUILD, client=client
+        UK_REPO_ID, UK_NATIONAL_RELEASE_ID, build, client=client
     )
 
-    assert outcome.receipt["error_code"] == "WITHDRAWING_CURRENT_BUILD"
+    assert outcome.receipt["error_code"] == code
+    assert not outcome.withdrawn
     assert client.collector_receipt_requests == []
     assert outcome.collector_receipt is None
     assert "warning" not in capsys.readouterr().err
@@ -1528,9 +1544,12 @@ def test_a_withdrawal_whose_releases_json_was_not_kept_says_to_run_it_again(
     assert (
         "the collector receives nothing of releases.json with build "
         f"{UK_OTHER_BUILD} of {UK_NATIONAL_RELEASE_ID} withdrawn: the emitter that "
-        "landed the change kept no copy of releases.json to submit; run the same "
-        "command again, which hands the change over as a new request that "
-        "submits it (RELEASES_RECORD_MISSING)." in capsys.readouterr().err
+        "landed the change kept no copy of releases.json to submit, as an older "
+        "emitter release sharing this machine's hand-over database, or one with "
+        "collector submissions off, does; running the same command again hands "
+        "the change over as a new request, which is submitted once an emitter "
+        "that keeps the file lands it (RELEASES_RECORD_MISSING)."
+        in capsys.readouterr().err
     )
 
 
