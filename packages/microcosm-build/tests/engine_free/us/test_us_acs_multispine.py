@@ -316,9 +316,16 @@ def test__given_receipt_anchors__then_fs_overrides_the_transfer_before_pooling(
         events.append(("anchor", frame))
         return anchored_acs, receipt
 
+    # Without a PUMA ladder the pool decides no local-jurisdiction flag, so
+    # its receipt reads no geography.
+    pooled = SimpleNamespace(
+        table=lambda entity: pd.DataFrame(),
+        weights_for=lambda entity: SimpleNamespace(values=np.ones(0)),
+    )
+
     def fake_pool(actual_base, actual_acs, **kwargs):
         events.append(("pool", actual_base, actual_acs))
-        return object()
+        return pooled
 
     monkeypatch.setattr(
         acs_multispine, "require_acs_receipt_anchor_sources", fake_check
@@ -347,6 +354,8 @@ def test__given_receipt_anchors__then_fs_overrides_the_transfer_before_pooling(
         "issue": "microcosm#1022",
         "snap": {"units_anchored": 4},
     }
+    assert result.frame is pooled
+    assert result.provenance["local_jurisdiction_flags"]["rungs"] == []
     json.dumps(result.provenance, allow_nan=False)
 
 
