@@ -874,9 +874,9 @@ _PINNED_FEED_NAME = ".codex-work/consumer_facts_uk.jsonl"
 #: stock's provenance records it (``ledger_feed``). A stock rebuilt on a new
 #: feed records the new feed's fingerprint here.
 _STOCK_FEED_INPUTS_BY_BUILT_FEED = {
-    # 735820c (microcosm#1240); abf0921 carries the same (microcosm#1300).
-    "3033e437ed61d7d5e970f4fef34a2a5523fe068770a7798e5768af656f2a48a4": (
-        "0547b04ed9fed5d09a8e358c35e42cbbab4f5a82e865be36c77b375bc3b8ed7a"
+    # 4ce631f (microcosm#1524): rebuilt with both TS054 social-rent rows summed.
+    "c294ba2013d0ff61b150589640ec63add8563390057b769447c0241661ad5a1c": (
+        "8f9c40ee38a3c40a5f7c4c1174db76fbeb0bee229e0c7453b11e9669c78518ba"
     ),
 }
 
