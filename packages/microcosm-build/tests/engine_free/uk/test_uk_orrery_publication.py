@@ -266,9 +266,11 @@ def test_publish_orrery_only_warns_that_the_build_uploads_no_graph(tmp_path, cap
     warning = capsys.readouterr().err
     assert "--publish-orrery no longer uploads the graph" in warning
     assert "collector" in warning
-    # It promises nothing the emitter does not do: no released emitter
-    # switches collector submissions on yet.
-    assert "only while the emitter's collector submissions are on" in warning
+    # Every emitter a build starts has its collector submissions on
+    # (telemetry_emitter.COLLECTOR_SUBMISSIONS), so a remotely staged bundle
+    # submits its Orrery inputs whether or not the flag is given.
+    assert "submits them to the collector with or without the flag" in warning
+    assert "no released emitter" not in warning
     quiet = full_build_support.arguments(tmp_path, "--no-publish-orrery")
     assert "--publish-orrery" not in capsys.readouterr().err
     assert args.publish_orrery is True and quiet.publish_orrery is False
