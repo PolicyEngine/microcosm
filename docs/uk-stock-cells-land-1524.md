@@ -81,10 +81,12 @@ and unknown types spread over all four).
 ### 4. Tenure and social rented homes
 
 An authority's social rented homes are VOA's count there × the Census 2021
-social rented share (TS054), as in the home-stock builder. They spread over
-the authority's MSOAs by each MSOA's own census share when the feed carries
-TS054 by MSOA (requested in PolicyEngine/chronicle#438, item 3), and in
-proportion to each MSOA's count until then; the provenance records which.
+social rented share (TS054), as in the home-stock builder; TS054 prints
+renting from the council and other social renting as two rows, and both
+count. They spread over the authority's MSOAs by each MSOA's own census share
+(TS054 by MSOA, PolicyEngine/chronicle#439); the variant "uniform tenure"
+spreads them in proportion to each MSOA's count instead, and the provenance
+records which source the build read.
 Within an MSOA every band loses the same share. Social rented homes rarely
 sell, so they form one cell per authority: their count by the rule above,
 their value the Market Value Survey's regional social rented mean (moved
@@ -122,9 +124,8 @@ Depreciation is `min(cap, θ × shape(age))`, with the age from the EPC's
 construction age band and θ scaled so the cost-weighted mean depreciation
 equals one less ONS's net ÷ gross capital stock of dwellings: the whole
 economy's MJF8 and MJF7 for 2024, from ONS's capital stocks of 27 November
-2025 (Tables 2.1.1 and 1.1.1). PolicyEngine/chronicle#439 registers them; until
-the pinned feed carries them, the build takes them as stated parameters, read
-from the workbook that PR pins (sha256 `71a995c3…0de7`). The central shape is
+2025 (Tables 2.1.1 and 1.1.1), which the pinned feed carries
+(PolicyEngine/chronicle#439, workbook sha256 `71a995c3…0de7`). The central shape is
 a straight line in age, capped at 0.8; the workbooks state no depreciation
 profile, so whether ONS's is close to it is not verified. Without the ratio
 the build runs with depreciation off and says so.
@@ -215,80 +216,89 @@ comparison of the residual per new home with MHCLG's land per new home.
 
 ## Results
 
-From the build of 12 November 2026 on Chronicle feed 80a3482 (facts sha256
-`cb3342c3…`). ONS's four level inputs are stated parameters until the pinned
-feed carries them: E46Y for 2024 (£2,525,540m) and 2021 (£2,097,345m), from
-the 2025 balance sheet, and the net (£2,526bn) and gross (£4,632bn) capital
-stock of dwellings for 2024. ONS's land under dwellings for 2021 (£5.9tn) comes
-from the feed.
+From the build of 13 November 2026 on the pinned Chronicle feed `4ce631f5`
+(PolicyEngine/chronicle#439; facts sha256 `c294ba20…`, 2,160,233 rows). Every
+level input comes from the feed: E46Y for 2024 (£2,525,540m) and 2021
+(£2,097,345m) from the 2025 balance sheet, the net (£2,526bn, MJF8) and gross
+(£4,632bn, MJF7) capital stock of dwellings for 2024, and ONS's land under
+dwellings for 2021 (£5.9tn). Social homes spread over MSOAs by TS054 by MSOA.
 
 ### The level
 
 | | κ |
 |---|---|
-| Target (a), central: buildings = E46Y × 0.888 = £2,241.9bn | 0.795 |
-| Target (b), check: land ÷ value = ONS's 2021 ratio, 0.738 | 0.882 |
-| Depreciation off (target (a)) | 0.437 |
-| Depreciation steep / from VOA's build periods | 0.797 / 0.802 |
-| Regional factors flat / spread doubled | 0.801 / 0.789 |
-| Floor area from EPC D3's authority means | 0.836 |
-| Bands within MSOA without type (a value variant) | 0.764 |
+| Target (a), central: buildings = E46Y × 0.888 = £2,241.9bn | 0.807 |
+| Target (b), check: land ÷ value = ONS's 2021 ratio, 0.738 | 0.880 |
+| Depreciation off (target (a)) | 0.443 |
+| Depreciation steep / from VOA's build periods | 0.807 / 0.812 |
+| Regional factors flat / spread doubled | 0.813 / 0.800 |
+| Floor area from EPC D3's authority means | 0.852 |
+| Value variants: uniform tenure / build-period strata / bands without type | 0.813 / 0.795 / 0.778 |
 
 England and Wales's share of UK dwellings is 0.888: VOA's 27,438,780 over
 the sum of that, Scotland's 2,623,149 council tax dwellings and Northern
-Ireland's 848,541 (LPS, 2026). The mean depreciation is 0.455 (one less 2,526 ÷ 4,632). Without
-it, target (a) solves at 0.437, outside the band: E46Y is net of
-depreciation and TPA's costs are not. The first build ran that way, because
-the capital stocks were not yet an input.
+Ireland's 848,541 (LPS, 2026). The mean depreciation is 0.455 (one less
+2,526 ÷ 4,632). Without it, target (a) solves at 0.443, outside the band:
+E46Y is net of depreciation and TPA's costs are not. The first build ran
+that way, before the capital stocks were an input.
 
 ### Totals, England and Wales, calendar-2024 prices
 
 | | Land | Value | Land ÷ value |
 |---|---|---|---|
-| Central (κ = 0.795) | £7.24tn | £9.48tn | 0.764 |
-| κ = 1 | £6.66tn | £9.48tn | 0.703 |
-| Target (b) | £7.00tn | £9.48tn | 0.738 |
+| Central (κ = 0.807) | £7.08tn | £9.33tn | 0.760 |
+| κ = 1 | £6.55tn | £9.33tn | 0.702 |
+| Target (b) | £6.88tn | £9.33tn | 0.738 |
+| Uniform tenure within authorities | £6.91tn | £9.15tn | 0.755 |
 
-Under target (a), the buildings add up to the same total with depreciation on
-or off, so national land is the same to within £0.1bn; only its spread
-differs.
+The private stock is 22,756,246 homes and the social stock 4,700,438. Under
+target (a), the buildings add up to the same total with depreciation on or
+off, so national land barely moves; only its spread differs. Placing social
+homes by each MSOA's own census share leaves more of the private stock in
+dearer MSOAs than spreading them by count does, hence the higher value.
 
 ### The decision rule: all three pass
 
 1. **Stability:** authority land shares correlate with the central case at
    0.968 (depreciation off), 0.983 (steep), 0.996 (EPC D3 floor areas), 0.992
    (regional spread doubled) and 0.995 (flat); the threshold is 0.9.
-2. **Level:** κ = 0.795, inside 0.75 to 1.25.
-3. **Costs:** in every English region the cost per m² at κ = 0.795 is below
-   the lower quartile of new-build prices per m² (the North East: £1,504
+2. **Level:** κ = 0.807, inside 0.75 to 1.25.
+3. **Costs:** in every English region the cost per m² at κ = 0.807 is below
+   the lower quartile of new-build prices per m² (the North East: £1,527
    against £2,315).
 
 So cell land stays the central case.
 
 ### Measurements
 
-- **The grain test:** a land tax at the balancing rate would move 24.4 points
-  of council tax between cells under cell land, 23.0 under an authority
-  share × cell value, 24.4 under land at the rank and 26.5 under MHCLG's
-  pattern. Cell land and authority shares differ by 1.44 points nationally,
+- **The grain test:** a land tax at the balancing rate would move 24.0 points
+  of council tax between cells under cell land, 22.6 under an authority
+  share × cell value, 24.0 under land at the rank and 26.3 under MHCLG's
+  pattern. Cell land and authority shares differ by 1.40 points nationally,
   and by under 5 points in 99.8% of seats: **authority shares are enough**
   by the declared thresholds.
-- **κ diagnostics: pass.** No region has more than 0.12% of its cells without
-  land, and seat ranks correlate at 0.962 to 0.994 across the cost and
-  depreciation variants.
-- **Stock value: fails.** The sales-based private-sector mean is above the
-  Market Value Survey's in England (£364,796 against £341,754, +6.7%; the
-  threshold is 5%) and in every region: the North West +17.8%, the South East
-  +13.7%, the East +11.3% (over the 10% threshold), the North East +9.4%, the
-  South West +9.1%, the West Midlands +7.6%, Yorkshire and the Humber +6.9%,
-  London +4.9% and the East Midlands +3.9%. Land, as the residual, carries the
-  whole gap.
+- **κ diagnostics: pass.** Almost no cell has zero land, and seat ranks keep
+  their order across the cost and depreciation variants.
+- **Stock value: passes.** The sales-based private-sector mean is £372,470 in
+  England against the Market Value Survey's £367,739 (+1.3%; the threshold
+  is 5%). By region: the North West +8.1%, London +4.7%, the West Midlands
+  +1.8%, the South West +1.0%, the South East +0.9%, the East +0.8%,
+  Yorkshire and the Humber 0.0%, the East Midlands −3.2% and the North East
+  −4.0% (all within 10%). The survey's private-sector mean weights its
+  owner-occupier and private-renter means by the private stock's
+  owner-occupied share in the same cells (0.738 in England).
+
+An earlier build failed this check (England +6.7%, the North West +17.8%).
+It had two causes, both fixed: the check took the survey's two tenure means
+half and half, and the census tenure shares kept only one of TS054's two
+social-rent rows, which halved the social stock (2.41 million homes instead of
+4.70 million) and lowered the owner share.
 
 Also recorded: TPA's authority ranking correlates with the central case at
-0.958; the residual per new home is a median 2.86 times MHCLG's land per new
+0.956; the residual per new home is a median 2.85 times MHCLG's land per new
 home across 295 authorities, with a rank correlation of 0.927; 34
 authorities differ from both MHCLG's pattern and TPA by a log ratio above
-0.4; and the land under England and Wales's homes (£7.24tn) is above E44N,
+0.4; and the land under England and Wales's homes (£7.08tn) is above E44N,
 UK households' land (£4.56tn), so that check fails. It is not like for like:
 E44N is households' land only.
 
@@ -299,16 +309,13 @@ E44N is households' land only.
 - 55,617 cells. Means: 42,333 from the cell's own sales, 12,993 from the
   authority, 291 from the region. Knots: 34,342, 19,257 and 2,018.
 - 5,672 MSOA × band counts printed as `[c]` read as 2.5.
-- Tenure by MSOA is not in the feed yet, so social homes spread over each
-  authority's MSOAs by their counts (PolicyEngine/chronicle#439 adds TS054 by
-  MSOA).
 
 ## Not verified, and what is approximate
 
 - ONS's depreciation profile for dwellings: the capital stocks workbooks
   state none.
-- The stock value check above: why the sales-based means run above the
-  survey is not yet explained.
+- The North West's sales-based mean stays 8.1% above the survey's, inside
+  the threshold but the largest gap; why is not yet explained.
 - UCL's column names were checked against its readme by the `discover` stage;
   the provenance records the readme's sha256.
 - The build-period groups join VOA's periods and the EPC's age bands where
@@ -337,12 +344,11 @@ uv run --no-sync python tools/build_uk_stock_cells.py --stage discover --ucl-bun
 uv run --no-sync python tools/build_uk_stock_cells.py --stage all --variants all --built-on YYYY-MM-DD --cache-dir … [the raw inputs and manifests] --ew-support … --ledger-facts … --ledger-manifest …
 ```
 
-Until the pinned feed carries ONS's level inputs, add them as parameters:
-`--dwellings-whole-economy-gbp 2525540000000
---dwellings-whole-economy-2021-gbp 2097345000000
---dwellings-net-capital-stock-gbp 2526000000000
---dwellings-gross-capital-stock-gbp 4632000000000`. Once the feed carries one,
-drop its parameter: a parameter that differs from the feed is refused.
+The pinned feed carries ONS's level inputs, so no `--dwellings-*` parameter
+is needed. On a feed without them, each can be stated as a parameter, which
+the provenance records as such; a parameter that differs from the feed is
+refused, and so is a feed that carries an input in a shape the declaration
+does not select.
 
 `--check` rebuilds and fails if a committed resource differs; the build date
 alone is not a difference. A full build takes about 12 minutes and peaks near
