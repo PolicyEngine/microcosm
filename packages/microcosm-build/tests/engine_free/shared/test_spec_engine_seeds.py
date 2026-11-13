@@ -337,19 +337,22 @@ def test_exact_blake2b_salts_keys_candidates_and_absence_conditions() -> None:
 
 def test_take_up_ledger_salts_are_the_variables_the_draws_use() -> None:
     """Each take-up site's salt is the variable its draw is salted with; the
-    TANF site recorded ``takes_up_tanf`` (microcosm#1585)."""
+    TANF site recorded ``takes_up_tanf`` (microcosm#1585). The generic
+    seeder's sites come from the take-up contract, one per seeded program."""
     sites = {
-        "tanf_take_up_assignment": "takes_up_tanf_if_eligible",
-        "eitc_take_up_assignment": "takes_up_eitc",
+        program.variable.removeprefix("takes_up_").removesuffix("_if_eligible")
+        + "_take_up_assignment": program.variable
+        for program in seeded_take_up_programs()
+    }
+    sites |= {
         "medicaid_take_up_assignment": US_MEDICAID_TAKE_UP_VARIABLE,
         "snap_state_take_up_assignment": US_SNAP_TAKE_UP_OUTPUT_COLUMN,
         "ssi_take_up_assignment": US_SSI_TAKE_UP_OUTPUT_COLUMNS[0],
     }
+    assert {"tanf_take_up_assignment", "eitc_take_up_assignment"} <= set(sites)
     for site_id, variable in sites.items():
         material = LEGACY_V1_PROTOCOL.site(site_id).seed_material
-        assert f"literal_salt={variable}" in material, site_id
-    seeded = {program.variable for program in seeded_take_up_programs()}
-    assert seeded <= set(sites.values())
+        assert f"literal_salt={variable}" in material, (site_id, variable)
 
 
 def test_adult_tail_and_live_puf_orders_are_literal() -> None:
