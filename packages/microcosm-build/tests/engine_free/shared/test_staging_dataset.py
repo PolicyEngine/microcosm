@@ -8,8 +8,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from microcosm_emitter_interface import CollectorProvenance
 
-from microcosm.build import staging_dataset
+from microcosm.build import collector_submissions, staging_dataset
 from microcosm.build.staging_dataset import (
     SHA256SUMS_FILENAME,
     STAGED_MANIFEST_FILENAME,
@@ -31,6 +32,13 @@ MANIFEST = "rowwise_candidate_manifest.json"
 RUN_ID = "uk-local-candidate-f100-s7-20260917T180000Z-0badcafe"
 REPOSITORY = "policyengine/populace-uk-private"
 DATASET = "microcosm_uk_2025_local.h5"
+#: The build a described bundle names for the collector.
+PROVENANCE = CollectorProvenance(
+    country_code="UK",
+    build_id=RUN_ID,
+    licensed_data=True,
+    release="microcosm-uk-2024-25-national",
+)
 
 
 def _sha(data: bytes) -> str:
@@ -581,6 +589,371 @@ def test_the_build_may_rewrite_only_the_files_the_emitter_copied(tmp_path):
     # Nothing was handed over in local-only mode.
     local = staging_dataset.StagedBundleHandOver(local_only_staged_dataset(bundle))
     assert local.may_rewrite(MANIFEST) and local.may_rewrite(SHA256SUMS_FILENAME)
+
+
+def test_a_described_bundle_waits_until_the_collector_accepts_its_submissions(
+    tmp_path, capsys
+):
+    """The emitter submits after the bundle's commit; the build waits for the
+    collector to accept them, so an emitter closed straight afterwards has
+    sent them."""
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {
+                "status": "pending",
+                "error_code": "WAITING_FOR_HUGGING_FACE",
+                "attempts": 2,
+            },
+            # An attempt that began before the commit landed.
+            {
+                "status": "pending",
+                "error_code": "WAITING_FOR_HUGGING_FACE",
+                "attempts": 3,
+            },
+            {"status": "awaiting_final_status", "attempts": 4},
+        ],
+    )
+    clock = Clock()
+
+    staged = staging_dataset.stage_bundle(
+        bundle,
+        emitter=emitter,
+        repository=REPOSITORY,
+        clock=clock,
+        sleep=clock.sleep,
+        collector=PROVENANCE,
+    )
+
+    (request,) = emitter.bundle_requests
+    assert request.collector == PROVENANCE
+    assert staged.delivery["status"] == "uploaded"
+    assert emitter.collector_receipt_requests == [request.handover_id()] * 3
+    assert clock.slept == [staging_dataset.RECEIPT_POLL_SECONDS] * 2
+    assert staged.collector_receipt is not None
+    assert staged.collector_receipt["status"] == "awaiting_final_status"
+    err = capsys.readouterr().err
+    # The build says what it waits for, since the bundle has already landed.
+    assert (
+        f"the staged dataset bundle staged/{RUN_ID} is on Hugging Face; waiting "
+        "up to 10 minutes for the collector to accept its submissions..." in err
+    )
+    assert "warning" not in err
+
+
+def test_the_first_failed_attempt_after_the_commit_ends_the_wait(tmp_path, capsys):
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {
+                "status": "pending",
+                "error_code": "WAITING_FOR_HUGGING_FACE",
+                "attempts": 1,
+            },
+            {"status": "pending", "error_code": "COLLECTOR_UNAVAILABLE", "attempts": 2},
+        ],
+    )
+    clock = Clock()
+
+    staged = staging_dataset.stage_bundle(
+        bundle,
+        emitter=emitter,
+        repository=REPOSITORY,
+        clock=clock,
+        sleep=clock.sleep,
+        collector=PROVENANCE,
+    )
+
+    assert len(emitter.collector_receipt_requests) == 2
+    assert clock.slept == [staging_dataset.RECEIPT_POLL_SECONDS]
+    assert staged.collector_receipt["error_code"] == "COLLECTOR_UNAVAILABLE"
+    assert (
+        f"warning: the collector had not accepted the submissions of the staged "
+        f"dataset bundle staged/{RUN_ID} when the wait ended "
+        "(COLLECTOR_UNAVAILABLE); the emitter keeps them queued on this machine, "
+        "and an emitter running here later sends them. Leave unchanged any of "
+        "their files the emitter did not copy at hand-over until the hand-over "
+        "settles." in capsys.readouterr().err
+    )
+
+
+@pytest.mark.parametrize(
+    ("code", "explanation"),
+    [
+        (
+            "COLLECTOR_SETTINGS_REFUSED",
+            "the emitter refused its collector settings or the collector-token "
+            "variables it inherits",
+        ),
+        (
+            "COLLECTOR_FOLDER_TOO_LONG",
+            "its Hugging Face folder is longer than the collector accepts",
+        ),
+        ("NOT_STAGED_ON_HUGGING_FACE", "its Hugging Face upload failed or was refused"),
+        ("A_CODE_FROM_A_LATER_EMITTER", "the emitter skipped them"),
+    ],
+)
+def test_a_skipped_collector_receipt_is_a_warning_and_the_bundle_stays_staged(
+    tmp_path, capsys, code, explanation
+):
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[{"status": "skipped", "error_code": code}],
+    )
+
+    staged = _stage(bundle, emitter, collector=PROVENANCE)
+
+    assert staged.delivery["status"] == "uploaded"
+    # A skipped receipt is final: the build asks once.
+    assert len(emitter.collector_receipt_requests) == 1
+    assert staged.collector_receipt["status"] == "skipped"
+    warning = capsys.readouterr().err
+    assert (
+        f"warning: the collector receives nothing of the staged dataset bundle "
+        f"staged/{RUN_ID}: {explanation} ({code})." in warning
+    )
+    # Submissions use the Hugging Face credential, which an emitter given a
+    # collector token never reads, and a given token only sends telemetry:
+    # the advice is to unset the variables, never to complete them.
+    advice = (
+        "Collector submissions use the Hugging Face credential, and an emitter "
+        "given a collector token uses that token instead, which only sends "
+        "telemetry: unset MICROCOSM_COLLECTOR_TOKEN, "
+        "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and MICROCOSM_COLLECTOR_ORIGIN "
+        "for a staging or publication that should reach the collector."
+    )
+    assert (advice in warning) is (code == "COLLECTOR_SETTINGS_REFUSED")
+    assert "set together" not in warning
+
+
+def test_submissions_not_accepted_when_the_wait_ends_stay_queued(tmp_path, capsys):
+    """A submission that waited for a long upload retries at most five
+    minutes apart, so the build waits ten minutes for its next attempt."""
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {"status": "pending", "error_code": "COLLECTOR_UNAVAILABLE"}
+        ],
+    )
+    clock = Clock()
+
+    staged = staging_dataset.stage_bundle(
+        bundle,
+        emitter=emitter,
+        repository=REPOSITORY,
+        clock=clock,
+        sleep=clock.sleep,
+        collector=PROVENANCE,
+    )
+
+    assert staged.delivery["status"] == "uploaded"
+    assert collector_submissions.COLLECTOR_SUBMISSION_WAIT_SECONDS == 600
+    assert sum(clock.slept) == 600
+    assert staged.collector_receipt["status"] == "pending"
+    warning = capsys.readouterr().err
+    assert (
+        f"warning: the collector had not accepted the submissions of the staged "
+        f"dataset bundle staged/{RUN_ID} when the wait ended "
+        "(COLLECTOR_UNAVAILABLE); the emitter keeps them queued on this machine, "
+        "and an emitter running here later sends them. Leave unchanged any of "
+        "their files the emitter did not copy at hand-over until the hand-over "
+        "settles." in warning
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "code", "warned"),
+    [
+        (
+            "rejected",
+            "content_mismatch",
+            "the collector rejected the submissions of the staged dataset bundle "
+            f"staged/{RUN_ID} (content_mismatch).",
+        ),
+        (
+            "failed",
+            "COLLECTOR_REFUSED_422",
+            f"the submissions of the staged dataset bundle staged/{RUN_ID} to the "
+            "collector failed (COLLECTOR_REFUSED_422).",
+        ),
+        (
+            "timed_out",
+            "FINAL_STATUS_TIMED_OUT",
+            "the collector gave no final status for the submissions of the staged "
+            f"dataset bundle staged/{RUN_ID} within a day of accepting them "
+            "(FINAL_STATUS_TIMED_OUT).",
+        ),
+    ],
+)
+def test_a_submission_the_collector_turned_down_is_a_warning(
+    tmp_path, capsys, status, code, warned
+):
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[{"status": status, "error_code": code}],
+    )
+
+    staged = _stage(bundle, emitter, collector=PROVENANCE)
+
+    assert staged.delivery["status"] == "uploaded"
+    assert f"warning: {warned}" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("status", ["succeeded", "skipped"])
+def test_no_wait_is_announced_when_the_first_receipt_is_settled(
+    tmp_path, capsys, status
+):
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[{"status": status, "attempts": 1}],
+    )
+
+    _stage(bundle, emitter, collector=PROVENANCE)
+
+    assert len(emitter.collector_receipt_requests) == 1
+    assert "waiting up to" not in capsys.readouterr().err.split("upload...")[-1]
+
+
+def test_a_submission_without_a_credential_says_how_to_give_it_one(tmp_path, capsys):
+    """An emitter given a telemetry-only collector token, or finding no
+    Hugging Face credential, keeps the submissions pending with
+    CREDENTIAL_MISSING; a later emitter sends them only with the credential."""
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[
+            {
+                "status": "pending",
+                "error_code": "WAITING_FOR_HUGGING_FACE",
+                "attempts": 1,
+            },
+            {"status": "pending", "error_code": "CREDENTIAL_MISSING", "attempts": 2},
+        ],
+    )
+
+    _stage(bundle, emitter, collector=PROVENANCE)
+
+    warning = capsys.readouterr().err
+    assert (
+        f"warning: the collector had not accepted the submissions of the staged "
+        f"dataset bundle staged/{RUN_ID} when the wait ended (CREDENTIAL_MISSING): "
+        "the emitter has no credential to submit them with." in warning
+    )
+    assert "unset MICROCOSM_COLLECTOR_TOKEN" in warning
+    assert "`hf auth login`" in warning
+    assert "an emitter running here later sends them" not in warning
+
+
+def test_an_emitter_that_stops_answering_ends_the_wait(tmp_path, capsys):
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path),
+        collector_receipts=[{"status": "pending", "attempts": 1}, None],
+    )
+
+    staged = _stage(bundle, emitter, collector=PROVENANCE)
+
+    assert len(emitter.collector_receipt_requests) == 2
+    assert staged.collector_receipt["status"] == "pending"
+    assert "the collector had not accepted the submissions" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("attempts", [None, "1"], ids=["missing", "text"])
+def test_a_receipt_without_a_usable_attempt_count_waits_the_whole_time(
+    tmp_path, attempts
+):
+    bundle = _bundle(tmp_path)
+    receipt = {
+        "status": "pending",
+        "error_code": "COLLECTOR_UNAVAILABLE",
+        "attempts": attempts,
+    }
+    emitter = FakeEmitterClient(hub_api=FakeHub(tmp_path), collector_receipts=[receipt])
+    clock = Clock()
+
+    staging_dataset.stage_bundle(
+        bundle,
+        emitter=emitter,
+        repository=REPOSITORY,
+        clock=clock,
+        sleep=clock.sleep,
+        collector=PROVENANCE,
+    )
+
+    assert sum(clock.slept) == 600
+
+
+def test_a_bundle_that_has_not_landed_is_asked_about_once_and_not_waited_for(
+    tmp_path, capsys
+):
+    """Its submissions wait for the commit, so the build only asks whether the
+    collector will receive anything."""
+    bundle = _bundle(tmp_path)
+    waiting = FakeEmitterClient(
+        collector_receipts=[
+            {"status": "pending", "error_code": "WAITING_FOR_HUGGING_FACE"}
+        ],
+    )
+    refused = FakeEmitterClient(
+        collector_receipts=[
+            {"status": "skipped", "error_code": "COLLECTOR_SETTINGS_REFUSED"}
+        ],
+    )
+
+    pending = _stage(bundle, waiting, collector=PROVENANCE, wait_seconds=0)
+    pending_warning = capsys.readouterr().err
+    skipped = _stage(bundle, refused, collector=PROVENANCE, wait_seconds=0)
+    skipped_warning = capsys.readouterr().err
+
+    for staged, emitter in ((pending, waiting), (skipped, refused)):
+        assert staged.delivery["error_code"] == "UPLOAD_PENDING"
+        assert len(emitter.collector_receipt_requests) == 1
+    assert pending.collector_receipt["status"] == "pending"
+    assert "collector" not in pending_warning
+    assert "(COLLECTOR_SETTINGS_REFUSED)" in skipped_warning
+
+
+def test_a_bundle_without_provenance_is_never_asked_about(tmp_path):
+    bundle = _bundle(tmp_path)
+    emitter = FakeEmitterClient(
+        hub_api=FakeHub(tmp_path), collector_receipts=[{"status": "succeeded"}]
+    )
+
+    staged = _stage(bundle, emitter)
+
+    assert emitter.collector_receipt_requests == []
+    assert staged.collector_receipt is None
+
+
+def test_a_resumed_hand_over_that_landed_waits_for_the_collector(tmp_path):
+    bundle = _bundle(tmp_path)
+    hub = FakeHub(tmp_path)
+    queue = FakeHandoverQueue()
+    first = _stage(
+        bundle,
+        FakeEmitterClient(
+            hub_api=hub, queue=queue, deliver=False, answer_receipts=False
+        ),
+        collector=PROVENANCE,
+    )
+    later = FakeEmitterClient(
+        hub_api=hub,
+        queue=queue,
+        collector_receipts=[{"status": "pending"}, {"status": "succeeded"}],
+    )
+
+    resumed = _resume(bundle, later, staging_dataset.handover_record(first))
+
+    assert resumed is not None
+    assert resumed.delivery["status"] == "already_staged"
+    assert later.collector_receipt_requests == [first.handover_id] * 2
+    assert resumed.collector_receipt["status"] == "succeeded"
 
 
 def test_stage_bundle_requires_the_sidecars_first(tmp_path):

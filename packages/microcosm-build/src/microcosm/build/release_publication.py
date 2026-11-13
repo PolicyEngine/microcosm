@@ -26,6 +26,16 @@ A build is current only when the emitter's receipt says so: ``status`` is
 ``make_current`` can land without making its build current, when a change to
 the release's current build requested after it landed first.
 
+A publication names its build for the collector (:func:`collector_provenance`),
+so the emitter, whose collector submissions are on, submits the build's
+calibration diagnostics, with its build and release manifests, to the
+collector after the release commit, under the build's folder
+``releases/<release>/<build>``. Once the publication has landed, the command
+waits for the collector to accept them before it closes its emitter, which
+starts no new submission once it is closing, and prints the collector's
+status; a collector that receives nothing or turns them down is a warning,
+and never fails the publication.
+
 The emitter finds its Hugging Face credential the way a build's emitter
 does: it is this command's child process and inherits its environment
 (``HF_TOKEN``, then ``HUGGINGFACE_TOKEN``, then the token saved by
@@ -44,13 +54,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from microcosm_emitter_interface import PromoteBuild, PublishRelease, ReleaseFile
+from microcosm_emitter_interface import (
+    CollectorProvenance,
+    PromoteBuild,
+    PublishRelease,
+    ReleaseFile,
+)
 from microcosm_emitter_interface.publication import (
     ReleaseChange,
     ReleaseReceipt,
@@ -58,9 +75,17 @@ from microcosm_emitter_interface.publication import (
 )
 from microcosm_emitter_interface.releases import is_pointer_file
 
+from microcosm.build.collector_submissions import (
+    COLLECTOR_RECEIPT_POLL_SECONDS,
+    COLLECTOR_SUBMISSION_WAIT_SECONDS,
+    UK_COLLECTOR_COUNTRY_CODE,
+    US_COLLECTOR_COUNTRY_CODE,
+    CollectorReceipts,
+    follow_collector_submissions,
+)
 from microcosm.build.staging_dataset import hub_offline, write_access_problem
 from microcosm.build.telemetry_emitter import start_bundle_emitter
-from microcosm.data.contract import publishes_to_build_folder
+from microcosm.data.contract import US_RELEASES, publishes_to_build_folder
 from microcosm.data.publish_cli import publication_refusal
 from microcosm.data.release import (
     TAGGED_RELEASE_ADVICE,
@@ -73,14 +98,17 @@ from microcosm.data.releases_record import RELEASES_RECORD_PATH
 if TYPE_CHECKING:
     from microcosm_emitter_interface import EmitterStartupError, RequestFailure
     from microcosm_emitter_interface.bundles import WriteAccess
+    from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 
 __all__ = [
     "PROMOTION_WAIT_SECONDS",
     "PUBLICATION_WAIT_SECONDS",
     "ReleaseEmitter",
     "ReleasePublication",
+    "collector_provenance",
     "main",
     "promote_release_build",
+    "publication_request",
     "publish_release_build",
 ]
 
@@ -129,8 +157,11 @@ _OFFLINE_REFUSAL = (
 )
 
 
-class ReleaseEmitter(Protocol):
-    """The interface ``EmitterClient``'s release calls and state."""
+class ReleaseEmitter(CollectorReceipts, Protocol):
+    """The interface ``EmitterClient``'s release calls and state.
+
+    Its collector receipts come from ``CollectorReceipts``.
+    """
 
     startup_error: EmitterStartupError | None
     last_failure: RequestFailure | None
@@ -154,9 +185,39 @@ class ReleaseEmitter(Protocol):
     def close(self) -> None: ...
 
 
+#: The shape of an emitter's hand-over ID.
+_HANDOVER_ID = re.compile(r"^[0-9a-f]{32}$")
 #: Starts the short-lived emitter a publication uses (only its Hugging Face
 #: module); tests replace it.
 _start_release_emitter = start_bundle_emitter
+#: The clock and sleep of the wait for the collector; tests replace them.
+_clock = time.monotonic
+_sleep = time.sleep
+
+
+def collector_provenance(release: str, build: str) -> CollectorProvenance | None:
+    """The collector's provenance of a build of ``release``, or None.
+
+    It names the publication's own release and build, as the interface
+    requires, since the collector refuses a build folder whose provenance
+    names another. A UK build (the national, dense and local-area releases)
+    used licensed microdata, so the collector keeps its Orrery outputs
+    private; a US build is published in the public US repository, so it used
+    none whose licence keeps its outputs private. None for a release whose
+    builds do not publish into their own folders. The interface raises
+    ``ValueError`` for a build ID it does not accept.
+    """
+    if not publishes_to_build_folder(release):
+        return None
+    us_build = release in US_RELEASES
+    return CollectorProvenance(
+        country_code=US_COLLECTOR_COUNTRY_CODE
+        if us_build
+        else UK_COLLECTOR_COUNTRY_CODE,
+        build_id=build,
+        licensed_data=not us_build,
+        release=release,
+    )
 
 
 @dataclass(frozen=True)
@@ -167,6 +228,9 @@ class ReleasePublication:
     current: a promotion, or a publication with ``make_current``.
     ``problem`` says why nothing was handed over, when the emitter could not
     take the change or its write-access check refused it.
+    ``collector_receipt`` is the emitter's last collector receipt of a
+    publication, or None for a promotion, a change handed nothing, or a
+    publication the emitter has no collector row for.
     """
 
     repository: str
@@ -175,6 +239,7 @@ class ReleasePublication:
     wanted_current: bool
     receipt: ReleaseReceipt
     problem: str | None = None
+    collector_receipt: CollectorSubmissionReceipt | None = None
 
     @property
     def published(self) -> bool:
@@ -234,6 +299,14 @@ class ReleasePublication:
             "message": self.receipt.get("message"),
             "commit": self.receipt.get("commit"),
             "handover_id": self.receipt.get("handover_id"),
+            "collector_submission": (
+                None
+                if self.collector_receipt is None
+                else {
+                    "status": self.collector_receipt.get("status"),
+                    "error_code": self.collector_receipt.get("error_code"),
+                }
+            ),
         }
 
 
@@ -243,9 +316,11 @@ def _hand_over(
     client: ReleaseEmitter | None,
     wait_seconds: float,
     wanted_current: bool,
+    collector_wait_seconds: float = COLLECTOR_SUBMISSION_WAIT_SECONDS,
 ) -> ReleasePublication:
     owned = client is None
     emitter: ReleaseEmitter = _start_release_emitter() if owned else client
+    collector_receipt: CollectorSubmissionReceipt | None = None
     try:
         # The staged-bundle hand-over's check: the emitter is running with its
         # Hugging Face module, and its credential can write the repository.
@@ -260,6 +335,23 @@ def _hand_over(
             receipt = unavailable_release_receipt(change)
         elif isinstance(change, PublishRelease):
             receipt = emitter.publish_release(change, wait_seconds=wait_seconds)
+            if change.collector is not None and receipt["status"] != "unavailable":
+                # Before the emitter closes: a closing emitter starts no new
+                # submission. The emitter keeps the collector row under the
+                # hand-over ID its receipt names.
+                collector_receipt = follow_collector_submissions(
+                    emitter,
+                    _receipt_handover_id(receipt) or change.handover_id(),
+                    subject=f"build {change.build} of {change.release}",
+                    wait_seconds=(
+                        collector_wait_seconds
+                        if receipt["status"] == "published"
+                        else None
+                    ),
+                    poll_seconds=COLLECTOR_RECEIPT_POLL_SECONDS,
+                    clock=_clock,
+                    sleep=_sleep,
+                )
         else:
             receipt = emitter.promote_build(change, wait_seconds=wait_seconds)
     finally:
@@ -272,6 +364,17 @@ def _hand_over(
         wanted_current=wanted_current,
         receipt=receipt,
         problem=problem,
+        collector_receipt=collector_receipt,
+    )
+
+
+def _receipt_handover_id(receipt: ReleaseReceipt) -> str | None:
+    """The hand-over ID a release receipt names, when it has the emitter's shape."""
+    handover_id = receipt.get("handover_id")
+    return (
+        handover_id
+        if isinstance(handover_id, str) and _HANDOVER_ID.fullmatch(handover_id)
+        else None
     )
 
 
@@ -361,7 +464,10 @@ def _refuse_pointer_files(repository: str) -> None:
 def publication_request(
     prepared: BuildFolderRelease, *, make_current: bool
 ) -> PublishRelease:
-    """The ``publish_release`` request for a checked build."""
+    """The ``publish_release`` request for a checked build.
+
+    It names the build for the collector (:func:`collector_provenance`).
+    """
     return PublishRelease(
         repository=prepared.repository,
         release=prepared.release,
@@ -378,6 +484,7 @@ def publication_request(
             )
             for item in prepared.files
         ],
+        collector=collector_provenance(prepared.release, prepared.build),
     )
 
 
@@ -409,6 +516,7 @@ def publish_release_build(
     wait_seconds: float = PUBLICATION_WAIT_SECONDS,
     parent_h5: Path | str | None = None,
     compatibility_wheels: tuple[Path | str, ...] = (),
+    collector_wait_seconds: float = COLLECTOR_SUBMISSION_WAIT_SECONDS,
 ) -> ReleasePublication:
     """Check a build and hand it to the emitter to publish into its folder.
 
@@ -423,7 +531,9 @@ def publish_release_build(
     files; it hands nothing over unless the emitter's write-access check
     passes. A recertification is handed over only once the Hub shows its
     parent published with the manifest it carries, as the tagged publisher
-    required, and never with ``make_current``.
+    required, and never with ``make_current``. Once the publication has
+    landed, it waits at most ``collector_wait_seconds`` for the collector to
+    accept the build's submissions.
     """
     if client is None:
         _refuse_offline()
@@ -461,6 +571,7 @@ def publish_release_build(
         client=client,
         wait_seconds=wait_seconds,
         wanted_current=make_current,
+        collector_wait_seconds=collector_wait_seconds,
     )
 
 

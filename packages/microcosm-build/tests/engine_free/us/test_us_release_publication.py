@@ -10,8 +10,11 @@ from __future__ import annotations
 import json
 
 import pytest
+from microcosm_emitter_interface import CollectorProvenance
 
 from microcosm.build import release_publication
+from microcosm.data.contract import US_RELEASES
+from microcosm.data.release import BuildFolderFile
 
 #: The largest US builds, the ACS local-area ones, are about 10 GB.
 LARGEST_US_BUILD_BYTES = 10e9
@@ -45,6 +48,48 @@ def test_the_command_takes_a_us_release(tmp_path, monkeypatch, capsys) -> None:
     assert "does not publish into build folders" not in error_output
     assert exit_code == 1
     assert "HF_HUB_OFFLINE" in error_output
+
+
+@pytest.mark.parametrize("release", sorted(US_RELEASES))
+def test_every_us_release_names_its_builds_as_public_us_builds(release) -> None:
+    """The collector registers the US with its public repository; a US build
+    is published there, so it used no microdata whose licence keeps its
+    outputs private."""
+    build = "populace-us-2024-20261201T000000Z"
+
+    assert release_publication.collector_provenance(
+        release, build
+    ) == CollectorProvenance(
+        country_code="US", build_id=build, licensed_data=False, release=release
+    )
+
+
+def test_a_us_publication_names_its_build_for_the_collector(tmp_path) -> None:
+    from types import SimpleNamespace
+
+    build = "populace-us-2024-20261201T000000Z"
+    manifest = tmp_path / "release_manifest.json"
+    manifest.write_text("{}")
+    prepared = SimpleNamespace(
+        repository="policyengine/populace-us",
+        release="microcosm-us-2024-national",
+        build=build,
+        release_role="national",
+        files=(
+            BuildFolderFile(
+                "release_manifest.json", "release_manifest", manifest, "0" * 64, 2
+            ),
+        ),
+    )
+
+    request = release_publication.publication_request(prepared, make_current=True)
+
+    assert request.collector == CollectorProvenance(
+        country_code="US",
+        build_id=build,
+        licensed_data=False,
+        release="microcosm-us-2024-national",
+    )
 
 
 def _prepared(release_dir):
