@@ -723,11 +723,11 @@ engine-gated tests in `test_nz_golden08_case.py` skip without
 `axiom_rules_engine` and `POPULACE_RULESPEC_NZ`). After a change to the NZ spec
 or the generator, regenerate the case with
 `uv run --no-sync python tools/generate_nz_golden08_case.py` and review the
-diff. The extract changes only with its pinned oracle files: rebuild it with
-`uv run --no-sync python tools/extract_nz_golden08_oracle.py --requests
-<requests.json> --full-responses <full-responses.json>` from local copies of
-the two pinned files, then regenerate the case. The packaged NZ spec remains
-inactive; real WFF inputs and law certification remain deferred.
+diff. The extract changes only with its pinned oracle files or the extractor:
+rebuild it with `uv run --no-sync python tools/extract_nz_golden08_oracle.py
+--requests <requests.json> --full-responses <full-responses.json>` from local
+copies of the two pinned files, then regenerate the case. The packaged NZ spec
+remains inactive; real WFF inputs and law certification remain deferred.
 
 UK size experiments use `microcosm-build-uk --release-role dense --dataset-households`
 (`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub over it)

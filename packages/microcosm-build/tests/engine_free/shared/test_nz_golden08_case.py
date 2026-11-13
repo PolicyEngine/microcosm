@@ -2,15 +2,16 @@
 
 The engine-free tests check that the committed case is the generator's output;
 that it declares the five comparisons and tolerances written out here; that the
-oracle extract rebuilds each oracle request to the hash the oracle recorded and
+oracle extract rebuilds each oracle request to the hash the oracle recorded
+(written out here), points at each value's place in the oracle files, and
 agrees with the committed golden-08 fixture and the packaged pins; that the
 packaged pipeline reproduces every input the oracle states, with one known
 conflict; that every cell whose provenance names the fixture or the extract
-equals the value there; that the unit rule and call order are the packaged
-ones; and that every table and concept-frame cell names its source. The
-engine-gated tests run the differential, check that perturbing the case's
-placeholder and secondary cells (some through the generator's own pipeline)
-moves no compared output, and check that a rent change does move one.
+equals the value there; that the unit rule, rules bindings, call order and call
+params are the packaged ones; and that every table and concept-frame cell names
+its source. The engine-gated tests run the differential, check that perturbing
+the case's placeholder and secondary cells (some through the generator's own
+pipeline) moves no compared output, and check that a rent change does move one.
 """
 
 from __future__ import annotations
@@ -23,12 +24,13 @@ from copy import deepcopy
 from decimal import Decimal
 from functools import cache
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.transport import compose
+from microcosm.build.transport import compose, entitlement
 from microcosm.build.transport.registry import transport_entity_schema
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.unit_construction import BenefitUnitRule
@@ -157,6 +159,13 @@ REQUESTS = {
     "golden-00": ("/household_requests/golden-00", 0),
     "golden-07": ("/household_requests/golden-07", 7),
 }
+#: The hash the oracle recorded for each request, written out so that an edit
+#: to an extract input that also recomputes the extract's hash fails here.
+REQUEST_SHA256 = {
+    "golden-08": "50636d0d291ed5cc33d26dc5d419cd87c252095aaae1d0e5b19397c1f5a5c2c1",
+    "golden-00": "1ac639dd25ef790c315c1622ca064c20fad7d5f76e7ddbf13f9c5269dc6c5b08",
+    "golden-07": "074a15620602b8de42f2bde008e8767b1db112d691bf072a8c7a723c9a4829b2",
+}
 
 
 @cache
@@ -284,7 +293,36 @@ def test_each_oracle_request_rebuilds_from_the_extract_to_its_recorded_hash():
         assert request["id"]["value"] == name
         assert recorded[name]["source"] == "full_responses"
         assert recorded[name]["pointer"] == f"/requests/{index}/request_sha256"
-        assert _sha256(_rebuilt_request(request)) == recorded[name]["value"], name
+        assert recorded[name]["value"] == REQUEST_SHA256[name]
+        assert _sha256(_rebuilt_request(request)) == REQUEST_SHA256[name], name
+
+
+def _token(text):
+    """``text`` as one RFC 6901 pointer token."""
+    return text.replace("~", "~0").replace("/", "~1")
+
+
+def test_every_extract_pointer_names_its_place_in_the_oracle_files():
+    golden = EXTRACT["golden_08"]
+    requests = {"golden-08": golden["request"], **EXTRACT["household_requests"]}
+    for name, request in requests.items():
+        _, index = REQUESTS[name]
+        inputs = request["inputs"]
+        # The requests file lists inputs in name order, so this ties each
+        # input's pointer index below to its name.
+        assert list(inputs) == sorted(inputs), name
+        assert [(row["source"], row["pointer"]) for row in inputs.values()] == [
+            ("requests", f"/requests/{index}/request/dataset/inputs/{i}/value/value")
+            for i in range(len(inputs))
+        ], name
+    outputs = golden["response"]["outputs"]
+    assert {name: (row["source"], row["pointer"]) for name, row in outputs.items()} == {
+        name: (
+            "full_responses",
+            f"/requests/8/response/results/0/outputs/{_token(row['id'])}/value/value",
+        )
+        for name, row in outputs.items()
+    }
 
 
 def test_extract_is_bound_to_the_packaged_pins():
@@ -299,9 +337,6 @@ def test_extract_is_bound_to_the_packaged_pins():
 def test_extract_agrees_with_the_committed_golden_08_fixture():
     request = EXTRACT["golden_08"]["request"]
     inputs = request["inputs"]
-    # The requests file lists inputs in name order, so this ties each input's
-    # pointer index below to its name.
-    assert list(inputs) == sorted(inputs)
     assert _canonical(
         {
             name: {"kind": row["kind"], "value": row["value"]}
@@ -325,11 +360,6 @@ def test_extract_agrees_with_the_committed_golden_08_fixture():
     assert EXTRACT["oracle"]["commit"] == FIXTURE["source"]["commit"]
     assert request["entity_id"]["value"] == FIXTURE["entity_id"]
     assert _same(request["period"]["value"], FIXTURE["period"])
-    positions = [row["pointer"] for row in inputs.values()]
-    assert positions == [
-        f"/requests/8/request/dataset/inputs/{index}/value/value"
-        for index in range(len(positions))
-    ]
 
 
 def _cells(record):
@@ -501,9 +531,30 @@ def test_the_family_is_the_fixtures_sole_parent_with_three_children():
         "youngest_dependent_child_age": 0,
         "accommodation_supplement_bridge_has_dependent_child": True,
         "accommodation_supplement_bridge_single_without_dependent_child": False,
+        # Encoded from the fixture's tenure and checked against no oracle input.
+        "accommodation_supplement_has_accommodation_costs": True,
+        "accommodation_supplement_rent_paid_to_kainga_ora": False,
+        SOCIAL_HOUSING: False,
     }
     assert len(family) == 1
     assert _same({column: family[0][column] for column in expected}, expected)
+    # The household's tenure, which those three cells read, is the fixture's.
+    assert FIXTURE["household"]["tenure"] == "rented_private"
+    assert CASE["provenance"]["concept_frame"]["household"]["tenure"] == {
+        "from": "fixture",
+        "file": FIXTURE_FILE,
+        "pointer": "/household/tenure",
+    }
+    assert {
+        column
+        for column, record in CASE["provenance"]["tables"]["family"].items()
+        if "household.tenure" in record.get("reads", ())
+        and "checked_against" not in record
+    } == {
+        "accommodation_supplement_has_accommodation_costs",
+        "accommodation_supplement_rent_paid_to_kainga_ora",
+        SOCIAL_HOUSING,
+    }
 
 
 def test_the_unit_rule_and_call_order_are_the_packaged_ones():
@@ -513,6 +564,53 @@ def test_the_unit_rule_and_call_order_are_the_packaged_ones():
     # The driver loads the case's unit rule this way.
     assert BenefitUnitRule.from_dict(CASE["unit_rule"]) == rule
     assert [call["id"] for call in CASE["calls"]] == CALLS
+
+
+def _packaged_params(spec, bindings):
+    """Each call's node params, resolved from the packaged entitlement graph as
+    the entitlement factory resolves them, with each binding's id as its
+    engine ref."""
+    config = SimpleNamespace(
+        engine_refs={row["id"]: row["id"] for row in bindings["bindings"]}
+    )
+    rows, _ = entitlement._rows(spec)
+    params = {}
+    for row, scenario in rows:
+        if row.get("id") not in CALLS:
+            continue
+        assert row["id"] not in params, row["id"]
+        node = compose._node(
+            spec,
+            row,
+            config,
+            {},
+            allowed_kernels=entitlement._KERNELS,
+            resolved_params={
+                name: entitlement._parameter(spec, config, value, scenario)
+                for name, value in row.get("params", {}).items()
+            },
+            profile_selection=None if scenario is None else scenario.get("knobs", {}),
+        )
+        params[row["id"]] = dict(node.params)
+    return params
+
+
+def test_the_rules_bindings_and_call_params_are_the_packaged_ones():
+    spec = _spec()
+    bindings = compose.transport_resource(spec, "axiom_rules_bindings")
+    # The driver builds its engines from the case's bindings.
+    assert _same(CASE["rules_bindings"], bindings)
+    packaged = _packaged_params(spec, bindings)
+    assert sorted(packaged) == sorted(CALLS)
+    for call in CASE["calls"]:
+        assert _same(call["params"], packaged[call["id"]]), call["id"]
+    # The cutout comparison's 1.5e-9 is this solve tolerance plus 5e-10; the
+    # other three calls solve nothing.
+    assert {
+        call["id"]: call["params"]["tolerance"]
+        for call in CASE["calls"]
+        if "tolerance" in call["params"]
+    } == {"nz.as.bridge.cutout": 1e-9}
 
 
 def test_masks_are_family_data_and_the_tool_can_build_every_call():
