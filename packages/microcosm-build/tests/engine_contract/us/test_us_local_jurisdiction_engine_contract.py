@@ -15,14 +15,14 @@ from importlib.resources import files
 
 import pytest
 
-from microcosm.build.us_runtime.local_jurisdictions import (
+from microcosm.build.us_local_jurisdictions import (
     US_LOCAL_JURISDICTION_REGISTRY_RESOURCE,
     packaged_us_local_jurisdiction_registry,
 )
 
 REGISTRY = packaged_us_local_jurisdiction_registry()
 DOCUMENT = json.loads(
-    files("microcosm.build.us_runtime")
+    files("microcosm.build")
     .joinpath(US_LOCAL_JURISDICTION_REGISTRY_RESOURCE)
     .read_text()
 )
