@@ -378,10 +378,13 @@ def test_prepare_build_folder_release_lists_each_file_with_its_role(
 
 
 def test_prepare_build_folder_release_publishes_the_checksum_ledger(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
+    from test_support.microcosm_data.build_folders import register_uk_local_release
+
     from .test_local_area_contract import _write_local_bundle
 
+    register_uk_local_release(monkeypatch, UK_LOCAL_RELEASE_ID)
     release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
 
     prepared = release_module.prepare_build_folder_release(
@@ -408,6 +411,26 @@ def test_build_folder_identity_says_where_a_tagged_release_publishes(
     assert "microcosm-us-2024-national" in str(refusal.value)
     assert "tools/publish_release.sh" not in str(refusal.value)
     assert "take no new builds" in str(refusal.value)
+
+
+def test_no_publisher_takes_a_uk_local_area_release_the_registry_does_not_name(
+    tmp_path: Path,
+) -> None:
+    """Both publishers refuse the name before they read a file, and each
+    refusal points to the registry (microcosm#1586)."""
+    unregistered = tmp_path / "microcosm-uk-2024-25-local-k55000"
+    unregistered.mkdir()
+
+    with pytest.raises(
+        ValueError, match="does not publish into build folders"
+    ) as build_folder:
+        release_module.build_folder_identity(unregistered)
+    with pytest.raises(ValueError, match="publishes through no publisher") as tagged:
+        release_module.prepare_release(unregistered)
+
+    for refusal in (build_folder, tagged):
+        assert release_module.UNREGISTERED_UK_LOCAL_RELEASE_ADVICE in str(refusal.value)
+        assert "take no new builds" not in str(refusal.value)
 
 
 def test_prepare_build_folder_release_refuses_a_tagged_release(

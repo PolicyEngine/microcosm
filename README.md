@@ -501,8 +501,9 @@ each build into its own folder, and no release publishes with tags. The US
 side of this holds from the US repository's switch commit: Microcosm's US
 change (microcosm#1570) merges straight after that commit.
 
-**Each build is published into its own folder.** The UK national, dense and
-local-area releases and the US releases below
+**Each build is published into its own folder.** The UK national and dense
+releases, each UK local-area release that the registry names, and the US
+releases below
 (`microcosm.data.contract.publishes_to_build_folder`) hand each build to the
 separately installed emitter, whose release writer puts it in
 `releases/<release>/<build>/` and records it in the repository's

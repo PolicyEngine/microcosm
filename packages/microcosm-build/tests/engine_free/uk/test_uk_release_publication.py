@@ -808,6 +808,22 @@ def test_the_command_says_the_other_uk_releases_take_no_new_builds(
     assert "take no new builds" in capsys.readouterr().err
 
 
+def test_the_command_refuses_a_uk_local_area_release_the_registry_does_not_name(
+    tmp_path: Path, capsys
+) -> None:
+    """The registry names no UK local-area release, so the command refuses the
+    name and points to the registry instead of to the tagged publisher."""
+    unregistered = tmp_path / "microcosm-uk-2024-25-local-k55000"
+    unregistered.mkdir()
+
+    with pytest.raises(SystemExit):
+        release_publication.main([str(unregistered)])
+
+    err = capsys.readouterr().err
+    assert "names no UK local-area release with this k" in err
+    assert "take no new builds" not in err
+
+
 def test_the_command_refuses_a_build_whose_staging_never_arrived(
     national: Path,
     artifact_root: Path,  # noqa: F811

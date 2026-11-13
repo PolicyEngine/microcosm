@@ -41,6 +41,7 @@ from test_support.microcosm_data.build_folders import (
     UK_LOCAL_BUILD,
     build_folder_build_manifest,
     build_folder_release_manifest,
+    register_uk_local_release,
 )
 from test_support.paths import REPOSITORY_ROOT
 
@@ -372,6 +373,18 @@ def _as_uk_build_folder(manifest: dict, *, release_id: str) -> dict:
     )
 
 
+@pytest.fixture
+def uk_local_k_registered(monkeypatch) -> None:
+    """Name ``UK_LOCAL_RELEASE_ID`` in the registry for one test.
+
+    The contract gives a UK local-area release the build-folder layout only
+    once a registry entry names it (microcosm#1586), and the shipped registry
+    names none, so each test of that layout registers its release first.
+    """
+    register_uk_local_release(monkeypatch, UK_LOCAL_RELEASE_ID)
+
+
+@pytest.mark.usefixtures("uk_local_k_registered")
 def test_uk_local_area_bundle_publishes_in_the_build_folder_layout(
     tmp_path: Path,
 ) -> None:
@@ -390,6 +403,7 @@ def test_uk_local_area_bundle_publishes_in_the_build_folder_layout(
     validate_release_dir(release_dir)
 
 
+@pytest.mark.usefixtures("uk_local_k_registered")
 def test_uk_local_area_bundle_refuses_the_tagged_layout(tmp_path: Path) -> None:
     release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
     build_manifest_path = release_dir / "build_manifest.json"
@@ -403,6 +417,7 @@ def test_uk_local_area_bundle_refuses_the_tagged_layout(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.usefixtures("uk_local_k_registered")
 def test_uk_local_area_bundle_refuses_a_tagged_release_manifest(
     tmp_path: Path,
 ) -> None:
@@ -887,6 +902,7 @@ def test_the_gate_is_graded_against_a_recorded_built_with_engine(
     assert "build.built_with_model_package" in failures[0]
 
 
+@pytest.mark.usefixtures("uk_local_k_registered")
 def test_uk_local_k_bundle_needs_no_stored_input_gate(tmp_path: Path) -> None:
     """The requirement is scoped to US ids: UK local-k (and UK dense, which
     shares _check_local_area_gates) releases have no stored-input seam."""
@@ -978,6 +994,7 @@ def test_the_build_manifest_copy_of_the_spm_gate_must_match(tmp_path: Path) -> N
     ), failures
 
 
+@pytest.mark.usefixtures("uk_local_k_registered")
 def test_uk_local_k_bundle_needs_no_spm_measurement_gate(tmp_path: Path) -> None:
     release_dir = _write_local_bundle(tmp_path, release_id=UK_LOCAL_RELEASE_ID)
     gate_summary = json.loads((release_dir / "gate_summary.json").read_text())
@@ -1177,6 +1194,7 @@ def test_property_the_requirement_only_adds_failures(tmp_path_factory) -> None:
     check()
 
 
+@pytest.mark.usefixtures("uk_local_k_registered")
 def test_property_uk_local_k_verdicts_ignore_the_stored_input_gate(
     tmp_path_factory,
 ) -> None:

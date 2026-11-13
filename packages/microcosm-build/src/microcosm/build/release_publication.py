@@ -66,6 +66,7 @@ from microcosm.data.release import (
     TAGGED_RELEASE_ADVICE,
     BuildFolderRelease,
     build_folder_identity,
+    not_a_build_folder_release_reason,
     prepare_build_folder_release,
 )
 from microcosm.data.releases_record import RELEASES_RECORD_PATH
@@ -499,9 +500,9 @@ def _parser() -> argparse.ArgumentParser:
         prog="microcosm-publish-release-build",
         description=(
             "Publish a build of a release whose builds publish into their own "
-            "folders (the UK national, dense and local-area releases and the US "
-            "releases) through the emitter, or make a published build current. "
-            + TAGGED_RELEASE_ADVICE
+            "folders (the UK national and dense releases, each UK local-area "
+            "release the dataset registry names, and the US releases) through "
+            "the emitter, or make a published build current. " + TAGGED_RELEASE_ADVICE
         ),
     )
     parser.add_argument("release_dir", type=Path, help="The local release directory.")
@@ -596,10 +597,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     release_dir: Path = args.release_dir
     if not publishes_to_build_folder(release_dir.name):
-        parser.error(
-            f"release {release_dir.name!r} does not publish into build folders. "
-            + TAGGED_RELEASE_ADVICE
-        )
+        parser.error(not_a_build_folder_release_reason(release_dir.name))
     try:
         return _run(args)
     except (ValueError, FileNotFoundError) as error:

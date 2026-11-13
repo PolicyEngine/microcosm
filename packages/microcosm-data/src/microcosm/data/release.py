@@ -84,6 +84,7 @@ from microcosm.data.contract import (
     publishes_to_build_folder,
     release_dataset_role,
     required_release_files,
+    unregistered_uk_local_release,
     validate_evidence_release_dir,
     validate_release_dir,
 )
@@ -105,6 +106,7 @@ __all__ = [
     "RELEASE_TIER_CERTIFIED",
     "RELEASE_TIER_EVIDENCE",
     "TAGGED_RELEASE_ADVICE",
+    "UNREGISTERED_UK_LOCAL_RELEASE_ADVICE",
     "LatestPointer",
     "PreparedRelease",
     "build_folder_identity",
@@ -115,6 +117,7 @@ __all__ = [
     "latest_pointer_payload",
     "line_pointer_path",
     "missing_on_hub",
+    "not_a_build_folder_release_reason",
     "line_pointer_payload",
     "publish_release",
     "latest_release",
@@ -339,7 +342,32 @@ TAGGED_RELEASE_ADVICE = (
 )
 
 
+#: Why neither publisher takes a UK local-area release that the dataset
+#: registry does not name.
+UNREGISTERED_UK_LOCAL_RELEASE_ADVICE = (
+    "The dataset registry (microcosm.data.registry.REGISTRY) names no UK "
+    "local-area release with this k. The pull request that authorizes a k's "
+    "first publication adds its registry entry, and its builds then publish "
+    f"with `{BUILD_FOLDER_PUBLICATION_COMMAND}`."
+)
+
+
+def not_a_build_folder_release_reason(release_id: str) -> str:
+    """Why ``release_id`` cannot publish into a build folder, for a refusal."""
+    advice = (
+        UNREGISTERED_UK_LOCAL_RELEASE_ADVICE
+        if unregistered_uk_local_release(release_id)
+        else TAGGED_RELEASE_ADVICE
+    )
+    return f"release {release_id!r} does not publish into build folders. {advice}"
+
+
 def _refuse_build_folder_release(release_id: str) -> None:
+    if unregistered_uk_local_release(release_id):
+        raise ValueError(
+            f"release {release_id!r} publishes through no publisher yet. "
+            + UNREGISTERED_UK_LOCAL_RELEASE_ADVICE
+        )
     if publishes_to_build_folder(release_id):
         raise ValueError(
             f"release {release_id!r} publishes each build into its own folder "
@@ -392,10 +420,7 @@ def build_folder_identity(release_dir: Path | str) -> tuple[str, str, str]:
     """
     release_dir = Path(release_dir)
     if not publishes_to_build_folder(release_dir.name):
-        raise ValueError(
-            f"release {release_dir.name!r} does not publish into build folders. "
-            + TAGGED_RELEASE_ADVICE
-        )
+        raise ValueError(not_a_build_folder_release_reason(release_dir.name))
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     if not isinstance(manifest, Mapping):
         raise ValueError(f"{release_dir}/release_manifest.json is not an object.")

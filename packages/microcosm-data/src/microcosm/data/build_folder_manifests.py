@@ -36,6 +36,7 @@ from microcosm.data.contract import (
     ReleaseContractError,
     publishes_to_build_folder,
     release_artifact_role,
+    unregistered_uk_local_release,
 )
 
 __all__ = [
@@ -162,6 +163,14 @@ def rewrite_release_dir(release_dir: Path | str, *, build: str) -> Path:
     """
     release_dir = Path(release_dir)
     release = release_dir.name
+    if unregistered_uk_local_release(release):
+        raise _refuse(
+            release,
+            f"{release_dir} is named {release!r}, a UK local-area release that "
+            "the dataset registry (microcosm.data.registry.REGISTRY) does not "
+            "name, so it does not publish into build folders; the pull request "
+            "that authorizes a k's first publication adds its registry entry",
+        )
     if not publishes_to_build_folder(release):
         raise _refuse(
             release,

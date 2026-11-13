@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest import mock
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.data import contract
+from microcosm.data import release as release_module
 from microcosm.data.contract import (
     REQUIRED_RELEASE_FILES,
     ReleaseContractError,
@@ -23,7 +27,8 @@ from microcosm.data.contract import (
     required_release_files,
     validate_release_dir,
 )
-from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY
+from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY, DatasetSpec
+from test_support.microcosm_data.build_folders import uk_local_release_spec
 from test_support.microcosm_data.release import release_dir  # noqa: F401
 
 #: Names in the release grammar, ``microcosm-<country>-<vintage>-<line>``, that
@@ -84,12 +89,107 @@ def test_an_unlisted_id_does_not_publish_into_a_build_folder(release_id):
     (
         contract._UK_NATIONAL_RELEASE_ID,
         contract._UK_DENSE_RELEASE_ID,
-        "microcosm-uk-2024-25-local-k55000",
         *contract.US_RELEASES,
     ),
 )
 def test_the_uk_and_us_releases_publish_into_build_folders(release_id):
     assert publishes_to_build_folder(release_id)
+
+
+def _uk_local_release_id(k: int) -> str:
+    return f"microcosm-uk-2024-25-local-k{k}"
+
+
+@st.composite
+def _registered_ks_and_a_k(draw):
+    """Some registered ``k`` values and one ``k``, registered about half the time."""
+
+    registered = draw(st.frozensets(st.integers(1, 10**9), max_size=4))
+    any_k = st.integers(1, 10**9)
+    k = draw(
+        st.one_of(st.sampled_from(sorted(registered)), any_k) if registered else any_k
+    )
+    return registered, k
+
+
+def test_the_registry_names_no_uk_local_area_release():
+    """docs/release-contract.md (C5) says so; a pull request that registers a
+    ``k`` updates the document and this test together."""
+
+    assert not [
+        spec.release
+        for spec in REGISTRY.values()
+        if spec.release is not None
+        and contract._UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(spec.release)
+    ]
+    assert not publishes_to_build_folder("microcosm-uk-2024-25-local-k55000")
+    assert contract.unregistered_uk_local_release("microcosm-uk-2024-25-local-k55000")
+
+
+@settings(max_examples=200, deadline=None)
+@given(_registered_ks_and_a_k())
+def test_a_uk_local_area_release_publishes_only_once_the_registry_names_it(drawn):
+    """For any positive ``k``, ``microcosm-uk-2024-25-local-k<k>`` publishes
+    into build folders exactly when a registry entry names it as its release,
+    the tagged publisher refuses it either way, and its pointer line does not
+    depend on the registry (microcosm#1586)."""
+
+    registered, k = drawn
+    release_id = _uk_local_release_id(k)
+    entries = {
+        spec.key: spec
+        for spec in map(
+            uk_local_release_spec, map(_uk_local_release_id, sorted(registered))
+        )
+    }
+    with mock.patch.dict(REGISTRY, entries):
+        assert publishes_to_build_folder(release_id) is (k in registered)
+        assert contract.unregistered_uk_local_release(release_id) is (
+            k not in registered
+        )
+        with pytest.raises(ValueError) as refusal:
+            release_module._refuse_build_folder_release(release_id)
+        reason = release_module.not_a_build_folder_release_reason(release_id)
+    assert line_for_release_id(release_id) == f"local-k{k}"
+    if k in registered:
+        assert "publishes each build into its own folder" in str(refusal.value)
+        assert release_module.TAGGED_RELEASE_ADVICE in reason
+    else:
+        assert release_module.UNREGISTERED_UK_LOCAL_RELEASE_ADVICE in str(refusal.value)
+        assert release_module.UNREGISTERED_UK_LOCAL_RELEASE_ADVICE in reason
+    # Outside the patch the shipped registry names no local-area release.
+    assert not publishes_to_build_folder(release_id)
+
+
+@pytest.mark.parametrize(
+    "release_id",
+    (
+        "microcosm-uk-2024-25-local-k0",
+        "microcosm-uk-2024-25-local-k01",
+        "microcosm-uk-2024-25-local-k",
+        "microcosm-uk-2024-25-local-k7-extra",
+        *UNLISTED_IDS,
+    ),
+)
+def test_registering_a_name_outside_the_local_area_grammar_admits_nothing(release_id):
+    """The registry admits a UK local-area name only. An entry that names any
+    other release leaves ``publishes_to_build_folder`` unchanged, and such a
+    name never reads as an unregistered local-area release."""
+
+    spec = DatasetSpec(
+        country="uk",
+        year=2025,
+        variant="outside-the-grammar",
+        hf_repo="policyengine/populace-uk-private",
+        filename="outside.h5",
+        engine_module="policyengine_uk.data",
+        engine_class="UKSingleYearDataset",
+        engine_package="policyengine-uk",
+        release=release_id,
+    )
+    with mock.patch.dict(REGISTRY, {spec.key: spec}):
+        assert not publishes_to_build_folder(release_id)
+        assert not contract.unregistered_uk_local_release(release_id)
 
 
 @pytest.mark.parametrize(
