@@ -280,9 +280,10 @@ borrower is a person whose federal balance is positive.
   of households with debt, by age, race and income quintile, at the weights
   the release ships. The release manifest lists both as `diagnostics`
   artifacts (`us_scf_education_debt_fit` and
-  `us_scf_education_debt_calibrated_fit`), so the publisher uploads them under
-  `releases/<id>/` without `--extra-file`. A build without the flag writes
-  neither and lists neither.
+  `us_scf_education_debt_calibrated_fit`), so `microcosm-publish-release-build`
+  publishes them into the build's folder, `releases/<release>/<build>/`,
+  without `--extra-file`. A build without the flag writes neither and lists
+  neither.
 - **Known limits, measured.** The receipt
   (`experiments/1074-fsa-calibration-receipts.md`) refits the published
   default with and without the family. The stage gives balances to reference

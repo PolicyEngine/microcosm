@@ -1088,8 +1088,9 @@ US_SCF_EDUCATION_DEBT_CALIBRATED_FIT_FILENAME = (
 )
 #: Both fit tables, keyed by their release-manifest artifact key. Only a
 #: ``--scf-education-debt`` build writes them, so only its manifest lists
-#: them, and the publisher uploads them under ``releases/<id>/`` with the
-#: other diagnostics, without ``--extra-file``.
+#: them, and ``microcosm-publish-release-build`` publishes them into the
+#: build's folder (``releases/<release>/<build>/``) with the other
+#: diagnostics, without ``--extra-file``.
 US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS: dict[str, str] = {
     "us_scf_education_debt_fit": US_SCF_EDUCATION_DEBT_FIT_FILENAME,
     "us_scf_education_debt_calibrated_fit": (
@@ -11094,7 +11095,7 @@ def _build_manifests(
     # ride build_manifest.json and release_manifest.json's build section.
     gate_evidence_artifacts = _gate_evidence_artifacts(release_dir, revision=release_id)
     # microcosm#1074: checked before either manifest is written, so a build
-    # missing a fit table leaves no manifest behind.
+    # missing a fit table writes neither manifest.
     scf_education_debt_fit_artifacts = (
         _scf_education_debt_fit_artifacts(release_dir, revision=release_id)
         if scf_education_debt

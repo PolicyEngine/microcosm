@@ -13312,9 +13312,9 @@ def test_build_manifests_lists_scf_education_debt_fits_only_with_the_flag(
     monkeypatch, tmp_path, flag
 ) -> None:
     """microcosm#1074: a --scf-education-debt build's two fit tables are
-    diagnostics artifacts of its release, so the publisher uploads them under
-    releases/<id>/. A build without the flag lists neither, even beside stray
-    copies in its release directory."""
+    diagnostics artifacts of its release, so the publisher publishes them into
+    the build's folder, releases/<release>/<build>/. A build without the flag
+    lists neither, even beside stray copies in its release directory."""
     from microcosm.data.contract import (
         _check_local_artifact_hashes,
         _check_release_manifest,
