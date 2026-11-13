@@ -251,6 +251,26 @@
     "name": "brussels_family_benefits_child_enrolled_in_higher_education"
    },
    {
+    "entity": "Child",
+    "module": "be-bru/statutes/family_benefits/eligibility.yaml",
+    "name": "brussels_family_benefits_child_in_qualifying_education_training_or_stage"
+   },
+   {
+    "entity": "Child",
+    "module": "be/statutes/family_benefits/regional_routing.yaml",
+    "name": "brussels_family_benefits_child_in_qualifying_education_training_or_stage"
+   },
+   {
+    "entity": "Child",
+    "module": "be-vlg/statutes/family_benefits/eligibility.yaml",
+    "name": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver"
+   },
+   {
+    "entity": "Child",
+    "module": "be/statutes/family_benefits/regional_routing.yaml",
+    "name": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver"
+   },
+   {
     "entity": "Person",
     "module": "be-vlg/statutes/education/school_allowance.yaml",
     "name": "flanders_school_allowance_education_level"
@@ -641,7 +661,7 @@
    }
   ]
  },
- "covered_count": 105,
+ "covered_count": 109,
  "covered_inputs": [
   {
    "entity": "Person",
@@ -1021,6 +1041,16 @@
   {
    "entity": "Child",
    "module": "be-bru/statutes/family_benefits/eligibility.yaml",
+   "name": "brussels_family_benefits_child_in_qualifying_education_training_or_stage"
+  },
+  {
+   "entity": "Child",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "name": "brussels_family_benefits_child_in_qualifying_education_training_or_stage"
+  },
+  {
+   "entity": "Child",
+   "module": "be-bru/statutes/family_benefits/eligibility.yaml",
    "name": "brussels_family_benefits_social_supplement_child_age_years"
   },
   {
@@ -1077,6 +1107,16 @@
    "entity": "Child",
    "module": "be/statutes/family_benefits/regional_routing.yaml",
    "name": "flanders_family_benefits_child_age_years"
+  },
+  {
+   "entity": "Child",
+   "module": "be-vlg/statutes/family_benefits/eligibility.yaml",
+   "name": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver"
+  },
+  {
+   "entity": "Child",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "name": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver"
   },
   {
    "entity": "Person",
@@ -6958,16 +6998,6 @@
   {
    "entity": "Child",
    "module": "be-bru/statutes/family_benefits/eligibility.yaml",
-   "name": "brussels_family_benefits_child_in_qualifying_education_training_or_stage"
-  },
-  {
-   "entity": "Child",
-   "module": "be/statutes/family_benefits/regional_routing.yaml",
-   "name": "brussels_family_benefits_child_in_qualifying_education_training_or_stage"
-  },
-  {
-   "entity": "Child",
-   "module": "be-bru/statutes/family_benefits/eligibility.yaml",
    "name": "brussels_family_benefits_child_is_apprentice"
   },
   {
@@ -8219,16 +8249,6 @@
    "entity": "Child",
    "module": "be/statutes/family_benefits/regional_routing.yaml",
    "name": "flanders_family_benefits_child_is_child_of_excluded_residence_holder"
-  },
-  {
-   "entity": "Child",
-   "module": "be-vlg/statutes/family_benefits/eligibility.yaml",
-   "name": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver"
-  },
-  {
-   "entity": "Child",
-   "module": "be/statutes/family_benefits/regional_routing.yaml",
-   "name": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver"
   },
   {
    "entity": "Child",

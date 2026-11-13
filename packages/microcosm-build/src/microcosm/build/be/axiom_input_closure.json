@@ -2,7 +2,7 @@
   "format": "microcosm.axiom_input_closure.v1",
   "country": "be",
   "content_basis": "transport",
-  "description": "The input closure covers the twelve rulespec-be family-benefit modules that axiom_rules_bindings.json binds. Each runs on the engine entity Child through a binding-local view. A person_role concept binding of the axiom:be mapping encodes 35 of their 277 Child root inputs (a child's age and enrolment facts), and the other 242 take explicit defaults, each with a reason and a citation. The axiom adapter omits an input the frame lacks, and the engine fails a request that reaches an absent input (engine_optional_evidence), so a run feeds every entry here. The routing bridge reads the four regional schemes' roots through its imports, and a view reads each root from the person column of the same name, so a name takes one default in every module that reads it. Nothing executes these modules yet: Belgium has no composed transport graph, and METHOD-CARD-BE's row BE-MC0 reports child benefits as not modelled at level until indexed amounts are encoded. METHOD-CARD-BE is the Belgium port's method card, the document Max rules on; it is kept with the port's notes, outside this repository.",
+  "description": "The input closure covers the twelve rulespec-be family-benefit modules that axiom_rules_bindings.json binds. Each runs on the engine entity Child through a binding-local view. A person_role concept binding of the axiom:be mapping encodes 39 of their 277 Child root inputs (a child's age and enrolment facts), and the other 238 take explicit defaults, each with a reason and a citation. The axiom adapter omits an input the frame lacks, and the engine fails a request that reaches an absent input (engine_optional_evidence), so a run feeds every entry here. The routing bridge reads the four regional schemes' roots through its imports, and a view reads each root from the person column of the same name, so a name takes one default in every module that reads it. Nothing executes these modules yet: Belgium has no composed transport graph, and METHOD-CARD-BE's row BE-MC0 reports child benefits as not modelled at level until indexed amounts are encoded. METHOD-CARD-BE is the Belgium port's method card, the document Max rules on; it is kept with the port's notes, outside this repository.",
   "status": "awaiting Max's METHOD-CARD-BE ruling: every default is a proposal (new_default true)",
   "work_package": "PR 4a (Child bindings and input closure); PR 4b adds the graph that runs them",
   "mapping": {
@@ -171,7 +171,7 @@
       "input": "brussels_family_benefits_child_has_foreign_study_training_volunteer_or_au_pair_stay_authorization",
       "class": "defaulted",
       "value": false,
-      "reason": "From 1 September 2025 article 4 excludes a child from a third country, the EEA or Switzerland whom Belgium authorises to stay to study, train, volunteer or work as an au pair. No concept binding supplies stay authorisations, so the default treats no child as holding one and the exclusion never applies.",
+      "reason": "From 1 September 2025 article 4 excludes a child from a third country, the EEA or Switzerland whom Belgium authorises to stay to study, train, volunteer or work as an au pair. No concept binding supplies stay authorisations, so the default treats no child as holding one and the exclusion never applies. It overstates entitlement for every holder whose right was not open on 31 August 2025 (article 4's third paragraph keeps a right that was open on that date): any holder under 18 and, since article 25's education input reads fact:person.education_enrollment, any enrolled holder aged 18 to 24.",
       "citation": "Brussels family-benefits ordinance article 4 temporary stay exclusion from 1 September 2025 (brussels_family_benefits_article_4_temporary_stay_exclusion_applies, eligibility.yaml); corpus_citation_path be-bru/statute/ordonnance/2019/04/25/2019012118/article/4",
       "new_default": true
     },
@@ -179,11 +179,8 @@
       "rulespec_path": "be-bru/statutes/family_benefits/eligibility.yaml",
       "entity": "Child",
       "input": "brussels_family_benefits_child_in_qualifying_education_training_or_stage",
-      "class": "defaulted",
-      "value": false,
-      "reason": "Article 25 \u00a72(b) pays to age 25 for a child who follows courses, does a qualifying traineeship or takes credit-bearing training, among programmes the Coll\u00e8ge r\u00e9uni selects. The default grants nobody this extension, the lower bound; under it no child aged 18 or over meets article 25, students included. A binding to fact:person.education_enrollment, like the ones be.json gives Wallonia's and the German-speaking Community's counterparts, should replace it.",
-      "citation": "Brussels family-benefits ordinance article 25 age and post-18 status conditions (brussels_family_benefits_article_25_age_or_status_condition_met, eligibility.yaml); corpus_citation_path be-bru/statute/ordonnance/2019/04/25/2019012118/article/25",
-      "new_default": true
+      "class": "encoded",
+      "encoded_by": "concept_binding"
     },
     {
       "rulespec_path": "be-bru/statutes/family_benefits/eligibility.yaml",
@@ -191,7 +188,7 @@
       "input": "brussels_family_benefits_child_is_apprentice",
       "class": "defaulted",
       "value": false,
-      "reason": "Article 25 \u00a72(a) pays past 31 August of the year a child turns 18, up to age 25, for an apprentice. No concept binding supplies apprenticeship status, so the default grants nobody this extension: a lower bound for children aged 18 to 24.",
+      "reason": "Article 25 \u00a72(a) pays past 31 August of the year a child turns 18, up to age 25, for an apprentice. No concept binding supplies apprenticeship status, so the default grants nobody this route: a lower bound that misses any apprentice of 18 to 24 whom the enrolment fact behind brussels_family_benefits_child_in_qualifying_education_training_or_stage doesn't count.",
       "citation": "Brussels family-benefits ordinance article 25 age and post-18 status conditions (brussels_family_benefits_article_25_age_or_status_condition_met, eligibility.yaml); corpus_citation_path be-bru/statute/ordonnance/2019/04/25/2019012118/article/25",
       "new_default": true
     },
@@ -201,7 +198,7 @@
       "input": "brussels_family_benefits_child_prepares_higher_education_thesis",
       "class": "defaulted",
       "value": false,
-      "reason": "Article 25 \u00a72(c) pays for a child under 25 who regularly prepares a higher-education thesis. No concept binding observes thesis preparation, so the default grants nobody this extension: a lower bound.",
+      "reason": "Article 25 \u00a72(c) pays for a child under 25 who regularly prepares a higher-education thesis. No concept binding observes thesis preparation, so the default grants nobody this route: a lower bound that misses any thesis writer of 18 to 24 whom the enrolment fact behind brussels_family_benefits_child_in_qualifying_education_training_or_stage doesn't count.",
       "citation": "Brussels family-benefits ordinance article 25 age and post-18 status conditions (brussels_family_benefits_article_25_age_or_status_condition_met, eligibility.yaml); corpus_citation_path be-bru/statute/ordonnance/2019/04/25/2019012118/article/25",
       "new_default": true
     },
@@ -961,7 +958,7 @@
       "input": "flanders_family_benefits_child_has_excluded_study_training_volunteer_or_au_pair_residence_right",
       "class": "defaulted",
       "value": false,
-      "reason": "Article 8 section 1 denies benefits to a person whose right to stay rests on study, vocational training, volunteering or au-pair work. The mapping carries no fact on the purpose of a stay, so false applies the exclusion to nobody.",
+      "reason": "Article 8 section 1 denies benefits to a person whose right to stay rests on study, vocational training, volunteering or au-pair work. The mapping carries no fact on the purpose of a stay, so false applies the exclusion to nobody. It overstates entitlement for every such person who is not the child of a study, training, volunteer or au-pair permit holder, whom article 8 section 1 lets keep their entitlement: any under 18 and, since flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver reads fact:person.education_enrollment, any enrolled one aged 18 to 24.",
       "citation": "Flemish Groeipakket decree article 8 section 1 temporary residence-purpose exclusion (flanders_family_benefits_temporary_residence_exclusion_applies); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
       "new_default": true
     },
@@ -1001,7 +998,7 @@
       "input": "flanders_family_benefits_child_in_month_turning_25",
       "class": "defaulted",
       "value": false,
-      "reason": "The flag marks the calendar month of the 25th birthday, and the mapping holds no birth month. It changes nothing while flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver stays false. W3's query-period node should replace it.",
+      "reason": "The flag marks the calendar month of the 25th birthday, and the mapping holds no birth month. The enrolment binding now feeds flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver, so false ends an enrolled child's window at the age the frame reports, before the end of the birth month that article 8 section 2 item 3 allows: a lower bound. W3's query-period node should replace it.",
       "citation": "Flemish Groeipakket decree article 8 section 2 age and status windows (flanders_family_benefits_age_or_status_condition_met); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
       "new_default": true
     },
@@ -1019,11 +1016,8 @@
       "rulespec_path": "be-vlg/statutes/family_benefits/eligibility.yaml",
       "entity": "Child",
       "input": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver",
-      "class": "defaulted",
-      "value": false,
-      "reason": "Article 8 section 2 item 3 extends entitlement to the month a child turns 25 for a pupil, student, intern or school leaver, under conditions the Flemish Government sets. The mapping binds no fact to this input, so false grants no extension: a lower bound that pays nothing to anyone aged 18 or older.",
-      "citation": "Flemish Groeipakket decree article 8 section 2 age and status windows (flanders_family_benefits_age_or_status_condition_met); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
-      "new_default": true
+      "class": "encoded",
+      "encoded_by": "concept_binding"
     },
     {
       "rulespec_path": "be-vlg/statutes/family_benefits/eligibility.yaml",
@@ -1031,7 +1025,7 @@
       "input": "flanders_family_benefits_child_raised_or_studies_outside_belgium",
       "class": "defaulted",
       "value": false,
-      "reason": "Article 8 section 3 withholds benefits from children raised or taught outside Belgium. The selector will admit children domiciled in the region, and the mapping carries no fact on upbringing or schooling abroad, so false applies the exclusion to nobody.",
+      "reason": "Article 8 section 3 withholds benefits from children raised or taught outside Belgium. The selector will admit children domiciled in the region, and the mapping carries no fact on upbringing or schooling abroad, so false applies the exclusion to nobody. It overstates entitlement for every such child whom no Government exemption covers: any under 18 and, since the enrolment fact behind flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver doesn't say where a child studies, any enrolled one aged 18 to 24.",
       "citation": "Flemish Groeipakket decree article 8 section 3 outside-Belgium exclusion (flanders_family_benefits_outside_belgium_exclusion_applies); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
       "new_default": true
     },
@@ -1788,7 +1782,7 @@
       "input": "brussels_family_benefits_child_has_foreign_study_training_volunteer_or_au_pair_stay_authorization",
       "class": "defaulted",
       "value": false,
-      "reason": "From 1 September 2025 article 4 excludes a child from a third country, the EEA or Switzerland whom Belgium authorises to stay to study, train, volunteer or work as an au pair. No concept binding supplies stay authorisations, so the default treats no child as holding one and the exclusion never applies.",
+      "reason": "From 1 September 2025 article 4 excludes a child from a third country, the EEA or Switzerland whom Belgium authorises to stay to study, train, volunteer or work as an au pair. No concept binding supplies stay authorisations, so the default treats no child as holding one and the exclusion never applies. It overstates entitlement for every holder whose right was not open on 31 August 2025 (article 4's third paragraph keeps a right that was open on that date): any holder under 18 and, since article 25's education input reads fact:person.education_enrollment, any enrolled holder aged 18 to 24.",
       "citation": "Brussels family-benefits ordinance article 4 temporary stay exclusion from 1 September 2025 (brussels_family_benefits_article_4_temporary_stay_exclusion_applies, eligibility.yaml); corpus_citation_path be-bru/statute/ordonnance/2019/04/25/2019012118/article/4",
       "new_default": true
     },
@@ -1796,11 +1790,8 @@
       "rulespec_path": "be/statutes/family_benefits/regional_routing.yaml",
       "entity": "Child",
       "input": "brussels_family_benefits_child_in_qualifying_education_training_or_stage",
-      "class": "defaulted",
-      "value": false,
-      "reason": "Article 25 \u00a72(b) pays to age 25 for a child who follows courses, does a qualifying traineeship or takes credit-bearing training, among programmes the Coll\u00e8ge r\u00e9uni selects. The default grants nobody this extension, the lower bound; under it no child aged 18 or over meets article 25, students included. A binding to fact:person.education_enrollment, like the ones be.json gives Wallonia's and the German-speaking Community's counterparts, should replace it.",
-      "citation": "Brussels family-benefits ordinance article 25 age and post-18 status conditions (brussels_family_benefits_article_25_age_or_status_condition_met, eligibility.yaml); corpus_citation_path be-bru/statute/ordonnance/2019/04/25/2019012118/article/25",
-      "new_default": true
+      "class": "encoded",
+      "encoded_by": "concept_binding"
     },
     {
       "rulespec_path": "be/statutes/family_benefits/regional_routing.yaml",
@@ -1808,7 +1799,7 @@
       "input": "brussels_family_benefits_child_is_apprentice",
       "class": "defaulted",
       "value": false,
-      "reason": "Article 25 \u00a72(a) pays past 31 August of the year a child turns 18, up to age 25, for an apprentice. No concept binding supplies apprenticeship status, so the default grants nobody this extension: a lower bound for children aged 18 to 24.",
+      "reason": "Article 25 \u00a72(a) pays past 31 August of the year a child turns 18, up to age 25, for an apprentice. No concept binding supplies apprenticeship status, so the default grants nobody this route: a lower bound that misses any apprentice of 18 to 24 whom the enrolment fact behind brussels_family_benefits_child_in_qualifying_education_training_or_stage doesn't count.",
       "citation": "Brussels family-benefits ordinance article 25 age and post-18 status conditions (brussels_family_benefits_article_25_age_or_status_condition_met, eligibility.yaml); corpus_citation_path be-bru/statute/ordonnance/2019/04/25/2019012118/article/25",
       "new_default": true
     },
@@ -1818,7 +1809,7 @@
       "input": "brussels_family_benefits_child_prepares_higher_education_thesis",
       "class": "defaulted",
       "value": false,
-      "reason": "Article 25 \u00a72(c) pays for a child under 25 who regularly prepares a higher-education thesis. No concept binding observes thesis preparation, so the default grants nobody this extension: a lower bound.",
+      "reason": "Article 25 \u00a72(c) pays for a child under 25 who regularly prepares a higher-education thesis. No concept binding observes thesis preparation, so the default grants nobody this route: a lower bound that misses any thesis writer of 18 to 24 whom the enrolment fact behind brussels_family_benefits_child_in_qualifying_education_training_or_stage doesn't count.",
       "citation": "Brussels family-benefits ordinance article 25 age and post-18 status conditions (brussels_family_benefits_article_25_age_or_status_condition_met, eligibility.yaml); corpus_citation_path be-bru/statute/ordonnance/2019/04/25/2019012118/article/25",
       "new_default": true
     },
@@ -1969,7 +1960,7 @@
       "input": "flanders_family_benefits_child_has_excluded_study_training_volunteer_or_au_pair_residence_right",
       "class": "defaulted",
       "value": false,
-      "reason": "Article 8 section 1 denies benefits to a person whose right to stay rests on study, vocational training, volunteering or au-pair work. The mapping carries no fact on the purpose of a stay, so false applies the exclusion to nobody.",
+      "reason": "Article 8 section 1 denies benefits to a person whose right to stay rests on study, vocational training, volunteering or au-pair work. The mapping carries no fact on the purpose of a stay, so false applies the exclusion to nobody. It overstates entitlement for every such person who is not the child of a study, training, volunteer or au-pair permit holder, whom article 8 section 1 lets keep their entitlement: any under 18 and, since flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver reads fact:person.education_enrollment, any enrolled one aged 18 to 24.",
       "citation": "Flemish Groeipakket decree article 8 section 1 temporary residence-purpose exclusion (flanders_family_benefits_temporary_residence_exclusion_applies); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
       "new_default": true
     },
@@ -2009,7 +2000,7 @@
       "input": "flanders_family_benefits_child_in_month_turning_25",
       "class": "defaulted",
       "value": false,
-      "reason": "The flag marks the calendar month of the 25th birthday, and the mapping holds no birth month. It changes nothing while flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver stays false. W3's query-period node should replace it.",
+      "reason": "The flag marks the calendar month of the 25th birthday, and the mapping holds no birth month. The enrolment binding now feeds flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver, so false ends an enrolled child's window at the age the frame reports, before the end of the birth month that article 8 section 2 item 3 allows: a lower bound. W3's query-period node should replace it.",
       "citation": "Flemish Groeipakket decree article 8 section 2 age and status windows (flanders_family_benefits_age_or_status_condition_met); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
       "new_default": true
     },
@@ -2027,11 +2018,8 @@
       "rulespec_path": "be/statutes/family_benefits/regional_routing.yaml",
       "entity": "Child",
       "input": "flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver",
-      "class": "defaulted",
-      "value": false,
-      "reason": "Article 8 section 2 item 3 extends entitlement to the month a child turns 25 for a pupil, student, intern or school leaver, under conditions the Flemish Government sets. The mapping binds no fact to this input, so false grants no extension: a lower bound that pays nothing to anyone aged 18 or older.",
-      "citation": "Flemish Groeipakket decree article 8 section 2 age and status windows (flanders_family_benefits_age_or_status_condition_met); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
-      "new_default": true
+      "class": "encoded",
+      "encoded_by": "concept_binding"
     },
     {
       "rulespec_path": "be/statutes/family_benefits/regional_routing.yaml",
@@ -2039,7 +2027,7 @@
       "input": "flanders_family_benefits_child_raised_or_studies_outside_belgium",
       "class": "defaulted",
       "value": false,
-      "reason": "Article 8 section 3 withholds benefits from children raised or taught outside Belgium. The selector will admit children domiciled in the region, and the mapping carries no fact on upbringing or schooling abroad, so false applies the exclusion to nobody.",
+      "reason": "Article 8 section 3 withholds benefits from children raised or taught outside Belgium. The selector will admit children domiciled in the region, and the mapping carries no fact on upbringing or schooling abroad, so false applies the exclusion to nobody. It overstates entitlement for every such child whom no Government exemption covers: any under 18 and, since the enrolment fact behind flanders_family_benefits_child_is_pupil_student_intern_or_school_leaver doesn't say where a child studies, any enrolled one aged 18 to 24.",
       "citation": "Flemish Groeipakket decree article 8 section 3 outside-Belgium exclusion (flanders_family_benefits_outside_belgium_exclusion_applies); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/8, recorded on the module (source_verification) and on flanders_family_benefits_child_entitlement, not on this rule",
       "new_default": true
     },
