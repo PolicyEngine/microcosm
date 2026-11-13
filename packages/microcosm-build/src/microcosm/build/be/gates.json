@@ -61,6 +61,17 @@
       "notes": "The eventual active target profile must cover every named family; the schema declarations and placeholders in this change do not themselves activate that surface."
     },
     {
+      "id": "release_input_coverage",
+      "gate": "release_input_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "allow_engine_optional": false
+      },
+      "evidence_absent_blocks": true,
+      "notes": "Authenticate the exact Build P donor artifact and close every declared Frame/Axiom input. A missing substantive root input of any module bound in axiom_rules_bindings.json is a build failure, never an engine default. allow_engine_optional is false: an engine default never closes an input here, and the gate names every engine-optional input it finds. The gate has no evidence before PR 4b: it reads the artifacts of a graph's closure node and donor receipt node, and Belgium has no transport graph yet. evidence_absent_blocks makes that absence block in every posture (docs/gate-battery-contract.md). Until then tests/engine_free/shared/test_be_axiom_input_closure.py runs the closure's partition on the committed surface."
+    },
+    {
       "id": "demographics_vs_statbel",
       "gate": "aggregate_admin",
       "phase": "terminal",
