@@ -67,12 +67,12 @@ class HierarchyGeography(HierarchyNode):
 class HierarchyDimension:
     """One Chronicle dimension and the categorical value selected by a target.
 
-    ``value_rank`` is the value's position, from 0, in the order the source
-    lists the dimension's values: Chronicle's ``layout.groupby_ordinal`` for
-    the fact's group-by dimension. It is ``None`` when the source gives the
+    ``value_rank`` is the position, from 0, of the value's row among its
+    source table's rows: Chronicle's ``layout.groupby_ordinal`` for the
+    fact's group-by dimension. It is ``None`` when the source gives the
     value no position, so a reader sorts such values its own way. A rank
-    orders values within one source's list; two source tables may rank the
-    same value differently.
+    orders the values one source table lists; two tables may rank the same
+    value differently, or give two values the same rank.
     """
 
     id: str

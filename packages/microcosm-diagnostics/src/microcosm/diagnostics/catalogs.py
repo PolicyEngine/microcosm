@@ -15,12 +15,13 @@ identifier two labels, or one geography two levels, unless a
 where the rows disagree; an identifier the rows label one way keeps that
 label. :func:`expand_calibration_diagnostics` rebuilds the schema 8 document.
 
-A row's dimension may carry ``value_rank``, its value's position in the order
-the source lists the dimension's values. The catalog gives each value that
-rank (``rank``) when every row that ranks it agrees, and expansion gives it
-back to each row. Ranks order values within one source's list, so a dimension
-gets no ranks when the rows rank any of its values two ways, or when one
-category's rows give two of its values the same rank.
+A row's dimension may carry ``value_rank``, the position of its value's row
+among its source table's rows. The catalog gives each value that rank
+(``rank``) when every row that ranks it agrees, and expansion gives it back
+to each row. Ranks order values within one category, so a dimension gets no
+ranks when the rows rank any of its values two ways, or when one category's
+rows give two of its values the same rank. Values from different categories
+can share a rank.
 """
 
 from __future__ import annotations

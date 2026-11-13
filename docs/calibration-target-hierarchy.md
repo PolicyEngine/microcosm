@@ -206,8 +206,15 @@ at rows 5, 9 and 10, and the USDA SNAP state tables number the states
 within each region, so seven states share row 0. So the writer ranks a
 dimension's values only when no value is ranked two ways and no category
 gives two values one rank, and leaves every value of any other dimension
-unranked. The rows' dimension references stay `{id, value_id}`; a reader
-sorts a dimension's values by `rank` where every value has one.
+unranked. The rows' dimension references stay `{id, value_id}`.
+
+Ranks order values within one category. A reader sorts the values that
+category's rows select by `rank` and puts unranked values last: the CMS
+Medicaid state dimension ranks its states and leaves the national `us` value
+unranked. Ranks do not order a dimension's whole list, because values from
+different categories can share a rank: `age` holds both the Census
+population bands and the SSI recipient bands, each numbered from its own
+table's first row.
 
 Producers still assemble schema 8 (`CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION`);
 the writer publishes schema 9 (`catalog_calibration_diagnostics`). It refuses,
@@ -260,8 +267,11 @@ The expected data flow is:
 4. `LedgerTargetReference` resolves the catalog relationship to a typed seed.
 5. Chronicle geography and dimensions complete `CalibrationHierarchy` while
    compiling a Chronicle-backed `TargetSpec`.
-6. Registry format 3 serializes and reloads that hierarchy. Format 2 remains
-   readable for historical artifacts.
+6. Registry format 4 serializes and reloads that hierarchy, with each
+   dimension value's `value_rank` where it has one. Format 3, whose
+   dimensions carry no rank, and format 2, which has no hierarchy, remain
+   readable for historical artifacts. A reader from before format 4 refuses
+   a format 4 file by its revision.
 7. Solver compilation carries the hierarchy unchanged from `TargetSpec` to
    `Target`.
 8. Diagnostics assembly (schema 8) serializes `targets[].hierarchy` without

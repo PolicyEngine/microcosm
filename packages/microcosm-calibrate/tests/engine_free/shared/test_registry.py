@@ -344,6 +344,22 @@ class TestArtifactRoundTrip:
         assert loaded.version == registry.version
         assert registry.version != TargetRegistry([unranked], country="us").version
 
+    def test_a_written_registry_declares_format_4(self, tmp_path) -> None:
+        # Format 4 files may carry value_rank. A reader from before the
+        # field refuses revision 4 by name; under a format 3 marker it would
+        # accept the file and fail on the unexpected keyword.
+        path = TargetRegistry([_spec()], country="us").to_json(
+            tmp_path / "registry.json"
+        )
+
+        assert json.loads(path.read_text())["populace_target_registry"] == 4
+
+    def test_a_later_registry_format_is_refused_by_revision(self, tmp_path) -> None:
+        path = tmp_path / "registry.json"
+        path.write_text(json.dumps({"populace_target_registry": 5}))
+        with pytest.raises(ValueError, match=r"\[2, 3, 4\]"):
+            TargetRegistry.from_json(path)
+
     def test_hand_edit_is_detected(self, tmp_path) -> None:
         registry = TargetRegistry([_spec()], country="us")
         path = registry.to_json(tmp_path / "registry.json")
