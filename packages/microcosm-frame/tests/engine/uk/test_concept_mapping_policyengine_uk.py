@@ -159,7 +159,8 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
         "owned_company_trade_assets",
         # The person's ISAs (2.164.0), which the household cash_isa and
         # stocks_and_shares_isa sum; the isa_subscriptions stage writes them
-        # (microcosm#1415).
+        # (microcosm#1415). From 2.174.0 the means tests count each in its
+        # holder's own benefit unit.
         "cash_isa_balance",
         "stocks_and_shares_isa_balance",
         # A car the employer makes available (2.165.0): its list price and the
@@ -185,8 +186,10 @@ def test_the_liquid_asset_reason_holds(engine) -> None:
     source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
     assert "uc_reported_capital" in source
     assert 'benunit("benunit_reported_capital", period)' in source
-    assert 'benunit.members("is_uc_claimant", period)' in source
-    assert "p.person_sources" in source
+    assert 'person("is_uc_claimant", period)' in source
+    # From 2.174.0 the person-level sources pass through
+    # counted_person_sources, which reads capital.person_sources.
+    assert "counted_person_sources(p)" in source
     assert 'benunit("uc_property_capital", period)' in source
     assert "loan" in engine._variable("student_loan_balance").label.lower()
     duty = engine._variable("car_vehicle_excise_duty").get_formula()
@@ -200,8 +203,9 @@ def test_the_liquid_asset_reason_names_the_household_wealth_inputs(engine) -> No
     # policyengine-uk 2.147.0 Universal Credit counts them, alongside savings,
     # as share_like_capital: corporate_wealth unless its two household
     # components, which the WAS stage writes to sum to it with the ISA, add up
-    # to more (microcosm#1095). Its one
-    # person-level source is the Lifetime ISA at its surrender value.
+    # to more (microcosm#1095). Its person-level sources are the Lifetime ISA
+    # at its surrender value and, from 2.174.0, each member's cash and stocks
+    # and shares ISA balances, counted in the holder's own benefit unit.
     reason = MAPPING.unmapped["fact:person.liquid_financial_assets"]
     inputs = set(engine.variables())
     assert engine.variable_metadata("corporate_wealth").entity == "household"
@@ -219,7 +223,11 @@ def test_the_liquid_asset_reason_names_the_household_wealth_inputs(engine) -> No
         assert engine.variable_metadata(name).entity == "household", name
         assert name in reason, name
     person_sources = universal_credit.means_test.capital.person_sources("2026-01-01")
-    assert list(person_sources) == ["lifetime_isa_countable_capital"]
+    assert list(person_sources) == [
+        "lifetime_isa_countable_capital",
+        "cash_isa_countable_capital",
+        "stocks_and_shares_isa_countable_capital",
+    ]
     source = inspect.getsource(engine._variable("uc_assessable_capital").get_formula())
     assert "for source in p.sources" in source
     for name in (
@@ -229,6 +237,8 @@ def test_the_liquid_asset_reason_names_the_household_wealth_inputs(engine) -> No
         "gross_financial_wealth",
         "net_financial_wealth",
         "lifetime_isa_countable_capital",
+        "cash_isa_countable_capital",
+        "stocks_and_shares_isa_countable_capital",
     ):
         assert name in reason, name
     assert "inputs are student_loan_balance, a debt; car_list_price" in reason

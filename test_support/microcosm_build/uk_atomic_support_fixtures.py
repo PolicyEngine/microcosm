@@ -148,6 +148,7 @@ def toy_property_resources() -> dict[str, dict]:
     grid = [0.0, 0.25, 0.5, 0.75, 1.0]
     seats = {}
     lsoas = {}
+    council_areas = set()
     for rows in toy_support_frames().values():
         for row in rows:
             seat = str(row["constituency_code"])
@@ -157,6 +158,8 @@ def toy_property_resources() -> dict[str, dict]:
                     "weight": 100.0,
                     "quantiles": [100_000.0 + 1_900_000.0 * p for p in grid],
                 }
+            if str(row["local_authority_code"]).startswith("S12"):
+                council_areas.add(str(row["local_authority_code"]))
             lsoa = str(row["lsoa_code"])
             if lsoa[0] in "EW":
                 cumulative = [(i + 1) / 8 for i in range(8)] + [1.0]
@@ -188,14 +191,42 @@ def toy_property_resources() -> dict[str, dict]:
         "receipts": {},
         "lsoa": lsoas,
     }
-    return {"knots": knots, "band_mix": band_mix}
+    # Each toy council area splits bands A to H equally, in the vendored
+    # CTAXBASE rows the Scottish draw reads (microcosm#1095 B12).
+    scotland_rows = [
+        {
+            "concept": f"scotgov.chargeable_dwellings_band_{band.lower()}",
+            "measure_id": f"band_{band.lower()}",
+            "geography": {"id": code, "level": "local_authority"},
+            "period": {"type": "month", "value": "2025-09"},
+            "value": 100.0,
+        }
+        for code in sorted(council_areas)
+        for band in COUNCIL_TAX_BANDS[:-1]
+    ]
+    scotland_band_mix = {
+        "schema_version": 1,
+        "country": "uk",
+        "kind": "uk_vendored_ledger_facts",
+        "resource": "scotgov_chargeable_dwellings_by_band.json",
+        "source_fact_feed": {"facts_sha256": "toy"},
+        "selections": [],
+        "row_count": len(scotland_rows),
+        "rows": scotland_rows,
+    }
+    return {
+        "knots": knots,
+        "band_mix": band_mix,
+        "scotland_band_mix": scotland_band_mix,
+    }
 
 
 def write_toy_property_resources(directory: Path) -> dict[str, Path]:
-    """Write the toy knots and band mix as graph sources named by the nodes."""
+    """Write the toy knots and band mixes as graph sources named by the nodes."""
     from microcosm.build.uk_runtime.property_localisation import (
         BAND_MIX_SOURCE,
         QUANTILES_SOURCE,
+        SCOTLAND_BAND_MIX_SOURCE,
     )
 
     directory.mkdir(parents=True, exist_ok=True)
@@ -203,7 +234,11 @@ def write_toy_property_resources(directory: Path) -> dict[str, Path]:
     paths = {
         QUANTILES_SOURCE: directory / "toy-knots.json",
         BAND_MIX_SOURCE: directory / "toy-band-mix.json",
+        SCOTLAND_BAND_MIX_SOURCE: directory / "toy-scotland-band-mix.json",
     }
+    paths[SCOTLAND_BAND_MIX_SOURCE].write_text(
+        json.dumps(resources["scotland_band_mix"]), encoding="utf-8"
+    )
     paths[QUANTILES_SOURCE].write_text(json.dumps(resources["knots"]), encoding="utf-8")
     paths[BAND_MIX_SOURCE].write_text(
         json.dumps(resources["band_mix"]), encoding="utf-8"

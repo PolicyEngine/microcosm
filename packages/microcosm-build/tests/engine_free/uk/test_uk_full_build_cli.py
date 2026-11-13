@@ -3,10 +3,12 @@
 # ruff: noqa: F403, F405
 import base64
 import os
+import shutil
 import signal
 from types import SimpleNamespace
 
 import test_support.microcosm_build.uk_full_build_cli as support  # noqa: E402
+from microcosm.build import staging_dataset
 from test_support.microcosm_build.uk_full_build_cli import *
 
 
@@ -102,7 +104,7 @@ def test_release_role_is_required_and_supplies_the_dense_posture(tmp_path):
     [
         (["--target-loss-cap", "5"], "--target-loss-cap"),
         (["--allow-unpinned-feed"], "--allow-unpinned-feed"),
-        (["--incumbent-h5", "incumbent.h5"], "--incumbent-h5"),
+        (["--reference-h5", "reference.h5"], "--reference-h5"),
         (["--target-weight-rule", "family_equal"], "--target-weight-rule family_equal"),
     ],
 )
@@ -261,6 +263,7 @@ def test_national_role_is_validated_then_built_through_the_graph(tmp_path, monke
     attempt id, the Hub pre-flight, the Logbook and the staging telemetry
     live in the driver's national envelope.
     """
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     argv = _national_argv(tmp_path)
     national = cli.parse_args(argv)
     assert national._posture is cli.uk_rowwise_posture("national")
@@ -1293,19 +1296,6 @@ def _drive_epochs(args, telemetry, epochs: int = 2) -> None:
         )
 
 
-def _remote_hub(monkeypatch, **kwargs):
-    """One fake Hub for the staged dataset and the run files the emitter commits."""
-    from microcosm.build.uk_runtime import rowwise_staging
-    from test_support.microcosm_build.telemetry import share_fake_hub
-    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
-
-    hub = _FakeHub(**kwargs)
-    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
-    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
-    share_fake_hub(monkeypatch, hub)
-    return hub
-
-
 def test_no_staging_records_both_opt_outs(tmp_path, monkeypatch):
     pytest.importorskip("tables")
     status, out = run_dense_main(tmp_path, monkeypatch, staging="--no-staging")
@@ -1440,7 +1430,7 @@ def test_telemetry_content_refusal_never_aborts_the_solve(
 
 
 def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
-    tmp_path, monkeypatch, capsys
+    tmp_path, monkeypatch, capsys, fake_telemetry_emitters
 ):
     pytest.importorskip("tables")
     hub = _remote_hub(monkeypatch)
@@ -1527,6 +1517,55 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     assert "dataset_staged" in rows[0].phases_reached
     assert rows[0].disposition == "iterating"
 
+    # The build handed the bundle to its own emitter: every file by path,
+    # with its role, and with the SHA-256 and size of the bytes committed.
+    (client,) = [emitter.client for emitter in fake_telemetry_emitters]
+    (request,) = client.bundle_requests
+    assert (request.repository, request.run_id, request.prefix) == (
+        "policyengine/populace-uk-private",
+        run_id,
+        "staged",
+    )
+    from microcosm.build.staging_dataset import output_role
+
+    roles = {item.name: item.role for item in request.files}
+    assert roles == {
+        **{
+            Path(entry["path"]).name: output_role(key)
+            for key, entry in manifest["outputs"].items()
+        },
+        cli.MANIFEST_FILENAME: "build_manifest",
+        "staged_manifest.json": "staged_manifest",
+        "sha256sums.txt": "checksums",
+    }
+    assert roles[dataset_name] == "dataset"
+    for item in request.files:
+        assert Path(item.local_path) == out / item.name
+        committed = hub.files[
+            ("policyengine/populace-uk-private", f"staged/{run_id}/{item.name}")
+        ]
+        assert (item.sha256, item.bytes) == (
+            hashlib.sha256(committed).hexdigest(),
+            len(committed),
+        )
+    # The files the build rewrote after staging were all copied at hand-over.
+    copied = set(next(iter(client.copied_bundle_files.values())))
+    assert {cli.MANIFEST_FILENAME, "sha256sums.txt"} <= copied
+    # The manifest names the hand-over, so a re-stage can ask for its outcome.
+    assert manifest["staged_dataset_handover"] == {
+        "handover_id": request.handover_id(),
+        "repository": "policyengine/populace-uk-private",
+        "run_id": run_id,
+        "run_dir": str(out.resolve()),
+        "files": staged["files"],
+    }
+    # What the build recorded in its staging run, which re-stages keep.
+    assert manifest["staged_dataset_at_build"] == {
+        "mode": "local_and_remote",
+        "status": "uploaded",
+        "error_code": None,
+    }
+
     def sums_verify() -> None:
         for line in (out / "sha256sums.txt").read_text().splitlines():
             digest, name = line.split("  ")
@@ -1536,7 +1575,7 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     # uploaded touches nothing: the driver's record and revision stand, the
     # sidecars keep their bytes, and no commit is made.
     stager = load_tool("stage_uk_rowwise_candidate")
-    monkeypatch.setattr(stager, "_hub_api", lambda: hub)
+    monkeypatch.setattr(stager, "_start_bundle_emitter", _bundle_emitter_for(hub))
     sidecar_bytes = (out / "staged_manifest.json").read_bytes()
     capsys.readouterr()
     assert stager.main(["--run-dir", str(out)]) == 0
@@ -1625,6 +1664,811 @@ def test_remote_staging_failure_is_recorded_and_the_build_still_succeeds(
     ).is_file()
 
 
+def test_a_bundle_file_the_emitter_did_not_copy_stays_as_handed_over(
+    tmp_path, monkeypatch, capsys
+):
+    """The emitter uploads an uncopied file from disk later, so the build
+    leaves it unchanged: here the manifest keeps its handed-over bytes and
+    the sums still verify, and the delivery record is printed instead."""
+    pytest.importorskip("tables")
+    hub = _remote_hub(
+        monkeypatch, client_options={"never_copy": {cli.MANIFEST_FILENAME}}
+    )
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    captured = capsys.readouterr()
+    run_id = single_run_id(out)
+    remote_manifest = hub.files[
+        ("policyengine/populace-uk-private", f"staged/{run_id}/{cli.MANIFEST_FILENAME}")
+    ]
+    assert (out / cli.MANIFEST_FILENAME).read_bytes() == remote_manifest
+    assert "staged_dataset" not in json.loads(remote_manifest)
+    assert f"{cli.MANIFEST_FILENAME} stays as handed over" in captured.err
+    printed = json.loads(captured.out[captured.out.index("{") :])
+    assert printed["staged_dataset"]["status"] == "uploaded"
+    for line in (out / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest, name
+    assert "dataset_staged" in spool_rows(out)[0].phases_reached
+
+
+def test_a_build_with_the_hub_switched_off_hands_its_emitter_no_bundle(
+    tmp_path, monkeypatch, capsys, fake_telemetry_emitters
+):
+    """The Modal runner sets ``HF_HUB_OFFLINE=1`` for every build it runs, so
+    a build there uploads nothing from its container: the bundle is verified,
+    its sidecars are written, and it is recorded as local, to be staged from
+    the workstation once the outputs are copied back."""
+    pytest.importorskip("tables")
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    hub = _remote_hub(monkeypatch)
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    (client,) = [emitter.client for emitter in fake_telemetry_emitters]
+    assert "stage_dataset_bundle" not in client.calls
+    assert "check_write_access" not in client.calls
+    assert hub.paths("policyengine/populace-uk-private") == []
+    staged = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert (staged["mode"], staged["status"], staged["repository"]) == (
+        "local_only",
+        "skipped",
+        None,
+    )
+    assert staged["prefix"] == f"staged/{single_run_id(out)}"
+    assert (out / "staged_manifest.json").is_file()
+    assert (out / "sha256sums.txt").is_file()
+    assert "HF_HUB_OFFLINE" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("error_code", "says", "never_says"),
+    [
+        ("UPLOAD_PENDING", "keeps the bundle queued", "stay local"),
+        ("CREDENTIAL_MISSING", "keeps the bundle queued", "stay local"),
+        ("REMOTE_DIFFERS", "another run id", "can be re-staged"),
+        ("EMITTER_UNAVAILABLE", "stay local", "queued"),
+        ("RECEIPT_UNRECOGNIZED", "stay local", "queued"),
+    ],
+)
+def test_the_staged_dataset_status_says_where_a_failed_bundle_is(
+    error_code, says, never_says
+):
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    line = rowwise_staging._staged_dataset_line(
+        {
+            "status": "failed",
+            "error_code": error_code,
+            "repository": "policyengine/populace-uk-private",
+            "prefix": "staged/uk-attempt",
+            "mode": "local_and_remote",
+            "revision": None,
+        }
+    )
+    assert error_code in line
+    assert says in line
+    assert never_says not in line
+
+
+def test_a_staged_dense_bundle_names_its_build_and_candidate_release_for_the_collector(
+    tmp_path, monkeypatch, fake_telemetry_emitters
+):
+    """The hand-over carries the collector's provenance: the country, the
+    build's attempt ID (which its release build keeps, whatever run ID the
+    staging used), licensed data, and the release the build is a candidate
+    for, so the collector labels the staging tree with that release."""
+    pytest.importorskip("tables")
+    from microcosm_emitter_interface import CollectorProvenance
+
+    _remote_hub(monkeypatch)
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-upload-interval-seconds",
+        "0",
+        "--staging-run-id",
+        "uk-dense-staging-run",
+        staging=None,
+        on_prepare=_drive_epochs,
+    )
+    assert status == 0
+    (row,) = spool_rows(out)
+    assert row.build_id.startswith("uk-local-candidate-")
+    (client,) = [emitter.client for emitter in fake_telemetry_emitters]
+    (request,) = client.bundle_requests
+    assert request.run_id == "uk-dense-staging-run"
+    assert request.collector == CollectorProvenance(
+        country_code="UK",
+        build_id=row.build_id,
+        licensed_data=True,
+        release="microcosm-uk-2024-25-dense",
+    )
+
+
+def _one_bundle_run(
+    tmp_path,
+    monkeypatch,
+    manifest_extra,
+    *,
+    logbook_rows=None,
+    gate_report_release_id=None,
+):
+    """A one-output run directory and the re-stage command, with its emitters.
+
+    ``logbook_rows`` maps Logbook spool file names to the build ID each row
+    names; ``gate_report_release_id`` registers a dense local gate report
+    recording that ``release_id``. Returns the directory, the command module
+    and the list of emitters it starts.
+    """
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    outputs = {}
+    files = {"dataset": ("microcosm_uk_2024_25_local.h5", b"synthetic rows")}
+    if gate_report_release_id is not None:
+        files["local_gate_report"] = (
+            "microcosm_uk_2024_25_local.local_gates.json",
+            json.dumps({"release_id": gate_report_release_id}).encode(),
+        )
+    for key, (name, data) in files.items():
+        (run_dir / name).write_bytes(data)
+        outputs[key] = {
+            "path": str(run_dir / name),
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "bytes": len(data),
+        }
+    if logbook_rows:
+        (run_dir / "logbook-spool").mkdir()
+        for name, build_id in logbook_rows.items():
+            (run_dir / "logbook-spool" / name).write_text(
+                json.dumps({"build_id": build_id})
+            )
+    manifest = {"outputs": outputs, **manifest_extra}
+    (run_dir / cli.MANIFEST_FILENAME).write_text(json.dumps(manifest))
+    stager = load_tool("stage_uk_rowwise_candidate")
+    hub = _FakeHub()
+    started: list[FakeEmitterClient] = []
+
+    def start():
+        started.append(FakeEmitterClient(hub_files=hub.files, hub_api=hub))
+        return started[-1]
+
+    monkeypatch.setattr(stager, "_start_bundle_emitter", start)
+    return run_dir, stager, started
+
+
+def _restage_one_bundle(
+    tmp_path,
+    monkeypatch,
+    manifest_extra,
+    argv_extra=(),
+    *,
+    logbook_build_id=None,
+    **run_options,
+):
+    """Re-stage a one-output run directory; return the bundle request it handed over.
+
+    ``logbook_build_id`` writes a Logbook spool row naming that build.
+    """
+    if logbook_build_id is not None:
+        run_options["logbook_rows"] = {"row.json": logbook_build_id}
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path, monkeypatch, manifest_extra, **run_options
+    )
+    assert stager.main(["--run-dir", str(run_dir), *argv_extra]) == 0
+    (client,) = started
+    (request,) = client.bundle_requests
+    return run_dir, request
+
+
+def _restage_outcome(stager, argv) -> str:
+    """``staged`` when the command returns, else the message it exits with."""
+    try:
+        stager.main(argv)
+    except SystemExit as refusal:
+        return str(refusal)
+    return "staged"
+
+
+#: Two attempts' Logbook rows in one output directory. The spool names each
+#: row by its digest, so file-name order says nothing about which came first;
+#: here the earlier attempt's row sorts last.
+TWO_ATTEMPTS = {
+    "0aaa.json": "uk-local-candidate-f100-s42-20261112T100000Z-0000000b",
+    "ffff.json": "uk-local-candidate-f100-s42-20261112T090000Z-0000000a",
+}
+
+
+def test_the_restage_tool_takes_a_dense_build_id_from_its_gate_report(
+    tmp_path, monkeypatch, capsys
+):
+    """A dense build's local gate report records its attempt ID, as the
+    dense release assembler reads it; a retried output directory's earlier
+    Logbook row does not name the build."""
+    _run_dir, request = _restage_one_bundle(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        ("--run-id", "uk-restaged-run"),
+        logbook_rows=TWO_ATTEMPTS,
+        gate_report_release_id=TWO_ATTEMPTS["0aaa.json"],
+    )
+    assert request.collector.build_id == TWO_ATTEMPTS["0aaa.json"]
+
+
+def test_the_restage_tool_refuses_logbook_rows_that_name_two_builds(
+    tmp_path, monkeypatch, capsys
+):
+    """Without a record of its own, a directory whose Logbook rows name two
+    builds does not say which built the bundle: the command stops before it
+    starts an emitter and asks for ``--build-id``."""
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        logbook_rows=TWO_ATTEMPTS,
+    )
+    outcome = _restage_outcome(
+        stager, ["--run-dir", str(run_dir), "--run-id", "uk-restaged-run"]
+    )
+    assert "name more than one build" in outcome
+    assert "--build-id" in outcome
+    assert started == []
+
+
+def test_the_restage_tool_names_the_build_given_with_build_id(
+    tmp_path, monkeypatch, capsys
+):
+    """``--build-id`` names the build when the directory's records cannot."""
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        logbook_rows=TWO_ATTEMPTS,
+    )
+    chosen = TWO_ATTEMPTS["ffff.json"]
+    outcome = _restage_outcome(
+        stager,
+        [
+            "--run-dir",
+            str(run_dir),
+            "--run-id",
+            "uk-restaged-run",
+            "--build-id",
+            chosen,
+        ],
+    )
+    assert outcome == "staged"
+    (client,) = started
+    (request,) = client.bundle_requests
+    assert request.collector.build_id == chosen
+
+
+@pytest.mark.parametrize(
+    "manifest_extra",
+    [{"build_id": "not a build id"}, {"build_id": "-starts-with-a-hyphen"}],
+)
+def test_the_restage_tool_refuses_a_build_id_before_starting_an_emitter(
+    tmp_path, monkeypatch, capsys, manifest_extra
+):
+    run_dir, stager, started = _one_bundle_run(tmp_path, monkeypatch, manifest_extra)
+    outcome = _restage_outcome(
+        stager, ["--run-dir", str(run_dir), "--run-id", "uk-attempt"]
+    )
+    assert "is not one the collector accepts" in outcome
+    assert started == []
+
+
+def test_the_restage_tool_stages_a_retried_directory_under_its_recorded_build(
+    tmp_path, monkeypatch, capsys
+):
+    """Without ``--run-id`` or a staged record, the run ID is the build the
+    directory records, not whichever Logbook row sorts last."""
+    _run_dir, request = _restage_one_bundle(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        logbook_rows=TWO_ATTEMPTS,
+        gate_report_release_id=TWO_ATTEMPTS["0aaa.json"],
+    )
+    assert request.run_id == TWO_ATTEMPTS["0aaa.json"]
+    assert request.collector.build_id == TWO_ATTEMPTS["0aaa.json"]
+
+
+def test_the_restage_tool_refuses_a_build_id_the_directory_contradicts(
+    tmp_path, monkeypatch, capsys
+):
+    """``--build-id`` names a build only where the directory records none."""
+    recorded = "uk-frs-calibration-attempt-20261112T090000Z-0badcafe"
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path,
+        monkeypatch,
+        {"build_id": recorded, "release_id": "microcosm-uk-2024-25-national"},
+    )
+    outcome = _restage_outcome(
+        stager,
+        [
+            "--run-dir",
+            str(run_dir),
+            "--build-id",
+            "uk-frs-calibration-attempt-20261112T100000Z-0000000b",
+        ],
+    )
+    assert "is not the build this directory records" in outcome
+    assert recorded in outcome
+    assert started == []
+
+
+@pytest.mark.parametrize(
+    "report", [b"not json", b"[]", b'{"release_id": ""}'], ids=["text", "list", "empty"]
+)
+def test_an_unusable_gate_report_leaves_the_build_id_to_the_logbook_row(
+    tmp_path, monkeypatch, capsys, report
+):
+    build = TWO_ATTEMPTS["ffff.json"]
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        logbook_rows={"ffff.json": build},
+        gate_report_release_id="placeholder",
+    )
+    report_path = run_dir / "microcosm_uk_2024_25_local.local_gates.json"
+    report_path.write_bytes(report)
+    manifest_path = run_dir / cli.MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text())
+    manifest["outputs"]["local_gate_report"].update(
+        sha256=hashlib.sha256(report).hexdigest(), bytes=len(report)
+    )
+    manifest_path.write_text(json.dumps(manifest))
+    outcome = _restage_outcome(stager, ["--run-dir", str(run_dir)])
+    assert outcome == "staged"
+    (client,) = started
+    (request,) = client.bundle_requests
+    assert request.collector.build_id == build
+
+
+def test_the_restage_tool_notes_a_build_named_by_its_run_id(
+    tmp_path, monkeypatch, capsys
+):
+    _restage_one_bundle(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        ("--run-id", "uk-attempt"),
+    )
+    assert "names the build by its run ID, uk-attempt" in capsys.readouterr().err
+
+
+def test_the_restage_tool_keeps_the_staging_run_id_its_sidecar_records(
+    tmp_path, monkeypatch, capsys
+):
+    """A build staged under ``--staging-run-id`` whose manifest has no staged
+    record (interrupted during its upload wait) still names that run in its
+    ``staged_manifest.json``; a re-stage keeps it, and names the build by its
+    attempt ID."""
+    attempt = TWO_ATTEMPTS["0aaa.json"]
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        logbook_rows={"0aaa.json": attempt},
+        gate_report_release_id=attempt,
+    )
+    (run_dir / "staged_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_name": "microcosm.staged-dataset.manifest",
+                "run_id": "uk-dense-staging-run",
+            }
+        )
+    )
+    assert _restage_outcome(stager, ["--run-dir", str(run_dir)]) == "staged"
+    (client,) = started
+    (request,) = client.bundle_requests
+    assert request.run_id == "uk-dense-staging-run"
+    assert request.collector.build_id == attempt
+
+
+def test_local_only_also_stops_on_rows_that_name_two_builds(
+    tmp_path, monkeypatch, capsys
+):
+    """Without a run ID or a recorded build, the run ID is unknown even for a
+    local-only re-stage; ``--run-id`` names it."""
+    run_dir, stager, started = _one_bundle_run(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        logbook_rows=TWO_ATTEMPTS,
+    )
+    outcome = _restage_outcome(stager, ["--run-dir", str(run_dir), "--local-only"])
+    assert "name more than one build" in outcome and "--run-id" in outcome
+    named = _restage_outcome(
+        stager,
+        ["--run-dir", str(run_dir), "--local-only", "--run-id", "uk-attempt"],
+    )
+    assert named == "staged"
+    assert started == []
+
+
+def test_the_restage_tool_accepts_a_build_id_equal_to_the_recorded_one(
+    tmp_path, monkeypatch, capsys
+):
+    recorded = "uk-frs-calibration-attempt-20261112T090000Z-0badcafe"
+    _run_dir, request = _restage_one_bundle(
+        tmp_path,
+        monkeypatch,
+        {"build_id": recorded, "release_id": "microcosm-uk-2024-25-national"},
+        ("--build-id", recorded),
+    )
+    assert request.collector.build_id == recorded
+    assert request.run_id == recorded
+
+
+def test_a_build_id_the_interface_refuses_leaves_the_bundle_unnamed_with_a_warning(
+    capsys,
+):
+    """A build's staging never raises: an unusable build ID hands the bundle
+    over without provenance, and says so."""
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    assert (
+        rowwise_staging._bundle_provenance(
+            {"release_id": "microcosm-uk-2024-25-dense"}, build_id="not a build id"
+        )
+        is None
+    )
+    assert "is not one the collector accepts" in capsys.readouterr().err
+
+
+def test_the_restage_tool_names_a_national_build_and_its_release_for_the_collector(
+    tmp_path, monkeypatch, capsys
+):
+    """A national manifest records its build ID: a re-stage under another run
+    ID still names that build, and the release the manifest is a candidate for."""
+    from microcosm_emitter_interface import CollectorProvenance
+
+    _run_dir, request = _restage_one_bundle(
+        tmp_path,
+        monkeypatch,
+        {
+            "build_id": "uk-frs-calibration-attempt-20261112T090000Z-0badcafe",
+            "release_id": "microcosm-uk-2024-25-national",
+        },
+        ("--run-id", "uk-restaged-run"),
+    )
+    assert request.run_id == "uk-restaged-run"
+    assert request.collector == CollectorProvenance(
+        country_code="UK",
+        build_id="uk-frs-calibration-attempt-20261112T090000Z-0badcafe",
+        licensed_data=True,
+        release="microcosm-uk-2024-25-national",
+    )
+
+
+def test_the_restage_tool_takes_a_dense_build_id_from_its_logbook_row(
+    tmp_path, monkeypatch, capsys
+):
+    """A dense manifest records no build ID; its Logbook row does."""
+    from microcosm_emitter_interface import CollectorProvenance
+
+    _run_dir, request = _restage_one_bundle(
+        tmp_path,
+        monkeypatch,
+        {"release_id": "microcosm-uk-2024-25-dense"},
+        ("--run-id", "uk-restaged-run"),
+        logbook_build_id="uk-local-candidate-f100-s42-20261112T090000Z-0badcafe",
+    )
+    assert request.run_id == "uk-restaged-run"
+    assert request.collector == CollectorProvenance(
+        country_code="UK",
+        build_id="uk-local-candidate-f100-s42-20261112T090000Z-0badcafe",
+        licensed_data=True,
+        release="microcosm-uk-2024-25-dense",
+    )
+
+
+@pytest.mark.parametrize(
+    "manifest_extra",
+    [
+        {},
+        {"release_id": "populace-uk-2023"},
+        {"release_id": "microcosm-us-2024-national"},
+    ],
+    ids=["no release", "tagged release", "another country's release"],
+)
+def test_the_restage_tool_names_no_release_a_uk_build_cannot_publish_into(
+    tmp_path, monkeypatch, capsys, manifest_extra
+):
+    """Only a UK release that publishes into build folders is a candidate
+    release; otherwise the provenance names none, and the collector labels
+    the staging tree with the run ID. The build ID falls back to the run ID."""
+    from microcosm_emitter_interface import CollectorProvenance
+
+    _run_dir, request = _restage_one_bundle(
+        tmp_path, monkeypatch, manifest_extra, ("--run-id", "uk-attempt")
+    )
+    assert request.collector == CollectorProvenance(
+        country_code="UK", build_id="uk-attempt", licensed_data=True, release=None
+    )
+
+
+def test_the_restage_tool_hands_the_bundle_to_its_own_emitter(
+    tmp_path, monkeypatch, capsys
+):
+    """The re-stage command starts a short-lived emitter, refuses a stage
+    that emitter could not complete, and always closes it."""
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    dataset = run_dir / "microcosm_uk_2024_25_local.h5"
+    dataset.write_bytes(b"synthetic rows")
+    manifest = {
+        "outputs": {
+            "dataset": {
+                "path": str(dataset),
+                "sha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
+                "bytes": dataset.stat().st_size,
+            }
+        }
+    }
+    (run_dir / cli.MANIFEST_FILENAME).write_text(json.dumps(manifest))
+    stager = load_tool("stage_uk_rowwise_candidate")
+    argv = ["--run-dir", str(run_dir), "--run-id", "uk-attempt"]
+    started: list[FakeEmitterClient] = []
+
+    def emitter(**options):
+        def start():
+            started.append(FakeEmitterClient(**options))
+            return started[-1]
+
+        return start
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setattr(stager, "_start_bundle_emitter", emitter())
+    with pytest.raises(SystemExit, match="HF_HUB_OFFLINE"):
+        stager.main(argv)
+    assert started == []
+    monkeypatch.delenv("HF_HUB_OFFLINE")
+
+    read_only = {
+        "status": "checked",
+        "credential": "present",
+        "reachable": True,
+        "can_write": False,
+        "error_type": None,
+    }
+    monkeypatch.setattr(
+        stager, "_start_bundle_emitter", emitter(write_access=read_only)
+    )
+    with pytest.raises(SystemExit, match="read-only"):
+        stager.main(argv)
+    assert started[-1].closed and started[-1].bundle_requests == []
+
+    hub = _FakeHub()
+    monkeypatch.setattr(
+        stager, "_start_bundle_emitter", emitter(hub_files=hub.files, hub_api=hub)
+    )
+    waits: list[float] = []
+    real_stage_bundle = stager.stage_bundle
+
+    def stage_bundle(*args, **options):
+        waits.append(options["wait_seconds"])
+        return real_stage_bundle(*args, **options)
+
+    monkeypatch.setattr(stager, "stage_bundle", stage_bundle)
+    capsys.readouterr()
+    assert stager.main(argv) == 0
+    # The command waits longer than a build: finishing the upload is its job.
+    assert waits == [staging_dataset.RESTAGE_WAIT_SECONDS]
+    assert started[-1].closed
+    (request,) = started[-1].bundle_requests
+    assert {item.name: item.role for item in request.files}[dataset.name] == "dataset"
+    staged = json.loads((run_dir / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert staged["status"] == "uploaded" and staged["revision"] == hub.sha
+    assert json.loads(capsys.readouterr().out) == staged
+    for line in (run_dir / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((run_dir / name).read_bytes()).hexdigest() == digest
+
+
+def _pending_dense_build(tmp_path, monkeypatch, queue):
+    """A remote dense build whose emitter takes the hand-over and stops.
+
+    The emitter leaves the H5 on disk, as it does a real one of hundreds of
+    megabytes, and uploads it from there.
+    """
+    hub = _remote_hub(
+        monkeypatch,
+        client_options={
+            "queue": queue,
+            "deliver": False,
+            "answer_receipts": False,
+            "never_copy": {f"{STEM}.h5"},
+        },
+    )
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    staged = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert staged["error_code"] == "UPLOAD_PENDING"
+    return hub, out
+
+
+def test_a_moved_run_directory_is_handed_over_again_not_resumed(
+    tmp_path, monkeypatch, capsys
+):
+    """The build's queued job names its files at their old paths and can
+    never finish there, so the re-stage hands the moved directory over as a
+    new job; the emitter keeps retrying the old one."""
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+
+    queue = FakeHandoverQueue()
+    hub, out = _pending_dense_build(tmp_path, monkeypatch, queue)
+    (first,) = queue.jobs
+    moved = tmp_path / "moved"
+    shutil.move(str(out), str(moved))
+    stager = load_tool("stage_uk_rowwise_candidate")
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue),
+    )
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(moved)]) == 0
+    manifest = json.loads((moved / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["staged_dataset"]["status"] == "uploaded"
+    assert manifest["staged_dataset"]["revision"] == hub.sha
+    record = manifest["staged_dataset_handover"]
+    assert record["handover_id"] != first
+    assert record["run_dir"] == str(moved.resolve())
+    assert manifest["staged_dataset_at_build"]["error_code"] == "UPLOAD_PENDING"
+    assert len(hub.commits) == 1
+    assert queue.jobs[first]["receipt"]["status"] == "pending"
+
+
+def test_the_restage_note_names_the_code_the_build_recorded(
+    tmp_path, monkeypatch, capsys
+):
+    """An earlier re-stage replaced the manifest's code; the build's staging
+    run and Logbook row still hold the build's own record."""
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+
+    queue = FakeHandoverQueue()
+    hub, out = _pending_dense_build(tmp_path, monkeypatch, queue)
+    stager = load_tool("stage_uk_rowwise_candidate")
+    # A first re-stage, by a user whose emitter finds no credential.
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, queue=queue),
+    )
+    assert stager.main(["--run-dir", str(out)]) == 1
+    staged = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert staged["error_code"] == "CREDENTIAL_MISSING"
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue),
+    )
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(out), "--wait-seconds", "60"]) == 0
+    err = capsys.readouterr().err
+    assert "still records failed (UPLOAD_PENDING)" in err
+    assert "CREDENTIAL_MISSING" not in err
+    assert "phase dataset_stage_failed" in err
+
+
+def _landed_dense_build(tmp_path, monkeypatch):
+    hub = _remote_hub(monkeypatch)
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["staged_dataset"]["status"] == "uploaded"
+    return hub, out
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_status"),
+    [
+        ("an output edited after landing", 1),
+        ("a stage to another repository that fails", 1),
+        ("a local-only re-stage", 0),
+    ],
+)
+def test_a_landed_record_stays_and_a_failed_attempt_still_exits_1(
+    tmp_path, monkeypatch, capsys, case, expected_status
+):
+    """A landed record is never replaced, but only an attempt that changed
+    nothing exits 0: a directory whose bytes differ from the remote bundle, or
+    a stage elsewhere that fails, is a failure the operator must see."""
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    pytest.importorskip("tables")
+    hub, out = _landed_dense_build(tmp_path, monkeypatch)
+    manifest_path = out / cli.MANIFEST_FILENAME
+    landed = json.loads(manifest_path.read_text())["staged_dataset"]
+    stager = load_tool("stage_uk_rowwise_candidate")
+    argv = ["--run-dir", str(out), "--wait-seconds", "60"]
+    if case == "an output edited after landing":
+        _edit_an_output(out)
+        monkeypatch.setattr(stager, "_start_bundle_emitter", _bundle_emitter_for(hub))
+    elif case == "a stage to another repository that fails":
+        argv += ["--repo-id", "policyengine/another-private"]
+        monkeypatch.setattr(
+            stager,
+            "_start_bundle_emitter",
+            lambda: FakeEmitterClient(hub_files=hub.files),
+        )
+    else:
+        argv += ["--local-only"]
+    capsys.readouterr()
+    assert stager.main(argv) == expected_status
+    assert json.loads(manifest_path.read_text())["staged_dataset"] == landed
+    assert "record stays" in capsys.readouterr().err
+    assert len(hub.commits) == 1
+
+
+def test_the_restage_note_names_what_a_local_only_build_recorded(
+    tmp_path, monkeypatch, capsys
+):
+    """A build that kept its bundle local recorded a skipped stage and the
+    phase dataset_stage_skipped; a re-stage's own failure never takes their
+    place in the note."""
+    from test_support.microcosm_build.emitter import (
+        FakeEmitterClient,
+        FakeHandoverQueue,
+    )
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    pytest.importorskip("tables")
+    status, out = run_dense_main(tmp_path, monkeypatch, staging="--staging-local-only")
+    assert status == 0
+    hub = _FakeHub()
+    queue = FakeHandoverQueue()
+    stager = load_tool("stage_uk_rowwise_candidate")
+    # A first re-stage, by a user whose emitter finds no credential.
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, queue=queue),
+    )
+    assert stager.main(["--run-dir", str(out), "--wait-seconds", "0"]) == 1
+    monkeypatch.setattr(
+        stager,
+        "_start_bundle_emitter",
+        lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub, queue=queue),
+    )
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(out), "--wait-seconds", "60"]) == 0
+    err = capsys.readouterr().err
+    assert "still records skipped" in err
+    assert "phase dataset_stage_skipped" in err
+    assert "CREDENTIAL_MISSING" not in err and "dataset_stage_failed" not in err
+
+
+def test_the_restage_tool_waits_three_hours_unless_told_otherwise():
+    """At 2 Mbit/s a 2.4 GB bundle takes about 2 hours 40 minutes."""
+    stager = load_tool("stage_uk_rowwise_candidate")
+    assert staging_dataset.RESTAGE_WAIT_SECONDS == 10_800.0
+    assert staging_dataset.RESTAGE_WAIT_SECONDS > (2.4e9 * 8 / 2e6)
+    parse = stager._parse_args
+    assert parse(["--run-dir", "run"]).wait_seconds == 10_800.0
+    assert parse(["--run-dir", "run", "--wait-seconds", "60"]).wait_seconds == 60.0
+    for value in ("-1", "nan", "soon"):
+        with pytest.raises(SystemExit):
+            parse(["--run-dir", "run", "--wait-seconds", value])
+
+
 def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     tmp_path, monkeypatch, capsys
 ):
@@ -1656,7 +2500,7 @@ def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     monkeypatch.setattr(
         telemetry_support,
         "client_factory",
-        lambda: RefreshFails(hub_files=hub.files),
+        lambda: RefreshFails(hub_files=hub.files, hub_api=hub),
     )
     status, out = run_dense_main(
         tmp_path,
@@ -1946,6 +2790,7 @@ def test_national_interrupt_records_a_discarded_row_and_re_raises(
     one: the seam's terminal-disposition contract, kept by the driver (the
     failure sidecar names the interrupt, the row says ``discarded``, the
     interrupt propagates)."""
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     argv = _national_argv(tmp_path)
     monkeypatch.setattr(cli, "preflight_staged_dataset", lambda args: None)
     monkeypatch.setattr(
@@ -2013,6 +2858,7 @@ def test_dense_validation_result_matches_emitted_run_status(
 def test_build_lifecycle_handles_returned_errors_and_exceptions(
     tmp_path, monkeypatch, fake_telemetry_emitters, role, outcome
 ):
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     args = (
         arguments(tmp_path)
         if role == "dense"
@@ -2339,6 +3185,7 @@ def test_a_sigterm_during_the_national_build_records_a_discarded_row(
     tmp_path, monkeypatch
 ):
     """The national line routes a SIGTERM through its interrupt arm too."""
+    monkeypatch.setenv(SIGNING_KEY_ENV, TEST_SIGNING_KEY)
     argv = _national_argv(tmp_path)
     monkeypatch.setattr(cli, "preflight_staged_dataset", lambda args: None)
     monkeypatch.setattr(
@@ -3371,3 +4218,39 @@ def test_the_orrery_publication_is_off_unless_asked(tmp_path):
     assert not publication_enabled(arguments(tmp_path))
     assert not publication_enabled(arguments(tmp_path, "--no-publish-orrery"))
     assert publication_enabled(arguments(tmp_path, "--publish-orrery"))
+
+
+def test_a_dense_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    tmp_path, monkeypatch
+):
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the full build stops first.
+
+    It starts its emitter after reading and checking its arguments, so with
+    the real adapter (not the shared fixture's in-memory one) it stops before
+    its attempt reads an input or writes anything.
+    """
+    from microcosm.build import telemetry_emitter
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+    args = arguments(tmp_path)
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+
+    def went_on(*positional, **named):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's next step after starting its emitter.
+    monkeypatch.setattr(cli, "_dense_attempt", went_on)
+    before = sorted(tmp_path.rglob("*"))
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        cli.main([])
+
+    assert raised.value.reason == "command_not_found"
+    assert sorted(tmp_path.rglob("*")) == before

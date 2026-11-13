@@ -2,24 +2,36 @@
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import inspect
 import json
 import os
+import re
 import shlex
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime import spm_measurement_gate
+from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
+    load_reviewed_fill_consumer_register,
+    reviewed_fill_register_failures,
+    reviewed_fill_register_sha256,
+)
 from microcosm.build.us_runtime.org_wages import (
     US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
 )
 from microcosm.data import stored_inputs
+from microcosm.data.build_folder_manifests import publication_commands
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -66,6 +78,29 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
         }
     ),
 )
+
+
+#: The policyengine-us version the reviewed-fill register was reviewed against.
+_REVIEWED_ENGINE = load_reviewed_fill_consumer_register()["reviewed_against"][
+    "policyengine_us"
+]
+
+
+@pytest.fixture(autouse=True)
+def _the_release_runs_the_reviewed_engine(monkeypatch):
+    """The reviewed-fill gate compares the installed policyengine-us with the
+    register's reviewed_against (microcosm#1071 review). The engine-free lane
+    has none installed, so every loaded tool reports the reviewed version; the
+    tests that pin the comparison set another on their module."""
+
+    load = _load_tool_module
+
+    def load_with_the_reviewed_engine():
+        module = load()
+        module._installed_engine_version = lambda: _REVIEWED_ENGINE
+        return module
+
+    monkeypatch.setitem(globals(), "_load_tool_module", load_with_the_reviewed_engine)
 
 
 @pytest.fixture(autouse=True)
@@ -124,6 +159,16 @@ def _spm_measurement_gate_passes(monkeypatch):
             details=dict(_MEASURABLE_DETAILS),
         ),
     )
+
+
+def _writer_code(module) -> dict:
+    """This checkout's code identity, as the calibrate stage records it."""
+
+    return module._repo_code_identity(allow_dirty=True)
+
+
+#: A code identity as the calibrate stage reads it when it starts.
+_STARTED_CODE = {"sha": "a" * 9, "commit": "a" * 40, "dirty": False, "branch": "main"}
 
 
 def _load_tool_module():
@@ -467,9 +512,161 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "low_effective_sample_size_lambda_zero",
         "donor_sparse_selection_training_set",
         "mixed_sub_puma_column_coverage",
+        "acs_immigration_status_method",
+        "acs_work_disability_inputs",
+        "acs_local_ssi_medicaid_take_up",
+        "acs_snap_receipt_anchor",
+        "acs_household_vehicle_value_default",
     ):
         assert required in by_id, required
         assert by_id[required]["calibration_blocker"] is False
+    # microcosm#1022: the native FS receipt anchor is a reviewed method; PAP
+    # is recorded, not applied.
+    anchor = by_id["acs_snap_receipt_anchor"]
+    assert anchor["status"] == "reviewed_modeling_decision"
+    assert anchor["affected_spines"] == ["acs_2024_1yr"]
+    assert anchor["columns"] == ["receives_snap", "receives_tanf"]
+    assert "acs_local_receipt_anchor_signal" in anchor["treatment"]
+    assert "12.2%" in anchor["treatment"]
+    for fragment in (
+        "microcosm#1022",
+        "household FS",
+        "at least one SPM unit",
+        "reference person's unit is set True",
+        "not forced to report the family's receipt",
+        "group quarters",
+        "SPM_SNAPSUB",
+        "PAP > 0 is not TANF receipt",
+        "microcosm#591",
+        # microcosm#1062 review C2: the one-unit partition's roommate case.
+        "Known limitation",
+        "buys and prepares food apart",
+        "microcosm#1023",
+        "microcosm#1061",
+        "microcosm#1353",
+        "roommate or housemate (RELSHIPP 34)",
+        "once a split is restored",
+        "one-unit roommate error",
+    ):
+        assert fragment in anchor["reason"], fragment
+    assert "acs_snap_receipt_anchor" in (by_id["acs_take_up_engine_defaults"]["reason"])
+    # microcosm#1021: native ACS disability is a reviewed method; weeks worked
+    # is staged only, and is_veteran is documented, not exported.
+    work_disability = by_id["acs_work_disability_inputs"]
+    assert work_disability["status"] == "reviewed_modeling_decision"
+    assert set(work_disability["columns"]) == {"is_disabled", "is_blind"}
+    assert "acs_local_work_disability_signal" in work_disability["treatment"]
+    for fragment in ("SSIP > 0 under age 65", "policyengine-us#9660", "MIL == 2"):
+        assert fragment in work_disability["reason"]
+    # microcosm#1022: the engine-free fills are a reviewed method, and
+    # Medicare is no longer listed as an engine-default take-up flag.
+    fills = by_id["acs_engine_free_default_fills"]
+    assert fills["status"] == "reviewed_modeling_decision"
+    assert fills["calibration_blocker"] is False
+    assert set(fills["columns"]) == {
+        "is_snap_abawd_discretionary_exempt",
+        "receives_housing_assistance",
+        "takes_up_medicare_if_eligible",
+        "takes_up_head_start_if_eligible",
+    }
+    assert "acs_local_take_up_signal" in fills["treatment"]
+    for fragment in (
+        "Four inputs",
+        "SERIALNO:SPORDER",
+        "microcosm#975",
+        "HINS3 == 1",
+        "ACS VEH is not filled into household_vehicles_owned",
+        "microcosm#1064 review",
+        "TVEH_NUM",
+        "sipp_head_start",
+        "acs_household_vehicle_value_default",
+        "cap-based proxy, not an observed exemption assignment",
+        "upper-bound propensity",
+    ):
+        assert fragment in fills["reason"], fragment
+    assert "Head Start take-up only at ages 3-5" in fills["treatment"]
+    assert "no ACS owned vehicle count but the default" in fills["treatment"]
+    assert "counts equal to VEH" not in fills["treatment"]
+    assert "Blank and invalid HINS3 counts" in fills["treatment"]
+    # microcosm#1022 and the #1064 review: both ACS vehicle columns keep their
+    # default; VEH is availability, not the owned count.
+    value = by_id["acs_household_vehicle_value_default"]
+    assert value["status"] == "reviewed_modeling_decision"
+    assert value["calibration_blocker"] is False
+    assert value["affected_spines"] == ["acs_2024_1yr"]
+    assert value["columns"] == ["household_vehicles_owned", "household_vehicles_value"]
+    for fragment in (
+        "microcosm#1022",
+        "microcosm#1064 review",
+        "Both ACS vehicle columns stay at the reviewed engine default",
+        "long-term leased and employer-provided ones included",
+        "TVEH_NUM",
+        "ca_sf_caap_vehicle_eligible",
+        "la_general_relief_motor_vehicle_value_eligible",
+        "lives_in_vehicle",
+        "leases two cars and owns none",
+        "no vehicles-available input",
+        "overstate eligibility",
+        "the same direction as the zero value",
+        "harmless for SNAP",
+        "meets_tanf_non_cash_asset_test",
+        "$22,500",
+        "SNAP's own asset test reads no vehicle",
+        "TANF is SNAP unearned income",
+    ):
+        assert fragment in value["reason"], fragment
+    for fragment in (
+        "Reviewed-null fill to 0 for both",
+        "fails on an ACS owned count other than 0",
+        "engine_free_fills.vehicles_available",
+        "VEH as a predictor rather than the count",
+    ):
+        assert fragment in value["treatment"], fragment
+    # microcosm#1022: the ACS SSI disability criteria are a reviewed method,
+    # and SSI take-up is assigned against them.
+    ssi = by_id["acs_local_ssi_disability_criteria"]
+    assert ssi["status"] == "reviewed_modeling_decision"
+    assert ssi["calibration_blocker"] is False
+    assert ssi["columns"] == ["meets_ssi_disability_criteria"]
+    assert "acs_local_ssi_disability_signal" in ssi["treatment"]
+    for fragment in ("PEDIS*", "SERIALNO:SPORDER", "acs_local_ssi_medicaid_take_up"):
+        assert fragment in ssi["reason"]
+    defaults = by_id["acs_take_up_engine_defaults"]["reason"]
+    assert "EITC, ACA, Early Head Start" in defaults
+    assert "Medicare take-up is native ACS HINS3" in defaults
+    assert "Head Start take-up a keyed draw" in defaults
+    assert "acs_local_ssi_medicaid_take_up" in defaults
+    for stale in ("Medicaid, SSI", "SSI, Head Start"):
+        assert stale not in defaults
+    # microcosm#1022: ACS SSI and Medicaid take-up are a reviewed method.
+    take_up = by_id["acs_local_ssi_medicaid_take_up"]
+    assert take_up["status"] == "reviewed_modeling_decision"
+    assert take_up["calibration_blocker"] is False
+    assert take_up["columns"] == list(_SSI_MEDICAID)
+    assert "acs_local_ssi_medicaid_take_up_signal" in take_up["treatment"]
+    for fragment in (
+        "HINS4 == 1",
+        "SSIP",
+        "after the donor rows' pooled recipients",
+        "count minus contribution",
+        "probability residual / anchored eligible weight",
+        "SERIALNO:SPORDER",
+        "under-18",
+    ):
+        assert fragment in take_up["reason"]
+    # microcosm#1060 review: the share-scaled targets are gone.
+    assert "share of the frame" not in take_up["reason"]
+    assert "the donor contribution" in take_up["treatment"]
+    # microcosm#1020: the ACS immigration inputs are a reviewed method, not
+    # an engine-default gap.
+    immigration = by_id["acs_immigration_status_method"]
+    assert immigration["status"] == "reviewed_modeling_decision"
+    assert set(immigration["columns"]) == {
+        "immigration_status_str",
+        "ssn_card_type",
+        "years_since_us_entry",
+    }
+    assert "acs_local_immigration_signal" in immigration["treatment"]
     ssi = by_id["ssi_aged_band_collapse_inherited"]
     assert ssi["measured_spine_ssi"] == {
         "acs_2024_1yr": 0.0259,
@@ -477,6 +674,42 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     }
     donor = by_id["donor_sparse_selection_training_set"]
     assert "populace-us-2024-buildo-sparse-rmloss100-x" in donor["reason"]
+    # microcosm#1022: the reviewed default fills that remain carry their
+    # means-tested consumer notes.
+    register = by_id["acs_reviewed_default_fill_consumers"]
+    assert register["status"] == "reviewed_modeling_decision"
+    assert register["calibration_blocker"] is False
+    assert register["register"] == "acs_local_reviewed_fill_consumers.yaml"
+    assert register["register_sha256"] == reviewed_fill_register_sha256(
+        load_reviewed_fill_consumer_register()
+    )
+    assert register["known_bias"]["household.household_vehicles_value"] == [
+        "aca_ptc",
+        "chip",
+        "general_assistance",
+        "head_start",
+        "lifeline",
+        "medicaid",
+        "school_meals",
+        "snap",
+        "state_benefits",
+        "tanf",
+        "wic",
+    ]
+    register_entries = load_reviewed_fill_consumer_register()["entries"]
+    for fragment in (
+        f"{len(register_entries)} entries",
+        "policyengine-us 2.2.1",
+        "spm_unit.spm_unit_energy_subsidy (liheap)",
+        "tax_unit.takes_up_eitc (",
+    ):
+        assert fragment in register["reason"], fragment
+    assert "acs_local_reviewed_fill_consumers" in register["treatment"]
+    assert (
+        "acs_reviewed_default_fill_consumers"
+        in by_id["acs_household_vehicle_value_default"]["treatment"]
+    )
+    assert "acs_reviewed_default_fill_consumers" in defaults
     # Every published donor predates microcosm#1186, so the inherited
     # Social Security erasure is disclosed by default.
     social_security = by_id["social_security_cps_reporters_erased_inherited"]
@@ -521,6 +754,46 @@ def test_a_donor_verified_free_of_the_social_security_erasure_drops_the_disclosu
     assert "social_security_cps_reporters_erased_inherited" not in ids()
 
 
+def test_a_build_folder_donor_is_named_by_its_build_in_the_limitations(
+    monkeypatch,
+) -> None:
+    """microcosm#1570: staging records a donor in a build folder by release
+    and build, with no release_id. The limitations name it by its build ID,
+    the ID the Social Security register is keyed by, as they name a tag
+    donor by its release_id."""
+
+    module = _load_tool_module()
+    build = "populace-us-2024-spm-receipts-20261201"
+    staging_summary = {
+        "base": {
+            "donor_release": {
+                "repo_id": "policyengine/populace-us",
+                "release": "microcosm-us-2024-receipt-donor",
+                "build": build,
+            }
+        },
+        "reviewed_limitations": [],
+    }
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+
+    def by_id():
+        return {
+            item["id"]: item
+            for item in module.finalize_reviewed_limitations(
+                staging_summary, diagnostics, {}
+            )
+        }
+
+    limitations = by_id()
+    social_security = limitations["social_security_cps_reporters_erased_inherited"]
+    assert social_security["donor_release"] == build
+    assert f"({build})" in limitations["donor_sparse_selection_training_set"]["reason"]
+    monkeypatch.setattr(
+        module, "DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE", frozenset({build})
+    )
+    assert "social_security_cps_reporters_erased_inherited" not in by_id()
+
+
 def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> None:
     """microcosm#1263: the limitation follows the consumer export's receipt."""
 
@@ -543,6 +816,7 @@ def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> No
                 "from": "would_claim_wic",
                 "to": "takes_up_wic_if_eligible",
                 "people_assumed_true": 12,
+                "people_allowed_without_decision": 20,
                 "flip_condition": "Drop it once microcosm#1156 lands.",
             }
         }
@@ -551,6 +825,16 @@ def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> No
     assert entry["status"] == "reviewed_interim_assumption"
     assert entry["column"] == "takes_up_wic_if_eligible"
     assert entry["people_assumed_true"] == 12
+    # The text claims only what the rule did: the people without a decision.
+    assert (
+        "every person without one (12, all on the ACS spine, of 20" in entry["reason"]
+    )
+    # A receipt from before the count existed renders no count it lacks.
+    older = json.loads(json.dumps(applied))
+    del older["live_stored_inputs"]["wic"]["people_allowed_without_decision"]
+    older_reason = limitation(older)["reason"]
+    assert "None" not in older_reason
+    assert "every person without one (12, all on the ACS spine) is set" in older_reason
     assert entry["treatment"] == "Drop it once microcosm#1156 lands."
     assert entry["calibration_blocker"] is False
     assert limitation(None) is None
@@ -611,6 +895,260 @@ def test_only_acs_spine_people_may_lack_a_wic_decision() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "spine",
+    [np.nan, None, b"acs_2024_1yr", "ACS_2024_1YR"],
+    ids=["nan", "none", "bytes", "other-label"],
+)
+def test_an_unreadable_spine_tag_refuses_rather_than_fills(spine) -> None:
+    """A person whose tag is not exactly the ACS spine may not lack one."""
+
+    module = _load_tool_module()
+    frame = _spine_frame(["acs_2024_1yr", spine], [None, None])
+
+    with pytest.raises(SystemExit, match="did not allow"):
+        module._with_live_stored_inputs(frame)
+
+
+def test_a_person_table_without_the_spine_tag_is_refused() -> None:
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _spine_frame(["acs_2024_1yr"], [None])
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = tables["person"].drop(columns="person_spine")
+    untagged = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    with pytest.raises(SystemExit, match="person_spine"):
+        module._with_live_stored_inputs(untagged)
+
+
+@pytest.mark.parametrize(
+    ("written_by", "allow_dirty", "match"),
+    [
+        (None, True, "records no code identity"),
+        ({"sha": "abc1234"}, True, "records no code identity"),
+        ({"commit": ""}, True, "records no code identity"),
+        ({"commit": "0" * 40, "dirty": False}, True, "written by code 0000000"),
+        ({"commit": "a" * 40, "dirty": True}, False, "dirty tree"),
+        (
+            {"commit": "a" * 40},
+            False,
+            r"does not say the tree was clean \(dirty=None\)",
+        ),
+        ({"commit": "a" * 40, "dirty": None}, False, "does not say the tree was clean"),
+        ({"commit": "a" * 40, "dirty": 0}, False, r"does not say .*\(dirty=0\)"),
+    ],
+    ids=[
+        "absent",
+        "short-sha-only",
+        "empty",
+        "other-commit",
+        "dirty-writer",
+        "no-dirty-key",
+        "dirty-null",
+        "dirty-zero",
+    ],
+)
+def test_package_gives_a_build_an_id_only_for_the_code_that_wrote_it(
+    written_by, allow_dirty, match
+) -> None:
+    """The build's ID names the packaging code, so that code must have
+    written the calibrated bytes (reviews of microcosm#1309 and #1311)."""
+
+    module = _load_tool_module()
+    code = {"sha": "aaaaaaaaa", "commit": "a" * 40, "dirty": False, "branch": "main"}
+    export = {} if written_by is None else {"code": written_by}
+
+    with pytest.raises(SystemExit, match=match) as refused:
+        module._require_artifact_written_by(export, code, allow_dirty=allow_dirty)
+    # Since microcosm#1571 the release is fixed and the build's ID names the
+    # code, so no refusal speaks of naming a release.
+    assert "release" not in str(refused.value)
+    assert "build's ID" in str(refused.value)
+
+    # The abbreviated sha may differ in length between checkouts; only the
+    # full commit is compared.
+    assert (
+        module._require_artifact_written_by(
+            {"code": {"sha": "aaaaaaa", "commit": "a" * 40, "dirty": False}},
+            code,
+            allow_dirty=False,
+        )
+        is False
+    )
+    assert (
+        module._require_artifact_written_by(
+            {"code": {"commit": "a" * 40, "dirty": True}}, code, allow_dirty=True
+        )
+        is True
+    )
+    # A record that does not say it was clean marks the build dirty.
+    assert (
+        module._require_artifact_written_by(
+            {"code": {"commit": "a" * 40}}, code, allow_dirty=True
+        )
+        is True
+    )
+
+
+def test_the_writer_binding_speaks_of_the_build_not_the_release() -> None:
+    """Since microcosm#1571 a build's ID names the code and the release's ID
+    does not; the binding's docstring and the runbook say so."""
+
+    module = _load_tool_module()
+    doc = inspect.getdoc(module._require_artifact_written_by)
+
+    assert "build's ID names the packaging code" in doc
+    assert "release" not in doc
+
+    runbook = _TEST_PATHS.repository / "docs" / "us-modal-stage-runbook.md"
+    text = runbook.read_text()
+    start = text.index("For `us-acs-local-release`, run package at the commit")
+    paragraph = " ".join(text[start : text.index("\n\n", start)].split())
+    assert "The build's ID names the packaging code" in paragraph
+    assert "name a release" not in paragraph
+
+
+@functools.cache
+def _tool_module_once():
+    """One load of the tool, for tests that patch nothing on it."""
+
+    return _load_tool_module()
+
+
+@pytest.mark.parametrize(
+    ("writer_commit", "packaging_commit"),
+    [(1, 1), (True, 1), (["a" * 40], ["a" * 40])],
+    ids=["equal-integers", "true-equals-one", "equal-lists"],
+)
+def test_a_commit_that_is_not_a_string_names_no_code(
+    writer_commit, packaging_commit
+) -> None:
+    """Equal values bind a build to its writer only when they are commit
+    strings: ``True == 1`` binds nothing."""
+
+    module = _tool_module_once()
+    code = {
+        "sha": "aaaaaaa",
+        "commit": packaging_commit,
+        "dirty": False,
+        "branch": "main",
+    }
+    export = {"code": {"commit": writer_commit, "dirty": False}}
+
+    with pytest.raises(SystemExit, match="records no code identity"):
+        module._require_artifact_written_by(export, code, allow_dirty=True)
+
+
+_HEX = "0123456789abcdef"
+#: What a writer record may hold for its tree's state; ``False`` is the only
+#: one that says the tree was clean, and it is drawn more often.
+_DIRTY_VALUES = st.sampled_from([False, False, False, True, None, 0, 1, "false", ""])
+
+
+def _packaging_commits():
+    """A packaging identity's commit: a full commit, or anything else."""
+
+    return st.one_of(
+        st.text(_HEX, min_size=40, max_size=40),
+        st.text(_HEX, min_size=40, max_size=40),
+        st.text(_HEX, max_size=40),
+        st.text(max_size=8),
+        st.none(),
+        st.booleans(),
+        st.integers(),
+    )
+
+
+def _records_naming(commit):
+    """A ``consumer_export.json`` whose writer record names ``commit``."""
+
+    record = st.fixed_dictionaries(
+        {"commit": st.just(commit)},
+        optional={"dirty": _DIRTY_VALUES, "sha": st.just("abc1234")},
+    )
+    return st.fixed_dictionaries({"code": record})
+
+
+def _other_records(commit):
+    """Any other ``consumer_export.json``, with near misses of ``commit``."""
+
+    near = [commit, 1, True]
+    if isinstance(commit, str):
+        near += [commit.upper(), commit[:7], f"{commit} "]
+    commits = st.one_of(
+        st.sampled_from(near),
+        st.text(_HEX, max_size=40),
+        st.none(),
+        st.integers(),
+    )
+    records = st.one_of(
+        st.fixed_dictionaries({"commit": commits}, optional={"dirty": _DIRTY_VALUES}),
+        st.fixed_dictionaries(
+            {}, optional={"sha": st.just("abc1234"), "dirty": _DIRTY_VALUES}
+        ),
+        st.none(),
+        st.text(max_size=5),
+        st.lists(st.just(commit), max_size=2),
+    )
+    return st.one_of(st.just({}), st.fixed_dictionaries({"code": records}))
+
+
+@settings(max_examples=200, deadline=None, database=None)
+@given(data=st.data())
+def test_the_writer_binding_returns_only_for_its_own_clean_or_allowed_writer(
+    data,
+) -> None:
+    """For any writer record and any packaging identity, package goes on only
+    when the two commits are equal, non-empty strings and the writer said it
+    was clean or dirt is allowed; otherwise it refuses. It reads a writer as
+    clean only for an explicit ``dirty: false``.
+    """
+
+    module = _tool_module_once()
+    commit = data.draw(_packaging_commits())
+    code = {
+        "sha": "abc1234",
+        "commit": commit,
+        "dirty": data.draw(st.booleans()),
+        "branch": "main",
+    }
+    # Half the records name the packaging commit, so the dirty rule is reached.
+    records = _records_naming if data.draw(st.booleans()) else _other_records
+    export = data.draw(records(commit))
+    allow_dirty = data.draw(st.booleans())
+
+    written_by = export.get("code")
+    writer_commit = written_by.get("commit") if isinstance(written_by, dict) else None
+    same_commit = (
+        isinstance(writer_commit, str)
+        and writer_commit != ""
+        and writer_commit == commit
+    )
+    said_clean = same_commit and written_by.get("dirty") is False
+    if same_commit and (said_clean or allow_dirty):
+        writer_dirty = module._require_artifact_written_by(
+            export, code, allow_dirty=allow_dirty
+        )
+        assert writer_dirty is (not said_clean)
+    else:
+        with pytest.raises(SystemExit):
+            module._require_artifact_written_by(export, code, allow_dirty=allow_dirty)
+
+
+def test_the_recorded_code_identity_carries_the_full_commit() -> None:
+    module = _load_tool_module()
+    code = module._repo_code_identity(allow_dirty=True)
+
+    assert len(code["commit"]) == 40
+    assert code["commit"].startswith(code["sha"])
+
+
 def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:
     module = _load_tool_module()
     base = [
@@ -648,10 +1186,19 @@ def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:
 
 
 def test_release_id_prefix_and_manifest_constants() -> None:
+    """Build IDs keep their populace-us-2024-buildo-acs-local form; the
+    dataset is the local-area release's file (microcosm#1570)."""
+    from microcosm.data import contract
+
     module = _load_tool_module()
     assert module.RELEASE_ID_PREFIX == "populace-us-2024-buildo-acs-local"
     assert module.RELEASE_NAMESPACE == "buildo_acs_local"
-    assert module.ARTIFACT_FILENAME == "populace_us_2024_acs_local.h5"
+    assert module.ARTIFACT_NAME == "microcosm_us_2024_acs_local"
+    assert module.ARTIFACT_FILENAME == "microcosm_us_2024_acs_local.h5"
+    assert (
+        module.ARTIFACT_FILENAME
+        == (contract.US_RELEASE_DATASET_FILES[contract.US_LOCAL_RELEASE_ID])
+    )
     assert module.HF_REPO_ID == "policyengine/populace-us"
 
 
@@ -834,34 +1381,1548 @@ def test_reviewed_null_fill_refuses_to_default_fill_take_up(tmp_path) -> None:
     assert spm_unit["takes_up_snap_if_eligible"].isna().sum() == 2
 
 
+_ENGINE_FREE_FILLS = (
+    ("person", "is_snap_abawd_discretionary_exempt"),
+    ("spm_unit", "receives_housing_assistance"),
+    ("person", "takes_up_medicare_if_eligible"),
+    ("person", "takes_up_head_start_if_eligible"),
+)
+
+#: A current materialize receipt, as run_identity.json records it: the
+#: engine-free fills and the ACS VEH availability receipt (#1064 review).
+_TAKE_UP_RECEIPT = {
+    "seed": 0,
+    "assigned_sha256": "a" * 64,
+    "engine_free_fills": {
+        "issue": "microcosm#1022",
+        "columns": {column: {} for _, column in _ENGINE_FREE_FILLS},
+        "vehicles_available": {"households": 4},
+    },
+}
+
+
 def test_take_up_consumers_refuse_a_checkpoint_without_the_assignment() -> None:
     module = _load_tool_module()
     for identity in (
         {},
-        {"acs_local_take_up": {"seed": "0", "assigned_sha256": "a" * 64}},
-        {"acs_local_take_up": {"seed": 0}},
+        {"acs_local_take_up": {**_TAKE_UP_RECEIPT, "seed": "0"}},
+        {"acs_local_take_up": {"seed": 0, "engine_free_fills": {}}},
     ):
         with pytest.raises(SystemExit, match="Re-run --stage materialize"):
             module._recorded_take_up(identity)
-    recorded = {"seed": 3, "assigned_sha256": "a" * 64}
+    recorded = {**_TAKE_UP_RECEIPT, "seed": 3}
     assert module._recorded_take_up({"acs_local_take_up": recorded}) == recorded
+
+
+@pytest.mark.parametrize(
+    "fills", [None, {}, {"issue": "microcosm#1019"}], ids=["absent", "empty", "stale"]
+)
+def test_take_up_consumers_refuse_a_pre_1022_checkpoint(fills) -> None:
+    """A checkpoint materialized before #1022 calibrated against ACS rows
+    whose three engine-free inputs sat at the engine default."""
+
+    module = _load_tool_module()
+    receipt = {"seed": 0, "assigned_sha256": "a" * 64}
+    if fills is not None:
+        receipt["engine_free_fills"] = fills
+    with pytest.raises(SystemExit, match=r"microcosm#1022.*Re-run --stage materialize"):
+        module._recorded_take_up({"acs_local_take_up": receipt})
+
+
+def test_take_up_consumers_refuse_a_checkpoint_before_the_head_start_fill() -> None:
+    """A checkpoint whose engine-free fills omit Head Start take-up
+    calibrated against its engine default, universal take-up."""
+
+    module = _load_tool_module()
+    fills = dict(_TAKE_UP_RECEIPT["engine_free_fills"])
+    fills["columns"] = {
+        column: {}
+        for column in fills["columns"]
+        if column != "takes_up_head_start_if_eligible"
+    }
+    receipt = {**_TAKE_UP_RECEIPT, "engine_free_fills": fills}
+    with pytest.raises(SystemExit, match=r"without Head Start take-up"):
+        module._recorded_take_up({"acs_local_take_up": receipt})
+
+
+@pytest.mark.parametrize(
+    "owned_fill, availability",
+    [(True, False), (True, True), (False, False)],
+    ids=["before_the_1064_review", "owned_fill", "no_availability_receipt"],
+)
+def test_take_up_consumers_refuse_a_checkpoint_that_wrote_veh_as_the_owned_count(
+    owned_fill, availability
+) -> None:
+    """microcosm#1064 review: before it, materialize wrote ACS VEH (vehicles
+    available) as household_vehicles_owned, recorded it as a fill and kept
+    no availability receipt. Its engine pass and digest cover counts this
+    build no longer writes, so calibrate and the export refuse it early."""
+
+    module = _load_tool_module()
+    fills = {
+        "issue": "microcosm#1022",
+        "columns": {column: {} for _, column in _ENGINE_FREE_FILLS},
+    }
+    if owned_fill:
+        fills["columns"]["household_vehicles_owned"] = {"filled_rows": 4}
+    if availability:
+        fills["vehicles_available"] = {"households": 4}
+    receipt = {**_TAKE_UP_RECEIPT, "engine_free_fills": fills}
+    with pytest.raises(
+        SystemExit,
+        match=r"ACS VEH written as the owned vehicle count.*Re-run --stage materialize",
+    ):
+        module._recorded_take_up({"acs_local_take_up": receipt})
+
+
+def test_engine_free_fills_are_never_default_filled() -> None:
+    """microcosm#1022: each engine default ignores measured or donor evidence
+    on ACS rows. Both vehicle columns keep their reviewed default: the ACS has
+    no value item, and VEH counts vehicles available, not owned (#1064
+    review)."""
+
+    module = _load_tool_module()
+    for key in _ENGINE_FREE_FILLS:
+        assert key in module.NEVER_DEFAULT_FILLED
+        assert "microcosm#1022" in module._NEVER_DEFAULT_FILLED_REASONS[key]
+    for column in ("household_vehicles_owned", "household_vehicles_value"):
+        assert ("household", column) not in module.NEVER_DEFAULT_FILLED
+
+
+def test_reviewed_null_fill_allows_the_acs_owned_vehicle_count(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1064 review: the ACS owned vehicle count is a reviewed
+    default fill again. The fill gets past the never-default refusal and on to
+    the engine import, which this engine-free test blocks, instead of raising
+    DeniedDefaultFillError."""
+
+    import sys
+
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    n = len(frame.table("household"))
+    household = frame.table("household").assign(
+        household_vehicles_owned=np.where(
+            np.arange(n) < n // 2, np.arange(n) % 3, np.nan
+        )
+    )
+    frame = Frame(
+        {
+            name: household if name == "household" else frame.table(name)
+            for name in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {
+                        "entity": "household",
+                        "column": "household_vehicles_owned",
+                        "missing_rows": n - n // 2,
+                    }
+                ]
+            }
+        )
+    )
+    monkeypatch.setitem(sys.modules, "policyengine_us", None)
+    with pytest.raises(ImportError):
+        module.fill_reviewed_nulls(frame, summary)
+
+
+@pytest.mark.parametrize("entity,column", _ENGINE_FREE_FILLS)
+def test_reviewed_null_fill_refuses_to_default_fill_engine_free_inputs(
+    tmp_path, entity, column
+) -> None:
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    table = frame.table(entity).assign(**{column: [True, False] * 3 + [np.nan] * 2})
+    frame = Frame(
+        {
+            name: table if name == entity else frame.table(name)
+            for name in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {"entity": entity, "column": column, "missing_rows": 2}
+                ]
+            }
+        )
+    )
+    with pytest.raises(
+        module.DeniedDefaultFillError, match=rf"{entity}\.{column} \(2 null rows\)"
+    ):
+        module.fill_reviewed_nulls(frame, summary)
+    assert table[column].isna().sum() == 2
+
+
+_IMMIGRATION_COLUMNS = (
+    "immigration_status_str",
+    "ssn_card_type",
+    "years_since_us_entry",
+)
+
+
+def test_immigration_inputs_are_never_default_filled() -> None:
+    """microcosm#1020: the engine defaults are a citizen with a valid SSN and
+    5 years since entry, so none of the three may ever be the fill."""
+
+    module = _load_tool_module()
+    for column in _IMMIGRATION_COLUMNS:
+        assert ("person", column) in module.NEVER_DEFAULT_FILLED
+
+
+def test_reviewed_null_fill_refuses_to_default_fill_immigration(tmp_path) -> None:
+    """A missing immigration cell is refused even when the staging register
+    lists it: the default fill is how every ACS person became a citizen."""
+
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    person = frame.table("person").assign(
+        immigration_status_str=["CITIZEN"] * 5 + [None] * 3,
+        ssn_card_type=["CITIZEN"] * 5 + [None] * 3,
+        years_since_us_entry=[40.0] * 7 + [np.nan],
+    )
+    frame = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {"entity": "person", "column": column, "missing_rows": 3}
+                    for column in _IMMIGRATION_COLUMNS
+                ]
+            }
+        )
+    )
+    with pytest.raises(module.DeniedDefaultFillError) as exc:
+        module.fill_reviewed_nulls(frame, summary)
+    message = str(exc.value)
+    assert "person.immigration_status_str (3 null rows)" in message
+    assert "person.ssn_card_type (3 null rows)" in message
+    assert "person.years_since_us_entry (1 null rows)" in message
+    assert "microcosm#1020" in message
+    assert "re-run staging" in message
+    # Refused before anything was filled.
+    assert person["ssn_card_type"].isna().sum() == 3
+    assert person["years_since_us_entry"].isna().sum() == 1
+
+
+def _residual_controls(**worker_overrides) -> dict:
+    """A donor-residual controls block (microcosm#1052 review)."""
+
+    def status(control: float, donor: float, assigned: float) -> dict:
+        return {
+            "control": control,
+            "donor_delivered": donor,
+            "residual": max(0.0, control - donor),
+            "acs_assigned": assigned,
+            "pooled_total": donor + assigned,
+        }
+
+    return {
+        "method": "national_control_minus_donor_pooled_delivered",
+        "statuses": {
+            "undocumented_workers": {
+                **status(8.3e6, 3.0e6, 5.3e6),
+                **worker_overrides,
+            },
+            "undocumented_students": status(4.08e5, 1.0e5, 3.08e5),
+        },
+    }
+
+
+def _staging_immigration_summary(**overrides) -> dict:
+    """The two entries a current staging run records (microcosm#1020)."""
+
+    summary = {
+        "acs_local_immigration": {
+            "issue": "microcosm#1020",
+            "seed": 0,
+            "assigned_sha256": "b" * 64,
+            "controls": _residual_controls(),
+        },
+        "acs_local_immigration_gate": {
+            "name": "acs_local_immigration_signal",
+            "passed": True,
+            "failures": [],
+        },
+    }
+    summary.update(overrides)
+    return summary
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        {},
+        _staging_immigration_summary(acs_local_immigration_gate=None),
+        _staging_immigration_summary(acs_local_immigration=None),
+        _staging_immigration_summary(
+            acs_local_immigration_gate={"passed": False, "failures": ["invented"]}
+        ),
+        _staging_immigration_summary(acs_local_immigration_gate={"passed": "true"}),
+        _staging_immigration_summary(
+            acs_local_immigration={"issue": "microcosm#1019", "assigned_sha256": "b"}
+        ),
+        _staging_immigration_summary(acs_local_immigration={"issue": "microcosm#1020"}),
+        _staging_immigration_summary(
+            acs_local_immigration={
+                "issue": "microcosm#1020",
+                "assigned_sha256": "b" * 64,
+            }
+        ),
+        _staging_immigration_summary(
+            acs_local_immigration={
+                "issue": "microcosm#1020",
+                "assigned_sha256": "b" * 64,
+                "controls": _residual_controls(residual=8.3e6 * 2 / 3),
+            }
+        ),
+    ],
+    ids=[
+        "pre-1020-staging",
+        "no-gate",
+        "no-receipt",
+        "gate-failed",
+        "gate-truthy-not-true",
+        "wrong-issue",
+        "no-digest",
+        "pre-1052-review-share-scaled",
+        "targets-not-the-donor-residual",
+    ],
+)
+def test_immigration_consumers_refuse_a_staging_run_without_the_stage(summary):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match="Re-run staging"):
+        module._require_local_immigration(summary)
+
+
+def test_immigration_consumers_accept_a_current_staging_run() -> None:
+    module = _load_tool_module()
+    summary = _staging_immigration_summary()
+    assert (
+        module._require_local_immigration(summary) == summary["acs_local_immigration"]
+    )
+
+
+def test_materialize_refuses_a_pre_1020_staging_before_hashing_it(
+    tmp_path, monkeypatch
+) -> None:
+    """The refusal comes before the staging H5 is hashed or loaded."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps({"reviewed_engine_input_nulls": [{"entity": "person"}]})
+    )
+    monkeypatch.setattr(
+        module,
+        "state_admin_surface",
+        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+    )
+    # microcosm#1335: the stage reads the ladder and checks geography labels
+    # before the staging summary.
+    monkeypatch.setattr(module, "ladder_population", lambda *a, **k: {})
+    monkeypatch.setattr(module, "require_one_label_per_geography", lambda *a, **k: None)
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+    with pytest.raises(SystemExit, match="Re-run staging"):
+        module.do_materialize(args)
+    assert touched == []
+    assert not (args.checkpoint_dir / "run_identity.json").exists()
+
+
+def test_calibrate_refuses_a_pre_1020_staging_before_solving(
+    tmp_path, monkeypatch
+) -> None:
+    """A checkpoint materialized before #1020 is refused before hours of
+    solving, not by the consumer export at the end of the stage."""
+
+    module = _load_tool_module()
+    args = module._parse_args(
+        [
+            "--stage",
+            "calibrate",
+            "--staging-h5",
+            str(tmp_path / "staging.h5"),
+            "--checkpoint-dir",
+            str(tmp_path / "ckpt"),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+        ]
+    )
+    (tmp_path / "staging.summary.json").write_text(json.dumps({}))
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {"acs_local_take_up": _TAKE_UP_RECEIPT},
+    )
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match="Re-run staging"):
+        module.do_calibrate(args)
+
+
+def test_disability_inputs_are_never_default_filled() -> None:
+    """microcosm#1021: the engine default False removes every disability
+    exemption, so neither flag may ever be the reviewed-null fill."""
+
+    module = _load_tool_module()
+    for column in ("is_disabled", "is_blind"):
+        assert ("person", column) in module.NEVER_DEFAULT_FILLED
+    # weeks_worked is held back from the export, never filled (#9660).
+    assert ("person", "weeks_worked") not in module.NEVER_DEFAULT_FILLED
+
+
+def test_reviewed_null_fill_refuses_to_default_fill_disability(tmp_path) -> None:
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    person = frame.table("person").assign(
+        is_disabled=[True, False] * 3 + [None, None],
+        is_blind=[False] * 8,
+    )
+    frame = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {"entity": "person", "column": "is_disabled", "missing_rows": 2}
+                ]
+            }
+        )
+    )
+    with pytest.raises(module.DeniedDefaultFillError) as exc:
+        module.fill_reviewed_nulls(frame, summary)
+    message = str(exc.value)
+    assert "person.is_disabled (2 null rows)" in message
+    assert "microcosm#1021" in message
+    assert "is_blind" not in message
+    assert person["is_disabled"].isna().sum() == 2
+
+
+def _staging_work_disability_summary(**overrides) -> dict:
+    """A current staging run's immigration and work/disability entries."""
+
+    native = {"source": "acs_2024_1yr_native", "imputed_rows": 0}
+    summary = _staging_immigration_summary(
+        acs_local_work_disability={
+            "issue": "microcosm#1021",
+            "acs_persons": 4,
+            "is_disabled": dict(native),
+            "is_blind": dict(native),
+        },
+        acs_local_work_disability_gate={
+            "name": "acs_local_work_disability_signal",
+            "passed": True,
+            "failures": [],
+        },
+    )
+    summary.update(overrides)
+    return summary
+
+
+def _work_disability_receipt(**column_overrides) -> dict:
+    receipt = _staging_work_disability_summary()["acs_local_work_disability"]
+    for column, entry in column_overrides.items():
+        receipt[column] = entry
+    return receipt
+
+
+_INCOME_TRANSFER_COLUMNS = (
+    "child_support_received",
+    "child_support_expense",
+    "workers_compensation",
+    "disability_benefits",
+    "taxable_401k_distributions",
+    "taxable_403b_distributions",
+    "taxable_sep_distributions",
+    "keogh_distributions",
+    "tax_exempt_ira_distributions",
+)
+
+
+def _income_receipt(**overrides) -> dict:
+    receipt = {
+        "issue": "microcosm#1022",
+        "method": "separate_local_qrf_pass_oip_aligned_retp_missing_cells_only",
+        "donor_channel": "asec",
+        "columns": {
+            column: {"imputed_rows": 3, "unmodeled_rows": 0}
+            for column in _INCOME_TRANSFER_COLUMNS
+        },
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+def _staging_income_summary(**overrides) -> dict:
+    """A current staging run through the income transfer (microcosm#1022)."""
+
+    summary = _staging_work_disability_summary(
+        acs_local_income_transfer=_income_receipt(),
+        acs_local_income_transfer_gate={
+            "name": "acs_local_income_transfer_signal",
+            "passed": True,
+            "failures": [],
+        },
+    )
+    summary.update(overrides)
+    return summary
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        _staging_work_disability_summary(),
+        _staging_income_summary(acs_local_income_transfer_gate=None),
+        _staging_income_summary(acs_local_income_transfer=None),
+        _staging_income_summary(
+            acs_local_income_transfer_gate={"passed": False, "failures": ["x"]}
+        ),
+        _staging_income_summary(acs_local_income_transfer_gate={"passed": "true"}),
+        _staging_income_summary(
+            acs_local_income_transfer=_income_receipt(issue="microcosm#1021")
+        ),
+        _staging_income_summary(
+            acs_local_income_transfer=_income_receipt(donor_channel="puf")
+        ),
+        # A staging run before the reviewed OIP and aligned-RETP predictors.
+        _staging_income_summary(
+            acs_local_income_transfer=_income_receipt(
+                method="separate_local_qrf_pass_missing_cells_only"
+            )
+        ),
+        _staging_income_summary(
+            acs_local_income_transfer=_income_receipt(
+                columns={
+                    column: {"imputed_rows": 3, "unmodeled_rows": 0}
+                    for column in _INCOME_TRANSFER_COLUMNS[1:]
+                }
+            )
+        ),
+        _staging_income_summary(
+            acs_local_income_transfer=_income_receipt(
+                columns={
+                    column: {"imputed_rows": 3, "unmodeled_rows": 2}
+                    for column in _INCOME_TRANSFER_COLUMNS
+                }
+            )
+        ),
+    ],
+    ids=[
+        "pre-1022-staging",
+        "no-gate",
+        "no-receipt",
+        "failed-gate",
+        "truthy-gate",
+        "wrong-issue",
+        "wrong-donor-channel",
+        "stale-method",
+        "missing-column",
+        "unmodeled-rows",
+    ],
+)
+def test_income_transfer_consumers_refuse_a_staging_run_without_the_pass(summary):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"microcosm#1022.*Re-run"):
+        module._require_local_income_transfer(summary)
+
+
+def test_income_transfer_consumers_accept_a_current_staging_run() -> None:
+    module = _load_tool_module()
+    summary = _staging_income_summary()
+    assert (
+        module._require_local_income_transfer(summary)
+        == summary["acs_local_income_transfer"]
+    )
+
+
+#: The pinned full SIPP 2023 file (ssi_disability_criteria's donor pin).
+_SIPP_SHA256 = "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
+
+
+def _ssi_disability_receipt(**overrides) -> dict:
+    receipt = {
+        "issue": "microcosm#1022",
+        "column": "meets_ssi_disability_criteria",
+        "method": "archived_sipp_qrf_on_acs_rows_missing_cells_only",
+        "filled_rows": 9,
+        "unfilled_acs_rows": 0,
+        "sipp_donor": {"sha256": _SIPP_SHA256},
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+def _staged_ssi_criteria(acs_true_rows: int = 0) -> dict:
+    """A staging SSI receipt with ``acs_true_rows`` criteria-positive ACS persons.
+
+    The package stage's SSI take-up release block reads this count. The
+    package fixtures default to 0, a run the block lets through without any
+    SSI take-up handling.
+    """
+
+    return _ssi_disability_receipt(
+        outcome={"acs_true_rows": acs_true_rows, "filled_true_rows": acs_true_rows}
+    )
+
+
+def _staging_ssi_disability_summary(**overrides) -> dict:
+    """A current staging run through the SSI disability criteria (microcosm#1022)."""
+
+    summary = _staging_income_summary(
+        acs_local_ssi_disability=_ssi_disability_receipt(),
+        acs_local_ssi_disability_gate={
+            "name": "acs_local_ssi_disability_signal",
+            "passed": True,
+            "failures": [],
+        },
+    )
+    summary.update(overrides)
+    return summary
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        _staging_income_summary(),
+        _staging_ssi_disability_summary(acs_local_ssi_disability_gate=None),
+        _staging_ssi_disability_summary(acs_local_ssi_disability=None),
+        _staging_ssi_disability_summary(
+            acs_local_ssi_disability_gate={"passed": False, "failures": ["x"]}
+        ),
+        _staging_ssi_disability_summary(
+            acs_local_ssi_disability_gate={"passed": "true"}
+        ),
+        _staging_ssi_disability_summary(
+            acs_local_ssi_disability=_ssi_disability_receipt(issue="microcosm#1021")
+        ),
+        _staging_ssi_disability_summary(
+            acs_local_ssi_disability=_ssi_disability_receipt(column="is_disabled")
+        ),
+        _staging_ssi_disability_summary(
+            acs_local_ssi_disability=_ssi_disability_receipt(method="transfer")
+        ),
+        _staging_ssi_disability_summary(
+            acs_local_ssi_disability=_ssi_disability_receipt(filled_rows="9")
+        ),
+        _staging_ssi_disability_summary(
+            acs_local_ssi_disability=_ssi_disability_receipt(unfilled_acs_rows=3)
+        ),
+        _staging_ssi_disability_summary(
+            acs_local_ssi_disability=_ssi_disability_receipt(sipp_donor=None)
+        ),
+        _staging_ssi_disability_summary(
+            acs_local_ssi_disability=_ssi_disability_receipt(
+                sipp_donor={"sha256": "0" * 64}
+            )
+        ),
+    ],
+    ids=[
+        "pre-1022-ssi-staging",
+        "no-gate",
+        "no-receipt",
+        "failed-gate",
+        "truthy-gate",
+        "wrong-issue",
+        "wrong-column",
+        "wrong-method",
+        "untyped-filled-rows",
+        "unfilled-rows",
+        "no-sipp-donor",
+        "unpinned-sipp-donor",
+    ],
+)
+def test_ssi_disability_consumers_refuse_a_staging_run_without_the_stage(summary):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"microcosm#1022.*Re-run staging"):
+        module._require_local_ssi_disability(summary)
+
+
+def test_ssi_disability_consumers_accept_a_current_staging_run() -> None:
+    module = _load_tool_module()
+    summary = _staging_ssi_disability_summary()
+    assert (
+        module._require_local_ssi_disability(summary)
+        == summary["acs_local_ssi_disability"]
+    )
+
+
+def test_ssi_disability_criteria_are_never_default_filled() -> None:
+    """microcosm#1022: the engine default False fails every ACS person under
+    65 who is not blind, so it may never be the reviewed-null fill."""
+
+    module = _load_tool_module()
+    assert ("person", "meets_ssi_disability_criteria") in module.NEVER_DEFAULT_FILLED
+
+
+def test_materialize_refuses_a_pre_ssi_disability_staging_before_hashing_it(
+    tmp_path, monkeypatch
+) -> None:
+    """A staging run through the income transfer but without the SSI
+    disability stage is refused before the staging H5 is hashed or loaded."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [{"entity": "person"}],
+                **_staging_income_summary(),
+            }
+        )
+    )
+    monkeypatch.setattr(
+        module,
+        "state_admin_surface",
+        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+    )
+    # microcosm#1335: the stage reads the ladder and checks geography labels
+    # before the staging summary.
+    monkeypatch.setattr(module, "ladder_population", lambda *a, **k: {})
+    monkeypatch.setattr(module, "require_one_label_per_geography", lambda *a, **k: None)
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+    with pytest.raises(SystemExit, match=r"SSI disability-criteria stage"):
+        module.do_materialize(args)
+    assert touched == []
+    assert not (args.checkpoint_dir / "run_identity.json").exists()
+
+
+def _calibrate_argv(tmp_path) -> list[str]:
+    return [
+        "--stage",
+        "calibrate",
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--checkpoint-dir",
+        str(tmp_path / "ckpt"),
+        "--out-h5",
+        str(tmp_path / "out.h5"),
+    ]
+
+
+def test_calibrate_refuses_a_pre_ssi_disability_staging_before_solving(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_income_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {"acs_local_take_up": _TAKE_UP_RECEIPT},
+    )
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match=r"SSI disability-criteria stage"):
+        module.do_calibrate(args)
+
+
+def test_consumer_export_refuses_a_pre_ssi_disability_staging_before_loading_it(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_income_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_load_staging_frame",
+        lambda *a, **k: pytest.fail("the export loaded the staging frame"),
+    )
+    with pytest.raises(SystemExit, match=r"SSI disability-criteria stage"):
+        module._write_calibrated_artifact(
+            args,
+            np.ones(1),
+            {"acs_local_take_up": _TAKE_UP_RECEIPT},
+            {},
+            code=_STARTED_CODE,
+        )
+
+
+# ---------------------------------------------------------------------------
+# microcosm#1022: the native ACS SNAP receipt anchor
+# ---------------------------------------------------------------------------
+
+
+def _receipt_anchor_receipt(**overrides) -> dict:
+    receipt = {
+        "issue": "microcosm#1022",
+        "method": "acs_fs_household_receipt_at_least_one_spm_unit",
+        "snap": {"fs_yes_households": 2, "units_anchored": 3},
+        "tanf": {"pap_recipients": 1, "pap_units": 1},
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+def _staging_receipt_anchor_summary(**overrides) -> dict:
+    """A current staging run through the native FS receipt anchor."""
+
+    summary = _staging_ssi_disability_summary(
+        acs_local_receipt_anchors=_receipt_anchor_receipt(),
+        acs_local_receipt_anchors_gate={
+            "name": "acs_local_receipt_anchor_signal",
+            "passed": True,
+            "failures": [],
+        },
+    )
+    summary.update(overrides)
+    return summary
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        _staging_ssi_disability_summary(),
+        _staging_receipt_anchor_summary(acs_local_receipt_anchors_gate=None),
+        _staging_receipt_anchor_summary(acs_local_receipt_anchors=None),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors_gate={"passed": False, "failures": ["x"]}
+        ),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors_gate={"passed": "true"}
+        ),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(issue="microcosm#1019")
+        ),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(
+                method="reference_unit_only"
+            )
+        ),
+        # microcosm#1062 review: staging anchored with the pre-review rule,
+        # which marked every SPM unit of an FS == 1 housing unit.
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(
+                method="acs_fs_household_receipt_on_every_spm_unit"
+            )
+        ),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(snap=None)
+        ),
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(
+                snap={"fs_yes_households": 2, "units_anchored": "3"}
+            )
+        ),
+    ],
+    ids=[
+        "pre-anchor-staging",
+        "no-gate",
+        "no-receipt",
+        "failed-gate",
+        "truthy-gate",
+        "wrong-issue",
+        "wrong-method",
+        "pre-review-method",
+        "no-counts",
+        "untyped-count",
+    ],
+)
+def test_receipt_anchor_consumers_refuse_a_staging_run_without_it(summary):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"microcosm#1022.*Re-run staging"):
+        module._require_local_receipt_anchors(summary)
+
+
+def test_receipt_anchor_consumers_accept_a_current_staging_run() -> None:
+    module = _load_tool_module()
+    summary = _staging_receipt_anchor_summary()
+    assert (
+        module._require_local_receipt_anchors(summary)
+        == summary["acs_local_receipt_anchors"]
+    )
+
+
+def test_materialize_refuses_a_pre_anchor_staging_before_hashing_it(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1022: a staging run whose ACS SNAP reporters are the QRF
+    transfer's is refused before the staging H5 is hashed or loaded."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [{"entity": "person"}],
+                **_staging_ssi_disability_summary(),
+            }
+        )
+    )
+    monkeypatch.setattr(
+        module,
+        "state_admin_surface",
+        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+    )
+    # microcosm#1335: the stage reads the ladder and checks geography labels
+    # before the staging summary.
+    monkeypatch.setattr(module, "ladder_population", lambda *a, **k: {})
+    monkeypatch.setattr(module, "require_one_label_per_geography", lambda *a, **k: None)
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+    with pytest.raises(SystemExit, match=r"SNAP receipt anchor \(microcosm#1022\)"):
+        module.do_materialize(args)
+    assert touched == []
+    assert not (args.checkpoint_dir / "run_identity.json").exists()
+
+
+def test_calibrate_refuses_a_pre_anchor_staging_before_solving(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_ssi_disability_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {"acs_local_take_up": _TAKE_UP_RECEIPT},
+    )
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match=r"SNAP receipt anchor \(microcosm#1022\)"):
+        module.do_calibrate(args)
+
+
+def test_consumer_export_refuses_a_pre_anchor_staging_before_loading_it(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_ssi_disability_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_load_staging_frame",
+        lambda *a, **k: pytest.fail("the export loaded the staging frame"),
+    )
+    with pytest.raises(SystemExit, match=r"SNAP receipt anchor \(microcosm#1022\)"):
+        module._write_calibrated_artifact(
+            args,
+            np.ones(1),
+            {"acs_local_take_up": _TAKE_UP_RECEIPT},
+            {},
+            code=_STARTED_CODE,
+        )
+
+
+# ---------------------------------------------------------------------------
+# microcosm#1022: ACS SSI and Medicaid take-up
+# ---------------------------------------------------------------------------
+
+_SSI_MEDICAID = ("takes_up_ssi_if_eligible", "takes_up_medicaid_if_eligible")
+
+
+def _ssi_medicaid_fixtures():
+    """The synthetic frames and stub engine of the stage's own tests."""
+
+    spec = importlib.util.spec_from_file_location(
+        "acs_local_ssi_medicaid_take_up_fixtures",
+        Path(__file__).with_name("test_us_acs_local_ssi_medicaid_take_up.py"),
+    )
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+def _ssi_medicaid_receipt(module, checkpoint_dir: Path, **overrides) -> dict:
+    """A current materialize receipt whose recorded assignment file exists."""
+
+    path = checkpoint_dir / module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"recorded assignment")
+    receipt = {
+        "issue": "microcosm#1022",
+        "method": module.ACS_LOCAL_SSI_MEDICAID_TAKE_UP_METHOD,
+        "seed": 0,
+        "assigned_sha256": "b" * 64,
+        "gate": {"passed": True, "failures": []},
+        "assignment_file": {"name": path.name, "sha256": module._sha256(path)},
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+def test_ssi_medicaid_take_up_is_never_default_filled() -> None:
+    """microcosm#1022: the engine default True is universal take-up."""
+
+    module = _load_tool_module()
+    for column in _SSI_MEDICAID:
+        reason = module._NEVER_DEFAULT_FILLED_REASONS[("person", column)]
+        assert ("person", column) in module.NEVER_DEFAULT_FILLED
+        assert "microcosm#1022" in reason
+        assert "universal" in reason
+
+
+@pytest.mark.parametrize("column", _SSI_MEDICAID)
+def test_reviewed_null_fill_refuses_to_default_fill_ssi_medicaid_take_up(
+    tmp_path, column
+) -> None:
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    person = frame.table("person").assign(**{column: [True, False] * 3 + [np.nan] * 2})
+    frame = Frame(
+        {
+            name: person if name == "person" else frame.table(name)
+            for name in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {"entity": "person", "column": column, "missing_rows": 2}
+                ]
+            }
+        )
+    )
+    with pytest.raises(
+        module.DeniedDefaultFillError, match=rf"person\.{column} \(2 null rows\)"
+    ):
+        module.fill_reviewed_nulls(frame, summary)
+    assert person[column].isna().sum() == 2
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        "absent",
+        "wrong_issue",
+        "wrong_method",
+        "untyped_seed",
+        "failed_gate",
+        "no_file_record",
+        "missing_file",
+        "changed_file",
+    ],
+)
+def test_ssi_medicaid_consumers_refuse_a_checkpoint_without_the_assignment(
+    tmp_path, edit
+) -> None:
+    module = _load_tool_module()
+    receipt = _ssi_medicaid_receipt(module, tmp_path)
+    recorded = tmp_path / module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+    if edit == "wrong_issue":
+        receipt["issue"] = "microcosm#1019"
+    elif edit == "wrong_method":
+        receipt["method"] = "engine_default"
+    elif edit == "untyped_seed":
+        receipt["seed"] = "0"
+    elif edit == "failed_gate":
+        receipt["gate"] = {"passed": False, "failures": ["invented band miss"]}
+    elif edit == "no_file_record":
+        del receipt["assignment_file"]
+    elif edit == "missing_file":
+        recorded.unlink()
+    elif edit == "changed_file":
+        recorded.write_bytes(b"another assignment")
+    identity = {} if edit == "absent" else {"acs_local_ssi_medicaid_take_up": receipt}
+    with pytest.raises(SystemExit, match=r"microcosm#1022.*Re-run --stage materialize"):
+        module._recorded_ssi_medicaid_take_up(identity, tmp_path)
+
+
+def test_ssi_medicaid_consumers_accept_a_current_checkpoint(tmp_path) -> None:
+    module = _load_tool_module()
+    receipt = _ssi_medicaid_receipt(module, tmp_path)
+    recorded, path = module._recorded_ssi_medicaid_take_up(
+        {"acs_local_ssi_medicaid_take_up": receipt}, tmp_path
+    )
+    assert recorded == receipt
+    assert path == tmp_path / module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+
+
+def test_materialize_resolves_the_take_up_counts_before_hashing_the_staging_h5(
+    tmp_path, monkeypatch
+) -> None:
+    """A feed without the SSA band or CMS state counts stops materialize
+    before the staging H5 is hashed or loaded."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [{"entity": "person"}],
+                **_staging_receipt_anchor_summary(),
+            }
+        )
+    )
+    monkeypatch.setattr(
+        module,
+        "state_admin_surface",
+        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+    )
+    # microcosm#1335: the stage reads the ladder and checks geography labels
+    # before the staging summary.
+    monkeypatch.setattr(module, "ladder_population", lambda *a, **k: {})
+    monkeypatch.setattr(module, "require_one_label_per_geography", lambda *a, **k: None)
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+
+    def unavailable(feed):
+        raise SystemExit(f"no SSA band counts in {Path(feed).name}")
+
+    monkeypatch.setattr(module, "acs_local_ssi_medicaid_take_up_targets", unavailable)
+    with pytest.raises(SystemExit, match="no SSA band counts in facts.jsonl"):
+        module.do_materialize(args)
+    assert touched == []
+
+
+def test_calibrate_refuses_a_checkpoint_without_the_ssi_medicaid_assignment(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_receipt_anchor_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {"acs_local_take_up": _TAKE_UP_RECEIPT},
+    )
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match=r"SSI/Medicaid take-up assignment"):
+        module.do_calibrate(args)
+
+
+def test_consumer_export_refuses_a_checkpoint_without_the_ssi_medicaid_assignment(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_receipt_anchor_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_load_staging_frame",
+        lambda *a, **k: pytest.fail("the export loaded the staging frame"),
+    )
+    with pytest.raises(SystemExit, match=r"SSI/Medicaid take-up assignment"):
+        module._write_calibrated_artifact(
+            args,
+            np.ones(1),
+            {"acs_local_take_up": _TAKE_UP_RECEIPT},
+            {},
+            code=_STARTED_CODE,
+        )
+
+
+def test_recorded_ssi_medicaid_assignment_round_trips_through_the_checkpoint(
+    tmp_path,
+) -> None:
+    """The export applies exactly the flags materialize recorded, and
+    refuses a file or digest that does not reproduce them."""
+
+    module = _load_tool_module()
+    fixtures = _ssi_medicaid_fixtures()
+    frame = fixtures._frame(n_donor=40, n_acs_households=600)
+    result, receipt = fixtures._assign(frame)
+    path = tmp_path / module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+    assert module._write_ssi_medicaid_take_up(result, path) == module._sha256(path)
+    applied = module._with_recorded_ssi_medicaid_take_up(frame, receipt, path)
+    for column in _SSI_MEDICAID:
+        assert np.array_equal(
+            applied.table("person")[column].to_numpy(dtype=bool),
+            result.table("person")[column].to_numpy(dtype=bool),
+        )
+    with pytest.raises(SystemExit, match="does not reproduce its digest"):
+        module._with_recorded_ssi_medicaid_take_up(
+            frame, {**receipt, "assigned_sha256": "0" * 64}, path
+        )
+    path.write_bytes(b"not an assignment")
+    with pytest.raises(SystemExit, match=r"cannot reproduce the ACS SSI/Medicaid"):
+        module._with_recorded_ssi_medicaid_take_up(frame, receipt, path)
+
+
+def _stub_ssi_medicaid_engine(module, monkeypatch, fixtures, calls, *, eligible=None):
+    """Replace projection, the reviewed-null fill and the fiscal lane's two
+    batched helpers; each helper returns the fixture's stub column."""
+
+    import build_us_fiscal_refresh_release as release
+
+    def classify(view):
+        calls.append(("project",))
+        return {"invented_formula_output"}
+
+    monkeypatch.setattr(module, "_formula_owned_columns", classify)
+    monkeypatch.setattr(
+        module,
+        "fill_reviewed_nulls",
+        lambda frame, path, **kwargs: calls.append(("fill", path)),
+    )
+
+    def helper(column, name):
+        def evaluate(view, *, maximum_microsim_batch_size):
+            # The engine sees the projected view, never a formula output.
+            assert "invented_formula_output" not in view.table("person")
+            calls.append((name, view.n("household"), maximum_microsim_batch_size))
+            values = view.table("person")[column].to_numpy()
+            return (
+                values if eligible is None or name != "eligible" else eligible(values)
+            )
+
+        return evaluate
+
+    monkeypatch.setattr(
+        release, "_ssi_person_uncapped_amount", helper(fixtures.UNCAPPED, "uncapped")
+    )
+    monkeypatch.setattr(
+        release, "_medicaid_person_eligibility", helper(fixtures.ELIGIBLE, "eligible")
+    )
+
+
+def test_ssi_medicaid_stage_runs_both_engine_passes_in_household_chunks(
+    tmp_path, monkeypatch
+) -> None:
+    """SSI candidates, then Medicaid eligibility, each over the projected and
+    reviewed-null-filled view in --hh-chunk household batches: the donor
+    households first (their pooled contribution sets the ACS residual
+    targets), then the ACS households. The tool's stage matches the runtime
+    stage and records its gate."""
+
+    module = _load_tool_module()
+    fixtures = _ssi_medicaid_fixtures()
+    frame = fixtures._frame(n_donor=40, n_acs_households=600)
+    frame = fixtures._with_person(
+        frame, frame.table("person").assign(invented_formula_output=1.0)
+    )
+    ssi, medicaid = fixtures._targets(frame)
+    calls: list = []
+    _stub_ssi_medicaid_engine(module, monkeypatch, fixtures, calls)
+    summary = tmp_path / "staging.summary.json"
+    result, receipt = module._with_local_ssi_medicaid_take_up(
+        frame,
+        seed=5,
+        targets={
+            "ssi_band_targets": ssi,
+            "medicaid_state_targets": medicaid,
+            "medicaid_substitutions": [],
+        },
+        summary_path=summary,
+        hh_chunk=100,
+    )
+    assert calls == [
+        ("project",),
+        ("fill", summary),
+        ("uncapped", 40, 100),
+        ("project",),
+        ("fill", summary),
+        ("eligible", 40, 100),
+        ("project",),
+        ("fill", summary),
+        ("uncapped", 600, 100),
+        ("project",),
+        ("fill", summary),
+        ("eligible", 600, 100),
+    ]
+    assert receipt["gate"] == {
+        "name": "acs_local_ssi_medicaid_take_up_signal",
+        "passed": True,
+        "failures": [],
+    }
+    assert receipt["engine_prepass"]["hh_chunk"] == 100
+    # The view is projected in place; the caller's frame keeps its columns.
+    assert "invented_formula_output" in result.table("person")
+    _, direct = fixtures._assign(frame)
+    assert receipt["assigned_sha256"] == direct["assigned_sha256"]
+    for column in _SSI_MEDICAID:
+        assert result.table("person")[column].notna().all()
+
+
+def test_ssi_medicaid_stage_failure_stops_materialize(tmp_path, monkeypatch) -> None:
+    """An eligibility pass that finds no one eligible cannot carry the CMS
+    counts: the gate fails before the materialize engine pass."""
+
+    module = _load_tool_module()
+    fixtures = _ssi_medicaid_fixtures()
+    frame = fixtures._frame(n_donor=40, n_acs_households=300)
+    ssi, medicaid = fixtures._targets(frame)
+    _stub_ssi_medicaid_engine(
+        module,
+        monkeypatch,
+        fixtures,
+        [],
+        eligible=lambda values: np.zeros(len(values), dtype=bool),
+    )
+    with pytest.raises(SystemExit, match="SSI/Medicaid take-up gate failed"):
+        module._with_local_ssi_medicaid_take_up(
+            frame,
+            seed=5,
+            targets={
+                "ssi_band_targets": ssi,
+                "medicaid_state_targets": medicaid,
+                "medicaid_substitutions": [],
+            },
+            summary_path=tmp_path / "staging.summary.json",
+            hh_chunk=100,
+        )
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        _staging_immigration_summary(),
+        _staging_work_disability_summary(acs_local_work_disability_gate=None),
+        _staging_work_disability_summary(acs_local_work_disability=None),
+        _staging_work_disability_summary(
+            acs_local_work_disability_gate={"passed": False, "failures": ["x"]}
+        ),
+        _staging_work_disability_summary(
+            acs_local_work_disability_gate={"passed": "true"}
+        ),
+        _staging_work_disability_summary(
+            acs_local_work_disability={
+                **_work_disability_receipt(),
+                "issue": "microcosm#1020",
+            }
+        ),
+        _staging_work_disability_summary(
+            acs_local_work_disability=_work_disability_receipt(
+                is_disabled={"source": "acs_transfer", "imputed_rows": 0}
+            )
+        ),
+        _staging_work_disability_summary(
+            acs_local_work_disability=_work_disability_receipt(
+                is_blind={"source": "acs_2024_1yr_native", "imputed_rows": 12}
+            )
+        ),
+        _staging_work_disability_summary(
+            acs_local_work_disability=_work_disability_receipt(
+                is_blind={"source": "acs_2024_1yr_native"}
+            )
+        ),
+    ],
+    ids=[
+        "pre-1021-staging",
+        "no-gate",
+        "no-receipt",
+        "gate-failed",
+        "gate-truthy-not-true",
+        "wrong-issue",
+        "not-native",
+        "imputed",
+        "unrecorded-transfer",
+    ],
+)
+def test_work_disability_consumers_refuse_a_staging_run_without_the_stage(summary):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"microcosm#1021.*Re-run staging"):
+        module._require_local_work_disability(summary)
+
+
+def test_work_disability_consumers_accept_a_current_staging_run() -> None:
+    module = _load_tool_module()
+    summary = _staging_work_disability_summary()
+    assert (
+        module._require_local_work_disability(summary)
+        == summary["acs_local_work_disability"]
+    )
+
+
+def test_materialize_refuses_a_pre_1021_staging_before_hashing_it(
+    tmp_path, monkeypatch
+) -> None:
+    """A staging run with the #1020 stage but not #1021 is refused before the
+    staging H5 is hashed or loaded."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [{"entity": "person"}],
+                **_staging_immigration_summary(),
+            }
+        )
+    )
+    monkeypatch.setattr(
+        module,
+        "state_admin_surface",
+        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+    )
+    # microcosm#1335: the stage reads the ladder and checks geography labels
+    # before the staging summary.
+    monkeypatch.setattr(module, "ladder_population", lambda *a, **k: {})
+    monkeypatch.setattr(module, "require_one_label_per_geography", lambda *a, **k: None)
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+    with pytest.raises(SystemExit, match=r"microcosm#1021.*Re-run staging"):
+        module.do_materialize(args)
+    assert touched == []
+    assert not (args.checkpoint_dir / "run_identity.json").exists()
+
+
+def test_calibrate_refuses_a_pre_1021_staging_before_solving(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(
+        [
+            "--stage",
+            "calibrate",
+            "--staging-h5",
+            str(tmp_path / "staging.h5"),
+            "--checkpoint-dir",
+            str(tmp_path / "ckpt"),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+        ]
+    )
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_immigration_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {"acs_local_take_up": _TAKE_UP_RECEIPT},
+    )
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match=r"microcosm#1021.*Re-run staging"):
+        module.do_calibrate(args)
+
+
+def test_consumer_export_refuses_a_pre_1021_staging_before_loading_it(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(
+        [
+            "--stage",
+            "calibrate",
+            "--staging-h5",
+            str(tmp_path / "staging.h5"),
+            "--checkpoint-dir",
+            str(tmp_path / "ckpt"),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+        ]
+    )
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_immigration_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_load_staging_frame",
+        lambda *a, **k: pytest.fail("the export loaded the staging frame"),
+    )
+    with pytest.raises(SystemExit, match=r"microcosm#1021.*Re-run staging"):
+        module._write_calibrated_artifact(
+            args,
+            np.ones(1),
+            {"acs_local_take_up": _TAKE_UP_RECEIPT},
+            {},
+            code=_STARTED_CODE,
+        )
 
 
 def _record_current_materialization(module, args, identity: dict) -> dict:
     """Record what a current materialize stage leaves for the later stages.
 
     The release tool refuses, before any solve, a checkpoint that predates a
-    requirement of this stack: here the take-up assignment ``run_identity.json``
-    records (microcosm#1019). A test that drives ``do_calibrate`` or a later
-    stage on a stubbed checkpoint, to exercise some other refusal, records a
-    current materialization through this one helper so it still reaches the
-    refusal it tests; the sparse-CD and target-loss-weight tests load it from
-    here. ``module`` and ``args`` locate what a materialization records outside
-    its identity (the staging summary, checkpoint files) once a requirement
-    lives there.
+    requirement of this stack: the take-up assignment ``run_identity.json``
+    records (microcosm#1019) and the receipts the staging summary carries
+    (microcosm#1020 on). A test that drives ``do_calibrate`` or a later stage
+    on a stubbed checkpoint, to exercise some other refusal, records a current
+    materialization through this one helper so it still reaches the refusal
+    it tests; the sparse-CD and target-loss-weight tests load it from here.
+    ``module`` and ``args`` locate what a materialization records outside its
+    identity: the staging summary, and any checkpoint files.
     """
 
-    identity["acs_local_take_up"] = {"seed": 0, "assigned_sha256": "a" * 64}
+    identity["acs_local_take_up"] = dict(_TAKE_UP_RECEIPT)
+    summary = module._staging_summary_path(args)
+    summary.parent.mkdir(parents=True, exist_ok=True)
+    summary.write_text(json.dumps(_staging_receipt_anchor_summary()))
+    identity["acs_local_ssi_medicaid_take_up"] = _ssi_medicaid_receipt(
+        module, args.checkpoint_dir
+    )
     return identity
 
 
@@ -887,6 +2948,9 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
                 # An uncapped staging run, so the package stage's cap check
                 # (which runs first) lets these inputs reach the hours gates.
                 "orchestration": {"max_households": None},
+                # No criteria-positive ACS person: the SSI take-up release
+                # block lets the run through.
+                "acs_local_ssi_disability": _staged_ssi_criteria(),
             }
         )
     )
@@ -904,6 +2968,48 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
             "artifact_sha256": artifact_sha,
         },
         "acs_local_take_up_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_immigration_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_work_disability_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_income_transfer_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_ssi_disability_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_ssi_medicaid_take_up_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_receipt_anchor_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_reviewed_fill_consumers": {
             "passed": True,
             "failures": [],
             "detail": {},
@@ -933,15 +3039,18 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
             "artifact_sha256": artifact_sha,
             "per_spine": {},
         },
-        "consumer_export.json": {"staging_sha256": module._sha256(staging)},
+        "consumer_export.json": {
+            "staging_sha256": module._sha256(staging),
+            "code": _writer_code(module),
+        },
         "held_back_columns.json": {"total": 0},
-        "reviewed_null_fills.json": {"columns_filled": []},
+        "reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
         "materialize_rss.json": {
             "soi_mode": "totals",
             "materialize_peak_rss_gb": 1.0,
             "hh_chunk": 1,
         },
-        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+        "consumer_reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
     }
     for name, payload in evidence.items():
         (ckpt / name).write_text(json.dumps(payload))
@@ -1158,7 +3267,7 @@ def _package_args_before_evidence(
         (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": soi_mode}))
     staging = tmp_path / "staging.h5"
     staging.write_bytes(b"staging")
-    summary: dict = {}
+    summary: dict = {"acs_local_ssi_disability": _staged_ssi_criteria()}
     if max_households is not _UNSET:
         summary["orchestration"] = {
             "max_households": max_households,
@@ -1253,7 +3362,12 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     staging = tmp_path / "staging.h5"
     staging.write_bytes(b"staging")
     (tmp_path / "staging.summary.json").write_text(
-        json.dumps({"orchestration": {"max_households": None}})
+        json.dumps(
+            {
+                "orchestration": {"max_households": None},
+                "acs_local_ssi_disability": _staged_ssi_criteria(),
+            }
+        )
     )
     out_h5 = tmp_path / "out.h5"
     out_h5.write_bytes(b"artifact")
@@ -1615,6 +3729,9 @@ def _finalize_args(module, tmp_path: Path):
                 # The current staging builder records its cap; an uncapped run
                 # is what the package-stage tests built on this fixture need.
                 "orchestration": {"max_households": None},
+                # No criteria-positive ACS person, so the package stage's SSI
+                # take-up release block lets these runs through.
+                "acs_local_ssi_disability": _staged_ssi_criteria(),
             }
         )
     )
@@ -1641,6 +3758,10 @@ def _finalize_args(module, tmp_path: Path):
     # Every checkpoint materialize writes records its SOI mode; package
     # refuses one that does not.
     (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": "totals"}))
+    # Both engine passes record their reviewed default fills, which the
+    # reviewed-fill consumer gate grades (microcosm#1022); none applied here.
+    for name in module.REVIEWED_FILL_MANIFESTS:
+        (ckpt / name).write_text(json.dumps({"columns_filled": 0, "fills": []}))
     ladder = tmp_path / "ladder.npz"
     ladder.write_bytes(b"ladder-bytes")
     return module._parse_args(
@@ -1690,6 +3811,131 @@ def _stub_local_take_up_gate(module, monkeypatch, *, passed=True) -> None:
     )
 
 
+def _stub_local_immigration_gate(module, monkeypatch, *, passed=True) -> None:
+    """Make the ACS immigration classification pass (or fail); its tests
+    (test_us_acs_local_immigration.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(
+        module,
+        "acs_local_immigration_signal_gate",
+        lambda frame: GateResult(
+            name="acs_local_immigration_signal",
+            passed=passed,
+            failures=()
+            if passed
+            else ("acs_2024_1yr: ssn_card_type is constant 'CITIZEN'",),
+            details={},
+        ),
+    )
+
+
+def _stub_local_work_disability_gate(
+    module, monkeypatch, *, passed=True, calls=None
+) -> None:
+    """Make the native ACS work/disability classification pass (or fail); its
+    tests (test_us_acs_local_work_disability.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    def gate(frame, *, receipt, require_weeks_worked=True):
+        if calls is not None:
+            calls.append((receipt, require_weeks_worked))
+        return GateResult(
+            name="acs_local_work_disability_signal",
+            passed=passed,
+            failures=() if passed else ("acs_2024_1yr: is_disabled is constant False",),
+            details={},
+        )
+
+    monkeypatch.setattr(module, "acs_local_work_disability_signal_gate", gate)
+
+
+def _stub_local_income_gate(module, monkeypatch, *, passed=True) -> None:
+    """Make the ACS local income transfer gate pass (or fail); its tests
+    (test_us_acs_local_income.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    def gate(frame, *, receipt):
+        return GateResult(
+            name="acs_local_income_transfer_signal",
+            passed=passed,
+            failures=()
+            if passed
+            else ("acs_2024_1yr: child_support_received has 2 missing row(s).",),
+            details={},
+        )
+
+    monkeypatch.setattr(module, "acs_local_income_transfer_signal_gate", gate)
+
+
+def _stub_local_ssi_disability_gate(module, monkeypatch, *, passed=True) -> None:
+    """Make the ACS local SSI disability gate pass (or fail); its tests
+    (test_us_acs_local_ssi_disability.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    def gate(frame, *, receipt):
+        return GateResult(
+            name="acs_local_ssi_disability_signal",
+            passed=passed,
+            failures=()
+            if passed
+            else ("acs_2024_1yr: meets_ssi_disability_criteria has 2 missing row(s).",),
+            details={},
+        )
+
+    monkeypatch.setattr(module, "acs_local_ssi_disability_signal_gate", gate)
+
+
+def _stub_local_ssi_medicaid_take_up_gate(
+    module, monkeypatch, *, passed=True, receipts=None
+) -> None:
+    """Make the ACS SSI/Medicaid take-up gate pass (or fail); its tests
+    (test_us_acs_local_ssi_medicaid_take_up.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    def gate(frame, *, receipt):
+        if receipts is not None:
+            receipts.append(receipt)
+        return GateResult(
+            name="acs_local_ssi_medicaid_take_up_signal",
+            passed=passed,
+            failures=()
+            if passed
+            else ("acs_2024_1yr: takes_up_ssi_if_eligible has 2 missing row(s).",),
+            details={},
+        )
+
+    monkeypatch.setattr(module, "acs_local_ssi_medicaid_take_up_signal_gate", gate)
+
+
+def _stub_local_receipt_anchor_gate(
+    module, monkeypatch, *, passed=True, receipts=None
+) -> None:
+    """Make the ACS receipt-anchor gate pass (or fail); its tests
+    (test_us_acs_local_receipt_anchors.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    def gate(frame, *, receipt):
+        if receipts is not None:
+            receipts.append(receipt)
+        return GateResult(
+            name="acs_local_receipt_anchor_signal",
+            passed=passed,
+            failures=()
+            if passed
+            else ("acs_2024_1yr: 2 SPM unit(s) report SNAP receipt",),
+            details={},
+        )
+
+    monkeypatch.setattr(module, "acs_local_receipt_anchor_signal_gate", gate)
+
+
 def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
     """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
 
@@ -1707,6 +3953,12 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
     monkeypatch.setattr(module, "spine_composition", lambda *a, **k: {})
     _stub_local_hours_gate(module, monkeypatch)
     _stub_local_take_up_gate(module, monkeypatch)
+    _stub_local_immigration_gate(module, monkeypatch)
+    _stub_local_work_disability_gate(module, monkeypatch)
+    _stub_local_income_gate(module, monkeypatch)
+    _stub_local_ssi_disability_gate(module, monkeypatch)
+    _stub_local_ssi_medicaid_take_up_gate(module, monkeypatch)
+    _stub_local_receipt_anchor_gate(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -1820,28 +4072,14 @@ def test_do_finalize_take_up_gate_fails_on_default_filled_acs_rows(
 ):
     """The 2026-09-23 release signature: every ACS unit takes SNAP/TANF up."""
 
-    from microcosm.build.us_runtime.base_pool import spine_column
-    from microcosm.frame import Frame
-
     module = _load_tool_module()
     real_gate = module.acs_local_take_up_signal_gate
     args = _finalize_args(module, tmp_path)
-    frame = _plausible_hours_frame()
-    spm_unit = frame.table("spm_unit").assign(
-        **{
-            spine_column("spm_unit"): ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4,
+    frame = _take_up_gate_frame(
+        spm_columns={
             "takes_up_snap_if_eligible": [True, True, True, False] + [True] * 4,
             "takes_up_tanf_if_eligible": [True, False, False, False] + [True] * 4,
-            "receives_snap": [True] + [False] * 7,
         }
-    )
-    frame = Frame(
-        {
-            entity: spm_unit if entity == "spm_unit" else frame.table(entity)
-            for entity in frame.entities
-        },
-        frame.schema,
-        {"household": frame.weights_for("household")},
     )
     _patch_finalize_collaborators(module, monkeypatch, frame)
     monkeypatch.setattr(module, "acs_local_take_up_signal_gate", real_gate)
@@ -1854,6 +4092,647 @@ def test_do_finalize_take_up_gate_fails_on_default_filled_acs_rows(
         "takes_up_snap_if_eligible is constant" in failure
         for failure in gate["failures"]
     )
+
+
+def _take_up_gate_frame(*, spm_columns=(), person_columns=()):
+    """Four donor then four ACS single-person units carrying every column the
+    real take-up gate reads, including the #1022 engine-free fills."""
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import Frame
+
+    frame = _plausible_hours_frame()
+    spines = ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4
+    housing = [True, False, False, False, True, False, False, False]
+    spm_unit = frame.table("spm_unit").assign(
+        **{
+            spine_column("spm_unit"): spines,
+            "takes_up_snap_if_eligible": [True, True, True, False] * 2,
+            "takes_up_tanf_if_eligible": [True, False, False, False] * 2,
+            "receives_snap": [True] + [False] * 7,
+            "takes_up_housing_assistance_if_eligible": housing,
+            "receives_housing_assistance": housing,
+            **dict(spm_columns),
+        }
+    )
+    person = frame.table("person").assign(
+        **{
+            spine_column("person"): spines,
+            "age": [30.0, 70.0, 40.0, 10.0, 30.0, 70.0, 40.0, 10.0],
+            "HINS3": [np.nan] * 4 + [2, 1, 2, 2],
+            "is_snap_abawd_discretionary_exempt": [True, False, False, False] * 2,
+            "takes_up_medicare_if_eligible": [False, True, False, False] * 2,
+            # Varies on the donor spine (ungraded there); no one is aged 3-5.
+            "takes_up_head_start_if_eligible": [False, False, False, True]
+            + [False] * 4,
+            **dict(person_columns),
+        }
+    )
+    household = frame.table("household").assign(
+        **{
+            spine_column("household"): spines,
+            "TYPEHUGQ": [np.nan] * 4 + [1.0] * 4,
+            "VEH": [np.nan] * 4 + [1.0, 0.0, 2.0, 1.0],
+            # The ACS owned count keeps its reviewed default (#1064 review).
+            "household_vehicles_owned": [1, 2, 0, 1, 0, 0, 0, 0],
+        }
+    )
+    replaced = {"spm_unit": spm_unit, "person": person, "household": household}
+    return Frame(
+        {
+            entity: replaced.get(entity, frame.table(entity))
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+
+def test_do_finalize_take_up_gate_fails_on_engine_default_medicare(
+    tmp_path, monkeypatch
+):
+    """microcosm#1022: every ACS person enrolled in Medicare (the engine
+    default) blocks simulation readiness through the real gate."""
+
+    module = _load_tool_module()
+    real_gate = module.acs_local_take_up_signal_gate
+    args = _finalize_args(module, tmp_path)
+    frame = _take_up_gate_frame(
+        person_columns={
+            "takes_up_medicare_if_eligible": [False, True, False, False] + [True] * 4
+        }
+    )
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    monkeypatch.setattr(module, "acs_local_take_up_signal_gate", real_gate)
+    with pytest.raises(SystemExit, match="acs_local_take_up_signal"):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"]["acs_local_take_up_signal"]
+    assert gate["passed"] is False
+    assert any(
+        "acs_2024_1yr: takes_up_medicare_if_eligible is constant" in failure
+        for failure in gate["failures"]
+    )
+    assert any(
+        "takes_up_medicare_if_eligible differs from ACS HINS3 == 1 on 3" in failure
+        for failure in gate["failures"]
+    )
+    assert not any(failure.startswith("asec_puf") for failure in gate["failures"])
+
+
+def test_do_finalize_hard_fails_on_a_failed_immigration_gate(tmp_path, monkeypatch):
+    """microcosm#1020: a failed immigration gate blocks simulation readiness
+    and is recorded bound to the evaluated bytes, like the take-up gate."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    _stub_local_immigration_gate(module, monkeypatch, passed=False)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_immigration_signal" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_immigration_signal"]
+    assert gate["passed"] is False
+    assert gate["failures"] == ["acs_2024_1yr: ssn_card_type is constant 'CITIZEN'"]
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert "acs_local_immigration_signal" in summary["simulation_readiness_blockers"]
+
+
+def test_do_finalize_immigration_gate_fails_on_default_filled_acs_rows(
+    tmp_path, monkeypatch
+):
+    """The 2026-09-23 release signature: every ACS person a CITIZEN with a
+    citizen SSN card, every entry clock the engine default 5."""
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    real_gate = module.acs_local_immigration_signal_gate
+    args = _finalize_args(module, tmp_path)
+    frame = _plausible_hours_frame()
+    ssn = ["CITIZEN", "CITIZEN", "OTHER_NON_CITIZEN", "NONE"] + ["CITIZEN"] * 4
+    status = [
+        "CITIZEN",
+        "CITIZEN",
+        "LEGAL_PERMANENT_RESIDENT",
+        "UNDOCUMENTED",
+    ] + ["CITIZEN"] * 4
+    person = frame.table("person").assign(
+        **{
+            spine_column("person"): ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4,
+            "ssn_card_type": ssn,
+            "immigration_status_str": status,
+            "years_since_us_entry": [5.0] * 8,
+            # Measured ACS citizenship: one ACS non-citizen the default fill
+            # coded a citizen.
+            "CIT": [np.nan] * 4 + [1, 1, 4, 5],
+        }
+    )
+    frame = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    monkeypatch.setattr(module, "acs_local_immigration_signal_gate", real_gate)
+    with pytest.raises(SystemExit, match="acs_local_immigration_signal"):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_immigration_signal"
+    ]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    failures = gate["failures"]
+    for column in ("ssn_card_type", "immigration_status_str"):
+        assert f"acs_2024_1yr: {column} is constant 'CITIZEN'" in " ".join(failures)
+    for spine in ("asec_puf", "acs_2024_1yr"):
+        assert (
+            f"{spine}: years_since_us_entry is the engine default 5 on every row."
+            in failures
+        )
+    assert (
+        "acs_2024_1yr: 1 person(s) are labelled against their measured CIT "
+        "citizenship." in failures
+    )
+    # The donor spine's labels vary, so only its entry clock is refused.
+    assert not any(
+        failure.startswith("asec_puf:") and "years_since_us_entry" not in failure
+        for failure in failures
+    )
+
+
+def test_do_finalize_hard_fails_on_a_failed_income_transfer_gate(tmp_path, monkeypatch):
+    """microcosm#1022: a failed income transfer gate blocks simulation
+    readiness and is recorded bound to the evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    _stub_local_income_gate(module, monkeypatch, passed=False)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_income_transfer_signal" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_income_transfer_signal"]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert (
+        "acs_local_income_transfer_signal" in summary["simulation_readiness_blockers"]
+    )
+
+
+@requires_pytables
+@pytest.mark.parametrize("income_state", ["missing", "failed", "truthy", "stale"])
+def test_package_requires_a_current_income_transfer_gate(
+    tmp_path, monkeypatch, income_state
+):
+    """microcosm#1022: a report finalized before the income transfer gate, or
+    failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        income_state=income_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_income_transfer_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+def test_do_finalize_hard_fails_on_a_failed_ssi_disability_gate(tmp_path, monkeypatch):
+    """microcosm#1022: a failed SSI disability gate blocks simulation
+    readiness and is recorded bound to the evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    _stub_local_ssi_disability_gate(module, monkeypatch, passed=False)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_ssi_disability_signal" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_ssi_disability_signal"]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert "acs_local_ssi_disability_signal" in summary["simulation_readiness_blockers"]
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    "ssi_disability_state", ["missing", "failed", "truthy", "stale"]
+)
+def test_package_requires_a_current_ssi_disability_gate(
+    tmp_path, monkeypatch, ssi_disability_state
+):
+    """microcosm#1022: a report finalized before the SSI disability gate, or
+    failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        ssi_disability_state=ssi_disability_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_ssi_disability_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+def test_do_finalize_hard_fails_on_a_failed_ssi_medicaid_take_up_gate(
+    tmp_path, monkeypatch
+):
+    """microcosm#1022: a failed SSI/Medicaid take-up gate, graded against the
+    materialize receipt in the run identity, blocks simulation readiness and
+    is recorded bound to the evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    receipts: list = []
+    _stub_local_ssi_medicaid_take_up_gate(
+        module, monkeypatch, passed=False, receipts=receipts
+    )
+    recorded = {"issue": "microcosm#1022", "marker": "run identity"}
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {
+            "ladder_sha256": module._sha256(a.ladder),
+            "acs_local_ssi_medicaid_take_up": recorded,
+        },
+    )
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_ssi_medicaid_take_up_signal" in str(exc.value)
+    assert receipts == [recorded]
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_ssi_medicaid_take_up_signal"]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert (
+        "acs_local_ssi_medicaid_take_up_signal"
+        in summary["simulation_readiness_blockers"]
+    )
+
+
+@requires_pytables
+@pytest.mark.parametrize("ssi_medicaid_state", ["missing", "failed", "truthy", "stale"])
+def test_package_requires_a_current_ssi_medicaid_take_up_gate(
+    tmp_path, monkeypatch, ssi_medicaid_state
+):
+    """microcosm#1022: a report finalized before the SSI/Medicaid take-up
+    gate, or failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        ssi_medicaid_state=ssi_medicaid_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_ssi_medicaid_take_up_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+def test_do_finalize_hard_fails_on_a_failed_receipt_anchor_gate(tmp_path, monkeypatch):
+    """microcosm#1022: a failed receipt-anchor gate, graded against the
+    staging receipt, blocks simulation readiness and is recorded bound to the
+    evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    summary_path = tmp_path / "staging.summary.json"
+    staging_summary = json.loads(summary_path.read_text())
+    staging_summary["acs_local_receipt_anchors"] = _receipt_anchor_receipt()
+    summary_path.write_text(json.dumps(staging_summary))
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    receipts: list = []
+    _stub_local_receipt_anchor_gate(
+        module, monkeypatch, passed=False, receipts=receipts
+    )
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_receipt_anchor_signal" in str(exc.value)
+    assert receipts == [_receipt_anchor_receipt()]
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_receipt_anchor_signal"]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert "acs_local_receipt_anchor_signal" in summary["simulation_readiness_blockers"]
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    "receipt_anchor_state", ["missing", "failed", "truthy", "stale"]
+)
+def test_package_requires_a_current_receipt_anchor_gate(
+    tmp_path, monkeypatch, receipt_anchor_state
+):
+    """microcosm#1022: a report finalized before the receipt-anchor gate, or
+    failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        receipt_anchor_state=receipt_anchor_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_receipt_anchor_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+def _block_evidence_args(module, tmp_path, monkeypatch, *, acs_true_rows: int):
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    path = tmp_path / "staging.summary.json"
+    summary = json.loads(path.read_text())
+    summary["acs_local_ssi_disability"] = _staged_ssi_criteria(acs_true_rows)
+    path.write_text(json.dumps(summary))
+    return args
+
+
+def test_package_blocks_criteria_positive_acs_rows_without_ssi_take_up(
+    tmp_path, monkeypatch
+):
+    """microcosm#1022 (review of #1058): the criteria stage makes ACS persons
+    SSI-eligible, and universal take-up would pay every one of them."""
+
+    module = _load_tool_module()
+    args = _block_evidence_args(module, tmp_path, monkeypatch, acs_true_rows=12)
+    with pytest.raises(SystemExit) as exc:
+        module.do_package(args)
+    message = str(exc.value)
+    assert "12 ACS person(s) meet meets_ssi_disability_criteria" in message
+    assert "no SSI take-up handling" in message
+    assert "microcosm#1022" in message
+    assert "PR #1060" in message
+    assert not (args.out / "releases").exists(), "a blocked release leaves nothing"
+
+
+def test_package_records_the_ssi_take_up_block_when_no_acs_row_is_positive(
+    tmp_path, monkeypatch
+):
+    module = _load_tool_module()
+    args = _block_evidence_args(module, tmp_path, monkeypatch, acs_true_rows=0)
+    result = module.do_package(args)
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["ssi_take_up_release_block"] == {
+        "criteria_positive_acs_rows": 0,
+        "filled_true_rows": 0,
+        "take_up_handling": None,
+    }
+
+
+def test_recorded_ssi_take_up_handling_lifts_the_block(tmp_path, monkeypatch):
+    module = _load_tool_module()
+    handling = {"stage": "invented_ssi_take_up"}
+    monkeypatch.setattr(
+        module, "_recorded_ssi_take_up_handling", lambda identity, ckpt: handling
+    )
+    block = module._require_ssi_take_up_handling(
+        {"acs_local_ssi_disability": _staged_ssi_criteria(12)}, {}, tmp_path
+    )
+    assert block == {
+        "criteria_positive_acs_rows": 12,
+        "filled_true_rows": 12,
+        "take_up_handling": handling,
+    }
+
+
+def _with_recorded_ssi_medicaid_take_up(module, args, **overrides) -> dict:
+    """Record a current SSI/Medicaid take-up receipt in the run identity."""
+
+    path = args.checkpoint_dir / "run_identity.json"
+    identity = json.loads(path.read_text())
+    receipt = _ssi_medicaid_receipt(module, args.checkpoint_dir, **overrides)
+    identity["acs_local_ssi_medicaid_take_up"] = receipt
+    path.write_text(json.dumps(identity))
+    return receipt
+
+
+def test_the_ssi_medicaid_take_up_receipt_lifts_the_ssi_take_up_block(
+    tmp_path, monkeypatch
+):
+    """microcosm#1022: with ACS SSI take-up assigned, criteria-positive ACS
+    persons may ship; the manifest names the handling that let them."""
+
+    module = _load_tool_module()
+    args = _block_evidence_args(module, tmp_path, monkeypatch, acs_true_rows=12)
+    receipt = _with_recorded_ssi_medicaid_take_up(module, args)
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["ssi_take_up_release_block"] == {
+        "criteria_positive_acs_rows": 12,
+        "filled_true_rows": 12,
+        "take_up_handling": {
+            "stage": "acs_local_ssi_medicaid_take_up",
+            "issue": "microcosm#1022",
+            "method": module.ACS_LOCAL_SSI_MEDICAID_TAKE_UP_METHOD,
+            "assigned_sha256": receipt["assigned_sha256"],
+            "assignment_file": receipt["assignment_file"],
+            "finalize_gate": "acs_local_ssi_medicaid_take_up_signal",
+        },
+    }
+
+
+@pytest.mark.parametrize("edit", ["failed", "changed-file"])
+def test_an_invalid_ssi_medicaid_take_up_receipt_does_not_lift_the_block(
+    tmp_path, monkeypatch, edit
+):
+    module = _load_tool_module()
+    args = _block_evidence_args(module, tmp_path, monkeypatch, acs_true_rows=12)
+    if edit == "failed":
+        _with_recorded_ssi_medicaid_take_up(
+            module, args, gate={"passed": False, "failures": ["x"]}
+        )
+        message = "records no passing ACS local SSI/Medicaid take-up"
+    else:
+        _with_recorded_ssi_medicaid_take_up(module, args)
+        (args.checkpoint_dir / module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME).write_bytes(
+            b"edited after materialize"
+        )
+        message = "missing or changed since materialize"
+    with pytest.raises(SystemExit, match=message):
+        module.do_package(args)
+    assert not (args.out / "releases").exists(), "a blocked release leaves nothing"
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        None,
+        _ssi_disability_receipt(),
+        _ssi_disability_receipt(outcome=None),
+        _ssi_disability_receipt(outcome={"acs_true_rows": "12"}),
+        _ssi_disability_receipt(outcome={"acs_true_rows": True}),
+        _ssi_disability_receipt(outcome={"acs_true_rows": -1}),
+    ],
+    ids=["no-receipt", "no-outcome", "null-outcome", "string", "bool", "negative"],
+)
+def test_ssi_take_up_block_refuses_a_summary_without_the_criteria_count(
+    tmp_path, receipt
+):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"outcome\.acs_true_rows"):
+        module._require_ssi_take_up_handling(
+            {"acs_local_ssi_disability": receipt}, {}, tmp_path
+        )
+
+
+def test_do_finalize_hard_fails_on_a_failed_work_disability_gate(tmp_path, monkeypatch):
+    """microcosm#1021: a failed work/disability gate blocks simulation
+    readiness and is recorded bound to the evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    _stub_local_work_disability_gate(module, monkeypatch, passed=False)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_work_disability_signal" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_work_disability_signal"]
+    assert gate["passed"] is False
+    assert gate["failures"] == ["acs_2024_1yr: is_disabled is constant False"]
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert (
+        "acs_local_work_disability_signal" in summary["simulation_readiness_blockers"]
+    )
+    assert (
+        "acs_local_work_disability_signal"
+        in (report["gates"]["input_coverage"]["note"])
+    )
+
+
+def test_do_finalize_grades_the_staging_receipt_without_weeks(tmp_path, monkeypatch):
+    """Finalize hands the gate the staging receipt and skips weeks_worked,
+    which the consumer export holds back until policyengine-us#9660."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    summary_path = tmp_path / "staging.summary.json"
+    staging = json.loads(summary_path.read_text())
+    receipt = _work_disability_receipt()
+    summary_path.write_text(
+        json.dumps({**staging, "acs_local_work_disability": receipt})
+    )
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    calls: list = []
+    _stub_local_work_disability_gate(module, monkeypatch, calls=calls)
+    with pytest.raises(SystemExit):  # consumer_ready: no export in this fixture
+        module.do_finalize(args)
+    assert calls == [(receipt, False)]
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_work_disability_signal"
+    ]
+    assert gate["passed"] is True
+
+
+def test_do_finalize_work_disability_gate_fails_on_imputed_acs_flags(
+    tmp_path, monkeypatch
+):
+    """The pre-#1021 signature on the packaged bytes: ACS flags that are not
+    the native difficulty items (here the engine default False on every ACS
+    row) and a staging summary with no native receipt."""
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    real_gate = module.acs_local_work_disability_signal_gate
+    args = _finalize_args(module, tmp_path)
+    frame = _plausible_hours_frame()
+    blank = [np.nan] * 4
+    person = frame.table("person").assign(
+        **{
+            spine_column("person"): ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4,
+            "is_disabled": [False, True, False, True] + [False] * 4,
+            "is_blind": [False, False, True, False] + [False] * 4,
+            "AGEP": blank + [40, 30, 50, 8],
+            "SSIP": blank + [0.0, 0.0, 0.0, np.nan],
+            "DEAR": blank + [2, 1, 2, 2],
+            "DEYE": blank + [2, 2, 1, 2],
+            "DREM": blank + [2, 2, 2, 2],
+            "DPHY": blank + [2, 2, 2, 2],
+            "DDRS": blank + [2, 2, 2, 2],
+            "DOUT": blank + [2, 2, 2, np.nan],
+        }
+    )
+    frame = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    monkeypatch.setattr(module, "acs_local_work_disability_signal_gate", real_gate)
+    with pytest.raises(SystemExit, match="acs_local_work_disability_signal"):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_work_disability_signal"
+    ]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    failures = gate["failures"]
+    for column in ("is_disabled", "is_blind"):
+        assert (
+            f"acs_2024_1yr: {column} is constant False; a spine with no variation "
+            "carries no disability signal."
+        ) in failures
+    assert (
+        "acs_2024_1yr: 2 person(s) carry a is_disabled that differs from their "
+        "native ACS items; the ACS value must be measured, not imputed."
+    ) in failures
+    assert any("No acs_local_work_disability staging receipt" in f for f in failures)
+    # weeks_worked is not graded at finalize, and the donor flags vary.
+    assert not any("weeks_worked" in failure for failure in failures)
+    assert not any(failure.startswith("asec_puf:") for failure in failures)
 
 
 @requires_pytables
@@ -1914,6 +4793,227 @@ def test_finalize_refuses_artifact_changed_during_hours_validation(
     assert not args.out_summary.exists()
 
 
+# ---------------------------------------------------------------------------
+# District ESS gate: report-only by default, blocking on request
+# ---------------------------------------------------------------------------
+
+#: One district calibrated down to a fifth of its design ESS, one healthy.
+_COLLAPSED_DISTRICT_ESS = (
+    {"0601": 100.0, "0602": 80.0},
+    {"0601": 20.0, "0602": 60.0},
+)
+_HEALTHY_DISTRICT_ESS = (
+    {"0601": 100.0, "0602": 80.0},
+    {"0601": 90.0, "0602": 60.0},
+)
+
+
+def _ess_origin(district_ess) -> dict:
+    """A calibration summary's ``weight_origin`` carrying per-district ESS."""
+
+    design, calibrated = district_ess
+    return {
+        "design": {"effective_sample_size_by_district": design},
+        "calibrated": {"effective_sample_size_by_district": calibrated},
+    }
+
+
+def _with_district_ess(args, district_ess) -> None:
+    """Record per-district ESS in the finalize fixture's calibration summary."""
+
+    path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(path.read_text())
+    summary["weight_origin"] = _ess_origin(district_ess)
+    path.write_text(json.dumps(summary))
+
+
+def _district_ess_limitation(report: dict) -> dict:
+    [entry] = [
+        item
+        for item in report["reviewed_limitations"]
+        if item["id"] == "district_effective_sample_size_gate"
+    ]
+    return entry
+
+
+def test_finalize_records_a_collapsed_district_without_blocking_by_default(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _with_district_ess(args, _COLLAPSED_DISTRICT_ESS)
+    # The fixture has no QA evidence, so finalize stops on consumer_ready
+    # after writing its report.
+    message, report = _run_finalize(module, monkeypatch, args, _plausible_hours_frame())
+    assert module.DISTRICT_ESS_GATE not in message
+    gate = report["gates"][module.DISTRICT_ESS_GATE]
+    assert (gate["passed"], gate["report_only"], gate["criteria_met"]) == (
+        True,
+        True,
+        False,
+    )
+    assert [row["district"] for row in gate["collapsed"]] == ["0601"]
+    summary = json.loads(args.out_summary.read_text())
+    assert module.DISTRICT_ESS_GATE not in summary["simulation_readiness_blockers"]
+    entry = _district_ess_limitation(report)
+    assert entry["n_collapsed"] == 1
+    assert entry["calibration_blocker"] is False
+    assert "report-only" in entry["reason"]
+    assert summary["reviewed_limitations"] == report["reviewed_limitations"]
+
+
+def test_blocking_finalize_fails_on_a_collapsed_district(tmp_path, monkeypatch) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    args.district_ess_gate_blocking = True
+    _with_district_ess(args, _COLLAPSED_DISTRICT_ESS)
+    message, report = _run_finalize(module, monkeypatch, args, _plausible_hours_frame())
+    assert module.DISTRICT_ESS_GATE in message
+    gate = report["gates"][module.DISTRICT_ESS_GATE]
+    assert (gate["passed"], gate["blocking"]) == (False, True)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert module.DISTRICT_ESS_GATE in summary["simulation_readiness_blockers"]
+    assert _district_ess_limitation(report)["calibration_blocker"] is True
+
+
+def test_blocking_finalize_fails_closed_without_district_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    """A summary that records no per-district ESS cannot pass a blocking gate."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    args.district_ess_gate_blocking = True
+    message, report = _run_finalize(module, monkeypatch, args, _plausible_hours_frame())
+    assert module.DISTRICT_ESS_GATE in message
+    gate = report["gates"][module.DISTRICT_ESS_GATE]
+    assert (gate["passed"], gate["criteria_met"]) == (False, None)
+
+
+def _blocking_package_args(module, tmp_path: Path, gate: dict | None):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    args = _package_args_before_evidence(module, tmp_path, max_households=None)
+    args.district_ess_gate_blocking = True
+    gates = {} if gate is None else {module.DISTRICT_ESS_GATE: gate}
+    (args.checkpoint_dir / "gate_summary.json").write_text(json.dumps({"gates": gates}))
+    return args
+
+
+@pytest.mark.parametrize(
+    "recorded",
+    ["absent", "report_only", "blocking_failed", "other_relative", "other_floor"],
+)
+def test_blocking_package_refuses_a_report_finalize_did_not_block_on(
+    tmp_path: Path, recorded: str
+) -> None:
+    module = _load_tool_module()
+    gate = module.district_ess_collapse_gate
+    healthy = _ess_origin(_HEALTHY_DISTRICT_ESS)
+    entry = {
+        "absent": None,
+        # A report-only gate passes whatever it measured.
+        "report_only": gate(_ess_origin(_COLLAPSED_DISTRICT_ESS)),
+        "blocking_failed": gate(_ess_origin(_COLLAPSED_DISTRICT_ESS), blocking=True),
+        "other_relative": gate(healthy, relative_floor=0.1, blocking=True),
+        "other_floor": gate(healthy, absolute_floor=5.0, blocking=True),
+    }[recorded]
+    args = _blocking_package_args(module, tmp_path, entry)
+    with pytest.raises(SystemExit, match="--district-ess-gate-blocking"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists(), "a refusal leaves no release"
+
+
+def test_package_accepts_a_passing_blocking_gate_and_ignores_it_otherwise(
+    tmp_path: Path,
+) -> None:
+    """Either way the run reaches the next check (missing QA evidence)."""
+
+    module = _load_tool_module()
+    passing = module.district_ess_collapse_gate(
+        _ess_origin(_HEALTHY_DISTRICT_ESS), blocking=True
+    )
+    args = _blocking_package_args(module, tmp_path / "blocking", passing)
+    with pytest.raises(SystemExit, match="spine_qa.json is missing"):
+        module.do_package(args)
+
+    report_only = module.district_ess_collapse_gate(
+        _ess_origin(_COLLAPSED_DISTRICT_ESS)
+    )
+    args = _blocking_package_args(module, tmp_path / "report-only", report_only)
+    args.district_ess_gate_blocking = False
+    with pytest.raises(SystemExit, match="spine_qa.json is missing"):
+        module.do_package(args)
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    ("blocking", "district_ess", "criteria_met"),
+    [
+        (False, _COLLAPSED_DISTRICT_ESS, False),
+        (True, _HEALTHY_DISTRICT_ESS, True),
+    ],
+    ids=["report-only-collapse", "blocking-pass"],
+)
+def test_the_district_ess_gate_ships_in_both_manifests(
+    tmp_path, monkeypatch, blocking, district_ess, criteria_met
+) -> None:
+    """finalize -> package records the gate in gate_summary.json and the build
+    manifest, its result in the release manifest's limitations, and the
+    release contract accepts the gate either way."""
+
+    from microcosm.data import contract
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    args.district_ess_gate_blocking = blocking
+    _with_district_ess(args, district_ess)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    evidence = {
+        "run_identity.json": {
+            "staging_sha256": module._sha256(args.staging_h5),
+            "ladder_sha256": module._sha256(args.ladder),
+            "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {
+            "staging_sha256": artifact_sha,
+            "code": _writer_code(module),
+        },
+        "consumer_reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
+    }
+    for name, value in evidence.items():
+        (args.checkpoint_dir / name).write_text(json.dumps(value))
+    _patch_finalize_collaborators(module, monkeypatch, identity=False)
+    module.do_finalize(args)
+
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+    release_dir = Path(module.do_package(args)["release_dir"])
+    gate_summary = json.loads((release_dir / "gate_summary.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    shipped = gate_summary["gates"][module.DISTRICT_ESS_GATE]
+    assert build_manifest["gates"][module.DISTRICT_ESS_GATE] == shipped
+    assert (shipped["passed"], shipped["blocking"]) == (True, blocking)
+    assert shipped["criteria_met"] is criteria_met
+    entry = _district_ess_limitation(release_manifest)
+    assert entry["criteria_met"] is criteria_met
+    assert entry["calibration_blocker"] is False
+    for manifest in (build_manifest, release_manifest):
+        recipe = shlex.split(manifest["refresh_recipe"]["release"])
+        assert ("--district-ess-gate-blocking" in recipe) is blocking
+    failures: list[str] = []
+    contract._check_local_area_gates(gate_summary, failures)
+    assert not [f for f in failures if module.DISTRICT_ESS_GATE in f], failures
+
+
 @requires_pytables
 def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None:
     """A finalize-written report must satisfy the package stage's binding."""
@@ -1934,8 +5034,11 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
             "artifact_sha256": artifact_sha,
             "per_spine": {},
         },
-        "consumer_export.json": {"staging_sha256": artifact_sha},
-        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+        "consumer_export.json": {
+            "staging_sha256": artifact_sha,
+            "code": _writer_code(module),
+        },
+        "consumer_reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
     }
     for name, value in evidence.items():
         (args.checkpoint_dir / name).write_text(json.dumps(value))
@@ -2005,6 +5108,7 @@ def test_a_sparse_era_calibration_is_bound_through_finalize_and_package(
         "run_identity_sha256": stamp,
         "out_h5_sha256": artifact_sha,
         "weights_sha256": "w",
+        "code": _writer_code(module),
     }
     qa = {
         "plain_consumption": True,
@@ -2017,7 +5121,7 @@ def test_a_sparse_era_calibration_is_bound_through_finalize_and_package(
         "calibration_summary.json": summary,
         "consumer_export.json": export,
         "spine_qa.json": qa,
-        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+        "consumer_reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
     }
     for name, value in evidence.items():
         (ckpt / name).write_text(json.dumps(value))
@@ -2051,7 +5155,19 @@ def test_a_sparse_era_calibration_is_bound_through_finalize_and_package(
 
 
 def _package_args_with_hours(
-    module, tmp_path, monkeypatch, *, gate_state, take_up_state="passed"
+    module,
+    tmp_path,
+    monkeypatch,
+    *,
+    gate_state,
+    take_up_state="passed",
+    immigration_state="passed",
+    work_disability_state="passed",
+    income_state="passed",
+    ssi_disability_state="passed",
+    ssi_medicaid_state="passed",
+    receipt_anchor_state="passed",
+    reviewed_fill_state="passed",
 ):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
@@ -2088,6 +5204,81 @@ def _package_args_with_hours(
         take_up_gate["artifact_sha256"] = "0" * 64
     if gates and take_up_state != "missing":
         gates["acs_local_take_up_signal"] = take_up_gate
+    immigration_gate = {
+        "passed": True,
+        "failures": [],
+        "artifact_sha256": artifact_sha,
+    }
+    if immigration_state == "failed":
+        immigration_gate.update(passed=False, failures=["invented CITIZEN spine"])
+    elif immigration_state == "truthy":
+        immigration_gate["passed"] = "true"
+    elif immigration_state == "stale":
+        immigration_gate["artifact_sha256"] = "0" * 64
+    if gates and immigration_state != "missing":
+        gates["acs_local_immigration_signal"] = immigration_gate
+    work_disability_gate = {
+        "passed": True,
+        "failures": [],
+        "artifact_sha256": artifact_sha,
+    }
+    if work_disability_state == "failed":
+        work_disability_gate.update(passed=False, failures=["invented imputed flag"])
+    elif work_disability_state == "truthy":
+        work_disability_gate["passed"] = "true"
+    elif work_disability_state == "stale":
+        work_disability_gate["artifact_sha256"] = "0" * 64
+    if gates and work_disability_state != "missing":
+        gates["acs_local_work_disability_signal"] = work_disability_gate
+    income_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if income_state == "failed":
+        income_gate.update(passed=False, failures=["invented missing income"])
+    elif income_state == "truthy":
+        income_gate["passed"] = "true"
+    elif income_state == "stale":
+        income_gate["artifact_sha256"] = "0" * 64
+    if gates and income_state != "missing":
+        gates["acs_local_income_transfer_signal"] = income_gate
+    ssi_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if ssi_disability_state == "failed":
+        ssi_gate.update(passed=False, failures=["invented default-filled criteria"])
+    elif ssi_disability_state == "truthy":
+        ssi_gate["passed"] = "true"
+    elif ssi_disability_state == "stale":
+        ssi_gate["artifact_sha256"] = "0" * 64
+    if gates and ssi_disability_state != "missing":
+        gates["acs_local_ssi_disability_signal"] = ssi_gate
+    ssi_medicaid_gate = {
+        "passed": True,
+        "failures": [],
+        "artifact_sha256": artifact_sha,
+    }
+    if ssi_medicaid_state == "failed":
+        ssi_medicaid_gate.update(passed=False, failures=["invented universal take-up"])
+    elif ssi_medicaid_state == "truthy":
+        ssi_medicaid_gate["passed"] = "true"
+    elif ssi_medicaid_state == "stale":
+        ssi_medicaid_gate["artifact_sha256"] = "0" * 64
+    if gates and ssi_medicaid_state != "missing":
+        gates["acs_local_ssi_medicaid_take_up_signal"] = ssi_medicaid_gate
+    anchor_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if receipt_anchor_state == "failed":
+        anchor_gate.update(passed=False, failures=["invented SNAP reporter"])
+    elif receipt_anchor_state == "truthy":
+        anchor_gate["passed"] = "true"
+    elif receipt_anchor_state == "stale":
+        anchor_gate["artifact_sha256"] = "0" * 64
+    if gates and receipt_anchor_state != "missing":
+        gates["acs_local_receipt_anchor_signal"] = anchor_gate
+    fill_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if reviewed_fill_state == "failed":
+        fill_gate.update(passed=False, failures=["invented unregistered fill"])
+    elif reviewed_fill_state == "truthy":
+        fill_gate["passed"] = "true"
+    elif reviewed_fill_state == "stale":
+        fill_gate["artifact_sha256"] = "0" * 64
+    if gates and reviewed_fill_state != "missing":
+        gates["acs_local_reviewed_fill_consumers"] = fill_gate
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {
@@ -2101,8 +5292,11 @@ def _package_args_with_hours(
             "artifact_sha256": artifact_sha,
             "per_spine": {},
         },
-        "consumer_export.json": {"staging_sha256": artifact_sha},
-        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+        "consumer_export.json": {
+            "staging_sha256": artifact_sha,
+            "code": _writer_code(module),
+        },
+        "consumer_reviewed_null_fills.json": {"columns_filled": 0, "fills": []},
     }
     for name, value in evidence.items():
         (args.checkpoint_dir / name).write_text(json.dumps(value))
@@ -2144,6 +5338,16 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     ]
     assert take_up["passed"] is True
     assert take_up["artifact_sha256"] == copied_sha
+    immigration = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
+        "acs_local_immigration_signal"
+    ]
+    assert immigration["passed"] is True
+    assert immigration["artifact_sha256"] == copied_sha
+    work_disability = json.loads((release_dir / "gate_summary.json").read_text())[
+        "gates"
+    ]["acs_local_work_disability_signal"]
+    assert work_disability["passed"] is True
+    assert work_disability["artifact_sha256"] == copied_sha
     for name in ("build_manifest.json", "gate_summary.json"):
         work_gate = json.loads((release_dir / name).read_text())["gates"][
             "work_experience_inputs"
@@ -2156,6 +5360,54 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
             "artifact_sha256": copied_sha,
             "checked_at_stage": "package",
         }
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    "work_disability_state", ["missing", "failed", "truthy", "stale"]
+)
+def test_package_requires_a_current_work_disability_gate(
+    tmp_path, monkeypatch, work_disability_state
+):
+    """microcosm#1021: a report finalized before the work/disability gate, or
+    failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        work_disability_state=work_disability_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_work_disability_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+@requires_pytables
+@pytest.mark.parametrize("immigration_state", ["missing", "failed", "truthy", "stale"])
+def test_package_requires_a_current_immigration_gate(
+    tmp_path, monkeypatch, immigration_state
+):
+    """microcosm#1020: a report finalized before the immigration gate, or
+    failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        immigration_state=immigration_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_immigration_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
 @requires_pytables
@@ -2230,6 +5482,44 @@ def test_package_refuses_historical_staging_with_incomplete_work_experience(
     assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
+def _set_writer(args, **changes) -> None:
+    path = args.checkpoint_dir / "consumer_export.json"
+    export = json.loads(path.read_text())
+    export["code"] = {**export["code"], **changes}
+    path.write_text(json.dumps(export))
+
+
+@requires_pytables
+def test_package_refuses_another_writer_before_any_release_dir(tmp_path, monkeypatch):
+    """The writer binding runs before the release directory exists."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _set_writer(args, commit="0" * 40)
+
+    with pytest.raises(SystemExit, match="written by code 0000000"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+
+
+@requires_pytables
+def test_a_dirty_writer_marks_the_build_dirty(tmp_path, monkeypatch):
+    """A clean packaging tree cannot hide a dirty writer (review of #1311)."""
+
+    module = _load_tool_module()
+    # A clean packaging tree, whatever this checkout's state, so only the
+    # writer's flag can make the build dirty.
+    clean = {**module._repo_code_identity(allow_dirty=True), "dirty": False}
+    monkeypatch.setattr(module, "_repo_code_identity", lambda allow_dirty: dict(clean))
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _set_writer(args, dirty=True)
+
+    release_dir = Path(module.do_package(args)["release_dir"])
+
+    build = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build["build_dirty"] is True
+
+
 @requires_pytables
 def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
     tmp_path, monkeypatch
@@ -2298,7 +5588,8 @@ def test_the_package_stage_output_meets_the_publisher_gate_requirement(
     gate_summary = load("gate_summary.json")
     release_manifest = load("release_manifest.json")
     build_manifest = load("build_manifest.json")
-    assert release_manifest["build"]["built_with_model_package"] == {
+    # In the build-folder layout the build's details are at the top level.
+    assert release_manifest["built_with_model_package"] == {
         "name": "policyengine-us",
         "version": "2.2.1",
     }
@@ -2321,6 +5612,224 @@ def test_the_package_stage_output_meets_the_publisher_gate_requirement(
     )
     assert len(failures) == 1
     assert "must carry the 'stored_inputs' gate" in failures[0]
+
+
+def _pin_built_with_versions(monkeypatch) -> None:
+    """The built-with record reads installed metadata; the engine-free lane
+    has neither engine package, so pin both."""
+
+    import importlib.metadata as metadata
+
+    real_version = metadata.version
+    pinned = {"policyengine-us": "2.2.1", "policyengine-core": "3.33.3"}
+    monkeypatch.setattr(
+        metadata, "version", lambda name: pinned.get(name) or real_version(name)
+    )
+
+
+@requires_pytables
+def test_the_package_stage_writes_a_build_of_the_local_area_release(
+    tmp_path, monkeypatch
+):
+    """microcosm#1570: the package stage writes its build into a directory
+    named after the US local-area release, in the build-folder layout. Both
+    manifests name the release and the build, whose ID keeps its
+    populace-us-2024-buildo-acs-local-<sha>-<timestamp> form; the dataset is
+    microcosm_us_2024_acs_local.h5; no artifact pins a revision; and the
+    checksum ledger matches the rewritten manifests."""
+
+    from microcosm.data import contract
+
+    _pin_built_with_versions(monkeypatch)
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+
+    result = module.do_package(args)
+
+    release_dir = args.out / "releases" / "microcosm-us-2024-local"
+    assert Path(result["release_dir"]) == release_dir
+    build = result["build"]
+    assert re.fullmatch(
+        r"populace-us-2024-buildo-acs-local-[0-9a-f]+-\d{8}T\d{6}Z", build
+    ), build
+    assert (result["release_id"], result["release"]) == (
+        "microcosm-us-2024-local",
+        "microcosm-us-2024-local",
+    )
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    for document in (release_manifest, build_manifest):
+        assert (document["release"], document["build"]) == (
+            "microcosm-us-2024-local",
+            build,
+        )
+        assert "build_id" not in document
+    assert release_manifest["artifacts"]["microcosm_us_2024_acs_local"] == {
+        "kind": "microdata",
+        "path": "microcosm_us_2024_acs_local.h5",
+        "repo_id": "policyengine/populace-us",
+        "sha256": result["root_artifact"]["sha256"],
+        "role": "dataset",
+    }
+    assert not any(
+        "revision" in entry for entry in release_manifest["artifacts"].values()
+    )
+    assert (release_manifest["dataset_role"], release_manifest["is_default"]) == (
+        "non_default_local_area",
+        False,
+    )
+    assert Path(result["root_artifact"]["local_path"]) == (
+        args.out / "microcosm_us_2024_acs_local.h5"
+    )
+
+    failures: list[str] = []
+    contract._check_local_area_release_manifest(
+        release_manifest, contract.US_LOCAL_RELEASE_ID, failures
+    )
+    contract._check_build_folder_identity(
+        build_manifest,
+        contract.US_LOCAL_RELEASE_ID,
+        filename="build_manifest.json",
+        failures=failures,
+    )
+    # This run's diagnostics generation is recorded as failed, so the
+    # directory carries no calibration_diagnostics.json.
+    contract._check_local_area_checksum_ledger(
+        release_dir,
+        release_manifest,
+        failures,
+        required_files=tuple(
+            name
+            for name in contract.LOCAL_AREA_REQUIRED_RELEASE_FILES
+            if name != "calibration_diagnostics.json"
+        ),
+    )
+    assert failures == []
+
+
+@requires_pytables
+def test_the_package_stage_prints_the_emitter_publication_commands(
+    tmp_path, monkeypatch
+):
+    """microcosm#1570: the package stage gives the commands that publish the
+    build through the emitter into policyengine/populace-us and then make it
+    the release's current build, in its result and in both manifests'
+    refresh recipe, in place of tools/publish_release.sh."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    commands = publication_commands(
+        release_dir, repo_id="policyengine/populace-us", artifact_root=args.out
+    )
+    assert result["publish_command"] == commands["publish_command"]
+    assert result["promote_command"] == commands["promote_command"]
+    assert json.loads((args.out / "package_result.json").read_text()) == result
+    recipe_commands = publication_commands(
+        "<run>/release/releases/microcosm-us-2024-local",
+        repo_id="policyengine/populace-us",
+        artifact_root="<run>/release",
+    )
+    for name in ("release_manifest.json", "build_manifest.json"):
+        manifest = json.loads((release_dir / name).read_text())
+        assert manifest["refresh_recipe"]["publish"] == recipe_commands
+    recorded = json.dumps(
+        [
+            result,
+            *(
+                json.loads((release_dir / name).read_text())
+                for name in ("release_manifest.json", "build_manifest.json")
+            ),
+        ]
+    )
+    assert "publish_release" not in recorded
+    assert "--no-latest" not in recorded
+
+
+@requires_pytables
+@requires_pytables
+def test_the_package_stage_declares_every_file_it_writes_as_an_artifact(
+    tmp_path, monkeypatch
+):
+    """The emitter publishes a build folder's manifests, checksum ledger and
+    declared artifacts only, so every file the package stage writes into the
+    release directory, the evidence JSON included, is a declared artifact; a
+    ledger line for an undeclared file would name a file the published
+    folder lacks (review of #1571)."""
+
+    _pin_built_with_versions(monkeypatch)
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    declared = {entry["path"] for entry in release_manifest["artifacts"].values()}
+    written = {path.name for path in release_dir.iterdir()}
+    publisher_files = {"release_manifest.json", "build_manifest.json", "sha256sums.txt"}
+    assert written - publisher_files <= declared
+    assert {"held_back_columns.json", "run_identity.json"} <= declared
+    ledger = {
+        line.split()[1]
+        for line in (release_dir / "sha256sums.txt").read_text().splitlines()
+    }
+    assert ledger - publisher_files <= declared
+
+
+def test_a_run_that_will_package_refuses_an_earlier_release_directory_first(
+    tmp_path: Path,
+) -> None:
+    """--stage all refuses an --out that already has the local-area release's
+    directory while parsing its arguments, before hours of materialize,
+    calibrate, qa and finalize (review of #1571)."""
+    module = _load_tool_module()
+    out = tmp_path / "release"
+    (out / "releases" / "microcosm-us-2024-local").mkdir(parents=True)
+
+    with pytest.raises(SystemExit):
+        module._parse_args(
+            [
+                "--stage",
+                "all",
+                "--staging-h5",
+                str(tmp_path / "staging.h5"),
+                "--checkpoint-dir",
+                str(tmp_path / "ckpt"),
+                "--feed",
+                str(tmp_path / "facts.jsonl"),
+                "--out-h5",
+                str(tmp_path / "out.h5"),
+                "--out",
+                str(out),
+            ]
+        )
+
+
+def test_package_refuses_a_release_directory_from_an_earlier_package(
+    tmp_path, monkeypatch
+):
+    """The directory is named after the release, not the build, so packaging
+    again into the same --out would mix two builds' files: the package stage
+    refuses before it reads the evidence and leaves the earlier directory as
+    it was."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    earlier = args.out / "releases" / "microcosm-us-2024-local"
+    earlier.mkdir(parents=True)
+    (earlier / "release_manifest.json").write_text("{}")
+
+    with pytest.raises(SystemExit, match="already exists"):
+        module.do_package(args)
+
+    assert [path.name for path in earlier.iterdir()] == ["release_manifest.json"]
+    assert (earlier / "release_manifest.json").read_text() == "{}"
+    assert not (args.out / "package_result.json").exists()
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
 def _write_measurable_lane_h5(
@@ -2804,6 +6313,345 @@ def test_package_rechecks_final_bytes_after_copy_or_reuse(
         assert not root_copy.exists(), "a refused copy is not left at the root"
 
 
+# ---------------------------------------------------------------------------
+# Reviewed-fill consumer register (microcosm#1022, part 6)
+# ---------------------------------------------------------------------------
+
+#: The 79 reviewed default fills of release
+#: populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z
+#: (its consumer_reviewed_null_fills.json), by entity.
+_RELEASE_767312D60_REVIEWED_FILLS = {
+    "person": (
+        "attends_eligible_educational_institution_for_american_opportunity_credit "
+        "child_support_expense child_support_received cps_race "
+        "detailed_occupation_recode disability_benefits educational_assistance "
+        "employment_income_before_lsr fsla_overtime_premium "
+        "has_american_opportunity_credit_1098_t_or_exception "
+        "has_american_opportunity_credit_institution_ein has_never_worked "
+        "health_insurance_premiums hourly_wage immigration_status_str "
+        "is_computer_scientist "
+        "is_enrolled_at_least_half_time_for_american_opportunity_credit "
+        "is_executive_administrative_professional is_farmer_fisher is_hispanic "
+        "is_military is_paid_hourly "
+        "is_pursuing_credential_for_american_opportunity_credit is_self_employed "
+        "is_separated is_snap_abawd_discretionary_exempt is_surviving_spouse "
+        "is_union_member_or_covered keogh_distributions "
+        "meets_ssi_disability_criteria other_health_insurance_premiums "
+        "pre_subsidy_rent previous_year_income_available real_estate_taxes "
+        "roth_401k_contributions_desired roth_ira_contributions_desired "
+        "s_corp_income self_employment_income_before_lsr "
+        "self_employment_income_last_year ssi_reported ssn_card_type "
+        "takes_up_head_start_if_eligible takes_up_medicaid_if_eligible "
+        "takes_up_medicare_if_eligible takes_up_ssi_if_eligible "
+        "tax_exempt_ira_distributions taxable_401k_distributions "
+        "taxable_403b_distributions taxable_sep_distributions tip_income "
+        "traditional_401k_contributions_desired treasury_tipped_occupation_code "
+        "weeks_unemployed workers_compensation"
+    ).split(),
+    "household": (
+        "auto_loan_balance auto_loan_interest block_geoid cbsa_code "
+        "household_vehicles_owned household_vehicles_value net_worth place_fips "
+        "qualified_passenger_vehicle_loan_interest sldl sldu tenure_type "
+        "tract_geoid"
+    ).split(),
+    "tax_unit": (
+        "second_home_mortgage_balance second_home_mortgage_interest "
+        "second_home_mortgage_origination_year "
+        "selected_marketplace_plan_benchmark_ratio takes_up_aca_if_eligible "
+        "takes_up_eitc would_file_taxes_voluntarily"
+    ).split(),
+    "spm_unit": (
+        "receives_housing_assistance spm_unit_energy_subsidy spm_unit_tenure_type "
+        "takes_up_snap_if_eligible takes_up_tanf_if_eligible"
+    ).split(),
+}
+
+
+def _reviewed_fill(entity, column, fill_value="0", spine="acs_2024_1yr") -> dict:
+    return {
+        "entity": entity,
+        "column": column,
+        "filled_rows": 3,
+        "rows": 8,
+        "fill_value": fill_value,
+        "fill_kind": "int",
+        "register_missing_rows": 3,
+        "missing_rows_by_spine": {spine: 3},
+    }
+
+
+def test_the_register_covers_every_remaining_reviewed_fill() -> None:
+    """Release 767312d60 default-filled 79 columns; the stack now fills 20 of
+    them (NEVER_DEFAULT_FILLED), and every other one has a register entry."""
+
+    module = _load_tool_module()
+    document = load_reviewed_fill_consumer_register()
+    assert (
+        reviewed_fill_register_failures(
+            document, never_default_filled=module.NEVER_DEFAULT_FILLED
+        )
+        == []
+    )
+    released = {
+        (entity, column)
+        for entity, columns in _RELEASE_767312D60_REVIEWED_FILLS.items()
+        for column in columns
+    }
+    assert len(released) == 79
+    now_filled = released & set(module.NEVER_DEFAULT_FILLED)
+    registered = {(entry["entity"], entry["column"]) for entry in document["entries"]}
+    # 20 are filled natively and 59 are registered. The ACS vehicle count
+    # returned to a reviewed fill after the microcosm#1064 review (VEH counts
+    # vehicles available, not owned): it left NEVER_DEFAULT_FILLED and gained
+    # an entry together, so this still holds.
+    assert registered == released - now_filled
+
+
+def test_do_finalize_hard_fails_on_an_unregistered_reviewed_fill(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1022: a reviewed default fill with no register entry blocks
+    simulation readiness, recorded bound to the evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    (args.checkpoint_dir / "consumer_reviewed_null_fills.json").write_text(
+        json.dumps(
+            {"columns_filled": 1, "fills": [_reviewed_fill("person", "invented_input")]}
+        )
+    )
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_reviewed_fill_consumers" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_reviewed_fill_consumers"]
+    assert gate["passed"] is False
+    assert gate["failures"][0].startswith(
+        "person.invented_input: a reviewed default fill (0) the release applied "
+        "has no entry"
+    )
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert (
+        "acs_local_reviewed_fill_consumers" in summary["simulation_readiness_blockers"]
+    )
+
+
+def test_do_finalize_hard_fails_on_a_manifest_without_its_fills(
+    tmp_path, monkeypatch
+) -> None:
+    """A checkpoint whose engine pass wrote no fill ledger cannot show which
+    defaults it applied, so it cannot pass as reviewed."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    (args.checkpoint_dir / "reviewed_null_fills.json").unlink()
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    with pytest.raises(SystemExit):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_reviewed_fill_consumers"
+    ]
+    assert gate["passed"] is False
+    assert gate["failures"][0].startswith("reviewed_null_fills.json records no fills")
+
+
+def test_do_finalize_grades_the_registered_fills_of_both_engine_passes(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    fills = [
+        _reviewed_fill("person", "weeks_unemployed"),
+        _reviewed_fill("household", "household_vehicles_value"),
+    ]
+    for name in module.REVIEWED_FILL_MANIFESTS:
+        (args.checkpoint_dir / name).write_text(
+            json.dumps({"columns_filled": 2, "fills": fills})
+        )
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    # consumer_ready still fails: this checkpoint has no QA evidence.
+    with pytest.raises(SystemExit):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_reviewed_fill_consumers"
+    ]
+    assert gate["passed"] is True, gate["failures"]
+    detail = gate["detail"]
+    assert detail["applied_fills"] == 2
+    assert detail["register_sha256"] == reviewed_fill_register_sha256(
+        load_reviewed_fill_consumer_register()
+    )
+    assert detail["fills"]["household.household_vehicles_value"]["filled_rows"] == {
+        "reviewed_null_fills.json": 3,
+        "consumer_reviewed_null_fills.json": 3,
+    }
+    assert detail["known_bias"]["household.household_vehicles_value"]["snap"] == (
+        "mixed"
+    )
+    assert "person.weeks_unemployed" not in detail["known_bias"]
+    entries = load_reviewed_fill_consumer_register()["entries"]
+    assert len(detail["unused_entries"]) == len(entries) - 2
+    summary = json.loads(args.out_summary.read_text())
+    assert (
+        "acs_local_reviewed_fill_consumers"
+        not in summary["simulation_readiness_blockers"]
+    )
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    "reviewed_fill_state", ["missing", "failed", "truthy", "stale"]
+)
+def test_package_requires_a_current_reviewed_fill_consumer_gate(
+    tmp_path, monkeypatch, reviewed_fill_state
+):
+    """microcosm#1022: a report finalized before the reviewed-fill consumer
+    gate, or failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        reviewed_fill_state=reviewed_fill_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_reviewed_fill_consumers"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+
+
+@pytest.mark.parametrize("engine_version", ["2.3.0", "unknown"])
+def test_do_finalize_hard_fails_on_an_engine_other_than_the_reviewed_one(
+    tmp_path, monkeypatch, engine_version
+) -> None:
+    """microcosm#1071 review: registered fills on another policyengine-us (or
+    none) block simulation readiness, even when the engine tier is skipped."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    fills = [_reviewed_fill("household", "household_vehicles_value")]
+    for name in module.REVIEWED_FILL_MANIFESTS:
+        (args.checkpoint_dir / name).write_text(
+            json.dumps({"columns_filled": 1, "fills": fills})
+        )
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    monkeypatch.setattr(module, "_installed_engine_version", lambda: engine_version)
+    with pytest.raises(SystemExit):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_reviewed_fill_consumers"
+    ]
+    assert gate["passed"] is False
+    assert gate["failures"] == [
+        f"the release runs policyengine-us {engine_version} but the register was "
+        f"reviewed against {_REVIEWED_ENGINE}: re-run the engine-tier consumer "
+        "walk (test_us_acs_local_reviewed_fill_consumers.py) on the new engine, "
+        "review every note whose program's rules changed, and update "
+        "reviewed_against."
+    ]
+    assert gate["detail"]["installed_policyengine_us"] == engine_version
+    assert gate["detail"]["engine_matches_review"] is False
+    summary = json.loads(args.out_summary.read_text())
+    assert (
+        "acs_local_reviewed_fill_consumers" in summary["simulation_readiness_blockers"]
+    )
+
+
+@requires_pytables
+def test_package_refuses_an_engine_other_than_the_reviewed_one(tmp_path, monkeypatch):
+    """microcosm#1071 review: package re-grades against the engine it runs,
+    so a finalize verdict from the reviewed engine cannot carry a later one."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    monkeypatch.setattr(module, "_installed_engine_version", lambda: "2.3.0")
+    with pytest.raises(
+        SystemExit, match="the release runs policyengine-us 2.3.0 but the register"
+    ):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+
+
+@requires_pytables
+def test_package_regrades_the_packaged_fill_manifests(tmp_path, monkeypatch):
+    """A passing finalize verdict covers the manifests it read; a packaged
+    ledger that gained an unregistered fill since is refused."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    (args.checkpoint_dir / "consumer_reviewed_null_fills.json").write_text(
+        json.dumps(
+            {"columns_filled": 1, "fills": [_reviewed_fill("person", "invented_input")]}
+        )
+    )
+    with pytest.raises(
+        SystemExit,
+        match="reviewed default fills without their means-tested consumer notes",
+    ):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+
+
+@requires_pytables
+def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch):
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    fills = [_reviewed_fill("tax_unit", "takes_up_eitc", "True")]
+    (args.checkpoint_dir / "consumer_reviewed_null_fills.json").write_text(
+        json.dumps({"columns_filled": 1, "fills": fills})
+    )
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    document = load_reviewed_fill_consumer_register()
+    assert "reviewed_fill_consumer_register.json" in result["files"]
+    shipped = json.loads(
+        (release_dir / "reviewed_fill_consumer_register.json").read_text()
+    )
+    assert shipped == document
+    record = json.loads((release_dir / "build_manifest.json").read_text())[
+        "reviewed_fill_consumer_register"
+    ]
+    assert record["sha256"] == reviewed_fill_register_sha256(document)
+    assert record["entries"] == len(document["entries"])
+    assert record["reviewed_against"] == {"policyengine_us": "2.2.1"}
+    assert record["known_bias"]["tax_unit.takes_up_eitc"] == [
+        "aca_ptc",
+        "chip",
+        "eitc",
+        "lifeline",
+        "medicaid",
+        "state_benefits",
+        "wic",
+    ]
+    gate = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
+        "acs_local_reviewed_fill_consumers"
+    ]
+    assert gate["passed"] is True
+    assert gate["checked_at_stage"] == "package"
+    assert gate["artifact_sha256"] == result["root_artifact"]["sha256"]
+    assert gate["detail"]["register_sha256"] == record["sha256"]
+    assert gate["detail"]["known_bias"] == {
+        "tax_unit.takes_up_eitc": {
+            # microcosm#1071 review: the Medicaid changes move it both ways.
+            "aca_ptc": "mixed",
+            "chip": "mixed",
+            "eitc": "overstates",
+            "lifeline": "mixed",
+            "medicaid": "mixed",
+            "state_benefits": "mixed",
+            "wic": "mixed",
+        }
+    }
+
+
 def _calibrate_stage_argv(tmp_path: Path, *extra: str) -> list[str]:
     return [
         "--stage",
@@ -2960,7 +6808,7 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
     identity = {
         "staging_sha256": "s",
         "target_roles_sha256": "r",
-        "acs_local_take_up": {"seed": 0, "assigned_sha256": "a" * 64},
+        "acs_local_take_up": _TAKE_UP_RECEIPT,
     }
     monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
     income = TargetSpec(
@@ -3021,6 +6869,12 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
         )
     )
     args.checkpoint_dir.mkdir()
+    module._staging_summary_path(args).write_text(
+        json.dumps(_staging_receipt_anchor_summary())
+    )
+    identity["acs_local_ssi_medicaid_take_up"] = _ssi_medicaid_receipt(
+        module, args.checkpoint_dir
+    )
     # A checkpoint materialized before #1019 is refused before any solve.
     monkeypatch.setattr(
         module, "_verify_run_identity", lambda args: {"staging_sha256": "s"}
@@ -3056,6 +6910,244 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
     with pytest.raises(SystemExit, match="different solver settings"):
         module.do_calibrate(args)
     assert calls == []
+
+
+def _calibrate_through_the_write(module, tmp_path: Path, monkeypatch, reads: list):
+    """Drive ``do_calibrate`` through a tiny real solve into the real write.
+
+    The write's heavy collaborators (staging load, take-up, projection,
+    reviewed-null fill, live inputs, the lean checkpoint and the H5 writer)
+    are stubbed. The git reader answers from ``reads`` in order and raises an
+    exception it finds there. Returns the args and the ordered events: each
+    ``git`` read, the ``solve``, ``prepare`` when the last collaborator before
+    the H5 has run, and the ``write`` of the H5.
+    """
+
+    import types
+
+    from scipy import sparse
+
+    import microcosm.calibrate as calibrate_package
+    from microcosm.calibrate import TargetSpec
+
+    events: list[str] = []
+    answers = iter(reads)
+
+    def git_reader(allow_dirty):
+        # Calibrate records a dirty tree; it never refuses one itself.
+        assert allow_dirty is True
+        events.append("git")
+        answer = next(answers)
+        if isinstance(answer, BaseException):
+            raise answer
+        return dict(answer)
+
+    monkeypatch.setattr(module, "_repo_code_identity", git_reader)
+    frame, design, targets = _tiny_calibration_surface()
+    identity = {
+        "staging_sha256": "s",
+        "target_roles_sha256": "r",
+        "acs_local_take_up": _TAKE_UP_RECEIPT,
+    }
+    monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
+    income = TargetSpec(
+        name="income",
+        entity="household",
+        measure="income",
+        value=next(iter(targets)).value,
+        source="fixture",
+        family="irs_soi",
+        metadata={
+            "measure_mode": "sum",
+            "source_measure_id": "adjusted_gross_income_amount",
+            "ledger_measure_unit": "usd",
+            "ledger_geography_level": "state",
+            "state_fips": "06",
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "load_checkpoint_surface",
+        lambda *a, **k: (
+            frame,
+            design,
+            SimpleNamespace(specs=(income,)),
+            [{"name": "income", "role": "train"}],
+            sparse.csr_array((1, len(design)), dtype=np.float32),
+        ),
+    )
+    monkeypatch.setattr(
+        module.cd_surface, "calibration_target_set", lambda *a, **k: targets
+    )
+    monkeypatch.setattr(
+        module,
+        "calibration_evidence",
+        lambda **kwargs: {"cd_holdout": {"n_targets": 0}, "n_holdout_targets": 0},
+    )
+    monkeypatch.setattr(
+        calibrate_package,
+        "write_calibration_diagnostics",
+        lambda *a, **k: SimpleNamespace(
+            status="available", schema_version=8, sha256="diagnostics"
+        ),
+    )
+    solve = module.calibrate_surface
+
+    def recording_solve(*a, **k):
+        events.append("solve")
+        return solve(*a, **k)
+
+    monkeypatch.setattr(module, "calibrate_surface", recording_solve)
+
+    monkeypatch.setattr(module, "_load_staging_frame", lambda path: frame)
+    monkeypatch.setattr(module, "_require_local_hours", lambda *a: None)
+    monkeypatch.setattr(module, "_require_acs_self_employment_identity", lambda f: None)
+    monkeypatch.setattr(
+        module,
+        "_with_local_take_up",
+        lambda f, seed: (f, {"assigned_sha256": _TAKE_UP_RECEIPT["assigned_sha256"]}),
+    )
+    monkeypatch.setattr(module, "_with_recorded_ssi_medicaid_take_up", lambda f, *a: f)
+    monkeypatch.setattr(module, "project_input_only", lambda f, **k: (f, {}))
+    monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *a, **k: ([], None))
+
+    def live_stored_inputs(f):
+        events.append("prepare")
+        return SimpleNamespace(frame=f, provenance={})
+
+    monkeypatch.setattr(module, "_with_live_stored_inputs", live_stored_inputs)
+
+    class LeanCheckpoint:
+        def __init__(self, path, mode):
+            assert Path(path).name == "target_frame_lean.h5"
+
+        def __enter__(self):
+            return {"household": frame.table("household")}
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(pd, "HDFStore", LeanCheckpoint)
+
+    def write_dataset(calibrated, path, **kwargs):
+        events.append("write")
+        path.write_bytes(b"calibrated")
+
+    builder = types.ModuleType("build_us_acs_multispine_base")
+    builder._write_dataset = write_dataset
+    monkeypatch.setitem(sys.modules, "build_us_acs_multispine_base", builder)
+
+    args = module._parse_args(
+        _calibrate_stage_argv(tmp_path, "--epochs", "2", "--epoch-batch", "2")
+    )
+    args.checkpoint_dir.mkdir()
+    module._staging_summary_path(args).write_text(
+        json.dumps(_staging_receipt_anchor_summary())
+    )
+    identity["acs_local_ssi_medicaid_take_up"] = _ssi_medicaid_receipt(
+        module, args.checkpoint_dir
+    )
+    return args, events
+
+
+def test_calibrate_records_the_code_it_read_when_it_started(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """consumer_export.json names the code read before the solve, and the
+    checkout is read again just before the H5 (review of microcosm#1311)."""
+
+    module = _load_tool_module()
+    # Only the branch moved, which names no code: the write goes on, and the
+    # record keeps what the stage read when it started.
+    renamed = {**_STARTED_CODE, "branch": "renamed"}
+    resumed = {**_STARTED_CODE, "sha": "c" * 9, "commit": "c" * 40}
+    args, events = _calibrate_through_the_write(
+        module, tmp_path, monkeypatch, [_STARTED_CODE, renamed, resumed, resumed]
+    )
+
+    module.do_calibrate(args)
+
+    export_path = args.checkpoint_dir / "consumer_export.json"
+    export = json.loads(export_path.read_text())
+    assert export["code"] == _STARTED_CODE
+    assert export["out_h5_sha256"] == module._sha256(args.out_h5)
+    # The second read comes after everything that prepares the artifact.
+    assert events == ["git", "solve", "prepare", "git", "write"]
+
+    # A resumed run with nothing left to solve only writes the artifact
+    # again, and records the code that writes it this time.
+    events.clear()
+    args.resume = True
+    module.do_calibrate(args)
+
+    assert json.loads(export_path.read_text())["code"] == resumed
+    assert events == ["git", "prepare", "git", "write"]
+
+
+@pytest.mark.parametrize(
+    ("started", "at_write", "refusal"),
+    [
+        (
+            _STARTED_CODE,
+            {**_STARTED_CODE, "sha": "b" * 9, "commit": "b" * 40},
+            r"started at a{40} \(dirty=False\) and is now at b{40} \(dirty=False\)",
+        ),
+        (
+            _STARTED_CODE,
+            {**_STARTED_CODE, "dirty": True},
+            r"started at a{40} \(dirty=False\) and is now at a{40} \(dirty=True\)",
+        ),
+        (
+            {**_STARTED_CODE, "dirty": True},
+            _STARTED_CODE,
+            r"started at a{40} \(dirty=True\) and is now at a{40} \(dirty=False\)",
+        ),
+        (
+            _STARTED_CODE,
+            subprocess.CalledProcessError(128, ["git", "rev-parse", "HEAD"]),
+            None,
+        ),
+    ],
+    ids=["moved", "dirtied", "cleaned", "git-fails"],
+)
+def test_calibrate_writes_nothing_from_a_checkout_that_changed(
+    tmp_path: Path, monkeypatch, started, at_write, refusal
+) -> None:
+    """A checkout whose commit or dirty state changes during the solve, or a
+    git that fails at the write, stops the stage before any byte of the H5 or
+    of consumer_export.json exists (review of #1311)."""
+
+    module = _load_tool_module()
+    args, events = _calibrate_through_the_write(
+        module, tmp_path, monkeypatch, [started, at_write]
+    )
+
+    if refusal is None:
+        with pytest.raises(subprocess.CalledProcessError):
+            module.do_calibrate(args)
+    else:
+        with pytest.raises(SystemExit, match=refusal):
+            module.do_calibrate(args)
+    assert events == ["git", "solve", "prepare", "git"]
+    assert not args.out_h5.exists()
+    assert not (args.checkpoint_dir / "consumer_export.json").exists()
+
+
+def test_calibrate_reads_the_code_before_it_solves(tmp_path: Path, monkeypatch) -> None:
+    """A git that fails at the start fails the stage before hours of solving."""
+
+    module = _load_tool_module()
+    args, events = _calibrate_through_the_write(
+        module,
+        tmp_path,
+        monkeypatch,
+        [subprocess.CalledProcessError(128, ["git", "rev-parse", "HEAD"])],
+    )
+
+    with pytest.raises(subprocess.CalledProcessError):
+        module.do_calibrate(args)
+    assert events == ["git"]
+    assert not (args.checkpoint_dir / "weights_latest.npz").exists()
 
 
 def test_a_stamp_from_before_the_penalty_settings_reads_as_the_historical_solve(

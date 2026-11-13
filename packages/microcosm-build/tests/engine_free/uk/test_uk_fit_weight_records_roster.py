@@ -19,6 +19,7 @@ from microcosm.build import uk_runtime
 #: The stage transforms that fit a model and record its weights.
 FITTING_STAGE_TRANSFORMS = frozenset(
     {
+        "aps_occupation.UKAPSOccupationStageTransform",
         "etb_services.UKETBServicesStageTransform",
         "etb_vat.UKETBVATStageTransform",
         "lcfs_consumption.UKLCFSConsumptionStageTransform",

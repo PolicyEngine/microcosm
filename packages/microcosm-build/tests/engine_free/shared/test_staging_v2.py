@@ -1107,189 +1107,24 @@ def test_staged_dataset_cli_follows_the_staging_mode_switch(monkeypatch):
         parse(["--staged-dataset-repo-id", " "])
 
 
-class CommitApi(MemoryApi):
-    """MemoryApi plus the commit surface the staged-dataset lane uses."""
-
-    def __init__(self, root: Path, repo_id: str = "example/private") -> None:
-        super().__init__(root, repo_id)
-        self.sha = "1" * 40
-        self.commits: list[tuple[str, str | None, list[str]]] = []
-
-    def file_exists(self, *, repo_id, filename, repo_type):
-        assert repo_id == self.repo_id and repo_type == "dataset"
-        return filename in self.files
-
-    def repo_info(self, *, repo_id, repo_type):
-        assert repo_id == self.repo_id and repo_type == "dataset"
-        return {"sha": self.sha}
-
-    def create_commit(
-        self, *, repo_id, operations, commit_message, repo_type, parent_commit
-    ):
-        assert repo_id == self.repo_id and repo_type == "dataset"
-        paths = []
-        for operation in operations:
-            self.files[operation.path_in_repo] = Path(
-                operation.path_or_fileobj
-            ).read_bytes()
-            paths.append(operation.path_in_repo)
-        self.commits.append((commit_message, parent_commit, paths))
-        self.sha = "2" * 40
-        return {"oid": self.sha}
-
-
-def test_storage_commits_several_files_at_once_and_reports_the_revision(tmp_path):
-    from huggingface_hub import CommitOperationAdd
-
-    api = CommitApi(tmp_path)
+def test_storage_only_reads_a_staged_file_through_the_hub_cache(tmp_path):
+    """Staged bundles go to the build's emitter, which owns every Hub write and
+    the credential checks; the storage only fetches a staged bundle's files."""
+    api = MemoryApi(tmp_path, "example/private")
+    api.files["staged/run/b.h5"] = b"binary"
     storage = HuggingFaceDatasetStorage("example/private", api=api)
-    first = tmp_path / "a.json"
-    second = tmp_path / "b.h5"
-    first.write_text("{}")
-    second.write_bytes(b"binary")
-
-    assert storage.head_revision() == "1" * 40
-    assert storage.file_exists("staged/run/a.json") is False
-    revision = storage.commit(
-        [
-            CommitOperationAdd(
-                path_in_repo="staged/run/a.json", path_or_fileobj=str(first)
-            ),
-            CommitOperationAdd(
-                path_in_repo="staged/run/b.h5", path_or_fileobj=str(second)
-            ),
-        ],
-        message="Stage run",
-        parent_commit="1" * 40,
-    )
-    assert revision == "2" * 40
-    assert api.commits == [
-        ("Stage run", "1" * 40, ["staged/run/a.json", "staged/run/b.h5"])
-    ]
-    assert storage.file_exists("staged/run/b.h5") is True
     assert storage.download_file("staged/run/b.h5").read_bytes() == b"binary"
-
-
-def test_storage_reports_the_credential_role_when_the_backend_can(tmp_path):
-    class RoleApi(CommitApi):
-        def whoami(self):
-            return {"name": "x", "auth": {"accessToken": {"role": "read"}}}
-
-    assert (
-        HuggingFaceDatasetStorage(
-            "example/private", api=RoleApi(tmp_path)
-        ).credential_role()
-        == "read"
-    )
-    assert (
-        HuggingFaceDatasetStorage(
-            "example/private", api=CommitApi(tmp_path)
-        ).credential_role()
-        is None
-    )
-
-
-def test_storage_commit_refuses_a_revisionless_backend(tmp_path):
-    class NoRevision(CommitApi):
-        def create_commit(self, **kwargs):
-            return {"oid": ""}
-
-    storage = HuggingFaceDatasetStorage("example/private", api=NoRevision(tmp_path))
-    with pytest.raises(RuntimeError, match="no revision"):
-        storage.commit([], message="empty")
-
-
-@pytest.mark.parametrize(
-    ("token", "expected"),
-    [
-        ({"role": "read"}, False),
-        ({"role": "write"}, True),
-        (
-            {
-                "role": "fineGrained",
-                "fineGrained": {"global": ["repo.write"], "scoped": []},
-            },
-            True,
-        ),
-        (
-            {
-                "role": "fineGrained",
-                "fineGrained": {
-                    "global": [],
-                    "scoped": [
-                        {
-                            "entity": {"type": "org", "name": "example"},
-                            "permissions": ["repo.write"],
-                        }
-                    ],
-                },
-            },
-            True,
-        ),
-        (
-            {
-                "role": "fineGrained",
-                "fineGrained": {
-                    "global": [],
-                    "scoped": [
-                        {
-                            "entity": {"type": "dataset", "name": "example/private"},
-                            "permissions": ["repo.content.read", "repo.write"],
-                        }
-                    ],
-                },
-            },
-            True,
-        ),
-        (
-            {
-                "role": "fineGrained",
-                "fineGrained": {
-                    "global": ["discussion.write"],
-                    "scoped": [
-                        {
-                            "entity": {"type": "user", "name": "someone"},
-                            "permissions": ["repo.write"],
-                        }
-                    ],
-                },
-            },
-            False,
-        ),
-        (
-            {
-                "role": "fineGrained",
-                "fineGrained": {
-                    "global": [],
-                    "scoped": [
-                        {
-                            "entity": {"type": "org", "name": "example"},
-                            "permissions": ["repo.content.read"],
-                        }
-                    ],
-                },
-            },
-            False,
-        ),
-        ({"role": "mystery"}, None),
-    ],
-)
-def test_storage_reads_whether_the_credential_can_write_this_repository(
-    tmp_path, token, expected
-):
-    class TokenApi(CommitApi):
-        def whoami(self):
-            return {"name": "x", "auth": {"accessToken": token}}
-
-    storage = HuggingFaceDatasetStorage("example/private", api=TokenApi(tmp_path))
-    assert storage.credential_can_write() is expected
-    # No whoami on the backend: the scope is unknown, never assumed.
-    assert (
-        HuggingFaceDatasetStorage(
-            "example/private", api=CommitApi(tmp_path)
-        ).credential_can_write()
-        is None
-    )
+    assert api.downloaded == ["staged/run/b.h5"]
+    for removed in (
+        "upload",
+        "commit",
+        "file_exists",
+        "head_revision",
+        "last_commit",
+        "credential_role",
+        "credential_can_write",
+    ):
+        assert not hasattr(storage, removed), removed
 
 
 def _paused_remote_recorder(tmp_path):

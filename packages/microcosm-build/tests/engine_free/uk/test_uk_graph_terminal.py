@@ -1216,11 +1216,6 @@ def _run_final_gate_kernel(monkeypatch, *, brma_row: bool = False, solved=None):
         ),
     )
     monkeypatch.setattr(
-        full_gates,
-        "load_efrs_parity_reference",
-        lambda: SimpleNamespace(input_entities={}),
-    )
-    monkeypatch.setattr(
         full_gates, "uk_aggregate_admin_totals", lambda frame, gates: ({}, [])
     )
 
@@ -1497,13 +1492,68 @@ def test_the_gate_kernel_keys_the_solve_without_the_high_value_homes_code(
         ).implementation_hash()
         assert not hashed[-1] & high_value, kernel.__name__
     # The hash is memoised per process; its undecorated body hashes the two
-    # high-value homes modules.
+    # high-value homes modules (and the diagnostics publication code, next
+    # test).
     graph_terminal.uk_terminal_only_code_hash.__wrapped__()
-    assert hashed[-1] == high_value
+    assert high_value <= hashed[-1]
     first = graph_terminal.uk_terminal_only_code_hash()
     calls = len(hashed)
     assert graph_terminal.uk_terminal_only_code_hash() == first
     assert len(hashed) == calls
+
+
+def test_the_calibrated_node_keys_on_the_schema_9_publication_code_not_the_solve(
+    monkeypatch,
+):
+    # The calibrated node (uk.full.gates.calibrated) publishes its
+    # calibration_diagnostics output as schema 9:
+    # catalog_calibration_diagnostics with the UK label choices,
+    # dumped from CalibrationDiagnosticsV9. An edit to any of those modules
+    # changes the output's bytes, so it must re-key the calibrated node (through
+    # its terminal_code parameter); otherwise a store run with resume="auto"
+    # serves the old labels. Like the high-value homes code, it stays out of
+    # the two kernels' shared code hash. An edit to the catalogs, the schema
+    # or the label choices therefore never re-keys the preflight node or the
+    # solve; an edit to geography_constants still does, because the target
+    # kernels the preflight reads hash it too (microcosm#1492).
+    import microcosm.calibrate.geography_constants as geography_constants_module
+    import microcosm.calibrate.hierarchy_labels as hierarchy_labels_module
+    import microcosm.diagnostics.catalogs as catalogs_module
+    import microcosm.diagnostics.schema as diagnostics_schema_module
+    from microcosm.build.uk_runtime import (
+        graph_terminal,
+        high_value_home_gates,
+        high_value_homes,
+    )
+
+    hashed_module_names: list[set[str]] = []
+    real_source_hash = graph_terminal.source_hash
+
+    def record_hashed_modules(*objects, **dependencies):
+        hashed_module_names.append({obj.__name__ for obj in objects})
+        return real_source_hash(*objects, **dependencies)
+
+    monkeypatch.setattr(graph_terminal, "source_hash", record_hashed_modules)
+    publication = {
+        catalogs_module.__name__,
+        diagnostics_schema_module.__name__,
+        hierarchy_labels_module.__name__,
+        geography_constants_module.__name__,
+    }
+    for kernel in (
+        graph_terminal.UKFullGateKernel,
+        graph_terminal.UKFullPreflightGateKernel,
+    ):
+        kernel(
+            coverage_engine=object(), engine_identity="fixture"
+        ).implementation_hash()
+        assert not hashed_module_names[-1] & publication, kernel.__name__
+    graph_terminal.uk_terminal_only_code_hash.__wrapped__()
+    assert hashed_module_names[-1] == {
+        high_value_home_gates.__name__,
+        high_value_homes.__name__,
+        *publication,
+    }
 
 
 def test_the_calibrated_gates_refuse_a_stale_terminal_code() -> None:
@@ -1522,3 +1572,27 @@ def test_the_calibrated_gates_refuse_a_stale_terminal_code() -> None:
     )
     with pytest.raises(ValueError, match="terminal-only code"):
         kernel.run(context)
+
+
+def test_the_dense_gates_refuse_references_of_two_builds() -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.graph_terminal import _require_one_reference
+
+    mass = SimpleNamespace(label="microcosm-uk-2024-25-dense@a", sha256="1" * 64)
+    same = SimpleNamespace(label="microcosm-uk-2024-25-dense@a", sha256="1" * 64)
+    other = SimpleNamespace(label="microcosm-uk-2024-25-dense@b", sha256="2" * 64)
+    _require_one_reference({"input_mass_reference": mass, "reference_surface": same})
+    _require_one_reference({"input_mass_reference": mass})
+    _require_one_reference({"reference_surface": other})
+    with pytest.raises(ValueError, match="from one reference"):
+        _require_one_reference(
+            {"input_mass_reference": mass, "reference_surface": other}
+        )
+    # Two files of one national build agree with each other, but the dense
+    # line compares with its own current build (the review of microcosm#1574).
+    national = SimpleNamespace(label="microcosm-uk-2024-25-national@b", sha256="3" * 64)
+    with pytest.raises(ValueError, match="not a build of microcosm-uk-2024-25-dense"):
+        _require_one_reference(
+            {"input_mass_reference": national, "reference_surface": national}
+        )

@@ -1,0 +1,34 @@
+{
+ "batching": {
+  "base_household_columns": 423,
+  "batches": 5,
+  "group_nesting_verified": true,
+  "households": 24417,
+  "jct_reform_families_simulated": 0,
+  "largest_batch_households": 5000,
+  "maximum_microsim_batch_size": 5000,
+  "method": "household_position_batches",
+  "population_aggregate_guard_armed": true,
+  "population_aggregate_variables_checked": [
+   "household_income_decile",
+   "medicaid_slcsp_state_average_cost_index",
+   "medicaid_slcsp_state_denominator",
+   "spm_unit_income_decile"
+  ]
+ },
+ "compiled_concepts": 421,
+ "cpu_s": 1976.7,
+ "formula_derived_inputs": {
+  "person.is_spm_independent_minor_role": 58840
+ },
+ "households": 24417,
+ "missing_measures": [],
+ "nnz": 654129,
+ "peak_rss_gb": 14.48,
+ "rank_range": [
+  0,
+  750000
+ ],
+ "shard": "shard_012.pkl",
+ "wall_s": 1007.5
+}

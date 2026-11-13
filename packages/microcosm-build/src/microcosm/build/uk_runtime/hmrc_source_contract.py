@@ -37,6 +37,9 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_DOCUMENTATION_URL,
     SPI_DONOR_DOI,
     SPI_DONOR_FILENAME,
+    SPI_DONOR_FRAME_DESIGNS,
+    SPI_DONOR_FRAME_FACT_BOOTSTRAP,
+    SPI_DONOR_FRAME_FIT_WEIGHT,
     SPI_DONOR_REQUIRED_COLUMNS,
     SPI_DONOR_SHA256,
     SPI_DONOR_SIZE_BYTES,
@@ -111,6 +114,7 @@ _EXPECTED_OPERATION_KINDS = (
     "draw_spi_donor_ages_by_population",
     "fit_weighted_qrf_stage1",
     "resample_band_donor_leaves",
+    "floor_spi_employment_pay_at_minimum_wage",
     "fit_weighted_qrf_stage2",
     "zero_pension_age_reports_below_state_pension_age",
     "materialize_hmrc_income_bands_fail_closed",
@@ -440,17 +444,26 @@ def assert_uk_hmrc_income_source_contract_current(
         stage1.get("sample_size"),
         DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     )
+    # The donor frame design decides both the replacement and the fit weight
+    # (microcosm#1276); an undeclared design is the FACT-weighted bootstrap.
+    sample_design = stage1.get("sample_design", SPI_DONOR_FRAME_FACT_BOOTSTRAP)
+    if sample_design not in SPI_DONOR_FRAME_DESIGNS:
+        failures.append(
+            f"stage1.sample_design: expected one of {SPI_DONOR_FRAME_DESIGNS!r}, "
+            f"got {sample_design!r}"
+        )
+        sample_design = SPI_DONOR_FRAME_FACT_BOOTSTRAP
     _expect(
         failures,
         "stage1.sample_with_replacement",
         stage1.get("sample_with_replacement"),
-        True,
+        sample_design == SPI_DONOR_FRAME_FACT_BOOTSTRAP,
     )
     _expect(
         failures,
         "stage1.post_sample_fit_weight",
         stage1.get("post_sample_fit_weight"),
-        "uniform",
+        SPI_DONOR_FRAME_FIT_WEIGHT[sample_design],
     )
     _expect(failures, "stage1.fit_weight_kind", stage1.get("fit_weight_kind"), "design")
     _expect(
@@ -924,18 +937,24 @@ def uk_hmrc_weighted_qrf_output_columns(
 #: tail-concentration surface, and the operations that replace them.
 _SPI_COHERENCE_STAGE = "spi_benefit_coherence"
 _SPI_COHERENCE_SUPERSEDING_KINDS = frozenset(
-    {"zero_spi_channel_reports", "restore_spi_channel_reports_from_source"}
+    {
+        "zero_spi_channel_reports",
+        "restore_spi_channel_reports_from_source",
+        "restore_spi_channel_reports_from_source_within_earnings_limit",
+    }
 )
 
 
 def uk_spi_coherence_superseded_columns(resource: Any | None = None) -> tuple[str, ...]:
     """Report columns ``spi_benefit_coherence`` replaces on every SPI-channel row.
 
-    The stage (microcosm#1100) zeroes the income-tested legacy reports and
-    restores IIDB, AFCS and bereavement support from the FRS twin, so after it
-    these columns hold only FRS respondents' own reports: no stage-2 forest
-    draw survives in them, and the donor-tail broadcast the tail-concentration
-    gate looks for (#462) cannot occur there. Read from the stage's declared
+    The stage (microcosm#1100) zeroes the income-tested legacy reports,
+    restores IIDB, AFCS and bereavement support from the FRS twin, and gives
+    contributory JSA and ESA the twin's award within the permitted-work limit
+    and none above it (microcosm#1095 B10), so after it these columns hold only
+    FRS respondents' own reports: no stage-2 forest draw survives in them, and
+    the donor-tail broadcast the tail-concentration gate looks for (#462)
+    cannot occur there. Read from the stage's declared
     operations in the committed source manifest, in declaration order.
     """
 

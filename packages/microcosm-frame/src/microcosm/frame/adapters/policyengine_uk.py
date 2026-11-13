@@ -30,12 +30,17 @@ __all__ = [
     "PolicyEngineUKEngine",
     "ProjectingRulesEngine",
     "SUPPLIED_ROLE_INPUTS",
+    "UK_DEFAULT_SAVINGS_INCOME_PROJECTION",
     "UK_ISA_INCOME_CONTRACT",
     "UK_ISA_INCOME_CONTRACT_ATTR",
     "UK_LEGACY_ISA_INCOME_CONTRACT",
+    "UK_SAVINGS_INCOME_PROJECTION",
+    "UK_SAVINGS_INCOME_PROJECTION_ATTR",
     "UK_SCHEMA",
     "frame_isa_income_contract",
+    "frame_savings_income_projection",
     "uk_isa_income_contract_from",
+    "uk_savings_income_projection_from",
     "validate_uc_claimant_input",
 ]
 
@@ -115,6 +120,55 @@ def frame_isa_income_contract(bundle: Frame) -> dict[str, object]:
     if declared is None:
         return dict(UK_ISA_INCOME_CONTRACT)
     return uk_isa_income_contract_from(declared)
+
+
+#: The path the producer's savings income was calibrated to grow by, declared
+#: to policyengine-uk (its ``savings_income_projection``, from 2.165.2): the
+#: OBR's savings income per person (October 2026 EFO Table 4.5) in the fiscal
+#: years 2022 to 2025, and GDP per head in other years. The SPI income stage
+#: carries the donors' interest to the frame's year, and the SPI Table 3.7
+#: interest targets reach the calibration year, on the OBR series (María's
+#: ruling of 2026-10-29, microcosm#1418), so the engine's projection follows it
+#: (declared on her ruling of 2026-11-04, microcosm#1095).
+UK_SAVINGS_INCOME_PROJECTION = "obr_savings_income_2022_2025"
+#: How policyengine-uk projects a dataset that declares no rule: GDP per head
+#: in every year.
+UK_DEFAULT_SAVINGS_INCOME_PROJECTION = "gdp_per_head"
+#: The H5 root attribute policyengine-uk reads the rule from, and the frame
+#: metadata key that carries a rule other than the producer's.
+UK_SAVINGS_INCOME_PROJECTION_ATTR = "policyengine_uk.savings_income_projection"
+_SAVINGS_INCOME_PROJECTIONS = frozenset(
+    {UK_SAVINGS_INCOME_PROJECTION, UK_DEFAULT_SAVINGS_INCOME_PROJECTION}
+)
+
+
+def uk_savings_income_projection_from(value: object) -> str:
+    """Read a declared savings income projection rule, a name or its bytes.
+
+    A rule policyengine-uk does not name fails, so a frame's savings growth is
+    never guessed.
+    """
+
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if not isinstance(value, str) or value not in _SAVINGS_INCOME_PROJECTIONS:
+        raise ValueError(f"Unsupported savings income projection {value!r}.")
+    return value
+
+
+def frame_savings_income_projection(bundle: Frame) -> str:
+    """The rule a frame's savings income was calibrated to grow by.
+
+    A frame loaded from an H5 that declares another rule, or none (GDP per
+    head), carries it; a frame assembled in process holds the producer's
+    savings income and declares the producer's rule.
+    """
+
+    metadata = getattr(bundle, "metadata", None) or {}
+    declared = metadata.get(UK_SAVINGS_INCOME_PROJECTION_ATTR)
+    if declared is None:
+        return UK_SAVINGS_INCOME_PROJECTION
+    return uk_savings_income_projection_from(declared)
 
 
 _PERSON_TABLE = "person"
@@ -297,6 +351,7 @@ class PolicyEngineUKEngine:
             household=tables["household"].copy(),
             fiscal_year=int(period),
             isa_income_contract=frame_isa_income_contract(bundle),
+            savings_income_projection=frame_savings_income_projection(bundle),
         )
 
 

@@ -399,11 +399,20 @@ def test_release_promotion_plan_builders_and_probe_are_wired() -> None:
     assert probe.effect_direction == "reform_minus_baseline"
     assert probe.expected_sign == "positive"
     assert probe.min_abs_effect == 10_000_000.0
-    sources = probe.parameter_changes["gov.usda.snap.income.sources.unearned"][
-        "2024-01-01.2024-12-31"
-    ]
-    assert _OUTPUT not in sources
-    assert "disability_benefits" in sources
+    # The probe declares only the source it stops counting; the rest of the
+    # list comes from the installed engine's baseline when the reform is
+    # built, so the probe cannot re-add a source the engine has moved (the
+    # 2026-09-28 failure re-added TANF from a pinned copy of the list).
+    assert probe.parameter_changes == {}
+    assert probe.list_edits == {
+        _SNAP_UNEARNED_SOURCES: ListParameterEdit(
+            period="2024-01-01.2024-12-31", remove=(_OUTPUT,)
+        )
+    }
+    named = {
+        item for edit in probe.list_edits.values() for item in (*edit.remove, *edit.add)
+    }
+    assert "tanf" not in named
 
     support_builder = (ROOT / "tools/build_us_puf_support_base.py").read_text()
     fiscal_builder = (ROOT / "tools/build_us_fiscal_refresh_release.py").read_text()
@@ -412,3 +421,59 @@ def test_release_promotion_plan_builders_and_probe_are_wired() -> None:
     assert "us_workers_compensation_signal_gate(" in support_builder
     assert "us_workers_compensation_signal_gate(" in fiscal_builder
     assert f'"{_OUTPUT}"' in cache_driver
+
+
+def test_snap_exclusion_probe_resolves_to_any_baseline_minus_its_leaf() -> None:
+    """The shipped probe edits whatever SNAP source list the engine holds.
+
+    The baseline is injected, so nothing here reads an installed engine.
+    """
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    probe = next(
+        probe
+        for probe in us_release_reform_coverage_probes()
+        if probe.id == "workers_compensation_snap_exclusion"
+    )
+    edit = probe.list_edits[_SNAP_UNEARNED_SOURCES]
+    sources = st.one_of(
+        st.sampled_from(
+            ("tanf", "disability_benefits", "social_security", "ssi", "rental_income")
+        ),
+        st.from_regex(r"[a-z][a-z_]{0,24}", fullmatch=True),
+    ).filter(lambda source: source != _OUTPUT)
+
+    # Invariant: for any engine baseline that counts workers' compensation, the
+    # resolved list is that baseline without it, every other source kept in
+    # the baseline's order (TANF present exactly when the engine lists it);
+    # for any baseline that does not count it, resolution refuses and names
+    # the probe rather than scoring a reform that changes nothing.
+    @settings(max_examples=200, deadline=None)
+    @given(
+        others=st.lists(sources, unique=True, max_size=20),
+        position=st.integers(min_value=0, max_value=20),
+        counts_leaf=st.booleans(),
+    )
+    def check(others: list[str], position: int, counts_leaf: bool) -> None:
+        baseline = list(others)
+        if counts_leaf:
+            baseline.insert(min(position, len(baseline)), _OUTPUT)
+        requested: list[tuple[str, ListParameterEdit]] = []
+
+        def installed(path: str, requested_edit: ListParameterEdit) -> list[str]:
+            requested.append((path, requested_edit))
+            return list(baseline)
+
+        if not counts_leaf:
+            with pytest.raises(ValueError) as refused:
+                resolve_probe_parameter_changes(probe, installed)
+            assert "'workers_compensation_snap_exclusion'" in str(refused.value)
+            assert _OUTPUT in str(refused.value)
+            return
+        changes = resolve_probe_parameter_changes(probe, installed)
+        assert requested == [(_SNAP_UNEARNED_SOURCES, edit)]
+        assert changes == {_SNAP_UNEARNED_SOURCES: {edit.period: others}}
+
+    check()

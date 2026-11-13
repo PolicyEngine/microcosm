@@ -6,6 +6,10 @@ files retain its entity/column/row layout with an explicit ``_time_period``.
 No file adds a column, so the parent must already carry every local-jurisdiction
 flag its own geography decides; the lane refuses a parent that lacks one before
 any model work.
+Each projected year's H5 is ``microcosm_us_<year>`` (key and file name); the
+base year, and the family, take the key of the base build's dataset
+(``base_dataset``, ``microcosm_us_<base year>`` unless given), so the
+candidate's names match the build it projects (:func:`annual_dataset_names`).
 Run ``python -m microcosm.build.us_annual_static_aging --help``.
 """
 
@@ -15,6 +19,7 @@ import argparse
 import hashlib
 import importlib.metadata
 import json
+import re
 import shutil
 import subprocess
 from collections.abc import Mapping
@@ -38,10 +43,41 @@ from microcosm.frame.materialize import (
     read_frame_table,
 )
 
+#: A dataset key a release manifest can name an artifact by.
+_DATASET_KEY = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
+
 
 def _sha256(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def annual_dataset_names(
+    base_year: int, end_year: int, *, base_dataset: str | None = None
+) -> dict[int, str]:
+    """The dataset key of each year's H5, from ``base_year`` to ``end_year``.
+
+    Each H5 is written as ``<key>.h5``. A projected year is
+    ``microcosm_us_<year>``. The base year is ``base_dataset``, the key of the
+    base build's dataset: ``microcosm_us_<base year>`` for a new national
+    build (the default), or ``populace_us_<base year>`` for a build the
+    switch moved. It must be a lowercase dataset key that no projected year
+    has.
+    """
+    names = {year: f"microcosm_us_{year}" for year in range(base_year, end_year + 1)}
+    base_key = names[base_year] if base_dataset is None else base_dataset
+    if (
+        not isinstance(base_key, str)
+        or not _DATASET_KEY.fullmatch(base_key)
+        or base_key in {names[year] for year in names if year != base_year}
+    ):
+        raise ValueError(
+            "base_dataset must be the base build's dataset key (lowercase "
+            f"letters, digits and underscores), not a projected year's; got "
+            f"{base_dataset!r}"
+        )
+    names[base_year] = base_key
+    return names
 
 
 def _json(path: Path, value: Any) -> None:
@@ -239,11 +275,14 @@ def build_annual_static_aging(
     epochs: int = 300,
     seed: int = 0,
     max_weight_ratio: float = 5.0,
+    base_dataset: str | None = None,
 ) -> dict:
     """Build a fresh local candidate, requiring explicit source and input pins.
 
-    The caller attests ``parent_release``; certification must independently
-    verify that release's base SHA. A complete candidate is not a certified
+    The caller attests ``parent_release``, the base build's ID; certification
+    must independently verify that build's base SHA. ``base_dataset`` is the
+    base build's dataset key, which the base year and the family keep
+    (:func:`annual_dataset_names`). A complete candidate is not a certified
     release. Existing output directories are never reused, including failed
     attempts. A failure preserves its partial artifacts and status receipt.
     """
@@ -260,6 +299,7 @@ def build_annual_static_aging(
         raise ValueError("end_year must be an integer after integer base_year")
     if not parent_release.strip():
         raise ValueError("parent_release must identify the pinned base release")
+    names = annual_dataset_names(base_year, end_year, base_dataset=base_dataset)
     # Hugging Face snapshot paths are .h5 symlinks to extensionless blobs.
     # Keep the logical suffix required by the native loader; hashing and reads
     # still follow the link to authenticate the actual bytes.
@@ -318,7 +358,7 @@ def build_annual_static_aging(
         tuple(range(base_year, end_year + 1)),
         system=system,
     )
-    family = f"populace_us_{base_year}"
+    family = names[base_year]
     manifest = {
         "schema_version": 1,
         "kind": "us_annual_static_aging_candidate",
@@ -349,8 +389,7 @@ def build_annual_static_aging(
         "metadata": {
             "dataset_years": {
                 family: {
-                    str(year): f"populace_us_{year}"
-                    for year in range(base_year, end_year + 1)
+                    str(year): names[year] for year in range(base_year, end_year + 1)
                 }
             }
         },
@@ -360,7 +399,7 @@ def build_annual_static_aging(
     _json(output / "build_status.json", {"status": "running", "completed_years": []})
     try:
         for year in range(base_year, end_year + 1):
-            name = f"populace_us_{year}"
+            name = names[year]
             path = output / f"{name}.h5"
             if year == base_year:
                 shutil.copyfile(base, path)
@@ -477,7 +516,8 @@ def build_annual_static_aging(
     return manifest
 
 
-def main() -> None:
+def command_parser() -> argparse.ArgumentParser:
+    """The command's arguments, which name :func:`build_annual_static_aging`'s."""
     parser = argparse.ArgumentParser(description=__doc__)
     for argument in (
         "base-h5",
@@ -496,7 +536,19 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=300)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
-    build_annual_static_aging(**vars(parser.parse_args()))
+    parser.add_argument(
+        "--base-dataset",
+        help=(
+            "The base build's dataset key, which the base year and the family "
+            "keep (default microcosm_us_<base year>; populace_us_2024 for a "
+            "build the switch moved)."
+        ),
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    build_annual_static_aging(**vars(command_parser().parse_args(argv)))
 
 
 if __name__ == "__main__":

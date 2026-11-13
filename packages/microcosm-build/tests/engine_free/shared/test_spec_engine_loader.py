@@ -17,8 +17,15 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # chain step's caller-owned uniforms move it too. microcosm#1380's
     # self-employment feature in the imputation schema moves the schema-set
     # receipt, and its post-transfer step moves acs_transfer's attested bytes.
+    # The ACS local lane's immigration stage (microcosm#1020) moves the
+    # immigration stage's attested bytes.
+    # The ACS local income pass's predictor extensions (microcosm#1022) move
+    # acs_transfer's attested bytes again.
+    # The ACS SSI disability-criteria stage (microcosm#1022) moves
+    # ssi_disability_criteria's attested bytes.
+    # The opt-in cross-fitted gate calibration moves the fit kernels' bytes.
     assert first.spec_sha256 == (
-        '4e5da58e07297fb20226f0def30a11c033a4be38aef0c6b4cee94c52d406f9ca'
+        "d5c303a4ee85aa36b86757125147340f8c43871347cab072f9673b40857d062a"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

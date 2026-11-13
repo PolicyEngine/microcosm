@@ -511,9 +511,11 @@ class _FakeHub:
             raise RuntimeError("403 Forbidden token=do-not-record")
         assert parent_commit == self.sha
         for operation in operations:
-            self.files[(repo_id, operation.path_in_repo)] = Path(
-                operation.path_or_fileobj
-            ).read_bytes()
+            # The emitter commits copied files from their bytes.
+            content = operation.path_or_fileobj
+            self.files[(repo_id, operation.path_in_repo)] = (
+                content if isinstance(content, bytes) else Path(content).read_bytes()
+            )
         self.commits.append(
             {
                 "repo_id": repo_id,

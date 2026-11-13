@@ -53,6 +53,9 @@ from microcosm.build.uk_runtime.domestic_energy_targets import (
     domestic_energy_appliers,
 )
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
+from microcosm.build.uk_runtime.hmrc_company_car_statistics import (
+    company_car_dated_benefit_year,
+)
 from microcosm.build.uk_runtime.hmrc_uprating import hmrc_uprating_appliers
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
@@ -1835,7 +1838,8 @@ class UKFrameTargetAdapter:
         """The period a value variable holds without the engine (microcosm#1324).
 
         A stored column holds the frame's own period, and a CGT calibration
-        measure dated by its name (``cgt_2024_gains``) is computed at that
+        measure or a company car benefit dated by its name
+        (``cgt_2024_gains``, ``company_car_benefit_2024``) is computed at that
         year. Any other value comes from the engine at the run's calibration
         period, so it holds no period of its own: None.
         """
@@ -1843,6 +1847,8 @@ class UKFrameTargetAdapter:
         if variable in self.stored_columns.get(entity, ()):
             return self.frame_period
         year = uk_cgt_dated_measure_year(variable)
+        if year is None:
+            year = company_car_dated_benefit_year(variable)
         return None if year is None else str(year)
 
     def column_at(
