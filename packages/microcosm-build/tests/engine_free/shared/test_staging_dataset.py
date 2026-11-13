@@ -723,7 +723,7 @@ def test_a_skipped_collector_receipt_is_a_warning_and_the_bundle_stays_staged(
         "given a collector token uses that token instead, which only sends "
         "telemetry: unset MICROCOSM_COLLECTOR_TOKEN, "
         "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and MICROCOSM_COLLECTOR_ORIGIN "
-        "for a staging or publication that should reach the collector."
+        "for a staging or release change that should reach the collector."
     )
     assert (advice in warning) is (code == "COLLECTOR_SETTINGS_REFUSED")
     assert "set together" not in warning
