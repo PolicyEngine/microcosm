@@ -384,8 +384,10 @@ EXPECTED_HASHES = {
     # stable_identity_uniforms, and that module joins the attested kernel
     # modules; no draw changes. #1585's public solve_constraint_system and
     # calibrate's shared option checks move both again; no US solve changes.
-    "seed_map": "135522c0ea7e61672b198d1cb9e860fc74972ab5a9a2193ddf90ea3675690be6",
-    "seed_protocol": "0770f95230a2fcb1096c6f514a5d1db8d57a7539b23c953b87578d762c8b29ed",
+    # Its TANF ledger fix moves the protocol again: the site's recorded salt
+    # becomes the takes_up_tanf_if_eligible its draw always used.
+    "seed_map": "208fa485c390a80f21e3f4d0747c5b3fc0052e27a337b524e06863052dcd3a82",
+    "seed_protocol": "15c30c15c30e9af41aa5e8f05e2d94a26eae256c379bb946a95c93cae89a0082",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

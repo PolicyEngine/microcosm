@@ -353,7 +353,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # The opt-in cross-fitted gate calibration in microcosm.fit.qrf moves it.
             # microcosm#1073's scf_wealth education-debt declaration moves it
             # through the bundle's source stages.
-            "spec_sha256": "12530524d813672257edae209a4dda8572ad70b4d247ffad01ae95b6c6daff69",
+            "spec_sha256": "9e5979da4b559656cae6b7e201eaccf5d9a6a1860577cc9792e8ee28c8c94d1e",
         },
     }
 

@@ -21,10 +21,14 @@ from microcosm.build.us_runtime.acs_transfer import (
     _pattern_name,
     _pattern_seed,
 )
+from microcosm.build.us_runtime.medicaid_take_up import US_MEDICAID_TAKE_UP_VARIABLE
 from microcosm.build.us_runtime.multispine_pool import POOL_RANDOM_SEED
 from microcosm.build.us_runtime.puf_source_agi import (
     PUF_AGGREGATE_DISAGGREGATION_SEED,
 )
+from microcosm.build.us_runtime.snap_take_up import US_SNAP_TAKE_UP_OUTPUT_COLUMN
+from microcosm.build.us_runtime.ssi_take_up import US_SSI_TAKE_UP_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.take_up_contract import seeded_take_up_programs
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -329,6 +333,23 @@ def test_exact_blake2b_salts_keys_candidates_and_absence_conditions() -> None:
             "big",
         )
         assert actual == expected
+
+
+def test_take_up_ledger_salts_are_the_variables_the_draws_use() -> None:
+    """Each take-up site's salt is the variable its draw is salted with; the
+    TANF site recorded ``takes_up_tanf`` (microcosm#1585)."""
+    sites = {
+        "tanf_take_up_assignment": "takes_up_tanf_if_eligible",
+        "eitc_take_up_assignment": "takes_up_eitc",
+        "medicaid_take_up_assignment": US_MEDICAID_TAKE_UP_VARIABLE,
+        "snap_state_take_up_assignment": US_SNAP_TAKE_UP_OUTPUT_COLUMN,
+        "ssi_take_up_assignment": US_SSI_TAKE_UP_OUTPUT_COLUMNS[0],
+    }
+    for site_id, variable in sites.items():
+        material = LEGACY_V1_PROTOCOL.site(site_id).seed_material
+        assert f"literal_salt={variable}" in material, site_id
+    seeded = {program.variable for program in seeded_take_up_programs()}
+    assert seeded <= set(sites.values())
 
 
 def test_adult_tail_and_live_puf_orders_are_literal() -> None:

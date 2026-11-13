@@ -784,7 +784,7 @@ LEGACY_V1_SITES = (
     ),
     _stable_site(
         "tanf_take_up_assignment",
-        salt="takes_up_tanf",
+        salt="takes_up_tanf_if_eligible",
         key_grammar=(
             "complete_source_identity_overrides_support_source_id",
             "support_source_id_overrides_entity_id",
