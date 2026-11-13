@@ -16,6 +16,9 @@ import pandas as pd
 import pytest
 from scipy import sparse
 
+from microcosm.build.us_runtime.chronicle_feed import (
+    load_us_chronicle_county_facts_pin,
+)
 from microcosm.calibrate import TargetSpec
 from test_support.paths import paths_for
 
@@ -578,6 +581,7 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
 ) -> None:
     """A three-household smoke exercises real sparse checkpoints, without an engine."""
     from microcosm.build import ledger_artifact
+    from microcosm.build.us_runtime import county_facts as county_facts_module
     from microcosm.calibrate import TargetRegistry
     from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -609,12 +613,14 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
         US_SCHEMA,
         {"household": Weights(np.asarray([10.0, 20.0, 30.0]), WeightKind.DESIGN)},
     )
-    staging, feed, ladder = (
-        tmp_path / name for name in ("staging.h5", "feed.json", "ladder.npz")
+    staging, feed, ladder, county_facts_file = (
+        tmp_path / name
+        for name in ("staging.h5", "feed.json", "ladder.npz", "county_facts.jsonl")
     )
-    for path in (staging, feed, ladder):
+    for path in (staging, feed, ladder, county_facts_file):
         path.write_bytes(b"fixture")
     staging.with_suffix(".summary.json").write_text("{}")
+    county_pin = load_us_chronicle_county_facts_pin()
     args = module._parse_args(
         [
             "--stage",
@@ -623,6 +629,12 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
             str(staging),
             "--feed",
             str(feed),
+            "--feed-sha256",
+            hashlib.sha256(b"fixture").hexdigest(),
+            "--county-facts",
+            str(county_facts_file),
+            "--county-facts-sha256",
+            county_pin.facts_sha256,
             "--ladder",
             str(ladder),
             "--checkpoint-dir",
@@ -708,20 +720,37 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
         return materialized
 
     monkeypatch.setattr(module, "materialize_chunked", fake_materialize)
-    monkeypatch.setattr(
-        ledger_artifact,
-        "load_ledger_consumer_artifact",
-        lambda *_a: SimpleNamespace(
-            facts=[
+    county_reads = []
+
+    def fake_county_facts(path, **_kwargs):
+        county_reads.append(path)
+        return SimpleNamespace(
+            rows=tuple(
                 _fact(code, measure, value)
                 for measure in ("return_count", "adjusted_gross_income")
                 for code, value in (("01001", 1.0), ("01003", 3.0))
-            ]
-        ),
+            ),
+            receipt=lambda: {
+                "path": str(path),
+                "facts_sha256": county_pin.facts_sha256,
+                "row_count": 4,
+            },
+        )
+
+    def feed_is_not_county_facts(*_args, **_kwargs):
+        raise AssertionError("county facts must not be read from --feed")
+
+    monkeypatch.setattr(county_facts_module, "load_us_county_facts", fake_county_facts)
+    monkeypatch.setattr(
+        ledger_artifact, "load_ledger_consumer_artifact", feed_is_not_county_facts
     )
     module.do_materialize(args)
     assert seen == parents
+    # Read once, from the resolved --county-facts path, by prepare_run alone.
+    assert county_reads == [county_facts_file.resolve()]
     identity = json.loads((args.checkpoint_dir / "run_identity.json").read_text())
+    assert identity["county_facts"]["facts_sha256"] == county_pin.facts_sha256
+    assert identity["county_facts"]["path"] == str(county_facts_file.resolve())
     loaded, design, registry, records, matrix = module.load_checkpoint_surface(
         args.checkpoint_dir, identity
     )
@@ -886,6 +915,10 @@ def test_county_refresh_recipe_round_trips_custom_geography_and_salt() -> None:
         "geographies": " state, county ",
         "county_column": "planning_region",
         "county_holdout": {"fraction": 0.0, "salt": "LWI's county | $(literal)"},
+        "county_facts": {
+            "path": "/data/LWI county facts.jsonl",
+            "facts_sha256": load_us_chronicle_county_facts_pin().facts_sha256,
+        },
     }
     recipe = _county().refresh_recipe(
         module.release_refresh_recipe("state_county"), metadata
@@ -898,3 +931,129 @@ def test_county_refresh_recipe_round_trips_custom_geography_and_salt() -> None:
     assert parsed.county_column == "planning_region"
     assert parsed.county_holdout_fraction == 0.0
     assert parsed.county_holdout_salt == metadata["county_holdout"]["salt"]
+    assert str(parsed.county_facts) == metadata["county_facts"]["path"]
+    assert parsed.county_facts_sha256 == metadata["county_facts"]["facts_sha256"]
+
+
+# --- the county facts flags (microcosm#922) ----------------------------------
+
+
+def _county_argv(tmp_path, *extra, soi_mode="state_county", feed_sha=True):
+    for name in ("staging.h5", "feed.jsonl", "ladder.npz", "county.jsonl"):
+        (tmp_path / name).write_bytes(b"fixture")
+    argv = [
+        "--stage",
+        "materialize",
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--feed",
+        str(tmp_path / "feed.jsonl"),
+        "--ladder",
+        str(tmp_path / "ladder.npz"),
+        "--checkpoint-dir",
+        str(tmp_path / "checkpoint"),
+        "--families",
+        "soi",
+        "--soi-mode",
+        soi_mode,
+        "--geographies",
+        "state,county",
+    ]
+    if feed_sha:
+        argv += ["--feed-sha256", hashlib.sha256(b"fixture").hexdigest()]
+    return argv + list(extra)
+
+
+def _pinned_sha():
+    return load_us_chronicle_county_facts_pin().facts_sha256
+
+
+@pytest.mark.parametrize(
+    ("extra", "options", "message"),
+    [
+        ((), {}, "needs --county-facts and --county-facts-sha256"),
+        (("--county-facts", "{county}"), {}, "needs --county-facts-sha256"),
+        (
+            ("--county-facts", "{county}", "--county-facts-sha256", "0" * 64),
+            {},
+            "is not the county pin's facts_sha256",
+        ),
+        (
+            ("--county-facts", "{county}", "--county-facts-sha256", "{pinned}"),
+            {"feed_sha": False},
+            "needs --feed-sha256",
+        ),
+        (
+            ("--county-facts", "{feed}", "--county-facts-sha256", "{pinned}"),
+            {},
+            "must not be the --feed file",
+        ),
+        (
+            ("--county-facts", "{county}", "--county-facts-sha256", "{pinned}"),
+            {"soi_mode": "state"},
+            "needs --soi-mode state_county",
+        ),
+        (
+            ("--county-facts-sha256", "{pinned}"),
+            {"soi_mode": "state"},
+            "--county-facts-sha256 needs --county-facts",
+        ),
+    ],
+    ids=[
+        "state-county-without-facts",
+        "facts-without-sha",
+        "sha-not-the-pin",
+        "no-feed-sha",
+        "facts-are-the-feed",
+        "facts-outside-state-county",
+        "sha-without-facts",
+    ],
+)
+def test_the_county_facts_flags_refuse_an_unpinned_or_ambiguous_run(
+    tmp_path, capsys, extra, options, message
+) -> None:
+    fill = {
+        "county": str(tmp_path / "county.jsonl"),
+        "feed": str(tmp_path / "feed.jsonl"),
+        "pinned": _pinned_sha(),
+    }
+    argv = _county_argv(tmp_path, *(item.format(**fill) for item in extra), **options)
+    with pytest.raises(SystemExit):
+        _release()._parse_args(argv)
+    assert message in capsys.readouterr().err
+
+
+def test_a_pinned_county_facts_run_parses(tmp_path) -> None:
+    args = _release()._parse_args(
+        _county_argv(
+            tmp_path,
+            "--county-facts",
+            str(tmp_path / "county.jsonl"),
+            "--county-facts-sha256",
+            _pinned_sha(),
+        )
+    )
+    assert args.county_facts == tmp_path / "county.jsonl"
+    assert args.county_facts_sha256 == _pinned_sha()
+
+
+def test_a_county_facts_file_off_the_pin_is_refused_before_any_target(
+    tmp_path,
+) -> None:
+    facts = tmp_path / "county.jsonl"
+    facts.write_bytes(b"{}\n")
+    args = SimpleNamespace(
+        soi_mode="state_county",
+        families="soi",
+        sample_fraction=0.01,
+        checkpoint_dir=tmp_path / "checkpoint",
+        county_facts=facts,
+    )
+    surface = SimpleNamespace(registry=SimpleNamespace(specs=()))
+    with pytest.raises(SystemExit):
+        _county().prepare_run(
+            args, ["state", "county"], {"county": {1001: 10.0}}, surface=surface
+        )
+    report = json.loads((args.checkpoint_dir / "county_surface.json").read_text())
+    assert report["status"] == "refused"
+    assert not hasattr(surface, "county_surface")
