@@ -29,8 +29,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, replace
+from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from datetime import date, datetime
 from importlib.resources import files
 from types import MappingProxyType
@@ -41,6 +41,7 @@ import pandas as pd
 
 from microcosm.build.gate_battery import (
     DEFAULT_REGISTRY,
+    EvaluatorBinding,
     EvidenceContext,
     GateBinding,
 )
@@ -137,73 +138,10 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True)
-class UKGateBinding:
-    """A :class:`GateBinding` over a UK runtime evaluator.
-
-    Attributes:
-        name: The declared country-neutral gate name the battery expects
-            back.
-        evaluator: Runs the legacy UK gate over ``(context, parameters)``.
-            Declared parameters it does not consume pass through to the
-            gate call, so an unknown parameter raises and fails closed —
-            the same discipline as the battery's ``FunctionBinding``.
-        parameter_keys: The spec parameter keys the evaluator can route —
-            checked against every declared entry before any gate runs
-            (``validate_gate_parameters``), so a typo'd parameter is
-            refused at arm time instead of surfacing as a mid-battery
-            evaluator error. Fail-closed empty by default.
-        artifact_keys: Context artifact keys the gate needs; missing keys
-            resolve to ``evidence_absent`` before evaluation.
-        artifact_selector: Optional parameter-dependent override of
-            ``artifact_keys`` for bindings whose evidence artifact follows a
-            declared parameter.
-        needs_frame: Whether the gate reads the phase frame.
-        frame_predicate: Optional parameter-dependent override of
-            ``needs_frame`` for bindings that serve more than one declared
-            entry (the coverage gate runs frameless at preflight).
-        legacy_name: The UK-flavored name the legacy evaluator mints, when
-            it differs from ``name``; the verdict is re-minted under the
-            declared name. Any other unexpected name passes through so the
-            executor's name check fails it closed.
-        evidence: Optional hook producing the entry's ``evidence_sha256``
-            payload; ``None`` records no evidence hash.
-    """
-
-    name: str
-    evaluator: Callable[[EvidenceContext, Mapping[str, Any]], GateResult]
-    parameter_keys: frozenset[str] = frozenset()
-    artifact_keys: frozenset[str] = frozenset()
-    artifact_selector: Callable[[Mapping[str, Any]], frozenset[str]] | None = None
-    needs_frame: bool = True
-    frame_predicate: Callable[[Mapping[str, Any]], bool] | None = None
-    legacy_name: str | None = None
-    evidence: Callable[[EvidenceContext, Mapping[str, Any]], object] | None = None
-
-    def required_artifacts(self, parameters: Mapping[str, Any]) -> frozenset[str]:
-        if self.artifact_selector is not None:
-            return self.artifact_selector(parameters)
-        return self.artifact_keys
-
-    def requires_frame(self, parameters: Mapping[str, Any]) -> bool:
-        if self.frame_predicate is not None:
-            return self.frame_predicate(parameters)
-        return self.needs_frame
-
-    def evaluate(
-        self, context: EvidenceContext, parameters: Mapping[str, Any]
-    ) -> GateResult:
-        result = self.evaluator(context, parameters)
-        if self.legacy_name is not None and result.name == self.legacy_name:
-            result = replace(result, name=self.name)
-        return result
-
-    def evidence_payload(
-        self, context: EvidenceContext, parameters: Mapping[str, Any]
-    ) -> object | None:
-        if self.evidence is None:
-            return None
-        return self.evidence(context, parameters)
+#: The shared re-minting binding under the UK name its callers and tests use.
+#: It moved unchanged to the battery module, where the US bindings can share
+#: it (microcosm#1585 item 11).
+UKGateBinding = EvaluatorBinding
 
 
 # ---------------------------------------------------------------------------

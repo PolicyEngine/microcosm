@@ -36,6 +36,7 @@ from microcosm.build.gate_battery import (
 )
 from microcosm.build.gate_battery import (
     gate_signing_key_env,
+    scoped_gate_manifest,
 )
 from microcosm.build.uk_runtime.cgt_projection import (
     UKCGTProjection,
@@ -627,24 +628,17 @@ def uk_scoped_gate_manifest(
 ) -> GatesManifest:
     """Filter the declared UK gate spec to one battery's scope.
 
-    The one scope-filtering implementation every scoped producer shares
-    (spine build, calibration seam, release cut). ``source`` lets a caller
+    The shared :func:`~microcosm.build.gate_battery.scoped_gate_manifest`,
+    which every scoped producer calls through here (spine build, calibration
+    seam, release cut). ``source`` lets a caller
     that already holds a loaded spec — or a hermetic test that stubs one —
     supply it; the default is the committed package spec.
     """
 
     if source is None:
         source = load_country_spec("uk").gates
-    entries = tuple(entry for entry in source.gates if entry.id in scope)
-    missing = sorted(set(scope) - {entry.id for entry in entries})
-    if missing:
-        raise RuntimeError(f"UK gate scope names undeclared gate id(s): {missing}.")
-    return GatesManifest(
-        country=source.country,
-        version=source.version,
-        policy=f"{source.policy}; {policy_suffix}",
-        phases=phases,
-        gates=entries,
+    return scoped_gate_manifest(
+        source, scope, phases=phases, policy_suffix=policy_suffix
     )
 
 

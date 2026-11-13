@@ -20,6 +20,7 @@ from microcosm.build.country_spec import GateSelectionSpec, GatesManifest
 from microcosm.build.gate_battery import (
     DEFAULT_REGISTRY,
     BlockingMode,
+    EvaluatorBinding,
     EvidenceContext,
     FunctionBinding,
     GateBatteryBlockedError,
@@ -34,6 +35,7 @@ from microcosm.build.gate_battery import (
     gate_phase_report_from_payload,
     gate_phase_report_payload,
     gate_signing_key_env,
+    scoped_gate_manifest,
     validate_gate_parameters,
 )
 from microcosm.build.trace import compute_composition_fingerprint
@@ -1199,3 +1201,119 @@ class TestRecordWithoutEnforce:
         }
         assert report["shippable"] is False
         assert report["attestation"]["signature"] is not None
+
+
+class TestSharedScopesAndBindings:
+    """The UK's scoping and re-minting binding, lifted for every country.
+
+    One battery run takes one manifest, so each build tool runs its own
+    scope; and gates written before the battery mint their own result names,
+    which the shared binding re-mints (#1585 item 11).
+    """
+
+    def test_a_scope_keeps_declared_order_and_has_its_own_digests(self, tmp_path):
+        manifest = _manifest(
+            [
+                _entry("pf", gate="support", phase="preflight"),
+                _entry("t_a", gate="exported_nonzero"),
+                _entry("t_b", gate="nonconstant_columns"),
+            ]
+        )
+        scoped = scoped_gate_manifest(
+            manifest,
+            frozenset({"t_b", "t_a"}),
+            phases=("terminal",),
+            policy_suffix="terminal_scope",
+        )
+        assert [entry.id for entry in scoped.gates] == ["t_a", "t_b"]
+        assert scoped.phases == ("terminal",)
+        assert scoped.policy == "test battery; terminal_scope"
+        assert (scoped.country, scoped.version) == (manifest.country, manifest.version)
+        runs = [
+            GateBatteryRun(
+                gates,
+                release_id="xx-test-build",
+                report_path=tmp_path / f"{index}.json",
+                release_candidate=False,
+                registry={},
+            )
+            for index, gates in enumerate((manifest, scoped))
+        ]
+        for digest in ("gates_manifest_sha256", "policy_sha256", "spec_fingerprint"):
+            assert getattr(runs[0], digest) != getattr(runs[1], digest), digest
+        with pytest.raises(
+            RuntimeError,
+            match=r"XX gate scope names undeclared gate id\(s\): \['t_missing'\]",
+        ):
+            scoped_gate_manifest(
+                manifest,
+                ("t_a", "t_missing"),
+                phases=("terminal",),
+                policy_suffix="terminal_scope",
+            )
+
+    def test_the_binding_re_mints_only_its_declared_legacy_name(self):
+        manifest = _manifest([_entry("t", gate="support")], ["terminal"])
+
+        def minting(name):
+            return lambda context, parameters: GateResult(name=name, passed=True)
+
+        def binding(minted):
+            # Frameless here; like UKGateBinding, the binding needs a frame
+            # unless it says otherwise.
+            return EvaluatorBinding(
+                name="support",
+                evaluator=minting(minted),
+                legacy_name="xx_support",
+                needs_frame=False,
+            )
+
+        reminted, impostor = binding("xx_support"), binding("parity")
+        (passed,) = evaluate_phase(
+            manifest, "terminal", EvidenceContext(), registry={"support": reminted}
+        ).outcomes
+        assert passed.status is GateStatus.PASSED
+        assert passed.result.name == "support"
+        (failed,) = evaluate_phase(
+            manifest, "terminal", EvidenceContext(), registry={"support": impostor}
+        ).outcomes
+        assert failed.status is GateStatus.FAILED
+        assert failed.result.details["returned_gate"] == "parity"
+
+    def test_the_binding_selects_its_evidence_from_declared_parameters(self):
+        binding = EvaluatorBinding(
+            name="support",
+            evaluator=lambda context, parameters: GateResult(
+                name="support", passed=True
+            ),
+            parameter_keys=frozenset({"source"}),
+            artifact_selector=lambda parameters: frozenset({parameters["source"]}),
+            frame_predicate=lambda parameters: parameters["source"] == "stage_frame",
+        )
+        manifest = _manifest(
+            [
+                _entry("t_frame", gate="support", parameters={"source": "stage_frame"}),
+                _entry("t_counts", gate="support", parameters={"source": "counts"}),
+            ],
+            ["terminal"],
+        )
+        report = evaluate_phase(
+            manifest,
+            "terminal",
+            EvidenceContext(artifacts={"counts": 3}),
+            registry={"support": binding},
+        )
+        by_id = {outcome.entry.id: outcome for outcome in report.outcomes}
+        assert by_id["t_counts"].status is GateStatus.PASSED
+        assert by_id["t_frame"].status is GateStatus.EVIDENCE_ABSENT
+        assert by_id["t_frame"].reason == "missing evidence: frame, stage_frame"
+        with pytest.raises(ValueError, match=r"'t'.*sorce"):
+            evaluate_phase(
+                _manifest(
+                    [_entry("t", gate="support", parameters={"sorce": "counts"})],
+                    ["terminal"],
+                ),
+                "terminal",
+                EvidenceContext(),
+                registry={"support": binding},
+            )

@@ -61,8 +61,15 @@ import hashlib
 import hmac
 import json
 import os
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import (
+    Callable,
+    Collection,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -81,6 +88,7 @@ from microcosm.frame import Frame
 __all__ = [
     "BlockingMode",
     "DEFAULT_REGISTRY",
+    "EvaluatorBinding",
     "EvidenceContext",
     "FunctionBinding",
     "GATE_BATTERY_ATTESTATION_SCHEMA_VERSION",
@@ -101,6 +109,7 @@ __all__ = [
     "gate_phase_report_from_payload",
     "gate_phase_report_payload",
     "gate_signing_key_env",
+    "scoped_gate_manifest",
 ]
 
 #: Continues the ``terminal_gates.json`` numbering: schema 3 is the UK-only
@@ -356,6 +365,87 @@ class FunctionBinding:
         if self.frame_argument is not None:
             kwargs[self.frame_argument] = context.frame
         return self.gate(**kwargs)
+
+    def evidence_payload(
+        self, context: EvidenceContext, parameters: Mapping[str, Any]
+    ) -> object | None:
+        if self.evidence is None:
+            return None
+        return self.evidence(context, parameters)
+
+
+@dataclass(frozen=True)
+class EvaluatorBinding:
+    """A :class:`GateBinding` over a country runtime evaluator.
+
+    Where :class:`FunctionBinding` routes declared parameters into a pure gate
+    function's keyword arguments, this binding hands its evaluator the whole
+    ``(context, parameters)`` pair, so a country runtime adapts its own
+    evidence and builds its own reviewed policy objects. It also re-mints
+    names. A gate written before the battery mints its own country-flavoured
+    result name, and the executor fails any result whose name differs from
+    the declared one, so ``legacy_name`` names the one other name the
+    evaluator may return, and that result is re-minted under ``name``. Any
+    other name passes through, so the executor's name check still fails it
+    closed. Lifted unchanged from the UK's ``UKGateBinding``, which is now an
+    alias of this class (microcosm#1585 item 11).
+
+    Attributes:
+        name: The declared country-neutral gate name the battery expects
+            back.
+        evaluator: Runs the country gate over ``(context, parameters)``.
+            Declared parameters it does not consume pass through to the
+            gate call, so an unknown parameter raises and fails closed —
+            the same discipline as :class:`FunctionBinding`.
+        parameter_keys: The spec parameter keys the evaluator can route —
+            checked against every declared entry before any gate runs
+            (``validate_gate_parameters``), so a typo'd parameter is
+            refused at arm time instead of surfacing as a mid-battery
+            evaluator error. Fail-closed empty by default.
+        artifact_keys: Context artifact keys the gate needs; missing keys
+            resolve to ``evidence_absent`` before evaluation.
+        artifact_selector: Optional parameter-dependent override of
+            ``artifact_keys`` for bindings whose evidence artifact follows a
+            declared parameter.
+        needs_frame: Whether the gate reads the phase frame.
+        frame_predicate: Optional parameter-dependent override of
+            ``needs_frame`` for bindings that serve more than one declared
+            entry (the UK coverage gate runs frameless at preflight).
+        legacy_name: The country-flavoured name the evaluator mints, when
+            it differs from ``name``; the verdict is re-minted under the
+            declared name. Any other unexpected name passes through so the
+            executor's name check fails it closed.
+        evidence: Optional hook producing the entry's ``evidence_sha256``
+            payload; ``None`` records no evidence hash.
+    """
+
+    name: str
+    evaluator: Callable[[EvidenceContext, Mapping[str, Any]], GateResult]
+    parameter_keys: frozenset[str] = frozenset()
+    artifact_keys: frozenset[str] = frozenset()
+    artifact_selector: Callable[[Mapping[str, Any]], frozenset[str]] | None = None
+    needs_frame: bool = True
+    frame_predicate: Callable[[Mapping[str, Any]], bool] | None = None
+    legacy_name: str | None = None
+    evidence: Callable[[EvidenceContext, Mapping[str, Any]], object] | None = None
+
+    def required_artifacts(self, parameters: Mapping[str, Any]) -> frozenset[str]:
+        if self.artifact_selector is not None:
+            return self.artifact_selector(parameters)
+        return self.artifact_keys
+
+    def requires_frame(self, parameters: Mapping[str, Any]) -> bool:
+        if self.frame_predicate is not None:
+            return self.frame_predicate(parameters)
+        return self.needs_frame
+
+    def evaluate(
+        self, context: EvidenceContext, parameters: Mapping[str, Any]
+    ) -> GateResult:
+        result = self.evaluator(context, parameters)
+        if self.legacy_name is not None and result.name == self.legacy_name:
+            result = replace(result, name=self.name)
+        return result
 
     def evidence_payload(
         self, context: EvidenceContext, parameters: Mapping[str, Any]
@@ -1042,6 +1132,51 @@ def assemble_phase_report(
                 )
             )
     return GatePhaseReport(phase=phase, outcomes=tuple(assembled))
+
+
+# ---------------------------------------------------------------------------
+# Scopes
+# ---------------------------------------------------------------------------
+
+
+def scoped_gate_manifest(
+    gates: GatesManifest,
+    scope: Collection[str],
+    *,
+    phases: Sequence[str],
+    policy_suffix: str,
+) -> GatesManifest:
+    """Filter a gate manifest to one battery's scope.
+
+    A :class:`GateBatteryRun` runs one manifest, each phase once and in
+    order, so a country whose build tools each gate part of its spec gives
+    each tool its own scope: the entries it evaluates, the phases it runs
+    them in, and a policy suffix naming the scope. Entries keep the
+    manifest's order, and the suffix lands in ``policy``, so each scope has
+    its own ``gates_manifest_sha256``, ``policy_sha256`` and
+    ``spec_fingerprint`` to pin. Lifted unchanged from the UK's
+    ``uk_scoped_gate_manifest`` (spine build, calibration seam, release cut,
+    local candidate), which now calls it (microcosm#1585 item 11).
+
+    Raises:
+        RuntimeError: If the scope names an entry the manifest does not
+            declare.
+    """
+
+    entries = tuple(entry for entry in gates.gates if entry.id in scope)
+    missing = sorted(set(scope) - {entry.id for entry in entries})
+    if missing:
+        raise RuntimeError(
+            f"{gates.country.upper()} gate scope names undeclared gate id(s): "
+            f"{missing}."
+        )
+    return GatesManifest(
+        country=gates.country,
+        version=gates.version,
+        policy=f"{gates.policy}; {policy_suffix}",
+        phases=tuple(phases),
+        gates=entries,
+    )
 
 
 # ---------------------------------------------------------------------------
