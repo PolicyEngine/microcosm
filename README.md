@@ -722,7 +722,10 @@ writing the H5 as manifest artifacts: `input_coverage.json`,
 record the per-run QRF tail register (`qrf_tail_register`), the export-mass
 reference and the stored-input verdict (`stored_inputs`), so a waiver ships
 with the release it waives, and a `gate_evidence` block that says of each
-verdict whether it is bound, skipped by flag or never evaluated.
+verdict whether it is bound, skipped by flag or never evaluated. A
+`--scf-education-debt` build also lists its two SCF education-debt fit tables,
+`us_scf_education_debt_fit.json` and `us_scf_education_debt_calibrated_fit.json`,
+as manifest artifacts (microcosm#1074).
 
 The QRF tail gate checks a sparse QRF output only when it has 500 or more
 carriers, the records with positive weighted absolute mass, and reports one
