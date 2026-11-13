@@ -385,8 +385,8 @@ EXPECTED_HASHES = {
     # rank. No draw, RNG rule or QRF target changes. microcosm#1096 moves both
     # again: solve's opt-in softmax mass parametrization projects exactly onto
     # the capped simplex; the default projection parametrization is unchanged.
-    "seed_map": "d29d95beaccb4e4a06464a9112c5a956eb8720e30efd8dd04dcdb61897c4b32f",
-    "seed_protocol": "f3738669eadc7c51a3bce862371f059930f2f39e92172dff0f8089d2b40725d5",
+    "seed_map": "08a7dd1aeb995acf83a2eab48e72c5cea3b42f39b8d006fa95656fe6d8f6ff13",
+    "seed_protocol": "46955c95d80c363594962cd92af2f0bbb3a10f3b5a83a4839a5f3fac5dea00a9",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

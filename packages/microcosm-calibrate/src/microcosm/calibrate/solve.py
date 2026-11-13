@@ -1037,6 +1037,10 @@ def _sorted_capped_log_shift(
     their rounding-sized share. If no ``k`` qualifies, the caps of every
     record that carries weight hold less than the total, and the answer caps
     them all.
+
+    The logic is exact; its sums are float64. The running log-space sum
+    rounds once per record, at the resolution of a log-sum that size
+    (*Precision* in :func:`_capped_log_shift` gives the figures).
     """
     rest = ~capped & torch.isfinite(log_weights)
     order = torch.argsort(cap_shift[rest])
@@ -1093,14 +1097,34 @@ def _capped_log_shift(
     capped records' caps hold the total, and the records outside ``C`` hold a
     share below that rounding. The current shift is then the answer, and
     they keep that share. When the uncapped mass sums below float64's normal
-    range, every uncapped record's weight has underflowed or lost its
-    precision, and the rounds hand over to
-    :func:`_sorted_capped_log_shift`, which sums in log space. So do
-    ``active_set_rounds`` rounds that end without the bound attained; the sort
-    finishes from the current capped set and bound. Records with a zero cap
-    are capped at every shift; records with zero weight (a log-weight of
-    ``-inf``) never reach a positive cap and contribute nothing. A record
-    whose finite log-weight underflows float64 still carries weight.
+    range, that sum is subnormal or zero and cannot carry the shift, so the
+    rounds hand over to :func:`_sorted_capped_log_shift`, which sums in log
+    space. So do ``active_set_rounds`` rounds that end without the bound
+    attained; the sort finishes from the current capped set and bound.
+    Records with a zero cap are capped at every shift; records with zero
+    weight (a log-weight of ``-inf``) never reach a positive cap and
+    contribute nothing. A record whose finite log-weight underflows float64
+    still carries weight.
+
+    Precision. The shift is exact up to the float64 rounding of the sums it
+    is built from, and so is the projected total. Two regimes, each pinned in
+    ``test_softmax_cap_projection.py``:
+
+    * Every uncapped weight in float64's normal range. On 1,588,854 records,
+      the full-scale measurement's size, the rounds leave the total within
+      1e-13 of itself and the sort within 1e-11: the sort's running log-space
+      sum rounds once per record.
+    * Uncapped weights below the normal range. The hand-off above tests
+      their sum, not each record, and it buys range, not digits. A sum that
+      is still normal has lost up to about ``2**-53`` of itself for each
+      subnormal term: in the pinned case, a million records that share one
+      subnormal weight leave the total 1.5e-11 off. The sort is no closer on
+      that input (1.0e-11 measured): each of its steps resolves a log-sum
+      near -700 only to 1e-13.
+
+    ``_optimize`` then rounds ``log_w`` to float32, which moves a weight by
+    up to 5e-7 of itself (half an ulp of a log-weight below 16), so no solve
+    resolves either.
 
     Returns the shift and the rounds taken (``active_set_rounds + 1`` when
     the sort finished it).
@@ -1142,12 +1166,12 @@ def _project_softmax_log_weights_(
     ``{w : sum(w) == total, w <= exp(log_upper)}``, reached in log space:
     every log-weight moves by one common shift ``s``, then each is clamped to
     its log cap, ``log_w <- min(log_w + s, log_upper)``, with ``s`` from
-    :func:`_capped_log_shift` (computed in float64; exact in a finite number
-    of steps). This is the projection in Kullback-Leibler divergence: the
-    uncapped records keep their relative weights, which is the direction
-    ``total * softmax(log_w)`` cannot see, and only records whose share
-    would pass their caps are held at them. A vector already within its caps
-    after the shift moves by the shift alone.
+    :func:`_capped_log_shift` (a finite number of steps in float64, exact up
+    to the rounding its *Precision* note states). This is the projection in
+    Kullback-Leibler divergence: the uncapped records keep their relative
+    weights, which is the direction ``total * softmax(log_w)`` cannot see,
+    and only records whose share would pass their caps are held at them. A
+    vector already within its caps after the shift moves by the shift alone.
 
     Afterwards ``exp(log_w)`` sums to ``total`` up to float32 rounding of
     ``log_w`` and never passes ``exp(log_upper)``, so the realized weights

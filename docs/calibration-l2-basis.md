@@ -119,11 +119,18 @@ capped records' caps already hold `D`: the rounds stop at the current shift,
 and the other records keep a share below float64 rounding of `D`. When the
 uncapped weights sum below float64's normal range, the rounds hand over to
 the sort, which sums them in log space, so a weight that underflows float64
-still counts. The solve records
+still counts. That hand-off buys range, not digits: the shift is exact up to
+the float64 rounding of its sums. With every uncapped weight in float64's
+normal range, on 1,588,854 records the rounds leave `D` within 1e-13 of
+itself and the sort within 1e-11. Where a million uncapped records share one
+subnormal weight and their sum is still normal, either path leaves `D` about
+1e-11 off. The solver then rounds `log_w` to float32, up to 5e-7 in a weight,
+so no solve resolves either. The solve records
 `options["iterate_selection_receipt"]["softmax_in_loop_max_cap_ratio"]`, the
 largest ratio of a realized in-loop weight to its float64 cap over every
 forward pass and the closing iterate, before the closing projection.
-`test_softmax_cap_projection.py` pins the projection for every drawn input,
+`test_softmax_cap_projection.py` pins those precision figures at those sizes
+and, on up to 40 records, the projection for every drawn input,
 including zero weights and zero caps drawn independently, a cap of exactly
 1, and inputs where some records' caps meet the total while the rest sit
 below float64 rounding of it or below float64's range. It conserves the

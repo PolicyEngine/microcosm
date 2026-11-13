@@ -27,6 +27,9 @@ and for the deeper ones below float64's range.
 6. In float32, as the solver runs it, the clamp is exact in log space and the
    realized ``total * softmax(log_w)`` sits within the float64 caps up to the
    float32 error of the softmax.
+7. Float64 precision at scale, in the two regimes the precision note of
+   ``_capped_log_shift`` states: 1,588,854 weights in float64's normal range,
+   and a million subnormal weights whose sum is still normal.
 """
 
 from __future__ import annotations
@@ -499,9 +502,9 @@ def test_the_measured_cap_step_is_unchanged_where_its_rounds_settle(problem) -> 
     a 5x-capped vector to about a fifth of its caps. Wherever the measured
     step settles the same way, the installed one returns its shift and round
     count bit for bit. These inputs keep every nonzero weight in float64's
-    normal range; below it the installed step hands its rounds over to the
-    log-space sort, which the measured step lacked
-    (``test_a_weight_below_float64s_range_still_fills_the_room``).
+    normal range; where the uncapped weights sum below it, the installed step
+    hands its rounds over to the log-space sort, which the measured step
+    lacked (``test_a_weight_below_float64s_range_still_fills_the_room``).
     """
     measured = _measured_cap_step()
     log_w, log_upper = _normalized(*problem)
@@ -534,6 +537,86 @@ def test_float32_projection_holds_the_realized_weights_at_their_caps(problem) ->
     ratio = solve_module._max_cap_ratio(realized, torch.tensor(caps))
     assert ratio <= 1.0 + _FLOAT32
     assert float(realized.double().sum()) == pytest.approx(total, rel=_FLOAT32)
+
+
+# --- 7: float64 precision at scale ---------------------------------------------
+
+
+def _total_error(
+    log_w: torch.Tensor, log_upper: torch.Tensor, shift: float, total: float
+) -> float:
+    """The projected total's relative error, summed without rounding.
+
+    Every projected weight in these tests is in float64's normal range, so
+    each ``exp`` is good to an ulp and ``math.fsum`` adds them exactly.
+    """
+    projected = torch.exp(torch.minimum(log_w + shift, log_upper))
+    return math.fsum(projected.tolist()) / total - 1.0
+
+
+def test_normal_weights_at_full_scale_keep_the_total_to_float64_rounding() -> None:
+    """The first regime of the precision note in ``_capped_log_shift``.
+
+    1,588,854 records, the full-scale measurement's size: design weights
+    from 0.4 to 6,700, each log-weight moved by up to 3 nats, under a 5x cap
+    that ends up holding 53,544 of them. The rounds settle in three and
+    leave the total within 1e-13 of itself (7e-16 measured on arm64 macOS).
+    The sort from the start stays within 1e-11 (4e-13 measured): its running
+    log-space sum rounds once per record.
+    """
+    rng = np.random.default_rng(20261113)
+    n = 1_588_854
+    design = np.exp(rng.normal(4.0, 1.0, n))
+    log_weights = np.log(design) + rng.uniform(-3.0, 3.0, n)
+    log_caps = np.log(5.0 * design)
+    total = float(design.sum())
+    log_w, log_upper = _normalized(log_weights, log_caps, total)
+    shift, taken = solve_module._capped_log_shift(log_w, log_upper, total)
+    assert 1 < taken <= solve_module._SOFTMAX_CAP_ACTIVE_SET_ROUNDS
+    assert int((log_w + shift >= log_upper).sum()) > 10_000
+    assert abs(_total_error(log_w, log_upper, shift, total)) <= 1e-13
+    sorted_shift, _ = solve_module._capped_log_shift(
+        log_w, log_upper, total, active_set_rounds=0
+    )
+    assert abs(_total_error(log_w, log_upper, sorted_shift, total)) <= 1e-11
+
+
+def test_a_million_subnormal_weights_cost_the_total_digits_by_either_path() -> None:
+    """The second regime: the hand-off buys range, not digits (review R1).
+
+    One record holds the total over a cap of half of it. A million others
+    share a log-weight 721.67 nats lower. Each is subnormal in float64, with
+    about ten significant digits, and their float64 sum, 3.8e-308, is still
+    in the normal range, so the rounds keep that sum and do not hand over.
+    The sum has lost up to ``2**-53`` of itself per term, and here every
+    term's rounding falls the same way, so the total ends 1.5e-11 off: past
+    the 1e-12 that the other tests pin on up to 40 records. The upper bound
+    below is the note's bound for the sum; only half the total is uncapped
+    here, which leaves a factor of two for an ``exp`` that rounds to the
+    farther neighbour. The sort is no closer on this input (1.0e-11 measured
+    on arm64 macOS): its running sum rounds a million times at 1.1e-13, the
+    spacing of float64 near -700. Both are far inside the float32 rounding of
+    ``log_w`` that follows every projection in the solver.
+    """
+    n = 1_000_000
+    log_weights = np.concatenate(([0.0], np.full(n, -721.6738192)))
+    log_caps = np.concatenate(([math.log(0.5)], np.zeros(n)))
+    total = 1.0
+    log_w, log_upper = _normalized(log_weights, log_caps, total)
+    mass = torch.exp(log_w[1:])
+    tiny = float(torch.finfo(torch.float64).tiny)
+    assert 0.0 < float(mass.max()) < tiny <= float(mass.sum())
+    shift, taken = solve_module._capped_log_shift(log_w, log_upper, total)
+    assert taken == 1
+    error = abs(_total_error(log_w, log_upper, shift, total))
+    # The lower bound is the note's other half: if the step becomes more
+    # precise here, the figures in the docstring it pins are stale.
+    assert 1e-11 < error <= n * 2.0**-53
+    sorted_shift, sorted_taken = solve_module._capped_log_shift(
+        log_w, log_upper, total, active_set_rounds=0
+    )
+    assert sorted_taken == 1
+    assert abs(_total_error(log_w, log_upper, sorted_shift, total)) <= 1e-9
 
 
 def test_max_cap_ratio_reads_zero_caps() -> None:
