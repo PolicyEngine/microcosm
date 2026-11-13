@@ -1,9 +1,34 @@
 {
  "also_recorded": {
-  "household_land_against_e44n": {
-   "e44n_uk_households_land": 4559831000000.0,
-   "england_and_wales_land": 7084786174071.0,
-   "status": "fail"
+  "land_against_ons": {
+   "by_target": {
+    "a": {
+     "all_tenures": 7084786174071.0,
+     "all_tenures_below_e44r": "pass",
+     "kappa": 0.806721,
+     "owner_occupied": 4518422815247.0,
+     "owner_occupied_below_e44n": "pass",
+     "privately_rented": 1856965452392.0,
+     "social": 709397906432.0
+    },
+    "b": {
+     "all_tenures": 6880686496284.0,
+     "all_tenures_below_e44r": "pass",
+     "kappa": 0.880181,
+     "owner_occupied": 4386945499519.0,
+     "owner_occupied_below_e44n": "pass",
+     "privately_rented": 1812298879393.0,
+     "social": 681442117372.0
+    }
+   },
+   "ons": {
+    "carried_by": "UK HPI, United Kingdom, all dwellings: the 2024 mean over 2021-12",
+    "e44n_uk_households_land_end_2024": 4559831000000.0,
+    "e44r_uk_land_end_2024": 7117771000000.0,
+    "land_underlying_uk_dwellings_at_basis": 6268226950355.0,
+    "land_underlying_uk_dwellings_end_2021": 5900000000000.0
+   },
+   "rule": "households' land under these homes lies between the owner-occupied land and all private land; the owner-occupied land must be below E44N, which also holds Scotland's and Northern Ireland's household land and households' land under other buildings and farms, and the land under every home below E44R"
   },
   "log_ratio_flags": {
    "E06000008": [
@@ -229,14 +254,14 @@
   }
  ],
  "digests": {
-  "authorities_sha256": "4073fc77a0cd66cd55927f4ccfa66f3234a9c69d62b2f0b65350181484bbc4da",
-  "constituencies_sha256": "8ad6ced50056f1f0bb6891c997bd90a66fbf00103ee494c24943c5044c1f0891",
-  "structure_block_sha256": "fbd28a35cef31d98cf86362ada829dfd25f5e5977fea065cd38bfaacec8ce0e5",
-  "value_block_sha256": "3817e5a0b5c980ac723751569233ffffed69b784edc7c6bae5b03b125234a85a"
+  "authorities_sha256": "0c7b0fb3437b4fa7de297b5dd3c7df299c6cc5d2d97bd63f7903b182308ac29f",
+  "constituencies_sha256": "e48c74ba9bfedefebbe723cb8be99eedfe777819ebed3aeaec3e4df6c17a1207",
+  "structure_block_sha256": "d116b07b7c1e7f436ea9b3fdaca5ffa26b6c10dd74b7351f4fae68b0c34cb1c2",
+  "value_block_sha256": "d85f21162c551a783ddd966574b268e9232141e21df7685a79494232cbd0ff55"
  },
  "inputs": {
-  "declarations_sha256": "d28fcd34169ef3f81cbfc6d54e7f7534929218b67c26095cd991c188493574da",
-  "feed_inputs_sha256": "dfabbc4d258776c0e857211ccbd864ba04c67ff2f3e453b48cb5fbed03212035",
+  "declarations_sha256": "8b04f65d2ae6b5214e8d4b96142f8ebaf7f541ff7fa3053316ea5ee13ea65ace",
+  "feed_inputs_sha256": "9c0df57ff49d35bf7b99082b80f5d4da46c8184184ec0c285d118af86e5766e4",
   "ledger_feed": {
    "fact_row_count": 2160233,
    "facts_sha256": "c294ba2013d0ff61b150589640ec63add8563390057b769447c0241661ad5a1c",
@@ -590,7 +615,7 @@
   },
   "support_sha256": "1b0dec268be0141f03ec05dc3b55c13733cc2bb20be5e403d76d73c8e27dc797"
  },
- "inputs_sha256": "cc5b09b62a7a82610ef2a4e64ede26fbec3deede922f7a8f70876c133e685592",
+ "inputs_sha256": "8e352a276df004e01a168eb9eaacece6585e6c3c5d549ce0b76a0d4c147b887f",
  "issues": {
   "builder": "PolicyEngine/microcosm#1524",
   "epic": "PolicyEngine/microcosm#1521",
@@ -915,6 +940,12 @@
     "name": "land_underlying_dwellings_2021",
     "status": "feed",
     "value": 5900000000000.0
+   },
+   "whole_economy_land": {
+    "key": "ledger.aggregate_fact.v2:4daf8d1b8830f72bba924d56",
+    "name": "whole_economy_land",
+    "status": "feed",
+    "value": 7117771000000.0
    }
   },
   "uk_split": {
@@ -1045,18 +1076,19 @@
  },
  "measurements": [
   {
-   "cell_vs_authority_national_gap": 1.3983,
+   "cell_vs_authority_national_points": 3.2613,
    "cells_without_band_d": 0,
-   "definition": "for each pattern, the share of council tax (VOA private count \u00d7 band ratio \u00d7 the authority's Band D) that a land tax at the rate balancing the two would move between cells, in points; nationally and per seat",
+   "definition": "a land tax on each pattern at the rate that balances council tax (VOA private count \u00d7 band ratio \u00d7 the authority's Band D) over all homes; the test is 50 \u00d7 \u03a3|cell land tax \u2212 authority-share land tax| \u00f7 council tax, over cells nationally and over each seat's cells, in points; seat totals compare 100 \u00d7 |the seat's difference| \u00f7 its council tax",
    "id": "grain_test",
-   "national_points": {
+   "moved_from_council_tax_points": {
     "authority_share": 22.6482,
     "cell_land": 24.0465,
     "land_at_rank": 24.033,
     "mhclg_pattern": 26.3335
    },
-   "reading": "authority shares are enough",
-   "seats_within_seat_points": 0.9983,
+   "reading": "cells are needed",
+   "seat_totals_within_seat_points": 0.913,
+   "seats_within_seat_points": 0.9235,
    "status": "measured",
    "thresholds": {
     "national_points": 3.0,
@@ -1260,6 +1292,231 @@
   },
   "dwellings": {
    "transfers_total": 29753107
+  },
+  "floor_area_imputation": {
+   "by_region": {
+    "E12000001": {
+     "homes": 689738,
+     "imputed": 213876,
+     "imputed_share": 0.3101
+    },
+    "E12000002": {
+     "homes": 1938393,
+     "imputed": 598555,
+     "imputed_share": 0.3088
+    },
+    "E12000003": {
+     "homes": 1433300,
+     "imputed": 437913,
+     "imputed_share": 0.3055
+    },
+    "E12000004": {
+     "homes": 1308864,
+     "imputed": 397184,
+     "imputed_share": 0.3035
+    },
+    "E12000005": {
+     "homes": 1430311,
+     "imputed": 436738,
+     "imputed_share": 0.3053
+    },
+    "E12000006": {
+     "homes": 1741275,
+     "imputed": 522863,
+     "imputed_share": 0.3003
+    },
+    "E12000007": {
+     "homes": 2001252,
+     "imputed": 589340,
+     "imputed_share": 0.2945
+    },
+    "E12000008": {
+     "homes": 2584895,
+     "imputed": 768513,
+     "imputed_share": 0.2973
+    },
+    "E12000009": {
+     "homes": 1653568,
+     "imputed": 511701,
+     "imputed_share": 0.3095
+    },
+    "W92000004": {
+     "homes": 786126,
+     "imputed": 256679,
+     "imputed_share": 0.3265
+    }
+   },
+   "by_sale_year": {
+    "1995": {
+     "homes": 197452,
+     "imputed": 137957,
+     "imputed_share": 0.6987
+    },
+    "1996": {
+     "homes": 251243,
+     "imputed": 174094,
+     "imputed_share": 0.6929
+    },
+    "1997": {
+     "homes": 290316,
+     "imputed": 196522,
+     "imputed_share": 0.6769
+    },
+    "1998": {
+     "homes": 288633,
+     "imputed": 191362,
+     "imputed_share": 0.663
+    },
+    "1999": {
+     "homes": 344806,
+     "imputed": 222472,
+     "imputed_share": 0.6452
+    },
+    "2000": {
+     "homes": 336056,
+     "imputed": 212103,
+     "imputed_share": 0.6312
+    },
+    "2001": {
+     "homes": 392984,
+     "imputed": 242659,
+     "imputed_share": 0.6175
+    },
+    "2002": {
+     "homes": 442548,
+     "imputed": 262481,
+     "imputed_share": 0.5931
+    },
+    "2003": {
+     "homes": 427613,
+     "imputed": 242779,
+     "imputed_share": 0.5678
+    },
+    "2004": {
+     "homes": 451571,
+     "imputed": 251422,
+     "imputed_share": 0.5568
+    },
+    "2005": {
+     "homes": 422449,
+     "imputed": 231828,
+     "imputed_share": 0.5488
+    },
+    "2006": {
+     "homes": 575372,
+     "imputed": 310081,
+     "imputed_share": 0.5389
+    },
+    "2007": {
+     "homes": 586680,
+     "imputed": 306019,
+     "imputed_share": 0.5216
+    },
+    "2008": {
+     "homes": 312728,
+     "imputed": 169344,
+     "imputed_share": 0.5415
+    },
+    "2009": {
+     "homes": 303407,
+     "imputed": 81644,
+     "imputed_share": 0.2691
+    },
+    "2010": {
+     "homes": 337846,
+     "imputed": 46154,
+     "imputed_share": 0.1366
+    },
+    "2011": {
+     "homes": 350387,
+     "imputed": 36419,
+     "imputed_share": 0.1039
+    },
+    "2012": {
+     "homes": 368229,
+     "imputed": 29253,
+     "imputed_share": 0.0794
+    },
+    "2013": {
+     "homes": 453847,
+     "imputed": 32114,
+     "imputed_share": 0.0708
+    },
+    "2014": {
+     "homes": 542808,
+     "imputed": 39007,
+     "imputed_share": 0.0719
+    },
+    "2015": {
+     "homes": 568018,
+     "imputed": 38837,
+     "imputed_share": 0.0684
+    },
+    "2016": {
+     "homes": 592718,
+     "imputed": 39355,
+     "imputed_share": 0.0664
+    },
+    "2017": {
+     "homes": 609944,
+     "imputed": 38658,
+     "imputed_share": 0.0634
+    },
+    "2018": {
+     "homes": 620885,
+     "imputed": 31861,
+     "imputed_share": 0.0513
+    },
+    "2019": {
+     "homes": 632458,
+     "imputed": 23816,
+     "imputed_share": 0.0377
+    },
+    "2020": {
+     "homes": 599840,
+     "imputed": 25899,
+     "imputed_share": 0.0432
+    },
+    "2021": {
+     "homes": 916459,
+     "imputed": 51872,
+     "imputed_share": 0.0566
+    },
+    "2022": {
+     "homes": 817398,
+     "imputed": 97762,
+     "imputed_share": 0.1196
+    },
+    "2023": {
+     "homes": 661817,
+     "imputed": 177407,
+     "imputed_share": 0.2681
+    },
+    "2024": {
+     "homes": 740729,
+     "imputed": 323170,
+     "imputed_share": 0.4363
+    },
+    "2025": {
+     "homes": 800750,
+     "imputed": 356653,
+     "imputed_share": 0.4454
+    },
+    "2026": {
+     "homes": 329731,
+     "imputed": 112358,
+     "imputed_share": 0.3408
+    }
+   },
+   "homes": 15567722,
+   "imputed": 4733362,
+   "imputed_by_pool_level": {
+    "local_authority_band": 95970,
+    "msoa_band": 4635394,
+    "nation_band": 0,
+    "region_band": 1998
+   },
+   "imputed_share": 0.304
   },
   "homes": {
    "dwellings_ever_sold": 15751809,

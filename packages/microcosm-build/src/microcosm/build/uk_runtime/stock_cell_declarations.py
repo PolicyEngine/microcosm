@@ -268,7 +268,20 @@ LEVEL_INPUTS: dict[str, dict[str, object]] = {
         "parameter": None,
         "request": "in the pinned feed (ons-national-balance-sheet-land-2025)",
     },
+    # The UK's land of every kind and every sector, beside which the land
+    # under England and Wales's homes is reported (microcosm#1597 review).
+    "whole_economy_land": {
+        "concept": "ons.e44r",
+        "spec_prefix": "ons.nbs2025.",
+        "period": "2024",
+        "parameter": None,
+        "request": "in the pinned feed (ons-national-balance-sheet-land-2025)",
+    },
 }
+#: ONS's land underlying dwellings is an end-2021 position. It is reported
+#: at the basis year's prices by the UK HPI for the United Kingdom, all
+#: dwellings: the basis year's mean over this month's level.
+LAND_UNDERLYING_DWELLINGS_MONTH: tuple[int, int] = (2021, 12)
 #: The central case solves κ on target (a): buildings add up to the UK's
 #: dwellings (E46Y) × England and Wales's share of UK dwellings. Target (b)
 #: solves land ÷ value to ONS's 2021 ratio and is reported beside it.
@@ -426,9 +439,15 @@ DECISION_RULE: tuple[dict[str, object], ...] = (
 MEASUREMENTS: tuple[dict[str, object], ...] = (
     {
         "id": "grain_test",
+        # The thresholds were fixed before the builder ran. In review
+        # (microcosm#1597) the statistic became the distance between the
+        # two patterns' land taxes, not the difference between the amounts
+        # each moves from council tax: two patterns can move the same amount
+        # to different cells.
         "statistic": (
-            "council tax (band ratio × Band D) against rate × land, at the rate "
-            "that balances them over all homes"
+            "the share of a land tax, at the rate that balances council tax "
+            "(band ratio × Band D) over all homes, that falls on other cells "
+            "under an authority share × cell value than under cell land"
         ),
         "national_points": 3.0,
         "seat_points": 5.0,

@@ -8,7 +8,7 @@
   "land_per_home_central"
  ],
  "description": "Building costs by stock cell, aligned to the value block's rows: floor area, the share of the building left after depreciation, the unit cost at TPA's own level (\u03ba = 1), costs and values along the value rank, and the central case's land per home (microcosm#1524).",
- "inputs_sha256": "cc5b09b62a7a82610ef2a4e64ede26fbec3deede922f7a8f70876c133e685592",
+ "inputs_sha256": "8e352a276df004e01a168eb9eaacece6585e6c3c5d549ce0b76a0d4c147b887f",
  "kind": "uk_stock_cells_structure",
  "level": {
   "depreciation": "applied",
@@ -111609,7 +111609,7 @@
   [264000.18,221199.63,255230.63,256581.38,267557.56,233072.75,292660.62,321396.54,349501.45,298822.22],
   [274733.55,274482.12,261033.33,281835.11,297789.0,273674.78,337955.73,391702.07,346496.85,309566.39]
  ],
- "value_block_sha256": "3817e5a0b5c980ac723751569233ffffed69b784edc7c6bae5b03b125234a85a",
+ "value_block_sha256": "d85f21162c551a783ddd966574b268e9232141e21df7685a79494232cbd0ff55",
  "value_by_rank_bin": [
   [94840.49,129278.2,150370.82,167365.18,183873.94,200583.64,219684.21,243307.82,275779.04,368067.75],
   [287249.6,349135.79,369256.83,384816.4,397166.04,407846.2,415052.51,425714.84,433129.06,440584.85],

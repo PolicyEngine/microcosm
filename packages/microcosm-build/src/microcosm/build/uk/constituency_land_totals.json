@@ -580,10 +580,10 @@
  ],
  "description": "Land under homes by July 2024 constituency in England and Wales, every variant: cells split by their homes' output areas, social homes by their authority's household shares (microcosm#1524).",
  "digests": {
-  "structure_block_sha256": "fbd28a35cef31d98cf86362ada829dfd25f5e5977fea065cd38bfaacec8ce0e5",
-  "value_block_sha256": "3817e5a0b5c980ac723751569233ffffed69b784edc7c6bae5b03b125234a85a"
+  "structure_block_sha256": "d116b07b7c1e7f436ea9b3fdaca5ffa26b6c10dd74b7351f4fae68b0c34cb1c2",
+  "value_block_sha256": "d85f21162c551a783ddd966574b268e9232141e21df7685a79494232cbd0ff55"
  },
- "inputs_sha256": "cc5b09b62a7a82610ef2a4e64ede26fbec3deede922f7a8f70876c133e685592",
+ "inputs_sha256": "8e352a276df004e01a168eb9eaacece6585e6c3c5d549ce0b76a0d4c147b887f",
  "kind": "uk_constituency_land_totals",
  "method": "uk-stock-cells-v1",
  "resource": "constituency_land_totals.json",

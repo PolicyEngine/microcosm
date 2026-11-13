@@ -62861,7 +62861,7 @@
   ]
  },
  "description": "Homes in England and Wales by MSOA \u00d7 council tax band: VOA's count at 31 March 2026, the private and social counts, homes seen sold, the owner-occupied share of the private stock, the mean value and 13 value knots at calendar-2024 prices (microcosm#1524). Not Chronicle facts.",
- "inputs_sha256": "cc5b09b62a7a82610ef2a4e64ede26fbec3deede922f7a8f70876c133e685592",
+ "inputs_sha256": "8e352a276df004e01a168eb9eaacece6585e6c3c5d549ce0b76a0d4c147b887f",
  "kind": "uk_stock_cells_value",
  "knot_cap": 20000000.0,
  "knot_grid": [

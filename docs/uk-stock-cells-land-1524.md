@@ -60,7 +60,9 @@ Each home then takes its floor area and construction age band from UCL's
 linked file, joined on the same dwelling key. Each attribute comes from the
 home's latest linked sale that carries it, so a home sold after October 2023
 takes an earlier linked sale's. A home with no linked floor area takes its
-cell's mean (the provenance counts them).
+cell's mean, pooled as in step 5. The provenance's
+`floor_area_imputation` counts these homes by region, by sale year and by
+the pool their mean comes from.
 
 ### 2. Cells and counts
 
@@ -195,12 +197,20 @@ thresholds are proposals for Max and Vahid.
 
 ## Measurements
 
-- **The grain test:** for each pattern (cell land, an authority share × cell
-  value, MHCLG's pattern, land at the rank), the share of council tax (VOA's
-  private count × the band's ratio to Band D × the authority's Band D) that a
-  land tax at the balancing rate would move between cells, in points,
-  nationally and by seat. Authority shares are enough if they differ from
-  cell land by under 3 points nationally and under 5 in 90% of seats.
+- **The grain test:** each pattern (cell land, an authority share × cell
+  value, MHCLG's pattern, land at the rank) carries a land tax at the rate
+  that balances council tax (VOA's private count × the band's ratio to Band
+  D × the authority's Band D) over all homes. The test is how much of that
+  tax falls on other cells under an authority share than under cell land:
+  50 × Σ|cell land tax − authority-share land tax| ÷ council tax, in points,
+  over cells nationally and over each seat's cells. Authority shares are
+  enough if that is under 3 points nationally and under 5 in 90% of seats.
+  The first build in review compared how much each pattern moves from
+  council tax instead; two patterns can move the same amount to different
+  cells, so the statistic changed (microcosm#1597 review). The thresholds
+  are the ones fixed before the builder ran. The amount each pattern moves,
+  and how far seat totals differ (100 × |a seat's difference| ÷ its council
+  tax), are recorded beside it.
 - **κ diagnostics:** the share of cells with no land, by region (proposed:
   under 5% in every region), and seat ranks across the cost and depreciation
   variants (proposed: correlation 0.95).
@@ -211,8 +221,22 @@ thresholds are proposals for Max and Vahid.
 Also recorded: TPA's authority ranking against the central case (TPA shares
 Price Paid, the HPI and the cost constants, so this is no independent
 check), the authorities whose |log ratio| exceeds 0.4 against both MHCLG's
-pattern and TPA, household land against E44N, and a like-for-like
-comparison of the residual per new home with MHCLG's land per new home.
+pattern and TPA, a like-for-like comparison of the residual per new home
+with MHCLG's land per new home, and the land against ONS's land. That last
+one gives, under both κ targets, the land under owner-occupied, privately
+rented and social homes, beside three ONS figures:
+
+- E44N, the UK households sector's land of every kind;
+- E44R, the UK's land of every kind and every sector;
+- ONS's land underlying UK dwellings at end-2021, carried to the 2024 mean by
+  the UK HPI for the United Kingdom.
+
+Households hold the owner-occupied land and part of the privately rented
+land, so their land under these homes lies between the owner-occupied land
+and all private land. The owner-occupied land alone must be below E44N,
+which also holds Scotland's and Northern Ireland's household land and
+households' land under other buildings and farms. The land under every home
+must be below E44R.
 
 ## Results
 
@@ -220,8 +244,10 @@ From the build of 13 November 2026 on the pinned Chronicle feed `4ce631f5`
 (PolicyEngine/chronicle#439; facts sha256 `c294ba20…`, 2,160,233 rows). Every
 level input comes from the feed: E46Y for 2024 (£2,525,540m) and 2021
 (£2,097,345m) from the 2025 balance sheet, the net (£2,526bn, MJF8) and gross
-(£4,632bn, MJF7) capital stock of dwellings for 2024, and ONS's land under
-dwellings for 2021 (£5.9tn). Social homes spread over MSOAs by TS054 by MSOA.
+(£4,632bn, MJF7) capital stock of dwellings for 2024, ONS's land under
+dwellings for 2021 (£5.9tn), and the 2025 balance sheet's land at end-2024
+for households (E44N, £4,559,831m) and the whole economy (E44R,
+£7,117,771m). Social homes spread over MSOAs by TS054 by MSOA.
 
 ### The level
 
@@ -271,12 +297,23 @@ So cell land stays the central case.
 
 ### Measurements
 
-- **The grain test:** a land tax at the balancing rate would move 24.0 points
-  of council tax between cells under cell land, 22.6 under an authority
-  share × cell value, 24.0 under land at the rank and 26.3 under MHCLG's
-  pattern. Cell land and authority shares differ by 1.40 points nationally,
-  and by under 5 points in 99.8% of seats: **authority shares are enough**
-  by the declared thresholds.
+- **The grain test: cells are needed.** An authority share × cell value
+  places 3.26 points of the land tax on other cells than cell land does,
+  against a threshold of 3. Within seats it is under 5 points in 92.3% of
+  seats, which meets the 90% threshold, so the national test decides, and
+  only just. Seat totals differ by under 5 points in 91.3% of seats.
+  For context, a land tax at the balancing rate moves 24.0 points of council
+  tax between cells under cell land, 22.6 under an authority share, 24.0
+  under land at the rank and 26.3 under MHCLG's pattern. The first build in
+  review compared those amounts instead: cell land and authority shares
+  differed by 1.40 points, which read as "authority shares are enough", but
+  that statistic could not see where the tax falls.
+
+  What this means for the cells: an authority's land share spread by value
+  is not a substitute for the cells' own land, so the cells are needed.
+  They are already the central case, which the decision rule keeps. The
+  gap is near the threshold, and the threshold is a proposal, so the reading
+  is for Max and Vahid to confirm.
 - **κ diagnostics: pass.** Almost no cell has zero land, and seat ranks keep
   their order across the cost and depreciation variants.
 - **Stock value: passes.** The sales-based private-sector mean is £372,470 in
@@ -296,16 +333,57 @@ social-rent rows, which halved the social stock (2.41 million homes instead of
 
 Also recorded: TPA's authority ranking correlates with the central case at
 0.956; the residual per new home is a median 2.85 times MHCLG's land per new
-home across 295 authorities, with a rank correlation of 0.927; 34
+home across 295 authorities, with a rank correlation of 0.927; and 34
 authorities differ from both MHCLG's pattern and TPA by a log ratio above
-0.4; and the land under England and Wales's homes (£7.08tn) is above E44N,
-UK households' land (£4.56tn), so that check fails. It is not like for like:
-E44N is households' land only.
+0.4.
+
+### The land against ONS's land
+
+| England and Wales, £tn, calendar-2024 prices | Target (a), central | Target (b) |
+|---|---|---|
+| Under owner-occupied homes | 4.52 | 4.39 |
+| Under privately rented homes | 1.86 | 1.81 |
+| Under social homes | 0.71 | 0.68 |
+| Under every home | 7.08 | 6.88 |
+
+| ONS, the UK | £tn |
+|---|---|
+| E44N, the households sector's land of every kind, end-2024 | 4.56 |
+| E44R, the land of every kind and every sector, end-2024 | 7.12 |
+| The land underlying dwellings, end-2021 | 5.90 |
+| The same, carried to the 2024 mean by the UK HPI (× 1.062) | 6.27 |
+
+Both checks pass, but only just. Under target (a):
+
+- **Owner-occupied land alone is 99.1% of E44N.** E44N also holds Scotland's
+  and Northern Ireland's household land and households' land under other
+  buildings and farms. Households also own part of the privately rented
+  land. Once household landlords hold more than 2.2% of it, households'
+  land under England and Wales's homes alone is above E44N. Owner-occupied
+  and privately rented land together are 140% of it.
+- **The land under every home is 99.5% of E44R**, the UK's land of every
+  kind.
+- **It is 13.0% above ONS's land under all of the UK's dwellings**, carried
+  to 2024.
+
+Under target (b), owner-occupied land is 96.2% of E44N, and the land under
+every home is 9.8% above ONS's land under dwellings. Target (a) fixes the
+buildings to E46Y, so wherever the sales-based value is above ONS's implied
+dwelling value, the difference lands in land. Which route anchors the level
+is open on PolicyEngine/uk-land-value-tax#20; these figures are for that
+choice.
 
 ### Coverage
 
 - 15,567,861 homes valued from 29,753,107 transfers; 10,835,909 of them
-  linked to UCL's file. 4,733,362 homes take their cell's mean floor area.
+  linked to UCL's file.
+- 4,733,362 of the 15,567,722 sold homes in cells (30.4%) take a pooled mean
+  floor area: 97.9% of them from their own cell, 2.0% from their authority ×
+  band and 0.04% from their region × band. By region the share runs from
+  29.4% (London) to 32.7% (Wales). By the year of the home's latest sale it
+  is 59.2% for 1995 to 2008, 7.5% for 2009 to 2021, 18.6% for 2022 and 2023,
+  and 42.3% for 2024 to 2026. UCL's file ends in October 2023, and the
+  earliest sales predate most certificates.
 - 55,617 cells. Means: 42,333 from the cell's own sales, 12,993 from the
   authority, 291 from the region. Knots: 34,342, 19,257 and 2,018.
 - 5,672 MSOA × band counts printed as `[c]` read as 2.5.

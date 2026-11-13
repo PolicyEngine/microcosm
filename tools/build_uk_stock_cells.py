@@ -108,6 +108,7 @@ NSPL_DATA_MEMBER = "Data/NSPL_AUG_2026_UK.csv"
 SUPPORT_NAME = "uk_ew_output_area_2021"
 ENGLAND = "E92000001"
 WALES = "W92000004"
+UNITED_KINGDOM = "K02000001"
 #: The support's sentinel for Wales's region; Wales has no regions.
 WALES_REGION_SENTINEL = "W99999999"
 #: Homes whose latest sale is a new build sold from this year are new
@@ -832,6 +833,7 @@ class Homes:
     floor_area: np.ndarray
     age_band: np.ndarray
     new_build: np.ndarray
+    sale_yyyymm: np.ndarray
     receipts: dict
 
 
@@ -896,6 +898,7 @@ def _homes(
         floor_area=floor.astype(float),
         age_band=age.astype(np.int64),
         new_build=new_build,
+        sale_yyyymm=table["sale_yyyymm"].to_numpy().astype(np.int64),
         receipts=receipts,
     )
 
@@ -1386,6 +1389,59 @@ def _structure(
             "theta": theta,
         },
     )
+
+
+def _floor_area_imputation(geo: Geography, homes: Homes, block: ValueBlock) -> dict:
+    """The sold homes that take a pooled mean floor area: by region, by sale
+    year, and by the pool the mean is read from.
+
+    UCL's linked file ends in October 2023, so a home sold only since has
+    no floor area of its own (microcosm#1597 review).
+    """
+    assignment, pools = block.assignment, block.pools
+    used = assignment.used
+    imputed = ~np.isfinite(homes.floor_area[used])
+    carried = [
+        np.bincount(ids[~imputed], minlength=size)
+        for ids, size in zip(pools.ids, pools.sizes, strict=True)
+    ]
+    level, _, _ = cell_pooling.apply_fallback(
+        carried, pools.parents, minimum=declared.POOLING.minimum("means")
+    )
+    from_level = np.bincount(
+        level[assignment.cell[imputed]], minlength=len(pools.sizes)
+    )
+    region = geo.region_of_la[geo.la_of_msoa[homes.msoa[used]]]
+    year = homes.sale_yyyymm[used] // 100
+    first = int(year.min()) if len(year) else 0
+
+    def shares(groups: np.ndarray, labels: Sequence[object]) -> dict[str, dict]:
+        sold = np.bincount(groups, minlength=len(labels))
+        without = np.bincount(groups[imputed], minlength=len(labels))
+        return {
+            str(label): {
+                "homes": int(n),
+                "imputed": int(m),
+                "imputed_share": _r(m / n, 4),
+            }
+            for label, n, m in zip(labels, sold, without, strict=True)
+            if n > 0
+        }
+
+    return {
+        "homes": int(len(imputed)),
+        "imputed": int(imputed.sum()),
+        "imputed_share": _r(float(imputed.mean()), 4) if len(imputed) else None,
+        "imputed_by_pool_level": dict(
+            zip(declared.POOLING.levels, from_level.tolist(), strict=True)
+        ),
+        "by_region": shares(region, geo.region_codes.tolist()),
+        "by_sale_year": shares(
+            year - first, list(range(first, first + int(np.ptp(year)) + 1))
+        )
+        if len(year)
+        else {},
+    }
 
 
 def _social_costs(
@@ -2022,47 +2078,79 @@ def _measurements(
     position = pd.Index(cells).get_indexer(block.seat_shares["cell"].to_numpy())
     seat_index = block.seat_shares["target"].to_numpy().astype(np.int64)
     share = block.seat_shares["share"].to_numpy()
+    council_tax = np.where(has_tax, tax, 0.0)
+    total_tax = council_tax.sum()
+    seat_tax = np.bincount(
+        seat_index, weights=share * council_tax[position], minlength=len(geo.seat_codes)
+    )
 
-    def redistribution(land: np.ndarray) -> tuple[float, np.ndarray]:
-        rows = has_tax & (land >= 0)
-        rate = tax[rows].sum() / land[rows].sum() if land[rows].sum() > 0 else 0.0
-        moved = np.where(rows, np.abs(tax - rate * land), 0.0)
-        national = 50.0 * moved.sum() / tax[rows].sum()
+    def land_tax(land: np.ndarray) -> np.ndarray:
+        """A land tax on the cells with council tax, at the balancing rate."""
+        base = np.where(has_tax, land, 0.0)
+        if not (np.all(np.isfinite(base)) and np.all(base >= 0)):
+            raise ValueError("A land pattern is negative or not finite.")
+        return base * (total_tax / base.sum()) if base.sum() > 0 else base
+
+    def points(difference: np.ndarray) -> tuple[float, np.ndarray]:
+        """50 × Σ|difference| ÷ council tax, nationally and per seat: the
+        share of the tax that falls elsewhere, in points."""
+        moved = np.abs(difference)
         seat_moved = np.bincount(
             seat_index, weights=share * moved[position], minlength=len(geo.seat_codes)
         )
-        seat_tax = np.bincount(
-            seat_index,
-            weights=share * np.where(rows, tax, 0.0)[position],
-            minlength=len(geo.seat_codes),
-        )
         with np.errstate(divide="ignore", invalid="ignore"):
             seats = np.where(seat_tax > 0, 50.0 * seat_moved / seat_tax, np.nan)
-        return float(national), seats
+        return float(50.0 * moved.sum() / total_tax), seats
 
     grain = declared.MEASUREMENTS[0]
-    results = {name: redistribution(land) for name, land in patterns.items()}
-    national = {name: round(r[0], 4) for name, r in results.items()}
-    gap = abs(national["cell_land"] - national["authority_share"])
-    seat_gap = np.abs(results["cell_land"][1] - results["authority_share"][1])
-    seat_gap = seat_gap[np.isfinite(seat_gap)]
-    within = float((seat_gap < grain["seat_points"]).mean()) if len(seat_gap) else None
-    enough = (gap < grain["national_points"]) and (
+    taxes = {name: land_tax(land) for name, land in patterns.items()}
+    # How much each pattern moves from council tax: context, not the test.
+    moved = {name: round(points(council_tax - t)[0], 4) for name, t in taxes.items()}
+    # The test: how much of the tax the two patterns place differently.
+    distance, seat_distance = points(taxes["cell_land"] - taxes["authority_share"])
+    seat_distance = seat_distance[np.isfinite(seat_distance)]
+    within = (
+        float((seat_distance < grain["seat_points"]).mean())
+        if len(seat_distance)
+        else None
+    )
+    enough = (distance < grain["national_points"]) and (
         within is not None and within >= grain["seat_share"]
     )
+    # Context: whether each seat's land tax differs in total, beside whether
+    # it falls on different cells within the seat. A seat total is one
+    # amount, so its gap is 100 × |difference| ÷ the seat's council tax.
+    seat_total_difference = np.bincount(
+        seat_index,
+        weights=share * (taxes["cell_land"] - taxes["authority_share"])[position],
+        minlength=len(geo.seat_codes),
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        seat_total_points = np.where(
+            seat_tax > 0, 100.0 * np.abs(seat_total_difference) / seat_tax, np.nan
+        )
+    seat_total_points = seat_total_points[np.isfinite(seat_total_points)]
     out.append(
         {
             "id": "grain_test",
             "definition": (
-                "for each pattern, the share of council tax (VOA private count × band "
-                "ratio × the authority's Band D) that a land tax at the rate balancing "
-                "the two would move between cells, in points; nationally and per seat"
+                "a land tax on each pattern at the rate that balances council tax "
+                "(VOA private count × band ratio × the authority's Band D) over all "
+                "homes; the test is 50 × Σ|cell land tax − authority-share land "
+                "tax| ÷ council tax, over cells nationally and over each seat's "
+                "cells, in points; seat totals compare 100 × |the seat's "
+                "difference| ÷ its council tax"
             ),
-            "national_points": national,
-            "cell_vs_authority_national_gap": round(gap, 4),
+            "cell_vs_authority_national_points": round(distance, 4),
             "seats_within_seat_points": round(within, 4)
             if within is not None
             else None,
+            "seat_totals_within_seat_points": round(
+                float((seat_total_points < grain["seat_points"]).mean()), 4
+            )
+            if len(seat_total_points)
+            else None,
+            "moved_from_council_tax_points": moved,
             "thresholds": {
                 k: grain[k] for k in ("national_points", "seat_points", "seat_share")
             },
@@ -2204,6 +2292,85 @@ def _stock_value_check(facts, geo, hpi, cells, count, value, owner) -> dict:
     }
 
 
+def _land_against_ons(
+    geo: Geography,
+    rollups: Mapping[str, Rollup],
+    block: ValueBlock,
+    tenure: Tenure,
+    levels: Mapping[str, dict],
+    hpi,
+) -> dict:
+    """The land under England and Wales's homes by tenure, beside ONS's land.
+
+    Households hold the owner-occupied land and part of the privately rented
+    land, so their land under these homes lies between the owner-occupied
+    land and all private land. Both are reported for each κ target, with
+    ONS's land: E44N (the UK households sector's land of every kind), E44R
+    (the UK's land of every kind) and the land underlying UK dwellings at
+    end-2021, carried to the basis year by the UK HPI (microcosm#1597 review).
+    """
+    bands = len(declared.BANDS)
+    cells = block.cell_rows
+    count = block.private_count[cells]
+    owner = tenure.owner_share_of_la[geo.la_of_msoa[cells // bands]]
+    households = levels["households_land"]["value"]
+    whole_economy = levels["whole_economy_land"]["value"]
+    by_target: dict[str, dict | None] = {}
+    for target in ("a", "b"):
+        rollup = rollups.get(f"target_{target}")
+        if rollup is None:
+            by_target[target] = None
+            continue
+        private = count * rollup.cell_land_per_home[cells]
+        owner_occupied = float((private * owner).sum())
+        private_total = float(private.sum())
+        social = float((tenure.social_of_la * rollup.social_land_per_home).sum())
+        by_target[target] = {
+            "kappa": _r(rollup.kappa, 6),
+            "all_tenures": _r(private_total + social, 0),
+            "owner_occupied": _r(owner_occupied, 0),
+            "privately_rented": _r(private_total - owner_occupied, 0),
+            "social": _r(social, 0),
+            "owner_occupied_below_e44n": _status(
+                None if households is None else owner_occupied < households
+            ),
+            "all_tenures_below_e44r": _status(
+                None
+                if whole_economy is None
+                else private_total + social < whole_economy
+            ),
+        }
+    dwellings_2021 = levels["land_underlying_dwellings_2021"]["value"]
+    year, month = declared.LAND_UNDERLYING_DWELLINGS_MONTH
+    uk = hpi.area_index.get(UNITED_KINGDOM)
+    carried = None
+    if dwellings_2021 is not None and uk is not None:
+        carried = dwellings_2021 * float(
+            hpi.basis_levels(declared.BASIS_YEAR)[uk, 4]
+            / hpi.month_levels(year, month)[uk, 4]
+        )
+    return {
+        "rule": (
+            "households' land under these homes lies between the owner-occupied "
+            "land and all private land; the owner-occupied land must be below "
+            "E44N, which also holds Scotland's and Northern Ireland's household "
+            "land and households' land under other buildings and farms, and the "
+            "land under every home below E44R"
+        ),
+        "by_target": by_target,
+        "ons": {
+            "e44n_uk_households_land_end_2024": households,
+            "e44r_uk_land_end_2024": whole_economy,
+            "land_underlying_uk_dwellings_end_2021": dwellings_2021,
+            "land_underlying_uk_dwellings_at_basis": _r(carried, 0),
+            "carried_by": (
+                f"UK HPI, United Kingdom, all dwellings: the {declared.BASIS_YEAR} "
+                f"mean over {year}-{month:02d}"
+            ),
+        },
+    }
+
+
 def _also_recorded(
     facts,
     geo,
@@ -2215,6 +2382,8 @@ def _also_recorded(
     structure_central: Structure,
     block: ValueBlock,
     level: Level,
+    tenure: Tenure,
+    hpi,
 ) -> dict:
     english = np.char.startswith(geo.la_codes.astype(str), "E")
     codes = geo.la_codes[english].astype(str)
@@ -2247,13 +2416,9 @@ def _also_recorded(
         minimum_references=int(declared.LOG_RATIO_FLAG["minimum_references"]),
     )
     out["log_ratio_flags"] = flags
-    households = levels["households_land"]["value"]
-    land_total = float(central.la_land.sum())
-    out["household_land_against_e44n"] = {
-        "england_and_wales_land": round(land_total, 0),
-        "e44n_uk_households_land": households,
-        "status": _status(None if households is None else land_total < households),
-    }
+    out["land_against_ons"] = _land_against_ons(
+        geo, rollups, block, tenure, levels, hpi
+    )
     # Like for like: the residual per new home by authority against MHCLG's.
     used = block.assignment.used
     new = homes.new_build[used]
@@ -2869,6 +3034,8 @@ def _cells(args: argparse.Namespace, run: RunLog) -> dict[str, dict]:
             structures["central"],
             block,
             central_level,
+            tenure,
+            hpi,
         )
     flags: dict[str, list[str]] = {}
     fallen = np.bincount(
@@ -2992,6 +3159,7 @@ def _cells(args: argparse.Namespace, run: RunLog) -> dict[str, dict]:
             },
             "attributes": attribute_receipts,
             "homes": homes.receipts,
+            "floor_area_imputation": _floor_area_imputation(geo, homes, block),
             "stock": stock.receipts,
             "tenure": tenure.receipt,
             "assignment": block.assignment.receipt,
