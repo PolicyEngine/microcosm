@@ -34,8 +34,8 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 _ROOT = _TEST_PATHS.repository
-_CHRONICLE_COMMIT = "41b2fb2b864a28c0eda03322b77a97ef147dfa3c"
-_FACTS_SHA256 = "1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07"
+_CHRONICLE_COMMIT = "e86a83bbdb6194b7d871171005ce8c80cba6ebce"
+_FACTS_SHA256 = "24c64c99159bf517e41c66bc2de2ea84d1f84a998fcd7b4f650f5320e2f443f5"
 _SCHEMA_SHA256 = "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d"
 
 
@@ -58,7 +58,7 @@ def test_pin_records_the_rebuilt_bare_feed() -> None:
     assert pin.source_repo == "PolicyEngine/chronicle"
     assert pin.source_commit == _CHRONICLE_COMMIT
     assert pin.scope == "us_fiscal_targets"
-    assert pin.fact_row_count == 40642
+    assert pin.fact_row_count == 41458
     assert pin.facts_sha256 == _FACTS_SHA256
     assert pin.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
     assert pin.consumer_fact_schema_sha256 == _SCHEMA_SHA256
@@ -213,7 +213,7 @@ def test_parity_resources_and_generator_restate_the_pin() -> None:
     assert manifest["reference"]["feed"] == generator.DEFAULT_FEED_NAME
     assert generator.DEFAULT_FEED_PATH.name == generator.DEFAULT_FEED_NAME
     assert manifest["reference"]["compiled_families"] == "32"
-    assert manifest["reference"]["reviewed_exclusions"] == "64"
+    assert manifest["reference"]["reviewed_exclusions"] == "65"
 
 
 #: The dimension values the pinned feed labels more than one way, as the
@@ -252,10 +252,11 @@ def test_scope_names_every_pinned_pair_once() -> None:
     scope = builder.load_scope(scope_path)
     raw = scope["raw"]
     assert scope["commit"] == load_us_chronicle_feed().source_commit
-    assert len(scope["pairs"]) == 706 == raw["pair_count"]
+    assert len(scope["pairs"]) == 757 == raw["pair_count"]
     # 63 package runs, plus the B4923C package in its three years (#454),
-    # plus the six packages/ed_fsa packages at build year 2026 (#1074).
-    assert sum(len(p) for p in scope["runs"].values()) == 72
+    # plus the six packages/ed_fsa packages at build year 2026 (#1074),
+    # plus the Census Vintage 2025 state age-group package at 2024 (#1528).
+    assert sum(len(p) for p in scope["runs"].values()) == 73
     assert set(scope["runs"]) == {
         2020,
         2021,

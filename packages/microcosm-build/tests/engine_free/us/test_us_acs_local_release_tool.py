@@ -1743,7 +1743,7 @@ def test_materialize_refuses_a_pre_1020_staging_before_hashing_it(
     monkeypatch.setattr(
         module,
         "state_admin_surface",
-        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+        lambda *a, **k: module.AdminSurface([], [], {}),
     )
     # microcosm#1335: the stage reads the ladder and checks geography labels
     # before the staging summary.
@@ -2117,7 +2117,7 @@ def test_materialize_refuses_a_pre_ssi_disability_staging_before_hashing_it(
     monkeypatch.setattr(
         module,
         "state_admin_surface",
-        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+        lambda *a, **k: module.AdminSurface([], [], {}),
     )
     # microcosm#1335: the stage reads the ladder and checks geography labels
     # before the staging summary.
@@ -2307,7 +2307,7 @@ def test_materialize_refuses_a_pre_anchor_staging_before_hashing_it(
     monkeypatch.setattr(
         module,
         "state_admin_surface",
-        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+        lambda *a, **k: module.AdminSurface([], [], {}),
     )
     # microcosm#1335: the stage reads the ladder and checks geography labels
     # before the staging summary.
@@ -2520,7 +2520,7 @@ def test_materialize_resolves_the_take_up_counts_before_hashing_the_staging_h5(
     monkeypatch.setattr(
         module,
         "state_admin_surface",
-        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+        lambda *a, **k: module.AdminSurface([], [], {}),
     )
     # microcosm#1335: the stage reads the ladder and checks geography labels
     # before the staging summary.
@@ -2818,7 +2818,7 @@ def test_materialize_refuses_a_pre_1021_staging_before_hashing_it(
     monkeypatch.setattr(
         module,
         "state_admin_surface",
-        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+        lambda *a, **k: module.AdminSurface([], [], {}),
     )
     # microcosm#1335: the stage reads the ladder and checks geography labels
     # before the staging summary.

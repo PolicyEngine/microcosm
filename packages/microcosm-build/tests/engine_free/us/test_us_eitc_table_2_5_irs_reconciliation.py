@@ -2,7 +2,7 @@
 
 ``tests/fixtures/us_soi_eitc_table_2_5_feed_rows.jsonl`` holds, verbatim and in
 source-record-id order, the 274 rows of the pinned Chronicle feed
-(``consumer_facts_us_41b2fb2.jsonl``, sha256 1d45a89c...) that the EITC
+(``consumer_facts_us_e86a83b.jsonl``, sha256 24c64c99...) that the EITC
 decomposition uprating reads:
 
 * IRS SOI Publication 1304 Table 2.5, tax year 2023 (``23in25ic.xls``, sha256

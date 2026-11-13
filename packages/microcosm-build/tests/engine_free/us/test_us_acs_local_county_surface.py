@@ -642,11 +642,7 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
         ]
     )
     parents = [_state_spec(), _state_spec("adjusted_gross_income", 1000.0)]
-    surface = SimpleNamespace(
-        registry=TargetRegistry(parents, country="us"),
-        ri_substitutions=[],
-        soi_receipt={},
-    )
+    surface = module.AdminSurface(TargetRegistry(parents, country="us"), [], {})
     populations = {
         "state": {1: 200.0},
         "county": {1001: 80.0, 1003: 120.0},

@@ -1122,6 +1122,16 @@ _LATER_ROW_KEEPING_REPIN_REPORTS: tuple[
         "experiments/us-feed-ed-fsa/compare.json",
         ("experiments/us-feed-ed-fsa/added_rows.json", "ed_fsa", "ed_fsa."),
     ),
+    # microcosm#1528: Census Vintage 2025 state population by age group
+    # added, 816 rows from the one census_pep package; nothing else.
+    (
+        "experiments/us-feed-census-age-bands/compare.json",
+        (
+            "experiments/us-feed-census-age-bands/added_rows.json",
+            "census_pep",
+            "census_pep.v2025.cy2024.state_resident_population_age_bands.",
+        ),
+    ),
 )
 #: The row fields those re-pins may change: labels, and the record-set hash
 #: that covers the labels.

@@ -312,7 +312,8 @@ borrower is a person whose federal balance is positive.
   byte for byte, stamped `chronicle.consumer_fact.v3` like every row of that
   feed. chronicle#347's own export at its merge commit (`acbedb5`) differs from
   them only in its `chronicle.consumer_fact.v4` stamp. Refresh the fixture if
-  a later pin restates the facts.
+  a later pin restates the facts. microcosm#1531's pin, Chronicle `e86a83bb`,
+  holds the same 244 rows byte for byte.
 
 ## 4. Keep the exclusion register honest
 

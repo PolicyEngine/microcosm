@@ -215,7 +215,7 @@ def test_materialize_refuses_a_geography_label_conflict_before_the_engine_pass(
     monkeypatch.setattr(
         module,
         "ladder_population",
-        lambda ladder_path, geographies: {
+        lambda ladder_path, geographies, state_totals=None: {
             "state": {23: 1_400_000.0},
             "cd": {2301: 700_000.0, 2302: 700_000.0},
         },
